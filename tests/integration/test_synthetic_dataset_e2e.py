@@ -688,17 +688,6 @@ def test_a_test_synthetic_environment_plans_its_whole_model(profiled):
     assert status == 200 and detail["test_data"]["synthetic"]["status"] is None, detail
 
 
-def _table_deltas(report: Any) -> list[dict]:
-    """Every per-table delta ({table, added, changed, ...}) anywhere in a merge report."""
-    if isinstance(report, dict):
-        if {"table", "changed"} <= report.keys():
-            return [report]
-        return [d for v in report.values() for d in _table_deltas(v)]
-    if isinstance(report, list):
-        return [d for v in report for d in _table_deltas(v)]
-    return []
-
-
 def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(profiled):
     """REQ-1942: Generate answers the Limitations of Synthetic Data warning and generates
     nothing; confirming its digest generates the whole model in the background; a digest that is
@@ -825,8 +814,12 @@ def test_generate_answers_the_warning_and_generates_only_once_it_is_confirmed(pr
         {"from_env": "twostep", "dry_run": True, "message": "what a merge would carry"},
     )
     assert status == 200, plan
-    touched = {t["table"] for t in _table_deltas(plan)}
-    assert "table_columns" in touched and "sources" not in touched, plan
+    # A merge reports what it moves by path (REQ-1490): the contacts table, whose phone column
+    # now declares a fake, and no source -- a source's path would carry the store's type.
+    paths = plan["report"]["paths"]
+    moved = [*paths["added"], *paths["changed"], *paths["removed"]]
+    assert any(p.endswith("/contacts.yaml") for p in paths["changed"]), plan
+    assert not any(p.startswith("sources/") for p in moved), plan
     # Leaving Test (synthetic) binds each source to what it was bound to before.
     status, body = _call(
         boot, "PATCH", f"{base}/twostep/data", {"data_mode": "unbound", "confirm_discard": True}

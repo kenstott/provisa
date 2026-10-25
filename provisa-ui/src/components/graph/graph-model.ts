@@ -372,6 +372,8 @@ export interface FrameData {
   rows: Record<string, unknown>[];
   columns: string[];
   error?: string;
+  /** Each access violation the server named for a refused statement, listed under ``error``. */
+  violations?: string[];
   /** The result was over the large-result threshold and was delivered to a file instead of
    *  rows (REQ-1224): the frame says so, with the row count and the link, never zero rows. */
   redirect?: ResultRedirect;
@@ -381,4 +383,23 @@ export interface FrameData {
   elapsed?: number;
   queryStats?: unknown;
   pinned?: boolean;
+  /** A query holding several statements: each one's result, in order. The frame's own result
+   *  fields are the one chosen (statementIndex); its query is the whole text. */
+  statements?: FrameStatement[];
+  statementIndex?: number;
 }
+
+/** One statement's result, of a frame whose query holds several. */
+export type FrameStatement = Pick<
+  FrameData,
+  | "query"
+  | "nodes"
+  | "edges"
+  | "rows"
+  | "columns"
+  | "error"
+  | "violations"
+  | "redirect"
+  | "truncated"
+  | "queryStats"
+> & { status: "done" | "error" };

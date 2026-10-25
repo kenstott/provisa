@@ -13,10 +13,8 @@ and with the X-Provisa-As-Of header, before, between and after the two versions.
 at an embedded DuckDB file so the in-process test app needs no external store (the isolated Postgres
 is on an ephemeral port, not :5432)."""
 
-import asyncio
 import os
 import tempfile
-from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
@@ -68,12 +66,13 @@ async def _sql(client, sql: str, **headers):
     )
 
 
-def _view_input(amount: int, schema: str = "views") -> str:
+def _view_input(amount: int, recorded: str, schema: str = "views") -> str:
     """The view's input, with its one row's amount. It registers the view; with another amount
     and the schema the view is STORED under it changes it (same columns, so its history is
     kept). Registering a materialized view stores it under the schema it lands in, not the one
     written here, and an existing table is addressed by what is stored -- as the admin UI does,
-    which sends back the schema name it read (provisa-ui/src/pages/tables/helpers.ts)."""
+    which sends back the schema name it read (provisa-ui/src/pages/tables/helpers.ts). Its
+    recorded time is ``recorded`` (REQ-2109): each version is entered at its own."""
     visible = 'visibleTo: ["org_admin", "analyst", "developer"]'
     return f"""input: {{
         sourceId: "__derived__",
@@ -81,11 +80,15 @@ def _view_input(amount: int, schema: str = "views") -> str:
         schemaName: "{schema}",
         tableName: "bt_view",
         alias: "bt_view",
-        viewSql: "SELECT 1 AS id, {amount} AS amount",
+        viewSql: "SELECT 1 AS id, {amount} AS amount, TIMESTAMP '2026-01-01 00:00:00' AS booked_at, TIMESTAMP '{recorded}' AS entered_at",
         materialize: true,
-        mvBitemporalMode: "delta",
-        mvBitemporalKey: ["id"],
-        columns: [{{ name: "id", {visible} }}, {{ name: "amount", {visible} }}]
+        businessKey: ["id"],
+        validTime: "booked_at",
+        recordedTime: "entered_at",
+        columns: [
+            {{ name: "id", {visible} }}, {{ name: "amount", {visible} }},
+            {{ name: "booked_at", {visible} }}, {{ name: "entered_at", {visible} }}
+        ]
     }}"""
 
 
@@ -113,7 +116,9 @@ async def test_bitemporal_view_http_end_to_end(client):
     )
 
     reg = await _admin(
-        client, f"mutation {{ registerTable({_view_input(10)}) {{ success message }} }}"
+        client,
+        f"mutation {{ registerTable({_view_input(10, '2026-01-01 00:00:00')}) "
+        "{ success message } }",
     )
     assert reg["data"]["registerTable"]["success"], reg
     # REQ-1921: registered through the admin, the view starts as draft; released, it is built.
@@ -124,11 +129,15 @@ async def test_bitemporal_view_http_end_to_end(client):
 
     # (1) Persistence round-trip: the bitemporal config survives GraphQL -> DB -> read-back.
     tables = await _admin(
-        client, "query { tables { tableName schemaName mvBitemporalMode mvBitemporalKey } }"
+        client,
+        "query { tables { tableName schemaName businessKey validTime recordedTime } }",
     )
     row = next(t for t in tables["data"]["tables"] if t["tableName"] == "bt_view")
-    assert row["mvBitemporalMode"] == "delta"
-    assert row["mvBitemporalKey"] == ["id"]
+    assert (row["businessKey"], row["validTime"], row["recordedTime"]) == (
+        ["id"],
+        "booked_at",
+        "entered_at",
+    )
 
     # Rebuild so the view's read is wired to the reconstruction. The append log already holds the
     # first version: releasing the view built it. The refresh here finds nothing changed.
@@ -183,16 +192,14 @@ async def test_bitemporal_view_http_end_to_end(client):
     assert bad.status_code == 400, bad.text
     assert "as-of" in bad.text.lower() or "as_of" in bad.text.lower()
 
-    # (6) A second version. An instant after the first version and before the change is taken;
-    # then the view's row changes (same columns, so the log is kept and appended to) and the view
-    # is refreshed. The log now holds two versions of id 1, which is what bitemporal has to mean.
-    await asyncio.sleep(0.5)
-    between = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-    await asyncio.sleep(0.5)
+    # (6) A second version, recorded on 1 June: the view's row changes (same columns, so the log is
+    # kept and appended to) and the view is refreshed. The log now holds two versions of id 1,
+    # which is what bitemporal has to mean.
+    between = "2026-03-01T00:00:00"
     # The view is addressed by the schema it is stored under, read back above.
+    changed_input = _view_input(20, "2026-06-01 00:00:00", row["schemaName"])
     changed = await _admin(
-        client,
-        f"mutation {{ updateTable({_view_input(20, row['schemaName'])}) {{ success message }} }}",
+        client, f"mutation {{ updateTable({changed_input}) {{ success message }} }}"
     )
     assert changed["data"]["updateTable"]["success"], changed
     mv = state.mv_registry.get("view-bt_view")
@@ -200,10 +207,17 @@ async def test_bitemporal_view_http_end_to_end(client):
     await _refresh(client, mv)
 
     select = 'SELECT id, amount FROM "bt"."bt_view"'
-    # Between the two versions: the first.
-    then = await _sql(client, select, **{"X-Provisa-As-Of": between})
+    # Between the two versions: the first. Both are valid from 1 January -- the second corrects
+    # the first -- so they are told apart on recorded time, an as-recorded read (REQ-2109: as_of
+    # filters valid time, as_recorded recorded time).
+    then = await _sql(client, select, **{"X-Provisa-As-Recorded": between})
     assert then.status_code == 200, then.text
     assert _rows_and_columns(then)["data"] == {"sql": [{"id": 1, "amount": 10}]}, then.text
+    # As of that time alone: the correction, valid from 1 January as the original was.
+    corrected = await _sql(client, select, **{"X-Provisa-As-Of": between})
+    assert _rows_and_columns(corrected)["data"] == {"sql": [{"id": 1, "amount": 20}]}, (
+        corrected.text
+    )
     # After the second, and by default: the changed row.
     for headers in ({"X-Provisa-As-Of": "2999-01-01T00:00:00"}, {}):
         now = await _sql(client, select, **headers)
@@ -214,9 +228,10 @@ async def test_bitemporal_view_http_end_to_end(client):
     assert _rows_and_columns(past)["data"] == {"sql": []}, past.text
 
 
-def _corrected_input(amount: int, schema: str = "views") -> str:
-    """A view whose one row is valid from 30 September (its source time), with its amount: the
-    same row corrected keeps that source time."""
+def _corrected_input(amount: int, recorded: str, schema: str = "views") -> str:
+    """A view whose one row is valid from 30 September, with its amount: the same row corrected
+    keeps that time. Its recorded time is ``recorded``, each version entered at its own: the
+    clock an as-recorded read cuts on, as its as_of reads on the valid time (REQ-2109)."""
     visible = 'visibleTo: ["org_admin", "analyst", "developer"]'
     return f"""input: {{
         sourceId: "__derived__",
@@ -224,26 +239,29 @@ def _corrected_input(amount: int, schema: str = "views") -> str:
         schemaName: "{schema}",
         tableName: "bt_corrected",
         alias: "bt_corrected",
-        viewSql: "SELECT 1 AS id, {amount} AS amount, TIMESTAMP '2026-09-30 00:00:00' AS valid_from",
+        viewSql: "SELECT 1 AS id, {amount} AS amount, TIMESTAMP '2026-09-30 00:00:00' AS valid_from, TIMESTAMP '{recorded}' AS entered_at",
         materialize: true,
-        mvBitemporalMode: "delta",
-        mvBitemporalKey: ["id"],
-        mvBitemporalSourceTime: "valid_from",
+        businessKey: ["id"],
+        validTime: "valid_from",
+        recordedTime: "entered_at",
         columns: [
             {{ name: "id", {visible} }}, {{ name: "amount", {visible} }},
-            {{ name: "valid_from", {visible} }}
+            {{ name: "valid_from", {visible} }}, {{ name: "entered_at", {visible} }}
         ]
     }}"""
 
 
 async def test_a_correction_is_read_as_it_was_recorded(client):
     """REQ-1163 (as recorded): a correction recorded later changes the view's past; a read as
-    recorded before it answers what was said then."""
+    recorded before it answers what was said then. The original is recorded on 1 October and the
+    correction on 5 October, the requirement's own example."""
     await _admin(
         client, 'mutation { createDomain(input: { id: "btc", description: "x" }) { success } }'
     )
     reg = await _admin(
-        client, f"mutation {{ registerTable({_corrected_input(10)}) {{ success message }} }}"
+        client,
+        f"mutation {{ registerTable({_corrected_input(10, '2026-10-01 00:00:00')}) "
+        "{ success message } }",
     )
     assert reg["data"]["registerTable"]["success"], reg
     released = await _admin(
@@ -270,12 +288,12 @@ async def test_a_correction_is_read_as_it_was_recorded(client):
         assert refresh_failure(mv) is None
 
     await refresh()
-    await asyncio.sleep(0.5)
-    recorded_before = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-    await asyncio.sleep(0.5)
+    # Between the two recordings.
+    recorded_before = "2026-10-03T00:00:00"
     corrected = await _admin(
         client,
-        f"mutation {{ updateTable({_corrected_input(20, schema)}) {{ success message }} }}",
+        f"mutation {{ updateTable({_corrected_input(20, '2026-10-05 00:00:00', schema)}) "
+        "{ success message } }",
     )
     assert corrected["data"]["updateTable"]["success"], corrected
     await refresh()

@@ -21,7 +21,7 @@ writer's own table), one after the other with a read between. A replica would be
 answer the first scan's rows only; a read in place answers both, the moment they are written.
 """
 
-# Requirements: REQ-1443
+# Requirements: REQ-1443, REQ-2125
 
 from __future__ import annotations
 
@@ -172,3 +172,28 @@ async def test_every_scan_is_read_in_place_beside_the_earlier_ones(server):
 
     _append_scan(server, second, now + timedelta(seconds=1))
     assert await _scan_ids(server) == [first, second]
+
+
+async def test_the_checker_reaches_the_table_its_contract_scans_in_the_meta_domain(server):
+    """REQ-2125: the server's own build resolved the contract's dataset (dqh/orders) and the meta
+    domain names it on the checker's row."""
+    async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
+        resp = await client.post(
+            "/data/sql",
+            json={
+                # A checker table is registered under its result relation's name, the name it
+                # was given being its alias (provisa.dq.registration): it is found by that.
+                "sql": "SELECT table_name, alias, id, checked_table_id FROM meta.registered_tables "
+                f"WHERE table_name = 'orders' OR (table_name = '{_RELATION}' "
+                "AND alias = 'orders_quality')",
+                "role": "org_admin",
+            },
+        )
+    assert resp.status_code == 200, f"{resp.text}\n{server.dump_stderr_debug()[-6000:]}"
+    body = resp.json()
+    rows = body.get("data") or body.get("rows") or []
+    if isinstance(rows, dict):
+        rows = next(iter(rows.values()))
+    by_name = {r["alias"] or r["table_name"]: r for r in rows}
+    assert by_name["orders_quality"]["checked_table_id"] == by_name["orders"]["id"], rows
+    assert by_name["orders"]["checked_table_id"] is None, rows

@@ -6,7 +6,7 @@
 
 // REQ-2084: the notebook a named demo ships, on the Notebook tab. The embedded JupyterLite app is
 // a double: what is asserted is which cells the tab hands it, whether it runs them, and that the
-// tab says when they have answered.
+// tab says when they have answered, and points a tour step at the last cell's outputs.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -19,12 +19,13 @@ vi.mock("../hooks/useCapability", () => ({ useCapability: () => true }));
 vi.mock("../dataScience/liteBridge", async (real) => ({
   ...(await real<typeof import("../dataScience/liteBridge")>()),
   runCells: vi.fn(async () => ({ stdout: "trained\n", value: "", error: null })),
+  lastOutputArea: vi.fn(() => null),
   startLiteBridge: vi.fn(() => ({ stop: () => {}, handOff: async () => {} })),
   seedNewNotebooks: vi.fn(() => () => {}),
   followScheme: vi.fn(async () => undefined),
 }));
 
-import { runCells } from "../dataScience/liteBridge";
+import { lastOutputArea, runCells } from "../dataScience/liteBridge";
 import { DataScienceHost, type MakeWorker } from "../pages/DataSciencePage";
 import { NamedDemoContext, NO_NAMED_DEMO } from "../context/NamedDemoContext";
 
@@ -87,5 +88,35 @@ describe("The demo's notebook on the Notebook tab", () => {
       expect(runCells).toHaveBeenCalledWith(APP, CELLS, true, expect.any(Function)),
     );
     expect(await screen.findByTestId("notebook-answered")).toBeInTheDocument();
+  });
+
+  it("scrolls the last cell's outputs into view and marks where they are for the tour", async () => {
+    // The figure's outputs in the frame, 300 pixels tall from its top.
+    const area = document.createElement("div");
+    area.scrollIntoView = vi.fn();
+    area.getBoundingClientRect = () =>
+      ({ top: 10, bottom: 310, left: 20, right: 520, width: 500, height: 300 }) as DOMRect;
+    vi.mocked(lastOutputArea).mockReturnValue(area);
+    page(CELLS, { cells: CELLS, autoRun: true });
+    // The frame, 800 pixels tall: the whole figure inside it.
+    const frame = await screen.findByTestId("data-science-notebook");
+    frame.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 800, left: 0, right: 1000, width: 1000, height: 800 }) as DOMRect;
+    await appStarts();
+    const answer = await screen.findByTestId("notebook-answer");
+    expect(area.scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+    expect(answer.style.height).toBe("300px");
+    expect(answer.style.width).toBe("500px");
+  });
+
+  it("marks nothing for the tour when the cells are only added", async () => {
+    vi.mocked(lastOutputArea).mockReturnValue(document.createElement("div"));
+    page(CELLS);
+    await appStarts();
+    const open = screen.getByTestId("notebook-open-demo");
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    await waitFor(() => expect(runCells).toHaveBeenCalled());
+    expect(screen.queryByTestId("notebook-answer")).not.toBeInTheDocument();
   });
 });

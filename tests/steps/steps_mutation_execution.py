@@ -30,7 +30,7 @@ from pytest_bdd import given, when, then, scenarios
 from provisa.executor.write_capability import WRITE_OPS
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import compile_mutation
-from tests.write_governance import admitted, write_governance
+from tests.write_governance import admitted, grants_over, write_governance
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
 from provisa.executor.direct import _WRITE_RE
@@ -84,7 +84,12 @@ def _build_schema_and_ctx():
         relationships=[],
         column_types=column_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
+        role={
+            "description": "Test role.",
+            "id": "admin",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        },
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )
@@ -172,6 +177,9 @@ def _build_restricted_schema():
             "write_ops": list(WRITE_OPS),
             "write_returns_rows": True,
             "write_refused_forms": [],
+            # REQ-2074: the analyst's write grants, over every column; the input still holds only
+            # the columns the analyst sees.
+            "write_grants": list(grants_over("analyst", ["id", "amount", "region"]).values()),
             "columns": [
                 {"column_name": "id", "visible_to": ["analyst"]},
                 {"column_name": "amount", "visible_to": ["analyst"]},
@@ -192,6 +200,7 @@ def _build_restricted_schema():
         column_types=column_types,
         naming_rules=[],
         role={
+            "description": "Test role.",
             "id": "analyst",
             "capabilities": ["query_development"],
             "domain_access": ["*"],
@@ -374,7 +383,12 @@ def _build_rls_schema_and_ctx():
         relationships=[],
         column_types=column_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
+        role={
+            "description": "Test role.",
+            "id": "admin",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        },
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )

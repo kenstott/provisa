@@ -203,6 +203,11 @@
     "accountEmailHint": "L'e-mail de connexion à Atlassian ; le jeton d'API appartient à ce compte.",
     "apiToken": "Jeton d'API",
     "apiTokenHint": "Créé sur id.atlassian.com, Security, API tokens. Conservé dans le coffre-fort de secrets.",
-    "siteAddressInvalid": "Saisissez l'adresse complète du site, commençant par https://"
+    "siteAddressInvalid": "Saisissez l'adresse complète du site, commençant par https://",
+    "namingInherit": "Hériter (global)",
+    "reasoner": "Raisonneur",
+    "reasonerNone": "Aucun",
+    "axioms": "Axiomes OWL",
+    "axiomsHint": "Syntaxe Turtle, RDF/XML, fonctionnelle ou Manchester. Une table dont la requête est une seule IRI, comme <http://example.org/kyc#controls>, lit ce qui en est inféré."
   }
 }

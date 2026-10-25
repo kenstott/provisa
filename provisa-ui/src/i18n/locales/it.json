@@ -93,5 +93,9 @@
     "notGranted": "Il ruolo con cui stai agendo non concede questa pagina. Un ruolo che hai la concede:",
     "switchTo": "Passa a {{role}}",
     "noneHeld": "Nessuno dei ruoli che hai concede questa pagina."
+  },
+  "pageError": {
+    "title": "Impossibile mostrare questa pagina",
+    "body": "Si è verificato un errore durante il rendering. Il resto dell’app funziona: passa a un’altra pagina o ricarica questa."
   }
 }

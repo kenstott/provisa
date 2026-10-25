@@ -193,9 +193,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- REQ-1733: CDC push-source debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
-    mv_bitemporal_mode TEXT,  -- REQ-1162: NULL | 'snapshot' | 'delta' (append-only time travel)
-    mv_bitemporal_key JSONB,  -- REQ-1162: entity key columns (required for delta)
-    mv_bitemporal_source_time TEXT,  -- REQ-1163: the column holding the source's change time
+    business_key JSONB,  -- REQ-2109: columns identifying the same thing across versions
+    valid_time TEXT,  -- REQ-2109: the column holding the date the business gives the record
+    recorded_time TEXT,  -- REQ-2109: the column holding when this version was entered or changed
     mv_persist TEXT NOT NULL DEFAULT 'replace',  -- REQ-965: replace | append | upsert
     mv_primary_key JSONB,  -- REQ-970: row identity (required for upsert / incremental)
     mv_incremental BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-969: incremental maintenance
@@ -288,6 +288,8 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS unique_constraints JSONB NOT NULL DEFAULT '[]';  -- REQ-1093
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_contract TEXT;  -- REQ-1443
+    -- REQ-1443 clause 10: the contract's checks, parsed at registration, for the meta dq_rules.
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_rules JSONB;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS profiler_source_id TEXT;  -- REQ-1934
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
@@ -304,9 +306,9 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;  -- REQ-1733
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_consistency TEXT NOT NULL DEFAULT 'shared';  -- REQ-879
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_preprocess TEXT;  -- REQ-957
-    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_mode TEXT;  -- REQ-1162
-    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_key JSONB;  -- REQ-1162
-    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_source_time TEXT;  -- REQ-1163
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS business_key JSONB;  -- REQ-2109
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS valid_time TEXT;  -- REQ-2109
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS recorded_time TEXT;  -- REQ-2109
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_persist TEXT NOT NULL DEFAULT 'replace';  -- REQ-965
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_primary_key JSONB;  -- REQ-970
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_incremental BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-969
@@ -336,6 +338,9 @@ CREATE TABLE IF NOT EXISTS relationships (
     -- REQ-1132: opt this edge OUT of discovery — its target table's metadata is not exposed to a role
     -- that reaches the target only via this relationship (a sensitive target behind an innocuous edge).
     hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2141: the rows this edge joins are the same entity (both tables grounded in one class
+    -- term, joined one-to-one on a key of each; repositories/identity.py holds the rule).
+    same_entity      BOOLEAN NOT NULL DEFAULT FALSE,
     -- The Cypher type name a steward pinned on this edge; also what the 'fixed' junction
     -- nomination below reads, which is why it is declared here rather than added by the
     -- ALTER block that follows.
@@ -403,6 +408,12 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_type_column TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_type_value TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_label_source TEXT;
+    -- REQ-2141: the same-entity flag reaches a relationships table that predates it.
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS same_entity BOOLEAN NOT NULL DEFAULT FALSE;
+    -- REQ-351: the effective names a relationship is served under, derived once and stored
+    -- (core.relationship_names), so the meta domain reads what the admin API and Cypher use.
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS cypher_type TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS graphql_field TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -601,7 +612,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
     base_tag_id     TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
@@ -612,6 +623,9 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1660: explicit data-product-level tags, distinct from tags inherited/rolled up
     -- from member tables' own assignments (computed, not stored here).
     product_id      TEXT REFERENCES data_products(id) ON DELETE CASCADE,
+    -- REQ-2145: the glossary term a tag is on (pii on a Property term). Its reference to
+    -- glossary_terms is declared after that table, below.
+    term_id         INTEGER,
     object_key      TEXT NOT NULL,
     -- Why this tag is on this object; REQUIRED for 'deprecated' (system semantic).
     reason          TEXT,
@@ -644,7 +658,7 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_object_type_check
-        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product'));
+        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -693,21 +707,45 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     definition      TEXT,
-    is_abstract     BOOLEAN NOT NULL DEFAULT FALSE,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
-    -- Soft delete. A rooted term cannot be deleted (its refs are derived and would recreate
-    -- it on the next registration), so retiring is how a curator takes a term out of service:
-    -- it stays bound to its columns and stays editable in the admin surface, but no consuming
-    -- surface will ever surface or bind it — agent term search skips it and metadata export
-    -- withholds it. Set only by a curator; never written by the derived lifecycle, so a
-    -- retirement survives the column departing and re-registering.
+    -- Out of service, set only by a curator (REQ-2144). Retiring moves what the term holds --
+    -- its column refs, or its table groundings with their keys -- to a successor, and keeps the
+    -- term as an inert record (definition, edges, experts, the successor's REPLACES edge, the
+    -- reason). No consuming surface offers it, and it conducts nothing. Never written by the
+    -- derived lifecycle, so a retirement survives its old columns departing and re-registering.
     retired         BOOLEAN NOT NULL DEFAULT FALSE,
     -- Per-term opt-out from metadata export: the term (and any edge touching it) is
     -- withheld from every vendor snapshot while its curation stays intact locally.
     export_excluded BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2144: the parts of a term's status a curator asserts (draft and live are computed):
+    -- a deprecation of a live term, with its reason and an optional planned retirement date, on
+    -- which the scheduler retires it; a retirement's reason; and who asserted it, when.
+    deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason   TEXT,
+    retire_on       DATE,
+    status_by       TEXT,
+    status_at       TIMESTAMPTZ,
     tenant_id       UUID,
     UNIQUE (name)
 );
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retire_on DATE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+
+-- REQ-2145: a tag on a glossary term, on a table that predates it. The term's deletion takes its
+-- tags: a term holding a column cannot be deleted (glossary.delete_term), so none of them is a
+-- column's.
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS term_id INTEGER;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_term_id_fkey
+        FOREIGN KEY (term_id) REFERENCES glossary_terms(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- A physical ref binds a term to (table_id, column_name) — the stable column identity
 -- (table_columns.id is NOT stable: the table upsert replaces column rows wholesale).
@@ -721,6 +759,16 @@ CREATE TABLE IF NOT EXISTS glossary_term_refs (
     tenant_id   UUID,
     UNIQUE (table_id, column_name)
 );
+
+-- REQ-2130: a class term grounds a whole table or view -- the table is what the term names an
+-- instance of. A table has at most one class term (its class_term_id); a term may ground many.
+-- Only a table with a primary key may be grounded, so each of its rows is an identifiable instance.
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS class_term_id INTEGER
+    REFERENCES glossary_terms(id) ON DELETE SET NULL;
+-- REQ-2141: TRUE when sync derived the class term from the table's concept; FALSE when a
+-- configuration declared it or a person grounded it. A derived grounding whose term is not
+-- curated is a draft: the config export does not state it and it goes with its table.
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS class_term_derived BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Closed, enum-typed relationship set (REQ-1387) — free-form edge types are not permitted.
 CREATE TABLE IF NOT EXISTS glossary_term_edges (
@@ -840,6 +888,7 @@ CREATE TABLE IF NOT EXISTS calendars (
     week_start          INTEGER NOT NULL DEFAULT 0,
     holidays            JSONB NOT NULL DEFAULT '[]',
     weekend             JSONB NOT NULL DEFAULT '[5, 6]',
+    day_close           TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (name, version)
 );
@@ -883,6 +932,30 @@ CREATE TABLE IF NOT EXISTS mv_delta_ledger (
 -- table/view + relationship rights. The persisted_queries and approval_log tables are
 -- deprecated and no longer created. (Apollo APQ — REQ-288-291 — is separate, lives in
 -- Redis, and is unaffected.)
+
+-- REQ-2129: the model's column lineage edges, folded from its compiled views and statement
+-- commands. Derived state: each model build replaces every row; nothing else writes it.
+CREATE TABLE IF NOT EXISTS lineage_edges (
+    id                 SERIAL PRIMARY KEY,
+    source_relation    TEXT NOT NULL,
+    source_column      TEXT NOT NULL,
+    target_relation    TEXT NOT NULL,
+    target_column      TEXT NOT NULL,
+    via                TEXT NOT NULL,
+    via_kind           TEXT NOT NULL CONSTRAINT lineage_edges_via_kind_check
+                       CHECK (via_kind IN ('view', 'command')),
+    source_table_id    INTEGER,
+    source_column_name TEXT,
+    target_table_id    INTEGER,
+    target_column_name TEXT
+);
+
+-- REQ-2125: the governed table each checker table's contract scans, as the model build resolved
+-- it. Derived state: each build replaces every row.
+CREATE TABLE IF NOT EXISTS checker_targets (
+    table_id         INTEGER PRIMARY KEY,
+    checked_table_id INTEGER NOT NULL
+);
 
 -- Relationship Discovery Candidates (Phase R)
 CREATE TABLE IF NOT EXISTS relationship_candidates (
@@ -1199,6 +1272,19 @@ CREATE TABLE IF NOT EXISTS profiler_constraints (
     run_id        TEXT NOT NULL,
     decided_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (table_id, signature)
+);
+
+-- REQ-2147: a steward's decision on a classification a profile suggested for a column.
+CREATE TABLE IF NOT EXISTS profiler_classifications (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    status           TEXT NOT NULL,
+    evidence         TEXT NOT NULL,
+    run_id           TEXT NOT NULL,
+    decided_by       TEXT,
+    decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (table_id, physical_column, kind)
 );
 
 CREATE TABLE IF NOT EXISTS synthetic_report (

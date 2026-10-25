@@ -22,6 +22,8 @@
     "properties": "屬性",
     "copyValue": "複製值",
     "resizePanel": "調整檢視面板大小",
-    "junctionTable": "經由 {{table}}"
+    "junctionTable": "經由 {{table}}",
+    "openTable": "開啟其資料表",
+    "openRelationship": "開啟其關係"
   }
 }

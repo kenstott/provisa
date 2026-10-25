@@ -265,6 +265,10 @@
       "port": {
         "label": "Porta dell'API HTTP",
         "help": "La porta su cui è in ascolto l'API HTTP. Richiede un riavvio; protetta da conferma perché l'interfaccia e ogni client devono adeguarsi a una modifica."
+      },
+      "public_url": {
+        "label": "Indirizzo pubblico",
+        "help": "L'indirizzo con cui è nota questa installazione, ad esempio https://data.example.com. L'IRI di ogni soggetto in SPARQL e nelle esportazioni RDF inizia con esso, quindi deve restare lo stesso finché quelle IRI sono in uso. Se non è impostato, una query che restituisce l'IRI di un soggetto viene rifiutata."
       }
     },
     "tls": {
@@ -820,6 +824,10 @@
         "label": "Limite di inattività di una sandbox demo",
         "help": "Una sandbox demo che nessuno ha usato per questo tempo viene eliminata, con tutto ciò che contiene."
       },
+      "demo_stores_linger": {
+        "label": "Archivi della demo mantenuti dopo l'uso",
+        "help": "Per quanto tempo i database di una demo restano attivi dopo la chiusura del suo ultimo sandbox. Se viene riaperta prima, si apre subito; dopo, vengono fermati e il visitatore successivo attende che si avviino."
+      },
       "ai_base_url": {
         "label": "Endpoint IA della sandbox",
         "help": "L'endpoint con protocollo OpenAI (quello di OpenRouter è https://openrouter.ai/api/v1) usato dalle funzioni IA di ogni sandbox demo. Non impostato: nessuna IA nelle sandbox."
@@ -857,6 +865,22 @@
       "leak_rate_threshold": {
         "label": "Soglia del tasso di fuga dei valori fittizi",
         "help": "La quota dei valori campionati di una colonna sensibile che il suo valore fittizio può lasciare uguali al valore reale prima che il controllo del tasso di fuga lo segni come inadeguato. 0 fa fallire un valore fittizio che lascia invariato qualsiasi valore."
+      }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Consenti comandi di codice host",
+        "help": "Attivo: i comandi python e script possono essere registrati e chiamati. Ognuno viene eseguito con l'accesso completo del server alla sua memoria, alle credenziali, ai file e alla rete, e il suo codice non viaggia con il modello. Disattivato per impostazione predefinita; usa invece un resolver di codice."
+      }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Percorso del grafo più profondo",
+        "help": "Il numero massimo di salti percorsi da un percorso Cypher a lunghezza variabile o da un percorso di proprietà SPARQL quando la query non fissa un proprio limite. Un risultato troncato a questa profondità lo segnala."
+      },
+      "union_limit": {
+        "label": "Numero massimo di predicati coperti da un predicato variabile",
+        "help": "Un pattern SPARQL il cui predicato è una variabile legge ogni predicato mappato che potrebbe corrispondere, un ramo ciascuno. Una query che richiede più rami viene rifiutata, indicando il limite."
       }
     }
   }

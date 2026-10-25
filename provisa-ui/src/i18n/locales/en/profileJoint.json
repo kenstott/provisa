@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "Joint cloud of {{table}}",
+    "none": "This run built no dependency network, so it holds no joint counts.",
+    "canvasLabel": "3D cloud of a column's rows against its parent columns",
+    "column": "Column",
+    "colorBy": "Colour by",
+    "colorRows": "Rows",
+    "colorLift": "Lift",
+    "legendRows": "rows in the cell",
+    "legendLift": "fewer than independence · as many · more",
+    "decile": "D{{n}}",
+    "nullSlot": "null",
+    "otherSlot": "+{{count}} more",
+    "tipRows": "{{rows}} rows · {{pct}} · lift ×{{lift}}",
+    "explainOne": "{{column}} (up) against its parent {{parent}} (across). Numbers are cut into deciles of rank.",
+    "explainTwo": "{{column}} (up) against its parents {{parent1}} (across) and {{parent2}} (deep). Numbers are cut into deciles of rank.",
+    "stat_rows": "Rows",
+    "stat_cells": "Occupied cells",
+    "stat_mi": "Mutual information (nats)",
+    "stat_uncertainty": "Uncertainty removed",
+    "over": "More often than independence",
+    "under": "Less often than independence",
+    "noneListed": "None at 0.5% of rows or more.",
+    "note": "Lift is a cell's rows over the rows it would hold if the columns were independent. Sphere size is rows."
+  }
+}

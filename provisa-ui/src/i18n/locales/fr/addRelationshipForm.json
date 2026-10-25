@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "Nommer l'arête d'après",
     "viaLabelSourceColumn": "Valeur discriminante",
     "viaLabelSourceTable": "Nom de la table de jonction",
-    "viaLabelSourceFixed": "Alias Cypher"
+    "viaLabelSourceFixed": "Alias Cypher",
+    "cardinalityOneToOne": "un-à-un"
   }
 }

@@ -8,15 +8,21 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+// REQ-2127: the Data Product detail panel. Its core -- the product's fields, member tables,
+// commands, tags, glossary terms, data-quality and profile evidence, related tables and lineage --
+// is read from the meta domain as the signed-in user (productCore.ts); a part the role cannot
+// read there is absent. Drilling down opens the detail where it lives: a member table's rows, a
+// checker's or profile run's results, read in their own domains as the same user.
+
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import React, { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Group, List, Modal, Stack, Table, Text } from "@mantine/core";
-import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
+import { ActionIcon, Alert, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
 import {
   Braces,
   Cable,
+  CircleHelp,
   FileJson,
   Globe,
   ListChecks,
@@ -25,62 +31,48 @@ import {
   Table as TableIcon,
   Trash2,
 } from "lucide-react";
-import type { DataProduct, RegisteredTable, Relationship, Source } from "../../types/admin";
+import type { DataProduct } from "../../types/admin";
 import { DqRulesModal } from "./DqRulesModal";
+import { OwnerResolutionInline } from "../../components/OwnerResolution";
+import { tableSqlRef } from "../../naming";
+import { Tip } from "../../components/Tip";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { LineageGraphData } from "../../api/lineage";
-import { OwnerResolutionInline } from "../../components/OwnerResolution";
-import type { TrackedFunction } from "../../api/actions";
-import type { RelatedGlossaryTerm } from "../../api/glossary";
-import { cypherRelType, tableSqlRef } from "../../naming";
-import { Tip } from "../../components/Tip";
+import { rootKey, type MetaReader } from "../../api/metaGraph";
+import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
+import { InputPort, type InputPortRow } from "./InputPort";
+import { ClampedDetail } from "./ClampedDetail";
 
-interface RelatedTable {
-  table: RegisteredTable;
-  relationship: Relationship;
+export type { InputPortRow };
+import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
+import { coreGraph, type CoreEdge, type CoreTable, type ProductCore } from "./productCore";
+
+interface TableRef {
+  domain_id: string;
+  table_name: string;
 }
 
-// ODPS inputPorts: a derived (not stored) 1-hop input(s) -> transform -> output projection over
-// this product's lineage, computed by the parent page's inputPortsFor() from the raw lineage graph.
-export interface InputPortRow {
-  output: string;
-  transform: string;
-  inputs: string[];
+const sqlRefOf = (tb: TableRef) =>
+  tableSqlRef({ domainId: tb.domain_id, tableName: tb.table_name });
+const selectAll = (tb: TableRef) => `select * from ${sqlRefOf(tb)}`;
+
+/** A table's root query field in the acting role's schema (from /data/graph-schema). */
+function rootOf(reader: MetaReader | null, tb: TableRef): string | null {
+  return reader?.roots.get(rootKey(tb.domain_id, tb.table_name)) ?? null;
 }
 
-// REQ-1634: GraphQL Queries panel — one example query per member table, using the
-// server-derived root field name (graphqlFieldName) so the domain-wide uniqueness algorithm in
-// provisa.compiler.naming.generate_name isn't reimplemented client-side.
-function buildGraphqlExampleQuery(table: RegisteredTable): string {
-  const fields = table.columns.map((c) => c.computedGqlAlias).join(" ");
-  return `{ ${table.graphqlFieldName} { ${fields} } }`;
-}
-
-function buildSelectAllSql(table: RegisteredTable): string {
-  return `select * from ${tableSqlRef(table)}`;
-}
-
-// ODPS: the JSON:API, REST/OpenAPI and gRPC surfaces are just other expressions of the same
-// output port GraphQL already exposes, so every one of them can be derived from the same
-// server-derived graphqlFieldName rather than re-deriving table identity per protocol.
-
-// Mirrors JsonApiPage's own parsedNav regex (/^\/data\/jsonapi\/([^/]+)\/([^?]+)/).
-function buildJsonApiUrl(table: RegisteredTable): string {
-  return `/data/jsonapi/${table.domainId}/${table.tableName}`;
-}
-
-// Mirrors provisa/api/rest/generator.py: "For each root query field, generates GET /data/rest/{table}."
-function buildOpenApiUrl(table: RegisteredTable): string {
-  return `GET /data/rest/${table.graphqlFieldName}`;
+// REQ-1634: one example query per member table, by the root field and the columns the role's own
+// schema gives it -- the compiler's names, never re-derived here.
+function graphqlExample(reader: MetaReader, field: string): string | null {
+  const type = reader.schema.rootType(field);
+  const columns = type ? reader.schema.scalars(type) : [];
+  return columns.length > 0 ? `{ ${field} { ${columns.join(" ")} } }` : null;
 }
 
 // Mirrors provisa.compiler.naming.to_type_name + provisa.grpc.proto_gen._to_proto_type_name — both
-// pure functions of the field name alone (no uniqueness resolution to reimplement, unlike
-// generate_name). sa__userByName -> Sa__UserByName -> SaUserByName.
-function buildGrpcMethod(table: RegisteredTable): string {
-  const fieldName = table.graphqlFieldName ?? "";
-  if (!fieldName) return "";
+// pure functions of the field name alone. sa__userByName -> Sa__UserByName -> SaUserByName.
+function grpcMethod(fieldName: string): string {
   let typeName: string;
   if (fieldName.includes("__")) {
     const [prefix, rest] = fieldName.split("__", 2);
@@ -96,61 +88,133 @@ function buildGrpcMethod(table: RegisteredTable): string {
 // A zero-width space after "/" gives the browser a break opportunity there — plain "/" doesn't
 // wrap on its own, so a long gqlName/cqlName pair would otherwise overflow its monospace panel.
 function joinAliasPair(names: (string | null | undefined)[]): string {
-  return names.filter(Boolean).join("/\u200B");
+  return names.filter(Boolean).join("/​");
 }
 
 interface DataProductDetailPanelProps {
   p: DataProduct;
-  tables: RegisteredTable[];
-  // REQ-1443 clause 10: the checker type a scan's rules are parsed with is the type of the source
-  // the checker table sits on (soda | great_expectations) — RegisteredTable carries only sourceId.
-  sources: Source[];
-  // REQ-1634: member commands (Function rows whose product_id points at this data product).
-  functions: TrackedFunction[];
-  // REQ-1634: terms tied to any member-table column, plus the full transitive closure of
-  // abstract terms reachable from those via edges — fetched server-side by the parent page.
-  relatedTerms: RelatedGlossaryTerm[];
-  relatedTermsLoading: boolean;
-  relatedTables: RelatedTable[];
-  // Relationships where both endpoints are member tables — connections entirely within the
-  // product, distinct from relatedTables' one-hop-outside view. Relationship has no description
-  // field, so its label is synthesized from the endpoint columns and cardinality.
-  internalRelationships: Relationship[];
-  // REQ-1634: gates Edit/Delete — a data_product_read-only caller sees the facts but not the
-  // controls, same pattern as GlossaryTab's canEdit.
+  /** The meta-domain core of the panel; null while it is read. */
+  core: ProductCore | null;
+  coreError: string | null;
+  /** The acting role's schema and root fields, for the member tables' drill-down queries. */
+  reader: MetaReader | null;
+  // REQ-1634: gates Edit/Delete.
   canEdit: boolean;
-  // REQ-1640: lineage is gated on view_governance, independent of the data_product_read/rw
-  // pair — hidden entirely (not just disabled) when the caller lacks it.
+  // REQ-1640: lineage and input ports need view_governance; without it they are absent.
   canSeeLineage: boolean;
   lineageLoading: boolean;
   lineageError: string;
-  // REQ-1640: scoped subgraph (member tables, the published endpoint, plus their full upstream
-  // derivation chain) — rendered with the same LineageDag component the Lineage page uses, not
-  // a separate table-list view.
+  // REQ-1640: the product's member tables, their full upstream ancestry and one hop downstream
+  // (the parent page's lineageFor()) -- rendered with the same LineageDag component the Lineage
+  // page uses (REQ-1161/1627).
   lineageGraph: LineageGraphData | null;
-  // REQ-1667: the member relations (domain.table) lane 0 is built around; contributors to the
-  // left, consumers to the right.
+  // REQ-1667: the member relations the DAG's swimlanes are built around (lane 0).
   lineageMembers?: ReadonlySet<string>;
   // A field's registered description for the lineage hover, over every table (not just members).
   describeColumn?: DescribeColumn;
-  // REQ-1660 (ODPS inputPorts): derived, not stored — computed by the parent page from the same
-  // lineageGraph passed above.
+  // A lineage relation as the catalog names its table.
+  relationLabel?: (relation: string) => string;
+  // REQ-1660 (ODPS inputPorts): derived by the parent page from the federation lineage graph.
   inputPorts: InputPortRow[];
   onEdit: () => void;
   onDelete: () => void;
+}
+
+// A card in the masonry: kept whole within its column.
+const CARD_IN_COLUMN: React.CSSProperties = {
+  breakInside: "avoid",
+  minWidth: 0,
+  marginBottom: "var(--mantine-spacing-sm)",
+};
+// A card's content stays inside the card: long words wrap, and what cannot wrap (a table's
+// columns) scrolls within it.
+const CARD_BODY: React.CSSProperties = { minWidth: 0, overflowX: "auto", overflowWrap: "anywhere" };
+
+/** One card of the panel: the application's collapsible (one look, its open or closed state
+ * remembered per section), headed by its label and, behind (?), what it holds. ``wide`` spans the
+ * panel's width, outside the columns. */
+function DetailCard({
+  section,
+  label,
+  hint,
+  testId,
+  tourId,
+  wide = false,
+  children,
+}: {
+  section: string;
+  label: string;
+  hint?: string;
+  testId: string;
+  tourId?: string;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
+  const heading = (
+    <Group gap="xs" wrap="nowrap" component="span">
+      <span>{label}</span>
+      {hint && (
+        <Tip text={hint}>
+          <ActionIcon
+            component="span"
+            variant="subtle"
+            color="gray"
+            size="xs"
+            role="button"
+            tabIndex={0}
+            aria-label={hint}
+            data-testid={`${testId}-hint`}
+            // The icon sits in the heading; using it must not also open or close the card.
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <CircleHelp size={14} aria-hidden />
+          </ActionIcon>
+        </Tip>
+      )}
+    </Group>
+  );
+  return (
+    <div style={wide ? undefined : CARD_IN_COLUMN} data-tour={tourId} data-testid={testId}>
+      <Collapsibles id={`data-product.${section}`}>
+        <CollapsibleItem value={section} title={heading} controlTestId={`${testId}-toggle`}>
+          <div style={CARD_BODY}>{children}</div>
+        </CollapsibleItem>
+      </Collapsibles>
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <Text size="sm" c="var(--text-muted)">
+      {text}
+    </Text>
+  );
+}
+
+function Muted({ children }: { children: React.ReactNode }) {
+  return (
+    <Text component="span" c="var(--text-muted)" ff="text" size="xs">
+      {" "}
+      {children}
+    </Text>
+  );
+}
+
+function relatedLabel(e: CoreEdge): string {
+  if (e.target_product) return e.target_product.name;
+  if (e.target_table) return `${e.target_table.domain_id}.${e.target_table.table_name}`;
+  return String(e.target_product_id ?? e.target_table_id);
 }
 
 // Row-click detail view for a data product — same detail-then-edit pattern as
 // MetricDetailPanel (REQ-1323): the read-only facts with Edit/Delete inside.
 export function DataProductDetailPanel({
   p,
-  tables,
-  sources,
-  functions,
-  relatedTerms,
-  relatedTermsLoading,
-  relatedTables,
-  internalRelationships,
+  core,
+  coreError,
+  reader,
   canEdit,
   canSeeLineage,
   lineageLoading,
@@ -158,6 +222,7 @@ export function DataProductDetailPanel({
   lineageGraph,
   lineageMembers,
   describeColumn,
+  relationLabel,
   inputPorts,
   onEdit,
   onDelete,
@@ -174,7 +239,13 @@ export function DataProductDetailPanel({
   // REQ-1667: lane 0 is the product's published surface; the others are named by distance.
   const laneTitle = useCallback(
     (lane: number) =>
-      lane === 0 ? t("dataProductsTab.tablesLabel") : lane > 0 ? `+${lane}` : `${lane}`,
+      lane === 0
+        ? t("dataProductsTab.tablesLabel")
+        : lane === -1
+          ? t("dataProductsTab.detail.field.inputPorts")
+          : lane > 0
+            ? t("dataProductsTab.detail.lineageLaneDownstream", { n: lane })
+            : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane }),
     [t],
   );
   const toggleRelation = (relation: string) =>
@@ -183,598 +254,609 @@ export function DataProductDetailPanel({
       if (!next.delete(relation)) next.add(relation);
       return next;
     });
-  // The DAG is the tallest panel on this page by far — start it closed so it doesn't dominate
-  // the masonry layout before the user has asked to see it.
   // REQ-1443 clause 10: the checker table whose rules modal is open, by table id.
   const [rulesFor, setRulesFor] = useState<number | null>(null);
 
   // REQ-1634: Cypher click-through only for relationships that resolve to a usable type and
   // aren't opted out — mirrors GraphPage's handleRelClick input contract.
+  // The relationships between the product's member tables, under the names meta stores on each.
+  const memberIds = new Set((core?.tables ?? []).map((tb) => tb.id));
+  const internalRelationships = (core?.tables ?? []).flatMap((tb) =>
+    (tb.source_relationships ?? [])
+      .filter((r) => r.target_table != null && memberIds.has(r.target_table.id))
+      .map((r) => ({ ...r, source: tb })),
+  );
   const cypherRows = internalRelationships
-    .map((r) => ({ r, type: cypherRelType(r) }))
-    .filter((row): row is { r: Relationship; type: string } => !!row.type && !row.r.disableCypher);
+    .filter((r) => !r.disable_cypher)
+    .map((r) => ({ r, type: r.cypher_type }));
 
-  const customPropertyEntries = Object.entries(p.customProperties ?? {});
+  // Masonry panel grid: a CSS multi-column layout packs each card into whichever column has room
+  // next, instead of flex-wrap's row-by-row layout (which pads every card in a row up to the row's
+  // tallest neighbor, leaving the shorter cards full of unused whitespace).
+  if (coreError) {
+    return (
+      <Alert color="red" data-testid={`data-product-detail-error-${p.id}`}>
+        {t("dataProductCore.error", { error: coreError })}
+      </Alert>
+    );
+  }
+  if (core === null) {
+    return <Loader size="sm" data-testid={`data-product-detail-loading-${p.id}`} />;
+  }
 
+  const product = core.product;
   // REQ-1443 clause 10: a checker table (one carrying a contract) is a member only because the
   // table it scans is — its rows are the product's quality evidence, not part of its published
   // surface, so it is listed under Data Quality rather than among the output ports.
-  const outputTables = tables.filter((tb) => tb.dqContract == null);
-  const dqTables = tables.filter((tb) => tb.dqContract != null);
-
-  // Masonry panel grid: a CSS multi-column layout packs each section into whichever column has
-  // room next, instead of flex-wrap's row-by-row layout (which pads every panel in a row up to
-  // the row's tallest neighbor, leaving the shorter panels full of unused whitespace).
-  const panelStyle: React.CSSProperties = {
-    breakInside: "avoid",
-    minWidth: 0,
-    marginBottom: "var(--mantine-spacing-sm)",
-    border: "1px solid var(--mantine-color-default-border)",
-    borderRadius: "var(--mantine-radius-sm)",
-    padding: "var(--mantine-spacing-sm)",
-  };
-  const widePanelStyle: React.CSSProperties = panelStyle;
+  const outputTables = core.tables?.filter((tb) => tb.dq_contract == null);
+  const dqTables = core.tables?.filter((tb) => tb.dq_contract != null);
+  const profiled = outputTables?.filter((tb) => (tb.profile_results ?? []).length > 0);
+  // The knowledge graph card is drawn from this read, as every other card is.
+  const graph = coreGraph(core);
+  const related = core.edges?.filter((e) => e.kind === "relationship");
+  const customPropertyEntries = Object.entries(product.customProperties ?? {});
 
   // Every value of the product, under the labels its form gives them.
   const fields: DetailField[] = [
-    { label: t("dataProductsTab.idLabel"), value: p.id },
-    { label: t("dataProductsTab.nameLabel"), value: p.name },
-    { label: t("dataProductsTab.domainLabel"), value: p.domainId },
-    { label: t("dataProductsTab.versionLabel"), value: p.version },
-    { label: t("dataProductsTab.statusLabel"), value: p.status },
+    { label: t("dataProductsTab.idLabel"), value: product.id },
+    { label: t("dataProductsTab.nameLabel"), value: product.name },
+    { label: t("dataProductsTab.domainLabel"), value: product.domainId },
+    { label: t("dataProductsTab.versionLabel"), value: product.version },
+    { label: t("dataProductsTab.statusLabel"), value: product.status },
     {
       label: t("dataProductsTab.ownerLabel"),
-      value: p.ownerRole ? (
+      value: product.ownerRole ? (
         <Stack gap={0}>
-          <Text size="sm">{p.ownerRole}</Text>
-          <OwnerResolutionInline refs={[p.ownerRole]} />
+          <Text size="sm">{product.ownerRole}</Text>
+          <OwnerResolutionInline refs={[product.ownerRole]} />
         </Stack>
       ) : null,
     },
     {
       label: t("dataProductsTab.teamLabel"),
-      value: p.teamRole ? (
+      value: product.teamRole ? (
         <Stack gap={0}>
-          <Text size="sm">{p.teamRole}</Text>
-          <OwnerResolutionInline refs={[p.teamRole]} />
+          <Text size="sm">{product.teamRole}</Text>
+          <OwnerResolutionInline refs={[product.teamRole]} />
         </Stack>
       ) : null,
     },
-    { label: t("dataProductsTab.supportLabel"), value: p.support },
-    { label: t("dataProductsTab.slaLabel"), value: p.sla },
-    { label: t("dataProductsTab.purposeLabel"), value: p.purpose },
-    { label: t("dataProductsTab.limitationsLabel"), value: p.limitations },
-    { label: t("dataProductsTab.usageLabel"), value: p.usage },
+    { label: t("dataProductsTab.supportLabel"), value: product.support },
+    { label: t("dataProductsTab.slaLabel"), value: product.sla },
+    { label: t("dataProductsTab.purposeLabel"), value: product.purpose },
+    { label: t("dataProductsTab.limitationsLabel"), value: product.limitations },
+    { label: t("dataProductsTab.usageLabel"), value: product.usage },
   ];
+
+  const sqlDrill = (tb: TableRef & { id: number }, testId: string) => (
+    <Tip text={t("dataProductsTab.sqlQueryAria", { table: tb.table_name })} named>
+      <ActionIcon
+        variant="subtle"
+        size="sm"
+        aria-label={t("dataProductsTab.sqlQueryAria", { table: tb.table_name })}
+        data-testid={testId}
+        onClick={() => navigate("/sql", { state: { sql: selectAll(tb), autoRun: true } })}
+      >
+        <TableIcon size={14} />
+      </ActionIcon>
+    </Tip>
+  );
+
+  const consumerRow = (tb: CoreTable) => {
+    const field = rootOf(reader, tb);
+    const graphql = field && reader ? graphqlExample(reader, field) : null;
+    return (
+      <List.Item key={`gql-${tb.id}`} ff="monospace">
+        <Group gap={4} wrap="nowrap">
+          <Text component="span" size="sm" ff="monospace">
+            {tb.domain_id}.{tb.table_name}
+          </Text>
+          {graphql && (
+            <Tip text={t("dataProductsTab.graphqlQueryAria", { table: tb.table_name })}>
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                aria-label={t("dataProductsTab.graphqlQueryAria", { table: tb.table_name })}
+                data-testid={`data-product-detail-graphql-query-${tb.id}`}
+                onClick={() => navigate("/query", { state: { query: graphql, autoRun: true } })}
+              >
+                <Braces size={14} />
+              </ActionIcon>
+            </Tip>
+          )}
+          {sqlDrill(tb, `data-product-detail-sql-query-${tb.id}`)}
+          <Tip text={t("dataProductsTab.jsonapiQueryAria", { table: tb.table_name })} named>
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              aria-label={t("dataProductsTab.jsonapiQueryAria", { table: tb.table_name })}
+              data-testid={`data-product-detail-jsonapi-query-${tb.id}`}
+              onClick={() =>
+                navigate("/jsonapi", {
+                  state: {
+                    jsonapiUrl: `/data/jsonapi/${tb.domain_id}/${tb.table_name}`,
+                    autoRun: true,
+                  },
+                })
+              }
+            >
+              <FileJson size={14} />
+            </ActionIcon>
+          </Tip>
+          {field && (
+            <Tip text={t("dataProductsTab.openApiQueryAria", { table: tb.table_name })} named>
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                aria-label={t("dataProductsTab.openApiQueryAria", { table: tb.table_name })}
+                data-testid={`data-product-detail-openapi-query-${tb.id}`}
+                onClick={() =>
+                  navigate("/openapi", {
+                    state: { openApiUrl: `GET /data/rest/${field}`, autoRun: true },
+                  })
+                }
+              >
+                <Globe size={14} />
+              </ActionIcon>
+            </Tip>
+          )}
+          {field && (
+            <Tip text={t("dataProductsTab.grpcQueryAria", { table: tb.table_name })} named>
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                aria-label={t("dataProductsTab.grpcQueryAria", { table: tb.table_name })}
+                data-testid={`data-product-detail-grpc-query-${tb.id}`}
+                onClick={() =>
+                  navigate("/grpc", { state: { grpcMethod: grpcMethod(field), autoRun: true } })
+                }
+              >
+                <Cable size={14} />
+              </ActionIcon>
+            </Tip>
+          )}
+        </Group>
+      </List.Item>
+    );
+  };
 
   return (
     <Stack gap="sm" data-testid={`data-product-detail-${p.id}`}>
-      <div
-        style={{
-          columnWidth: "320px",
-          columnGap: "var(--mantine-spacing-sm)",
-        }}
-      >
-        <div style={panelStyle}>
+      <div style={{ columnWidth: "320px", columnGap: "var(--mantine-spacing-sm)" }}>
+        <DetailCard
+          section="details"
+          testId={`data-product-card-details-${p.id}`}
+          label={t("dataProductsTab.detail.field.details")}
+        >
           <DetailFields testId={`data-product-read-${p.id}`} fields={fields} />
-        </div>
-        <div style={panelStyle}>
-          <Text c="dimmed" fw={500} size="sm">
-            {t("dataProductsTab.detail.field.customProperties")}
-          </Text>
+        </DetailCard>
+        <DetailCard
+          section="customProperties"
+          testId={`data-product-card-customProperties-${p.id}`}
+          label={t("dataProductsTab.detail.field.customProperties")}
+        >
           {customPropertyEntries.length === 0 ? (
-            <Text size="sm" c="var(--text-muted)">
-              {t("dataProductsTab.detail.customPropertiesEmpty")}
-            </Text>
+            <Empty text={t("dataProductsTab.detail.customPropertiesEmpty")} />
           ) : (
             <List size="sm" data-testid={`data-product-detail-custom-properties-${p.id}`}>
               {customPropertyEntries.map(([key, val]) => (
                 <List.Item key={key} ff="monospace">
                   {key}
-                  <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-                    {" "}
-                    = {String(val)}
-                  </Text>
+                  <Muted>= {String(val)}</Muted>
                 </List.Item>
               ))}
             </List>
           )}
-        </div>
-        <div style={panelStyle}>
-          <Group gap={4} align="baseline">
-            <Text c="dimmed" fw={500} size="sm">
-              {t("dataProductsTab.tablesLabel")}
-            </Text>
-            <Tip text={t("dataProductsTab.detail.outputPortsHint")}>
-              <Text size="xs" c="var(--text-muted)" style={{ cursor: "help" }}>
-                ⓘ
-              </Text>
-            </Tip>
-          </Group>
-          {outputTables.length === 0 ? (
-            <Text size="sm" c="var(--text-muted)">
-              {t("dataProductsTab.tablesEmpty")}
-            </Text>
-          ) : (
-            <List size="sm" data-testid={`data-product-detail-tables-${p.id}`}>
-              {outputTables.map((tb) => (
-                <List.Item key={tb.id} ff="monospace">
-                  {tb.domainId}.{tb.tableName}
-                  {tb.description && (
-                    <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-                      {" "}
-                      — {tb.description}
-                    </Text>
-                  )}
-                </List.Item>
-              ))}
-            </List>
-          )}
-          <div
-            style={{
-              marginTop: "var(--mantine-spacing-sm)",
-              marginLeft: "var(--mantine-spacing-md)",
-            }}
+        </DetailCard>
+        {core.tags !== undefined && (
+          <DetailCard
+            section="tags"
+            testId={`data-product-card-tags-${p.id}`}
+            label={t("dataProductCore.tags")}
           >
-            <Text c="dimmed" fw={500} size="xs" tt="uppercase">
-              {t("dataProductsTab.commandsLabel")}
-            </Text>
-            {functions.length === 0 ? (
-              <Text size="sm" c="var(--text-muted)">
-                {t("dataProductsTab.commandsEmpty")}
-              </Text>
+            {core.tags.length === 0 ? (
+              <Empty text={t("dataProductCore.tagsEmpty")} />
             ) : (
-              <List size="sm" data-testid={`data-product-detail-commands-${p.id}`}>
-                {functions.map((fn) => (
-                  <List.Item key={fn.name} ff="monospace">
-                    {fn.name}
-                    {fn.description && (
-                      <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-                        {" "}
-                        — {fn.description}
-                      </Text>
-                    )}
+              <List size="sm" data-testid={`data-product-detail-tags-${p.id}`}>
+                {core.tags.map((tag) => (
+                  <List.Item key={tag} ff="monospace">
+                    {tag}
                   </List.Item>
                 ))}
               </List>
             )}
-          </div>
-        </div>
-        <div style={panelStyle} data-tour="data-product-dq">
-          <Group gap={4} align="baseline">
-            <Text c="dimmed" fw={500} size="sm">
-              {t("dataProductsTab.detail.field.dataQuality")}
-            </Text>
-            <Tip text={t("dataProductsTab.detail.dataQualityHint")}>
-              <Text size="xs" c="var(--text-muted)" style={{ cursor: "help" }}>
-                ⓘ
-              </Text>
-            </Tip>
-          </Group>
-          {dqTables.length === 0 ? (
-            <Text size="sm" c="var(--text-muted)">
-              {t("dataProductsTab.detail.dataQualityEmpty")}
-            </Text>
-          ) : (
-            <List size="sm" data-testid={`data-product-detail-dq-tables-${p.id}`}>
-              {dqTables.map((tb) => (
-                <List.Item key={tb.id} ff="monospace">
-                  <Group gap={4} wrap="nowrap">
-                    <Text component="span" size="sm" ff="monospace">
-                      {tb.domainId}.{tb.tableName}
-                    </Text>
-                    {/* The scan results are reached through SQL alone here — the other access
-                        patterns belong to the output ports, not to the evidence about them. */}
-                    <Tip text={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })} named>
-                      <ActionIcon
-                        variant="subtle"
-                        size="sm"
-                        aria-label={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })}
-                        data-testid={`data-product-detail-dq-sql-query-${tb.id}`}
-                        onClick={() =>
-                          navigate("/sql", { state: { sql: buildSelectAllSql(tb), autoRun: true } })
-                        }
-                      >
-                        <TableIcon size={14} />
-                      </ActionIcon>
-                    </Tip>
-                    {/* The rules the scan enforces, read through the checker's own parser. The
-                        checker type comes from the table's source; sources load on their own
-                        query, so the control waits for that answer rather than guessing a type. */}
-                    {(() => {
-                      const source = sources.find((s) => s.id === tb.sourceId);
-                      return (
-                        <>
-                          <Tip
-                            text={t("dataProductsTab.detail.dqRulesAria", { table: tb.tableName })}
+          </DetailCard>
+        )}
+        {(outputTables !== undefined || core.commands !== undefined) && (
+          <DetailCard
+            section="outputPorts"
+            testId={`data-product-card-outputPorts-${p.id}`}
+            label={t("dataProductsTab.tablesLabel")}
+            hint={t("dataProductsTab.detail.outputPortsHint")}
+          >
+            {outputTables !== undefined && (
+              <>
+                {outputTables.length === 0 ? (
+                  <Empty text={t("dataProductsTab.tablesEmpty")} />
+                ) : (
+                  <List size="sm" data-testid={`data-product-detail-tables-${p.id}`}>
+                    {outputTables.map((tb) => (
+                      <List.Item key={tb.id} ff="monospace">
+                        {tb.domain_id}.{tb.table_name}
+                        {tb.description && <Muted>— {tb.description}</Muted>}
+                      </List.Item>
+                    ))}
+                  </List>
+                )}
+              </>
+            )}
+            {core.commands !== undefined && (
+              <div
+                style={{
+                  marginTop: "var(--mantine-spacing-sm)",
+                  marginLeft: "var(--mantine-spacing-md)",
+                }}
+              >
+                <Text c="dimmed" fw={500} size="xs" tt="uppercase">
+                  {t("dataProductsTab.commandsLabel")}
+                </Text>
+                {core.commands.length === 0 ? (
+                  <Empty text={t("dataProductsTab.commandsEmpty")} />
+                ) : (
+                  <List size="sm" data-testid={`data-product-detail-commands-${p.id}`}>
+                    {core.commands.map((fn) => (
+                      <List.Item key={fn.name} ff="monospace">
+                        {fn.name}
+                        {fn.description && <Muted>— {fn.description}</Muted>}
+                      </List.Item>
+                    ))}
+                  </List>
+                )}
+              </div>
+            )}
+          </DetailCard>
+        )}
+        {dqTables !== undefined && (
+          <DetailCard
+            section="dataQuality"
+            testId={`data-product-card-dataQuality-${p.id}`}
+            label={t("dataProductsTab.detail.field.dataQuality")}
+            hint={t("dataProductsTab.detail.dataQualityHint")}
+            tourId="data-product-dq"
+          >
+            {dqTables.length === 0 ? (
+              <Empty text={t("dataProductsTab.detail.dataQualityEmpty")} />
+            ) : (
+              <List size="sm" data-testid={`data-product-detail-dq-tables-${p.id}`}>
+                {dqTables.map((tb) => {
+                  return (
+                    <List.Item key={tb.id} ff="monospace">
+                      <Group gap={4} wrap="nowrap">
+                        <Text component="span" size="sm" ff="monospace">
+                          {tb.domain_id}.{tb.table_name}
+                        </Text>
+                        {/* The scan results are reached through SQL alone here — the other
+                            access patterns belong to the output ports, not to the evidence. */}
+                        {sqlDrill(tb, `data-product-detail-dq-sql-query-${tb.id}`)}
+                        <Tip
+                          text={t("dataProductsTab.detail.dqRulesAria", { table: tb.table_name })}
+                        >
+                          <ActionIcon
+                            variant="subtle"
+                            size="sm"
+                            aria-label={t("dataProductsTab.detail.dqRulesAria", {
+                              table: tb.table_name,
+                            })}
+                            data-testid={`data-product-detail-dq-rules-${tb.id}`}
+                            onClick={() => setRulesFor(tb.id)}
                           >
-                            <ActionIcon
-                              variant="subtle"
-                              size="sm"
-                              disabled={source === undefined}
-                              aria-label={t("dataProductsTab.detail.dqRulesAria", {
-                                table: tb.tableName,
-                              })}
-                              data-testid={`data-product-detail-dq-rules-${tb.id}`}
-                              onClick={() => setRulesFor(tb.id)}
-                            >
-                              <ListChecks size={14} />
-                            </ActionIcon>
-                          </Tip>
-                          {source !== undefined && tb.dqContract != null && (
-                            <DqRulesModal
-                              opened={rulesFor === tb.id}
-                              onClose={() => setRulesFor(null)}
-                              checker={source.type.toLowerCase()}
-                              contractText={tb.dqContract}
-                              tableName={tb.tableName}
-                            />
-                          )}
-                        </>
-                      );
-                    })()}
-                  </Group>
-                  {tb.description && (
-                    <Text c="var(--text-muted)" ff="text" size="xs">
-                      {tb.description}
-                    </Text>
-                  )}
-                </List.Item>
-              ))}
-            </List>
-          )}
-        </div>
-        <div style={panelStyle}>
-          <Text c="dimmed" fw={500} size="sm">
-            {t("dataProductsTab.relatedTermsLabel")}
-          </Text>
-          {relatedTermsLoading ? (
-            <Text size="sm" c="var(--text-muted)">
-              {t("dataProductsTab.relatedTermsLoading")}
-            </Text>
-          ) : relatedTerms.length === 0 ? (
-            <Text size="sm" c="var(--text-muted)">
-              {t("dataProductsTab.relatedTermsEmpty")}
-            </Text>
-          ) : (
-            <List size="sm" data-testid={`data-product-detail-related-terms-${p.id}`}>
-              {relatedTerms.map((term) => (
-                <List.Item key={term.id} ff="monospace">
-                  {term.name}
-                  {term.is_abstract && (
-                    <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-                      {" "}
-                      ({t("dataProductsTab.relatedTermsAbstract")})
-                    </Text>
-                  )}
-                  {term.definition && (
-                    <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-                      {" "}
-                      — {term.definition}
-                    </Text>
-                  )}
-                </List.Item>
-              ))}
-            </List>
-          )}
-        </div>
-        <div style={widePanelStyle}>
-          <Text c="dimmed" fw={500} size="sm">
-            {t("dataProductsTab.graphqlQueriesLabel")}
-          </Text>
-          {outputTables.length === 0 && cypherRows.length === 0 ? (
-            <Text size="sm" c="var(--text-muted)">
-              {t("dataProductsTab.graphqlQueriesEmpty")}
-            </Text>
-          ) : (
-            <List size="sm" data-testid={`data-product-detail-graphql-queries-${p.id}`}>
-              {outputTables.map((tb) => (
-                <List.Item key={`gql-${tb.id}`} ff="monospace">
-                  <Group gap={4} wrap="nowrap">
-                    <Text component="span" size="sm" ff="monospace">
-                      {tb.domainId}.{tb.tableName}
-                    </Text>
-                    {tb.graphqlFieldName && (
-                      <Tip text={t("dataProductsTab.graphqlQueryAria", { table: tb.tableName })}>
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label={t("dataProductsTab.graphqlQueryAria", {
-                            table: tb.tableName,
+                            <ListChecks size={14} />
+                          </ActionIcon>
+                        </Tip>
+                        <DqRulesModal
+                          opened={rulesFor === tb.id}
+                          onClose={() => setRulesFor(null)}
+                          rules={tb.dq_rules ?? []}
+                          scans={tb.checks ?? null}
+                          tableName={tb.table_name}
+                        />
+                      </Group>
+                      {tb.checks && (
+                        <Text
+                          c="var(--text-muted)"
+                          ff="text"
+                          size="xs"
+                          data-testid={`data-product-detail-dq-checks-${tb.id}`}
+                        >
+                          {t("dataProductCore.scans", {
+                            table: `${tb.checks.domain_id}.${tb.checks.table_name}`,
                           })}
-                          data-testid={`data-product-detail-graphql-query-${tb.id}`}
-                          onClick={() =>
-                            navigate("/query", {
-                              state: { query: buildGraphqlExampleQuery(tb), autoRun: true },
-                            })
-                          }
-                        >
-                          <Braces size={14} />
-                        </ActionIcon>
-                      </Tip>
+                        </Text>
+                      )}
+                      {tb.description && (
+                        <Text c="var(--text-muted)" ff="text" size="xs">
+                          {tb.description}
+                        </Text>
+                      )}
+                    </List.Item>
+                  );
+                })}
+              </List>
+            )}
+          </DetailCard>
+        )}
+        {profiled !== undefined && outputTables?.some((tb) => tb.profile_results !== undefined) && (
+          <DetailCard
+            section="profiles"
+            testId={`data-product-card-profiles-${p.id}`}
+            label={t("dataProductCore.profiles")}
+            hint={t("dataProductCore.profilesHint")}
+          >
+            {profiled.length === 0 ? (
+              <Empty text={t("dataProductCore.profilesEmpty")} />
+            ) : (
+              <List size="sm" data-testid={`data-product-detail-profiles-${p.id}`}>
+                {profiled.map((tb) => (
+                  <List.Item key={tb.id} ff="monospace">
+                    {tb.domain_id}.{tb.table_name}
+                    <List size="xs" withPadding>
+                      {(tb.profile_results ?? []).map((r) => (
+                        <List.Item key={r.id} ff="monospace">
+                          <Group gap={4} wrap="nowrap">
+                            <Text component="span" size="xs" ff="monospace">
+                              {r.table_name}
+                            </Text>
+                            {sqlDrill(r, `data-product-detail-profile-sql-query-${r.id}`)}
+                          </Group>
+                        </List.Item>
+                      ))}
+                    </List>
+                  </List.Item>
+                ))}
+              </List>
+            )}
+          </DetailCard>
+        )}
+        {core.terms !== undefined && (
+          <DetailCard
+            section="relatedTerms"
+            testId={`data-product-card-relatedTerms-${p.id}`}
+            label={t("dataProductsTab.relatedTermsLabel")}
+          >
+            {core.terms.length === 0 ? (
+              <Empty text={t("dataProductsTab.relatedTermsEmpty")} />
+            ) : (
+              <List size="sm" data-testid={`data-product-detail-related-terms-${p.id}`}>
+                {core.terms.map((term) => (
+                  <List.Item key={term.id} ff="monospace">
+                    {term.name}
+                    {term.is_abstract && (
+                      <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>
                     )}
-                    <Tip text={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })} named>
-                      <ActionIcon
-                        variant="subtle"
-                        size="sm"
-                        aria-label={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })}
-                        data-testid={`data-product-detail-sql-query-${tb.id}`}
-                        onClick={() =>
-                          navigate("/sql", { state: { sql: buildSelectAllSql(tb), autoRun: true } })
-                        }
-                      >
-                        <TableIcon size={14} />
-                      </ActionIcon>
-                    </Tip>
-                    <Tip
-                      text={t("dataProductsTab.jsonapiQueryAria", { table: tb.tableName })}
-                      named
-                    >
-                      <ActionIcon
-                        variant="subtle"
-                        size="sm"
-                        aria-label={t("dataProductsTab.jsonapiQueryAria", { table: tb.tableName })}
-                        data-testid={`data-product-detail-jsonapi-query-${tb.id}`}
-                        onClick={() =>
-                          navigate("/jsonapi", {
-                            state: { jsonapiUrl: buildJsonApiUrl(tb), autoRun: true },
-                          })
-                        }
-                      >
-                        <FileJson size={14} />
-                      </ActionIcon>
-                    </Tip>
-                    <Tip
-                      text={t("dataProductsTab.openApiQueryAria", { table: tb.tableName })}
-                      named
-                    >
-                      <ActionIcon
-                        variant="subtle"
-                        size="sm"
-                        aria-label={t("dataProductsTab.openApiQueryAria", { table: tb.tableName })}
-                        data-testid={`data-product-detail-openapi-query-${tb.id}`}
-                        onClick={() =>
-                          navigate("/openapi", {
-                            state: { openApiUrl: buildOpenApiUrl(tb), autoRun: true },
-                          })
-                        }
-                      >
-                        <Globe size={14} />
-                      </ActionIcon>
-                    </Tip>
-                    {tb.graphqlFieldName && (
-                      <Tip text={t("dataProductsTab.grpcQueryAria", { table: tb.tableName })} named>
+                    {term.definition && <Muted>— {term.definition}</Muted>}
+                  </List.Item>
+                ))}
+              </List>
+            )}
+          </DetailCard>
+        )}
+        {outputTables !== undefined && (
+          <DetailCard
+            section="consumerQueries"
+            testId={`data-product-card-consumerQueries-${p.id}`}
+            label={t("dataProductsTab.graphqlQueriesLabel")}
+          >
+            {outputTables.length === 0 && cypherRows.length === 0 ? (
+              <Empty text={t("dataProductsTab.graphqlQueriesEmpty")} />
+            ) : (
+              <List size="sm" data-testid={`data-product-detail-graphql-queries-${p.id}`}>
+                {outputTables.map(consumerRow)}
+                {cypherRows.map(({ r, type }) => (
+                  <List.Item key={`cy-${r.id}`} ff="monospace">
+                    <Group gap={4} wrap="nowrap">
+                      <Text component="span" size="sm" ff="monospace">
+                        {type}
+                      </Text>
+                      <Tip text={t("dataProductsTab.cypherQueryAria", { type })} named>
                         <ActionIcon
                           variant="subtle"
                           size="sm"
-                          aria-label={t("dataProductsTab.grpcQueryAria", { table: tb.tableName })}
-                          data-testid={`data-product-detail-grpc-query-${tb.id}`}
+                          aria-label={t("dataProductsTab.cypherQueryAria", { type })}
+                          data-testid={`data-product-detail-cypher-query-${r.id}`}
                           onClick={() =>
-                            navigate("/grpc", {
-                              state: { grpcMethod: buildGrpcMethod(tb), autoRun: true },
+                            navigate("/graph", {
+                              state: {
+                                query: `MATCH ()-[r:${type}]->() RETURN r LIMIT 25`,
+                                autoRun: true,
+                              },
                             })
                           }
                         >
-                          <Cable size={14} />
+                          <Share2 size={14} />
                         </ActionIcon>
                       </Tip>
-                    )}
-                  </Group>
-                </List.Item>
-              ))}
-              {cypherRows.map(({ r, type }) => (
-                <List.Item key={`cy-${r.id}`} ff="monospace">
-                  <Group gap={4} wrap="nowrap">
-                    <Text component="span" size="sm" ff="monospace">
-                      {type}
-                    </Text>
-                    <Tip text={t("dataProductsTab.cypherQueryAria", { type })} named>
-                      <ActionIcon
-                        variant="subtle"
-                        size="sm"
-                        aria-label={t("dataProductsTab.cypherQueryAria", { type })}
-                        data-testid={`data-product-detail-cypher-query-${r.id}`}
-                        onClick={() =>
-                          navigate("/graph", {
-                            state: {
-                              query: `MATCH ()-[r:${type}]->() RETURN r LIMIT 25`,
-                              autoRun: true,
-                            },
-                          })
-                        }
-                      >
-                        <Share2 size={14} />
-                      </ActionIcon>
-                    </Tip>
-                  </Group>
-                </List.Item>
-              ))}
-            </List>
-          )}
-        </div>
-        <div style={panelStyle}>
-          <Group gap={4} align="baseline">
-            <Text c="dimmed" fw={500} size="sm">
-              {t("dataProductsTab.detail.field.relatedTables")}
-            </Text>
-            <Tip text={t("dataProductsTab.detail.relatedTablesHint")}>
-              <Text size="xs" c="var(--text-muted)" style={{ cursor: "help" }}>
-                ⓘ
-              </Text>
-            </Tip>
-          </Group>
-          {relatedTables.length === 0 ? (
-            <Text size="sm" c="var(--text-muted)">
-              {t("dataProductsTab.detail.relatedTablesEmpty")}
-            </Text>
-          ) : (
-            <List size="sm" data-testid={`data-product-detail-related-tables-${p.id}`}>
-              {relatedTables.map(({ table, relationship: r }) => (
-                <List.Item key={r.id} ff="monospace">
-                  {table.domainId}.{table.tableName}
-                  <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-                    {" "}
-                    {/* the relationship's GQL field name and Cypher relationship type are two
-                        independent names for the same edge — show both when set, rather than
-                        silently picking one, so this isn't mistaken for a column/table name.
-                        alias is the stored Cypher type; computedCypherAlias is the server's
-                        derived fallback when no alias was explicitly stored (mirrors _rel_from_row). */}
-                    (
-                    {joinAliasPair([r.graphqlAlias, r.alias ?? r.computedCypherAlias]) ||
-                      r.cardinality}
-                    )
-                  </Text>
-                  {table.description ? (
-                    <Text size="xs" c="var(--text-muted)">
-                      {table.description}
-                    </Text>
-                  ) : null}
-                </List.Item>
-              ))}
-            </List>
-          )}
-        </div>
-        <div style={panelStyle}>
-          <Text c="dimmed" fw={500} size="sm">
-            {t("dataProductsTab.detail.field.relationships")}
-          </Text>
+                    </Group>
+                  </List.Item>
+                ))}
+              </List>
+            )}
+          </DetailCard>
+        )}
+        {related !== undefined && (
+          <DetailCard
+            section="relatedTables"
+            testId={`data-product-card-relatedTables-${p.id}`}
+            label={t("dataProductsTab.detail.field.relatedTables")}
+            hint={t("dataProductsTab.detail.relatedTablesHint")}
+          >
+            {related.length === 0 ? (
+              <Empty text={t("dataProductsTab.detail.relatedTablesEmpty")} />
+            ) : (
+              <List size="sm" data-testid={`data-product-detail-related-tables-${p.id}`}>
+                {related.map((e) => (
+                  <List.Item key={`${e.target_product_id}:${e.target_table_id}`} ff="monospace">
+                    {/* The whole entry at most three lines; its ellipsis opens it in place. */}
+                    <ClampedDetail
+                      testId={`data-product-related-${p.id}-${e.target_product_id ?? e.target_table_id}`}
+                    >
+                      {relatedLabel(e)}
+                      {e.target_product && <Muted>({t("dataProductCore.aProduct")})</Muted>}
+                      <Text size="xs" c="var(--text-muted)">
+                        {[
+                          e.aliases,
+                          e.direct
+                            ? t("dataProductCore.direct")
+                            : t("dataProductCore.hops", { count: e.hops }),
+                          e.path_count > 1
+                            ? t("dataProductCore.paths", { count: e.path_count })
+                            : null,
+                          e.supporting_tables
+                            ? t("dataProductCore.through", { tables: e.supporting_tables })
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                      {e.target_table?.description && (
+                        <Text size="xs" c="var(--text-muted)">
+                          {e.target_table.description}
+                        </Text>
+                      )}
+                    </ClampedDetail>
+                  </List.Item>
+                ))}
+              </List>
+            )}
+          </DetailCard>
+        )}
+        <DetailCard
+          section="relationships"
+          testId={`data-product-card-relationships-${p.id}`}
+          label={t("dataProductsTab.detail.field.relationships")}
+        >
           {internalRelationships.length === 0 ? (
-            <Text size="sm" c="var(--text-muted)">
-              {t("dataProductsTab.detail.relationshipsEmpty")}
-            </Text>
+            <Empty text={t("dataProductsTab.detail.relationshipsEmpty")} />
           ) : (
             <List size="sm" data-testid={`data-product-detail-relationships-${p.id}`}>
               {internalRelationships.map((r) => (
                 <List.Item key={r.id} ff="monospace">
                   {/* GQL field name and Cypher relationship type are independent names for the
-                      same edge — show both when set (mirrors the Related Tables panel below). */}
-                  {joinAliasPair([r.graphqlAlias, r.alias ?? r.computedCypherAlias]) ||
-                    `${r.sourceTableName}.${r.sourceColumn}`}
-                  <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-                    {" "}
-                    {r.sourceTableName}.{r.sourceColumn}
+                      same edge — show both when set. */}
+                  {joinAliasPair([r.graphql_field, r.cypher_type])}
+                  <Muted>
+                    {r.source.table_name}.{r.source_column}
                     {" → "}
-                    {r.targetTableName}
-                    {r.targetColumn ? `.${r.targetColumn}` : ""} ({r.cardinality})
-                  </Text>
+                    {r.target_table?.table_name}
+                    {r.target_column ? `.${r.target_column}` : ""} ({r.cardinality})
+                  </Muted>
                 </List.Item>
               ))}
             </List>
           )}
-        </div>
+        </DetailCard>
         {canSeeLineage && (
-          <div style={widePanelStyle}>
-            <Group gap={4} align="baseline">
-              <Text c="dimmed" fw={500} size="sm">
-                {t("dataProductsTab.detail.field.inputPorts")}
-              </Text>
-              <Tip text={t("dataProductsTab.detail.inputPortsHint")}>
-                <Text size="xs" c="var(--text-muted)" style={{ cursor: "help" }}>
-                  ⓘ
-                </Text>
-              </Tip>
-            </Group>
+          <DetailCard
+            section="inputPorts"
+            testId={`data-product-card-inputPorts-${p.id}`}
+            label={t("dataProductsTab.detail.field.inputPorts")}
+            hint={t("dataProductsTab.detail.inputPortsHint")}
+          >
             {inputPorts.length === 0 ? (
-              <Text size="sm" c="var(--text-muted)">
-                {t("dataProductsTab.detail.inputPortsEmpty")}
-              </Text>
+              <Empty text={t("dataProductsTab.detail.inputPortsEmpty")} />
             ) : (
-              <Table
-                striped
-                withTableBorder
-                data-testid={`data-product-detail-input-ports-${p.id}`}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColInputs")}</Table.Th>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColTransform")}</Table.Th>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColOutput")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {inputPorts.map((row, i) => (
-                    <Table.Tr key={i}>
-                      <Table.Td ff="monospace">{row.inputs.join(", ")}</Table.Td>
-                      <Table.Td ff="monospace">{row.transform}</Table.Td>
-                      <Table.Td ff="monospace">{row.output}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+              <Stack gap={2} data-testid={`data-product-detail-input-ports-${p.id}`}>
+                {inputPorts.map((row) => (
+                  <InputPort key={row.id} row={row} />
+                ))}
+              </Stack>
             )}
-          </div>
+          </DetailCard>
         )}
-        {canSeeLineage && (
-          <div style={{ columnSpan: "all", marginTop: "var(--mantine-spacing-sm)" }}>
-            <Collapsibles id="data-products.lineage">
-              <CollapsibleItem
-                value="lineage"
-                defaultOpen={false}
-                controlTestId={`data-product-detail-lineage-toggle-${p.id}`}
-                title={
-                  <Group gap={4} align="baseline" component="span">
-                    <span>{t("dataProductsTab.detail.field.lineage")}</span>
-                    <Tip text={t("dataProductsTab.detail.lineageHint")}>
-                      <Text
-                        size="xs"
-                        c="var(--text-muted)"
-                        component="span"
-                        style={{ cursor: "help" }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        ⓘ
-                      </Text>
-                    </Tip>
-                  </Group>
-                }
-              >
-                {lineageLoading ? (
-                  <Text size="sm" c="var(--text-muted)">
-                    {t("dataProductsTab.detail.lineageLoading")}
-                  </Text>
-                ) : lineageError ? (
-                  <Text size="sm" c="red">
-                    {lineageError}
-                  </Text>
-                ) : !lineageGraph || lineageGraph.nodes.length === 0 ? (
-                  <Text size="sm" c="var(--text-muted)">
-                    {t("dataProductsTab.detail.lineageEmpty")}
-                  </Text>
-                ) : (
-                  <div data-testid={`data-product-detail-lineage-${p.id}`}>
+        {/* Compact: the product, its members, commands and bound terms; the full graph opens
+            from its expand button. */}
+        <DetailCard
+          section="knowledgeGraph"
+          testId={`data-product-card-knowledgeGraph-${p.id}`}
+          label={t("graph3d.panelTitle")}
+        >
+          <KnowledgeGraphPanel productId={p.id} productName={product.name} graph={graph} />
+        </DetailCard>
+      </div>
+      {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws
+          it; the tallest panel on the page, so it starts closed. */}
+      {canSeeLineage && (
+        <div>
+          <Collapsibles id="data-products.lineage">
+            <CollapsibleItem
+              value="lineage"
+              defaultOpen={false}
+              controlTestId={`data-product-detail-lineage-toggle-${p.id}`}
+              title={
+                <Group gap={4} align="baseline" component="span">
+                  <span>{t("dataProductsTab.detail.field.lineage")}</span>
+                  <Tip text={t("dataProductsTab.detail.lineageHint")}>
+                    <Text
+                      size="xs"
+                      c="var(--text-muted)"
+                      component="span"
+                      style={{ cursor: "help" }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      ⓘ
+                    </Text>
+                  </Tip>
+                </Group>
+              }
+            >
+              {lineageLoading ? (
+                <Text size="sm" c="var(--text-muted)">
+                  {t("dataProductsTab.detail.lineageLoading")}
+                </Text>
+              ) : lineageError ? (
+                <Text size="sm" c="red">
+                  {lineageError}
+                </Text>
+              ) : !lineageGraph || lineageGraph.nodes.length === 0 ? (
+                <Text size="sm" c="var(--text-muted)">
+                  {t("dataProductsTab.detail.lineageEmpty")}
+                </Text>
+              ) : (
+                <div data-testid={`data-product-detail-lineage-${p.id}`}>
+                  <LineageDag
+                    graph={lineageGraph}
+                    height={720}
+                    readable
+                    relationLabel={relationLabel}
+                    collapsedRelations={collapsed}
+                    onToggleRelation={toggleRelation}
+                    lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                    onOpenModal={() => setLineageModalOpen(true)}
+                    describeColumn={describeColumn}
+                  />
+                  <Modal
+                    opened={lineageModalOpen}
+                    onClose={() => setLineageModalOpen(false)}
+                    size="90%"
+                    title={t("dataProductsTab.detail.field.lineage")}
+                    data-testid={`data-product-detail-lineage-modal-${p.id}`}
+                    styles={{ body: { padding: "var(--mantine-spacing-xs)" } }}
+                  >
                     <LineageDag
                       graph={lineageGraph}
-                      height={320}
+                      height="calc(90vh - 140px)"
+                      relationLabel={relationLabel}
                       collapsedRelations={collapsed}
                       onToggleRelation={toggleRelation}
                       lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
-                      onOpenModal={() => setLineageModalOpen(true)}
                       describeColumn={describeColumn}
                     />
-                    <Modal
-                      opened={lineageModalOpen}
-                      onClose={() => setLineageModalOpen(false)}
-                      size="90%"
-                      title={t("dataProductsTab.detail.field.lineage")}
-                      data-testid={`data-product-detail-lineage-modal-${p.id}`}
-                      styles={{ body: { padding: "var(--mantine-spacing-xs)" } }}
-                    >
-                      <LineageDag
-                        graph={lineageGraph}
-                        height="calc(90vh - 140px)"
-                        collapsedRelations={collapsed}
-                        onToggleRelation={toggleRelation}
-                        lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
-                        describeColumn={describeColumn}
-                      />
-                    </Modal>
-                  </div>
-                )}
-              </CollapsibleItem>
-            </Collapsibles>
-          </div>
-        )}
-      </div>
+                  </Modal>
+                </div>
+              )}
+            </CollapsibleItem>
+          </Collapsibles>
+        </div>
+      )}
       {canEdit && (
         <Group gap="xs" mt={4}>
           <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>

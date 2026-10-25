@@ -247,6 +247,14 @@ export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
 # REQ-1494: the platform fake key directory, written by this uvicorn and mounted into Trino.
 export PROVISA_FAKE_KEY_DIR="${PROVISA_FAKE_KEY_DIR:-$SCRIPT_DIR/.provisa/fake-key}"
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
+# REQ-2073: this uvicorn runs as you beside Trino's container and gives the engine's secret files
+# (Kafka client settings, a code host's client key) to the engine's group, of which you must be a
+# member. On macOS, Docker Desktop's bind mounts do not carry the file's owner or group to the
+# container, so any group of yours serves: your own. On Linux, the container's gid 1000 is the
+# default, and you must be in it.
+if [ "$(uname -s)" = Darwin ]; then
+  export PROVISA_ENGINE_FILES_GID="${PROVISA_ENGINE_FILES_GID:-$(id -g)}"
+fi
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 # The pet store's GraphQL demo source is registered into the standard demo alone (its shelter
 # domain is the standard demo config's); a named demo is exactly what its own config lists.
@@ -486,6 +494,10 @@ if [ "$DEMO" = true ]; then
   # once the backend has recreated the schema.
   _DEMO_CP_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo/control-pg"
   _DEMO_SETTINGS_BAK="${PROVISA_HOME:-$HOME/.provisa}/demo/org_settings.restore.sql"
+  # The demo's own data directory, beside its control plane: its organisations' folders (their files
+  # and model repositories) are the demo's alone, so its reset never touches a native install's,
+  # which keeps ~/.provisa. Exported, so the backend and every step below read it.
+  export PROVISA_DATA_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo"
   rm -f "$_DEMO_SETTINGS_BAK"
   if [ -d "$_DEMO_CP_DIR" ]; then
     "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg dump-table "$_DEMO_CP_DIR" \
@@ -493,6 +505,8 @@ if [ "$DEMO" = true ]; then
     "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg reset "$_DEMO_CP_DIR"
     echo "Dropped and will rebuild the demo control-plane database — this start reinitializes it."
   fi
+  # Every environment went with the database; their branches go with them (REQ-1554).
+  "$SCRIPT_DIR/scripts/demo_reset_model_history.sh" "$PROVISA_DATA_DIR"
   # Ensure demo files exist (SQLite inquiries DB, etc.)
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
     echo "Generating demo files..."
@@ -719,7 +733,8 @@ if [ "$DEMO" = true ] || [ "$NATIVE" = true ]; then
   # REQ-1535: both self-contained tiers run the embedded PostgreSQL control plane (pgserver). SQLite
   # has no schemas and REQ-1488 makes an environment a schema, so a SQLite plane could hold prod and
   # nothing else — the demo would be unable to show the feature it is demonstrating. Demo keeps its
-  # own data dir so a demo reset never touches the native install's plane.
+  # own control plane here, and its own data dir (PROVISA_DATA_DIR, set at the demo reset), so a
+  # demo reset never touches the native install's.
   if [ "$DEMO" = true ]; then
     CP_PG_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo/control-pg"
   else
@@ -1084,6 +1099,7 @@ if [ "$DEMO" = true ]; then
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
   print_mcp_info
   echo ""
   echo "Demo sources:"
@@ -1098,6 +1114,7 @@ else
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
   print_mcp_info
   echo ""
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."

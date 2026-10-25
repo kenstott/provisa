@@ -16,7 +16,12 @@ materialize store) and once on the test stack's Trino (Postgres control plane an
 first read lands each. The upstream tables are then RENAMED away, so any read that reaches the source
 live fails with "does not exist" -- the source's own proof it was hit. Every later read, over
 /data/sql, pgwire and GraphQL, with no hint or a ``route=federated`` hint, must still answer from the
-landed copy; a ``route=direct`` hint must be refused with an error naming the operator setting.
+landed copy; a ``route=direct`` hint is ignored, the read answered from the landed copy and its
+route reason naming the operator setting (REQ-030, amended 2026-10-23). The same hint written
+as a SQL or Cypher comment (``-- @provisa route=...``, ``// @provisa route=...``) is applied on
+every SQL and Cypher transport -- /data/sql, pgwire, Flight, /data/cypher and Bolt -- as GraphQL's
+is: a federated hint on a table the direct route could serve is routed to the engine, and a direct
+hint on a floored table is ignored and said.
 
 On Trino a catalog IS the live attach of a source, so a floored source has none (REQ-1912): the
 coordinator is asked for its catalogs and none of the three sources is among them.
@@ -26,6 +31,7 @@ coordinator is asked for its catalogs and none of the three sources is among the
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 from pathlib import Path
@@ -33,6 +39,8 @@ from pathlib import Path
 import httpx
 import pytest
 import pytest_asyncio
+
+from tests.integration.isolated_server import audited_route_reason
 
 pytestmark = [
     pytest.mark.requires_trino,
@@ -119,10 +127,19 @@ async def floor_server(request):
             config=_CONFIG,
             control_plane="own",
             enable_pgwire=True,
+            enable_bolt=True,
+            await_flight=True,
             materialize_store_url=f"duckdb:///{Path(store_dir.name) / 'materialize.duckdb'}",
         )
     else:
-        server = IsolatedServer(org, engine="trino", config=_CONFIG, enable_pgwire=True)
+        server = IsolatedServer(
+            org,
+            engine="trino",
+            config=_CONFIG,
+            enable_pgwire=True,
+            enable_bolt=True,
+            await_flight=True,
+        )
     server.start()
     try:
         async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
@@ -178,23 +195,27 @@ async def test_graphql_reads_come_from_the_landed_copy_not_the_source(floor_serv
 
 
 @pytest.mark.parametrize(
-    ("field", "setting"),
+    ("field", "setting", "source"),
     [
-        ("lpItems", "load_protected"),
-        ("pmItems", "replicate"),
-        ("bareItems", "replicate"),
-        ("mixedAlways", "replicate"),
+        ("lpItems", "load_protected", "floor-protected"),
+        ("pmItems", "replicate", "floor-materialized"),
+        ("bareItems", "replicate", "floor-bare"),
+        ("mixedAlways", "replicate", "floor-mixed"),
     ],
 )
-async def test_a_direct_route_hint_is_refused_naming_the_operator_setting(
-    floor_server, field, setting
+async def test_a_direct_route_hint_is_ignored_naming_the_operator_setting(
+    floor_server, field, setting, source
 ):
+    """REQ-030 (amended 2026-10-23): a direct hint the floor does not allow is ignored, and said:
+    the read answers from the replica, and its route reason names the operator setting."""
     query = f"# @provisa route=direct\n{{ {field} {{ id name }} }}"
     async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=120.0) as client:
         resp = await client.post("/data/graphql", json={"query": query})
-    assert resp.status_code == 403, _explain(floor_server, resp)
-    assert resp.json()["code"] == "query.operator_floor", resp.text
-    assert setting in resp.text
+    body = resp.json()
+    assert resp.status_code == 200 and not body.get("errors"), _explain(floor_server, resp)
+    assert sorted(r["id"] for r in body["data"][field]) == [1, 2, 3]
+    noted = f"route hint ignored: landed: not_forced: operator floor: {setting} on {source} "
+    assert await asyncio.to_thread(audited_route_reason, floor_server, noted)
 
 
 async def test_a_federated_route_hint_is_served_from_the_landed_copy(floor_server):
@@ -352,3 +373,140 @@ async def test_a_table_of_a_floored_source_registers_with_its_types_resolved(flo
         "name": "text",
         "created": "timestamp",
     }
+
+
+# --------------------------------------------------------------------------------------------
+# A route hint written as a SQL or Cypher comment, on each SQL and Cypher transport
+# --------------------------------------------------------------------------------------------
+
+
+def _audit_url(server) -> str:
+    return server.plane.url if server.plane is not None else os.environ["TENANT_DATABASE_URL"]
+
+
+def _audit_baseline(server) -> int:
+    import sqlalchemy as sa
+
+    from provisa.core.database import create_engine_from_url
+
+    engine = create_engine_from_url(_audit_url(server))
+    try:
+        with engine.connect() as conn:
+            return int(
+                conn.execute(
+                    sa.text(f"SELECT COALESCE(MAX(id), 0) FROM org_{server.org_id}.query_audit_log")
+                ).scalar_one()
+            )
+    finally:
+        engine.dispose()
+
+
+def _reasons_since(server, baseline: int) -> list[str]:
+    """The route reasons the server audited after ``baseline``, waiting for the writer (it
+    inserts in batches) until there is one."""
+    import time
+
+    import sqlalchemy as sa
+
+    from provisa.core.database import create_engine_from_url
+
+    engine = create_engine_from_url(_audit_url(server))
+    query = sa.text(
+        f"SELECT route_reason FROM org_{server.org_id}.query_audit_log "
+        "WHERE id > :b AND route_reason IS NOT NULL ORDER BY id"
+    )
+    deadline = time.monotonic() + 60
+    try:
+        while True:
+            with engine.connect() as conn:
+                reasons = [r for (r,) in conn.execute(query, {"b": baseline})]
+            if reasons or time.monotonic() > deadline:
+                return reasons
+            time.sleep(0.5)
+    finally:
+        engine.dispose()
+
+
+def _hinted_ids(server, transport: str, route: str, table: str) -> list[int]:
+    """The ids ``table`` answers over ``transport``, the request carrying a ``route`` comment."""
+    import json
+
+    label = "".join(part.capitalize() for part in table.split("_"))
+    sql = f"-- @provisa route={route}\nSELECT id, name FROM {table}"
+    cypher = f"// @provisa route={route}\nMATCH (n:{label}) RETURN n.id AS id"
+    if transport == "data_sql":
+        resp = httpx.post(
+            f"{server.base_url}/data/sql", json={"sql": sql, "role": "org_admin"}, timeout=120
+        )
+        assert resp.status_code == 200, _explain(server, resp)
+        return _ids(resp)
+    if transport == "cypher_http":
+        resp = httpx.post(
+            f"{server.base_url}/data/cypher",
+            json={"query": cypher},
+            headers={"X-Provisa-Role": "org_admin"},
+            timeout=120,
+        )
+        assert resp.status_code == 200, _explain(server, resp)
+        return sorted(int(r["id"]) for r in resp.json()["rows"])
+    if transport == "pgwire":
+        import psycopg
+
+        with psycopg.connect(
+            host="127.0.0.1",
+            port=server.pgwire_port,
+            user="org_admin",
+            password="provisa",
+            dbname="provisa",
+            autocommit=True,
+            connect_timeout=30,
+        ) as conn:
+            return sorted(int(r[0]) for r in conn.execute(sql).fetchall())
+    if transport in ("flight_sql", "flight_cypher"):
+        import pyarrow.flight as fl
+
+        query = sql if transport == "flight_sql" else cypher
+        client = fl.connect(f"grpc://127.0.0.1:{server.flight_port}")
+        try:
+            ticket = fl.Ticket(json.dumps({"query": query, "role": "org_admin"}).encode())
+            answered = client.do_get(ticket).read_all()
+        finally:
+            client.close()
+        return sorted(int(i) for i in answered.column("id").to_pylist())
+    assert transport == "bolt", transport
+    from neo4j import GraphDatabase
+
+    driver = GraphDatabase.driver(f"bolt://127.0.0.1:{server.bolt_port}", auth=("org_admin", ""))
+    try:
+        with driver.session() as sess:
+            return sorted(int(r["id"]) for r in sess.run(cypher))
+    finally:
+        driver.close()
+
+
+_HINTED = ("data_sql", "pgwire", "flight_sql", "flight_cypher", "cypher_http", "bolt")
+
+
+@pytest.mark.parametrize("transport", _HINTED)
+async def test_a_federated_comment_hint_is_routed_to_the_engine(floor_server, transport):
+    """mixed_live can be read directly (its source has no floor); the hint sends it to the engine,
+    and the read answers the same rows, the one added after the first read among them."""
+    baseline = await asyncio.to_thread(_audit_baseline, floor_server)
+    ids = await asyncio.to_thread(_hinted_ids, floor_server, transport, "federated", "mixed_live")
+    assert ids == [1, 2, 3, 4], ids
+    reasons = await asyncio.to_thread(_reasons_since, floor_server, baseline)
+    assert "steward override: federated" in reasons, reasons
+
+
+@pytest.mark.parametrize("transport", _HINTED)
+async def test_a_direct_comment_hint_that_cannot_apply_is_ignored_and_said(floor_server, transport):
+    """lp_items is load_protected: the direct hint cannot apply, so it is ignored, the read answers
+    from the landed copy, and its route reason says why."""
+    baseline = await asyncio.to_thread(_audit_baseline, floor_server)
+    ids = await asyncio.to_thread(_hinted_ids, floor_server, transport, "direct", "lp_items")
+    assert ids == [1, 2, 3], ids
+    reasons = await asyncio.to_thread(_reasons_since, floor_server, baseline)
+    noted = (
+        "route hint ignored: landed: not_forced: operator floor: load_protected on floor-protected "
+    )
+    assert any(r.startswith(noted) for r in reasons), reasons

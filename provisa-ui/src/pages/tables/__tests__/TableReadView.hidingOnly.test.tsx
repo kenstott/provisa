@@ -16,6 +16,8 @@ import userEvent from "@testing-library/user-event";
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
 // The glossary terms that name the table's columns, as the server answers: one rooted term, and an
 // abstract one reachable from it (which names no column).
+// The table's class term reads the meta domain as the user: its own tests (termGrounding) hold it.
+vi.mock("../TableClassTerm", () => ({ TableClassTerm: () => <span>class term</span> }));
 vi.mock("../../../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/glossary")>()),
   fetchRelatedGlossaryTerms: vi.fn(async () => [
@@ -44,6 +46,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -67,8 +70,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -453,7 +457,12 @@ describe("TableReadView — Query shows every stored setting", () => {
     );
     fireEvent.click(screen.getByTestId("table-section-writes"));
     const grants = screen.getByTestId("write-grants-read");
-    for (const text of ["clerk", "Update", "status = 'placed'", "updated_at to the time of the write"])
+    for (const text of [
+      "clerk",
+      "Update",
+      "status = 'placed'",
+      "updated_at to the time of the write",
+    ])
       expect(grants).toHaveTextContent(text);
   });
 
@@ -469,5 +478,34 @@ describe("TableReadView — Query shows every stored setting", () => {
     fireEvent.click(screen.getByTestId("table-section-query"));
     const query = screen.getByTestId("table-query");
     for (const text of ["revenue", "region", "year = 2026"]) expect(query).toHaveTextContent(text);
+  });
+});
+
+// A graph's column links to its row: the Columns section opens on the table, the column's row
+// marked and scrolled to.
+describe("TableReadView opened on a column", () => {
+  it("marks the named column's row and scrolls it into view", () => {
+    const column = (name: string) =>
+      ({
+        id: name.length,
+        columnName: name,
+        visibleTo: [],
+        masks: [],
+        scope: "domain",
+      }) as unknown as RegisteredTable["columns"][number];
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    renderView(false, makeTable({ id: 7, columns: [column("id"), column("email")] }), {
+      // The page holds the section: a link sets it to Columns.
+      section: "columns",
+      onSectionChange: vi.fn(),
+      column: "email",
+    });
+    const row = screen.getByTestId("table-read-column-email");
+    expect(row).toHaveAttribute("data-linked", "true");
+    expect(row).toHaveClass("row-selected");
+    expect(screen.getByTestId("table-read-column-id")).not.toHaveAttribute("data-linked");
+    expect(scrolled).toHaveBeenCalledWith({ block: "center" });
+    expect(scrolled.mock.contexts[0]).toBe(row);
   });
 });

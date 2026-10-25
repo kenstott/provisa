@@ -153,6 +153,8 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     # Trino/Presto as a SOURCE (not just an engine): a remote coordinator Provisa reads via the
     # SQLAlchemy trino dialect, then lands — reachable as a REPLICA on ANY engine, like GraphQL/REST.
     "trino": _make_trino,
+    # REQ-2100: a read of one code table runs its function and applies the rest of the statement
+    # to its rows; a read across sources is the engine's.
     # REQ-1731: a HiveServer2/Exasol endpoint reached directly (not through Trino's own lake-scan
     # hive connector or JDBC exasol connector) — read-then-land on ANY engine, same shape as the
     # warehouse drivers above.

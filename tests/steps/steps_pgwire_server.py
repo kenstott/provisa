@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 import bcrypt
 import jwt
 import pytest
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, parsers, scenario, scenarios
 
 from provisa.auth.models import AuthIdentity
 from provisa.core.egress import CountingWriter
@@ -33,7 +33,6 @@ scenarios("../features/REQ-530.feature")
 scenarios("../features/REQ-532.feature")
 scenarios("../features/REQ-579.feature")
 scenarios("../features/REQ-580.feature")
-scenarios("../features/REQ-581.feature")
 scenarios("../features/REQ-582.feature")
 scenarios("../features/REQ-583.feature")
 scenarios("../features/REQ-584.feature")
@@ -891,44 +890,70 @@ def statements_split_and_executed(shared_data):
 
 
 # ===========================================================================
-# REQ-581 — positional parameter substitution ($1, $2 → literals)
+# REQ-581 — positional parameters stay bound (amended 2026-10-19)
 # ===========================================================================
+
+
+# Governed and routed in process over a stand-in state: no service is reached.
+@pytest.mark.local_platform
+@scenario("../features/REQ-581.feature", "REQ-581 default behaviour")
+def test_req581_default_behaviour():
+    pass
 
 
 @given("a JDBC or psycopg2 client using $1, $2 positional parameters")
 def client_using_positional_params(shared_data):
-    """Prepare a parameterized SQL template and parameter values."""
-    shared_data["sql_template"] = "SELECT * FROM orders WHERE user_id = $1 AND status = $2"
+    """A parameterized statement over a registered table and the values a client binds."""
+    shared_data["sql_template"] = (
+        "SELECT o.id FROM sales.orders o WHERE o.id = $1 AND o.status = $2"
+    )
     shared_data["params"] = [42, "active"]
 
 
 @when("the query executes")
-def parameterized_query_executes(shared_data):
-    """Apply _substitute_params to replace $1/$2 with literals."""
-    from provisa.pgwire.server import _substitute_params
+def parameterized_query_executes(shared_data, monkeypatch, bind_org):
+    """The statement goes through the one pipeline with its values, as pgwire's Bind/Execute
+    hands them over; routing is a direct read of its source."""
+    import asyncio
+    import copy
 
-    result = _substitute_params(
-        shared_data["sql_template"],
-        shared_data["params"],
+    import provisa.api.app as app_mod
+    from provisa.federation import engine_wake
+    from provisa.pgwire import _pipeline, governed_plan
+    from tests.unit.test_buffered_auto_threshold import _decision
+    from tests.unit.test_governed_sql_engine_internals import _state
+
+    bind_org("org-a")
+    state = _state(["*"])
+    state.tables = copy.deepcopy(state.tables)
+    state.tables[0]["columns"].append(
+        {"column_name": "status", "data_type": "varchar", "visible_to": ["analyst"]}
     )
-    shared_data["substituted_sql"] = result
+    state.org_id = "org-a"
+    monkeypatch.setattr(app_mod, "state", state, raising=False)
+    monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: False)
+    monkeypatch.setattr(_pipeline, "_optimize_and_route", _decision("DIRECT"))
+    # This state has no engine: its process has issued catalogs to no coordinator, whatever
+    # coordinators earlier tests in the process connected.
+    monkeypatch.setattr(engine_wake, "_start_generations", {"": 0})
+    shared_data["plan"] = asyncio.run(
+        _pipeline._govern_and_route(
+            shared_data["sql_template"], "analyst", params=shared_data["params"]
+        )
+    )
 
 
-@then("parameters are substituted as SQL literals before reaching the upstream engine")
-def params_substituted_as_literals(shared_data):
-    """Assert that $1 and $2 are replaced with properly quoted literals."""
-    sql = shared_data["substituted_sql"]
-    assert "$1" not in sql, f"$1 must be replaced; got: {sql!r}"
-    assert "$2" not in sql, f"$2 must be replaced; got: {sql!r}"
-    assert "42" in sql, f"Integer literal 42 must appear; got: {sql!r}"
-    assert "'active'" in sql, f"String literal 'active' must appear; got: {sql!r}"
-
-    # Verify ordering edge case: $10 must not be replaced when substituting $1
-    from provisa.pgwire.server import _substitute_params
-
-    sql10 = _substitute_params("SELECT $1, $10", ["a"] + ["x"] * 9)
-    assert "$1" not in sql10, f"$1 must be replaced in 10-param query; got: {sql10!r}"
-    assert "$10" not in sql10, f"$10 must be replaced; got: {sql10!r}"
+@then(
+    "the values stay bound to the $N placeholders through governance and reach the engine or "
+    "source as bound parameters"
+)
+def params_stay_bound(shared_data):
+    """The governed statement keeps $1 and $2; the values travel beside it to the terminal,
+    never spliced into its text."""
+    plan = shared_data["plan"]
+    assert "$1" in plan.sql and "$2" in plan.sql, plan.sql
+    assert "42" not in plan.sql and "'active'" not in plan.sql, plan.sql
+    assert list(plan.exec_params) == [42, "active"]
 
 
 # ===========================================================================

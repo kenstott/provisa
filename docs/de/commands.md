@@ -2,6 +2,8 @@
 
 Ein Befehl ist eine registrierte, gesteuerte Funktion, die externe Berechnung unter die Governance, das Audit und die Lineage von Provisa bringt. Die Federation-Engine verarbeitet SQL nativ. Ein Befehl deckt die Berechnung ab, die SQL nicht ausdrücken kann, etwa einen Anreicherungs-Microservice, ein Python-Modell, ein Shell-Skript oder eine native gespeicherte Prozedur der Datenbank. Sie registrieren ihn einmal, und jede Client-Oberfläche (GraphQL, pgwire-SQL, REST, Arrow Flight, gRPC, Bolt/Cypher) kann ihn unter identischer Governance aufrufen.
 
+Befehle sind eine der Arten, Geschäftslogik in Provisa zu schreiben. Siehe [Geschäftslogik in Provisa](business-logic.md).
+
 Ein Befehl ist ein **geregeltes RPC**. Seine Ein- und Ausgaben sind deklariert, typisiert, validiert, verfolgt und in die Lineage eingebunden. Ein Ad-hoc-ETL-Schritt, ein ungesteuerter curl-Aufruf oder ein Subprozess hat nichts davon.
 
 ## Implementierungsarten {: #implementation-kinds }
@@ -16,6 +18,8 @@ Sechs `impl_kind`-Werte werden unterstützt:
 | `http` | HTTP/S-Endpunkt; JSON-Request-Body, JSON-Antwort |
 | `grpc` | gRPC unary; proto-lose JSON-Brücke |
 | `python` | In-Process-Python-Callable (`module:attr`) |
+
+`script` und `python` sind Host-Code: Sie laufen auf dem eigenen Host des Servers, und ein Deployment erlaubt sie nur, wenn sein Betreiber Host-Code einschaltet (siehe [Host-Code](#host-code)).
 
 Adressierung (der Katalog-`name` und `function_name`) ist entkoppelt von `binding` (Transport und
 Ort). Tauschen Sie das Binding aus, und die Governance, Lineage und Aufrufer-Verträge des Commands bleiben
@@ -70,6 +74,8 @@ usw.).
 ## Einen Command verfassen {: #authoring-a-command }
 
 ### Konfigurationsdatei {: #config-file }
+
+Dieses Beispiel ist ein `python`-Befehl, er wird also nur geladen, wo Host-Code erlaubt ist (siehe [Host-Code](#host-code)).
 
 ```yaml
 functions:
@@ -279,6 +285,31 @@ Siehe [Lineage](lineage.md), um zu erfahren, wie Command-Knoten im DAG erscheine
 ## Egress-Allowlist
 
 Befehle vom Typ `http` und `grpc` rufen externe Endpunkte auf. Jeder Zielhost muss auf der `udf_egress_allowlist` des Deployments stehen. Loopback (`localhost`, `127.0.0.1`, `::1`) ist immer erlaubt. Ohne Allowlist wird jeder externe Ausgang mit HTTP 403 verweigert, und es gibt keinen stillen Standardwert.
+
+## Host-Code {: #host-code }
+
+Ein `python`-Befehl ruft ein `module:attr` im Prozess des Servers auf, und ein `script`-Befehl startet einen Unterprozess auf dem Host des Servers. Beide laufen mit allem, was der Server erreichen kann: seinem Speicher, seinen Zugangsdaten, seinen Dateien und seinem Netzwerk. Bösartiger, fehlerhafter oder gieriger Code kann all das lesen, den Server aushungern oder ihn zum Absturz bringen. Der Modelleintrag des Befehls enthält nur einen Verweis auf den Code (`module:attr` oder den Pfad des Skripts), daher reist der Code selbst nicht mit dem Modell, wenn das Modell in eine andere Umgebung befördert wird.
+
+Die Deployment-Einstellung `commands.allow_host_code` regelt beide Arten. Sie ist standardmäßig aus. Solange sie aus ist:
+
+- wird das Registrieren eines Befehls beider Arten abgelehnt, ob über die Admin-API oder aus einer Konfigurationsdatei;
+- wird das Ändern eines Befehls auf eine der beiden Arten abgelehnt;
+- wird der Aufruf eines bestehenden Befehls beider Arten abgelehnt, mit HTTP 403 und dem Code
+  `functions.host_code_refused`.
+
+Die Einstellung gehört dem Betreiber, nie einer Organisation. Sie steht auf der Seite Deployment-Einstellungen unter Sicherheit und kann auch in der Konfigurationsdatei oder der Umgebung gesetzt werden:
+
+```yaml
+server:
+  commands:
+    allow_host_code: true
+```
+
+```bash
+PROVISA_COMMANDS_ALLOW_HOST_CODE=true
+```
+
+[Code-Quellen](code-sources.md) sind die geregelte Alternative: Ihr Code läuft in einer Sandbox, ist auf eine Version festgelegt und wird mit dem Modell befördert.
 
 ## Aufruf-Tracing {: #invocation-tracing }
 

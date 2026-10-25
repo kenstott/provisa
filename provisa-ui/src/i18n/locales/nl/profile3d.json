@@ -1,0 +1,32 @@
+{
+  "profile3d": {
+    "expand": "Weergave uitvouwen",
+    "webglError": "De 3D-weergave kon niet worden gestart: {{error}}",
+    "hint": "Sleep om te draaien · scroll om te zoomen · sleep met rechts om te verschuiven",
+    "rotate": "Roteren",
+    "resetView": "Weergave resetten",
+    "zoomTo": "Inzoomen op deze kolom",
+    "attraction": "Aantrekking",
+    "attractionLoose": "Los",
+    "attractionTight": "Dicht",
+    "grid": "Raster",
+    "resetSettings": "Standaard instellen",
+    "resetSettingsHelp": "Vergeet de opgeslagen lay-out, lagen, filters en schakelaars van deze graaf en ga terug naar de standaardwaarden.",
+    "export": "Exporteren",
+    "exportImage": "Afbeelding",
+    "exportScale": "Schaal van de afbeelding",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (vector)",
+    "recordRotation": "Rotatie opnemen",
+    "recordLength": "Opnameduur",
+    "seconds": "{{count}} s",
+    "format_mp4": "MP4-video",
+    "format_webm": "WebM-video",
+    "recording": "De draai wordt opgenomen… {{percent}}%",
+    "cancelRecording": "Opname stoppen",
+    "exportFailed": "De weergave kon niet worden geëxporteerd: {{error}}",
+    "lastFormat": "Laatst gebruikt"
+  }
+}

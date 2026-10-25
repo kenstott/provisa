@@ -39,6 +39,7 @@ orders.region ─╯
 | `source` | 綠色 | 基底表的一個欄位 |
 | `derived` | 藍色 | 由 SQL 運算式（函式、運算子、CTE）產出 |
 | `command` | 紫色 | 來自某個已註冊命令的輸出欄位 |
+| `native` | 橙色 | 資料源讀取的原始欄位，位於已註冊表的欄之下 |
 
 節點上額外的環：
 
@@ -52,6 +53,27 @@ orders.region ─╯
 每條邊都帶著產出目標欄位的原始 SQL 運算式，以及一份具名操作清單：SQL 函式（`sql_function`）、算術／邏輯運算子（`operator`）、已註冊的命令（`command`）、裸欄位引用（`identity`），以及常值（`constant`）。
 
 由命令呼叫而來的邊，在 UI 中以紫色虛線呈現。
+
+### 已註冊表之下
+
+擁有資料源註冊權限的用戶會在每個源欄之下再看到一跳：資料源讀取時的欄位，放在一個代表其讀取位置的框中。該框帶有資料源的標誌和類型標籤（與 Sources 頁面顯示的一致），以及按資料源類型給出的地址：
+
+| 資料源 | 地址 |
+| --- | --- |
+| OpenAPI | 操作（`GET /v2/customers`）、其固定參數和行的位置 |
+| Remote GraphQL | 根欄位、其必需參數和行的位置 |
+| MongoDB、Cosmos DB | 數據庫以及集合或容器 |
+| Elasticsearch、Qdrant | 索引或集合 |
+| CSV、Parquet、檔案、日誌 | 路徑，以及讀取多個檔案的表的檔案通配模式 |
+| Kafka | 主題 |
+| 程式碼資料源 | 函數 |
+| 其他任何資料源 | 原生的模式和表 |
+
+原始欄位在欄有欄位路徑時就是該路徑，否則就是欄自己的名稱。從它到已註冊欄的邊會標明重新命名方式：`path`、`alias` 或 `naming`（命名約定）。已註冊表的框說明它如何提供服務：`virtual`，在每條語句時讀取；或 `replica`，附帶其 TTL 和上次載入時間。憑據、密鑰引用以及 URL 中的用戶名、密碼和 query 從不顯示。沒有資料源註冊權限的用戶只能看到從已註冊表向上的血緣。
+
+### 連結
+
+當用戶的權限能打開相應頁面時，每個元素都會在其定義處打開。單擊欄位會打開它的表、視圖或資料源；雙擊框會打開它的關係；單擊命令的邊會打開該命令。內置 SQL 函數沒有頁面，也沒有連結。
 
 ## 聯邦級圖 {: #federation-wide-graph }
 
@@ -106,6 +128,26 @@ Content-Type: application/json
   "outputs": ["id", "embedding"]
 }
 ```
+
+對於擁有資料源註冊權限的調用方，兩個端點都會加上原生這一跳：類型為 `native` 的節點，以及一個以每個原生框的關係（`native:<domain>.<table>`）為鍵的 `natives` 物件：
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+副本的 `served` 為 `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`。對於其他調用方，`natives` 為空。
 
 SQL 無法剖析時傳回 HTTP 422。
 
@@ -169,12 +211,12 @@ ORDER BY refreshed_at
 
 ## 檢視當時的樣子，以及當時記錄的樣子 {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-宣告為雙時態的檢視會保留它有過的每個版本：每次重新整理都是附加，任何版本都不會被改寫，在任何儲存上都是如此。一般讀取傳回目前狀態。兩個請求標頭用來讀取它的過去：
+將來源嘅欄映射為 `business_key`、`valid_time` 同 `recorded_time` 嘅檢視會保留佢擁有過嘅每個版本：每次刷新都係附加，任何儲存上都唔會改寫任何版本。普通讀取返回當前狀態。兩個請求標頭讀取佢嘅過去：
 
-- `X-Provisa-As-Of` 按檢視的時鐘讀取某個時間點或某個區間的檢視：檢視宣告了 `bitemporal_source_time` 時用資料來源本身的變更時間，未宣告時用 Provisa 的載入時間。
+- `X-Provisa-As-Of` 按某個時間或某個時間範圍讀取檢視。
 - `X-Provisa-As-Recorded` 按 Provisa 在某個時間點所記錄的樣子讀取檢視。該時間之後記錄的版本不計入，因此之後記錄的更正不會改變對過去的重播。
 
-截至 9 月 30 日、按 10 月 1 日的記錄讀取得到原始數字；按 10 月 5 日的記錄讀取得到更正後的數字。每條陳述式的稽核記錄都保存這兩個時間（`as_of`、`as_recorded`），因此報表可以按其首次產生時的樣子重現。[帶歷史的檢視](configuration.md#views-with-history-time-travel)說明如何宣告雙時態檢視，以及接受這兩個值的每個介面。
+截至 9 月 30 日、按 10 月 1 日的記錄讀取得到原始數字；按 10 月 5 日的記錄讀取得到更正後的數字。每條陳述式的稽核記錄都保存這兩個時間（`as_of`、`as_recorded`），因此報表可以按其首次產生時的樣子重現。[帶歷史的檢視](configuration.md#views-with-history-time-travel)說明呢三項宣告（附示例），以及接受這兩個值的每個介面。
 
 ## 改名或刪除一個欄位會弄壞什麼 {: #what-a-column-rename-or-drop-would-break }
 
@@ -182,7 +224,7 @@ ORDER BY refreshed_at
 
 **對外名稱**是 SQL 與 GraphQL 介面所顯示的那個：`table_columns.alias`，未設定別名時退回 snake_case 預設值。檢視、具體化檢視、指標運算式、RLS 謂詞、DQ 合約、指標檢視的粒度與 MV 行索引鍵，全都是照著那個名字撰寫的，因此**改一個別名，跟刪掉該欄位一樣，同樣會把它們弄壞**。
 
-**實體名稱**是 `table_columns.column_name`，是能挺過表 upsert 整批替換欄位的那個身分。關係、[詞彙表](glossary.md)繫結、標籤指派、浮水印欄位與欄位預設集儲存的是這一個，因此它們只在欄位被**移除**時才會壞。
+**實體名稱**是 `table_columns.column_name`，是能挺過表 upsert 整批替換欄位的那個身分。關係、[本體](ontology.md)繫結、標籤指派、浮水印欄位與欄位預設集儲存的是這一個，因此它們只在欄位被**移除**時才會壞。
 
 `columnDependents` 兩者都會回報。下游檢視與 MV 來自按欄位對外名稱切分聯邦圖；圖涵蓋不到的構件，則來自對註冊表的直接掃描。
 

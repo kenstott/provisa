@@ -53,7 +53,7 @@ async def test_land_replace_writes_rows_through_write_face(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_reconcile_creates_keeps_recreates(tmp_path):
+async def test_reconcile_creates_keeps_recreates(tmp_path, caplog):
     dsn = _dsn(tmp_path)
     # absent → created
     assert (
@@ -76,6 +76,9 @@ async def test_reconcile_creates_keeps_recreates(tmp_path):
     async with store_writer.store_connection(dsn) as conn:
         rows = await conn.fetch("SELECT count(*) FROM pets")
     assert rows[0][0] == 0
+    # the drop is said, with what drifted: a replica emptied this way is otherwise silent
+    assert "store table .pets re-created, its rows dropped: columns ['id', 'status']" in caplog.text
+    assert "declared columns ['id', 'status', 'added']" in caplog.text
 
 
 def test_check_source_drift_ratios_and_floor():
@@ -142,6 +145,33 @@ async def test_reconcile_treats_a_primary_key_change_as_drift(tmp_path):
     async with store_writer.store_connection(dsn) as conn:
         cols = await conn.reflect_columns("pets")
     assert [c["column_name"] for c in cols if c["is_primary_key"]] == ["id"]
+
+
+@pytest.mark.asyncio
+async def test_a_landed_replica_whose_key_is_not_built_yet_keeps_its_rows(tmp_path):
+    # REQ-2015: a replica lands with no key and is keyed after (PostgresIndexer). A reconcile in
+    # between (a schema rebuild) dropped and re-created it empty while its record still said
+    # built: retail's eu replicas held 0 of their 2002/12003/60/904 rows and its seeding stalled.
+    dsn = _dsn(tmp_path)
+    await store_writer.reconcile_table(dsn, schema="", table="pets", columns=_COLS)
+    await store_writer.land(
+        dsn, schema="", table="pets", columns=_COLS, rows=[{"id": 1, "status": "a"}]
+    )
+    kept = await store_writer.reconcile_table(
+        dsn, schema="", table="pets", columns=_COLS, pk_columns=["id"], key_after_landing=True
+    )
+    assert kept == "kept"
+    async with store_writer.store_connection(dsn) as conn:
+        rows = await conn.fetch("SELECT id FROM pets")
+    assert [r[0] for r in rows] == [1]
+    # Its columns drifting still re-creates it.
+    drifted = _COLS + [("added", "text")]
+    assert (
+        await store_writer.reconcile_table(
+            dsn, schema="", table="pets", columns=drifted, pk_columns=["id"], key_after_landing=True
+        )
+        == "recreated"
+    )
 
 
 # --- REQ-1001: transactional temp → swap ---------------------------------------------------------

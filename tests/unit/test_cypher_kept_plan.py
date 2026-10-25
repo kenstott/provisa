@@ -30,7 +30,7 @@ import pyarrow as pa
 import pytest
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
-from provisa.cypher.label_map import CypherLabelMap
+from provisa.gql.label_map import CypherLabelMap
 from provisa.executor.result import QueryResult
 from provisa.pgwire import _pipeline, governed_plan
 from provisa.transpiler.router import Route
@@ -242,7 +242,8 @@ class _Pipeline:
 
     def __init__(self, monkeypatch, state) -> None:
         import provisa.api.app as app_mod
-        from provisa.cypher import parser, translator
+        from provisa.cypher import parser
+        from provisa.gql import translator
 
         monkeypatch.setattr(app_mod, "state", state, raising=False)
         monkeypatch.setattr("provisa.compiler.sql_rewrite.make_semantic_sql", lambda sql, _c: sql)
@@ -271,6 +272,7 @@ class _Pipeline:
                 tier_caps=None,
                 tier_plan=None,
                 span_attrs=None,
+                warnings=[],  # as _Plan: the statement's own warnings (REQ-1350)
             )
 
         monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)

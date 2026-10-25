@@ -1,0 +1,24 @@
+{
+  "dataProductCore": {
+    "error": "Impossibile leggere il prodotto dati: {{error}}",
+    "tags": "Tag",
+    "tagsEmpty": "Nessun tag.",
+    "profiles": "Profili",
+    "profilesHint": "Le tabelle dei risultati di profilo registrate per ogni tabella membro; aprine una per leggerne i risultati.",
+    "profilesEmpty": "Nessuna tabella membro è stata profilata.",
+    "scans": "controlla {{table}}",
+    "aProduct": "prodotto dati",
+    "direct": "diretto",
+    "hops_one": "{{count}} passo",
+    "hops_other": "{{count}} passi",
+    "paths_one": "{{count}} percorso",
+    "paths_other": "{{count}} percorsi",
+    "through": "tramite {{tables}}",
+    "upstream": "A monte",
+    "downstream": "A valle",
+    "via": "tramite {{vias}}",
+    "unreadable": "Il tuo ruolo non può leggere i prodotti dati nel dominio meta.",
+    "detailExpand": "Mostra la voce completa",
+    "detailCollapse": "Mostra meno"
+  }
+}

@@ -265,6 +265,10 @@
       "port": {
         "label": "Porta da API HTTP",
         "help": "A porta em que a API HTTP escuta. Requer reinicialização; pede confirmação antes de salvar porque a interface e todos os clientes precisam acompanhar a mudança."
+      },
+      "public_url": {
+        "label": "Endereço público",
+        "help": "O endereço pelo qual esta implantação é conhecida, como https://data.example.com. A IRI de cada sujeito no SPARQL e nas exportações RDF começa por ele, então ele deve permanecer o mesmo enquanto essas IRIs forem usadas. Sem valor, uma consulta que retorna a IRI de um sujeito é recusada."
       }
     },
     "tls": {
@@ -820,6 +824,10 @@
         "label": "Limite de inatividade de um sandbox de demonstração",
         "help": "Um sandbox de demonstração que ninguém usou por esse tempo é excluído, com tudo o que contém."
       },
+      "demo_stores_linger": {
+        "label": "Armazenamentos da demonstração mantidos após o uso",
+        "help": "Por quanto tempo os bancos de dados de uma demonstração continuam ativos depois que seu último sandbox é fechado. Se for aberta de novo antes disso, abre na hora; depois, eles são parados e o próximo visitante espera enquanto iniciam."
+      },
       "ai_base_url": {
         "label": "Endpoint de IA do sandbox",
         "help": "O endpoint com protocolo OpenAI (o da OpenRouter é https://openrouter.ai/api/v1) que os recursos de IA de cada sandbox de demo usam. Não definido: sem IA nos sandboxes."
@@ -857,6 +865,22 @@
       "leak_rate_threshold": {
         "label": "Limite da taxa de vazamento dos valores fictícios",
         "help": "A fração dos valores amostrados de uma coluna sensível que o valor fictício pode deixar igual ao valor real antes que a verificação da taxa de vazamento o marque como inadequado. 0 reprova um valor fictício que deixa qualquer valor inalterado."
+      }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Permitir comandos de código do host",
+        "help": "Ativado: comandos python e script podem ser registrados e chamados. Cada um é executado com o acesso completo do servidor à sua memória, credenciais, arquivos e rede, e seu código não acompanha o modelo. Desativado por padrão; use um resolvedor de código em vez disso."
+      }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Caminho de grafo mais profundo",
+        "help": "O máximo de saltos que um caminho de comprimento variável do Cypher ou um caminho de propriedades do SPARQL percorre quando a consulta não define seu próprio limite. Um resultado cortado nessa profundidade indica isso."
+      },
+      "union_limit": {
+        "label": "Máximo de predicados que um predicado variável abrange",
+        "help": "Um padrão SPARQL cujo predicado é uma variável lê cada predicado mapeado que poderia corresponder, um ramo para cada. Uma consulta que precisa de mais ramos é recusada, indicando o limite."
       }
     }
   }

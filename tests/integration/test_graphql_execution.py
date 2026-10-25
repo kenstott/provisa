@@ -107,7 +107,12 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             _col("region", "varchar(50)", nullable=True),
         ],
     }
-    role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ALL_DATA_CAPABILITIES,
+        "domain_access": ["*"],
+    }
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables,
@@ -226,11 +231,11 @@ class TestGraphQLExecution:
         compiled = results[0]
 
         result = await execute_direct(exec_pool, "sales-pg", compiled.sql, compiled.params)
-        assert "id" in result.column_names
-        assert "name" in result.column_names
+        # REQ-863: a nested column is named by its response path.
+        assert result.column_names == ["id", "customer_id", "customer__name"]
         assert len(result.rows) > 0
         # Verify some customer names are strings (not null for joined rows)
-        name_idx = result.column_names.index("name")
+        name_idx = result.column_names.index("customer__name")
         non_null_names = [r[name_idx] for r in result.rows if r[name_idx] is not None]
         assert len(non_null_names) > 0
         for name in non_null_names:

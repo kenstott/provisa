@@ -106,6 +106,7 @@ def test_a_read_is_never_routed_to_the_server(source_type):
         source_types={"s": source_type},
         source_dialects={"s": "postgres"},
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route is Route.ENGINE
 
@@ -118,6 +119,7 @@ def test_a_write_routes_direct(source_type):
         source_dialects={"s": "postgres"},
         operator_floor={},
         is_mutation=True,
+        statement="SELECT 1",
     )
     assert decision.route is Route.DIRECT
     assert decision.source_id == "s"

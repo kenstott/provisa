@@ -912,32 +912,45 @@ Views go through the same governance pipeline as tables: RLS, masking, sampling 
 
 ### Views with history (time travel)
 
-A materialized view can keep every version of its rows and be read as of a past time. It declares how it keeps them and which key a version belongs to:
+A table or a materialized view can keep every version of its rows and be read as of a past time. You map three of the source's columns, and you declare all three or none:
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| Field | Required | Description |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | Yes | `snapshot` appends the whole result each refresh; `delta` appends only what changed |
-| `bitemporal_key` | Yes | The columns a version belongs to |
-| `bitemporal_source_time` | No | The column holding when each row changed in the source: the clock time travel reads on |
+| Field | Description |
+| ------- | ------------- |
+| `business_key` | The columns that identify the same thing across versions, such as `transaction_id`. Every version of a record shares this key. |
+| `valid_time` | The column holding the date your business gives the record: when it was agreed, booked or took effect. |
+| `recorded_time` | The column holding when this version of the record was entered or changed, such as `updated_at`. |
 
-**Choosing the clock.** With `bitemporal_source_time`, versions are ordered and read by the source's own time: "as of last Tuesday" means last Tuesday in the source. Without it, they're ordered and read by when Provisa landed each change, which follows the refresh cadence and not the moment the row changed in the source. Both are valid choices. Load time suits a frequent refresh cadence, data whose timing in the source doesn't matter, and reads that are meant to be about load time, such as auditing what Provisa held and when.
+Each one names a column the table or view has. A view that declares them sets `materialize: true`, and Provisa picks how it stores the versions. An entry under `tables:` takes the same three keys.
 
-A version is in force from its time to the next version's. A delete has no source change time and takes effect when Provisa recorded it.
+The two times have other names elsewhere: recorded time, called transaction time in the temporal-database literature and system time in SQL:2011; valid time, called application time in SQL:2011 or effective date.
+
+The two can differ for the same version:
+
+| Example | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| A payment of 100 for 3 Oct is corrected to 120 on 5 Oct. | The correction keeps 3 Oct. | The correction gets 5 Oct. |
+| A field measurement taken 3 Oct 14:10 is keyed in on 6 Oct. A typo in it is fixed on 7 Oct. | 3 Oct 14:10, kept by the fix. | 6 Oct. The fix gets 7 Oct. |
+| A trade is booked at execution with trade date 3 Oct. On 4 Oct its quantity is found wrong and amended. | Trade date 3 Oct, kept by the amendment. | 3 Oct 10:02. The amendment gets 4 Oct. |
+
+Read as recorded on 3 Oct, the trade shows the wrong quantity. Read as known now, it shows the corrected one.
+
+A version is in force from its time to the next version's. A delete takes effect when Provisa records it.
 
 **Reading.** A plain read answers the version of each key in force now. The `X-Provisa-As-Of` header reads as of a time, or over a range given as an ISO 8601 interval `start/end`:
 
@@ -973,6 +986,72 @@ Every view with history answers three more columns, granted as its source-time c
 - PostgreSQL on the `native` change signal: the commit time PostgreSQL keeps for each row (`pg_xact_commit_timestamp(xmin)`), read by the source's own driver when the replica is built. PostgreSQL keeps it only with `track_commit_timestamp = on`. Enable it to get source time on the native signal; without it `source_committed_at` is empty. Turning the setting on or off rebuilds the replica.
 
 Kafka topics without a Debezium envelope carry no commit time.
+
+### Views on a calendar
+
+A materialized view can take its schedule from a calendar: it is built at the close of each window the calendar gives it, a business day, week, month, quarter or year, and a view that keeps history stamps each version with that close. A config declares its calendars under `calendars:`:
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| Field | Required | Description |
+| ------- | ---------- | ------------- |
+| `name` | Yes | The name a view gives as its `calendar` |
+| `version` | Yes | The version label. One name can hold several versions, each with its own holidays. |
+| `base_system` | No | `gregorian` (default), `fiscal` or `retail_445` |
+| `tz` | No | The IANA time zone the calendar's days are in (default `UTC`) |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | No | The month and day a fiscal year starts (default 1 and 1) |
+| `retail_anchor` | No | The first date of a reference 4-4-5 year; `retail_445` needs it |
+| `week_start` | No | The day a week starts, 0 = Monday to 6 = Sunday (default 0) |
+| `holidays` | No | Dates that are not business days |
+| `weekend` | No | The weekdays that are not business days, 0 = Monday (default `[5, 6]`) |
+| `day_close` | No | The local time a business day closes, `"HH:MM"`. Day D then runs from the close of the day before to D's close. Without it a day ends at midnight. Quote it: YAML reads an unquoted `18:00` as a number. |
+
+A calendar is stored before the tables, so the views that name it find it. An entry the `createCalendar` mutation would refuse is refused with the same `invalid calendar: ...` message, and the config is not loaded. The model export writes every calendar under `calendars:`.
+
+A view names its calendar with these keys. An entry under `tables:` takes them as `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` and `mv_expected_events`.
+
+| Field | Description |
+| ------- | ------------- |
+| `calendar` | The calendar's `name` |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` or `annual`; an nth weekday such as `3WE` (third Wednesday) or `LFR` (last Friday); or an RFC 5545 rule such as `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`: a daily window exists only on a business day, so no build runs on a weekend or holiday |
+| `allowed_lateness` | Seconds past a window's close the build waits for input committed late (default 0) |
+| `expected_events` | The inputs that must be fresh through the window's close. Omitted, every input the view reads; `[]`, none. |
+
+A view naming a calendar that no config or `createCalendar` declared is refused by name when the event loop starts: `unknown calendar 'ledger'; registered: [...]`.
+
+**Building one business day.** The `refreshMv` mutation's `window` argument, a date, builds the view sealed at that business day's close:
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+What the build appends is stamped with the close of the calendar's window for that date, as the build at the close itself would stamp it, so a read as recorded at that close answers it. A view with history built this way rebuilds the dates its input changed since its last build, so a correction recorded before the next day's build is picked up for its own date. A view that names no calendar is refused (`schema.mv_window_needs_calendar`), and so is a date its calendar has no window on, such as a holiday on a business-day grain.
 
 ### Query-only views
 
@@ -1652,6 +1731,7 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_DATA_DIR` | `~/.provisa` | Data directory for the embedded DuckDB store |
 | `TRINO_HOST` | `localhost` | Trino coordinator host |
 | `TRINO_PORT` | `8080` | Trino coordinator HTTP port |
+| `PROVISA_ENGINE_FILES_GID` | `1000` | Group Trino reads its secret files as (a Kafka source's SASL settings) when Provisa runs as neither root nor Trino's user, as a native app beside Trino's container does. Provisa's user must be a member of it, or the file is refused by name. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Path to GCP service-account key JSON (BigQuery engine/source) |
 | `GOOGLE_CLOUD_PROJECT` | — | Default GCP project (BigQuery; overridden by URL) |
 | `FABRIC_SQL_SERVER` | — | Fabric Warehouse SQL endpoint (alternative to `PROVISA_ENGINE_URL`) |

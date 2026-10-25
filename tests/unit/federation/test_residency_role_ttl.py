@@ -29,6 +29,7 @@ from provisa.core.models import Column, Source, Table
 from provisa.federation.query_residency import ensure_resident, ensure_rows_resident, is_stale_of
 from provisa.federation.replica_address import ReplicaRoutes
 from provisa.federation.replica_routing import table_floor
+from provisa.federation.engine import FederationEngine
 
 pytestmark = pytest.mark.unit
 
@@ -287,6 +288,7 @@ def _state(tables, backend, states, *, source=None, attaches=False):
             native_store="postgres",
             replica_store_backend=lambda: "postgres",  # as FederationEngine: its native store
             connectors=connectors,
+            asks_in_place=FederationEngine.asks_in_place,  # REQ-1867, REQ-2100: as the engine asks
             materialize_store=lambda: "postgresql://localhost/materialize",
         )
     )

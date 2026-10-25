@@ -18,7 +18,9 @@ A demo bundle's ``docker-compose.run.yml`` names its stores. A Postgres (``rdb``
 instance of that type (``docker-compose.shared.yml``, project ``$DEMO_STORES_PROJECT``), started
 the first time a demo needs it and left running. Every other service (a Neo4j store, a demo's
 producer or API) runs as the demo version's own compose project; a producer joins the shared
-stores' network, where it reaches the shared Kafka as ``kafka``.
+stores' network, where it reaches the shared Kafka as ``kafka``. The shared Kafka listens at one
+fixed port: a demo version an earlier release ran with a Kafka of its own, still holding it after a
+newer version took over, has its own services taken down before the shared Kafka starts.
 
 Each demo version's data in a shared instance is named with its suffix, ``_<demo>_<8 hex of its
 version>``: a Postgres database ``shop`` loads as ``shop_weblogs_1a2b3c4d``, a MongoDB database
@@ -32,7 +34,12 @@ a version's data is dropped by its suffix, so another demo's, or another version
 
 Usage (scripts/demo_stores_sync.sh runs it):
     demo_stores.py up <name> <version> <bundle dir>    start, load, write <bundle dir>/stores.env
-    demo_stores.py drop <name> <version>               drop the version's data and own services
+    demo_stores.py check <name> <version> <bundle dir> fail unless every index its search
+                                                       stores restore is in the shared instance
+    demo_stores.py drop <name> <version>               drop the version's data and own services,
+                                                       and the images no other container uses
+    demo_stores.py stop <name> <version>               the same, its images kept: a demo whose
+                                                       stores lingered out comes back quickly
 
 Environment:
     DEMO_STORES_PROJECT   the shared instances' compose project (provisa-demo-stores on a node)
@@ -81,6 +88,9 @@ class StoreError(RuntimeError):
 
 #: How much of a failed store's log its error carries.
 LOG_TAIL = "60"
+
+#: What docker says starting a container whose network was removed and created again since.
+NETWORK_GONE = re.compile(r"network \S+ not found")
 
 
 def container_logs(runner: "Runner", cids: list[str]) -> str:
@@ -169,12 +179,49 @@ class Shared:
         self.env = env
 
     def start(self, kind: str) -> None:
+        if kind == "kafka":
+            self._free_kafka_port()
+        up = ["env", *self._env(), *self.base, "up", "-d", "--wait", kind]
         try:
-            self.runner.run(["env", *self._env(), *self.base, "up", "-d", "--wait", kind])
+            try:
+                self.runner.run(up)
+            except StoreError as failed:
+                if not NETWORK_GONE.search(str(failed)):
+                    raise
+                # The stopped container names a network that was recreated since (the tier's,
+                # when the node's stack restarted): it cannot be started, only recreated. Its
+                # data is in its named volume, which a recreated container keeps.
+                self.runner.run([*up[:-1], "--force-recreate", kind])
         except StoreError as failed:
             # A store that exits before it is healthy says why only in its own log.
             cids = self.runner.run(["env", *self._env(), *self.base, "ps", "-a", "-q", kind])
             raise StoreError(f"{failed}\n{container_logs(self.runner, cids.split())}") from failed
+
+    def _free_kafka_port(self) -> None:
+        """The shared Kafka listens at one fixed port, which a demo version an earlier release ran
+        with a Kafka of its own still holds after a newer version took over: that version's own
+        services are taken down. A holder that is no demo version's is refused by name."""
+        port = self.env["DEMO_STORES_KAFKA_PORT"]
+        held = self.runner.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"publish={port}",
+                "--format",
+                '{{.Label "com.docker.compose.project"}} {{.Names}}',
+            ]
+        )
+        for line in held.splitlines():
+            project, _, container = line.strip().rpartition(" ")
+            if not container or project == self.base[3]:
+                continue
+            if not project.startswith("provisa-demo-"):
+                raise StoreError(
+                    f"port {port}, where the shared Kafka listens, is held by {container}, "
+                    "which is no demo version's"
+                )
+            self.runner.run(["docker", "compose", "-p", project, "down", "-v", "--remove-orphans"])
 
     def _env(self) -> list[str]:
         return [f"{k}={v}" for k, v in sorted(self.env.items())]
@@ -446,6 +493,36 @@ def _es(shared: Shared, method: str, path: str, body: dict | None = None) -> str
     return shared.exec("elasticsearch", *cmd, f"http://localhost:9200{path}")
 
 
+def _es_repository(shared: Shared, name: str, version: str, store: Store, ns: str) -> None:
+    """The version's snapshot repository, registered (again) over its bundle's dump."""
+    _es(
+        shared,
+        "PUT",
+        f"/_snapshot/{ns}",
+        {
+            "type": "fs",
+            "settings": {
+                "location": f"/bundles/{name}/{version}/dump/{store.service}",
+                "readonly": True,
+            },
+        },
+    )
+
+
+def es_missing(shared: Shared, name: str, version: str, store: Store, suffix: str) -> list[str]:
+    """The indices of the version's snapshot that the shared instance does not hold under its
+    suffix: what a reader of the version would be refused (404) on."""
+    ns = suffix.lstrip("_")
+    _es_repository(shared, name, version, store, ns)
+    snapshot = json.loads(_es(shared, "GET", f"/_snapshot/{ns}/data"))["snapshots"][0]
+    held = set(_es(shared, "GET", f"/_cat/indices/*{suffix}?h=index&expand_wildcards=all").split())
+    return sorted(
+        f"{index}{suffix}"
+        for index in snapshot["indices"]
+        if not index.startswith(".") and f"{index}{suffix}" not in held
+    )
+
+
 def es_load(shared: Shared, name: str, version: str, store: Store, suffix: str) -> None:
     ns = suffix.lstrip("_")
     marked = shared.exec(
@@ -459,15 +536,18 @@ def es_load(shared: Shared, name: str, version: str, store: Store, suffix: str) 
         f"http://localhost:9200/{_ES_MARKS}/_doc/{ns}:{store.service}",
     ).strip()
     if marked == "200":
-        return
+        # The mark says the restore finished, not that its indices are still there: one gone
+        # since is restored again, the whole namespace with it.
+        missing = es_missing(shared, name, version, store, suffix)
+        if not missing:
+            return
+        print(
+            f"elasticsearch: {', '.join(missing)} missing though {ns}:{store.service} is marked "
+            "loaded; restoring it again",
+            file=sys.stderr,
+        )
     es_drop(shared, suffix)
-    repository = f"/bundles/{name}/{version}/dump/{store.service}"
-    _es(
-        shared,
-        "PUT",
-        f"/_snapshot/{ns}",
-        {"type": "fs", "settings": {"location": repository, "readonly": True}},
-    )
+    _es_repository(shared, name, version, store, ns)
     _es(
         shared,
         "POST",
@@ -497,20 +577,15 @@ def es_drop(shared: Shared, suffix: str) -> None:
         "DELETE",
         f"http://localhost:9200/_snapshot/{ns}",
     )
-    shared.exec(
-        "elasticsearch",
-        "curl",
-        "-s",
-        "-o",
-        "/dev/null",
-        "-X",
-        "POST",
-        "-H",
-        "Content-Type: application/json",
-        "-d",
-        json.dumps({"query": {"prefix": {"_id": f"{ns}:"}}}),
-        f"http://localhost:9200/{_ES_MARKS}/_delete_by_query?refresh=true&conflicts=proceed",
+    # Its marks, by id. Elasticsearch 8 has no prefix query on _id: a delete_by_query asking for
+    # one is refused (400), and the mark it leaves tells the version's next load that its indices,
+    # dropped just above, are still there.
+    marks = json.loads(
+        _es(shared, "GET", f"/{_ES_MARKS}/_search?size=10000&_source=false&ignore_unavailable=true")
     )
+    for hit in marks["hits"]["hits"]:
+        if hit["_id"].startswith(f"{ns}:"):
+            _es(shared, "DELETE", f"/{_ES_MARKS}/_doc/{hit['_id']}?refresh=true")
 
 
 # -- Qdrant ----------------------------------------------------------------------------------------
@@ -757,8 +832,23 @@ class Demo:
         published = self.runner.run(self._compose("port", store.service, port)).strip()
         return "127.0.0.1", published.rsplit(":", 1)[1]
 
-    def drop(self, shared_kinds: set[str]) -> None:
-        """Remove the version: its data from each shared instance running, its own services."""
+    def check(self) -> None:
+        """Refuse a version whose shared data is not all there: it is not to be served ready."""
+        missing = [
+            index
+            for store in self.stores()
+            if store.kind == "elasticsearch"
+            for index in es_missing(self.shared, self.name, self.version, store, self.suffix)
+        ]
+        if missing:
+            raise StoreError(
+                f"demo {self.name} {self.version}: Elasticsearch holds no {', '.join(missing)}"
+            )
+
+    def drop(self, shared_kinds: set[str], *, keep_images: bool = False) -> None:
+        """Remove the version: its data from each shared instance running, its own services, and
+        -- unless ``keep_images`` (a demo lingered out, to be brought back) -- the images they ran
+        that no other container uses (a superseded version)."""
         if "postgres" in shared_kinds:
             pg_drop(self.shared, self.suffix)
         if "mongo" in shared_kinds:
@@ -769,7 +859,28 @@ class Demo:
             qdrant_drop(self.shared, self.suffix, self.shared.env["DEMO_STORES_QDRANT_KEY"])
         if "kafka" in shared_kinds:
             kafka_drop(self.shared, self.suffix)
+        images = set(
+            self.runner.run(
+                [
+                    "docker",
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"label=com.docker.compose.project={self.project}",
+                    "--format",
+                    "{{.Image}}",
+                ]
+            ).split()
+        )
         self.runner.run(["docker", "compose", "-p", self.project, "down", "-v", "--remove-orphans"])
+        if keep_images:
+            return
+        # The images its services ran, once no container (a newer version's) still uses them:
+        # every version pulled leaves its own on the node's disk otherwise.
+        for image in sorted(images):
+            users = self.runner.run(["docker", "ps", "-a", "-q", "--filter", f"ancestor={image}"])
+            if not users.split():
+                self.runner.run(["docker", "image", "rm", image])
 
 
 def qdrant_key(bundles: Path) -> str:
@@ -825,8 +936,13 @@ def main(argv: list[str]) -> int:
             bundle / "stores.env", "".join(f"{k}={v}\n" for k, v in sorted(found.items()))
         )
         return 0
-    if len(argv) == 3 and argv[0] == "drop":
-        Demo(runner, argv[1], argv[2], None).drop(running_shared(runner))
+    if len(argv) == 4 and argv[0] == "check":
+        Demo(runner, argv[1], argv[2], Path(argv[3])).check()
+        return 0
+    if len(argv) == 3 and argv[0] in ("drop", "stop"):
+        Demo(runner, argv[1], argv[2], None).drop(
+            running_shared(runner), keep_images=argv[0] == "stop"
+        )
         return 0
     print(__doc__, file=sys.stderr)
     return 2

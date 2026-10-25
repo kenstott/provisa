@@ -148,6 +148,8 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "redaction",
         # REQ-2122: the catalogs the org connects to, for export and import.
         "catalogs",
+        # REQ-2147: the profiler's classification kinds the org disabled.
+        "classification",
     }
     for deployment_wide in (
         "federation",

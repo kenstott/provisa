@@ -45,9 +45,9 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     pushDebounceMaxDelay: t.pushDebounceMaxDelay,
     mvConsistency: t.mvConsistency,
     mvPreprocess: t.mvPreprocess || null, // REQ-957
-    mvBitemporalMode: t.mvBitemporalMode || null, // REQ-1162
-    mvBitemporalKey: t.mvBitemporalKey, // REQ-1162
-    mvBitemporalSourceTime: t.mvBitemporalSourceTime ?? null, // REQ-1163
+    businessKey: t.businessKey, // REQ-2109
+    validTime: t.validTime, // REQ-2109
+    recordedTime: t.recordedTime, // REQ-2109
     mvPersist: t.mvPersist, // REQ-965
     // REQ-970: the MV row-identity key IS the table Primary Key — derive it from the per-column
     // PK checkboxes (single source of truth), not a separate field.
@@ -64,6 +64,17 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     productId: t.dqContract ? null : t.productId,
     enableAggregates: t.enableAggregates,
     enableGroupBy: t.enableGroupBy,
+    // REQ-1141: the table's load protection, saved with it (left out, the update cleared it).
+    loadProtected: t.loadProtected,
+    offPeakWindow: t.offPeakWindow,
+    offPeakTz: t.offPeakTz,
+    // REQ-2109 (settled): settings with mutations of their own travel with the table, so one save
+    // applies them all in one transaction. Write grants are saved on their own section's Save.
+    gqlNamingConvention: t.gqlNamingConvention || null,
+    roleTtl: t.roleTtl.map(({ role, ttl }) => ({ role, ttl })),
+    replicate: t.replicate,
+    rowMaterialize: t.rowMaterialize, // REQ-1865
+    draft: t.draft,
     live: t.live
       ? {
           queryId: t.live.queryId ?? undefined,
@@ -76,6 +87,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
                   topic: t.live.kafka.topic,
                   format: t.live.kafka.format ?? undefined,
                   keyColumn: t.live.kafka.keyColumn ?? undefined,
+                  landingTimeColumn: t.live.kafka.landingTimeColumn ?? undefined, // REQ-813
                 }
               : undefined,
           outputs: t.live.outputs.map((o) => ({

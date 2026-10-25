@@ -53,6 +53,7 @@ from provisa.core.schema_org import (
     admin_audit_log,
     data_products,
     domains,
+    glossary_terms,
     query_audit_log,
     registered_tables,
     sources,
@@ -95,8 +96,16 @@ _TENANT_TABLES = [
 
 # REQ-1301: the root org additionally carries the dataset catalog, because creating or deleting an
 # org rebuilds root's org-registry view and re-registers it as a meta-domain table. data_products
-# rides along because registered_tables.product_id references it (REQ-1634).
-_ROOT_EXTRA_TABLES = [sources, domains, data_products, registered_tables, table_columns]
+# and glossary_terms ride along because registered_tables.product_id (REQ-1634) and
+# registered_tables.class_term_id (REQ-2130) reference them.
+_ROOT_EXTRA_TABLES = [
+    sources,
+    domains,
+    data_products,
+    glossary_terms,
+    registered_tables,
+    table_columns,
+]
 
 # REQ-1337: every gate on these routers reads a RIGHT, so a role row with an empty capability list
 # authorizes nothing however it is named. These are the capabilities schema.sql seeds, trimmed to
@@ -161,7 +170,9 @@ def _prepare_sync():
         conn.execute(insert(sources).values(id="provisa-admin", type="postgres"))
         conn.execute(insert(domains).values(id="meta"))
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
+            conn.execute(
+                insert(roles).values(id=role_id, capabilities=caps, description="Test role.")
+            )
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="pat", role_id="platform_admin", domain_id="*"
@@ -175,7 +186,9 @@ def _prepare_sync():
         org_metadata.create_all(conn)
         conn.execute(insert(domains).values(id="acmeonlydomain"))
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
+            conn.execute(
+                insert(roles).values(id=role_id, capabilities=caps, description="Test role.")
+            )
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="alice", role_id="org_admin", domain_id="*"
@@ -188,7 +201,9 @@ def _prepare_sync():
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['sandbox']}"))
         org_metadata.create_all(conn, tables=_TENANT_TABLES)
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
+            conn.execute(
+                insert(roles).values(id=role_id, capabilities=caps, description="Test role.")
+            )
         conn.execute(
             insert(user_role_assignments).values(user_id="viv", role_id="analyst", domain_id="*")
         )

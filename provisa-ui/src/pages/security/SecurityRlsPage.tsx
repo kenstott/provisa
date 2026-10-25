@@ -51,6 +51,7 @@ import { PanelActions, SplitPane } from "../../components/list/SplitPane";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
+import { matchesQuery } from "../../lib/searchItems";
 
 const EMPTY_RULE = {
   tableId: "",
@@ -287,8 +288,6 @@ export function SecurityRlsPage() {
           : tables.find((t) => t.id === r.tableId)?.domainId;
       if (ruleDomain && !narrowTo.has(ruleDomain)) return false;
     }
-    if (!ruleSearch.trim()) return true;
-    const q = ruleSearch.toLowerCase();
     const scope = r.tagId
       ? `tag:${r.tagId}`
       : r.actionName
@@ -296,11 +295,7 @@ export function SecurityRlsPage() {
         : r.domainId
           ? `domain:${r.domainId}`
           : (tableLabelById[r.tableId!] ?? String(r.tableId));
-    return (
-      r.roleId.toLowerCase().includes(q) ||
-      scope.toLowerCase().includes(q) ||
-      r.description.toLowerCase().includes(q)
-    );
+    return matchesQuery([r.roleId, scope, r.description], ruleSearch);
   });
 
   // REQ-1940: sort and group are the shared list mechanism.

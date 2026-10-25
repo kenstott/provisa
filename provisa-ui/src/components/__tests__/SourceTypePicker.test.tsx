@@ -136,6 +136,51 @@ describe("SourceTypePicker", () => {
     expect(screen.getByTestId("source-type-picker-empty")).toBeInTheDocument();
   });
 
+  describe("the Code Resolvers group", () => {
+    const CODE: PickerGroup[] = [
+      ...GROUPS,
+      {
+        group: "Code",
+        items: [
+          { value: "node", label: "Node.js" },
+          { value: "python", label: "Python" },
+        ],
+      },
+    ];
+    const openCode = () =>
+      render(<SourceTypePicker opened onClose={vi.fn()} groups={CODE} value="" onPick={vi.fn()} />);
+
+    it("is headed Code Resolvers, saying what is in it, on its chip and its section", async () => {
+      openCode();
+      const section = await screen.findByTestId("source-type-picker-section-Code");
+      expect(section).toHaveTextContent("Code Resolvers");
+      expect(section).toHaveTextContent("Business logic in Python or Node");
+      // The chip's test id is on its input; the label beside it is what shows.
+      expect(screen.getByText("Code Resolvers (2)")).toBeInTheDocument();
+      // Only this group carries a line under its heading.
+      expect(screen.getByTestId("source-type-picker-section-RDBMS")).not.toHaveTextContent(
+        "Business logic",
+      );
+    });
+
+    it.each(["code", "resolver", "code resolver", "python", "node"])(
+      "finds both code types, or the one named, by %s",
+      async (query) => {
+        openCode();
+        fireEvent.change(await screen.findByTestId("source-type-picker-search"), {
+          target: { value: query },
+        });
+        const shown = ["node", "python"].filter(
+          (v) => screen.queryByTestId(`source-type-option-${v}`) !== null,
+        );
+        expect(shown).toEqual(
+          query === "python" ? ["python"] : query === "node" ? ["node"] : ["node", "python"],
+        );
+        expect(screen.queryByTestId("source-type-option-postgresql")).toBeNull();
+      },
+    );
+  });
+
   it("a category chip shows only that category", async () => {
     open();
     fireEvent.click(await screen.findByTestId("source-type-picker-cat-Streaming"));

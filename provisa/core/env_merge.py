@@ -298,6 +298,7 @@ def requirements(path: str, body: dict[str, Any], source: Tree) -> set[str]:
         for rel in body.get("relationships") or []:
             needs.update(p for p in (rel.get("target"), rel.get("via")) if p is not None)
         needs.update(ref["term"] for ref in body.get("glossary") or [])
+        needs.update(ref["term"] for ref in body.get("class_term") or [])  # REQ-2130
         needs.update(link["target"] for link in body.get("meta_links") or [])
     elif kind == "data_products":
         if body.get("domain_id") is not None:

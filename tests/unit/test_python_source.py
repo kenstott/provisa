@@ -78,6 +78,8 @@ def test_the_codes_tables_commands_and_streams_are_read_from_docstrings_and_hint
         ("fetched", "table"),
         ("direct", "table"),
         ("greet", "table"),
+        ("clean_address", "columns"),
+        ("short_address", "columns"),
     }
     orders = manifest.export("orders")
     assert orders.description == "Orders of one customer."
@@ -137,6 +139,64 @@ def test_a_typed_dict_and_a_named_tuple_are_row_types(tmp_path):
         Field("x", Scalar("bigint"), False),
         Field("y", Scalar("bigint"), False),
     )
+
+
+_PYDANTIC_CODE = """
+    from pydantic import BaseModel, Field as Described, PrivateAttr
+
+    class Line(BaseModel):
+        sku: str
+        qty: int
+
+    class Rate(BaseModel):
+        pair: str = Described(description="The currency pair, base first.")
+        mid_rate: float = Described(alias="midRate")
+        note: str | None = None
+        lines: list[Line] = []
+        _seen: int = PrivateAttr(default=0)
+
+    def rates() -> list[Rate]:
+        \"\"\"@table\"\"\"
+        return [Rate(pair="EURUSD", midRate=1.08, lines=[Line(sku="a", qty=2)])]
+    """
+
+
+def test_a_pydantic_model_is_a_row_type_named_as_it_is_sent_and_described(tmp_path):
+    manifest = read_manifest(_read(_code(tmp_path, _PYDANTIC_CODE), "rows"), PYTHON_RULES)
+    assert manifest.types["Rate"].fields == (
+        Field("pair", Scalar("text"), False, "The currency pair, base first."),
+        Field("midRate", Scalar("double"), False),
+        Field("note", Scalar("text"), True),
+        Field("lines", ListOf(Named("Line")), False),
+    )
+    assert manifest.types["Line"].fields == (
+        Field("sku", Scalar("text"), False),
+        Field("qty", Scalar("bigint"), False),
+    )
+
+
+def test_a_pydantic_models_rows_come_back_by_alias_with_nested_models(tmp_path):
+    (tmp_path / "code").mkdir()
+    code = _code(tmp_path / "code", _PYDANTIC_CODE)
+    manifest = read_manifest(_read(code, "rows"), PYTHON_RULES)
+    command = w.HostCommand(
+        argv=lambda address: [sys.executable, "-I", str(HOST), address, str(code), "rows"],
+        env=w.private_environment(PYTHONDONTWRITEBYTECODE="1"),
+        cwd=code,
+    )
+    started = w.Worker("python-src", "h", command)
+    started.start()
+    try:
+        schema = schema_text(row_schema(manifest, manifest.export("rates")))
+        [[row]] = list(started.rows("rates", "table", [], schema=schema))
+    finally:
+        started.stop()
+    assert row == {
+        "pair": "EURUSD",
+        "midRate": 1.08,
+        "note": None,
+        "lines": [{"sku": "a", "qty": 2}],
+    }
 
 
 def test_code_that_breaks_the_rules_is_refused_with_every_problem(tmp_path):
@@ -266,7 +326,7 @@ def worker(tmp_path):
 def test_the_host_says_which_functions_it_has_and_not_what_it_imported(worker):
     assert set(worker.exports) == {
         "orders", "many", "placed", "ticks", "forever", "cancel_order", "boom", "outside",
-        "fetched", "direct", "greet", "helper",
+        "fetched", "direct", "greet", "helper", "clean_address", "short_address",
     }  # fmt: skip
 
 
@@ -346,3 +406,26 @@ def test_an_argument_left_out_takes_the_functions_own_default(worker):
         schema=_schema("greet"),
     )
     assert list(rows) == [[{"text": "hi ada!"}]]
+
+
+# -- a batch column transform (REQ-2131) -------------------------------------------------------
+
+
+def test_a_columns_function_is_read_from_its_docstring_and_hints():
+    manifest = read_manifest(_read(FIXTURE, "orders"), PYTHON_RULES)
+    transform = manifest.export("clean_address")
+    assert transform.kind == "columns"
+    assert [(p.name, p.shape) for p in transform.parameters] == [
+        ("raw_address", ListOf(Scalar("text")))
+    ]
+    assert transform.returns == Named("Address")
+
+
+def test_a_columns_call_answers_one_result_a_row_in_order(worker):
+    raw = ["1 Main St, springfield, us", "2 Rue Haute, lyon, fr"]
+    assert worker.columns(
+        "clean_address", [raw], ["raw_address"], schema=_schema("clean_address")
+    ) == [
+        {"street": "1 Main St", "city": "Springfield", "country": "US"},
+        {"street": "2 Rue Haute", "city": "Lyon", "country": "FR"},
+    ]

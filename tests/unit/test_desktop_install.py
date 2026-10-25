@@ -141,7 +141,7 @@ class TestREQ979NativeStandaloneRuntime:
         assert "python-build-standalone" in base
         # The native control plane is an embedded PostgreSQL (REQ-2014); the build verifies it
         # and its driver are present.
-        assert "import pgserver, psycopg" in base
+        assert "import pixeltable_pgserver, psycopg" in base
         for token in ("vboxmanage", ".ova", "provisa-runtime.ova", "trinosrc"):
             assert token not in base, f"native base installer must not bundle {token}"
 

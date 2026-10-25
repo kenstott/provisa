@@ -1,0 +1,24 @@
+{
+  "dataProductCore": {
+    "error": "Das Datenprodukt konnte nicht gelesen werden: {{error}}",
+    "tags": "Tags",
+    "tagsEmpty": "Keine Tags.",
+    "profiles": "Profile",
+    "profilesHint": "Die für jede Mitgliedstabelle registrierten Profilergebnistabellen; öffnen Sie eine, um ihre Ergebnisse zu lesen.",
+    "profilesEmpty": "Keine Mitgliedstabelle wurde profiliert.",
+    "scans": "prüft {{table}}",
+    "aProduct": "Datenprodukt",
+    "direct": "direkt",
+    "hops_one": "{{count}} Schritt",
+    "hops_other": "{{count}} Schritte",
+    "paths_one": "{{count}} Pfad",
+    "paths_other": "{{count}} Pfade",
+    "through": "über {{tables}}",
+    "upstream": "Upstream",
+    "downstream": "Downstream",
+    "via": "über {{vias}}",
+    "unreadable": "Ihre Rolle kann die Datenprodukte in der Meta-Domäne nicht lesen.",
+    "detailExpand": "Ganzen Eintrag anzeigen",
+    "detailCollapse": "Weniger anzeigen"
+  }
+}

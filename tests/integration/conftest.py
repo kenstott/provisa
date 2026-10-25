@@ -194,7 +194,7 @@ def _reap_stray_pgserver_processes() -> None:
     reaches this process as a pgserver dependency — if pgserver is installed and psutil is not,
     that is a broken environment and must raise rather than silently skip the reap.
     """
-    if importlib.util.find_spec("pgserver") is None:
+    if importlib.util.find_spec("pixeltable_pgserver") is None:
         return
 
     import psutil
@@ -521,7 +521,12 @@ def _pgw_build_state(pool):
         relationships=[],
         column_types=col_types,
         naming_rules=[],
-        role={"id": "admin", "domain_access": ["*"], "capabilities": []},
+        role={
+            "description": "Test role.",
+            "id": "admin",
+            "domain_access": ["*"],
+            "capabilities": [],
+        },
         domains=[{"id": _PGW_SCHEMA, "graphql_alias": None}],
     )
     ctx = build_context(si)
@@ -536,7 +541,14 @@ def _pgw_build_state(pool):
     state.contexts = {"admin": ctx}
     state.rls_contexts = {}
     serve_surfaces(state)
-    state.roles = {"admin": {"id": "admin", "capabilities": [], "domain_access": ["*"]}}
+    state.roles = {
+        "admin": {
+            "description": "Test role.",
+            "id": "admin",
+            "capabilities": [],
+            "domain_access": ["*"],
+        }
+    }
     state.schema_build_cache = {"column_types": col_types, "tables": [], "domains": []}
     state.auth_config = {"provider": "none"}  # trust mode: username -> role_id
     state.auth_middleware_active = False

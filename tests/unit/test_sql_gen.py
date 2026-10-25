@@ -427,6 +427,7 @@ class TestPagination:
                 "table_name": "registered_tables",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
@@ -440,6 +441,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "queries",
                 "columns": [
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
@@ -450,8 +452,8 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
-            2: [_col("id", "integer"), _col("table_name")],
-            3: [_col("table_name"), _col("query")],
+            2: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
+            3: [_col("domain_id"), _col("table_name"), _col("query")],
         }
         schema, ctx = _build_schema_and_ctx(
             tables=tables,
@@ -486,6 +488,7 @@ class TestPagination:
                 "table_name": "registered_tables",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
@@ -499,6 +502,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "traces",
                 "columns": [
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "trace_id", "visible_to": ["admin"]},
                 ],
@@ -509,8 +513,8 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
-            2: [_col("id", "integer"), _col("table_name")],
-            4: [_col("table_name"), _col("trace_id")],
+            2: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
+            4: [_col("domain_id"), _col("table_name"), _col("trace_id")],
         }
         schema, ctx = _build_schema_and_ctx(
             tables=tables,
@@ -545,6 +549,7 @@ class TestPagination:
                 "table_name": "registered_tables",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
@@ -558,6 +563,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "queries",
                 "columns": [
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
@@ -568,8 +574,8 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
-            2: [_col("id", "integer"), _col("table_name")],
-            3: [_col("table_name"), _col("query")],
+            2: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
+            3: [_col("domain_id"), _col("table_name"), _col("query")],
         }
         schema, ctx = _build_schema_and_ctx(
             tables=tables,
@@ -793,6 +799,78 @@ class TestNestedRelationship:
         assert 'WHERE "customer_id" = "t0"."id" AND ("amount" > $1)' in sql
         assert 'ORDER BY "amount" DESC LIMIT $2 OFFSET $3) "t1" ON TRUE' in sql
         assert results[0].params == [100, 2, 1]
+
+    def test_a_root_limit_counts_root_rows_over_a_lateral_join(self):
+        """A lateral join repeats each root row once per joined row, so the root's WHERE, ORDER BY
+        and LIMIT choose the root rows in a subquery before it, and the expanded rows are not
+        limited: two customers each with three orders are six rows, not the first two."""
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "customers",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "name", "visible_to": ["admin"]},
+                ],
+                "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
+                "write_refused_forms": [],
+            },
+            {
+                "id": 2,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "customer_id", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                ],
+                "write_ops": ["delete", "insert", "update"],
+                "write_returns_rows": True,
+                "write_refused_forms": [],
+            },
+        ]
+        relationships = [
+            {
+                "id": "cust-orders",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "id",
+                "target_column": "customer_id",
+                "cardinality": "one-to-many",
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer"), _col("name")],
+            2: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "integer")],
+        }
+        schema, ctx = _build_schema_and_ctx(
+            tables=tables,
+            relationships=relationships,
+            column_types=column_types,
+        )
+        doc = parse("""
+            {
+                customers(where: { name: { eq: "a" } }, order_by: [{ id: asc }], limit: 2) {
+                    id
+                    orders(order_by: [{ amount: desc }], limit: 3) { id amount }
+                }
+            }
+        """)
+        assert not validate(schema, doc)
+        [compiled] = compile_query(doc, ctx)
+        assert compiled.sql.startswith("SELECT ")
+        assert (
+            'FROM (SELECT * FROM "public"."customers" "t0" WHERE "t0"."name" = $2 '
+            'ORDER BY "t0"."id" ASC LIMIT 2) "t0" LEFT JOIN LATERAL'
+        ) in compiled.sql
+        assert compiled.sql.endswith('ON TRUE ORDER BY "t0"."id" ASC')
+        assert compiled.result_limit == 2
 
     def test_one_to_many_flat_false_uses_array_agg(self):
         """flat=False on a one-to-many join (no args, no default_limit) → ARRAY_AGG subquery."""
@@ -1404,6 +1482,7 @@ class TestOpsDefaultLimit:
                 "table_name": "registered_tables",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
@@ -1417,6 +1496,7 @@ class TestOpsDefaultLimit:
                 "schema_name": "public",
                 "table_name": "queries",
                 "columns": [
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
@@ -1427,8 +1507,8 @@ class TestOpsDefaultLimit:
         ]
         column_types = {
             1: [_col("id", "integer")],
-            2: [_col("id", "integer"), _col("table_name")],
-            3: [_col("table_name"), _col("query")],
+            2: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
+            3: [_col("domain_id"), _col("table_name"), _col("query")],
         }
         return _build_schema_and_ctx(
             tables=tables,

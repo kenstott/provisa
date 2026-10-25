@@ -917,18 +917,6 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 )
                 agg_result = await _execute_plan(agg_plan, state)
 
-                nodes_result = None
-                if agg_compiled.nodes_sql is not None:
-                    nodes_plan = await _govern_and_route_compiled(
-                        agg_compiled.nodes_sql,
-                        role_id,
-                        exec_params=agg_compiled.nodes_params or None,
-                        state=state,
-                        cache_hint=cache_hint,
-                        serve_cached=True,
-                        sdl_joins=True,
-                    )
-                    nodes_result = await _execute_plan(nodes_plan, state)
             except PermissionError as e:
                 return _jsonapi_error_response(403, "Forbidden", str(e))
             except HTTPException as e:
@@ -945,15 +933,12 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 log.exception("JSON:API aggregate query execution failed for %s", gql_table)
                 return _jsonapi_error_response(500, "Internal Server Error", str(e))
 
-            from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+            from provisa.executor.serialize import serialize_aggregate, serialize_rows
 
             if is_group_by:
-                shaped = serialize_group_by(
-                    agg_result.rows,
-                    agg_compiled.columns,
-                    nodes_result.rows if nodes_result is not None else None,
-                    agg_compiled.nodes_columns if nodes_result is not None else None,
-                    agg_compiled.root_field,
+                # A group's nodes, when ?include= selected them, are a column of its own row.
+                shaped = serialize_rows(
+                    agg_result.rows, agg_compiled.columns, agg_compiled.root_field
                 )
                 group_rows = shaped.get("data", {}).get(agg_compiled.root_field, [])
                 # REQ-1417: both groupKey and nodes are keyed by the GraphQL text this handler
@@ -988,8 +973,6 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             shaped = serialize_aggregate(
                 agg_result.rows,
                 agg_compiled.columns,
-                None,
-                None,
                 agg_compiled.root_field,
                 agg_alias=agg_compiled.agg_alias,
             )

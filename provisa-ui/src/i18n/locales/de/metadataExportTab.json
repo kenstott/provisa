@@ -27,6 +27,7 @@
     "newTarget": "Neues Ziel",
     "noTargets": "Noch keine Ziele. Fügen Sie die Kataloge hinzu, in denen diese Organisation veröffentlicht.",
     "catalog": "Katalog",
-    "catalogHelp": "Ein unter Admin → Kataloge verbundener Katalog."
+    "catalogHelp": "Ein unter Admin → Kataloge verbundener Katalog.",
+    "betaProvider": "{{name}} (Beta)"
   }
 }

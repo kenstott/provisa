@@ -93,8 +93,9 @@ function table(overrides: Partial<RegisteredTable>): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -137,6 +138,9 @@ const reportingDim = table({
   modelingRole: "dimension",
 });
 
+// meta (one of Provisa's own domains) is unchecked, so it is filtered like any domain.
+const metaTable = table({ id: 5, domainId: "meta", tableName: "glossary_terms" });
+
 const salesMetric: Metric = {
   name: "revenue",
   expression: "SUM(orders.amount)",
@@ -170,7 +174,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useRoles: () => ({ roles: [{ id: "admin" }], loading: false, refetch: vi.fn() }),
   useDomains: () => ({ domains: [], loading: false, refetch: vi.fn() }),
   useTables: () => ({
-    tables: [salesFact, salesDim, reportingFact, reportingDim],
+    tables: [salesFact, salesDim, reportingFact, reportingDim, metaTable],
     loading: false,
     refetch: vi.fn(),
   }),
@@ -214,6 +218,13 @@ describe("Explore/SQL Metrics/Facts/Dimensions honor the checked-domains filter"
     expect(screen.queryByText("shipments")).not.toBeInTheDocument();
     expect(screen.queryByText("carriers")).not.toBeInTheDocument();
     expect(screen.queryByTestId("schema-metric-shipment_count")).not.toBeInTheDocument();
+  });
+
+  it("hides an unchecked internal domain (meta) from the SCHEMA tree like any other", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId("schema-group-facts")).toBeInTheDocument());
+    expect(screen.getByText("sales")).toBeInTheDocument();
+    expect(screen.queryByText("meta")).not.toBeInTheDocument();
   });
 
   it("keeps a hand-authored metric (no fromFact) visible under any domain selection", async () => {

@@ -15,13 +15,13 @@ fn-rewrite pipeline against a representative corpus, so any change in emitted IR
 import pytest
 import sqlglot
 
-from provisa.cypher.expr_context import TranslatorExprContext
+from provisa.gql.expr_context import TranslatorExprContext
 from provisa.cypher.expr_parser import parse_expression
-from provisa.cypher.expr_visitor import ExprLowering
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.expr_visitor import ExprLowering
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import _Translator
-from provisa.cypher.translator_helpers import _rewrite_cypher_fn_node
+from provisa.gql.translator import _Translator
+from provisa.gql.translator_helpers import _rewrite_cypher_fn_node
 
 _IR = "postgres"
 
@@ -32,7 +32,7 @@ _GOLDEN = {
     "n.age > $min AND n.age < $max": 'n."age_col" > $1 AND n."age_col" < $2',
     "n.name STARTS WITH 'A'": "STARTS_WITH(n.\"name\", 'A')",
     "n.name CONTAINS 'x'": "(POSITION('x' IN n.\"name\") > 0)",
-    "n.prop =~ '.*foo'": "n.\"prop\" ~ '.*foo'",
+    "n.name =~ '.*foo'": "n.\"name\" ~ '^(?:.*foo)$'",  # the whole string
     "n.age IN [1, 2, 3]": 'n."age_col" IN (1, 2, 3)',
     "n.status IS NULL": 'n."_nf_status" IS NULL',
     "n.status IS NOT NULL": 'NOT n."_nf_status" IS NULL',
@@ -47,7 +47,7 @@ _GOLDEN = {
     "NOT (n.age > 5 OR n.name = 'x')": 'NOT (n."age_col" > 5 OR n."name" = \'x\')',
     # ENDS WITH lowers to `x LIKE '%' || y` (|| preserves NULL — an elective IR change from the old
     # CONCAT form, which coerced null to a match-all; functionally equal for non-null post-transpile).
-    "n.name ENDS WITH 'z'": "(n.\"name\" LIKE '%' || 'z')",
+    "n.name ENDS WITH 'z'": "(RIGHT(n.\"name\", LENGTH('z')) = 'z')",  # the value literally
 }
 
 

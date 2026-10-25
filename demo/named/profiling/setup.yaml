@@ -13,9 +13,17 @@
 #   command  a command of config.yaml, called as org_admin with no arguments
 #   refresh  a view of config.yaml with materialize: true, whose stored rows are built
 #   profile  a Data Profiler source of config.yaml, run at once for every member table
+#   client   a script of the demo's, run against the server and the demo's store
+#   environment  an environment of the model, created as the Environments page does
 #
 # The first step that fails stops the run, naming the step. A demo with nothing to run deletes
 # this file.
 steps:
 # The profiler's first run, at the template build: every sandbox opens with it (REQ-2052).
 - profile: harbor-profiler
+# The CRM's next sync writes every US postal code as ZIP+4, straight into the demo's store: no
+# role of the demo may write it. The second run then finds postal_code drifting.
+- client: setup_drift.py
+- profile: harbor-profiler
+# Every table generated from the profile, nothing real: the synthetic environment (REQ-2053).
+- environment: {name: synthetic, data_mode: test_synthetic}

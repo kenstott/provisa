@@ -36,7 +36,7 @@ class GraphRead:
 def _unreturned_relationships(ast: Any, columns: dict[str, str]) -> str | None:
     """A read that matches a path but returns only its nodes: the Graph page draws no edge
     between them, so it can neither connect nor group them."""
-    from provisa.cypher.parser import PathFunction
+    from provisa.gql.ir import PathFunction
 
     hops = [
         t or "untyped"
@@ -64,10 +64,10 @@ async def check_graph_read(state: Any, role_id: str, query: str) -> GraphRead:
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.sql_validator import validate_sql
     from provisa.compiler.stage2 import build_governance_context
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.parser import CypherParseError, parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
-    from provisa.cypher.translator_types import (
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.translator_types import (
         CypherCrossSourceError,
         CypherTranslateError,
         UnregisteredRelationshipType,
@@ -78,11 +78,13 @@ async def check_graph_read(state: Any, role_id: str, query: str) -> GraphRead:
     surface = role_surface(state, role_id)
     if surface is None:
         return GraphRead(f"the schema of role {role_id!r} is not loaded", {})
-    try:
-        ast = parse_cypher(query)
-    except CypherParseError as exc:
-        return GraphRead(str(exc), {})
     label_map = _build_label_map(surface.context, role_id, state)
+    try:
+        # The role's label map: an unbound name that is a bound variable's property is offered.
+        ast = parse_cypher(query, label_map)
+    except (CypherParseError, CypherTranslateError) as exc:
+        # A parse refusal, or the user's mistake the parse finds (REQ-778, a CypherMistake).
+        return GraphRead(str(exc), {})
     try:
         sql_ast, _params, graph_vars = cypher_to_sql(ast, label_map, {})
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)

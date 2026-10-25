@@ -13,7 +13,7 @@
 # tour.steps.<key> in the UI's tour.json, in every language.
 #
 # The track: the scenario (the fund's question, and its two kinds of data); how the pieces fit
-# (its own allocations, the public county tables landed once, the join by county, the plain-language
+# (its own allocations, the public county tables, the join by county, the plain-language
 # terms); the answer in SQL, then as the public sees the council's dashboard, in GraphQL and over
 # REST; a recap.
 # Where the tour's "Look around on my own" leaves the visitor: the SQL page, with its example queries.
@@ -40,17 +40,16 @@ steps:
   capability: create_relationship
   relationship: DEATH_RATE_OF
 - key: opioidsTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: abatement
 - key: opioidsAnswer
   route: /sql
   capability: query_development
   sql: >-
-    SELECT b.county_name, b.region, b.population, b.deaths, b.death_rate, b.rate_modelled,
-           b.treatment_spent, b.deaths_per_million_spent
+    SELECT b.county_name, b.region, b.deaths, b.treatment_spent, b.deaths_per_million_spent
     FROM "opioids"."view_treatment_against_burden" AS b
-    ORDER BY b.deaths_per_million_spent DESC
+    ORDER BY b.deaths_per_million_spent DESC NULLS LAST
     LIMIT 15
 - key: opioidsAsPublic
   role: public
@@ -58,7 +57,7 @@ steps:
   sql: >-
     SELECT b.county_name, b.population, b.deaths, b.death_rate, b.federal_per_resident
     FROM "opioids"."view_overdose_burden_by_county" AS b
-    ORDER BY b.death_rate DESC
+    ORDER BY b.death_rate DESC NULLS LAST
     LIMIT 15
 - key: opioidsByRegion
   route: /query

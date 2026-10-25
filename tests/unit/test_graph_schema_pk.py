@@ -20,8 +20,8 @@ import provisa.api.rest.cypher_router as cr
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
-def _node(label: str, pk_columns: list[str]):
-    from provisa.cypher.label_map import NodeMapping
+def _node(label: str, pk_columns: list[str], table_id: int = 0):
+    from provisa.gql.label_map import NodeMapping
 
     # Each column read and written by its published name (the convention's: customerId).
     return NodeMapping(
@@ -29,7 +29,7 @@ def _node(label: str, pk_columns: list[str]):
         type_name=label,
         domain_label=None,
         table_label=label,
-        table_id=0,
+        table_id=table_id,
         source_id="pg",
         id_column="id",
         pk_columns=pk_columns,
@@ -52,6 +52,8 @@ async def test_graph_schema_includes_singular_pk(monkeypatch):
     monkeypatch.setattr(cr, "_resolve_role_id", lambda *_: "admin")
     monkeypatch.setattr(cr, "_build_label_map", lambda *_: label_map)
     monkeypatch.setattr(appmod.state, "contexts", {"admin": object()})
+    # A built surface has its root fields too (REQ-2128's graphql_field); none are named here.
+    monkeypatch.setattr(appmod.state, "table_path_maps", {"admin": {}})
     monkeypatch.setattr(appmod.state, "schema_build_cache", {"tables": []})
 
     resp = await cr.graph_schema(cast(Any, types.SimpleNamespace()))
@@ -62,3 +64,20 @@ async def test_graph_schema_includes_singular_pk(monkeypatch):
     # The property the column is read and written by.
     assert by_label["Orders"]["pk"] == "customerId"
     assert by_label["Events"]["pk"] is None
+
+
+async def test_graph_schema_names_each_labels_table(monkeypatch):
+    """Each node label carries the id of the registered table it reads, so the Cypher canvas
+    links a node to that table's page."""
+    label_map = types.SimpleNamespace(
+        nodes={"Orders": _node("Orders", ["customer_id"], table_id=42)}, relationships={}
+    )
+    monkeypatch.setattr(cr, "_resolve_role_id", lambda *_: "admin")
+    monkeypatch.setattr(cr, "_build_label_map", lambda *_: label_map)
+    monkeypatch.setattr(appmod.state, "contexts", {"admin": object()})
+    monkeypatch.setattr(appmod.state, "table_path_maps", {"admin": {}})
+    monkeypatch.setattr(appmod.state, "schema_build_cache", {"tables": []})
+
+    resp = await cr.graph_schema(cast(Any, types.SimpleNamespace()))
+    body = json.loads(bytes(resp.body))
+    assert body["node_labels"][0]["table_id"] == 42

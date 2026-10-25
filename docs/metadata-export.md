@@ -18,7 +18,7 @@ matches each one's ingestion API.
 | `openlineage` | Marquez, or any OpenLineage consumer | OpenLineage events posted to `/api/v1/lineage` |
 | `openmetadata` | OpenMetadata | Entity upsert by fully-qualified name, then lineage edges by the server-assigned UUID |
 | `atlas` | Apache Atlas, and Microsoft Purview | Atlas RDBMS entities posted to `/api/atlas/v2/entity/bulk` |
-| `atlan` | Atlan | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
+| `atlan` | Atlan (beta) | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
 | `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
@@ -26,6 +26,15 @@ matches each one's ingestion API.
 | `unity_catalog` | Databricks Unity Catalog: a schema of views per data product, optionally a Delta Share | Engine-native: SQL on the Databricks engine's own warehouse connection |
 | `datazone` | Amazon DataZone (SageMaker Catalog) data products | The DataZone API of the target's `aws_region`, signed with its AWS keys |
 | `dataplex` | Google Dataplex data products | REST calls to `{endpoint}/v1/projects/{gcp_project}/locations/{gcp_location}/dataProducts...` |
+
+### Atlan (beta)
+
+The Atlan adapter has not yet run against a live Atlan tenant. It is built on Atlan's Atlas-shaped
+API as Atlan documents it, and its updates follow Atlas's rules: an update starts from the live
+asset's attributes, only Provisa's `provisa_*` tags are added or removed, and an asset whose live
+read fails is not written. Unit tests cover all of this; no end-to-end run against Atlan does yet.
+Until one does, the Admin tab and every page that names Atlan as a target show it as
+**Atlan (beta)**.
 
 Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
@@ -290,7 +299,19 @@ A daily export at 06:00:
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `dataplex`; glossary terms are silently omitted from their publishes.
+- **Ontology** — live terms with their definitions and typed relationships, each term's role (class, property or concept), and Provisa's assignment of each term to the data it means: a class term to the tables it grounds, a property term to its columns. A term must be in service, defined, and grounded to export; a relationship publishes only when both its terms do. See [Ontology](ontology.md) for the admission rule and the exclude-from-export control. Each target publishes the terms into one glossary Provisa owns, as the table below shows. Provisa writes and removes only its own assignments, recognized by the catalog's own record of who made them, so a steward's assignment is never removed or duplicated. `openlineage`, `snowflake_horizon` and `unity_catalog` publish no terms.
+
+| Target | Terms | Relationships | Role | Assignment to data |
+| --- | --- | --- | --- | --- |
+| `openmetadata` | The `provisa_<org>` glossary, beneath a Classes, Properties or Concepts group term | `KIND_OF` as the term hierarchy, `SYNONYM_OF` as synonyms, the rest as related terms | The `provisaRole` custom property | `Automated` glossary labels on tables and columns |
+| `datahub` | The org's Provisa node, in its Classes, Properties or Concepts child node | Inherits, contains and related terms | `provisaRole` in the term's custom properties | Term associations attributed to Provisa's actor |
+| `atlas`, Purview's Data Map | The Provisa glossary | Atlas's own term relations | `provisaRole` in the term's additional attributes | Semantic assignments whose source is Provisa |
+| `atlan` | The Provisa glossary | Atlas's own term relations | `provisaRole` in the term's additional attributes | Semantic assignments whose source is Provisa |
+| `collibra` | The Provisa Glossary domain | Collibra's term relation types | The `Provisa Role` attribute, which the target must have | Relations created by Provisa's own user |
+| `purview`, Unified Catalog | The governance domain named after the term's domain; for a term in several, the first of them alphabetically that Purview has | `KIND_OF` as the parent, synonym and related relationships | Not exported: the Unified Catalog term has no free property | A class term's relationship to its tables' data assets; a property term's columns reach Purview through the Data Map only |
+| `dataplex` | The `provisa-<org>` glossary, in a Classes, Properties or Concepts category | Synonym and related entry links | The `provisa-role` label | Definition entry links from BigQuery tables and columns, whose ids Provisa gives the `provisa-` prefix; a table whose entry Dataplex has not catalogued within a minute is reported by name |
+| `datazone` | The `Provisa glossary (<org>)` glossary | `KIND_OF` as `isA`; DataZone has no synonym or related relation | Not exported: the glossary term has no free property | None: DataZone records no author for an assignment, so Provisa's could not be told from a steward's |
+
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,

@@ -31,6 +31,14 @@ a runner's timeout) runs no teardown, and its server kept running, holding the m
 memory until no further one could start. Each server's directory records its starter's pid
 (``owner.pid``), and every start first stops the servers whose starter is gone; a running
 session's is left alone.
+
+Every server's directory is under one root of the machine's (``RUN_ROOT``), whatever the session's
+temporary directory. Each session had its own (agents and CI jobs set TMPDIR apart): a reaper saw
+only the orphans of sessions sharing its directory, and a session's directory removed with its
+orphans' directories removed the one record of the System V semaphore sets a killed postmaster
+leaves (pg_shared_memory) -- about 5,000 sets, from some 230 killed servers, until no server on the
+machine could start ("could not create semaphores"). A directory stays until it is reaped, its sets
+released with it.
 """
 
 from __future__ import annotations
@@ -52,6 +60,8 @@ DATABASE = "provisa"
 
 _PREFIX = "pv-pg-"
 _OWNER = "owner.pid"
+#: Where every embedded server's directory is, for every session on the machine (module docstring).
+RUN_ROOT = Path.home() / ".cache" / "provisa-test-pg" / "run"
 
 _SETTINGS = {
     "fsync": "off",
@@ -68,7 +78,7 @@ _SETTINGS = {
 _REPO = Path(__file__).resolve().parent.parent
 _CACHE = Path(os.environ.get("PROVISA_FDW_CACHE", Path.home() / ".cache" / "provisa-fdw"))
 #: The PostgreSQL mongo_fdw is built against: pgserver's major, its minor ABI-compatible within 16.
-_PG_VERSION = "16.2"
+_PG_VERSION = "16.11"
 
 
 def _build_pg_source() -> Path:
@@ -137,7 +147,7 @@ def private_pginstall(*, mongo_fdw: bool = False) -> Path:
     )
 
     key = (
-        f"pgserver-{metadata.version('pgserver')}_pgext-{metadata.version('provisa-pg-ext')}"
+        f"pgserver-{metadata.version('pixeltable-pgserver')}_pgext-{metadata.version('provisa-pg-ext')}"
         f"_{bundle_platform()}"
     )
     if mongo_fdw:
@@ -146,7 +156,7 @@ def private_pginstall(*, mongo_fdw: bool = False) -> Path:
     home = Path.home() / ".cache" / "provisa-test-pg" / key
     home.mkdir(parents=True, exist_ok=True)
     site = home / "site"
-    pginstall = site / "pgserver" / "pginstall"
+    pginstall = site / "pixeltable_pgserver" / "pginstall"
     with open(home / ".lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if not (home / ".complete").exists():
@@ -154,10 +164,10 @@ def private_pginstall(*, mongo_fdw: bool = False) -> Path:
                 if stale.exists():
                     shutil.rmtree(stale)
             # The wheel's own layout: its binaries load their bundled libraries relative to
-            # themselves (pgserver/.dylibs on macOS, pgserver.libs on Linux).
-            dist = metadata.distribution("pgserver")
+            # themselves (pixeltable_pgserver/.dylibs on macOS, pixeltable_pgserver.libs on Linux).
+            dist = metadata.distribution("pixeltable-pgserver")
             for f in dist.files or []:
-                if Path(f).parts[0].startswith("pgserver"):
+                if Path(f).parts[0].startswith("pixeltable_pgserver"):
                     out = site / f
                     out.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(dist.locate_file(f), out)
@@ -173,7 +183,7 @@ def _bin(name: str, pginstall: Path | None = None) -> str:
     """``name`` from ``pginstall`` (the private FDW install), else from pgserver's own."""
     if pginstall is not None:
         return str(pginstall / "bin" / name)
-    from pgserver.postgres_server import POSTGRES_BIN_PATH
+    from pixeltable_pgserver.utils import POSTGRES_BIN_PATH
 
     return str(POSTGRES_BIN_PATH / name)
 
@@ -246,14 +256,18 @@ class LocalPostgres:
             )
 
 
-def _running(pid: int) -> bool:
+def _running(pid: int, since: float) -> bool:
+    """Whether the process that recorded itself at ``since`` (the record's mtime) still runs. A
+    directory now outlives a restart of the machine, and a pid recorded before it may name another
+    process since: one started after the record is not the one that wrote it."""
+    import psutil
+
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+        return psutil.Process(pid).create_time() <= since + 1
+    except psutil.NoSuchProcess:
         return False
-    except PermissionError:
+    except psutil.AccessDenied:
         return True  # another user's process: running, and not this one's to judge
-    return True
 
 
 #: A directory with no recorded starter is an orphan once it is this old: a starter records itself
@@ -265,7 +279,7 @@ OWNERLESS_AFTER_SECONDS = 24 * 60 * 60
 def _orphaned(root: Path) -> bool:
     owner = root / _OWNER
     if owner.is_file():
-        return not _running(int(owner.read_text()))
+        return not _running(int(owner.read_text()), owner.stat().st_mtime)
     return time.time() - root.stat().st_mtime > OWNERLESS_AFTER_SECONDS
 
 
@@ -276,11 +290,12 @@ def _orphaned(root: Path) -> bool:
 _REAP_LOCK = "pv-pg.reap.lock"
 
 
-def _postmaster_pid(data: Path) -> int | None:
+def _postmaster(data: Path) -> tuple[int, float] | None:
+    """The pid ``data``'s postmaster recorded, and when it recorded it."""
     pid_file = data / "postmaster.pid"
     if not pid_file.exists():
         return None
-    return int(pid_file.read_text().splitlines()[0])
+    return int(pid_file.read_text().splitlines()[0]), pid_file.stat().st_mtime
 
 
 def _stop_orphans() -> None:
@@ -288,10 +303,14 @@ def _stop_orphans() -> None:
     recorded starter is not running, and one with no recorded starter older than
     ``OWNERLESS_AFTER_SECONDS``. One whose starter runs is left alone. One reaper at a time
     (``_REAP_LOCK``), so a directory is reaped whole by one of them."""
-    temp = Path(tempfile.gettempdir())
-    with open(temp / _REAP_LOCK, "a") as lock:
+    RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    with open(RUN_ROOT / _REAP_LOCK, "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        for root in temp.glob(f"{_PREFIX}*"):
+        # This session's temporary directory too: where servers were started before RUN_ROOT.
+        for root in [
+            *RUN_ROOT.glob(f"{_PREFIX}*"),
+            *Path(tempfile.gettempdir()).glob(f"{_PREFIX}*"),
+        ]:
             try:
                 if not _orphaned(root):
                     continue
@@ -299,10 +318,10 @@ def _stop_orphans() -> None:
                 # A live starter's own stop removed it between the glob and this look: not an
                 # orphan, and already gone.
                 continue
-            postmaster = _postmaster_pid(root / "data")
+            postmaster = _postmaster(root / "data")
             # A postmaster that is gone (killed with its PID file left behind) is already stopped;
             # pg_ctl refuses to stop it, and there is nothing to stop.
-            if postmaster is not None and _running(postmaster):
+            if postmaster is not None and _running(*postmaster):
                 subprocess.run(
                     [_bin("pg_ctl"), "-D", str(root / "data"), "-w", "stop", "-m", "immediate"],
                     check=True,
@@ -330,7 +349,7 @@ def start_local_postgres(
     from tests.port_lease import lease_port
 
     _stop_orphans()
-    root = Path(tempfile.mkdtemp(prefix=_PREFIX))
+    root = Path(tempfile.mkdtemp(prefix=_PREFIX, dir=RUN_ROOT))
     (root / _OWNER).write_text(str(os.getpid()))
     pg = LocalPostgres(
         port=lease_port() if port is None else port,

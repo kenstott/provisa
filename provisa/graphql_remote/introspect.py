@@ -31,6 +31,11 @@ query IntrospectionQuery {
           type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
         }
       }
+      inputFields {
+        name
+        type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
+      }
+      possibleTypes { name }
     }
   }
 }

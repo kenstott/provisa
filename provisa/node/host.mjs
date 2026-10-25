@@ -8,8 +8,8 @@
 // permission from the copyright holder.
 
 // REQ-1984: the host a Node source's worker runs -- the same on Node, Bun and Deno. The protocol is
-// every code source's (provisa/codesource/worker.py), served by host-core.mjs, which a remote host
-// (remote_host.mjs, REQ-2098) serves its connections with too.
+// every code source's (provisa/codesource/worker.py), served by host-core.mjs. In a built image the
+// front end (provisa/codehost/front.py, REQ-2100) runs it, with a socket of its own.
 //
 //   <runtime> host.mjs <socket path | fd:N> <bundle entry module>
 //
@@ -23,7 +23,7 @@
 // a numeric or json field is text, named so in its metadata. Arrow is the only form rows take.
 // The Arrow library is apache-arrow's self-contained build, from PROVISA_HOST_LIB.
 //
-//   Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names,
+//   Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream"|"columns", args, names,
 //                     schema}  -- the rows' schema, base64 IPC; null for a single value
 //                    {op: "cancel", id}      {op: "ping", id}
 //   host -> Provisa  {op: "hello", protocol, code_hash, exports}

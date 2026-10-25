@@ -368,6 +368,12 @@ class FederationEngine:  # REQ-840
             )
         return connector
 
+    @staticmethod
+    def asks_in_place(source: Any) -> bool:
+        """Whether ``source`` asks to be read in place: ``reach: "scan"`` in its federation hints
+        (REQ-1867)."""
+        return (getattr(source, "federation_hints", None) or {}).get("reach") == "scan"
+
     def connector_for(self, source_type: str) -> Connector:
         connector = self.connectors.get(source_type)
         if connector is not None:

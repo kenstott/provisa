@@ -12,72 +12,78 @@
 // among the output ports it scans.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within, fireEvent, waitFor } from "../../../test-utils/render";
+import { render, screen, within, fireEvent } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
-import type { DataProduct, RegisteredTable, Source } from "../../../types/admin";
+import type { DataProduct } from "../../../types/admin";
+import type { CoreTable } from "../productCore";
 import i18n from "../../../i18n";
 
-const parseContract = vi.fn().mockResolvedValue({
-  dataset: "provisa/pet_store/vets",
-  checker: "soda",
-  checks: [
-    { columnName: "", checkType: "row_count", definition: "row_count > 0", extra: "" },
-    { columnName: "email", checkType: "missing_count", definition: "missing_count(email) = 0", extra: "" },
-  ],
-  error: null,
-});
+// The panel parses nothing: a checker table's rules come with it, as meta's dq_rules rows.
+const parseContract = vi.fn();
 
 vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../hooks/useAdminQueries")>()),
   useDqContract: () => ({ parseContract }),
 }));
 
+// The panel's 3D graph is its own component, held by its own tests.
+vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
+  KnowledgeGraphPanel: () => null,
+}));
+
 const t = i18n.getFixedT("en");
 
-const SOURCES = [
-  { id: "wh", type: "postgres" },
-  { id: "dq-soda", type: "soda" },
-] as unknown as Source[];
+const PRODUCT = {
+  id: "pet_health",
+  domainId: "pet-store",
+  name: "Pet Health",
+} as unknown as DataProduct;
 
-const PRODUCT = { id: "pet_health", domainId: "pet-store", name: "Pet Health" } as unknown as DataProduct;
-
-function makeTable(overrides: Partial<RegisteredTable>): RegisteredTable {
+// Member tables as data_products_meta's memberTables answers them.
+function makeTable(overrides: Partial<CoreTable>): CoreTable {
   return {
     id: 1,
-    sourceId: "wh",
-    domainId: "pet-store",
-    schemaName: "pet_store",
-    tableName: "vets",
-    alias: null,
+    source_id: "wh",
+    domain_id: "pet-store",
+    schema_name: "pet_store",
+    table_name: "vets",
     description: null,
-    columns: [],
-    dqContract: null,
-    graphqlFieldName: "vets",
+    dq_contract: null,
     ...overrides,
-  } as RegisteredTable;
+  };
 }
 
 const VETS = makeTable({});
 const VETS_SCAN = makeTable({
   id: 2,
-  sourceId: "dq-soda",
-  schemaName: "quality",
-  tableName: "vets_scan",
-  dqContract: "dataset: provisa/pet_store/vets\nchecks: []\n",
+  source_id: "dq-soda",
+  schema_name: "quality",
+  table_name: "vets_scan",
+  dq_contract: "dataset: provisa/pet_store/vets\nchecks: []\n",
   description: "Soda contract over vets",
+  checks: { id: 1, domain_id: "pet-store", table_name: "vets" },
+  dq_rules: [
+    { position: 1, column_name: "", check_type: "row_count", definition: "row_count > 0" },
+    {
+      position: 2,
+      column_name: "email",
+      check_type: "missing_count",
+      definition: "missing_count(email) = 0",
+    },
+  ],
 });
 
-function renderPanel(tables: RegisteredTable[], sources: Source[] = SOURCES) {
+function renderPanel(tables: CoreTable[]) {
   render(
     <DataProductDetailPanel
       p={PRODUCT}
-      tables={tables}
-      sources={sources}
-      functions={[]}
-      relatedTerms={[]}
-      relatedTermsLoading={false}
-      relatedTables={[]}
-      internalRelationships={[]}
+      core={{
+        product: { ...PRODUCT, customProperties: {} },
+        tables,
+        queries: { graphql: "", sql: "", jsonapi: "" },
+      }}
+      coreError={null}
+      reader={null}
       canEdit={false}
       canSeeLineage={false}
       lineageLoading={false}
@@ -126,7 +132,7 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
     expect(screen.getByText(t("dataProductsTab.detail.dataQualityEmpty"))).toBeTruthy();
   });
 
-  it("opens the scan's rules in a modal from the icon beside SQL, parsed with the source's checker", async () => {
+  it("opens the scan's rules in a modal from the icon beside SQL, as the core read them", async () => {
     renderPanel([VETS, VETS_SCAN]);
     const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
     const sql = within(dq).getByTestId("data-product-detail-dq-sql-query-2");
@@ -136,24 +142,24 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
 
     fireEvent.click(rules);
     const dialog = await screen.findByRole("dialog");
-    await waitFor(() =>
-      expect(parseContract).toHaveBeenCalledWith({
-        checker: "soda",
-        contractText: VETS_SCAN.dqContract,
-      }),
-    );
     const rows = await within(dialog).findByTestId("dq-rules-rows");
     expect(within(rows).getByText("row_count > 0")).toBeTruthy();
     expect(within(rows).getByText("email")).toBeTruthy();
     expect(within(rows).getByText(t("dataQualityPanel.datasetScope"))).toBeTruthy();
-    expect(within(dialog).getByTestId("dq-rules-dataset").textContent).toContain(
-      "provisa/pet_store/vets",
+    expect(within(dialog).getByTestId("dq-rules-dataset").textContent).toContain("pet-store.vets");
+    expect(parseContract).not.toHaveBeenCalled();
+  });
+
+  it("names the table each checker scans (REQ-2125's checks)", () => {
+    renderPanel([VETS, VETS_SCAN]);
+    expect(screen.getByTestId("data-product-detail-dq-checks-2").textContent).toBe(
+      "scans pet-store.vets",
     );
   });
 
-  it("disables the rules icon until the scan's source is known", () => {
-    renderPanel([VETS_SCAN], []);
-    expect(screen.getByTestId("data-product-detail-dq-rules-2")).toBeDisabled();
+  it("offers the rules at once, with no read of the scan's source", () => {
+    renderPanel([VETS_SCAN]);
+    expect(screen.getByTestId("data-product-detail-dq-rules-2")).toBeEnabled();
   });
 
   it("shows no output ports when the only member is a checker table", () => {

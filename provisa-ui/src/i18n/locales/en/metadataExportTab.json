@@ -27,6 +27,7 @@
     "newTarget": "New target",
     "noTargets": "No targets yet. Add the catalogs this organization publishes to.",
     "catalog": "Catalog",
-    "catalogHelp": "A catalog connected in Admin → Catalogs."
+    "catalogHelp": "A catalog connected in Admin → Catalogs.",
+    "betaProvider": "{{name}} (beta)"
   }
 }

@@ -111,8 +111,18 @@ def _model() -> dict:
         ],
         # org_admin is the reserved administrative role (REQ-1349): not declared.
         "roles": [
-            {"id": "seller", "capabilities": reads, "domain_access": ["sales"]},
-            {"id": "hr_reader", "capabilities": reads, "domain_access": ["hr"]},
+            {
+                "description": "Test role.",
+                "id": "seller",
+                "capabilities": reads,
+                "domain_access": ["sales"],
+            },
+            {
+                "description": "Test role.",
+                "id": "hr_reader",
+                "capabilities": reads,
+                "domain_access": ["hr"],
+            },
         ],
     }
 

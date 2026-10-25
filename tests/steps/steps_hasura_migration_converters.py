@@ -50,6 +50,7 @@ from provisa.ddn.models import (
     DDNTypePermission,
 )
 from provisa.hasura_v2.mapper import convert_metadata
+from provisa.hasura_v2.parser import parse_metadata_document
 from provisa.hasura_v2.models import (
     HasuraAction,
     HasuraActionDefinition,
@@ -1090,83 +1091,23 @@ def _when_output_config_inspected(shared_data: dict) -> None:
 
 
 @then(
-    "placeholder credentials (host: localhost, password: ${env:DB_PASSWORD}) are present "
-    "and Provisa refuses to start without real values"
+    "a DDN source carries placeholder credentials (host: localhost, password: ${env:DB_PASSWORD}), "
+    "and a v2 source whose connection the export does not carry has no invented host and its "
+    "report says to enter it"
 )
 def _then_placeholder_credentials(shared_data: dict) -> None:
-    from provisa.core.models import ProvisaConfig
-
-    # ── v2 sources must carry placeholder credentials ─────────────────────────
-    v2_sources = shared_data["v2_sources"]
-    assert v2_sources, "v2 conversion must produce at least one source"
-    v2_src = v2_sources[0]
-
-    assert v2_src.host == "localhost", (
-        f"v2 source host must be placeholder 'localhost'; got {v2_src.host!r}"
-    )
-    assert v2_src.password == "${env:DB_PASSWORD}", (
-        f"v2 source password must be placeholder '${{env:DB_PASSWORD}}'; got {v2_src.password!r}"
-    )
-
-    # ── DDN sources must carry placeholder credentials ────────────────────────
     ddn_sources = shared_data["ddn_sources"]
     assert ddn_sources, "DDN conversion must produce at least one source"
     ddn_src = ddn_sources[0]
+    assert ddn_src.host == "localhost", ddn_src.host
+    assert ddn_src.password == "${env:DB_PASSWORD}", ddn_src.password
 
-    assert ddn_src.host == "localhost", (
-        f"DDN source host must be placeholder 'localhost'; got {ddn_src.host!r}"
-    )
-    assert ddn_src.password == "${env:DB_PASSWORD}", (
-        f"DDN source password must be placeholder '${{env:DB_PASSWORD}}'; got {ddn_src.password!r}"
-    )
-
-    # ── Provisa must refuse to start when placeholder credentials remain ───────
-    # Verify the config round-trips to YAML and the placeholder values survive
-    for config_key in ("config_v2", "config_ddn"):
-        config: ProvisaConfig = shared_data[config_key]
-        dumped = config.model_dump(by_alias=True, mode="json")
-        text = yaml.safe_dump(dumped)
-
-        # Placeholder must appear literally in the serialised output
-        assert "localhost" in text, (
-            f"{config_key}: expected 'localhost' placeholder in serialised YAML; "
-            f"snippet: {text[:400]}"
-        )
-        assert "${env:DB_PASSWORD}" in text, (
-            f"{config_key}: expected '${{env:DB_PASSWORD}}' placeholder in serialised YAML; "
-            f"snippet: {text[:400]}"
-        )
-
-    # ── startup guard: validate that a config with real credentials passes,
-    #    while one with placeholder credentials is flagged ────────────────────
-    def _has_placeholder_creds(config: ProvisaConfig) -> bool:
-        """Return True if any source still carries placeholder credentials."""
-        for src in config.sources:
-            host = getattr(src, "host", None)
-            pwd = getattr(src, "password", None)
-            if host == "localhost" or (isinstance(pwd, str) and pwd.startswith("${env:")):
-                return True
-        return False
-
-    assert _has_placeholder_creds(shared_data["config_v2"]), (
-        "v2 config must be detected as having placeholder credentials"
-    )
-    assert _has_placeholder_creds(shared_data["config_ddn"]), (
-        "DDN config must be detected as having placeholder credentials"
-    )
-
-    # Simulate a startup check: a config whose sources have been updated with
-    # real values must NOT be flagged as having placeholder credentials.
-    import copy
-
-    real_config = copy.deepcopy(shared_data["config_v2"])
-    for src in real_config.sources:
-        src.host = "pg.internal"
-        src.password = "real-secret"  # noqa: S105 — test credential, not production
-
-    assert not _has_placeholder_creds(real_config), (
-        "Config with real credentials must not be flagged as placeholder"
-    )
+    # REQ-417: the v2 converter makes nothing up for a from_env URL; the report says to enter it.
+    v2_sources = shared_data["v2_sources"]
+    assert v2_sources, "v2 conversion must produce at least one source"
+    assert v2_sources[0].host == "", v2_sources[0].host
+    said = [w.message for w in shared_data["collector_v2"].warnings if w.category == "sources"]
+    assert any("DATABASE_URL" in m and "source settings" in m for m in said), said
 
 
 # REQ-628 — missing ObjectType tables skipped with a warning; conversion continues
@@ -1292,12 +1233,19 @@ def _then_ddn_aggregate_emitted(shared_data: dict) -> None:
 
 
 @given(
-    "a Hasura project with event_triggers, remote_schemas, cron_triggers, or webhook-backed actions"
+    "a Hasura v2 project with event triggers, a cron trigger, an action and a section with no "
+    "Provisa counterpart"
 )
 def _given_v2_unmappable_features(shared_data: dict) -> None:
-    # _v2_metadata carries an event_trigger, a cron_trigger and an action.
+    # _v2_metadata carries an event trigger, a cron trigger and an action. The parser reports, in
+    # the same import's collector, an export section the converter has no counterpart for.
+    collector = WarningCollector()
+    parse_metadata_document(
+        {"version": 3, "sources": [], "query_collections": [{"name": "allowed-queries"}]},
+        collector,
+    )
     shared_data["metadata"] = _v2_metadata()
-    shared_data["collector"] = WarningCollector()
+    shared_data["collector"] = collector
 
 
 @when("the converter runs")
@@ -1306,18 +1254,23 @@ def _when_converter_runs(shared_data: dict) -> None:
     shared_data["config"] = convert_metadata(shared_data["metadata"], shared_data["collector"])
 
 
-@then("warnings are emitted for unmappable features and conversion completes rather than aborting")
+@then(
+    "each feature with a counterpart is converted and reported, what has none is warned about by "
+    "name, and conversion completes"
+)
 def _then_v2_unmappable_warned(shared_data: dict) -> None:
     config = shared_data["config"]
     collector = shared_data["collector"]
-    # Conversion completed with a valid config (did not abort).
     assert isinstance(config, ProvisaConfig)
-    # At least one warning was emitted for an unmappable feature.
-    assert collector.warnings, "expected warnings for unmappable features"
+    reported = {(r.category, r.item) for r in collector.carried + collector.mapped}
+    # REQ-417: an event trigger is a change trigger, a cron trigger a scheduled one, an action a
+    # command calling its handler (REQ-2054).
+    assert ("triggers", "on_order_insert") in reported, reported
+    assert ("triggers", "daily_report") in reported, reported
+    assert ("actions", "place_order") in reported, reported
     categories = {w.category for w in collector.warnings}
-    assert "event_triggers" in categories, (
-        f"expected an 'event_triggers' warning; got categories {categories}"
-    )
+    assert "query_collections" in categories, categories
+    assert not categories & {"event_triggers", "cron_triggers"}, categories
 
 
 # ---------------------------------------------------------------------------
@@ -1381,7 +1334,7 @@ def _then_v2_role_upgraded_write(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-@given("a Hasura v2 source with database_url as an env var reference or unparseable URL")
+@given("a Hasura v2 source with database_url as an env var reference")
 def _given_v2_source_env_url(shared_data: dict) -> None:
     md = _v2_metadata()
     md.sources[0].connection_info = {"database_url": {"from_env": "PG_DATABASE_URL"}}
@@ -1390,25 +1343,22 @@ def _given_v2_source_env_url(shared_data: dict) -> None:
 
 
 @then(
-    "placeholder connection values are substituted and operators are directed to "
-    "use --source-overrides"
+    "no connection value is invented, the report says to enter it, and the import's source "
+    "settings supply it"
 )
 def _then_v2_placeholder_values(shared_data: dict) -> None:
     src = shared_data["config"].sources[0]
-    # Placeholder connection values are substituted for the env-var URL.
-    assert src.host == "localhost", src.host
-    assert src.database == "default", src.database
-    assert src.password == "${env:DB_PASSWORD}", src.password
-    # Operators are directed to use --source-overrides: convert_metadata accepts
-    # source_overrides that replace the placeholders with real connection values.
+    assert (src.host, src.password) == ("", ""), (src.host, src.password)
+    said = [w.message for w in shared_data["collector"].warnings if w.category == "sources"]
+    assert any("PG_DATABASE_URL" in m for m in said), said
+    # The import's source settings supply the connection.
     overridden = convert_metadata(
         shared_data["metadata"],
         WarningCollector(),
         source_overrides={"default": {"host": "real.db.internal", "password": "s3cret"}},
     )
     osrc = overridden.sources[0]
-    assert osrc.host == "real.db.internal", osrc.host
-    assert osrc.password == "s3cret", osrc.password
+    assert (osrc.host, osrc.password) == ("real.db.internal", "s3cret")
 
 
 # ---------------------------------------------------------------------------

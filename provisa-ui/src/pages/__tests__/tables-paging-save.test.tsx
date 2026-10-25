@@ -82,6 +82,7 @@ function table(
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -108,8 +109,9 @@ function table(
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -270,19 +272,22 @@ describe("TablesPage — Paging (REQ-318)", () => {
     await userEvent.clear(maxPages);
     await userEvent.type(maxPages, "5");
     await userEvent.click(screen.getByTestId("table-edit-save"));
+    // REQ-2109: the paging goes with the table's own save, in one transaction.
     await waitFor(() =>
-      expect(updateTablePaging).toHaveBeenCalledWith(7, {
-        ...NO_PAGING,
-        type: "offset",
-        maxPages: 5,
-      }),
+      expect(updateTable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pagination: expect.objectContaining({ type: "offset", maxPages: 5 }),
+        }),
+      ),
     );
+    expect(updateTablePaging).not.toHaveBeenCalled();
   });
 
-  it("does not call updateTablePaging when the paging is unchanged", async () => {
+  it("sends no paging when the paging is unchanged", async () => {
     await openEditor("pets");
     await userEvent.click(screen.getByTestId("table-edit-save"));
     await waitFor(() => expect(updateTable).toHaveBeenCalled());
+    expect(updateTable.mock.calls[0][0]).not.toHaveProperty("pagination");
     expect(updateTablePaging).not.toHaveBeenCalled();
   });
 
@@ -293,7 +298,9 @@ describe("TablesPage — Paging (REQ-318)", () => {
     await userEvent.type(rows, "200");
     await userEvent.click(screen.getByTestId("table-edit-save"));
     await waitFor(() =>
-      expect(updateTablePaging).toHaveBeenCalledWith(8, { ...NO_PAGING, maxRows: 200 }),
+      expect(updateTable).toHaveBeenCalledWith(
+        expect.objectContaining({ pagination: expect.objectContaining({ maxRows: 200 }) }),
+      ),
     );
   });
 
@@ -312,7 +319,7 @@ describe("TablesPage — Paging (REQ-318)", () => {
   });
 
   it("reports a server refusal in the reader's language", async () => {
-    updateTablePaging.mockResolvedValue({
+    updateTable.mockResolvedValue({
       success: false,
       message: "table 'issues': max_rows=900 is above graphql_remote.max_rows=800",
       code: "schema.paging_above_ceiling",

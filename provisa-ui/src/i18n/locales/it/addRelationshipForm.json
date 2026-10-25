@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "Assegna il nome all'arco da",
     "viaLabelSourceColumn": "Valore discriminante",
     "viaLabelSourceTable": "Nome della tabella di giunzione",
-    "viaLabelSourceFixed": "Alias Cypher"
+    "viaLabelSourceFixed": "Alias Cypher",
+    "cardinalityOneToOne": "uno-a-uno"
   }
 }

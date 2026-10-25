@@ -182,6 +182,10 @@ Property names map to columns via domain-prefix stripping and alias resolution; 
 
 A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it -- the name GraphQL and SQL read it by -- in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike.
 
+A name that is no property of the label is null wherever it is read (`WHERE`, `RETURN`, `ORDER BY`, any expression), as a missing property is in Neo4j. A column the label does not publish (a governed object column) or the role may not see reads the same way: null, with no sign that it exists. A write is never silent: `CREATE` or `SET` of such a name is refused with `<Label> has no property <name>`.
+
+Every node has one built-in property, `_id`: its key. It is the key column's value, or for a compound key the node's identity, `Label|v1|v2` (each key column in key order, a `|` or `\` in a value escaped by a `\`). `_id` works in `WHERE`, `RETURN` and `ORDER BY`, and every returned node carries it among its properties. Where a source's own `_id` column is the key, as a MongoDB collection's is, the built-in reads the same value.
+
 Rules:
 
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. New labels or types cannot be created through Cypher.
@@ -230,7 +234,7 @@ Cypher reaches the same governed pipeline over two transports:
 
 ### Expression and pattern coverage
 
-Cypher expressions are parsed into an AST and lowered node-to-node to SQL (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). The grammar follows the openCypher `oC_Expression` precedence tower. Supported: literals, parameters, property access, `n.prop`, index and slice, arithmetic (`+ - * / % ^`), comparison, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, boolean `AND` / `OR` / `XOR` / `NOT`, `CASE`, list and map literals, list and pattern comprehensions (including the `p = (…)` path binding), map projection, `reduce`, the `all` / `any` / `none` / `single` quantifiers, existential subqueries, and function calls.
+Cypher expressions are parsed into an AST and lowered node-to-node to SQL (`provisa/cypher/expr_parser.py`, `provisa/gql/expr_visitor.py`). The grammar follows the openCypher `oC_Expression` precedence tower. Supported: literals, parameters, property access, `n.prop`, index and slice, arithmetic (`+ - * / % ^`), comparison, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, boolean `AND` / `OR` / `XOR` / `NOT`, `CASE`, list and map literals, list and pattern comprehensions (including the `p = (…)` path binding), map projection, `reduce`, the `all` / `any` / `none` / `single` quantifiers, existential subqueries, and function calls.
 
 9. **Labels are fixed; you cannot create object types through Cypher.** A label resolves to a known domain, a known object type or a qualified `domain:object_type`, which is the closed set the registered schema defines. Cypher never introduces a new label or type. You can create instances only of types already defined in a writable data source: `CREATE` writes rows into such a table (see §Writes) and can't define a new label or type. Both label forms are accepted and mean the same test, the postfix `n:Label` and the verbose `n IS :Label` (with its negation `n IS NOT :Label`). A qualified label is written `n:domain:object_type`.
 

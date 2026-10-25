@@ -186,13 +186,21 @@ def test_a_killed_postmasters_segment_is_released_when_its_directory_is_reaped()
     """A session killed and its postmaster killed too (SIGKILL: no exit runs) leave the
     postmaster's System V segment. Reaped with the directory that recorded it, it held a slot of
     the machine's 32 until restart; a few dozen such stopped every initdb."""
-    from provisa.core.pg_shared_memory import _listed, recorded_segment
+    from provisa.core.pg_shared_memory import (
+        SYSV_SEMAPHORES,
+        _listed,
+        postmaster_semaphore_sets,
+        recorded_segment,
+    )
 
     starter, orphan_root = _start_elsewhere()
     postmaster = _postmaster(orphan_root)
     assert postmaster is not None
     segment = recorded_segment(orphan_root / "data")
     assert segment is not None and _listed(*segment)
+    semaphores = postmaster_semaphore_sets(postmaster)
+    # macOS: System V sets, which outlive a kill. Linux: none (POSIX, in the shared memory).
+    assert bool(semaphores) is SYSV_SEMAPHORES
     starter.send_signal(signal.SIGTERM)
     starter.wait(timeout=30)
     os.kill(postmaster, signal.SIGKILL)
@@ -200,22 +208,89 @@ def test_a_killed_postmasters_segment_is_released_when_its_directory_is_reaped()
     while _alive(postmaster) and time.monotonic() < deadline:
         time.sleep(0.05)
     assert _listed(*segment)  # what leaked before
+    assert (
+        postmaster_semaphore_sets(postmaster) == semaphores
+    )  # and these, until the machine restarts
 
     start_local_postgres().stop()  # every start reaps
 
     assert not orphan_root.exists()
     assert not _listed(*segment)
+    assert postmaster_semaphore_sets(postmaster) == []
 
 
 def test_a_running_postmasters_segment_is_never_released():
-    from provisa.core.pg_shared_memory import _listed, recorded_segment, release_segment
+    from provisa.core.pg_shared_memory import (
+        SYSV_SEMAPHORES,
+        _listed,
+        postmaster_semaphore_sets,
+        recorded_segment,
+        release_segment,
+    )
 
     pg = start_local_postgres()
     try:
         segment = recorded_segment(pg.data)
         assert segment is not None
+        postmaster = _postmaster(pg.root)
+        assert postmaster is not None
+        semaphores = postmaster_semaphore_sets(postmaster)
+        assert bool(semaphores) is SYSV_SEMAPHORES
         assert release_segment(pg.data) is False
         assert _listed(*segment)
+        assert postmaster_semaphore_sets(postmaster) == semaphores
     finally:
         pg.stop()
     assert not _listed(*segment)  # its own clean stop removed it
+    assert postmaster_semaphore_sets(postmaster) == []  # and its semaphores
+
+
+def test_a_killed_session_with_a_temp_directory_of_its_own_leaves_nothing_once_reaped(tmp_path):
+    """Agents and CI jobs give each session a temporary directory of its own. A server's
+    directory was made there: another session's reaper never saw it, and once that temporary
+    directory was removed, so was the one record of the killed postmaster's semaphore sets --
+    about 5,000 sets from some 230 killed servers, until no server on the machine could start.
+    Every server's directory is under the machine's RUN_ROOT instead."""
+    import shutil
+
+    from provisa.core.pg_shared_memory import SYSV_SEMAPHORES, postmaster_semaphore_sets
+
+    own_temp = tmp_path / "session-temp"
+    own_temp.mkdir()
+    starter = subprocess.Popen(
+        [sys.executable, "-c", _STARTER.format(repo=str(_REPO))],
+        stdout=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "TMPDIR": str(own_temp)},
+    )
+    assert starter.stdout is not None
+    root = Path(starter.stdout.readline().strip())
+    assert root.parent == embedded_pg.RUN_ROOT  # not the session's own temporary directory
+    postmaster = _postmaster(root)
+    assert postmaster is not None
+    semaphores = postmaster_semaphore_sets(postmaster)
+    assert bool(semaphores) is SYSV_SEMAPHORES
+    starter.send_signal(signal.SIGTERM)
+    starter.wait(timeout=30)
+    os.kill(postmaster, signal.SIGKILL)
+    deadline = time.monotonic() + 30
+    while _alive(postmaster) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    shutil.rmtree(own_temp)  # its session's temporary directory goes with it
+
+    embedded_pg._stop_orphans()  # any later session's start, whatever its own TMPDIR
+
+    assert not root.exists()
+    assert postmaster_semaphore_sets(postmaster) == []
+
+
+def test_a_pid_recorded_before_its_process_started_is_not_that_process(tmp_path):
+    """A server's directory now outlives a restart of the machine, after which the pid it
+    recorded may name another process: one started after the record is not the one that wrote
+    it, and is never signalled as its postmaster."""
+    record = tmp_path / "owner.pid"
+    record.write_text(str(os.getpid()))
+    long_ago = time.time() - 10 * 24 * 3600
+    os.utime(record, (long_ago, long_ago))
+    assert embedded_pg._running(os.getpid(), record.stat().st_mtime) is False
+    assert embedded_pg._running(os.getpid(), time.time()) is True

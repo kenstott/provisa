@@ -29,6 +29,9 @@
     "resizeSidebar": "साइडबार का आकार बदलें",
     "tabSettings": "दृश्य सेटिंग्स",
     "maxNodes": "अधिकतम नोड",
-    "maxNodesHint": "एक क्वेरी द्वारा बनाए जाने वाले अधिकतम नोड"
+    "maxNodesHint": "एक क्वेरी द्वारा बनाए जाने वाले अधिकतम नोड",
+    "notCounted": "गिना नहीं गया: {{list}}",
+    "countsFailed": "गिनती उपलब्ध नहीं: {{error}}",
+    "schemaFailed": "स्कीमा उपलब्ध नहीं: {{error}}"
   }
 }

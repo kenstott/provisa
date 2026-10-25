@@ -17,8 +17,32 @@ references at parse time. Rejects unbounded variable-length patterns ([*]).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from provisa.cypher.expr_parser import parse_expression
+
+if TYPE_CHECKING:
+    from provisa.gql.label_map import CypherLabelMap
+
+from provisa.gql.mistakes import aggregate_misuse, undefined_variable
+from provisa.gql.translator_types import CypherMistake
+from provisa.gql.ir import (
+    NodePattern,
+    RelPattern,
+    PathPattern,
+    PathFunction,
+    MatchClause,
+    WhereClause,
+    ReturnItem,
+    ReturnClause,
+    WithClause,
+    UnwindClause,
+    MatchStep,
+    CallSubquery,
+    OrderItem,
+    CypherAST,
+)
 
 # Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
@@ -27,131 +51,9 @@ class CypherParseError(Exception):
     """Raised for invalid or unsupported Cypher syntax."""
 
 
-# ---------------------------------------------------------------------------
-# AST dataclasses
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class NodePattern:
-    variable: str | None
-    labels: list[str]
-    properties: dict[str, Any]
-    label_alternation: bool = False
-    #: Each inline property's value as the statement writes it (``'x'``, ``42``, ``$p``), which a
-    #: read matches on as ``WHERE var.prop = <value>`` (:func:`with_inline_conditions`).
-    property_text: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class RelPattern:
-    variable: str | None
-    types: list[str]
-    min_hops: int | None  # None = exactly 1 unless variable-length
-    max_hops: int | None
-    direction: str  # "right" | "left" | "none"
-    variable_length: bool = False
-    #: An inline property map on the relationship, as its node's is (``property_text``).
-    properties: dict[str, Any] = field(default_factory=dict)
-    property_text: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class PathPattern:
-    nodes: list[NodePattern]
-    rels: list[RelPattern]
-
-
-@dataclass
-class PathFunction:
-    func_name: str  # "shortestPath" | "allShortestPaths"
-    pattern: PathPattern
-
-
-@dataclass
-class MatchClause:
-    pattern: PathPattern | PathFunction
-    variable: str | None  # path variable (p = shortestPath(...))
-    optional: bool = False
-
-
-@dataclass
-class WhereClause:
-    expression: str  # raw expression text
-
-
-@dataclass
-class ReturnItem:
-    expression: str
-    alias: str | None = None
-
-
-@dataclass
-class ReturnClause:
-    items: list[ReturnItem]
-    distinct: bool = False
-
-
-@dataclass
-class WithClause:
-    items: list[ReturnItem]
-    where: WhereClause | None = None
-
-
-@dataclass
-class UnwindClause:
-    expression: str  # raw expression text (list literal, param, or property)
-    variable: str  # AS variable name
-
-
-@dataclass
-class MatchStep:
-    """One or more MATCH/OPTIONAL MATCH clauses and their associated WHERE."""
-
-    matches: list[MatchClause]
-    where: WhereClause | None = None
-
-
-@dataclass
-class CallSubquery:
-    body: "CypherAST"
-    imported_vars: list[str] = field(default_factory=list)  # vars from outer scope via WITH
-
-
-@dataclass
-class OrderItem:
-    expression: str
-    direction: str = "ASC"
-
-
-@dataclass
-class CypherAST:  # REQ-347, REQ-348, REQ-571
-    pipeline: list["MatchStep | WithClause"]
-    return_clause: ReturnClause | None
-    order_by: list[OrderItem]
-    skip: int | None
-    limit: int | None
-    call_subqueries: list[CallSubquery] = field(default_factory=list)
-    # UNION / UNION ALL: list of (sub_ast, is_all)
-    union_parts: list[tuple["CypherAST", bool]] = field(default_factory=list)
-    comments: list[str] = field(
-        default_factory=list
-    )  # // comment text (without //) in source order
-
-    @property
-    def match_clauses(self) -> list[MatchClause]:
-        return [m for s in self.pipeline if isinstance(s, MatchStep) for m in s.matches]
-
-    @property
-    def with_clauses(self) -> list[WithClause]:
-        return [s for s in self.pipeline if isinstance(s, WithClause)]
-
-    @property
-    def where(self) -> WhereClause | None:
-        for s in self.pipeline:
-            if isinstance(s, MatchStep) and s.where is not None:
-                return s.where
-        return None
+class CypherParseMistake(CypherMistake, CypherParseError):
+    """REQ-778: a mistake the parse finds, coded and worded for the user; every surface that
+    refuses a parse error refuses it as one."""
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +64,8 @@ _TOKEN_SPEC = [
     ("COMMENT", r"//[^\n]*"),
     ("STRING", r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\""),
     ("NUMBER", r"\d+(?:\.\d+)?"),
-    ("PARAM", r"\$[A-Za-z_]\w*"),
+    # A parameter's name may be a number ($0, $1) as well as a name: $3 is parameter "3", never 3.
+    ("PARAM", r"\$\w+"),
     ("ARROW_RIGHT", r"->"),
     ("ARROW_LEFT", r"<-"),
     ("DOTDOT", r"\.\."),
@@ -188,6 +91,7 @@ _TOKEN_SPEC = [
     ("LT", r"<"),
     ("GT", r">"),
     ("PIPE", r"\|"),
+    ("SEMICOLON", r";"),
     ("IDENT", r"[A-Za-z_]\w*"),
     ("NEWLINE", r"\n"),
     ("SKIP_WS", r"[ \t]+"),
@@ -214,7 +118,8 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
     comments: list[str] = []
     for m in _MASTER_RE.finditer(text):
         kind = m.lastgroup
-        if kind in ("SKIP_WS", "NEWLINE"):
+        # A semicolon ends the one statement a query holds (refuse_multiple_statements).
+        if kind in ("SKIP_WS", "NEWLINE", "SEMICOLON"):
             continue
         if kind == "COMMENT":
             comments.append(m.group()[2:].strip())  # strip leading //
@@ -233,9 +138,12 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
 INLINE_PREFIX = "__inline"
 
 
-def with_inline_conditions(
-    matches: list[MatchClause], where: WhereClause | None
-) -> WhereClause | None:
+def _where(text: str | None) -> WhereClause | None:
+    """The IR's WHERE: the text a statement writes, parsed into its expression tree."""
+    return None if text is None else WhereClause(expression=parse_expression(text))
+
+
+def with_inline_conditions(matches: list[MatchClause], where: str | None) -> str | None:
     """``where`` with each inline property map of ``matches``' patterns as the equality it means
     in a read: ``(n {k: v})`` is ``WHERE n.k = v``, its value written as the statement wrote it,
     a ``$param`` included. A condition on a variable that only an OPTIONAL MATCH binds is moved
@@ -246,14 +154,15 @@ def with_inline_conditions(
         pattern = (
             clause.pattern.pattern if isinstance(clause.pattern, PathFunction) else clause.pattern
         )
+        assert isinstance(pattern, PathPattern)  # Cypher's own patterns: it writes no triple
         for part in [*pattern.nodes, *pattern.rels]:
             for key, value in part.property_text.items():
                 conditions.append(f"{part.variable}.{key} = {value}")
     if not conditions:
         return where
     if where is not None:
-        conditions.append(f"({where.expression})")
-    return WhereClause(expression=" AND ".join(conditions))
+        conditions.append(f"({where})")
+    return " AND ".join(conditions)
 
 
 class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
@@ -279,6 +188,26 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         t = self._tokens[self._pos]
         self._pos += 1
         return t
+
+    def _row_count(self, clause: str) -> int:
+        """The whole number of rows SKIP or LIMIT takes. REQ-778: anything else -- a fraction, a
+        negative, a string, a name -- is the user's mistake, refused naming what was written and
+        the fix (a fraction was once cut to its whole part without a word)."""
+        t = self._peek()
+        written = t.value if t is not None else ""
+        if t is not None and t.type == "MINUS":
+            self._advance()
+            following = self._peek()
+            written = "-" + (following.value if following is not None else "")
+        elif t is not None and t.type == "NUMBER" and t.value.isdigit():
+            return int(self._advance().value)
+        raise CypherParseMistake(
+            f"cypher.invalid_{clause.lower()}",
+            f"{clause} {written} is not a whole number of rows: {clause} takes a count of 0 or "
+            f"more, e.g. {clause} 10.",
+            clause=clause,
+            value=written,
+        )
 
     def _expect(self, ttype: str, value: str | None = None) -> Token:
         t = self._peek()
@@ -315,7 +244,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
     def parse(self) -> CypherAST:
         pipeline: list = []
         current_matches: list[MatchClause] = []
-        current_where: WhereClause | None = None
+        current_where: str | None = None  # the WHERE as written, until its match step is built
         return_clause: ReturnClause | None = None
         order_by: list[OrderItem] = []
         skip: int | None = None
@@ -327,12 +256,17 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             nonlocal current_matches, current_where
             if current_matches:
                 where = with_inline_conditions(current_matches, current_where)
-                pipeline.append(MatchStep(matches=list(current_matches), where=where))
+                pipeline.append(MatchStep(matches=list(current_matches), where=_where(where)))
                 current_matches = []
                 current_where = None
 
         while self._peek() is not None:
             kw = self._peek_val()
+
+            if kw in ("OPTIONAL", "MATCH") and current_where is not None:
+                # A WHERE is the clause's before it: the next MATCH starts a step of its own, so
+                # neither WHERE takes the other's place.
+                _flush_match_step()
 
             if kw in ("OPTIONAL",):
                 self._advance()
@@ -384,13 +318,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
             elif kw == "SKIP":
                 self._advance()
-                t = self._expect("NUMBER")
-                skip = int(float(t.value))
+                skip = self._row_count("SKIP")
 
             elif kw == "LIMIT":
                 self._advance()
-                t = self._expect("NUMBER")
-                limit = int(float(t.value))
+                limit = self._row_count("LIMIT")
 
             else:
                 _bad = self._peek()
@@ -695,7 +627,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     # --- WHERE ---
 
-    def _parse_where(self) -> WhereClause:
+    def _parse_where(self) -> str:
         _clause_kws = {
             "RETURN",
             "WITH",
@@ -727,17 +659,31 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                     else:
                         break
             parts.append(self._advance().value)
-        return WhereClause(expression=" ".join(parts))
+        return " ".join(parts)
 
     # --- WITH ---
 
     def _parse_with(self) -> WithClause:
         items = self._parse_return_items()
+        # Its ORDER BY, SKIP and LIMIT are the WITH's own: they pick the rows it carries on.
+        order_by: list[OrderItem] = []
+        if self._match_keyword("ORDER"):
+            self._advance()
+            self._consume_keyword("BY")
+            order_by = self._parse_order_by()
+        skip: int | None = None
+        if self._match_keyword("SKIP"):
+            self._advance()
+            skip = self._row_count("SKIP")
+        limit: int | None = None
+        if self._match_keyword("LIMIT"):
+            self._advance()
+            limit = self._row_count("LIMIT")
         where: WhereClause | None = None
         if self._match_keyword("WHERE"):
             self._advance()
-            where = self._parse_where()
-        return WithClause(items=items, where=where)
+            where = _where(self._parse_where())
+        return WithClause(items=items, where=where, order_by=order_by, skip=skip, limit=limit)
 
     # --- RETURN ---
 
@@ -782,7 +728,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             alias: str | None = None
             if self._opt_keyword("AS"):
                 alias = self._expect("IDENT").value
-            items.append(ReturnItem(expression=expr, alias=alias))
+            items.append(ReturnItem(expression=parse_expression(expr), alias=alias, name=expr))
             if (_tri := self._peek()) and _tri.type == "COMMA":
                 self._advance()
             else:
@@ -812,7 +758,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         expr = " ".join(parts)
         self._consume_keyword("AS")
         variable = self._expect("IDENT").value
-        return UnwindClause(expression=expr, variable=variable)
+        return UnwindClause(expression=parse_expression(expr), variable=variable)
 
     # --- CALL subquery ---
 
@@ -886,7 +832,18 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     def _parse_order_by(self) -> list[OrderItem]:
         items: list[OrderItem] = []
-        _stop_kws = {"SKIP", "LIMIT", "RETURN", "MATCH", "WITH"}
+        _stop_kws = {
+            "SKIP",
+            "LIMIT",
+            "RETURN",
+            "MATCH",
+            "WITH",
+            "WHERE",
+            "OPTIONAL",
+            "UNWIND",
+            "CALL",
+            "UNION",
+        }
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
             while (
@@ -899,7 +856,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             direction = "ASC"
             if self._match_keyword("ASC", "DESC"):
                 direction = self._advance().value.upper()
-            items.append(OrderItem(expression=expr, direction=direction))
+            items.append(OrderItem(expression=parse_expression(expr), direction=direction))
             if (_tob := self._peek()) and _tob.type == "COMMA":
                 self._advance()
             else:
@@ -930,12 +887,59 @@ def refuse_cypher_definition(query: str) -> None:
     refuse_definition_text(query)
 
 
-def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
+def split_cypher_statements(query: str) -> list[str]:
+    """The statements ``query`` holds, each its own text, in order -- split on ``;`` as Neo4j
+    Browser's editor splits them, by the tokenizer: a semicolon inside a string or a comment
+    separates nothing, and a part holding only comments or blanks is no statement."""
+    statements: list[str] = []
+    start = 0
+    holds = False
+    for m in _MASTER_RE.finditer(query):
+        kind = m.lastgroup
+        if kind == "SEMICOLON":
+            if holds:
+                statements.append(query[start : m.start()].strip())
+            start, holds = m.end(), False
+        elif kind not in ("SKIP_WS", "NEWLINE", "COMMENT"):
+            holds = True
+    if holds:
+        statements.append(query[start:].strip())
+    return statements
+
+
+def refuse_multiple_statements(query: str) -> None:
+    """Raise for a query that holds more than one statement, in Neo4j's own words.
+
+    A query is one statement, as Neo4j takes it; a client that runs several (Neo4j Browser's
+    editor) splits them on ``;`` itself and sends each as its own query
+    (:func:`split_cypher_statements`). One that only ends the statement is allowed."""
+    statements = len(split_cypher_statements(query))
+    if statements > 1:
+        raise CypherParseError(f"Expected exactly one statement per query but got: {statements}")
+
+
+def parse_cypher(  # REQ-345, REQ-346, REQ-571
+    query: str, label_map: CypherLabelMap | None = None
+) -> CypherAST:
+    """Parse a read-only Cypher statement into a CypherAST (``_parse_statement``), refusing a
+    variable nothing in it binds or an aggregate where none is taken (REQ-778): the user's mistake, said before any translation. A
+    statement inside it (EXISTS { }, COUNT { }, COLLECT { }) reads its outer variables, so it is
+    checked as part of the whole, never on its own."""
+    ast = _parse_statement(query)
+    # With the role's label map, an unbound name that is a bound variable's property is offered.
+    for mistake in (undefined_variable(ast, label_map), aggregate_misuse(ast)):
+        if mistake is not None:
+            raise CypherParseMistake(mistake.code, str(mistake), **mistake.params)
+    return ast
+
+
+def _parse_statement(query: str) -> CypherAST:
     """Parse a read-only Cypher query into a CypherAST.
 
     Raises CypherParseError for write clauses, APOC references, or unbounded
     variable-length patterns.
     """
+    refuse_multiple_statements(query)
     refuse_cypher_definition(query)
     # Reject write clauses (case-insensitive)
     tokens_raw = re.findall(r"\b\w+\b", query)
@@ -958,6 +962,29 @@ def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
     tokens, comments = _tokenize(query)
     parser = _Parser(tokens, query, comments)
     return parser.parse()
+
+
+def parse_pattern(text: str) -> PathPattern:
+    """A graph pattern written on its own (a pattern comprehension's), as the IR's path pattern."""
+    tokens, comments = _tokenize(text)
+    parser = _Parser(tokens, text, comments)
+    pattern = parser._parse_path_pattern()
+    if parser._peek() is not None:
+        raise CypherParseError(f"Unexpected {parser._peek_val()!r} after the pattern {text!r}")
+    return pattern
+
+
+def subquery_statement(kind: str, body: str) -> CypherAST:
+    """An EXISTS / COUNT / COLLECT body as the statement it is: a body that is a pattern alone
+    matches it, and one without a RETURN returns 1 (EXISTS, COUNT) or its whole row (COLLECT)."""
+    text = body.strip()
+    if text.startswith("("):
+        text = "MATCH " + text
+    if kind in ("EXISTS", "COUNT") and "RETURN" not in text.upper():
+        text = text + " RETURN 1"
+    elif kind == "COLLECT" and "RETURN" not in text.upper():
+        text = text + " RETURN *"
+    return _parse_statement(text)
 
 
 def extract_parameters(query: str) -> list[str]:  # REQ-571

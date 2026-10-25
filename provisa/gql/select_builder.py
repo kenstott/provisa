@@ -1,0 +1,690 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8f2c4a7e-1b5d-4e9a-3c6f-7d0b2e4a8f1c
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""SelectBuilderMixin — SELECT clause and path object construction.
+
+Extracted from translator.py to stay under 1000 lines.
+Mixed into _Translator; relies on _var_table, _graph_vars, _path_vars,
+_shortestpath_hops_col, and _parse_expr.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import sqlglot.expressions as exp
+
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Term, Variable
+from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.ir import ReturnClause
+from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
+
+# Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
+
+if TYPE_CHECKING:
+    from provisa.gql.translator_types import GraphVarKind
+
+
+def _variable_property(expr: CypherExpr) -> tuple[str, str] | None:
+    """``(var, prop)`` when ``expr`` is a variable's property, ``var.prop``."""
+    if isinstance(expr, Property) and isinstance(expr.obj, Variable):
+        return expr.obj.name, expr.name
+    return None
+
+
+#: A graph function whose aliased value the assembler reads back as edges or nodes.
+_GRAPH_FUNCTIONS = {
+    "relationship": "EDGE",
+    "relationships": "EDGE",
+    "nodes": "NODE",
+    "startnode": "NODE",
+    "endnode": "NODE",
+}
+
+
+def _shared_property_names(return_clause: "ReturnClause") -> frozenset[str]:
+    """The property names two items of ``return_clause`` would both be named by: an unaliased
+    ``var.prop`` is named ``prop``, which another such item or another item's own name may also
+    be (#259)."""
+    from collections import Counter
+
+    names: Counter[str] = Counter()
+    for item in return_clause.items:
+        if item.alias:
+            names[item.alias] += 1
+            continue
+        found = _variable_property(item.expression)
+        names[found[1] if found else item.name.strip()] += 1
+    return frozenset(name for name, count in names.items() if count > 1)
+
+
+#: The built-in property every node has (REQ-2136): its key. The one name a label need not publish.
+NODE_KEY_PROPERTY = "_id"
+
+
+def _key_column(alias: str | None, column: str) -> exp.Column:
+    return exp.Column(
+        this=exp.Identifier(this=column, quoted=True),
+        table=exp.Identifier(this=alias) if alias else None,
+    )
+
+
+def _escaped(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``value`` as text in which a ``|`` separates, and so is never one of its own characters:
+    a backslash and a ``|`` of the value each escaped by a backslash."""
+    text = exp.Cast(this=value, to=exp.DataType.build("VARCHAR"))
+    backslashes = _anon_fn("replace", text, exp.Literal.string("\\"), exp.Literal.string("\\\\"))
+    return _anon_fn("replace", backslashes, exp.Literal.string("|"), exp.Literal.string("\\|"))
+
+
+def _anon_fn(name: str, *args: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    return exp.Anonymous(this=name, expressions=list(args))
+
+
+def node_key_text(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The node's key as text: its key column's value, or each column of a compound key in key
+    order, escaped and separated by ``|`` -- two rows that share a column are two keys."""
+    if len(nm.key_columns) <= 1:
+        return exp.Cast(this=_key_column(alias, nm.id_column), to=exp.DataType.build("VARCHAR"))
+    parts = [_escaped(_key_column(alias, c)) for c in nm.key_columns]
+    text = parts[0]
+    for part in parts[1:]:
+        text = exp.DPipe(
+            this=exp.DPipe(this=text, expression=exp.Literal.string("|")), expression=part
+        )
+    return text
+
+
+def node_identity(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The node's identity in the graph: ``label|key`` (node_key_text)."""
+    return exp.DPipe(
+        this=exp.DPipe(this=exp.Literal.string(nm.label), expression=exp.Literal.string("|")),
+        expression=node_key_text(alias, nm),
+    )
+
+
+def node_key(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``alias``'s ``_id``: its key column, or for a compound key its identity."""
+    if len(nm.key_columns) <= 1:
+        return _key_column(alias, nm.id_column)
+    return node_identity(alias, nm)
+
+
+def node_properties_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The properties of the node ``alias`` reads, as a returned node carries them: each one the
+    label publishes, and its ``_id``."""
+    exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    for prop_name, col_name in nm.properties.items():
+        exprs.append(exp.Literal.string(prop_name))
+        exprs.append(
+            exp.Column(
+                this=exp.Identifier(this=col_name, quoted=True), table=exp.Identifier(this=alias)
+            )
+        )
+    exprs += [exp.Literal.string(NODE_KEY_PROPERTY), node_key(alias, nm)]
+    return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
+
+
+def node_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The node ``alias`` reads, as RETURN n and an edge's startNode and endNode are: its
+    identity (node_identity), labels and properties."""
+    return exp.Anonymous(
+        this="JSON_OBJECT",
+        expressions=[
+            exp.Literal.string("id"),
+            node_identity(alias, nm),
+            exp.Literal.string("label"),
+            exp.Literal.string(nm.label),
+            exp.Literal.string("tableLabel"),
+            exp.Literal.string(nm.table_label),
+            exp.Literal.string("properties"),
+            node_properties_json(alias, nm),
+        ],
+    )
+
+
+def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """An edge's type: its relationship's name, or for a single-hop alternation the type its row
+    names (a CASE on the junction's type column)."""
+    return rel_type.copy() if isinstance(rel_type, exp.Expression) else exp.Literal.string(rel_type)
+
+
+#: meta key: the NodeMapping of the variable a ``table.*`` selects (graph_rewriter reads it)
+NODE_OF_STAR = "provisa_node"
+
+
+class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
+    """Mixin for _Translator: builds SELECT expressions and path objects."""
+
+    _var_table: dict
+    _graph_vars: dict
+    _path_vars: dict
+    _shortestpath_hops_col: exp.Expression | None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    _lm: CypherLabelMap
+    _rel_var_types: dict
+    _rel_var_type_exprs: dict
+    _rel_var_endpoints: dict
+    _rel_var_via: dict  # REQ-1586: rel variable → (junction alias, JunctionMapping)
+    _domain_nodes: dict[str, str]
+    _varlen_rel_vars: dict  # varlen rel variable → outer path variable
+
+    def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise NotImplementedError(expr)
+
+    def _build_edge_object(
+        self,
+        rel_type: "str | exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        src_alias: str,
+        src_nm: NodeMapping,
+        tgt_alias: str,
+        tgt_nm: NodeMapping,
+        is_reversed: bool = False,
+        via: "tuple[str, JunctionMapping] | None" = None,
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Emit a JSON edge object for RETURN r.
+
+        REQ-1586: ``via`` is the (junction alias, JunctionMapping) of a junction-backed edge; its
+        columns become the edge's properties. An FK/PK edge has no junction and no properties.
+
+        Neo4j-compatible format:
+        JSON_OBJECT(
+            'identity', CAST(src.id AS VARCHAR) || '-' || CAST(tgt.id AS VARCHAR),
+            'start', src.id,
+            'end', tgt.id,
+            'type', 'REL_TYPE',
+            'properties', JSON_OBJECT(),
+            'startNode', JSON_OBJECT('id', src.id, 'label', 'SrcLabel', 'properties', JSON_OBJECT()),
+            'endNode', JSON_OBJECT('id', tgt.id, 'label', 'TgtLabel', 'properties', JSON_OBJECT()))
+        startNode/endNode are Provisa extensions for graph visualization.
+        When is_reversed=True the pattern traverses the canonical edge backward; identity, start,
+        end, startNode and endNode all use canonical (src→tgt) order, matching imputed-edge
+        identities and Neo4j semantics (a relationship's direction is intrinsic, not dependent on
+        which end the query pattern named first).
+        """
+        src_id_col = exp.Column(
+            this=exp.Identifier(this=src_nm.id_column, quoted=True),
+            table=exp.Identifier(this=src_alias),
+        )
+        tgt_id_col = exp.Column(
+            this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+            table=exp.Identifier(this=tgt_alias),
+        )
+        # identity: rel_type || ':' || CAST(canonical_src.id AS VARCHAR) || '-' || CAST(canonical_tgt.id AS VARCHAR)
+        # When traversed backward, swap src/tgt so identity matches canonical (imputed) direction.
+        # Include rel_type so edges of different types between same node pair get distinct identities.
+        # Each end's key text holds every column of a compound key (node_key_text).
+        src_key, tgt_key = node_key_text(src_alias, src_nm), node_key_text(tgt_alias, tgt_nm)
+        identity_first = tgt_key if is_reversed else src_key
+        identity_second = src_key if is_reversed else tgt_key
+        identity = exp.DPipe(
+            this=exp.DPipe(
+                this=exp.DPipe(
+                    this=exp.DPipe(
+                        this=_type_value(rel_type),
+                        expression=exp.Literal.string(":"),
+                    ),
+                    expression=identity_first,
+                ),
+                expression=exp.Literal.string("-"),
+            ),
+            expression=identity_second,
+        )
+        # REQ-1586: a junction-backed edge's properties are its junction's columns, and the edge
+        # names the table they were read from.
+        edge_fields = junction_edge_fields(via)
+
+        # Canonical (src->tgt) display order: when is_reversed, the pattern's src/tgt aliases
+        # are swapped relative to the canonical relationship, so start/end/startNode/endNode
+        # must swap too (mirroring identity_first/identity_second above).
+        disp_src_alias, disp_src_nm = (tgt_alias, tgt_nm) if is_reversed else (src_alias, src_nm)
+        disp_tgt_alias, disp_tgt_nm = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
+        disp_src_id_col = tgt_id_col if is_reversed else src_id_col
+        disp_tgt_id_col = src_id_col if is_reversed else tgt_id_col
+        start_node = node_json(disp_src_alias, disp_src_nm)
+        end_node = node_json(disp_tgt_alias, disp_tgt_nm)
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("identity"),
+                identity,
+                exp.Literal.string("start"),
+                disp_src_id_col,
+                exp.Literal.string("end"),
+                disp_tgt_id_col,
+                exp.Literal.string("type"),
+                _type_value(rel_type),
+                *edge_fields,
+                exp.Literal.string("startNode"),
+                start_node,
+                exp.Literal.string("endNode"),
+                end_node,
+            ],
+        )
+
+    def _build_path_object(self, path_var: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Emit a JSON path object for RETURN p.
+
+        Flat-JOIN paths: full {nodes:[...], edges:[...]} JSON via _build_path_json.
+        Recursive CTE paths: JSON_OBJECT('start', src.id, 'end', tgt.id, 'length', hops)
+        """
+        src_var, tgt_var, is_recursive = self._path_vars[path_var]
+        path_step_info = getattr(self, "_path_steps", {}).get(path_var)
+        if path_step_info is not None:
+            step_nodes, step_edges = path_step_info
+            return self._build_path_json(step_nodes, step_edges)
+        # All-rels union path (anonymous or unlabeled-rel): build from _all_rels subquery columns.
+        all_rels_alias = getattr(self, "_all_rels_alias", None)
+        all_rels_src_col = getattr(self, "_all_rels_src_col", None)
+        all_rels_rel_col = getattr(self, "_all_rels_rel_col", None)
+        all_rels_tgt_col = getattr(self, "_all_rels_tgt_col", None)
+        if (
+            (not src_var or not tgt_var)
+            and all_rels_alias
+            and all_rels_src_col
+            and all_rels_tgt_col
+            and all_rels_rel_col
+        ):
+            n_expr = exp.Column(
+                this=exp.Identifier(this=all_rels_src_col),
+                table=exp.Identifier(this=all_rels_alias),
+            )
+            m_expr = exp.Column(
+                this=exp.Identifier(this=all_rels_tgt_col),
+                table=exp.Identifier(this=all_rels_alias),
+            )
+            r_expr = exp.Column(
+                this=exp.Identifier(this=all_rels_rel_col),
+                table=exp.Identifier(this=all_rels_alias),
+            )
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("nodes"),
+                    exp.Anonymous(this="JSON_ARRAY", expressions=[n_expr, m_expr]),
+                    exp.Literal.string("edges"),
+                    exp.Anonymous(this="JSON_ARRAY", expressions=[r_expr]),
+                ],
+            )
+        # Recursive CTE or fallback
+        src_nm: NodeMapping | None = self._var_table.get(src_var, (src_var, None))[1]
+        tgt_nm: NodeMapping | None = self._var_table.get(tgt_var, (tgt_var, None))[1]
+        src_id_col_name = src_nm.id_column if src_nm else "id"
+        tgt_id_col_name = tgt_nm.id_column if tgt_nm else "id"
+        src_id: exp.Expression = (
+            exp.Column(
+                this=exp.Identifier(this=src_id_col_name, quoted=True),
+                table=exp.Identifier(this=src_var),
+            )
+            if src_var
+            else exp.Identifier(this=src_id_col_name, quoted=True)
+        )
+        if is_recursive and self._shortestpath_hops_col is not None:
+            tgt_id: exp.Expression = exp.Column(
+                this=exp.Identifier(this="cur_id"),
+                table=exp.Identifier(this="_t"),
+            )
+            length_val: exp.Expression = self._shortestpath_hops_col  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        else:
+            tgt_id = (
+                exp.Column(
+                    this=exp.Identifier(this=tgt_id_col_name, quoted=True),
+                    table=exp.Identifier(this=tgt_var),
+                )
+                if tgt_var
+                else exp.Identifier(this=tgt_id_col_name, quoted=True)
+            )
+            length_val = exp.Literal.number(1)
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("start"),
+                src_id,
+                exp.Literal.string("end"),
+                tgt_id,
+                exp.Literal.string("length"),
+                length_val,
+            ],
+        )
+
+    def _build_path_json(
+        self,
+        step_nodes: list,
+        step_edges: list,
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Build JSON_OBJECT('nodes', JSON_ARRAY(...), 'edges', JSON_ARRAY(...)) for a flat-JOIN path."""
+
+        def _node_obj(alias: str, nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            props = node_properties_json(alias, nm)
+            # Its identity "Label|key" so _walk_for_nodes can find and register it.
+            compound_id = node_identity(alias, nm)
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("id"),
+                    compound_id,
+                    exp.Literal.string("label"),
+                    exp.Literal.string(nm.label),
+                    exp.Literal.string("tableLabel"),
+                    exp.Literal.string(nm.table_label),
+                    exp.Literal.string("properties"),
+                    props,
+                ],
+            )
+
+        def _edge_obj(
+            rel_type: "str | exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            src_alias: str,
+            src_nm: "NodeMapping",
+            tgt_alias: str,
+            tgt_nm: "NodeMapping",
+            is_reversed: bool = False,
+            via: "tuple[str, JunctionMapping] | None" = None,
+        ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            src_id_cast = node_key_text(src_alias, src_nm)
+            tgt_id_cast = node_key_text(tgt_alias, tgt_nm)
+            # When the edge is traversed in reverse of its canonical direction,
+            # use canonical order (canonical_src-canonical_tgt) for identity so it
+            # matches the identity produced by show-children (which always uses canonical direction).
+            if is_reversed:
+                identity_first, identity_second = tgt_id_cast, src_id_cast
+            else:
+                identity_first, identity_second = src_id_cast, tgt_id_cast
+            identity = exp.DPipe(
+                this=exp.DPipe(
+                    this=exp.DPipe(
+                        this=exp.DPipe(
+                            this=_type_value(rel_type),
+                            expression=exp.Literal.string(":"),
+                        ),
+                        expression=identity_first,
+                    ),
+                    expression=exp.Literal.string("-"),
+                ),
+                expression=identity_second,
+            )
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("identity"),
+                    identity,
+                    exp.Literal.string("type"),
+                    _type_value(rel_type),
+                    exp.Literal.string("start"),
+                    src_id_cast,
+                    exp.Literal.string("end"),
+                    tgt_id_cast,
+                    exp.Literal.string("startNode"),
+                    _node_obj(src_alias, src_nm),
+                    exp.Literal.string("endNode"),
+                    _node_obj(tgt_alias, tgt_nm),
+                    # REQ-1586: a path step over a junction carries the junction's columns as the
+                    # step edge's properties, the same as a single-hop edge does.
+                    *junction_edge_fields(via),
+                ],
+            )
+
+        if not step_nodes and step_edges:
+            seen: set[str] = set()
+            step_nodes = []
+            for rt, sa, snm, ta, tnm, rev, _via in step_edges:
+                if sa not in seen:
+                    step_nodes.append((sa, snm))
+                    seen.add(sa)
+                if ta not in seen:
+                    step_nodes.append((ta, tnm))
+                    seen.add(ta)
+        nodes_array = exp.Anonymous(
+            this="JSON_ARRAY",
+            expressions=[_node_obj(alias, nm) for alias, nm in step_nodes],
+        )
+        edges_array = exp.Anonymous(
+            this="JSON_ARRAY",
+            expressions=[
+                _edge_obj(rt, sa, snm, ta, tnm, rev, via)
+                for rt, sa, snm, ta, tnm, rev, via in step_edges
+            ],
+        )
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("nodes"),
+                nodes_array,
+                exp.Literal.string("edges"),
+                edges_array,
+                exp.Literal.string("length"),
+                exp.Literal.number(len(step_edges)),
+            ],
+        )
+
+    def _select_passthrough_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_edge: GraphVarKind,
+        graph_var_kind_passthrough: GraphVarKind,
+    ) -> exp.Expr:
+        """Emit SELECT expression for a passthrough variable from _all_rels subquery."""
+        all_rels_alias = getattr(self, "_all_rels_alias", "_all_rels")
+        rel_var_types = getattr(self, "_rel_var_types", {})
+        if expr_text in rel_var_types:
+            self._graph_vars[alias or expr_text] = graph_var_kind_edge
+        else:
+            self._graph_vars[alias or expr_text] = graph_var_kind_passthrough
+        col = exp.Column(
+            this=exp.Identifier(this=expr_text, quoted=True),
+            table=exp.Identifier(this=all_rels_alias),
+        )
+        return exp.alias_(col, alias or expr_text)
+
+    def _select_path_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_path: GraphVarKind,
+    ) -> exp.Expr:
+        """Emit SELECT expression for a path variable."""
+        self._graph_vars[alias or expr_text] = graph_var_kind_path
+        path_expr = self._build_path_object(expr_text)
+        return exp.alias_(path_expr, alias or expr_text)
+
+    def _select_rel_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_edge: GraphVarKind,
+    ) -> exp.Expr:
+        """Emit SELECT expression for a bare relationship variable."""
+        self._graph_vars[alias or expr_text] = graph_var_kind_edge
+        endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
+        if endpoints:
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
+            rel_type = self._rel_var_type_exprs.get(expr_text) or self._rel_var_types[expr_text]
+            edge_expr: exp.Expression = self._build_edge_object(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                rel_type,
+                src_alias,
+                src_nm,
+                tgt_alias,
+                tgt_nm,
+                is_reversed,
+                self._rel_var_via.get(expr_text),  # REQ-1586
+            )
+            matched = getattr(self, "_rel_var_matched", {}).get(expr_text)
+            if matched is not None:
+                # Between two nodes the statement holds (#303): an edge where its condition holds.
+                edge_expr = exp.Case(
+                    ifs=[exp.If(this=matched.copy(), true=edge_expr)], default=exp.null()
+                )
+            elif expr_text in getattr(self, "_optional_rel_vars", set()):
+                # An OPTIONAL MATCH that matched no relationship binds none: null, not an edge
+                # of null ends.
+                far = exp.Column(
+                    this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+                    table=exp.Identifier(this=tgt_alias),
+                )
+                edge_expr = exp.Case(
+                    ifs=[exp.If(this=exp.Is(this=far, expression=exp.null()), true=exp.null())],
+                    default=edge_expr,
+                )
+        else:
+            edge_expr = exp.Null()
+        return exp.alias_(edge_expr, alias or expr_text)
+
+    def _select_node_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_node: GraphVarKind,
+    ) -> exp.Expr | None:
+        """Emit SELECT expression for a bare node variable. Returns None if not handled."""
+        var_info = self._var_table[expr_text]
+        if var_info[1] is not None:
+            self._graph_vars[alias or expr_text] = graph_var_kind_node
+            table_alias = var_info[0]
+            tbl_col = exp.Column(
+                this=exp.Star(),
+                table=exp.Identifier(this=table_alias),
+            )
+            if alias or table_alias != expr_text:
+                # A node a WITH carries is a row of that WITH, beside what else it carries: named
+                # by its variable, it is the node (graph_rewriter) and not every column carried.
+                # The node's mapping rides on the star, for a name the RETURN gives it.
+                tbl_col.meta[NODE_OF_STAR] = var_info[1]
+                return exp.alias_(tbl_col, alias or expr_text)
+            return tbl_col
+        if hasattr(self, "_domain_nodes") and expr_text in self._domain_nodes:
+            self._graph_vars[alias or expr_text] = graph_var_kind_node
+            tbl_col = exp.Column(
+                this=exp.Star(),
+                table=exp.Identifier(this=expr_text),
+            )
+            if alias:
+                return exp.alias_(tbl_col, alias)
+            return tbl_col
+        return None
+
+    def _select_prop_expr(
+        self, expr: CypherExpr, alias: str | None, shared: frozenset[str] = frozenset()
+    ) -> exp.Expr:
+        """Emit SELECT expression for a property access or arbitrary expression. An unaliased
+        property is named by the property, or, where another item of the RETURN would take the
+        same name (``shared``), as Cypher clients name it: ``var.prop`` (#259)."""
+        from provisa.gql.translator_types import GraphVarKind
+
+        parsed = self._parse_expr(expr)
+        _prop_m = _variable_property(expr)
+        _cypher_alias: str | None = None
+        if _prop_m:
+            _var, _prop = _prop_m
+            _info = self._var_table.get(_var)
+            if _info and _info[1] and _prop in _info[1].properties:
+                _cypher_alias = f"{_var}.{_prop}" if _prop in shared else _prop
+                if _prop in _info[1].map_properties:
+                    # REQ-1991: returned as a map on every engine, whatever form it arrives in.
+                    self._graph_vars[(alias or _prop).lower()] = GraphVarKind.MAP
+        if alias:
+            return exp.alias_(parsed, alias)
+        if _cypher_alias:
+            return exp.alias_(parsed, _cypher_alias)
+        return parsed
+
+    def _select_varlen_rel_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_edge: "GraphVarKind",
+    ) -> exp.Expr:
+        """Emit SELECT expression for a variable-length relationship variable (e.g. c from [c*..5]).
+
+        Flat-join paths: JSON_ARRAY of edge objects from the resolved schema path steps.
+        Recursive CTE paths: NULL (intermediate edges are not projected by the recursive CTE).
+        """
+        path_var = self._varlen_rel_vars[expr_text]
+        path_step_info = getattr(self, "_path_steps", {}).get(path_var)
+        self._graph_vars[alias or expr_text] = graph_var_kind_edge
+        if path_step_info is not None:
+            _, step_edges = path_step_info
+            edges_array = exp.Anonymous(
+                this="JSON_ARRAY",
+                expressions=[
+                    self._build_edge_object(rt, sa, snm, ta, tnm, rev, via)
+                    for rt, sa, snm, ta, tnm, rev, via in step_edges
+                ],
+            )
+            return exp.alias_(edges_array, alias or expr_text)
+        return exp.alias_(exp.Null(), alias or expr_text)
+
+    def _build_node_object_expr(self, alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A node graph functions return (startNode(r), nodes(p)), with the identity every node
+        object carries: the graph draws each node once."""
+        return node_json(alias, nm)
+
+    def _build_select(self, return_clause: ReturnClause) -> list[exp.Expr]:
+        from provisa.gql.translator_types import GraphVarKind  # avoid circular at module level
+
+        exprs: list[exp.Expr] = []
+        passthrough_vars = getattr(self, "_passthrough_vars", set())
+        shared = _shared_property_names(return_clause)
+
+        for item in return_clause.items:
+            expr = item.expression
+            alias = item.alias
+            is_bare = isinstance(expr, Variable)
+            expr_text = expr.name if isinstance(expr, Variable) else ""
+
+            # REQ-2135: an RDF term, a variable a triple binds or a Term the front end wrote
+            term_vars = getattr(self, "_term_vars", {})
+            if (is_bare and expr_text in term_vars) or isinstance(expr, Term):
+                name = alias or expr_text or item.name.strip()
+                self._graph_vars[name] = GraphVarKind.TERM
+                exprs.append(exp.alias_(self._parse_expr(expr), alias=name, quoted=True))
+                continue
+
+            # Passthrough variable: pre-built JSON from all-rels union subquery
+            if is_bare and expr_text in passthrough_vars:
+                exprs.append(
+                    self._select_passthrough_var(
+                        expr_text, alias, GraphVarKind.EDGE, GraphVarKind.PASSTHROUGH
+                    )
+                )
+                continue
+
+            # Varlen relationship variable: RETURN c where c is from [c*..5]
+            varlen_rel_vars = getattr(self, "_varlen_rel_vars", {})
+            if is_bare and expr_text in varlen_rel_vars:
+                exprs.append(self._select_varlen_rel_var(expr_text, alias, GraphVarKind.EDGE))
+                continue
+
+            # Path variable: RETURN p where p = shortestPath(...)
+            if is_bare and expr_text in self._path_vars:
+                exprs.append(self._select_path_var(expr_text, alias, GraphVarKind.PATH))
+                continue
+
+            # Bare relationship variable: RETURN r
+            if is_bare and hasattr(self, "_rel_var_types") and expr_text in self._rel_var_types:
+                exprs.append(self._select_rel_var(expr_text, alias, GraphVarKind.EDGE))
+                continue
+
+            # Bare node variable: RETURN n
+            if is_bare and expr_text in self._var_table:
+                node_expr = self._select_node_var(expr_text, alias, GraphVarKind.NODE)
+                if node_expr is not None:
+                    exprs.append(node_expr)
+                    continue
+
+            # Graph function expression: register alias kind for assembler deserialization
+            if isinstance(expr, FunctionCall) and alias:
+                kind = _GRAPH_FUNCTIONS.get(expr.name.lower())
+                if kind is not None:
+                    self._graph_vars[alias.lower()] = GraphVarKind[kind]
+
+            # Property access or expression
+            exprs.append(self._select_prop_expr(expr, alias, shared))
+
+        return exprs

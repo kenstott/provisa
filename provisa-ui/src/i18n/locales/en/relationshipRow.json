@@ -41,6 +41,9 @@
     "deleteConsequence": "The relationship is removed from the model. Queries can no longer join through it.",
     "parametersFed": "Parameters fed",
     "parametersFedHelp": "A join over this relationship gives the target these values from each source row.",
-    "parameterNotFed": "Not fed"
+    "parameterNotFed": "Not fed",
+    "sameEntity": "Same entity",
+    "sameEntityHint": "The rows it joins are one real-world thing: one term grounds both tables, joined 1:1 on keys",
+    "cardinalityOneToOne": "one-to-one"
   }
 }

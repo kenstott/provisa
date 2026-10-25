@@ -61,6 +61,10 @@ os.environ["PROVISA_LICENSING_SANDBOX_DIR"] = os.path.join(
     os.environ["PROVISA_DATA_DIR"], "licensing"
 )
 os.makedirs(os.environ["PROVISA_LICENSING_SANDBOX_DIR"], exist_ok=True)
+# The telemetry folder, where a native engine lands its traces, defaults to ~/.provisa/telemetry
+# whatever PROVISA_HOME says when PROVISA_TELEMETRY_DIR is exported for local-dev in the calling
+# shell. Forced, for the same reasons as PROVISA_DATA_DIR; a server a test spawns names its own.
+os.environ["PROVISA_TELEMETRY_DIR"] = os.path.join(os.environ["PROVISA_DATA_DIR"], "telemetry")
 # The trial clock too: pinned to the session's start, so no test changes behaviour on the date
 # the developer's machine was first seen (provisa/licensing/anchors.py _pinned_first_seen). A
 # test that needs the post-trial notice pins an earlier date for its own server.
@@ -238,9 +242,9 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     # S3-backed Hive: the metastore plus the core MinIO (reused) hold the table data on s3a://.
     "requires_hive_s3": ["hive-s3-metastore"],
     # REQ-1069 metadata-export targets. Marquez brings its own Postgres; OpenMetadata brings its
-    # own MySQL and reuses the core-stack Elasticsearch for search.
+    # own MySQL and its own Elasticsearch 9 (docker-compose.test.yml says why).
     "requires_marquez": ["marquez-db", "marquez"],
-    "requires_openmetadata": ["openmetadata-db", "elasticsearch", "openmetadata"],
+    "requires_openmetadata": ["openmetadata-db", "openmetadata-search", "openmetadata"],
     # Atlas embeds its own HBase and Solr, so the one service is the whole target.
     "requires_atlas": ["atlas"],
     # REQ-2119: GMS starts after its one-shot setup jobs, which compose runs as its dependencies
@@ -282,7 +286,7 @@ _HEAVY_MARKERS = frozenset(
         "requires_druid",
         "requires_hive",
         "requires_airport",
-        # A 1G JVM plus MySQL plus the Elasticsearch cluster. Session-provisioning it would leave
+        # A 1G JVM plus MySQL plus its own Elasticsearch. Session-provisioning it would leave
         # that resident for every unrelated integration test in the run.
         "requires_openmetadata",
         # An embedded HBase, an embedded Solr and the Atlas JVM in one container.
@@ -755,12 +759,17 @@ class _DockerServiceManager:
         # `up --wait` per batch, so each set is healthy before the next one starts booting
         # (see _marker_batches).
         for batch in batches:
-            subprocess.run(
+            up = subprocess.run(
                 ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *batch],
                 cwd=_REPO_ROOT,
                 env=_itest_compose_env(),
-                check=True,
+                check=False,
             )
+            if up.returncode != 0:
+                # "dependency failed to start: ... is unhealthy" names the container, never why:
+                # its state and its own log say it, and the teardown removes both.
+                _dump_service_diagnostics(list(batch))
+                up.check_returncode()
 
         # A SIGTERM (``timeout``, a supervisor) ends the process without pytest_sessionfinish,
         # leaving this session's stack up until a later run reaps it. Tear it down on SIGTERM and
@@ -1617,6 +1626,8 @@ def provisa_server(_reserve_flight_port):
         "FLIGHT_PORT": str(_flight_port),
         "PROVISA_CONFIG": _live_cfg,
         "PROVISA_ENCRYPTION_KEY": _master_key_b64(None),
+        # Its own trace folder: it compacts the folder every minute, as every server does.
+        "PROVISA_TELEMETRY_DIR": __import__("tempfile").mkdtemp(prefix="live-server-telemetry-"),
         **_server_coverage_env(),
     }
     # Keep the subprocess's own output. It used to go to DEVNULL, which turned every startup

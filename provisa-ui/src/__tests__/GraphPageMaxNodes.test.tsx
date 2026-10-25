@@ -80,7 +80,9 @@ function serve(answer: Record<string, unknown>) {
     "fetch",
     vi.fn(async (url: string) => {
       let body: unknown = {};
-      if (String(url).includes("/data/cypher")) body = answer;
+      // /data/cypher answers one result per statement; the query here is one statement.
+      if (String(url).includes("/data/cypher"))
+        body = { results: [{ statement: "MATCH", status: 200, body: answer }] };
       else if (String(url).includes("/data/graph-schema"))
         body = { node_labels: [], relationship_types: [] };
       return new Response(JSON.stringify(body), {

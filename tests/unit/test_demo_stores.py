@@ -318,9 +318,24 @@ def _bodies(runner: FakeRunner) -> list[tuple[str, dict]]:
     return found
 
 
+def _es_answers(ns: str, suffix: str, held: list[str], marked: str, marks: list[str]) -> dict:
+    """What the shared Elasticsearch answers: the mark's status, the version's snapshot (indices
+    ``reviews`` and ``authors``), the indices held under the suffix, and the marks there are."""
+    return {
+        "-w %{http_code}": marked,
+        f"/_snapshot/{ns}/data": json.dumps(
+            {"snapshots": [{"indices": ["reviews", "authors", ".geoip_databases"]}]}
+        ),
+        f"/_cat/indices/*{suffix}": "\n".join(held) + "\n",
+        "provisa_demo_marks/_search": json.dumps(
+            {"hits": {"hits": [{"_id": mark} for mark in marks]}}
+        ),
+    }
+
+
 def test_an_index_snapshot_restores_each_index_under_its_namespaced_name():
     suffix = ds.namespace("reviews", "v1")
-    runner = FakeRunner({"-w %{http_code}": "404"})
+    runner = FakeRunner(_es_answers(suffix.lstrip("_"), suffix, [], "404", []))
     store = ds.Store(
         "elasticsearch", "elasticsearch", {"com.provisa.demo.ns_env": "REVIEWS_ES_NS"}, {}
     )
@@ -338,17 +353,58 @@ def test_an_index_snapshot_restores_each_index_under_its_namespaced_name():
     assert "provisa_demo_marks/_doc" in runner.lines()[-1]
 
 
+def _es_store():
+    return ds.Store("elasticsearch", "elasticsearch", {"com.provisa.demo.ns_env": "E_NS"}, {})
+
+
 def test_a_loaded_index_namespace_is_not_restored_again():
-    runner = FakeRunner({"-w %{http_code}": "200"})
-    store = ds.Store("elasticsearch", "elasticsearch", {"com.provisa.demo.ns_env": "E_NS"}, {})
-    ds.es_load(_shared(runner), "reviews", "v1", store, SUFFIX)
+    ns = SUFFIX.lstrip("_")
+    held = [f"reviews{SUFFIX}", f"authors{SUFFIX}"]
+    runner = FakeRunner(_es_answers(ns, SUFFIX, held, "200", [f"{ns}:elasticsearch"]))
+    ds.es_load(_shared(runner), "reviews", "v1", _es_store(), SUFFIX)
     assert not any("_restore" in line for line in runner.lines())
+    assert not any("DELETE" in line for line in runner.lines())
+
+
+def test_a_namespace_marked_loaded_whose_index_is_gone_is_restored_whole():
+    ns = SUFFIX.lstrip("_")
+    runner = FakeRunner(
+        _es_answers(ns, SUFFIX, [f"authors{SUFFIX}"], "200", [f"{ns}:elasticsearch"])
+    )
+    ds.es_load(_shared(runner), "reviews", "v1", _es_store(), SUFFIX)
+    lines = runner.lines()
+    dropped = next(i for i, line in enumerate(lines) if "DELETE" in line and f"/*{SUFFIX}?" in line)
+    restored = next(i for i, line in enumerate(lines) if "_restore" in line)
+    assert dropped < restored
+    assert "provisa_demo_marks/_doc" in lines[-1]
+
+
+def test_the_indices_a_version_misses_are_named_hidden_ones_aside():
+    ns = SUFFIX.lstrip("_")
+    runner = FakeRunner(_es_answers(ns, SUFFIX, [f"authors{SUFFIX}"], "200", []))
+    missing = ds.es_missing(_shared(runner), "reviews", "v1", _es_store(), SUFFIX)
+    assert missing == [f"reviews{SUFFIX}"]
 
 
 def test_dropping_a_version_drops_its_indices_by_their_suffix():
-    runner = FakeRunner()
+    runner = FakeRunner(_es_answers(SUFFIX.lstrip("_"), SUFFIX, [], "404", []))
     ds.es_drop(_shared(runner), SUFFIX)
     assert any("DELETE" in line and f"/*{SUFFIX}?" in line for line in runner.lines())
+
+
+def test_dropping_a_version_deletes_its_marks_by_id_and_no_others():
+    ns = SUFFIX.lstrip("_")
+    other = ds.namespace("reviews", "v2").lstrip("_")
+    marks = [f"{ns}:elasticsearch", f"{ns}:search2", f"{other}:elasticsearch"]
+    runner = FakeRunner(_es_answers(ns, SUFFIX, [], "404", marks))
+    ds.es_drop(_shared(runner), SUFFIX)
+    lines = runner.lines()
+    # Elasticsearch 8 refuses a prefix query on _id: no delete_by_query is sent for them.
+    assert not any("_delete_by_query" in line for line in lines)
+    deleted = [line for line in lines if "DELETE" in line and "provisa_demo_marks/_doc/" in line]
+    assert len(deleted) == 2
+    assert all("-f" in line.split() for line in deleted)
+    assert not any(other in line for line in deleted)
 
 
 # -- Qdrant ----------------------------------------------------------------------------------------
@@ -474,6 +530,30 @@ _REVIEWS = {
 }
 
 
+_SEARCH = {
+    "services": {
+        "elasticsearch": {
+            "image": "docker.elastic.co/elasticsearch/elasticsearch:8.13.0",
+            "labels": {"com.provisa.demo.role": "search", "com.provisa.demo.ns_env": "R_ES_NS"},
+        },
+    }
+}
+
+
+def test_a_version_whose_search_indices_are_all_held_passes_its_check(monkeypatch, tmp_path):
+    suffix = ds.namespace("reviews", "v1")
+    held = [f"reviews{suffix}", f"authors{suffix}"]
+    runner = FakeRunner(_es_answers(suffix.lstrip("_"), suffix, held, "200", []))
+    _demo(monkeypatch, tmp_path, runner, _SEARCH).check()
+
+
+def test_a_version_missing_a_search_index_fails_its_check_naming_it(monkeypatch, tmp_path):
+    suffix = ds.namespace("reviews", "v1")
+    runner = FakeRunner(_es_answers(suffix.lstrip("_"), suffix, [f"authors{suffix}"], "200", []))
+    with pytest.raises(ds.StoreError, match=f"holds no reviews{suffix}"):
+        _demo(monkeypatch, tmp_path, runner, _SEARCH).check()
+
+
 def test_a_version_brought_up_says_where_each_store_is_and_the_names_of_its_shared_data(
     monkeypatch, tmp_path
 ):
@@ -542,6 +622,54 @@ def test_dropping_a_version_drops_its_data_from_the_shared_stores_running_and_it
     assert any(f'DROP DATABASE IF EXISTS "shop{suffix}"' in line for line in lines)
     assert not any("mongosh" in line or "elasticsearch" in line for line in lines)
     assert lines[-1] == "docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans"
+
+
+def test_dropping_a_version_removes_the_images_its_services_ran_that_no_container_still_uses(
+    monkeypatch, tmp_path
+):
+    """Every version pulled leaves its images on the node's disk (cloud-dev's sandbox VM at 97%,
+    its shared Elasticsearch red): those no other container uses go, and only those."""
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
+    monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
+    monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
+    monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
+    runner = FakeRunner(
+        {
+            "{{.Image}}": "neo4j:5.19-community\nreviews-api:1\nreviews-api:1\n",
+            "ancestor=neo4j:5.19-community": "newercid\n",
+        }
+    )
+    ds.Demo(runner, "reviews", "v1", None).drop(set())
+    lines = runner.lines()
+    down = lines.index("docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans")
+    listed = next(
+        i
+        for i, x in enumerate(lines)
+        if "label=com.docker.compose.project=provisa-demo-reviews-v1" in x
+    )
+    assert listed < down
+    assert lines[down + 1 :] == [
+        "docker ps -a -q --filter ancestor=neo4j:5.19-community",
+        "docker ps -a -q --filter ancestor=reviews-api:1",
+        "docker image rm reviews-api:1",
+    ]
+    assert not any(" prune" in x for x in lines)
+
+
+def test_stopping_a_lingered_out_version_keeps_the_images_its_services_ran(monkeypatch, tmp_path):
+    """A demo whose stores lingered out is brought back at its next open: its data and its own
+    services go, its images stay, so it comes back without a pull (REQ-2049)."""
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
+    monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
+    monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
+    monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
+    suffix = ds.namespace("reviews", "v1")
+    runner = FakeRunner({"NOT datistemplate": f"shop{suffix}\n", "{{.Image}}": "reviews-api:1\n"})
+    ds.Demo(runner, "reviews", "v1", None).drop({"postgres"}, keep_images=True)
+    lines = runner.lines()
+    assert any(f'DROP DATABASE IF EXISTS "shop{suffix}"' in line for line in lines)
+    assert lines[-1] == "docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans"
+    assert not any("image rm" in line or "ancestor=" in line for line in lines)
 
 
 _STREAMING = {
@@ -759,6 +887,81 @@ def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
         _shared(runner).start("kafka")
     assert "--- docker logs kcid ---" in str(failed.value)
     assert "the cluster id is not a valid UUID" in str(failed.value)
+
+
+class _NetworkGone(FakeRunner):
+    """Docker refusing to start a stopped container whose network was removed and created again
+    since, as cloud-dev's daemon said it after the node's stack restarted."""
+
+    def __init__(self, kind: str, *, recreated_starts: bool = True) -> None:
+        super().__init__({"ps -a -q": f"{kind}cid"})
+        self.kind, self.recreated_starts = kind, recreated_starts
+
+    def run(self, cmd, *, stdin=None):
+        line = " ".join(cmd)
+        if line.endswith(f"up -d --wait {self.kind}"):
+            self.calls.append((line, None))
+            raise ds.StoreError(
+                f"{line} failed (1): Error response from daemon: failed to set up container "
+                "networking: network b11f5609e4c3 not found"
+            )
+        if "--force-recreate" in line and not self.recreated_starts:
+            self.calls.append((line, None))
+            raise ds.StoreError(f"{line} failed (1): unhealthy")
+        return super().run(cmd, stdin=stdin)
+
+
+@pytest.mark.parametrize("kind", ["postgres", "mongo", "elasticsearch", "qdrant", "kafka"])
+def test_a_shared_store_whose_network_was_recreated_is_recreated_not_started(kind):
+    """A stopped shared store attached to the tier's network cannot start once that network was
+    recreated (the node's stack restarted): it is recreated, its named volume -- its data -- kept,
+    so every demo naming it is not left starting forever (cloud-dev, 2026-10-22)."""
+    runner = _NetworkGone(kind)
+    _shared(runner).start(kind)
+    lines = runner.lines()
+    assert lines[-1].endswith(f"up -d --wait --force-recreate {kind}")
+    assert not any(" down" in x or "volume rm" in x for x in lines)  # its data is kept
+
+
+def test_a_recreated_shared_store_that_still_fails_says_why_from_its_own_log():
+    runner = _NetworkGone("mongo", recreated_starts=False)
+    runner.answers["docker logs --tail"] = "mongod: data directory not writable"
+    with pytest.raises(ds.StoreError) as failed:
+        _shared(runner).start("mongo")
+    assert "unhealthy" in str(failed.value)
+    assert "mongod: data directory not writable" in str(failed.value)
+
+
+def test_a_shared_store_that_fails_for_another_reason_is_not_recreated():
+    runner = FakeRunner({"ps -a -q mongo": "mcid"}, fail={"up -d --wait mongo"})
+    with pytest.raises(ds.StoreError):
+        _shared(runner).start("mongo")
+    assert not any("--force-recreate" in x for x in runner.lines())
+
+
+def test_a_superseded_versions_own_kafka_on_the_shared_port_is_taken_down_before_it_starts():
+    """A version an earlier release ran with a Kafka of its own keeps the shared Kafka's port
+    after a newer version took over: the shared Kafka could not bind it, and no demo naming Kafka
+    was ready again (cloud-dev's streaming 202610182058)."""
+    old = "provisa-demo-streaming-202610182058-a481c50b2"
+    runner = FakeRunner(
+        {
+            "publish=29092": f"{old} {old}-kafka-1\nprovisa-demo-stores-t provisa-demo-stores-t-kafka-1"
+        }
+    )
+    _shared(runner).start("kafka")
+    lines = runner.lines()
+    down = f"docker compose -p {old} down -v --remove-orphans"
+    assert down in lines
+    assert lines.index(down) < next(i for i, x in enumerate(lines) if "up -d --wait kafka" in x)
+    assert not any("-p provisa-demo-stores-t down" in x for x in lines)
+
+
+def test_the_shared_kafkas_port_held_by_no_demo_version_is_refused_by_name():
+    runner = FakeRunner({"publish=29092": " some-broker"})
+    with pytest.raises(ds.StoreError, match="held by some-broker"):
+        _shared(runner).start("kafka")
+    assert not any("down" in x or "up -d" in x for x in runner.lines())
 
 
 @pytest.mark.parametrize("kind", ["postgres", "mongo"])

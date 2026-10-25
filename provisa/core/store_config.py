@@ -34,10 +34,13 @@ from sqlalchemy import select
 
 from provisa.core import domain_policy
 from provisa.core.models import (
+    CalendarConfig,
     DataProduct,
     Domain,
     Function,
     GlossaryTermConfig,
+    GlossaryTermDeprecation,
+    GlossaryTermRetirement,
     GlossaryTermEdgeConfig,
     Metric,
     Relationship,
@@ -54,6 +57,7 @@ from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_terms,
     naming_rules,
+    registered_tables,
 )
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
@@ -70,6 +74,7 @@ MODEL_SECTIONS: tuple[str, ...] = (
     "roles",
     "data_products",
     "glossary_terms",
+    "calendars",
     "tables",
     "relationships",
     "metrics",
@@ -156,8 +161,8 @@ def _internal_table(row: dict[str, Any]) -> bool:
     return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops")
 
 
-def _table(row: dict[str, Any]) -> dict[str, Any]:
-    fields = _fields(Table, row)
+def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
+    fields = _fields(Table, {**row, "class_term": class_term})
     fields["columns"] = [{**c, "name": c["column_name"]} for c in row["columns"]]
     fields["columns"] = [
         {k: v for k, v in c.items() if v is not None and k != "column_name"}
@@ -204,11 +209,33 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
         )
     rows = (
         await conn.execute_core(
-            select(glossary_terms.c.id, glossary_terms.c.name, glossary_terms.c.definition)
+            select(
+                glossary_terms.c.id,
+                glossary_terms.c.name,
+                glossary_terms.c.definition,
+                glossary_terms.c.retired,
+                glossary_terms.c.deprecation_asserted,
+                glossary_terms.c.status_reason,
+                glossary_terms.c.retire_on,
+            )
             .where(glossary_terms.c.id.in_(sorted(declared)))
             .order_by(glossary_terms.c.name)
         )
     ).fetchall()
+
+    def _status(r: Any) -> dict[str, Any]:
+        # REQ-2144: what a curator asserted, as a configuration states it; a retirement's
+        # successor rides its REPLACES edge, on the successor's own entry.
+        if r.retired and r.status_reason:
+            return {"retire": GlossaryTermRetirement(reason=r.status_reason)}
+        if r.deprecation_asserted:
+            return {
+                "deprecate": GlossaryTermDeprecation(
+                    reason=r.status_reason or "", retire_on=r.retire_on
+                )
+            }
+        return {}
+
     return [
         _written(
             GlossaryTermConfig(
@@ -216,10 +243,31 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
                 definition=r.definition,
                 domains=declared[r.id],
                 edges=edges.get(r.id, []),
+                **_status(r),
             )
         )
         for r in rows
     ]
+
+
+async def _class_terms(conn: "Connection") -> dict[int, str]:
+    """Each table's class term, by name, as a configuration states it (REQ-2141): every grounding
+    a configuration declared or a person made. A draft sync derived, on a term no one has
+    curated, is derived and not stated."""
+    from provisa.core.repositories.glossary import draft_class_terms
+
+    derived = await draft_class_terms(conn)
+    rows = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.id,
+                registered_tables.c.class_term_id,
+                registered_tables.c.class_term_derived,
+                glossary_terms.c.name,
+            ).join(glossary_terms, glossary_terms.c.id == registered_tables.c.class_term_id)
+        )
+    ).fetchall()
+    return {r.id: r.name for r in rows if not (r.class_term_derived and r.class_term_id in derived)}
 
 
 async def _naming_rules(conn: "Connection") -> list[dict[str, str]]:
@@ -236,6 +284,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     (``naming_rules``). Sections are complete lists; an empty one is an empty list."""
     from provisa.core.db import SEEDED_SOURCE_IDS
     from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
+    from provisa.core.repositories import calendar as calendar_repo
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import function as function_repo
     from provisa.core.repositories import kafka_source as kafka_repo
@@ -288,8 +337,10 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             continue
         fields = _fields(TagAssignment, row)
         fields.pop("table_id", None)  # a serial: the configuration names the table by table_ref
+        fields.pop("term_id", None)  # a serial: the configuration names the term (REQ-2145)
         tag_assignments.append(_written(TagAssignment.model_validate(fields)))
 
+    class_terms = await _class_terms(conn)
     stores, regions = await _stores_and_regions(conn)
     model = {
         "stores": stores,
@@ -303,13 +354,21 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             if row["domain_id"] not in ("meta", "ops")
         ],
         "glossary_terms": await _glossary_terms(conn),
-        "tables": [_table(t) for t in tables if int(t["id"]) not in internal],
+        "tables": [
+            _table(t, class_terms.get(int(t["id"]))) for t in tables if int(t["id"]) not in internal
+        ],
         "relationships": relationships,
         "metrics": [
             # A fact-derived metric is a part of its fact table: the table brings it.
             _written(Metric.model_validate(_fields(Metric, row)))
             for row in await metric_repo.list_all(conn)
             if row.get("from_fact") is None
+        ],
+        "calendars": [  # REQ-2120: every version, each under its name
+            _written(CalendarConfig.model_validate(_fields(CalendarConfig, row)))
+            for row in sorted(
+                await calendar_repo.list_all(conn), key=lambda r: (r["name"], r["version"])
+            )
         ],
         "tags": [
             # The system and derived tags are code-defined, in every store.

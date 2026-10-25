@@ -11,102 +11,13 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from inflect import Word as InflectWord
-    from inflect import engine as _Engine
-
     from provisa.core.database import Connection
 
+
 # inflect (~0.8s import) lazy-loaded — paid once on first singularization, never at cold start.
-_inflect: "_Engine | None" = None
-
-
-def _engine() -> "_Engine":
-    global _inflect
-    if _inflect is None:
-        import inflect
-
-        _inflect = inflect.engine()
-    return _inflect
-
-
-def _to_singular(camel: str) -> str:
-    """Singularize camelCase word using inflect with round-trip validation."""
-    eng = _engine()
-    candidate = eng.singular_noun(cast("InflectWord", camel))
-    if candidate is False:
-        return camel  # already singular
-    # Validate: if round-trip doesn't reconstruct original, inflect got it wrong
-    if eng.plural(cast("InflectWord", candidate)) == camel:
-        return candidate
-    return camel
-
-
-def derive_graphql_alias(  # REQ-155, REQ-194, REQ-351, REQ-1586
-    target_table_name: str,
-    cardinality: str,
-    convention: str = "apollo_graphql",
-    *,
-    via_label_source: str | None = None,
-    via_type_value: str | None = None,
-    via_table_name: str | None = None,
-    cypher_alias: str | None = None,
-) -> str | None:
-    """Derive GraphQL field name from target table name + cardinality.
-
-    Always strips verb prefixes (find/get/list/…) via rel_field_name.
-    snake / hasura_graphql → snake_case output; apollo_graphql → camelCase.
-
-    REQ-1586: a junction-backed edge is named for its nominated label instead. Several such edges
-    share one junction table and one target table, so the target's name does not tell them apart —
-    it hands every one of them the same field name.
-    """
-    from provisa.compiler.naming import apply_convention, junction_field_name, rel_field_name
-
-    if via_label_source:
-        return apply_convention(
-            junction_field_name(
-                via_label_source,
-                cardinality,
-                type_value=via_type_value,
-                via_table_name=via_table_name,
-                cypher_alias=cypher_alias,
-            ),
-            convention,
-        )
-    if not target_table_name:
-        return None
-    name = rel_field_name(target_table_name, cardinality)
-    return apply_convention(name, convention)
-
-
-def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
-    """Derive Cypher relationship type from FK column + cardinality.
-
-    Rules:
-    - Strip _id/_fk/_pk suffix from source_column
-    - Singularize with inflect (same helper as derive_graphql_alias)
-    - Prepend direction verb based on cardinality:
-      one-to-many  → HAS_<ENTITY>
-      many-to-one  → BELONGS_TO_<ENTITY>
-      other        → <ENTITY>
-    """
-    col = (source_column or "").strip().lower()
-    for suffix in ("_id", "_fk", "_pk"):
-        if col.endswith(suffix) and len(col) > len(suffix):
-            col = col[: -len(suffix)]
-            break
-    singular = _to_singular(col) if col else col
-    entity = (singular or col).upper()
-    if cardinality == "one-to-many":
-        return f"HAS_{entity}"
-    if cardinality == "many-to-one":
-        return f"BELONGS_TO_{entity}"
-    return entity
-
-
 def _as_list(v: Any) -> list:
     """A JSON list column. On PostgreSQL the jsonb codec deserializes it to a list; on a SQLite
     control plane (no codec) a raw-SQL read returns the JSON as TEXT, so decode a string here —
@@ -142,7 +53,10 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "change_signal, watermark_column, probe_type, "  # REQ-929/924/982: the table's own
         "pagination, "  # REQ-318
         "landing_filter, "  # REQ-2062: what of the table its replica holds
-        "query_template "  # REQ-1668/1683/1980: the query a query-API or pipeline table runs
+        "query_template, "  # REQ-1668/1683/1980: the query a query-API or pipeline table runs
+        # REQ-2109: what a bitemporal table maps, and the refresh interval and allowed lateness
+        # of the version log of one updated in place (bitemporal_capture).
+        "business_key, valid_time, recorded_time, mv_refresh_interval, mv_allowed_lateness "
         "FROM registered_tables WHERE draft = $1 ORDER BY id",
         draft,
     )
@@ -169,6 +83,10 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         table["live"] = _as_dict(row.get("live"))  # REQ-1733
         table["delta"] = row.get("delta")  # REQ-874: dict or None, reconstructed on the registry
         table["role_ttl"] = _as_dict(row["role_ttl"])  # REQ-1907
+        # REQ-2109: NULL = not bitemporal
+        table["business_key"] = (
+            None if row["business_key"] is None else _as_list(row["business_key"])
+        )
         table["pagination"] = (  # REQ-318: NULL = not paged here
             None if row["pagination"] is None else _as_dict(row["pagination"])
         )
@@ -209,17 +127,22 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
 async def fetch_relationships(
     conn: "Connection",
 ) -> list[dict]:  # REQ-155, REQ-194, REQ-351, REQ-399
-    """Fetch relationships, computing graphql_alias when not persisted."""
+    """Fetch relationships, each with its effective names as stored on its row
+    (core.relationship_names): ``graphql_alias`` the pinned one or the stored GraphQL field,
+    ``computed_cypher_alias`` the stored Cypher type where no alias is pinned."""
     rows = await conn.fetch(
         "SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, "
         "r.target_column, r.cardinality, r.materialize, r.refresh_interval, "
         "r.target_function_name, r.function_arg, r.alias, r.graphql_alias, r.disable_cypher, "
+        "r.same_entity, "  # REQ-2141
         # REQ-1586: the junction declaration travels with the edge — the compiler reads it to build
         # the two-hop join, and label_map reads via_label_source to name the exposed type.
         "r.via_table_id, r.via_source_column, r.via_target_column, r.via_type_column, "
         "r.via_type_value, r.via_label_source, "
         # REQ-2099: the target's parameters the edge feeds, read by the materialize stage.
         "r.parameters, "
+        # REQ-351: the effective names, derived and stored once (core.relationship_names).
+        "r.cypher_type, r.graphql_field, "
         "t.table_name AS target_table_name, "
         "v.table_name AS via_table_name "
         "FROM relationships r "
@@ -230,20 +153,7 @@ async def fetch_relationships(
     result = []
     for r in rows:
         d = dict(r)
-        if not d.get("graphql_alias"):
-            d["graphql_alias"] = derive_graphql_alias(
-                d.get("target_table_name") or "",
-                d.get("cardinality") or "",
-                via_label_source=d.get("via_label_source"),
-                via_type_value=d.get("via_type_value"),
-                via_table_name=d.get("via_table_name"),
-                cypher_alias=d.get("alias"),
-            )
-        if not d.get("alias"):
-            d["computed_cypher_alias"] = derive_cypher_alias(
-                d.get("source_column") or "", d.get("cardinality") or ""
-            )
-        else:
-            d["computed_cypher_alias"] = None
+        d["graphql_alias"] = d["graphql_alias"] or d["graphql_field"]
+        d["computed_cypher_alias"] = None if d["alias"] else d["cypher_type"]
         result.append(d)
     return result

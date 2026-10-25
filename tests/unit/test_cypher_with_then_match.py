@@ -17,9 +17,9 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.translator import cypher_to_sql
 
 
 def _node(label: str, table_id: int, table: str, columns: list[str]) -> NodeMapping:
@@ -129,7 +129,7 @@ def test_an_unregistered_type_inside_a_statement_is_refused_as_in_its_match(cyph
     """REQ-603: a statement inside the statement and a pattern comprehension name relationship
     types too; an unregistered one refuses the whole statement, never lowers to no rows or to
     some other relationship."""
-    from provisa.cypher.translator_types import UnregisteredRelationshipType
+    from provisa.gql.translator_types import UnregisteredRelationshipType
 
-    with pytest.raises(UnregisteredRelationshipType, match=r"type\(s\): NOPE"):
+    with pytest.raises(UnregisteredRelationshipType, match=r"There is no relationship type :NOPE"):
         cypher_to_sql(parse_cypher(cypher), _label_map(), {})

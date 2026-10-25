@@ -26,7 +26,8 @@ class CypherParamError(Exception):
     """Raised for unbound or missing parameters."""
 
 
-_PARAM_RE = re.compile(r"\$([A-Za-z_]\w*)")
+# A parameter's name may be a number ($0, $1) as well as a name.
+_PARAM_RE = re.compile(r"\$(\w+)")
 
 
 def collect_param_names(query: str) -> list[str]:  # REQ-571

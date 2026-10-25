@@ -23,7 +23,6 @@
     "descriptionLabel": "Beschreibung",
     "descriptionPlaceholder": "Erscheint in der SDL-Dokumentation",
     "dataProductLabel": "Datenprodukt",
-    "dataProductHint": "(im Katalog veröffentlichen / nach Atlas, Atlan usw. exportieren)",
     "discoverLabel": "Spalten erkennen",
     "discoverHint": "(Spalten bei der Registrierung aus der Live-Quelle ableiten — für schemalose/NoSQL-Quellen; keine manuelle Spaltenauswahl nötig)",
     "watermarkLabel": "Wasserzeichen-Spalte",
@@ -135,6 +134,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vektoren von {{collection}}",
     "qdrantVector": "{{name}}: {{size}} Dimensionen, bewertet nach {{distance}}",
-    "qdrantUnnamedVector": "(ohne Namen)"
+    "qdrantUnnamedVector": "(ohne Namen)",
+    "continue": "Weiter"
   }
 }

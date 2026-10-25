@@ -82,10 +82,6 @@ if TYPE_CHECKING:
 
 _VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-# Schema (inside the landing database) that Horizon-native TAG objects live in. A fixed, dedicated
-# schema keeps governance/model tags out of any source's own schema namespace.
-_TAGS_SCHEMA = "PROVISA_GOVERNANCE"
-
 
 def _identifier(raw: str) -> str:
     name = raw.replace("-", "_")
@@ -191,7 +187,7 @@ def comment_statements(
     carries its description alongside its tags, not just an attachable source's real TABLE. Pure — no I/O — ``kinds`` (one ``_object_kind`` I/O lookup per
     table, done by the caller) is what lets it stay testable without a live connection. A
     table/column missing from ``kinds`` (not yet landed) is skipped, not an error here — the
-    caller already reports missing landing terminals via ``_table_exists``.
+    caller already reports missing landing terminals from that lookup.
 
     Governance facts publish here rather than as a Snowflake TAG (see :func:`tag_statements`'s
     docstring): a rule id and its restricted/exempt roles are metadata about the asset, not a
@@ -482,12 +478,15 @@ def _organization_context(runtime: SnowflakeFederationRuntime) -> tuple[str, str
 def _object_kind(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str]) -> str | None:
     """``'TABLE'``/``'VIEW'`` for the object at ``parts``, or ``None`` if it doesn't exist yet
     (source never landed, or its database/schema doesn't exist — same "not there" outcome).
-    Needed alongside :func:`_table_exists` because COMMENT DDL (:func:`_set_comment`), unlike TAG
-    DDL, requires the caller to know which kind it actually is."""
+    COMMENT DDL (:func:`_set_comment`) needs the kind, and ``None`` is how every caller tells a
+    landing terminal that is missing."""
     database, schema, table = parts
     cur = runtime.connection.cursor()
     try:
         cur.execute(f'SHOW OBJECTS LIKE {_literal(table)} IN SCHEMA "{database}"."{schema}"')
+        # A SHOW that ran has a result shape; the 5.x connector types it as optional.
+        if cur.description is None:
+            raise RuntimeError("SHOW OBJECTS returned no result description")
         cols = [d[0] for d in cur.description]
         row = cur.fetchone()
         return str(dict(zip(cols, row))["kind"]).upper() if row is not None else None
@@ -495,10 +494,6 @@ def _object_kind(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str
         return None
     finally:
         cur.close()
-
-
-def _table_exists(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str]) -> bool:
-    return _object_kind(runtime, parts) is not None
 
 
 def _masked_columns(governance_tags: list["GovernanceTag"]) -> dict[str, tuple[str, ...]]:
@@ -590,7 +585,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
     ) -> int:
         """Applies table/column descriptions, appended with any governance facts on that same
         asset (REQ-1071), as native Snowflake COMMENTs (REQ-1647), gated on the target already
-        existing (mirrors ``_publish_tags``'s ``_table_exists`` gate)."""
+        existing (:func:`_object_kind`); a missing one is reported, not described."""
         known_fqns = {table.ref.fqn() for table in tables} | {
             column.ref.fqn() for table in tables for column in table.columns
         }

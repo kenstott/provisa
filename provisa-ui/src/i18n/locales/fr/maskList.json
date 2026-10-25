@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} → {{replace}}",
     "truncateLabel": "tronqué à {{precision}}",
     "constantLabel": "constante {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "Masques courants",
+    "presetsAria": "Masques courants pour l’entrée {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "Fonctionne sur tous les moteurs",
+    "universalHelp": "Les motifs utilisent un seul dialecte de regex ; Provisa le traduit pour chaque moteur. Les valeurs qui ne correspondent pas au motif sont entièrement masquées.",
+    "notUniversal": "Pas sur tous les moteurs : {{construct}} au caractère {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, 4 derniers",
+      "card_last4": "Numéro de carte, 4 derniers",
+      "phone_last4": "Téléphone, 4 derniers",
+      "email_initial_domain": "E-mail, première lettre et domaine",
+      "all_but_last4": "Tout sauf les 4 derniers caractères",
+      "digits_keep_separators": "Chiffres, séparateurs conservés",
+      "zip3": "Code ZIP américain, 3 premiers",
+      "birth_year": "Date de naissance, année seule",
+      "iban_last4": "IBAN, 4 derniers",
+      "keep_first_last": "Garder les premiers et derniers caractères"
+    },
+    "presetParam": {
+      "first": "Premiers",
+      "last": "Derniers"
+    },
+    "construct": {
+      "lookahead": "une assertion avant (?=…)",
+      "lookbehind": "une assertion arrière (?<=…)",
+      "backreference": "une référence arrière \\1 dans le motif",
+      "lazy_quantifier": "un quantificateur paresseux (*?, +?)",
+      "possessive_quantifier": "un quantificateur possessif (*+, ++)",
+      "named_group": "un groupe nommé (?<name>…)",
+      "word_boundary": "une limite de mot \\b",
+      "unicode_class": "une classe Unicode \\p{…}",
+      "posix_class": "une classe POSIX [[:…:]]",
+      "inline_flags": "des options en ligne (?i)",
+      "unknown_escape": "un échappement que tous les moteurs ne connaissent pas",
+      "open_bound": "une borne ouverte {n,}",
+      "bound_too_large": "un nombre de répétitions trop grand",
+      "unbalanced_paren": "une parenthèse non fermée",
+      "unbalanced_bracket": "un crochet non fermé",
+      "empty_class": "une classe vide []",
+      "bad_range": "une plage dont le début suit la fin",
+      "nothing_to_repeat": "un quantificateur sans rien à répéter",
+      "replace_group_out_of_range": "un $n désignant un groupe absent du motif",
+      "replace_named_ref": "une référence nommée dans le remplacement",
+      "replace_bad_escape": "un échappement que le remplacement n’accepte pas",
+      "alternation_prefix": "des alternatives dont l’une est le préfixe d’une autre",
+      "alternation_overlap": "des alternatives pouvant correspondre au même texte",
+      "negated_class_escape_in_set": "un échappement négatif comme \\D dans un ensemble [ ]"
+    }
   }
 }

@@ -27,6 +27,7 @@
     "newTarget": "Nouvelle cible",
     "noTargets": "Aucune cible pour l'instant. Ajoutez les catalogues vers lesquels cette organisation publie.",
     "catalog": "Catalogue",
-    "catalogHelp": "Un catalogue connecté dans Admin → Catalogues."
+    "catalogHelp": "Un catalogue connecté dans Admin → Catalogues.",
+    "betaProvider": "{{name}} (bêta)"
   }
 }

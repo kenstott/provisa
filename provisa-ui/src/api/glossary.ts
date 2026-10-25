@@ -38,6 +38,9 @@ export const ENTERPRISE_DOMAIN = "*";
 export const GLOSSARY_EXPERT_KINDS = ["expert", "author"] as const;
 export type GlossaryExpertKind = (typeof GLOSSARY_EXPERT_KINDS)[number];
 
+/** A term's lifecycle (REQ-2144): draft until admitted, live, deprecated, retired. */
+export type TermStatus = "draft" | "live" | "deprecated" | "retired";
+
 export interface GlossaryTermSummary {
   id: number;
   name: string;
@@ -45,6 +48,10 @@ export interface GlossaryTermSummary {
   is_abstract: boolean;
   deprecated: boolean;
   ref_count: number;
+  // REQ-2130: the tables the term grounds (as a class term).
+  table_count: number;
+  // REQ-2130/2141: grounded in several tables that same-entity relationships do not all join.
+  identity_gap: boolean;
   export_excluded: boolean;
   // Curator soft delete: the term keeps its refs but no consuming surface binds it —
   // agent term search skips it and metadata export withholds it.
@@ -60,6 +67,14 @@ export interface GlossaryTermSummary {
   // REQ-1591: a rooted term's domains are DERIVED from its refs' tables, an abstract term's are
   // DECLARED. Empty means unscoped — reachable by any glossary-right holder.
   domains: string[];
+  // REQ-2146: how many findings the term has (GET /admin/glossary/findings lists them).
+  findings: number;
+  status: TermStatus;
+  // REQ-2144: why it was deprecated or retired, who said so, and a deprecation's planned
+  // retirement; none on a draft or a live term.
+  status_reason: string | null;
+  status_by: string | null;
+  retire_on: string | null;
 }
 
 export interface GlossaryRef {
@@ -88,6 +103,8 @@ export interface GlossaryTermDetail extends GlossaryTermSummary {
   edges_out: GlossaryEdge[];
   edges_in: GlossaryEdge[];
   experts: GlossaryExpert[];
+  // REQ-2145: the tags on the term (pii), which every column it holds carries.
+  tags: { tag_id: string; reason: string | null }[];
 }
 
 // REQ-1634: a data product's Related Terms panel — terms directly tied to any member-table
@@ -175,7 +192,13 @@ export async function createGlossaryTerm(body: {
 
 export async function updateGlossaryTerm(
   termId: number,
-  body: { name?: string; definition?: string | null; export_excluded?: boolean; retired?: boolean },
+  body: {
+    name?: string;
+    definition?: string | null;
+    export_excluded?: boolean;
+    // REQ-1591: an abstract term's declared domains; a rooted term's come from its refs.
+    domains?: string[];
+  },
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}`, {
     method: "PATCH",
@@ -217,17 +240,26 @@ export async function deleteGlossaryTerm(termId: number): Promise<void> {
   if (!res.ok) throw await mutationError(res, "deleteGlossaryTerm");
 }
 
-export async function moveGlossaryRef(body: {
-  table_id: number;
-  column_name: string;
-  to_term_id: number;
-}): Promise<{ source_term_removed: boolean }> {
+/** How a move that takes tags off columns goes ahead (REQ-2145): each lost tag confirmed, or the
+ * tags carried to the term the columns move to. */
+export interface TagLossResolution {
+  confirm_tag_loss?: string[];
+  carry_tags?: boolean;
+}
+
+export async function moveGlossaryRef(
+  body: {
+    table_id: number;
+    column_name: string;
+    to_term_id: number;
+  } & TagLossResolution,
+): Promise<{ source_term_removed: boolean }> {
   const res = await fetch(`${API_BASE}/admin/glossary/refs/move`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw await mutationError(res, "moveGlossaryRef");
+  if (!res.ok) throw await moveRefusal(res, "moveGlossaryRef");
   return (await res.json()) as { source_term_removed: boolean };
 }
 
@@ -291,4 +323,160 @@ export async function removeGlossaryExpert(termId: number, userId: string): Prom
     { method: "DELETE" },
   );
   if (!res.ok) throw await mutationError(res, "removeGlossaryExpert");
+}
+
+// REQ-2130 (class grounding): the tables and views a term names the rows of. A table has at most
+// one class term, and only a table with a primary key can have one; the server says so by code.
+export interface GlossaryTermTable {
+  table_id: number;
+  source_id: string;
+  schema_name: string;
+  table_name: string;
+  domain_id: string;
+}
+
+/** A finding on a term (REQ-2146): its kind, the catalog code its message is worded by
+ * (serverErrors), the server's own words, and the values the message names. */
+export type FindingKind =
+  | "unlinked_tables"
+  | "class_and_attribute"
+  | "tag_wrong_kind"
+  | "retirement_blocked"
+  | "no_data";
+
+export interface GlossaryFinding {
+  kind: FindingKind;
+  code: string;
+  message: string;
+  params: Record<string, string>;
+}
+
+export interface TermFindings {
+  term_id: number;
+  term: string;
+  findings: GlossaryFinding[];
+}
+
+export async function fetchGlossaryFindings(): Promise<TermFindings[]> {
+  const res = await fetch(`${API_BASE}/admin/glossary/findings`);
+  if (!res.ok) throw await mutationError(res, "fetchGlossaryFindings");
+  return res.json();
+}
+
+/** What a move does to one column's tags (REQ-2145): those it would lose, those it would gain. */
+export interface ColumnTagChange {
+  column: string;
+  table: string;
+  loses: string[];
+  gains: string[];
+}
+
+/** A move refused because columns would lose tags unconfirmed (409 tag.move_loses): its message,
+ * and each moved column's change, for the reader to confirm or carry. */
+export class TagLossRefused extends Error {
+  readonly columns: ColumnTagChange[];
+  constructor(message: string, columns: ColumnTagChange[]) {
+    super(message);
+    this.columns = columns;
+  }
+}
+
+/** A move's refusal: TagLossRefused for the tags it would take off columns, else its error. */
+async function moveRefusal(res: Response, op: string): Promise<Error> {
+  if (res.status !== 409) return mutationError(res, op);
+  const data = await res.json();
+  const message = serverMessage(data, requestFailed(op, res.status));
+  return data.code === "tag.move_loses"
+    ? new TagLossRefused(message, data.params.columns)
+    : new Error(message);
+}
+
+/** Retire a term (REQ-2144): its columns and tables move to ``successor``, which a term holding
+ * any must name. A move that takes tags off columns is refused (TagLossRefused) until each lost
+ * tag is confirmed or the tags are carried to the successor. */
+export async function retireGlossaryTerm(
+  termId: number,
+  body: { reason: string; successor: number | null } & TagLossResolution,
+): Promise<{ status: string; tag_changes: ColumnTagChange[] }> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/retire`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await moveRefusal(res, "retireGlossaryTerm");
+  return res.json();
+}
+
+/** Deprecate a live term (REQ-2144): it stays in service until ``retire_on``, if given, when it
+ * is retired. */
+export async function deprecateGlossaryTerm(
+  termId: number,
+  body: { reason: string; retire_on: string | null },
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/deprecate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await mutationError(res, "deprecateGlossaryTerm");
+}
+
+/** What a retired term applied to (REQ-2144): its columns (table path and column) and tables at
+ * the model commit before its retirement. None when the model's history holds no retirement of it
+ * (404 glossary.no_retirement_history). */
+export interface AppliedHistory {
+  retired_in: string;
+  as_of: string | null;
+  columns: { table: string; column: string }[];
+  tables: string[];
+}
+
+export async function fetchAppliedHistory(termId: number): Promise<AppliedHistory | null> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/applied-history`);
+  if (res.status === 404) {
+    const data = await res.json();
+    if (data.code === "glossary.no_retirement_history") return null;
+    throw new Error(serverMessage(data, requestFailed("fetchAppliedHistory", res.status)));
+  }
+  if (!res.ok) throw await mutationError(res, "fetchAppliedHistory");
+  return res.json();
+}
+
+/** Clear a term's retirement or a curator's deprecation. */
+export async function restoreGlossaryTerm(termId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/restore`, {
+    method: "POST",
+  });
+  if (!res.ok) throw await mutationError(res, "restoreGlossaryTerm");
+}
+
+export async function listTermTables(termId: number): Promise<GlossaryTermTable[]> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/tables`);
+  if (!res.ok) throw await mutationError(res, "listTermTables");
+  return res.json();
+}
+
+export async function groundTermTable(termId: number, tableId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/tables`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table_id: tableId }),
+  });
+  if (!res.ok) throw await mutationError(res, "groundTermTable");
+}
+
+export async function ungroundTermTable(termId: number, tableId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/tables/${tableId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw await mutationError(res, "ungroundTermTable");
+}
+
+/** What a term is in the ontology, by what it is grounded in: a Class names a table's rows, a
+ * Property a column's values, a Concept neither. A term grounded in both is a Class. */
+export type TermRole = "class" | "property" | "concept";
+
+export function termRole(t: { table_count: number; ref_count: number }): TermRole {
+  if (t.table_count > 0) return "class";
+  return t.ref_count > 0 ? "property" : "concept";
 }

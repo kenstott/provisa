@@ -837,6 +837,54 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
     )
 
 
+def check_view_mv(
+    table_name: str,
+    view_sql: str,
+    *,
+    consistency: str,
+    preprocess: str | None,
+    business_key: list[str] | None,
+    persist: str,
+) -> None:
+    """The rules a materialized view's definition is held to, raising ValueError, by name, for one
+    it breaks. Run inside a table save's transaction (REQ-2109: a refusal leaves nothing saved)
+    and again where the view is registered for building."""
+    # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
+    if consistency not in ("shared", "distributed"):
+        raise ValueError(
+            f"invalid MV consistency {consistency!r}: expected 'shared' or 'distributed'"
+        )
+    from provisa.api.app import state
+    from provisa.mv.determinism import check_view_determinism  # REQ-964
+    from provisa.mv.preprocess import validate_preprocess  # REQ-957
+
+    # REQ-1162: a bitemporal MV manages its own append-only persistence (refresh.py routes it to
+    # _refresh_bitemporal ahead of the persist dispatch, ignoring `persist` entirely) — reject a
+    # non-default `persist` here instead of silently dropping it, so a declaration never implies
+    # replace/upsert semantics the MV will not actually get.
+    if business_key and persist != "replace":
+        raise ValueError(
+            f"MV {table_name!r}: persist={persist!r} is incompatible with a declared business_key "
+            "— a view keeping every version is append-only by construction; omit "
+            "persist (or leave it at its default) instead of declaring append/upsert"
+        )
+    # REQ-957/964: a preprocess hook must be deterministic + safe — purity-checked here so a bad hook
+    # is rejected at registration, never wired into the loop where it would ripple non-determinism.
+    validate_preprocess(preprocess)
+    # REQ-964 (proof obligation 1): an MV's SQL must be deterministic — recompute-to-current
+    # and replay demand it. Reject volatile SQL (now()/random/…) at registration; the engine's
+    # dialect parses the check (None → sqlglot default parse, still catches volatile funcs).
+    dialect = getattr(getattr(state, "engine", None), "dialect", None)
+    ok, reason = check_view_determinism(view_sql, dialect)
+    if not ok:
+        raise ValueError(f"non-deterministic MV {table_name!r}: {reason}")
+    from provisa.executor.source_operation import refuse_writes_in_definition
+
+    refuse_writes_in_definition(
+        view_sql, getattr(state, "tracked_functions", None) or {}, f"MV {table_name!r}"
+    )
+
+
 async def _sync_view_mv(
     table_name: str,
     view_sql: str,
@@ -847,9 +895,9 @@ async def _sync_view_mv(
     debounce_max_delay: float | None = None,
     consistency: str = "shared",  # REQ-879
     preprocess: str | None = None,  # REQ-957
-    bitemporal_mode: str | None = None,  # REQ-1162: None | "snapshot" | "delta"
-    bitemporal_key: list[str] | None = None,  # REQ-1162: entity key (required for delta)
-    bitemporal_source_time: str | None = None,  # REQ-1163: the source's change-time column
+    business_key: list[str] | None = None,  # REQ-2109: declared with valid and recorded time
+    valid_time: str | None = None,  # REQ-2109: the column its reads travel on
+    recorded_time: str | None = None,  # REQ-2109: the column its versions are cut on as recorded
     persist: str = "replace",  # REQ-965: replace | append | upsert
     primary_key: list[str] | None = None,  # REQ-970: row identity
     incremental: bool = False,  # REQ-969: incremental maintenance
@@ -864,58 +912,31 @@ async def _sync_view_mv(
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view. A draft view is
     held to every rule a saved view is, and is not registered: nothing builds it."""
-    # REQ-879: consistency tier is a closed set — reject anything else loudly (no silent default).
-    if consistency not in ("shared", "distributed"):
-        raise ValueError(
-            f"invalid MV consistency {consistency!r}: expected 'shared' or 'distributed'"
-        )
+    check_view_mv(
+        table_name,
+        view_sql,
+        consistency=consistency,
+        preprocess=preprocess,
+        business_key=business_key,
+        persist=persist,
+    )
     from provisa.api.app import state
-    from provisa.mv.bitemporal import BitemporalSpec  # REQ-1162
+    from provisa.mv.bitemporal import declared_spec  # REQ-1162, REQ-2109
+    from provisa.mv.bitemporal_inherit import inherited_spec  # REQ-2109
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.mv.readable_inputs import read_table_names
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
-    from provisa.mv.determinism import check_view_determinism  # REQ-964
-    from provisa.mv.preprocess import validate_preprocess  # REQ-957
 
-    # REQ-1162: build the bitemporal spec from the declared mode/key (None = ordinary MV). Spec
-    # construction validates the mode and that delta has a key — a bad declaration fails loud here.
-    bitemporal = (
-        BitemporalSpec(
-            key=tuple(bitemporal_key or []),
-            mode=bitemporal_mode,
-            source_column=bitemporal_source_time,
-            columns=tuple(bitemporal_columns),
-        )
-        if bitemporal_mode
-        else None
-    )
-    # REQ-1162: a bitemporal MV manages its own append-only persistence (refresh.py routes it to
-    # _refresh_bitemporal ahead of the persist dispatch, ignoring `persist` entirely) — reject a
-    # non-default `persist` here instead of silently dropping it, so a declaration never implies
-    # replace/upsert semantics the MV will not actually get.
-    if bitemporal is not None and persist != "replace":
-        raise ValueError(
-            f"MV {table_name!r}: persist={persist!r} is incompatible with bitemporal_mode "
-            f"={bitemporal_mode!r} — bitemporal MVs are append-only by construction; omit "
-            "persist (or leave it at its default) instead of declaring append/upsert"
-        )
-
-    # REQ-957/964: a preprocess hook must be deterministic + safe — purity-checked here so a bad hook
-    # is rejected at registration, never wired into the loop where it would ripple non-determinism.
-    validate_preprocess(preprocess)
-
-    # REQ-964 (proof obligation 1): an MV's SQL must be deterministic — recompute-to-current
-    # and replay demand it. Reject volatile SQL (now()/random/…) at registration; the engine's
-    # dialect parses the check (None → sqlglot default parse, still catches volatile funcs).
-    dialect = getattr(getattr(state, "engine", None), "dialect", None)
-    ok, reason = check_view_determinism(view_sql, dialect)
-    if not ok:
-        raise ValueError(f"non-deterministic MV {table_name!r}: {reason}")
-    from provisa.executor.source_operation import refuse_writes_in_definition
-
-    refuse_writes_in_definition(
-        view_sql, getattr(state, "tracked_functions", None) or {}, f"MV {table_name!r}"
-    )
+    # REQ-1162, REQ-2109: a view declaring its business key keeps every version; the
+    # declaration's all-three-or-none rule is the Table model's. One declaring none may inherit
+    # its versions from the one versioned table it groups, judged against the model as last built
+    # -- the schema rebuild every save runs next judges it again against the rows it loads
+    # (app_rebuild._register_user_views_in_state). None = ordinary MV.
+    if business_key:
+        assert valid_time is not None and recorded_time is not None  # the Table model's rule
+        bitemporal = declared_spec(business_key, valid_time, recorded_time, bitemporal_columns)
+    else:
+        bitemporal = inherited_spec(view_sql, state.tables)
 
     mv_id = f"view-{table_name}"
     existing = state.mv_registry.get(mv_id)
@@ -935,6 +956,7 @@ async def _sync_view_mv(
         target_schema=target_schema,
         target_catalog_qualified=state.federation_engine.engine.catalog_qualified,
         target_table=f"mv_{table_name}",
+        view_table=table_name,  # REQ-1918: the view it builds
         refresh_interval=refresh_interval,
         enabled=True,
         sql=view_sql,

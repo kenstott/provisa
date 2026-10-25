@@ -23,7 +23,6 @@
     "descriptionLabel": "Descrizione",
     "descriptionPlaceholder": "Compare nella documentazione SDL",
     "dataProductLabel": "Data product",
-    "dataProductHint": "(pubblica nel catalogo / esporta verso Atlas, Atlan, ecc.)",
     "discoverLabel": "Individua colonne",
     "discoverHint": "(deduce le colonne dall'origine live alla registrazione — per origini schemaless/NoSQL; nessuna selezione manuale delle colonne necessaria)",
     "watermarkLabel": "Colonna watermark",
@@ -135,6 +134,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vettori di {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensioni, punteggio per {{distance}}",
-    "qdrantUnnamedVector": "(senza nome)"
+    "qdrantUnnamedVector": "(senza nome)",
+    "continue": "Continua"
   }
 }

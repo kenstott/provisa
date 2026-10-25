@@ -48,7 +48,12 @@ from provisa.transpiler.transpile import transpile  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 _PROJ = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 _SRC = "bq-e2e"
 _DS = "provisa_e2e_it"
 

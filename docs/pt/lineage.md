@@ -47,6 +47,7 @@ fechamento de contaminação continuamente das colunas declaradas da relação d
 | `source` | Verde | Uma coluna de tabela base |
 | `derived` | Azul | Produzida por uma expressão SQL (função, operador, CTE) |
 | `command` | Roxo | Uma coluna de saída de um command registrado |
+| `native` | Laranja | O campo bruto que uma fonte lê, abaixo da coluna de uma tabela registrada |
 
 Anéis adicionais em um nó:
 
@@ -62,6 +63,27 @@ operações nomeadas: funções SQL (`sql_function`), operadores aritméticos/l�
 commands registrados (`command`), referências simples de coluna (`identity`) e literais (`constant`).
 
 Uma aresta vinda de uma chamada de command é renderizada como uma linha roxa tracejada na UI.
+
+### Abaixo da tabela registrada
+
+Um usuário com registro de fontes vê mais um salto abaixo de cada coluna de origem: o campo como a fonte o lê, numa caixa para o lugar de onde é lido. A caixa traz o logotipo e o rótulo de tipo da fonte, como a página Sources os mostra, e o endereço conforme o tipo de fonte:
+
+| Fonte | Endereço |
+| --- | --- |
+| OpenAPI | A operação (`GET /v2/customers`), os seus parâmetros fixos e a localização das linhas |
+| Remote GraphQL | O campo raiz, os seus argumentos obrigatórios e a localização das linhas |
+| MongoDB, Cosmos DB | O banco de dados e a coleção ou o contêiner |
+| Elasticsearch, Qdrant | O índice ou a coleção |
+| CSV, Parquet, arquivos, logs | O caminho, e o padrão de arquivos de uma tabela que lê muitos arquivos |
+| Kafka | O tópico |
+| Fonte de código | A função |
+| Qualquer outra | O schema e a tabela nativos |
+
+O campo bruto é o caminho de campo da coluna quando ela tem um, senão o próprio nome dela. A aresta dele para a coluna registrada nomeia a renomeação: `path`, `alias` ou `naming` (a convenção de nomes). A caixa da tabela registrada diz como ela é servida: `virtual`, lida a cada instrução, ou `replica`, com o TTL dela e quando carregou pela última vez. Credenciais, referências a segredos e o usuário, a senha e a query de uma URL nunca são mostrados. Um usuário sem registro de fontes vê a linhagem a partir da tabela registrada.
+
+### Links
+
+Cada elemento abre onde é definido, quando os direitos do usuário abrem aquela página. Um clique num campo abre a tabela, a view ou a fonte dele; um clique duplo numa caixa abre a relação dela; um clique na aresta de um comando abre o comando. Uma função SQL embutida não tem página nem link.
 
 ## Grafo abrangendo toda a federação {: #federation-wide-graph }
 
@@ -117,6 +139,26 @@ Formato da resposta:
   "outputs": ["id", "embedding"]
 }
 ```
+
+Para um chamador com registro de fontes, os dois endpoints acrescentam o salto nativo: nós do tipo `native` e um objeto `natives` com chave pela relação de cada caixa nativa (`native:<domain>.<table>`):
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+O `served` de uma réplica é `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Para qualquer outro chamador, `natives` vem vazio.
 
 Retorna HTTP 422 quando o SQL não pode ser analisado.
 
@@ -180,12 +222,12 @@ A visão lê os registros de atualização em `"ops"."traces"` e responde em tod
 
 ## Uma view como estava, e como foi registrada {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Uma view declarada bitemporal guarda cada versão que já teve: cada atualização acrescenta, e nenhuma versão é reescrita, em qualquer armazenamento. Uma leitura simples responde com o estado atual. Dois cabeçalhos da requisição leem o seu passado:
+Uma view que mapeia as colunas da sua fonte como `business_key`, `valid_time` e `recorded_time` guarda cada versão que já teve: cada atualização anexa, e nenhuma versão é reescrita, em nenhum armazenamento. Uma leitura simples responde o estado atual. Dois cabeçalhos de requisição leem o seu passado:
 
-- `X-Provisa-As-Of` lê a view numa data, ou sobre um intervalo, no seu relógio: o tempo de alteração da própria fonte quando a view declara `bitemporal_source_time`, o tempo de carga do Provisa quando não declara.
+- `X-Provisa-As-Of` lê a view num momento ou num intervalo.
 - `X-Provisa-As-Recorded` lê a view como o Provisa a tinha registrado num momento. Versões registradas depois ficam de fora, de modo que uma correção registrada mais tarde não muda a reprodução do passado.
 
-Em 30 de setembro e registrada em 1º de outubro dá o valor original; registrada em 5 de outubro dá a correção. O registro de auditoria de cada instrução guarda os dois tempos (`as_of`, `as_recorded`), para que um relatório possa ser reproduzido como foi produzido da primeira vez. [Views com histórico](configuration.md#views-with-history-time-travel) descreve como declarar uma view bitemporal e cada superfície que aceita os dois valores.
+Em 30 de setembro e registrada em 1º de outubro dá o valor original; registrada em 5 de outubro dá a correção. O registro de auditoria de cada instrução guarda os dois tempos (`as_of`, `as_recorded`), para que um relatório possa ser reproduzido como foi produzido da primeira vez. [Views com histórico](configuration.md#views-with-history-time-travel) descreve as três declarações, com exemplos, e cada superfície que aceita os dois valores.
 
 ## O que uma renomeação ou remoção de coluna quebraria {: #what-a-column-rename-or-drop-would-break }
 
@@ -197,7 +239,7 @@ contratos de DQ, grãos de exibição de métrica e chaves de linha de MV são t
 **renomear um alias os quebra tão certamente quanto excluir a coluna**.
 
 O **nome físico** é `table_columns.column_name`, a identidade que sobrevive à substituição integral de
-colunas feita pelo upsert da tabela. Relacionamentos, vínculos de [glossário](glossary.md), atribuições de tag, a coluna
+colunas feita pelo upsert da tabela. Relacionamentos, vínculos de [ontologia](ontology.md), atribuições de tag, a coluna
 de watermark e presets de coluna guardam este, então eles só quebram quando a coluna é **removida**.
 
 `columnDependents` reporta ambos. Exibições e MVs a jusante vêm de fatiar o grafo de federação no

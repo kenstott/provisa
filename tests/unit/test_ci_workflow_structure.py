@@ -44,7 +44,7 @@ _OWNED = {
     r"msodbcsql18": "mssql-odbc",
     r"pip install[^\n]*mkdocs": "docs-site-deps",
     r"security import\b": "apple-signing",
-    r"key: trino-plugins-": "trino-plugins",
+    r"key: (\$\{\{ inputs.key-prefix \}\})?trino-plugins-": "trino-plugins",
     r"gh release create": "ensure-release",
 }
 
@@ -659,6 +659,36 @@ def test_the_leaf_check_runs_only_on_ci_branches_and_never_on_main_or_a_tag():
     assert "always()" in jobs["verdict"]["if"]
     assert "startsWith(github.ref, 'refs/heads/ci/')" in jobs["verdict"]["if"]
     assert set(jobs["verdict"]["needs"]) == set(jobs) - {"verdict"}
+
+
+def _needs(body: dict) -> list[str]:
+    needs = body.get("needs") or []
+    return [needs] if isinstance(needs, str) else list(needs)
+
+
+def test_the_leaf_check_expects_each_job_as_its_own_condition_allows_on_a_ci_branch():
+    """The verdict runs only on a ci/** branch. A job whose condition needs a tag is skipped
+    there, and the verdict expects it skipped; every other job it expects to succeed. A job
+    downstream of a skipped one runs only with a condition of its own: under GitHub's implicit
+    success() a skipped job anywhere upstream skips it (release-results and level-1 were, and
+    the verdict failed every push)."""
+    text, workflow = _leaf_check()
+    jobs = workflow["jobs"]
+    on_tag = {
+        job for job, body in jobs.items() if "github.ref_type == 'tag'" in str(body.get("if"))
+    }
+    assert on_tag == {"release-publication"}, on_tag
+    verdict = jobs["verdict"]["steps"][0]["run"]
+    said = set(re.findall(r'expected\["([\w-]+)"\] = "skipped"', verdict))
+    assert said == on_tag, said
+
+    def below(job: str) -> bool:
+        return any(n in on_tag or below(n) for n in _needs(jobs[job]))
+
+    for job, body in jobs.items():
+        if job == "verdict" or job in on_tag or not below(job):
+            continue
+        assert "if" in body, f"{job} is downstream of a job skipped on a branch and has no if"
 
 
 def test_the_leaf_check_reads_no_secret_and_can_publish_nothing():

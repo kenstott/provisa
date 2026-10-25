@@ -6,7 +6,7 @@
 
 """E2E: sqlite_fdw attaches a SQLite file IN PLACE inside a stock embedded PG (REQ-907).
 
-No docker. Runs the embedded PG 16.2 from the test platform's private pginstall, whose staged
+No docker. Runs the embedded PG 16.11 from the test platform's private pginstall, whose staged
 provisa-pg-ext bundle carries sqlite_fdw (its only runtime dep is the OS libsqlite3; tests/embedded_pg.py), then drives the REAL
 SqliteFdwConnector DDL to attach the demo orders.sqlite and reads it through the REAL compiler
 pipeline with an RLS predicate — asserting on returned rows. Unlike pg_duckdb, an FDW executes in
@@ -43,7 +43,12 @@ from tests.embedded_pg import start_local_postgres  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _SQLITE = Path(__file__).parent.parent.parent / "demo" / "files" / "orders.sqlite"
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 
 
 @pytest.fixture(scope="session")

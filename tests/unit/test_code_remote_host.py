@@ -8,15 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A code source on a remote host (REQ-2098): the Python remote host program, paired with and
-dialled by Provisa over mutual TLS, serving the same calls as a local worker."""
+"""A code source on a remote host (REQ-2098, REQ-2100): the front end every built image runs, with
+the Python host program as its worker, paired with and dialled by Provisa over mutual TLS, serving
+the same calls as a local worker to each Provisa connection."""
 
-# Requirements: REQ-2098
+# Requirements: REQ-2098, REQ-2100
 
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import sys
 import textwrap
@@ -25,6 +25,7 @@ import time
 import pyarrow as pa
 import pytest
 
+from provisa.codehost import front
 from provisa.codesource import remote
 from provisa.codesource.arrow_rows import schema_text
 from provisa.codesource.worker import WorkerFailed
@@ -32,7 +33,7 @@ from provisa.python.source import HOST
 
 pytestmark = pytest.mark.unit
 
-REMOTE_HOST = HOST.with_name("remote_host.py")
+FRONT = front.__file__
 _CODE = textwrap.dedent(
     '''
     def orders(n: int) -> list[dict]:
@@ -48,21 +49,18 @@ _CODE = textwrap.dedent(
 ORDERS = schema_text(pa.schema([("n", pa.int64())]))
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @pytest.fixture
 def started(tmp_path):
     """A remote host on a free port, its state in a directory of its own; its pairing code."""
     code = tmp_path / "code"
     code.mkdir()
     (code / "shop.py").write_text(_CODE)
-    port = _free_port()
-    process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's host
-        [sys.executable, str(REMOTE_HOST), str(port), str(tmp_path / "state"), str(code), "shop"],
+    port = 0
+    names = tmp_path / "names.json"
+    names.write_text("{}")
+    worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
+    process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
+        [sys.executable, FRONT, str(port), str(tmp_path / "state"), str(names), *worker],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -74,7 +72,9 @@ def started(tmp_path):
         line = process.stderr.readline()
         if line.startswith("pairing code: "):
             pairing = line.removeprefix("pairing code: ").strip()
-        if line.startswith("remote host listening"):
+        if line.startswith("remote host listening on "):
+            # Bound by the host itself (port 0): no other test can take it first.
+            port = int(line.rsplit(" ", 1)[1])
             break
     assert pairing is not None, "the host printed no pairing code"
     yield port, pairing
@@ -162,7 +162,10 @@ def test_a_host_with_another_certificate_than_the_pin_is_refused(started):
 
 
 def test_a_host_that_is_not_there_is_named():
-    port = _free_port()
+    from tests.port_lease import lease_port
+
+    # A leased port: below the ephemeral range, so no bind(0) of another test is given it.
+    port = lease_port()
     with pytest.raises(WorkerFailed, match=f"remote host 127.0.0.1:{port} could not be reached"):
         _worker(port, "0" * 64, remote.new_identity()).start(timeout=2)
 

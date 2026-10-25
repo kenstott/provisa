@@ -10,13 +10,15 @@
 # The WHOLE config of the named demo "insider" (start-ui-install.sh --demo insider; REQ-2056): is
 # anyone sending deal-sensitive or customer data out of the bank? Northgate Partners, a fictional
 # bank, keeps a watch list of the deals in discussion. Every message its employees send is matched
-# to every deal (match_deals, setup.yaml) -- the company's names, its ticker, the code name, and the
-# deal in other words through the demo's own local embedding model -- and weighted by who sent it
-# and where it went; the same mail is checked for customer data. One materialized view is the
-# review queue.
+# to every deal (message_deal_signals, then match_deals, setup.yaml) -- the company's names, its
+# ticker, the code name, and the deal in other words through the demo's own local embedding model --
+# and weighted by who sent it and where it went; the same mail is checked for customer data. One
+# materialized view is the review queue.
 #
-#   bank  the bank's Postgres: the watch list, employees, customers and who read them, the mail,
-#         and the match signals (db/init.sql)
+#   bank             the bank's Postgres: the watch list, employees, customers and who read them,
+#                    the mail, and the match signals (db/init.sql)
+#   insider_signals  a code resolver (code/insider_signals.tar.gz, its source in insider_signals/):
+#                    deal_signals, the column transform that matches a message to a deal
 #
 # Governance is half the demo: the watch list is read only by the control room (and a deal team,
 # its own deal's rows); a first-level reviewer reads only the queue's rows of their own desks -- the
@@ -81,6 +83,16 @@ sources:
   username: provisa
   password: provisa
   description: Northgate Partners' database, read live
+- id: insider_signals
+  type: python
+  mapping:
+    runtime: python
+    code:
+      kind: upload
+      upload: 4734fa5817cc32692bb44f133e42e2b227166bb3f4d6b2ea203622af171567df
+      filename: insider_signals.tar.gz
+  description: 'deal_signals: what a message says of a watch-list deal, by name and by meaning (code/insider_signals.tar.gz,
+    its source in insider_signals/)'
 tables:
 - source_id: bank
   domain_id: bank
@@ -109,6 +121,14 @@ tables:
   - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [org_admin, control_room, deal_team_falcon], is_primary_key: true}
   - {name: employee_id, data_type: varchar, description: 'The employee brought over the wall', visible_to: [org_admin, control_room, deal_team_falcon], is_primary_key: true}
   - {name: over_wall_at, data_type: timestamp, description: 'When they were brought over the wall', visible_to: [org_admin, control_room, deal_team_falcon]}
+- source_id: bank
+  domain_id: bank
+  schema: bank
+  table: screening
+  description: 'The screening scope: each message and each watch-list deal it is screened against'
+  columns:
+  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [org_admin, control_room], is_primary_key: true}
+  - {name: deal_id, data_type: varchar, description: 'The deal it is screened against', visible_to: [org_admin, control_room], is_primary_key: true}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -218,6 +238,32 @@ tables:
   - {name: domain, data_type: varchar, description: 'The address''''s domain', visible_to: [org_admin, control_room]}
   - {name: kind, data_type: varchar, description: 'internal, external or personal', visible_to: [org_admin, control_room]}
 views:
+# Each message against each deal its screening scope names (every deal), embedded by the demo's
+# local model and matched by deal_signals; a view that applies a column transform is stored, so
+# match_deals filters on its outputs.
+- id: message_deal_signals
+  domain_id: bank
+  materialize: true
+  description: 'Each message against each watch-list deal it is screened against: its strongest match by
+    name, its match by meaning and the signals that fired'
+  sql: >-
+    SELECT m.message_id, d.deal_id, d.legal_name, m.sender_id, m.sent_at, d.announced_on,
+      deal_signals(m.subject, m.body, d.legal_name, d.aliases, d.ticker, d.code_name,
+        embed('sentence-transformers/all-MiniLM-L6-v2', CONCAT(m.subject, '. ', m.body)),
+        embed('sentence-transformers/all-MiniLM-L6-v2', d.description))
+    FROM "bank"."screening" AS s
+    JOIN "bank"."message" AS m ON m.message_id = s.message_id
+    JOIN "bank"."deal" AS d ON d.deal_id = s.deal_id
+  columns:
+  - {name: message_id, data_type: varchar, description: The message, visible_to: [org_admin]}
+  - {name: deal_id, data_type: varchar, description: The deal, visible_to: [org_admin]}
+  - {name: legal_name, data_type: varchar, description: 'The company''s legal name', visible_to: [org_admin]}
+  - {name: sender_id, data_type: varchar, description: Who sent it, visible_to: [org_admin]}
+  - {name: sent_at, data_type: timestamp, description: When it was sent, visible_to: [org_admin]}
+  - {name: announced_on, data_type: date, description: When the deal was announced; empty while it is not public, visible_to: [org_admin]}
+  - {name: name_match, data_type: double, description: 'Its strongest match by name, 0 to 1', visible_to: [org_admin]}
+  - {name: meaning_match, data_type: double, description: 'Its match by meaning, 0 below the floor', visible_to: [org_admin]}
+  - {name: signals, data_type: varchar, description: 'The signals that fired, in order; empty when none did', visible_to: [org_admin]}
 - id: review_queue
   domain_id: bank
   materialize: true
@@ -284,19 +330,59 @@ views:
   - {name: to_counterparty, data_type: integer, description: 1 when it went to one of the deal''s own counterparties, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
   - {name: score, data_type: double, description: 'The score: the match weighted by who sent it and where it went', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
 functions:
-# Every message matched to every deal, as signals in deal_signal (matching.py).
+# What a message says of a deal: its names fuzzily, its ticker and code name as words, and the
+# cosine of the two embeddings, applied in message_deal_signals (insider_signals.py).
+- name: deal_signals
+  function_name: deal_signals
+  impl_kind: code_columns
+  kind: query
+  schema_name: code
+  domain_id: bank
+  description: For each message and deal, its strongest match by name, its match by meaning and the
+    signals that fired
+  source_id: insider_signals
+  returns: ''
+  visible_to: [org_admin]
+  arguments:
+  - {name: subject, type: text}
+  - {name: body, type: text}
+  - {name: legal_name, type: text}
+  - {name: aliases, type: text}
+  - {name: ticker, type: text}
+  - {name: code_name, type: text}
+  - {name: message_vector, type: json}
+  - {name: deal_vector, type: json}
+  output_columns:
+  - {name: name_match, type: double}
+  - {name: meaning_match, type: double}
+  - {name: signals, type: text}
+# Every message and deal that any signal ties, written to deal_match with who sent it and where it
+# went, from the stored message_deal_signals.
 - name: match_deals
   function_name: match_deals
-  impl_kind: python
-  kind: mutation
+  impl_kind: statement
   domain_id: bank
-  description: Match every message to every watch-list deal -- its names, ticker and code name, and its
-    description by meaning through the local embedding model -- and write each signal to deal_signal
+  description: Write every message and deal a signal ties -- its names, ticker and code name, or its
+    description by meaning -- to deal_match, with whether its sender is on the deal's team, whether it
+    went to a counterparty and whether it was sent before the announcement
   source_id: ''
   returns: ''
   visible_to: [org_admin]
   binding:
-    callable: demo.named.insider.matching:match_deals
+    sql: >-
+      INSERT INTO "bank"."deal_match" (message_id, deal_id, flagged_entity, name_match,
+        meaning_match, signals, sender_on_team, to_counterparty, before_announcement)
+      SELECT s.message_id, s.deal_id, s.legal_name, s.name_match, s.meaning_match, s.signals,
+        CASE WHEN t.employee_id IS NULL THEN 0 ELSE 1 END,
+        CASE WHEN c.deal_id IS NULL THEN 0 ELSE 1 END,
+        CASE WHEN s.announced_on IS NULL OR CAST(s.sent_at AS DATE) < s.announced_on THEN 1 ELSE 0 END
+      FROM "bank"."view_message_deal_signals" AS s
+      JOIN "bank"."employee" AS e ON e.employee_id = s.sender_id
+      LEFT JOIN "bank"."deal_team" AS t ON t.deal_id = s.deal_id AND t.employee_id = e.employee_id
+      LEFT JOIN (SELECT DISTINCT r.message_id, k.deal_id FROM "bank"."recipient" AS r
+        JOIN "bank"."deal_counterparty" AS k ON k.domain = r.domain) AS c
+        ON c.message_id = s.message_id AND c.deal_id = s.deal_id
+      WHERE s.signals <> ''
 rls_rules:
 # A first-level reviewer reads only the mail of the desks they review and the matches of that mail
 # (the flagged entity among them); of the watch list itself, nothing: no grant names them.
@@ -318,6 +404,8 @@ tag_assignments:
 - {tag_id: pii, object_type: column, table_ref: bank.bank.customer, column_name: ssn}
 - {tag_id: pii, object_type: column, table_ref: bank.bank.customer, column_name: account_no}
 relationships:
+- {id: screening-message, alias: SCREENS, cardinality: many-to-one, source_table_id: screening, source_column: message_id, target_table_id: message, target_column: message_id}
+- {id: screening-deal, alias: SCREENED_AGAINST, cardinality: many-to-one, source_table_id: screening, source_column: deal_id, target_table_id: deal, target_column: deal_id}
 - {id: match-message, alias: MATCHED_MESSAGE, cardinality: many-to-one, source_table_id: deal_match, source_column: message_id, target_table_id: message, target_column: message_id}
 - {id: match-deal, alias: MATCHED_DEAL, cardinality: many-to-one, source_table_id: deal_match, source_column: deal_id, target_table_id: deal, target_column: deal_id}
 - {id: message-sender, alias: SENT_BY, cardinality: many-to-one, source_table_id: message, source_column: sender_id, target_table_id: employee, target_column: employee_id}
@@ -327,6 +415,7 @@ relationships:
 - {id: access-employee, alias: READ_BY, cardinality: many-to-one, source_table_id: customer_access, source_column: employee_id, target_table_id: employee, target_column: employee_id}
 - {id: deal-team, alias: OVER_THE_WALL, cardinality: one-to-many, source_table_id: deal, source_column: deal_id, target_table_id: deal_team, target_column: deal_id}
 - {id: team-employee, alias: TEAM_MEMBER, cardinality: many-to-one, source_table_id: deal_team, source_column: employee_id, target_table_id: employee, target_column: employee_id}
+- {id: recipient-counterparty, alias: AT_COUNTERPARTY, cardinality: one-to-many, source_table_id: recipient, source_column: domain, target_table_id: deal_counterparty, target_column: domain}
 - {id: deal-counterparty, alias: COUNTERPARTY, cardinality: one-to-many, source_table_id: deal, source_column: deal_id, target_table_id: deal_counterparty, target_column: deal_id}
 - {id: queue-message, alias: QUEUED, cardinality: many-to-one, source_table_id: view_review_queue, source_column: message_id, target_table_id: message, target_column: message_id}
 - {id: queue-checks, alias: CASE_MATCH, cardinality: one-to-many, source_table_id: view_review_queue, source_column: message_id, target_table_id: deal_match, target_column: message_id}

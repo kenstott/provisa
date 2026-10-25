@@ -396,11 +396,11 @@ Run `ANALYZE` on all registered tables for a source. Improves join-order and bro
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Register a new table (or view) into a domain. Requires `table_registration` capability and membership in the target domain. A caller lacking `create_relationship` who submits a view is queued as a creation request for a rights-holder to approve.
+Register a new table (or view) into a domain, with every setting the input carries, among them `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` and `draft`, in one transaction: a refusal of any one registers nothing. Requires `table_registration` capability and membership in the target domain; carrying `writeGrants` also requires `masking_config` there. A caller lacking `create_relationship` who submits a view is queued as a creation request for a rights-holder to approve.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Update an existing table's alias, description, column metadata, MV settings, and live-delivery config. Requires `table_registration`.
+Update an existing table's alias, description, column metadata, MV settings, live-delivery config and the settings the input carries (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), in one transaction: a refusal of any one saves nothing. A setting left out keeps its stored value. Requires `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -454,9 +454,11 @@ Create a relationship. The gate checks the source table's domain (not the target
 
 Change an existing relationship, with the same checks as `createRelationship`. An id no relationship holds is refused (`schema.relationship_not_found`). A change needs the right itself; it is never queued as a request.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+A save that re-homes key columns between a Property and a Class can take `pii` off them. It is then refused with `tag.move_loses`, and `params.columns` lists each column with the tags it `loses` and `gains`. Save again with `confirmTagLoss` naming every lost tag, or with `carryTags: true` to put them on the term each column moves to.
 
-Delete a relationship by ID and rebuild schemas.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+Delete a relationship by ID and rebuild schemas. A delete that re-homes key columns takes the same `confirmTagLoss` and `carryTags` as a save.
 
 ---
 
@@ -538,11 +540,19 @@ Delete a tag. Refuses system and derived tags.
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-Assign a tag to a source, table, column, relationship, or command. Enforces the tag's field policies (`reason_policy`, `expires_policy`) and — for parameterized tags — validates the parameter value against the tag's permitted list.
+Assign a tag to a source, table, column, relationship, or command. Enforces the tag's field policies (`reason_policy`, `expires_policy`) and, for a parameterized tag, checks the parameter value against the tag's permitted list.
+
+`pii` can also go on a glossary term, so every column that means it carries the tag, columns registered later included. Set `objectType: "term"` and `termId`:
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+On a column, `alsoTerm: true` puts the tag on the column's term instead. The result's `params.covers` says how many columns the tag reaches: for a column, how many other columns its term holds; for a term, how many it holds. Refused by name: a tag other than `pii` on a term (`tag.not_on_terms`), a term that isn't a Property (`tag.term_not_property`), a draft term (`tag.term_not_live`, "Define *term* to mark it"), and, with `alsoTerm`, a key column (`tag.key_column`) or a column with no term (`tag.column_has_no_term`). A column marked directly needs a reason.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-Remove a tag assignment.
+Remove a tag assignment, from a term too (`objectType: "term"`, `termId`). Removing `pii` from a column that carries it through its term is refused (`tag.inherited_from_term`): unmark the term, or move the column to a term that matches what it holds.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 
@@ -728,7 +738,9 @@ The core table registration input. Key fields beyond the basics:
 | `mvRefreshInterval` | Seconds between refreshes |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Incremental maintenance |
-| `mvBitemporalMode` | `snapshot` \| `delta` for bitemporal tables |
+| `businessKey` | Columns that identify the same thing across versions; declared with `validTime` and `recordedTime`, all three or none |
+| `validTime` | Column holding the date the business gives the record |
+| `recordedTime` | Column holding when this version was entered or changed |
 | `mvCalendar` | Snapshot calendar name |
 | `mvGrain` | Snapshot grain: `daily`, `weekly`, `monthly`, `annual`, or custom `3WE` / `LFR` |
 | `viewSql` | SQL for a derived view |
@@ -737,6 +749,15 @@ The core table registration input. Key fields beyond the basics:
 | `queryTemplate` | Cypher for a Neo4j table |
 | `live` | Live delivery config for SSE/Kafka push |
 | `discover` | Infer columns from the live source at registration time |
+| `gqlNamingConvention` | Per-table GraphQL naming convention; `null` inherits. Left out, a new table inherits and an update keeps the stored one |
+| `roleTtl` | The whole role-to-TTL list, `[{ role, ttl }]` |
+| `replicate` | When the table is served from its replica; `null` inherits the source's value |
+| `writeGrants` | The table's whole set of write grants; requires `masking_config` |
+| `draft` | `false` releases the table; a registration otherwise starts as draft |
+| `cacheTtl` | The table's own Cache TTL; `null` has none of its own |
+| `pagination` | The table's declared paging; `null` declares none |
+| `region` | Where the table's data lives; on an update a different one moves it, judged as `setTableRegion` judges it |
+| `rowRules` | Row rules of the table (`RLSRuleInput`), saved with it; requires `masking_config` |
 
 ### `RelationshipInput`
 

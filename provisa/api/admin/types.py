@@ -44,6 +44,7 @@ class CalendarType:  # REQ-962: a named, versioned snapshot-boundary calendar
     week_start: int = 0  # 0 = Monday
     holidays: list[str] = strawberry.field(default_factory=list)  # ISO dates, immutable per version
     weekend: list[int] = strawberry.field(default_factory=lambda: [5, 6])  # weekday ints (Sat, Sun)
+    day_close: str | None = None  # REQ-2111: local close of the day, "HH:MM"; None = midnight
 
 
 @strawberry.input
@@ -58,6 +59,7 @@ class CalendarInput:  # REQ-962
     week_start: int = 0
     holidays: list[str] = strawberry.field(default_factory=list)
     weekend: list[int] = strawberry.field(default_factory=lambda: [5, 6])
+    day_close: str | None = None  # REQ-2111
 
 
 @strawberry.type
@@ -83,6 +85,16 @@ class SourceCdcConfigType:  # REQ-824
 class SourceType:  # REQ-012
     id: str
     type: str
+
+    @strawberry.field
+    def row_fetch_by_keys(self) -> bool:  # REQ-1865
+        """Whether this source's type fetches rows by primary key, so a table of it may be
+        replicated row by row (core.source_registry). For a type whose fetch is each table's
+        own (a remote GraphQL source), whether a table may have one: its save says."""
+        from provisa.core.source_registry import supports_row_fetch_by_keys
+
+        return supports_row_fetch_by_keys(self.type)
+
     # The fields that locate or authenticate to the source are null for a caller without
     # source_registration (see _row_mappers._source_from_row).
     host: str | None
@@ -278,6 +290,7 @@ class LiveKafkaParamsType:  # REQ-813
     topic: str
     format: str = "json"
     key_column: str | None = None
+    landing_time_column: str | None = None  # REQ-813 (amended 2026-10-21)
 
 
 @strawberry.type
@@ -383,6 +396,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     replicate: int | None  # REQ-826: NULL = inherit source
     region: str | None  # REQ-1921: where its data lives; null = no region
     draft: bool  # REQ-1921: out of service until its domain's owners release it
+    row_materialize: bool  # REQ-1865: replicated row by row, fetched by key as statements ask
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
     off_peak_tz: str | None  # REQ-1141: per-table window zone override
@@ -434,9 +448,10 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
-    mv_bitemporal_mode: str | None = None  # REQ-1162: None | "snapshot" | "delta"
-    mv_bitemporal_key: list[str] = strawberry.field(default_factory=list)  # REQ-1162: entity key
-    mv_bitemporal_source_time: str | None = None  # REQ-1163: the source's change-time column
+    # REQ-2109: the bitemporal declaration, all three or none.
+    business_key: list[str] = strawberry.field(default_factory=list)
+    valid_time: str | None = None
+    recorded_time: str | None = None
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
@@ -667,6 +682,9 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     fake_why: JsonScalar | None = None
     # REQ-1494: the column is tagged pii.
     is_pii: bool = False
+    # REQ-2145: the glossary term the column is pii through, when it is; None when the column is
+    # tagged itself or is not pii.
+    pii_term: str | None = None
 
 
 @strawberry.type
@@ -810,6 +828,8 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     graphql_alias: str | None = None
     computed_cypher_alias: str | None = None
     disable_cypher: bool = False
+    # REQ-2141: the rows this edge joins are the same entity.
+    same_entity: bool = False
     # REQ-1586: junction declaration. via_table_name names the associative table this edge
     # traverses; via_label_source names where the exposed Cypher type comes from. The ERD keys
     # its nodes by registered-table id, so it needs the id as well as the name (REQ-1588).
@@ -1044,6 +1064,11 @@ class TagAssignmentInput:  # REQ-1377
     # REQ-2094: purpose, bases (ids) and review_on given; reason is the field above. Left out,
     # the stored ones stand.
     why: JsonScalar | None = None
+    # REQ-2145: the glossary term an object_type "term" assignment is on.
+    term_id: int | None = None
+    # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
+    # with the same meaning, those to come included.
+    also_term: bool = False
 
 
 @strawberry.input
@@ -1107,6 +1132,7 @@ class LiveKafkaParamsInput:  # REQ-813
     topic: str
     format: str = "json"
     key_column: str | None = None
+    landing_time_column: str | None = None  # REQ-813 (amended 2026-10-21)
 
 
 @strawberry.input
@@ -1138,9 +1164,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     schema_name: str
     table_name: str
     columns: list[ColumnInput]
-    # REQ-318: the table's paging at registration (the steward's, from what the source
-    # suggested). An edit of the table saves it through updateTablePaging instead.
-    pagination: PagingInput | None = None
+    # REQ-318: the table's paging (the steward's, from what the source suggested); null declares
+    # none. Left out, a registration declares none and an update keeps the stored paging.
+    pagination: PagingInput | None = strawberry.UNSET
     alias: str | None = None
     description: str | None = None
     watermark_column: str | None = None
@@ -1150,7 +1176,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     view_sql: str | None = None
     # REQ-1921: the region the table's data lives in. Left out, a new table starts in its
     # source's region, else the connected one (a view: the connected one); null = no region.
-    # Ignored by updateTable: a region changes through setTableRegion.
+    # On updateTable a region given moves the table (residency judged as setTableRegion judges
+    # it); left out, the table stays where it is.
     region: str | None = strawberry.UNSET
     # REQ-1443: the data-quality contract (soda contract / GX suite) this table's rows are the scan
     # results of. The contract names what it scans, so the observed target is DERIVED from it
@@ -1180,9 +1207,12 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     off_peak_window: str | None = None  # REQ-1141: per-table "HH:MM-HH:MM" window override
     off_peak_tz: str | None = None  # REQ-1141: per-table window zone override
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
-    # REQ-1907: the table's own landing cache_ttl, stated when it is registered. A table that
-    # already has one keeps it (updateTableCache is what changes it); None = the source's.
-    cache_ttl: int | None = None
+    # REQ-1907: the table's own landing Cache TTL; null: none of its own (the source's applies).
+    # Left out, a registration has none and an update keeps the stored one.
+    cache_ttl: int | None = strawberry.UNSET
+    # REQ-1865: replicated row by row, fetched by primary key as statements name the rows. Left
+    # out, a registration is not and an update keeps what the table has.
+    row_materialize: bool | None = strawberry.UNSET
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
     materialize: bool = False
@@ -1195,9 +1225,10 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
-    mv_bitemporal_mode: str | None = None  # REQ-1162: None | "snapshot" | "delta"
-    mv_bitemporal_key: list[str] = strawberry.field(default_factory=list)  # REQ-1162: entity key
-    mv_bitemporal_source_time: str | None = None  # REQ-1163: the source's change-time column
+    # REQ-2109: the bitemporal declaration, all three or none.
+    business_key: list[str] = strawberry.field(default_factory=list)
+    valid_time: str | None = None
+    recorded_time: str | None = None
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
@@ -1214,6 +1245,18 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     discover: bool = False  # REQ-252: infer columns from the live NoSQL source at registration
     live: LiveDeliveryConfigInput | None = None  # REQ-565: live delivery config
     delta: DeltaConfigInput | None = None  # REQ-874: incremental-reload declaration
+    # REQ-2109 (settled): the settings that also have mutations of their own travel with the table,
+    # so one registerTable / updateTable applies all of them in one control-plane transaction and a
+    # refusal of any one leaves nothing saved. Left out (UNSET), a registration takes a new table's
+    # value and an update keeps the stored one.
+    gql_naming_convention: str | None = strawberry.UNSET
+    role_ttl: list[RoleTtlInput] | None = strawberry.UNSET  # REQ-1907: the whole list
+    replicate: int | None = strawberry.UNSET  # REQ-826: null inherits the source's value
+    write_grants: list[WriteGrantInput] | None = strawberry.UNSET  # REQ-2074: the whole set
+    draft: bool | None = strawberry.UNSET  # REQ-1921: false releases it
+    # REQ-1934, REQ-2109: row rules of this table (table_id is the table being saved), saved with
+    # it: a profiler result table is registered with the rules its profiled table has.
+    row_rules: list[RLSRuleInput] | None = strawberry.UNSET
 
 
 @strawberry.type
@@ -1246,6 +1289,8 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     alias: str | None = None  # e.g. WORKS_FOR; unique per (source_table, alias)
     graphql_alias: str | None = None
     disable_cypher: bool = False  # when True, exclude from Cypher graph edges
+    # REQ-2141: mark the rows this edge joins as the same entity (repositories/identity.py).
+    same_entity: bool = False
     # REQ-1586: junction declaration — the associative table this edge traverses, its two key
     # columns, an optional discriminator, and which source names the exposed Cypher type.
     via_table: str = ""  # registered table name of the junction; empty = FK/PK-backed edge
@@ -1257,6 +1302,10 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list[RelationshipParameterInput] = strawberry.field(default_factory=list)
     record_candidate: bool = False  # when True, also insert accepted relationship_candidates record
+    # REQ-2145: a save that re-homes key refs off a tagged term takes the tags off those columns:
+    # each lost tag confirmed, or carried to the term the column moves to.
+    confirm_tag_loss: list[str] = strawberry.field(default_factory=list)
+    carry_tags: bool = False
 
 
 @strawberry.input
@@ -1267,8 +1316,9 @@ class EntityInput:  # REQ-1164: dimension / hub+satellite sugar → lowers to a 
     key: list[str]
     attributes: list[str] = strawberry.field(default_factory=list)
     history: str = "none"  # none | scd2 | snapshot
-    # REQ-1163: a historized entity's column holding the source's change time.
-    source_time: str | None = None
+    # REQ-2109: a historized entity's valid-time and recorded-time columns.
+    valid_time: str | None = None
+    recorded_time: str | None = None
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
 
 
@@ -1574,6 +1624,9 @@ class MVType:  # REQ-135, REQ-158, REQ-159, REQ-160
     last_refresh_at: float | None
     row_count: int | None
     last_error: str | None
+    # REQ-2109: the table whose version log this view is (bitemporal_capture); None for any other.
+    version_log_of: str | None = None
+    allowed_lateness: float = 0.0  # REQ-961: how late a row its refresh reads may be committed
 
 
 @strawberry.type

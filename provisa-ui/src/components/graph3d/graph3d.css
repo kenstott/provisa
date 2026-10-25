@@ -1,0 +1,126 @@
+/* REQ-2128: the data product graph, on the 3D profile views' tokens and layout (profile3d.css). */
+.g3d.is-expanded {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+}
+.g3d-filters .mantine-MultiSelect-root,
+.g3d-filters .mantine-Select-root {
+  width: 200px;
+}
+.g3d-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.g3d-panel-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+  height: 320px;
+  margin-top: var(--mantine-spacing-xs);
+}
+.g3d-panel-view .p3d-stage {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.g3d-sw-product {
+  background: var(--p3d-accent);
+}
+.g3d-sw-domain {
+  background: var(--p3d-fam-temporal);
+}
+.g3d-sw-table {
+  background: var(--p3d-fam-numeric);
+}
+.g3d-sw-relation {
+  background: var(--p3d-fam-foreign);
+}
+.g3d-sw-column {
+  background: var(--p3d-fam-other);
+}
+.g3d-sw-command {
+  background: var(--p3d-warm);
+}
+.g3d-sw-checker {
+  background: var(--p3d-q-tail);
+}
+.g3d-sw-profile {
+  background: var(--p3d-q-mid);
+}
+.g3d-sw-tag {
+  background: var(--p3d-fam-boolean);
+}
+.g3d-sw-term {
+  background: var(--p3d-cool);
+}
+/* REQ-2130: a term's status is on its name alone (nodeLook's labelClass): live as is, draft
+   italic, deprecated dimmed, retired dimmed and struck through. */
+.g3d-label-draft {
+  font-style: italic;
+}
+.g3d-label-deprecated {
+  opacity: 0.45;
+}
+.g3d-label-retired {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+/* REQ-2130: a class grounded in tables not all declared one entity, marked after its name. */
+.g3d-label-unlinked::after {
+  content: " \26A0";
+  color: var(--mantine-color-orange-5);
+}
+/* The legend's key to a node's look: its shape, in its colour. */
+.g3d-shape {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  vertical-align: middle;
+}
+/* A solid seen as a polygon (an icosahedron a hexagon, a cone a triangle, ...) is clipped to its
+   outline (glyph.ts), slightly larger so its area reads as a square's. */
+.g3d-shape[data-glyph] {
+  width: 11px;
+  height: 11px;
+}
+.g3d-shape-sphere {
+  border-radius: 50%;
+}
+/* A cylinder seen from the side: upright, its ends rounded. Plain boxes, borders and radii only,
+   so an exported image paints the legend as it is (exportImage.ts). */
+.g3d-shape-cylinder {
+  width: 8px;
+  height: 10px;
+  border-radius: 3px;
+}
+/* A torus: a ring, its colour on its border (GraphStage). */
+.g3d-shape-torus {
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2.5px solid;
+}
+.g3d-legend-status {
+  font-family: var(--mantine-font-family-monospace);
+}
+/* In place on a page (the Ontology View): toolbars at their height, the stage taking the rest. */
+.g3d-inline {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+}
+.g3d-inline > .p3d-body {
+  flex: 1;
+  height: auto;
+  min-height: 320px;
+}
+.g3d-filters .mantine-InputBase-root {
+  width: 200px;
+}
+.g3d-placeholder {
+  color: var(--mantine-color-placeholder);
+}

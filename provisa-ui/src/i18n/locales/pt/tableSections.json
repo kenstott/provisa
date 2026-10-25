@@ -14,8 +14,8 @@
     "table": "Tabela",
     "domain": "Domínio",
     "tags": "Etiquetas",
-    "glossaryTerms": "Termos do glossário",
-    "noTerms": "Nenhum termo do glossário nomeia uma coluna desta tabela",
+    "glossaryTerms": "Termos",
+    "noTerms": "Nenhum termo nomeia uma coluna desta tabela",
     "relationships": "Relacionamentos",
     "noRelationships": "Esta tabela não participa de nenhum relacionamento",
     "fromSource": "{{value}} (da fonte)",
@@ -31,6 +31,10 @@
       "fail": "Reprovado",
       "error": "Erro",
       "skipped": "Ignorado"
-    }
+    },
+    "classTerm": "As linhas são instâncias de",
+    "classTermPlaceholder": "Escolha um termo",
+    "noClassTerm": "Nenhum termo",
+    "classTermUnreadable": "Não foi possível ler seu termo: {{error}}"
   }
 }

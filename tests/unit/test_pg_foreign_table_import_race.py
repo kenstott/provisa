@@ -33,15 +33,15 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def engine_and_source(embedded_postgres):
+def engine_and_source(embedded_postgres_fdw):
     suffix = uuid.uuid4().hex[:8]
     source_db, engine_db = f"src_{suffix}", f"eng_{suffix}"
-    admin = psycopg2.connect(embedded_postgres.dsn())
+    admin = psycopg2.connect(embedded_postgres_fdw.dsn())
     admin.autocommit = True
     with admin.cursor() as cur:
         cur.execute(f'CREATE DATABASE "{source_db}"')
         cur.execute(f'CREATE DATABASE "{engine_db}"')
-    src = psycopg2.connect(embedded_postgres.dsn(source_db))
+    src = psycopg2.connect(embedded_postgres_fdw.dsn(source_db))
     src.autocommit = True
     with src.cursor() as cur:
         cur.execute("CREATE TABLE public.orders (id integer)")
@@ -50,7 +50,7 @@ def engine_and_source(embedded_postgres):
         "server_ddl_for_copy": [
             "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
             f'CREATE SERVER IF NOT EXISTS "src" FOREIGN DATA WRAPPER postgres_fdw '
-            f"OPTIONS (host '127.0.0.1', port '{embedded_postgres.port}', dbname '{source_db}')",
+            f"OPTIONS (host '127.0.0.1', port '{embedded_postgres_fdw.port}', dbname '{source_db}')",
             f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "src" '
             f"OPTIONS (user '{ROLE}', password '{PASSWORD}')",
             'CREATE SCHEMA IF NOT EXISTS "fdw_src"',
@@ -60,13 +60,13 @@ def engine_and_source(embedded_postgres):
         "server": "src",
     }
     # The engine's server and schema exist before the race, as after a source is attached once.
-    eng = psycopg2.connect(embedded_postgres.dsn(engine_db))
+    eng = psycopg2.connect(embedded_postgres_fdw.dsn(engine_db))
     eng.autocommit = True
     with eng.cursor() as cur:
         for ddl in details["server_ddl_for_copy"]:
             cur.execute(ddl)
     eng.close()
-    yield embedded_postgres.dsn(engine_db), details
+    yield embedded_postgres_fdw.dsn(engine_db), details
     with admin.cursor() as cur:
         cur.execute(f'DROP DATABASE "{engine_db}" WITH (FORCE)')
         cur.execute(f'DROP DATABASE "{source_db}" WITH (FORCE)')

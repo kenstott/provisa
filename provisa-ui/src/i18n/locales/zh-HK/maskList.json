@@ -36,6 +36,54 @@
     "regexLabel": "正規表達式 {{pattern}} → {{replace}}",
     "truncateLabel": "截斷至{{precision}}",
     "constantLabel": "常數 {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "常用遮罩",
+    "presetsAria": "項目 {{n}} 的常用遮罩",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "適用於所有引擎",
+    "universalHelp": "模式使用同一種正規表示式方言；Provisa 會為每個引擎轉換。 不符合該模式的值會被完全遮罩。",
+    "notUniversal": "並非所有引擎都支援：第 {{position}} 個字元處的{{construct}}",
+    "preset": {
+      "ssn_last4": "SSN，後 4 位",
+      "card_last4": "卡號，後 4 位",
+      "phone_last4": "電話，後 4 位",
+      "email_initial_domain": "電郵，首字母和網域",
+      "all_but_last4": "除最後 4 個字元外全部",
+      "digits_keep_separators": "數字，保留分隔符",
+      "zip3": "美國 ZIP，前 3 位",
+      "birth_year": "出生日期，只顯示年份",
+      "iban_last4": "IBAN，後 4 位",
+      "keep_first_last": "保留首尾字元"
+    },
+    "presetParam": {
+      "first": "開頭",
+      "last": "結尾"
+    },
+    "construct": {
+      "lookahead": "前瞻斷言 (?=…)",
+      "lookbehind": "後顧斷言 (?<=…)",
+      "backreference": "模式中的反向參照 \\1",
+      "lazy_quantifier": "惰性量詞 (*?, +?)",
+      "possessive_quantifier": "佔有量詞 (*+, ++)",
+      "named_group": "具名群組 (?<name>…)",
+      "word_boundary": "字詞邊界 \\b",
+      "unicode_class": "Unicode 類別 \\p{…}",
+      "posix_class": "POSIX 類別 [[:…:]]",
+      "inline_flags": "內嵌旗標 (?i)",
+      "unknown_escape": "並非所有引擎都認得的跳脫字元",
+      "open_bound": "開放上界 {n,}",
+      "bound_too_large": "過大的重複次數",
+      "unbalanced_paren": "未閉合的圓括號",
+      "unbalanced_bracket": "未閉合的方括號",
+      "empty_class": "空類別 []",
+      "bad_range": "起點在終點之後的範圍",
+      "nothing_to_repeat": "沒有可重複內容的量詞",
+      "replace_group_out_of_range": "參照模式中不存在群組的 $n",
+      "replace_named_ref": "取代中的具名參照",
+      "replace_bad_escape": "取代不接受的跳脫字元",
+      "alternation_prefix": "其中一個是另一個前綴的選項",
+      "alternation_overlap": "可能符合相同文字的選項",
+      "negated_class_escape_in_set": "[ ] 集合內的否定跳脫字元（如 \\D）"
+    }
   }
 }

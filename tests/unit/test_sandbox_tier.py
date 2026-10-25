@@ -281,6 +281,15 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
     monkeypatch.delenv("PROVISA_DEMO_BUNDLES", raising=False)
     monkeypatch.delenv("PROVISA_NAMED_DEMO_DIR", raising=False)
     monkeypatch.setenv("PROVISA_RUNTIME_DEPS_CACHE", str(tmp_path))
+    # A regions demo's model names the regions tier's stores and addresses (REQ-2068), as every
+    # node of that tier is given them (first-launch.sh).
+    for region in ("EU", "US"):
+        monkeypatch.setenv(
+            f"PROVISA_DEMO_{region}_ADDRESS", f"https://{region.lower()}.invalid:8100"
+        )
+        monkeypatch.setenv(
+            f"PROVISA_DEMO_{region}_PG_URL", f"postgresql://{region.lower()}/provisa"
+        )
     fetched: list[tuple[str, float | None]] = []
 
     def _download(spec, dest):
@@ -328,6 +337,29 @@ def test_the_demos_embedding_models_are_loaded_outside_any_request(monkeypatch):
     assert loaded == [("sentence-transformers/all-MiniLM-L6-v2", None)]
 
 
+def test_a_bundled_tier_loads_the_models_before_any_demos_stores_are_up(monkeypatch):
+    """A bundled tier starts no demo's stores at boot, and a model left to the first search took
+    it past its 60s request timeout: the models are read from each demo's configuration whether
+    or not its stores are up."""
+    from pathlib import Path
+
+    from provisa.api import demo_templates
+    from provisa.core import demo_bundles
+
+    root = Path(__file__).resolve().parents[2] / "demo" / "named"
+    pulled = {
+        name: demo_templates.PublishedDemo(name, name, root / name)
+        for name in ("sonnets", "cloudpolicy", "churnprod")
+    }
+    monkeypatch.setenv("PROVISA_DEMO_BUNDLES", ",".join(pulled))
+    monkeypatch.setattr(demo_templates, "published_demos", lambda: pulled)
+    monkeypatch.setattr(demo_bundles, "ready_version", lambda name: None)
+    assert not any(demo.stores_ready for demo in pulled.values())
+    assert [m.id for m in demo_templates.embedding_models()] == [
+        "sentence-transformers/all-MiniLM-L6-v2"
+    ]
+
+
 def test_the_sandbox_tier_finds_the_deployments_demo_data():
     """The sandbox tier builds the deployment's org at startup too, so the demo config's SQLite
     sources resolve ${env:PROVISA_DEMO_DIR} there: both the compose a node is set up with and the
@@ -343,6 +375,28 @@ def test_the_sandbox_tier_finds_the_deployments_demo_data():
     overlay = overlay[overlay.index("  provisa-sandbox:\n") :]
     assert 'PROVISA_DEMO_DIR: "/app/config/demo/files"' in overlay[: overlay.index("\nYAML\n")]
     assert (root / "demo" / "files" / "pet_store.sqlite").is_file()  # what the Dockerfile bakes
+
+
+def test_a_deploy_gives_the_regions_tier_the_deployed_tree_and_its_config():
+    """REQ-2068: the regions tier runs the deployed code under provisa-sandbox-regions.yaml. A
+    patch that left it out of the overlay left it on the image's code and the image's config
+    directory, which an image built before that file has no copy of: the tier then started with no
+    platform regions and refused its --region us at every boot."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    deploy = (root / "scripts" / "deploy-cloud.sh").read_text()
+    overlay = deploy[deploy.index("push_overlay() {") :]
+    overlay = overlay[: overlay.index("\nYAML\n")]
+    regions = overlay[overlay.index("  provisa-sandbox-regions:\n") :]
+    for mount in ("/app/static", "/app/provisa", "/app/config"):
+        assert f"${{OVERLAY_DIR}}/{mount.rsplit('/', 1)[1]}:{mount}" in regions
+    listed = re.search(r'CONFIG_FILES="([^"]*)"', deploy)
+    assert listed is not None
+    shipped = listed.group(1).split()
+    assert "provisa-sandbox-regions.yaml" in shipped
+    assert (root / "config" / "provisa-sandbox-regions.yaml").is_file()
 
 
 def test_every_cloud_deploy_refreshes_the_demo_stores_sync():

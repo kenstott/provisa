@@ -53,8 +53,8 @@ class _Chunks(httpx.SyncByteStream):
             yield self._body[start : start + self._size]
 
 
-def _streamed(body: bytes, status: int = 200) -> httpx.Response:
-    return httpx.Response(status, stream=_Chunks(body))
+def _streamed(body: bytes, status: int = 200, headers: dict | None = None) -> httpx.Response:
+    return httpx.Response(status, stream=_Chunks(body), headers=headers)
 
 
 def _table(name: str, cols: tuple[str, ...]):
@@ -257,7 +257,8 @@ async def test_an_answer_with_an_invalid_escape_fails_by_name_without_quoting_th
         [b async for b in reader.batches(1000)]
     message = str(failed.value)
     assert message.startswith(
-        "the answer read for the replica of g.orders is not valid JSON: lexical error: "
+        "the answer read for the replica of g.orders is not valid JSON: [no Content-Type] "
+        "lexical error: "
         "invalid (non-hex) character occurs after '\\u' inside string (in the 64 KiB before byte "
     )
     assert "\n" not in message and "uZZ" not in message and "n3999" not in message
@@ -269,8 +270,26 @@ async def test_an_answer_with_an_invalid_escape_fails_by_name_without_quoting_th
 async def test_a_cut_off_answer_fails_the_same_way(spool):
     route, reader, _first = _druid()
     route.mock(return_value=_streamed(b'[{"id": 1, "name": "a"}, {"id": 2, "na'))
-    with pytest.raises(AnswerNotJson, match="replica of .* is not valid JSON: parse error: "):
+    with pytest.raises(
+        AnswerNotJson, match=r"replica of .* is not valid JSON: \[no Content-Type\] parse error: "
+    ):
         [b async for b in reader.batches(1000)]
+    assert _spool_files(spool) == []
+
+
+@respx.mock
+async def test_an_answer_in_another_format_is_named_by_its_content_type(spool):
+    """A SPARQL endpoint asked for no format answers XML (Wikidata): the refusal says what the
+    answer is, from its Content-Type, rather than only where the parser stopped."""
+    route, reader, _first = _druid()
+    xml = b"<?xml version='1.0' encoding='UTF-8'?>\n<sparql/>"
+    route.mock(
+        return_value=_streamed(xml, headers={"content-type": "application/sparql-results+xml"})
+    )
+    with pytest.raises(AnswerNotJson) as failed:
+        [b async for b in reader.batches(1000)]
+    assert "not valid JSON: [application/sparql-results+xml] " in str(failed.value)
+    assert failed.value.params["content_type"] == "application/sparql-results+xml"
     assert _spool_files(spool) == []
 
 

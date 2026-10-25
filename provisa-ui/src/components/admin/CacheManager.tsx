@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
+  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -25,6 +26,7 @@ import {
   Text,
 } from "@mantine/core";
 import { usePurgeCache, useTables } from "../../hooks/useAdminQueries";
+import { VersionLogSettings } from "./VersionLogSettings";
 import {
   useCacheStats,
   useCacheTableStats,
@@ -48,9 +50,12 @@ import { useRegionSelection } from "../../hooks/useRegionSelection";
 import { filterByRegion } from "../../hooks/regionFilter";
 import { RegionSelector } from "../RegionSelector";
 import { displayMvName } from "./mvDisplay";
-import { ListRow } from "../list/ListTable";
+import { ListActions, ListActionsHead, ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { FormFooter } from "../form/FormLayout";
+import { Tip } from "../Tip";
+import { Power, PowerOff, RefreshCw } from "lucide-react";
+import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
@@ -179,15 +184,12 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
       ? ` / ${((stats.usedMemoryBytes / stats.maxMemoryBytes) * 100).toFixed(0)}%`
       : "";
 
-  const q = tableSearch.toLowerCase();
   // Hide Provisa's own internal catalog (meta/ops system views) — matches TablesPage.
   const userTables = tables.filter(
     (tbl) => tbl.sourceId !== "provisa-admin" && tbl.sourceId !== "provisa-otel",
   );
-  const filtered = userTables.filter(
-    (tbl) =>
-      (tbl.alias || tbl.tableName).toLowerCase().includes(q) ||
-      (tbl.domainId ?? "").toLowerCase().includes(q),
+  const filtered = userTables.filter((tbl) =>
+    matchesQuery([tbl.alias || tbl.tableName, tbl.domainId], tableSearch),
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(tablePage, totalPages - 1);
@@ -430,7 +432,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
   );
 }
 
-function MaterializedStoreTab({ platform }: { platform: boolean }) {
+export function MaterializedStoreTab({ platform }: { platform: boolean }) {
   const { t } = useTranslation();
   const unknown = t("cacheManager.materialized.unknown");
   const navigate = useNavigate();
@@ -443,11 +445,11 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
 
   // Why the last refresh did not start: the server's refusal, or the error it raised.
   const [refreshMsg, setRefreshMsg] = useState("");
-  const handleRefresh = async (id: string) => {
+  const handleRefresh = async (id: string, full = false) => {
     setRefreshing(id);
     setRefreshMsg("");
     try {
-      const result = await refreshMV(id);
+      const result = await refreshMV(id, full);
       if (!result.success) setRefreshMsg(result.message);
     } catch (e) {
       setRefreshMsg(e instanceof Error ? e.message : String(e));
@@ -543,16 +545,22 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
               { col: "lastRefresh" },
               { col: "interval" },
               t("cacheManager.materialized.error"),
+              <ListActionsHead key="actions" />,
             ]}
-            colSpan={8}
+            colSpan={9}
             rowKey={(mv) => mv.id}
             page={{ index: mvPage, size: PAGE_SIZE }}
             onGroupedChange={setMvGrouped}
             render={(mv) => (
               <ListRow key={mv.id}>
                 <Table.Td>
-                  {/* Show the user's alias; mv.id stays the action key below. */}
-                  <code>{displayMvName(mv.id)}</code>
+                  {/* Show the user's alias; mv.id stays the action key below. A table's version
+                      log is named for its table. */}
+                  {mv.versionLogOf ? (
+                    t("cacheManager.materialized.versionLog", { table: mv.versionLogOf })
+                  ) : (
+                    <code>{displayMvName(mv.id)}</code>
+                  )}
                 </Table.Td>
                 <Table.Td>{mv.sourceTables.join(", ")}</Table.Td>
                 <Table.Td>
@@ -570,34 +578,57 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
                     : t("cacheManager.materialized.never")}
                 </Table.Td>
                 <Table.Td>{mv.refreshInterval}s</Table.Td>
-                <Table.Td maw={200} c="red">
+                {/* One line, cut: the whole error is in the cell's tip. */}
+                <Table.Td c="red" data-list-one-line="">
                   {mv.lastError || ""}
                 </Table.Td>
-                <Table.Td>
-                  <Group gap="xs" wrap="nowrap">
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      onClick={() => handleRefresh(mv.id)}
-                      disabled={refreshing === mv.id}
-                      data-testid={`mv-refresh-btn-${mv.id}`}
+                <ListActions>
+                  <Group gap={4} wrap="nowrap">
+                    <Tip
+                      text={
+                        refreshing === mv.id
+                          ? t("cacheManager.materialized.refreshing")
+                          : t("cacheManager.materialized.refresh")
+                      }
+                      named
                     >
-                      {refreshing === mv.id
-                        ? t("cacheManager.materialized.refreshing")
-                        : t("cacheManager.materialized.refresh")}
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      onClick={() => toggleMV(mv.id, !mv.enabled)}
-                      data-testid={`mv-toggle-btn-${mv.id}`}
-                    >
-                      {mv.enabled
-                        ? t("cacheManager.materialized.disable")
-                        : t("cacheManager.materialized.enable")}
-                    </Button>
+                      <ActionIcon
+                        variant="subtle"
+                        onClick={() => handleRefresh(mv.id)}
+                        disabled={refreshing === mv.id}
+                        data-testid={`mv-refresh-btn-${mv.id}`}
+                      >
+                        <RefreshCw size={16} />
+                      </ActionIcon>
+                    </Tip>
+                    {mv.versionLogOf ? (
+                      // A version log is kept as its table declares: here only its capture
+                      // settings, and a full capture, which records what the table deleted.
+                      <VersionLogSettings
+                        log={mv}
+                        capturing={refreshing === mv.id}
+                        onFullCapture={() => handleRefresh(mv.id, true)}
+                      />
+                    ) : (
+                      <Tip
+                        text={
+                          mv.enabled
+                            ? t("cacheManager.materialized.disable")
+                            : t("cacheManager.materialized.enable")
+                        }
+                        named
+                      >
+                        <ActionIcon
+                          variant="subtle"
+                          onClick={() => toggleMV(mv.id, !mv.enabled)}
+                          data-testid={`mv-toggle-btn-${mv.id}`}
+                        >
+                          {mv.enabled ? <PowerOff size={16} /> : <Power size={16} />}
+                        </ActionIcon>
+                      </Tip>
+                    )}
                   </Group>
-                </Table.Td>
+                </ListActions>
               </ListRow>
             )}
           />

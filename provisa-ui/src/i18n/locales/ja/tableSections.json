@@ -14,8 +14,8 @@
     "table": "テーブル",
     "domain": "ドメイン",
     "tags": "タグ",
-    "glossaryTerms": "用語集の用語",
-    "noTerms": "このテーブルの列を名付ける用語集の用語はありません",
+    "glossaryTerms": "用語",
+    "noTerms": "このテーブルの列を名付ける用語はありません",
     "relationships": "リレーションシップ",
     "noRelationships": "このテーブルはどのリレーションシップにも含まれていません",
     "fromSource": "{{value}}（ソースから）",
@@ -31,6 +31,10 @@
       "fail": "不合格",
       "error": "エラー",
       "skipped": "スキップ"
-    }
+    },
+    "classTerm": "行のインスタンス元",
+    "classTermPlaceholder": "用語を選択",
+    "noClassTerm": "用語なし",
+    "classTermUnreadable": "用語を読み取れませんでした: {{error}}"
   }
 }

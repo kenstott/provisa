@@ -244,7 +244,7 @@ _TOOLS: list[Any] = [
         "description": (
             "List the REST routes the UI's admin screens call for what is not a GraphQL mutation "
             "-- a file upload, a settings change, the organization folder's encryption, a code "
-            "archive, relationship candidates, glossary edits and the like -- each with its "
+            "archive, relationship candidates, ontology edits and the like -- each with its "
             "method, path, what it does and its body. Narrow it with `search`. Reach one with "
             "admin_request."
         ),
@@ -345,10 +345,10 @@ _TOOLS: list[Any] = [
     {
         "name": "list_glossary_terms",
         "description": (
-            "Search/list the org's glossary terms. Each result's `live` field tells "
-            "you whether the term is admitted (grounded to a real column, or edge-connected to "
-            "one) or still 'proposed' (a draft with neither). Use this before create_glossary_"
-            "term to avoid proposing a duplicate."
+            "Search/list the org's ontology terms. Each result's `status` is draft (not "
+            "admitted: undefined, or grounded to no real column directly or through edges), "
+            "live (admitted), deprecated or retired. Use this before create_glossary_term to "
+            "avoid creating a duplicate."
         ),
         "input_schema": {
             "type": "object",
@@ -359,10 +359,22 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "list_glossary_findings",
+        "description": (
+            "What a curator should look at in the ontology: each term with its findings, each "
+            "{kind, message, params}. Kinds: unlinked_tables (a class's tables not all joined "
+            "as one entity), class_and_attribute (a class holding non-key columns, or a table "
+            "left without a class), tag_wrong_kind (a term tag on a term that is not a "
+            "property), retirement_blocked (due for retirement but still holding data) and "
+            "no_data (a concept that reaches no data). A plain draft term is not a finding."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "create_glossary_term",
         "description": (
-            "Create a new glossary term (name + definition). It starts 'proposed' — "
-            "there is no separate flag to mark it finalized/live. A proposed term becomes live "
+            "Create a new ontology term (name + definition). It starts a draft — "
+            "there is no separate flag to mark it finalized/live. A draft term becomes live "
             "either automatically (a real column gets registered and lands on it) or by calling "
             "add_glossary_term_edge to connect it to a term that is already live. If the org runs "
             "multi-domain, pass at least one domain id."
@@ -380,11 +392,10 @@ _TOOLS: list[Any] = [
     {
         "name": "update_glossary_term",
         "description": (
-            "Rename a glossary term, change its definition, exclude it from exports, "
-            "or retire it. Only the fields you pass are changed. Prefer retiring (retired=true) "
-            "over deleting when the term carries curator work (a definition, a relationship, or "
-            "an expert) — deleting that outright is exactly the case delete_glossary_term warns "
-            "against."
+            "Rename a ontology term, change its definition, or exclude it from exports. Only "
+            "the fields you pass are changed. To withdraw a term that carries curator work (a "
+            "definition, a relationship, or an expert), retire it with retire_glossary_term "
+            "rather than deleting it."
         ),
         "input_schema": {
             "type": "object",
@@ -393,15 +404,59 @@ _TOOLS: list[Any] = [
                 "name": {"type": "string"},
                 "definition": {"type": "string"},
                 "export_excluded": {"type": "boolean"},
-                "retired": {"type": "boolean"},
             },
+            "required": ["term_id"],
+        },
+    },
+    {
+        "name": "deprecate_glossary_term",
+        "description": (
+            "Deprecate a live ontology term, with a reason and an optional planned retirement "
+            "date (ISO, not in the past). It stays in service until then and is retired on it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "reason": {"type": "string"},
+                "retire_on": {"type": "string"},
+            },
+            "required": ["term_id", "reason"],
+        },
+    },
+    {
+        "name": "retire_glossary_term",
+        "description": (
+            "Retire an ontology term, with a reason. Its columns or tables move to the successor "
+            "term id (required when it has any), which gets the REPLACES edge to it. A move that "
+            "would take pii off a column is refused unless confirm_tag_loss names the tag or "
+            "carry_tags puts it on the successor."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "reason": {"type": "string"},
+                "successor": {"type": "integer"},
+                "confirm_tag_loss": {"type": "array", "items": {"type": "string"}},
+                "carry_tags": {"type": "boolean"},
+            },
+            "required": ["term_id", "reason"],
+        },
+    },
+    {
+        "name": "restore_glossary_term",
+        "description": "Restore a retired or deprecated ontology term.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}},
             "required": ["term_id"],
         },
     },
     {
         "name": "delete_glossary_term",
         "description": (
-            "Permanently delete a glossary term. Irreversible — always confirm with "
+            "Permanently delete a ontology term. Irreversible — always confirm with "
             "the user first via present_choice (mode='yes_no'), the same as any other "
             "irreversible action, before calling this."
         ),
@@ -414,10 +469,10 @@ _TOOLS: list[Any] = [
     {
         "name": "add_glossary_term_edge",
         "description": (
-            "Connect two glossary terms with a typed relationship (e.g. 'broader', "
+            "Connect two ontology terms with a typed relationship (e.g. 'broader', "
             "'narrower', 'synonym' — check list_glossary_terms/existing edges for the vocabulary "
             "this org already uses before inventing a new rel_type). This is also the mechanism "
-            "for finalizing a proposed term without waiting for a column: connect it to an "
+            "for finalizing a draft term without waiting for a column: connect it to an "
             "already-live term and it becomes live through that edge."
         ),
         "input_schema": {
@@ -432,7 +487,7 @@ _TOOLS: list[Any] = [
     },
     {
         "name": "remove_glossary_term_edge",
-        "description": "remove a relationship edge between two glossary terms.",
+        "description": "remove a relationship edge between two ontology terms.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -441,6 +496,55 @@ _TOOLS: list[Any] = [
                 "rel_type": {"type": "string"},
             },
             "required": ["term_id", "to_term_id", "rel_type"],
+        },
+    },
+    {
+        "name": "ground_glossary_term_to_table",
+        "description": (
+            "Make an ontology term the class term of a registered table or view: each of the "
+            "table's rows is an instance of what the term names. The table must have a primary "
+            "key, and a table has one class term — one another term already grounds is refused, "
+            "naming that term."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}, "table_id": {"type": "integer"}},
+            "required": ["term_id", "table_id"],
+        },
+    },
+    {
+        "name": "unground_glossary_term_from_table",
+        "description": "withdraw an ontology term as a table's class term.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}, "table_id": {"type": "integer"}},
+            "required": ["term_id", "table_id"],
+        },
+    },
+    {
+        "name": "tag_glossary_term",
+        "description": (
+            "Put a tag (pii) on an ontology term that is a Property, so every column the term "
+            "holds, now and later, carries it; refused for a Class or a Concept. pii needs a "
+            "reason. Says how many columns it covers."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "tag_id": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            "required": ["term_id", "tag_id"],
+        },
+    },
+    {
+        "name": "untag_glossary_term",
+        "description": "Take a tag off an ontology term; its columns no longer carry it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}, "tag_id": {"type": "string"}},
+            "required": ["term_id", "tag_id"],
         },
     },
     {
@@ -536,7 +640,7 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "navigate",
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
-            "/tables, /relationships, /admin/glossary, /schema. Explore's query surfaces "
+            "/tables, /relationships, /admin/ontology, /schema. Explore's query surfaces "
             "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sql, "
             "/grpc, /jsonapi, /openapi, /nl (Natural Language). When you have already prepared a "
@@ -549,7 +653,7 @@ _CLIENT_TOOLS: list[Any] = [
             "building the query. Explore's Python tab (/python) and Notebook tab (/notebook) run "
             "Python in the user's browser as the user, reading Provisa through provisa_client "
             "(provisa_client.query(sql_or_graphql_or_cypher) returns a pandas DataFrame; pandas, "
-            "numpy, scikit-learn and matplotlib are available). They are two different tabs, "
+            "numpy, scikit-learn, matplotlib and networkx are available). They are two different tabs, "
             "never one for the other: the Python tab (state.code: one script, written into the "
             "active script tab -- or into a new tab with state.newTab true, titled state.title "
             "when given, when the user asks for a new one; every run starts from nothing, so the "
@@ -659,7 +763,8 @@ _CLIENT_TOOLS: list[Any] = [
             "mode='single' renders radio buttons and returns the one option string picked; "
             "mode='multi' renders checkboxes and returns an array of the options picked (zero or "
             "more); mode='yes_no' renders Yes/No buttons and returns a boolean, no 'options' "
-            "needed. The tool result names exactly which option(s) — or true/false — were picked."
+            "needed. The tool result names exactly which option(s) — or true/false — were picked, or "
+            "says the user closed the choice without picking (selected null)."
         ),
         "input_schema": {
             "type": "object",
@@ -728,6 +833,19 @@ _CLIENT_TOOLS: list[Any] = [
             "required": ["method", "path", "summary"],
         },
     },
+    # REQ-2115: what the user is looking at, read in their own browser session.
+    {
+        "name": "read_screen",
+        "description": (
+            "Read the screen the user is looking at, from their own browser session: the current "
+            "route; the open query editor's text (SQL, GraphQL, Cypher or Python) with its "
+            "language and the query tab open; the visible labelled form fields with their values "
+            "(a password shows as dots, as on screen); and each result grid's columns and row "
+            "count, never its rows. Call it whenever the user refers to 'this', 'the query' or "
+            "anything on the screen, before you answer or act on it."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
 _CLIENT_TOOL_NAMES = frozenset(t["name"] for t in _CLIENT_TOOLS)
 
@@ -783,7 +901,9 @@ _SYSTEM = (
     "own machinery -- an engine, binder, planner or compiler error ('Execution failed', "
     "'Binder Error', an internal column such as _nf_query) -- is a Provisa error: say so, quote "
     "it, and offer a working way to the same answer (e.g. the same question in SQL over a "
-    "registered view), never a step for the user to fix it. When you're offering the user a decision among a handful of concrete options — which "
+    "registered view), never a step for the user to fix it. When the user refers to 'this', "
+    "'the query', 'these results' or anything else on their screen, call read_screen first and "
+    "work from what it returns; never say you cannot see the screen. When you're offering the user a decision among a handful of concrete options — which "
     "source, which table, proceed or not, pick some of these — call present_choice rather than "
     "listing options in prose and waiting for a typed reply; it's a real UI widget (multiple "
     "choice, checklist, or yes/no) and reads better than typing a number or a name back. Its "
@@ -871,12 +991,12 @@ _SYSTEM = (
     "source's name/description alone; registerTable's own validation will refuse a guessed "
     "columns list outright, and the tool call will fail. "
     "THE PAGE-FIRST RULE: before performing an action that corresponds to a specific admin page (creating or "
-    "registering a source/table, editing a glossary term, upserting/deleting a relationship, "
+    "registering a source/table, editing a ontology term, upserting/deleting a relationship, "
     "running a GraphQL query in Explorer, or anything else with a dedicated screen), call navigate "
-    "to that page FIRST (e.g. /admin/glossary for any glossary edit), then perform the action — so "
+    "to that page FIRST (e.g. /admin/ontology for any ontology edit), then perform the action — so "
     "the user sees, on their own screen, the same page you're acting on, not just a chat "
     "transcript. Do this every single time that kind of action comes up, not just the first time "
-    "in a conversation — a later glossary edit needs its own navigate call exactly as much as the "
+    "in a conversation — a later ontology edit needs its own navigate call exactly as much as the "
     "first one did. Do this even when the action's own tool doesn't require the user to be on that "
     "page to work.\n\n"
     "If you cannot complete what was asked — no tool covers it, every avenue you tried came back "
@@ -884,8 +1004,14 @@ _SYSTEM = (
     "specifically (e.g. 'I wasn't able to do that — <what's missing>. Can you give me more detail "
     "and I'll try again?'). Never just stop or trail off without a closing message; the user should "
     "never have to guess whether you're still working or already gave up.\n\n"
-    "Manage the glossary with list_glossary_terms/create_glossary_term/update_glossary_"
-    "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge directly — these "
+    "Manage the glossary with list_glossary_terms/list_glossary_findings/create_glossary_term/"
+    "update_glossary_"
+    "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge, and ground a term "
+    "to a whole table with ground_glossary_term_to_table/unground_glossary_term_from_table, "
+    "and mark a Property term pii with tag_glossary_term/untag_glossary_term, "
+    "and change a term's status with deprecate_glossary_term/retire_glossary_term/"
+    "restore_glossary_term (each takes a reason, except restore), "
+    "directly — these "
     "carry their own capability check (glossary_rw) and fail loud if the caller lacks it, so they "
     "need no admin_mutation. Still always confirm with the user "
     "(present_choice, mode='yes_no') before delete_glossary_term specifically, since it's "
@@ -893,7 +1019,7 @@ _SYSTEM = (
     "glossary_terms first to avoid creating a duplicate term, and remember 'finalizing' a term "
     "has no direct flag — it happens by grounding it (a real column, or add_glossary_term_edge to "
     "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
-    "the page-first rule above: navigate to /admin/glossary before calling any of these — every time, for "
+    "the page-first rule above: navigate to /admin/ontology before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
     "Manage data products with list_data_products/create_data_product/"
     "delete_data_product, and governed metrics with upsert_metric/delete_metric, directly — no "
@@ -1266,11 +1392,19 @@ async def _execute_tool(
         )
     if name in (
         "list_glossary_terms",
+        "list_glossary_findings",
         "create_glossary_term",
         "update_glossary_term",
         "delete_glossary_term",
         "add_glossary_term_edge",
         "remove_glossary_term_edge",
+        "ground_glossary_term_to_table",
+        "unground_glossary_term_from_table",
+        "tag_glossary_term",
+        "untag_glossary_term",
+        "deprecate_glossary_term",
+        "retire_glossary_term",
+        "restore_glossary_term",
     ):
         if request is None:
             raise ValueError(f"{name} requires a verified request context")
@@ -1278,6 +1412,8 @@ async def _execute_tool(
             return await mcp_tools.list_glossary_terms(
                 state, role, request, args.get("q"), args.get("include_deprecated", True)
             )
+        if name == "list_glossary_findings":
+            return await mcp_tools.list_glossary_findings(state, role, request)
         if name == "create_glossary_term":
             return await mcp_tools.create_glossary_term(
                 state, role, request, args["name"], args.get("definition"), args.get("domains")
@@ -1291,7 +1427,16 @@ async def _execute_tool(
                 name=args.get("name"),
                 definition=args.get("definition"),
                 export_excluded=args.get("export_excluded"),
-                retired=args.get("retired"),
+            )
+        if name in ("deprecate_glossary_term", "retire_glossary_term", "restore_glossary_term"):
+            action = name.split("_", 1)[0]
+            body = {
+                k: args[k]
+                for k in ("reason", "retire_on", "successor", "confirm_tag_loss", "carry_tags")
+                if k in args
+            }
+            return await mcp_tools.change_glossary_term_status(
+                state, role, request, int(args["term_id"]), action, body
             )
         if name == "delete_glossary_term":
             return await mcp_tools.delete_glossary_term(state, role, request, int(args["term_id"]))
@@ -1303,6 +1448,22 @@ async def _execute_tool(
                 int(args["term_id"]),
                 int(args["to_term_id"]),
                 args["rel_type"],
+            )
+        if name == "ground_glossary_term_to_table":
+            return await mcp_tools.ground_glossary_term_to_table(
+                state, role, request, int(args["term_id"]), int(args["table_id"])
+            )
+        if name == "unground_glossary_term_from_table":
+            return await mcp_tools.unground_glossary_term_from_table(
+                state, role, request, int(args["term_id"]), int(args["table_id"])
+            )
+        if name == "tag_glossary_term":  # REQ-2145
+            return await mcp_tools.tag_glossary_term(
+                state, role, request, int(args["term_id"]), args["tag_id"], args.get("reason")
+            )
+        if name == "untag_glossary_term":
+            return await mcp_tools.untag_glossary_term(
+                state, role, request, int(args["term_id"]), args["tag_id"]
             )
         return await mcp_tools.remove_glossary_term_edge(
             state, role, request, int(args["term_id"]), int(args["to_term_id"]), args["rel_type"]

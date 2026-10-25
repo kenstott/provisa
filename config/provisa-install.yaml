@@ -95,35 +95,21 @@ domains:
   id: shelter
 federation_engine: duckdb
 functions:
+# REQ-2134: the petstore API's addPet operation (POST /pet), called as it is -- a write command
+# for pet_health with no host code.
 - arguments:
-  - name: name
-    type: String
-  - name: breed
-    type: String
-  - name: status
-    type: String
-  binding:
-    callable: demo.py_functions:add_pet
+  - name: body
+    type: json
   description: Add a new pet to inventory
   domain_id: pet-store
-  function_name: add_pet
-  impl_kind: python
+  function_name: addPet
+  impl_kind: source_operation
   kind: mutation
   name: add_pet
   product_id: pet_health
-  return_schema:
-    properties:
-      id:
-        type: integer
-      name:
-        type: string
-      breed:
-        type: string
-      status:
-        type: string
-    type: object
   returns: ''
-  source_id: ''
+  schema_name: openapi
+  source_id: petstore-api
   visible_to:
   - org_admin
 - arguments:
@@ -178,37 +164,6 @@ functions:
   impl_kind: grpc
   kind: query
   name: random_grpc_set
-  return_schema:
-    items:
-      properties:
-        active:
-          type: boolean
-        amount:
-          type: number
-        id:
-          type: integer
-        region:
-          type: string
-      type: object
-    type: array
-  returns: ''
-  source_id: ''
-  visible_to:
-  - org_admin
-- arguments:
-  - name: rows
-    type: Int
-  - name: seed
-    type: Int
-  binding:
-    callable: demo.py_functions:random_dataset
-  description: Demo Provisa-hosted Python command returning a random-valued dataset
-    (set-returning, REQ-885)
-  domain_id: pet-store
-  function_name: random_python_set
-  impl_kind: python
-  kind: query
-  name: random_python_set
   return_schema:
     items:
       properties:
@@ -445,7 +400,7 @@ sources:
   mapping:
     database: provisa
     host: ${env:PROVISA_DQ_HOST:-localhost}
-    # This config runs with no auth provider, where pgwire's trust mode ignores the password.
+    # This config runs with no auth provider, where pgwire's trust mode asks for no password.
     password: ""
     port: ${env:PROVISA_PGWIRE_PORT:-5439}
     user: ${env:PROVISA_DQ_USER:-org_admin}
@@ -460,7 +415,7 @@ sources:
   mapping:
     database: provisa
     host: ${env:PROVISA_DQ_HOST:-localhost}
-    # This config runs with no auth provider, where pgwire's trust mode ignores the password.
+    # This config runs with no auth provider, where pgwire's trust mode asks for no password.
     password: ""
     port: ${env:PROVISA_PGWIRE_PORT:-5439}
     user: ${env:PROVISA_DQ_USER:-org_admin}
@@ -483,20 +438,30 @@ sources:
     correlation_max_columns: 20
     joint_max_distinct: 20
     category_max_columns: 10
+    classification_sample: 500
   type: data_profiler
 - description: "Animal shelter GraphQL API \u2014 staff schedules, breed catalogue,\
     \ and animal assignment records managed by shelter operations"
+  # No engine reads a GraphQL API in place: a table of it with no argument lands whole, and a
+  # landed ttl table re-reads its source on this clock.
+  cache_ttl: 300
   id: graphql-demo
   path: ${env:GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}
   type: graphql_remote
 - description: "Customer adoption inquiry records \u2014 prospective pet owner interest\
     \ submissions tracked by the front-desk team, including inquiry type, message,\
     \ and resolution status"
+  # The engine reads SQLite in place where it can (DuckDB); one that cannot (Trino, the cloud
+  # node's) lands the tables, and a landed ttl table re-reads its source on this clock.
+  cache_ttl: 300
   id: inquiries-sqlite
   path: ${env:PROVISA_DEMO_DIR:-./demo/files}/inquiries.sqlite
   type: sqlite
 - description: "Internal pet store inventory \u2014 tracks animals available for sale,\
     \ pricing, species, and breed assignments managed by the inventory department"
+  # The engine reads SQLite in place where it can (DuckDB); one that cannot (Trino, the cloud
+  # node's) lands the tables, and a landed ttl table re-reads its source on this clock.
+  cache_ttl: 300
   id: pet-store-sqlite
   path: ${env:PROVISA_DEMO_DIR:-./demo/files}/pet_store.sqlite
   type: sqlite
@@ -795,7 +760,7 @@ tables:
   source_id: __derived__
   table: dim_pet
   view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM
-    "pet_store_sqlite"."pet_store"."pets"
+    "pet_store"."pets"
 - columns:
   - description: Employee id to fetch - sent to the GraphQL query as an argument
     name: _nf_id
@@ -940,7 +905,7 @@ tables:
   schema: views
   source_id: __derived__
   table: fact_pet_inquiries
-  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "inquiries_sqlite"."default"."inquiries"
+  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "pet_store"."inquiries"
     GROUP BY "pet_id"
 - alias: pet_by_status
   columns:

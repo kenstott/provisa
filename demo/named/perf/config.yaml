@@ -523,6 +523,9 @@ roles:
   domain_access:
   - '*'
 server:
+  # REQ-2134: this config registers python commands (demo/py_functions), host code.
+  commands:
+    allow_host_code: true
   limits:
     default_row_limit: 100
     request_timeout: 60
@@ -565,9 +568,13 @@ sources:
     correlation_max_columns: 20
     joint_max_distinct: 20
     category_max_columns: 10
+    classification_sample: 500
   type: data_profiler
 - description: Animal shelter GraphQL API — staff schedules, breed catalogue, and animal assignment records
     managed by shelter operations
+  # No engine reads a GraphQL API in place: a table of it with no argument lands whole, and a
+  # landed ttl table re-reads its source on this clock.
+  cache_ttl: 300
   id: graphql-demo
   path: ${env:GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}
   type: graphql_remote
@@ -902,7 +909,7 @@ tables:
   schema: views
   source_id: __derived__
   table: dim_pet
-  view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM "pet_store_sqlite"."pet_store"."pets"
+  view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM "pet_store"."pets"
 - columns:
   - description: Employee id to fetch - sent to the GraphQL query as an argument
     name: _nf_id
@@ -1045,7 +1052,7 @@ tables:
   schema: views
   source_id: __derived__
   table: fact_pet_inquiries
-  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "inquiries_sqlite"."default"."inquiries" GROUP BY
+  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "pet_store"."inquiries" GROUP BY
     "pet_id"
 - alias: pet_by_status
   columns:

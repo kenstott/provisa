@@ -45,6 +45,7 @@ import {
   type CatalogsState,
 } from "../../api/catalogs";
 import { useDomains } from "../../hooks/useAdminQueries";
+import { exportProviderName } from "../../lib/exportProviders";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
 /** Which credential fields each auth mode uses, so the form asks for exactly those. */
@@ -186,6 +187,9 @@ export function CatalogsTab() {
       </Group>
     );
 
+  const betaProviders = new Set(s.beta_providers);
+  const providerName = (p: string) => exportProviderName(p, p, t, betaProviders);
+
   const catalogForm = ({ catalog, secrets }: Row, i: number) => {
     // A catalog's test ids carry its place in the list, so two of one provider stay apart.
     const tid = (name: string) => `catalog-${name}-${i}`;
@@ -208,7 +212,7 @@ export function CatalogsTab() {
         <Group justify="space-between" mb="xs">
           <Title order={6}>
             {catalog.id || t("catalogsTab.newCatalog")}
-            {catalog.provider ? ` · ${catalog.provider}` : ""}
+            {catalog.provider ? ` · ${providerName(catalog.provider)}` : ""}
           </Title>
           <Group gap="xs">
             {/* The test reads the saved catalog, so it is offered once the catalog is kept. */}
@@ -247,7 +251,7 @@ export function CatalogsTab() {
             <Select
               label={t("catalogsTab.provider")}
               data-testid={tid("provider")}
-              data={s.providers.map((p) => ({ value: p, label: p }))}
+              data={s.providers.map((p) => ({ value: p, label: providerName(p) }))}
               value={catalog.provider || null}
               onChange={(v) => patchRow(i, { provider: v ?? "" })}
             />

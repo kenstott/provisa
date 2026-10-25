@@ -396,11 +396,11 @@ query {
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-將一張新資料表（或檢視）註冊到某個網域中。需要 `table_registration` 能力以及目標網域的成員身份。缺少 `create_relationship` 能力而提交檢視的呼叫者，會被加入待權限持有者批准的建立請求佇列。
+將一張新資料表（或檢視）註冊到某個網域中，並在一個交易中套用輸入攜帶的每項設定，其中包括 `gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules` 和 `draft`：任何一項被拒絕，就不會註冊任何內容。需要 `table_registration` 能力以及目標網域的成員身份；攜帶 `writeGrants` 亦需要該網域的 `masking_config`。缺少 `create_relationship` 能力而提交檢視的呼叫者，會被加入待權限持有者批准的建立請求佇列。
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-更新一張現有資料表的別名、描述、欄位中繼資料、具體化檢視設定和即時投遞設定。需要 `table_registration`。
+更新一張現有資料表的別名、描述、欄位中繼資料、具體化檢視設定、即時投遞設定，以及輸入攜帶的設定（`gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules`、`draft`），在一個交易中完成：任何一項被拒絕，就不會儲存任何內容。省略的設定保留其已儲存的值。需要 `table_registration`。
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -454,9 +454,11 @@ query {
 
 以與 `createRelationship` 相同的檢查修改已有關係。不屬於任何關係的 id 會被拒絕（`schema.relationship_not_found`）。修改需要該權利本身；它從不作為請求排隊。
 
-#### `deleteRelationship(id: String!) → MutationResult`
+在屬性和類之間重新安置鍵欄位的儲存操作可能會去掉這些欄位上的 `pii`。這時它會以 `tag.move_loses` 被拒絕，`params.columns` 會列出每個欄位失去（`loses`）和獲得（`gains`）的標籤。重新儲存時用 `confirmTagLoss` 列出每個遺失的標籤，或用 `carryTags: true` 把它們放到每個欄位要去的術語上。
 
-按 ID 刪除一個關係並重建結構描述。
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+按 ID 刪除一個關係並重建結構描述。會重新安置鍵欄位的刪除操作接受與儲存相同的 `confirmTagLoss` 和 `carryTags`。
 
 ---
 
@@ -538,11 +540,19 @@ query {
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-將一個標籤分配給數據來源、資料表、欄位、關係或命令。強制執行該標籤的欄位策略（`reason_policy`、`expires_policy`），並且——對於參數化標籤——根據標籤允許的清單驗證參數值。
+將一個標籤分配給數據來源、資料表、欄位、關係或命令。強制執行該標籤的欄位策略（`reason_policy`、`expires_policy`），對於參數化標籤，還會根據標籤允許的清單檢查參數值。
+
+`pii` 亦可以加在詞彙表的術語上，這樣具有該含義的每個欄位都會帶上這個標籤，包括日後登記的欄位。設定 `objectType: "term"` 和 `termId`：
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+在欄位上，`alsoTerm: true` 會改為把標籤加在該欄位的術語上。結果中的 `params.covers` 說明標籤涵蓋多少欄位：對於欄位，是它的術語持有的其他欄位數；對於術語，是它持有的欄位數。以下情況會被明確拒絕：術語上的非 `pii` 標籤（`tag.not_on_terms`）、不是屬性的術語（`tag.term_not_property`）、草稿術語（`tag.term_not_live`，「定義 *術語* 後才能標記」），以及使用 `alsoTerm` 時的鍵欄位（`tag.key_column`）或沒有術語的欄位（`tag.column_has_no_term`）。直接標記的欄位需要提供原因。
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-移除一個標籤分配。
+移除一個標籤分配，亦可從術語上移除（`objectType: "term"`、`termId`）。從一個透過其術語帶有 `pii` 的欄位上移除該標籤會被拒絕（`tag.inherited_from_term`）：請取消該術語的標記，或者把該欄位移到與其內容相符的術語上。
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 
@@ -728,7 +738,9 @@ mutation {
 | `mvRefreshInterval` | 重新整理間隔（秒） |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量維護 |
-| `mvBitemporalMode` | 雙時態資料表的 `snapshot` \| `delta` |
+| `businessKey` | 喺各個版本之間標識同一事物嘅欄；同 `validTime`、`recordedTime` 一齊宣告，三者全有或全無 |
+| `validTime` | 儲存業務賦予該記錄嘅日期嘅欄 |
+| `recordedTime` | 儲存該版本幾時輸入或修改嘅欄 |
 | `mvCalendar` | 快照日曆名稱 |
 | `mvGrain` | 快照粒度：`daily`、`weekly`、`monthly`、`annual`，或自定義的 `3WE` / `LFR` |
 | `viewSql` | 派生檢視的 SQL |
@@ -737,6 +749,15 @@ mutation {
 | `queryTemplate` | Neo4j 資料表的 Cypher |
 | `live` | SSE/Kafka 推送的即時投遞設定 |
 | `discover` | 在註冊時從即時數據來源推斷欄位 |
+| `gqlNamingConvention` | 資料表的 GraphQL 命名慣例；`null` 表示繼承。省略時，新資料表繼承，更新則保留已儲存的值 |
+| `roleTtl` | 完整的角色對 TTL 清單，`[{ role, ttl }]` |
+| `replicate` | 資料表幾時由其副本提供；`null` 繼承數據來源的值 |
+| `writeGrants` | 資料表完整的寫入授權集合；需要 `masking_config` |
+| `draft` | `false` 發佈該資料表；否則註冊後為草稿 |
+| `cacheTtl` | 資料表自身的 Cache TTL；`null` 表示冇自身的 |
+| `pagination` | 資料表聲明的分頁；`null` 表示唔聲明 |
+| `region` | 資料表數據所在位置；更新時畀出另一個區域會遷移該資料表，檢查方式同 `setTableRegion` 一樣 |
+| `rowRules` | 資料表的行規則（`RLSRuleInput`），隨資料表一齊儲存；需要 `masking_config` |
 
 ### `RelationshipInput`
 

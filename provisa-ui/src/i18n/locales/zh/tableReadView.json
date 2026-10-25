@@ -50,6 +50,8 @@
     "draftLabel": "草稿",
     "draftTooltip": "草稿：已停用——不在任何架构中，也无人可读取。取消勾选即发布该表；勾选则将其停用。",
     "draftNoRightTooltip": "发布表或将其退回草稿，需要在该表所属域中拥有“表注册”权限。",
-    "draftPreviewNote": "草稿预览：读者目前还看不到此表。"
+    "draftPreviewNote": "草稿预览：读者目前还看不到此表。",
+    "keepsHistory": "保留历史：每个版本，包括何时发生和何时记录。",
+    "keepsHistoryQuery": "按截至某日或按记录时查询"
   }
 }

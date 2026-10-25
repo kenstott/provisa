@@ -48,6 +48,7 @@ fino a ciascun output.
 | `source` | Verde | Una colonna di tabella di base |
 | `derived` | Blu | Prodotta da un'espressione SQL (funzione, operatore, CTE) |
 | `command` | Viola | Una colonna di output di un comando registrato |
+| `native` | Arancione | Il campo grezzo che una sorgente legge, sotto la colonna di una tabella registrata |
 
 Anelli aggiuntivi su un nodo:
 
@@ -65,6 +66,27 @@ elenco di operazioni nominate: funzioni SQL (`sql_function`), operatori aritmeti
 
 Un arco che nasce da una chiamata a comando viene disegnato nella UI come una linea viola
 tratteggiata.
+
+### Sotto la tabella registrata
+
+Un utente con la registrazione delle sorgenti vede un passaggio in più sotto ogni colonna sorgente: il campo come la sorgente lo legge, in un riquadro per il luogo da cui è letto. Il riquadro porta il logo e l'etichetta di tipo della sorgente, come li mostra la pagina Sources, e l'indirizzo secondo il tipo di sorgente:
+
+| Sorgente | Indirizzo |
+| --- | --- |
+| OpenAPI | L'operazione (`GET /v2/customers`), i suoi parametri fissi e la posizione delle righe |
+| Remote GraphQL | Il campo radice, i suoi argomenti obbligatori e la posizione delle righe |
+| MongoDB, Cosmos DB | Il database e la collezione o il container |
+| Elasticsearch, Qdrant | L'indice o la collezione |
+| CSV, Parquet, file, log | Il percorso, e il pattern di file di una tabella che legge molti file |
+| Kafka | Il topic |
+| Sorgente di codice | La funzione |
+| Qualsiasi altra | Lo schema e la tabella nativi |
+
+Il campo grezzo è il percorso di campo della colonna quando ne ha uno, altrimenti il suo nome. L'arco da esso alla colonna registrata nomina la ridenominazione: `path`, `alias` o `naming` (la convenzione di denominazione). Il riquadro della tabella registrata dice come viene servita: `virtual`, letta a ogni istruzione, o `replica`, con il suo TTL e quando è stata caricata l'ultima volta. Credenziali, riferimenti a secret e l'utente, la password e la query di un URL non vengono mai mostrati. Un utente senza registrazione delle sorgenti vede il lineage dalla tabella registrata in su.
+
+### Collegamenti
+
+Ogni elemento si apre dove è definito, quando i diritti dell'utente aprono quella pagina. Un clic su un campo apre la sua tabella, vista o sorgente; un doppio clic su un riquadro apre la sua relazione; un clic sull'arco di un comando apre il comando. Una funzione SQL integrata non ha pagina né collegamento.
 
 ## Grafo esteso alla federazione {: #federation-wide-graph }
 
@@ -120,6 +142,26 @@ Forma della risposta:
   "outputs": ["id", "embedding"]
 }
 ```
+
+Per un chiamante con la registrazione delle sorgenti, entrambi gli endpoint aggiungono il passaggio nativo: nodi di tipo `native` e un oggetto `natives` con chiave la relazione di ogni riquadro nativo (`native:<domain>.<table>`):
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+Il `served` di una replica è `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Per qualsiasi altro chiamante `natives` è vuoto.
 
 Restituisce HTTP 422 quando il SQL non può essere analizzato.
 
@@ -183,12 +225,12 @@ La vista legge i record di refresh in `"ops"."traces"` e risponde su ogni motore
 
 ## Una vista com'era, e com'era stata registrata {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Una vista dichiarata bitemporale conserva ogni versione che ha avuto: ogni refresh aggiunge, e nessuna versione viene riscritta, su qualsiasi archivio. Una lettura semplice risponde con lo stato attuale. Due header della richiesta ne leggono il passato:
+Una vista che mappa le colonne della sua origine come `business_key`, `valid_time` e `recorded_time` conserva ogni versione che ha avuto: ogni aggiornamento aggiunge, e nessuna versione viene riscritta, su nessuno store. Una lettura semplice restituisce lo stato attuale. Due header di richiesta leggono il suo passato:
 
-- `X-Provisa-As-Of` legge la vista a una data, o su un intervallo, secondo il suo orologio: l'ora di modifica propria della sorgente dove la vista dichiara `bitemporal_source_time`, l'ora di caricamento di Provisa dove non la dichiara.
+- `X-Provisa-As-Of` legge la vista a un momento o su un intervallo.
 - `X-Provisa-As-Recorded` la legge come Provisa l'aveva registrata a una data. Le versioni registrate dopo restano escluse, quindi una correzione registrata in seguito non cambia la riproduzione del passato.
 
-Al 30 settembre e registrata il 1° ottobre dà il dato originale; registrata il 5 ottobre dà la correzione. Il record di audit di ogni istruzione conserva entrambe le date (`as_of`, `as_recorded`), così un report si può riprodurre com'era stato prodotto la prima volta. [Viste con cronologia](configuration.md#views-with-history-time-travel) descrive come dichiarare una vista bitemporale e ogni superficie che accetta i due valori.
+Al 30 settembre e registrata il 1° ottobre dà il dato originale; registrata il 5 ottobre dà la correzione. Il record di audit di ogni istruzione conserva entrambe le date (`as_of`, `as_recorded`), così un report si può riprodurre com'era stato prodotto la prima volta. [Viste con cronologia](configuration.md#views-with-history-time-travel) descrive le tre dichiarazioni, con esempi, e ogni superficie che accetta i due valori.
 
 ## Che cosa romperebbe la ridenominazione o la rimozione di una colonna {: #what-a-column-rename-or-drop-would-break }
 
@@ -202,7 +244,7 @@ eliminare la colonna**.
 
 Il **nome fisico** è `table_columns.column_name`, l'identità che sopravvive alla sostituzione in
 blocco delle colonne durante l'upsert della tabella. Relazioni, collegamenti del
-[glossario](glossary.md), assegnazioni di tag, la colonna di watermark e i preset di colonna
+[ontologia](ontology.md), assegnazioni di tag, la colonna di watermark e i preset di colonna
 memorizzano questo, quindi si rompono solo quando la colonna viene **rimossa**.
 
 `columnDependents` riporta entrambi. Le viste e le MV a valle provengono dal ritaglio del grafo di

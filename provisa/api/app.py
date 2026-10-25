@@ -31,6 +31,7 @@ from pathlib import Path
 from fastapi import FastAPI, Response
 from starlette.requests import HTTPConnection
 
+from provisa.federation.colocation import colocation_key
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
@@ -550,6 +551,15 @@ class AppState:
         self._active_runtime().tracked_functions = value
 
     @property
+    def column_transforms(self) -> dict[str, dict]:
+        """The active environment's column transforms, by name (REQ-2131)."""
+        return self._active_runtime().column_transforms
+
+    @column_transforms.setter
+    def column_transforms(self, value: dict[str, dict]) -> None:
+        self._active_runtime().column_transforms = value
+
+    @property
     def tracked_webhooks(self) -> dict[str, dict]:
         """The active environment's webhooks, by the names every surface calls them by."""
         return self._active_runtime().tracked_webhooks
@@ -771,6 +781,16 @@ class AppState:
     @bitemporal_view_reads.setter
     def bitemporal_view_reads(self, value: dict) -> None:
         self._active_runtime().bitemporal_view_reads = value
+
+    @property
+    def stored_view_reads(self) -> set[str]:
+        """REQ-2131: the views read only from their stored tables (each applies a column
+        transform, whose outputs are computed when the view is built)."""
+        return self._active_runtime().stored_view_reads
+
+    @stored_view_reads.setter
+    def stored_view_reads(self, value: set[str]) -> None:
+        self._active_runtime().stored_view_reads = value
 
     @property
     def table_cache(self) -> dict[int, int | None]:
@@ -1388,7 +1408,7 @@ async def _load_and_build(
         _resolve_pk_from_sources,
     )
 
-    pg_host, pg_port, pg_database, pg_user = await _init_control_planes(
+    pg_host, pg_port, pg_database, pg_user, pg_password = await _init_control_planes(
         config_path, initialise=apply
     )
     # REQ-1992: the deployment org's folder on this node, ready before anything writes for it
@@ -1699,7 +1719,9 @@ async def _load_and_build(
             _naming_override.get("default_domain", _default),
         )
 
-    state.source_dsns["provisa-admin"] = f"{pg_host}:{pg_port}/{pg_database}"
+    state.source_dsns["provisa-admin"] = colocation_key(
+        pg_host, pg_port, pg_database, pg_user, pg_password
+    )
 
     from provisa.federation.replica_routing import kept_sources as _kept_sources
 
@@ -2588,7 +2610,9 @@ async def _build_org_runtime(
         await _seed_built_in_sources(
             host or "", port, database, username or "", org_id=org_id, env=env
         )
-        state.source_dsns["provisa-admin"] = f"{host}:{port}/{database}"
+        state.source_dsns["provisa-admin"] = colocation_key(
+            host or "", port, database, username or "", _pw or ""
+        )
 
         # REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): a demo organisation is defined by its
         # demo configuration — the deployment's file — and every build of its runtime rebuilds its
@@ -2814,6 +2838,14 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # lands while the build reads leaves the runtime at the older stamp, so the config watcher
     # rebuilds once more; reading it afterwards would record a stamp newer than the model built.
     from provisa.core import config_stamp as _config_stamp
+    from provisa.core.relationship_names import store_effective_names
+
+    # REQ-351: every relationship's effective names, in the naming convention now in force: a build
+    # follows each save, configuration load and change of convention. Stored before the stamp is
+    # read, as each row it changes advances the stamp: read first, the runtime would be loaded at
+    # a stamp the model has already left, and no audit row could name its commit (REQ-1524).
+    async with state.model_db.acquire() as _names_conn:
+        await store_effective_names(cast("Connection", _names_conn))
 
     _stamped_runtime = state._active_runtime()
     _model_stamp = (await _config_stamp.read(state.model_db))[_config_stamp.MODEL]
@@ -2956,6 +2988,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                     relationship_id=r["relationship_id"],
                     command_name=r["command_name"],
                     table_ref=r["table_ref"],
+                    term_id=r["term_id"],  # REQ-2145
+                    term=r["term"],
                     reason=r["reason"],
                     expires_on=r["expires_on"],
                 )
@@ -3126,7 +3160,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         state.federation_engine.reseed_ops(_OPS_VIEWS)
 
-        await _register_user_views_in_state(conn, raw_config)
+        await _register_user_views_in_state(conn, raw_config, tables, draft_tables)
 
         # Schema-currency reconcile (REQ-846/932): converge this environment's own landing tables
         # to the registered shape before introspection reads them. Boot and post-mutation registration
@@ -3288,7 +3322,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                 )
             )
 
-        _build_and_register_schemas(
+        _checked = _build_and_register_schemas(
             roles=roles,
             tables=tables,
             relationships=relationships,
@@ -3307,6 +3341,16 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         )
 
         await persist_field_numbers(conn, _field_numbers)
+
+        # REQ-2129: this build's column lineage edges, read by the meta domain's lineage views.
+        from provisa.api.admin.lineage_router import write_lineage_edges
+
+        await write_lineage_edges(conn, state)
+
+        # REQ-2125: the table each checker checks, as this build resolved it, for the meta domain.
+        from provisa.dq.registration import write_checker_targets
+
+        await write_checker_targets(conn, _checked)
 
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
     # (pgwire / Flight SQL / airport). build_governance_context reads state.tables to derive
@@ -4000,6 +4044,16 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
+    from provisa.core.host_code import HostCodeRefused as _HostCodeRefused
+
+    @app.exception_handler(_HostCodeRefused)
+    async def _host_code_refused_handler(_req: _Request, exc: _HostCodeRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-2134: a python or script command while the deployment allows no host code.
+        return _JSONResponse(
+            status_code=403,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     @app.exception_handler(_PrivateDestinationRefused)
     async def _private_destination_handler(_req: _Request, exc: _PrivateDestinationRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         # REQ-2006: a sandbox org's source names a destination that is not public; not reached.
@@ -4644,6 +4698,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_checks_router)
+    from provisa.api.admin.profiler_classifications_router import (  # REQ-2147
+        router as profiler_classifications_router,
+    )
+
+    app.include_router(profiler_classifications_router)
     from provisa.api.admin.synthetic_router import router as synthetic_router  # REQ-1939
 
     app.include_router(synthetic_router)
@@ -4761,6 +4820,11 @@ def create_app() -> FastAPI:
     except ImportError:
         pass
 
+    # REQ-2135: the SPARQL 1.1 Protocol endpoint, beside Cypher's.
+    from provisa.api.rest.sparql_router import router as sparql_router
+
+    app.include_router(sparql_router)
+
     # Neo4j Browser compatibility layer (Query API v2 + discovery)
     try:
         from provisa.api.rest.neo4j_compat_router import router as neo4j_compat_router
@@ -4814,6 +4878,11 @@ def create_app() -> FastAPI:
             response.status_code = 503
             return {"status": "warming"}
         return {"status": "ready"}
+
+    # REQ-2149: the leak test's view of this process, mounted only with PROVISA_LEAK_PROBE=1.
+    from provisa.api.leak_probe import mount as _mount_leak_probe
+
+    _mount_leak_probe(app)
 
     @app.api_route("/debug/logs", methods=["GET"])
     async def debug_logs(pattern: str | None = None, limit: int = 100):  # noqa: F841  # pyright: ignore[reportUnusedFunction]

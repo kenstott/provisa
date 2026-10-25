@@ -20,6 +20,7 @@ from sqlalchemy import delete as _delete, func, or_, select, update
 from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
 from provisa.core.repositories import table as table_repo
+from provisa.core.relationship_names import store_effective_names
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import relationships, table_columns
 
@@ -81,6 +82,7 @@ async def upsert(
         "graphql_alias": rel.graphql_alias or None,
         "disable_cypher": rel.disable_cypher,
         "hide_target_meta": rel.hide_target_meta,
+        "same_entity": rel.same_entity,
         "via_table_id": via_tbl_id,
         "via_source_column": rel.via_source_column or None,
         "via_target_column": rel.via_target_column or None,
@@ -114,6 +116,7 @@ async def upsert(
                 "graphql_alias",
                 "disable_cypher",
                 "hide_target_meta",
+                "same_entity",
                 "via_table_id",
                 "via_source_column",
                 "via_target_column",
@@ -131,6 +134,9 @@ async def upsert(
                 f"Alias {rel.alias!r} already exists for source table {rel.source_table_id!r}"
             ) from e
         raise
+
+    # REQ-351: its effective names, derived once and stored, for the meta domain and every reader.
+    await store_effective_names(conn, [rel.id])
 
     # REQ-1586: the junction's two keys are foreign keys on the junction table.
     if via_tbl_id:
@@ -199,6 +205,12 @@ async def upsert(
                 )
                 .values(is_primary_key=True)
             )
+    # REQ-2141: a foreign key's ref is its target's Class term; the relationship says which.
+    from provisa.core.repositories import glossary as glossary_repo
+
+    await glossary_repo.rehome_keys(
+        conn, {t for t in (source_tbl["id"], target_tbl_id, via_tbl_id) if t is not None}
+    )
 
 
 #: The id every relationship a remote GraphQL source's schema offers is kept under
@@ -285,8 +297,19 @@ async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019, REQ-1918
         blocking = await guard(conn, ref)
         if blocking:
             raise RelationshipDeleteRefused(rel_id, blocking)
+        held = await get(conn, rel_id)
+        assert held is not None  # read above, in this transaction
+        joined = {
+            t
+            for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
+            if t is not None
+        }
         await remove_parts(conn, ref)
         await conn.execute_core(_delete(relationships).where(relationships.c.id == rel_id))
+        # REQ-2141: its foreign key is no longer a key; the ref goes back to a Property.
+        from provisa.core.repositories import glossary as glossary_repo
+
+        await glossary_repo.rehome_keys(conn, joined)
     return True
 
 

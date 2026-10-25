@@ -35,7 +35,8 @@ const LIST_PAGES = [
   "components/admin/ScheduledTasks.tsx",
   "components/admin/SystemHealth.tsx",
   "components/admin/McpServerTab.tsx",
-  "components/admin/GlossaryTab.tsx",
+  // The Ontology page's term columns: its read view lists them.
+  "components/admin/TermReadView.tsx",
   "components/admin/MergeRequestsPanel.tsx",
   "components/admin/EnvironmentsTab.tsx",
   "components/admin/SecretsTab.tsx",
@@ -164,7 +165,6 @@ describe("list pages leave a cell's width, wrapping and truncation to the shared
   /** Cells that still set their own, by page: each is to be moved to the shared rule, then leaves. */
   const STILL_OWN: Record<string, number> = {
     "pages/RequestsPage.tsx": 3,
-    "components/admin/CacheManager.tsx": 1,
   };
 
   it.each(LIST_PAGES)("%s", (page) => {

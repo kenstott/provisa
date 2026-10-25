@@ -174,25 +174,37 @@ def demo_profilers(directory: Path) -> list[str]:
 
 
 async def profile_template(demo: "PublishedDemo", org_id: str) -> list[str]:
-    """Run the demo's profilers for its template (REQ-2052): a profile run's results are tables
-    of the org's own schema, which a sandbox is cloned with (env_copy.copy_profile_results), and
-    the bundle build's runs are on its throwaway control plane, so the template profiles the
-    demo's sources itself, where the demo is served. Returns the tables whose run failed, by
-    profiler: each is recorded in its own history too."""
+    """Load the demo's profile runs into its template (REQ-2052): a profile run's results are
+    tables of the org's own schema, which a sandbox is cloned with (env_copy.copy_profile_results).
+    They are the bundle build's runs, carried in the bundle (provisa.profiler.carry): the build ran
+    them where the demo's setup ran, between its other steps, so what changed between two runs is
+    measured; the template's sources hold the data as setup left it. Returns what kept them from
+    loading; empty when the demo profiles nothing or they loaded."""
+    import logging
+
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
-    from provisa.profiler.source import run_source
+    from provisa.profiler.carry import load_runs, results_path
 
-    failed: list[str] = []
+    log = logging.getLogger(__name__)
+    if not demo_profilers(demo.directory):
+        return []
+    path = results_path(demo.directory)
+    if not path.is_file():
+        return [f"the bundle carries no profile runs ({path.name}): rebuild it"]
     token = set_current_org(org_id)
     try:
-        for profiler in demo_profilers(demo.directory):
-            for outcome in await run_source(state, profiler):
-                if outcome["error"] is not None:
-                    failed.append(f"{profiler}/{outcome['table']}: {outcome['error']}")
+        # The template's runtime is built before it is prepared (ensure_org_runtime).
+        model_db = state.model_db
+        assert model_db is not None
+        async with model_db.acquire() as conn:
+            loaded = await load_runs(conn, path)
+    except ValueError as exc:
+        return [str(exc)]
     finally:
         reset_current_org(token)
-    return failed
+    log.info("demo template %s: %d profile result relations loaded", demo.name, len(loaded))
+    return []
 
 
 def demo_environments(directory: Path) -> list[dict[str, str]]:
@@ -370,14 +382,19 @@ def prefetch_connector_bundles() -> None:
 
 def embedding_models() -> list[Any]:  # list[VectorModelConfig]
     """The local (huggingface) embedding models the published demos declare and enable, once
-    each: the sonnets demo's, which its search tables embed a phrase with."""
+    each: the sonnets and cloudpolicy demos', which their search tables embed a phrase with.
+
+    Read from each demo's own configuration file, whether or not its stores are up: a bundled
+    tier starts no demo's stores at boot, and a model left to the first search that needs it
+    took that search past its 60s request timeout. A model's declaration names no store."""
+    from provisa.core.config_loader import read_config_with_includes
+    from provisa.core.models import VectorModelConfig
+
     seen: dict[str, Any] = {}
     for demo in published_demos().values():
-        if not demo.stores_ready:
-            # Its configuration names its stores' data only once they are up; a model it
-            # declares is then loaded by the request that embeds with it.
-            continue
-        for model in template_seed(demo.template_org).vector_models:
+        raw = read_config_with_includes(demo.directory / "config.yaml")
+        for declared in raw.get("vector_models", []):
+            model = VectorModelConfig(**declared)
             if model.provider == "huggingface" and model.enabled:
                 seen.setdefault(model.id, model)
     return list(seen.values())
@@ -607,7 +624,7 @@ async def queue_late_templates(pool) -> list[str]:
                 continue
             # A visitor's open builds a newer version itself (follow_latest), marked first.
             if template_builds.state_of(demo.name) != "unknown" or (
-                _templated(demo.name) == demo.directory.name
+                await _templated(pool, demo.name) == demo.directory.name
             ):
                 continue
             await _queue_template(pool, demo)
@@ -637,11 +654,12 @@ async def _queue_template(pool, demo: PublishedDemo) -> str:
     # A template another demo version or another Provisa release built is replaced, not loaded: its
     # schema is that release's (no migrations), and a column added since fails every read of it
     # (sources.download_from on the sandbox tier).
+    # Another demo version or release is the record's, on the control plane (readiness_version):
+    # never told by a node's own files, which a fresh disk does not have.
     stale = await _built_for(pool, demo) != readiness_version(demo)
-    if stale or (bundled_demos() and _templated(demo.name) != demo.directory.name):
+    if stale:
         await _retire_template(demo.name)
     build = await _template_row(pool, demo)
-    _mark_templated(demo)
     template_builds.add(demo, build=build)
     return "building" if build else "ready"
 
@@ -841,15 +859,24 @@ async def _built_for(pool, demo: PublishedDemo) -> str | None:
     return row[0] if row is not None else None
 
 
-def _templated(name: str) -> str | None:
-    """The version of bundled demo ``name`` its template was built from."""
-    path = bundles_root() / name / "templated"
-    return path.read_text().strip() if path.is_file() else None
+async def _templated(pool, name: str) -> str | None:
+    """The version of bundled demo ``name`` its template was recorded ready from, on the control
+    plane beside its ready record (readiness_version: ``<version>@<release>``); None when it was
+    never recorded ready. Never a node's own file: a fresh disk under a shared plane would read
+    no version and retire the template the other nodes serve."""
+    from sqlalchemy import select
 
+    from provisa.core.schema_admin import demo_template_readiness
 
-def _mark_templated(demo: PublishedDemo) -> None:
-    if bundled_demos():
-        (bundles_root() / demo.name / "templated").write_text(demo.directory.name + "\n")
+    async with pool.acquire() as conn:
+        version = (
+            await conn.execute_core(
+                select(demo_template_readiness.c.version).where(
+                    demo_template_readiness.c.template_org == template_org_id(name)
+                )
+            )
+        ).scalar_one_or_none()
+    return None if version is None else version.partition("@")[0]
 
 
 # The lock that keeps two openers of one demo from replacing its template at once, one a demo.
@@ -872,7 +899,7 @@ async def follow_latest(name: str) -> None:
 
     import httpx
 
-    from provisa.core.demo_bundles import BundleError, ready_version, request
+    from provisa.core.demo_bundles import BundleError, hold, ready_version, request
 
     if name not in bundled_demos():
         return
@@ -899,11 +926,23 @@ async def follow_latest(name: str) -> None:
             f"The {name} demo is still being prepared; try again shortly",
             demo=name,
         )
+    # Opened while its stores linger after its last sandbox closed: they are kept up.
+    await asyncio.to_thread(hold, name)
     lock = _following.setdefault(name, CrossLoopLock())
     async with lock:
-        if _templated(name) == ready and template_builds.state_of(name) != "unknown":
-            return
         from provisa.api.admin.orgs_router import _admin_pool
+
+        # Being prepared here already: the open waits for that preparation
+        # (demo_sandbox._template_ready). Its ready record is written only when it finishes, so
+        # it read as built from another version, and queueing it again built it twice at once --
+        # one build's rollback dropping the schema the other was creating its tables in.
+        if template_builds.state_of(name) in ("queued", "building"):
+            return
+        if (
+            await _templated(_admin_pool(), name) == ready
+            and template_builds.state_of(name) != "unknown"
+        ):
+            return
 
         # _queue_template replaces a template built from another version.
         await _queue_template(_admin_pool(), published_demo(name))
@@ -992,8 +1031,9 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     from provisa.api.demo_replicas import export_seed
 
     exporting = seeding_release()
+    said = None
     while True:
-        landed, failed, declared = await _replica_progress(rt)
+        landed, failed, declared, waiting = await _replica_progress(rt)
         if failed:
             log.error("demo template %s: replicas failed to land: %s", demo.name, failed)
             return False
@@ -1001,6 +1041,15 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         # each one has a landed replica, whether or not convergence has asked for all yet.
         if landed >= declared:
             break
+        if waiting != said:
+            said = waiting
+            log.warning(
+                "demo template %s: %d of %d replicas landed, waiting on %s",
+                demo.name,
+                landed,
+                declared,
+                waiting,
+            )
         await asyncio.sleep(_LANDED_POLL_S)
     log.info("demo template %s: every replica landed", demo.name)
     # REQ-1942, REQ-2053: its Test (synthetic) environments, generated once here (or adopted from
@@ -1017,11 +1066,29 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         )
     finally:
         reset_current_org(token)
-    from provisa.api.demo_region_seed import regional, views_built_here, views_kept_here
+    from provisa.api.demo_region_seed import (
+        regional,
+        views_built_here,
+        views_kept_here,
+        views_waiting_here,
+    )
 
     if exporting and regional():
         # REQ-2068: a region's seed carries its views too; no node of it builds them after.
-        while await views_built_here(org_id) < views_kept_here(template_seed(org_id)):
+        said = None
+        while (built := await views_built_here(org_id)) < (
+            kept := views_kept_here(template_seed(org_id))
+        ):
+            waiting = await views_waiting_here(org_id)
+            if waiting != said:
+                said = waiting
+                log.warning(
+                    "demo template %s: %d of %d views built in this region, waiting on %s",
+                    demo.name,
+                    built,
+                    kept,
+                    waiting,
+                )
             await asyncio.sleep(_LANDED_POLL_S)
         await export_seed(org_id, demo.directory)
         log.info("demo template %s: region seed written to %s", demo.name, demo.directory)
@@ -1030,11 +1097,12 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         await export_seed(org_id, demo.directory)
         log.info("demo template %s: seed written to %s", demo.name, demo.directory)
     if not exporting:
-        # REQ-2052: its profile runs, which every sandbox of it is cloned with. A run that fails
-        # leaves the template not ready, as a replica that fails to land does.
+        # REQ-2052: its profile runs, carried in its bundle, which every sandbox of it is cloned
+        # with. Runs that do not load leave the template not ready, as a replica that fails to
+        # land does.
         failed_runs = await profile_template(demo, org_id)
         if failed_runs:
-            log.error("demo template %s: profile runs failed: %s", demo.name, failed_runs)
+            log.error("demo template %s: profile runs not loaded: %s", demo.name, failed_runs)
             return False
     token = set_current_org(org_id)
     try:
@@ -1045,30 +1113,50 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
                 log.exception("demo template %s: ready hook %r failed", demo.name, hook)
     finally:
         reset_current_org(token)
-    if not regional() and not exporting:
-        # REQ-2006: the next start serves this template as it is built (warm_ready).
+    if not exporting:
+        # REQ-2006: the record says which demo version the template is (_templated, _built_for),
+        # on every tier: a regions tier's unrecorded template read as another version's, and the
+        # next open retired it and built it again. The next start serves it as it is built
+        # (warm_ready) only off a regions tier (_served_as_built).
         from provisa.api.admin.orgs_router import _admin_pool
 
         await record_ready(_admin_pool(), demo)
     return True
 
 
-async def _replica_progress(rt) -> tuple[int, list[str], int]:
-    """How many of the template's replicas have landed, the tables whose last build failed, and
-    how many replicated tables its demo's configuration declares (replicated_tables: not its
-    views, and not the built-in tables every org registers)."""
+async def _replica_progress(rt) -> tuple[int, list[str], int, str]:
+    """How many of the template's replicas have landed, the tables whose last build failed, how
+    many replicated tables its demo's configuration declares (replicated_tables: not its views,
+    and not the built-in tables every org registers), and what it waits on, table by table."""
     from provisa.federation import replica_state
 
-    from provisa.api.demo_replicas import landed_here
+    from provisa.api.demo_replicas import LANDED, landing_here
 
     from provisa.api.demo_region_seed import kept_here
 
-    declared = len(kept_here(replicated_tables(template_seed(rt.org_id))))
+    tables = kept_here(replicated_tables(template_seed(rt.org_id)))
     async with rt.tenant_db.acquire() as conn:
         _recorded, failed = await replica_state.progress(conn)
     # Landed: recorded as built for this store AND held by it, rows and all.
-    landed = await landed_here(rt.org_id)
-    return landed, failed, declared
+    landing = await landing_here(rt.org_id)
+    landed = sum(1 for state in landing.values() if state == LANDED)
+    return landed, failed, len(tables), waiting_on(tables, landing)
+
+
+def waiting_on(tables: list[Any], landing: dict[str, str]) -> str:
+    """What a template's replicas of ``tables`` wait on, by table: each one's landing
+    (demo_replicas.landing) that is not landed, or that no build of it is recorded."""
+    from provisa.api.demo_replicas import LANDED
+    from provisa.federation.replica_address import replica_table_name
+
+    out = []
+    for t in tables:
+        state = landing.get(
+            replica_table_name(t.source_id, t.schema_name, t.table_name), "no build recorded"
+        )
+        if state != LANDED:
+            out.append(f"{t.source_id}.{t.schema_name}.{t.table_name}: {state}")
+    return "; ".join(out)
 
 
 _build_tasks: set = set()

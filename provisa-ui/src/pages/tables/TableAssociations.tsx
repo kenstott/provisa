@@ -16,6 +16,7 @@ import type { RegisteredTable, Relationship } from "../../types/admin";
 import { fetchRelatedGlossaryTerms, type RelatedGlossaryTerm } from "../../api/glossary";
 import { TagControl } from "../../components/TagControl";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
+import { TableClassTerm } from "./TableClassTerm";
 
 /**
  * What a table is associated with besides its data product, the same in its read view and its
@@ -43,6 +44,12 @@ export function TableAssociations({
       testId="table-associations"
       fields={[
         ...leading,
+        {
+          // REQ-2130: what each of its rows is, set and cleared in place.
+          label: t("tableSections.classTerm"),
+          testId: "table-associations-class-term",
+          value: <TableClassTerm tableId={table.id} />,
+        },
         {
           label: t("tableSections.tags"),
           value: <TagControl objectType="table" tableId={table.id} />,

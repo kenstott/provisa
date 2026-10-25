@@ -23,7 +23,6 @@
     "descriptionLabel": "Beschrijving",
     "descriptionPlaceholder": "Verschijnt in SDL-documentatie",
     "dataProductLabel": "Dataproduct",
-    "dataProductHint": "(publiceren naar catalogus / exporteren naar Atlas, Atlan, enz.)",
     "discoverLabel": "Kolommen detecteren",
     "discoverHint": "(kolommen afleiden uit de live bron bij registratie — voor schemaloze/NoSQL-bronnen; geen handmatige kolomselectie nodig)",
     "watermarkLabel": "Watermerkkolom",
@@ -135,6 +134,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vectoren van {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensies, gescoord met {{distance}}",
-    "qdrantUnnamedVector": "(naamloos)"
+    "qdrantUnnamedVector": "(naamloos)",
+    "continue": "Doorgaan"
   }
 }

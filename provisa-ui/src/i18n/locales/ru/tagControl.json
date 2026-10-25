@@ -10,6 +10,17 @@
     "apply": "Применить",
     "cancel": "Отмена",
     "editAssignment": "Изменить назначение",
-    "plannedRemoval": "Плановое удаление: {{date}}"
+    "plannedRemoval": "Плановое удаление: {{date}}",
+    "piiViaTerm": "То же значение, что {{term}}",
+    "piiSetHere": "Задано здесь: {{reason}}",
+    "piiAlsoTerm_one": "Отметить и {{count}} другой столбец со значением «{{term}}»?",
+    "piiAlsoTerm_other": "Отметить и {{count}} других столбцов со значением «{{term}}»?",
+    "piiAlsoTermNone": "Отметить «{{term}}», чтобы охватить каждый столбец с этим значением, включая будущие?",
+    "piiYes": "Да",
+    "piiJustThis": "Только этот",
+    "piiInherited": "Этот столбец — PII, потому что его значение — {{term}}.",
+    "piiUnmarkTerm": "Снять отметку с {{term}}",
+    "piiMoveColumn": "Переместить столбец…",
+    "piiOpenTerm": "Открыть «{{term}}»"
   }
 }

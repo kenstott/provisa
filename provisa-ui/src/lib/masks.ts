@@ -79,3 +79,10 @@ export function maskSpecLabel(mask: MaskSpec | null, t: TFunction): string {
     ? t("maskList.constantNull")
     : t("maskList.constantLabel", { value: String(mask.value) });
 }
+
+/** ``template`` with each ``{name}`` replaced by its number. */
+export function filledTemplate(template: string, values: Record<string, number>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    name in values ? String(values[name]) : whole,
+  );
+}

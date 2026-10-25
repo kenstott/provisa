@@ -15,6 +15,7 @@
 # REQ-250, REQ-251, REQ-281, REQ-369, REQ-370, REQ-393, REQ-399, REQ-400, REQ-415, REQ-419, REQ-421
 
 import re
+from datetime import date
 from enum import Enum
 from typing import Any, Literal
 
@@ -213,7 +214,7 @@ class Cardinality(str, Enum):
     # never a list of lists (see schema_gen._add_standard_relationship_field) — so an M:N
     # relationship is represented as two of these binary hops through an associative/junction
     # table (RelationshipInput.via_table/via_source_column/via_target_column, REQ-1586; see
-    # provisa/cypher/label_map.py's junction handling), not as a third cardinality value. Any
+    # provisa/gql/label_map.py's junction handling), not as a third cardinality value. Any
     # report or introspection surface that wants to describe the pair as "many-to-many" to an
     # end user should synthesize that label at the reporting layer from the two hops — it is
     # not a value this enum, or any `cardinality ==` branch in the codebase, ever holds.
@@ -347,6 +348,14 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     )
     cache_schema: str = "api_cache"  # schema within that catalog
     gql_naming_convention: str | None = None  # overrides global; None = inherit
+
+    @field_validator("gql_naming_convention")
+    @classmethod
+    def _preset_convention(cls, v: str | None) -> str | None:  # REQ-195, REQ-416
+        from provisa.compiler.naming import stored_convention
+
+        return stored_convention(v)
+
     # REQ-281: Provisa-branded federation hints (join/reorder/broadcast_size, the @provisa
     # vocabulary), translated to the engine session props at query time. Raw the engine keys still pass
     # through for backward compatibility but are deprecated.
@@ -441,9 +450,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         # duplicate-key race when two concurrent queries register the same anonymous composite type.
         if st in _PG_WIRE_TYPES:
             return f"jdbc:postgresql://{h}:{po}/{self.database}?autosave=conservative"
-        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own.
+        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own. Neither
+        # names a database: Trino's MySQL and MariaDB connectors read each database as a schema and
+        # refuse a URL that names one ("Database (catalog) must not be specified in JDBC URL").
         if st in _MYSQL_WIRE_TYPES:
-            return f"jdbc:mysql://{h}:{po}/{self.database}"
+            return f"jdbc:mysql://{h}:{po}"
+        if st == "mariadb":
+            return f"jdbc:mariadb://{h}:{po}"
         # Druid is queried through its Avatica endpoint on the broker (Trino's druid connector wraps
         # the Avatica JDBC driver) — not a standard jdbc://host:port/db shape and no database segment.
         if st == "druid":
@@ -451,7 +464,6 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
-            "mariadb": "jdbc:mariadb",
             "redshift": "jdbc:redshift",
             "exasol": "jdbc:exa",
         }
@@ -566,24 +578,66 @@ class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
         return v
 
 
+class GlossaryTermDeprecation(BaseModel):  # REQ-2144
+    """A curator's deprecation of a live term: why, and when it is retired, if planned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    retire_on: date | None = None
+
+
+class GlossaryTermRetirement(BaseModel):  # REQ-2144
+    """A curator's retirement of a term: why, and the term that succeeds it, if any (a REPLACES
+    edge from it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    successor: str | None = None
+
+
 class GlossaryTermConfig(BaseModel):  # REQ-1641
     """A config-declared glossary term, upserted the same way an admin curates one by hand.
 
-    Config-declared terms are always abstract (``is_abstract``): they hold no column refs of
-    their own, so ``domains`` (required, non-empty) is the only thing that scopes them — see
-    ``create_abstract_term``'s docstring for why an unscoped term is a governance gap. An
-    abstract term is otherwise inert — the live/approved admission rule requires it be
-    *grounded*, reachable by an edge from a term that does hold a column ref — so ``edges``
-    is how config connects it to the concrete terms it actually means.
+    A config-declared term holds no column refs of its own, so ``domains`` (required,
+    non-empty) is the only thing that scopes it — see ``create_abstract_term``'s docstring for
+    why an unscoped term is a governance gap. Until it grounds something it is a Concept, and
+    otherwise inert — the live/approved admission rule requires it be *grounded*, reachable by
+    an edge from a term that does hold a column ref — so ``edges`` is how config connects it to
+    the concrete terms it actually means. Whether it is abstract is derived, never declared
+    (REQ-2141).
     """
 
     name: str
     definition: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
+    # REQ-2144: the asserted parts of its status, one at most; draft and live are computed.
+    deprecate: GlossaryTermDeprecation | None = None
+    retire: GlossaryTermRetirement | None = None
+    restore: bool = False
+
+    @model_validator(mode="after")
+    def _one_status_action(self) -> "GlossaryTermConfig":
+        if sum((self.deprecate is not None, self.retire is not None, self.restore)) > 1:
+            raise ValueError(
+                f"glossary term {self.name!r} states more than one of deprecate, retire and restore"
+            )
+        return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _abstract_is_derived(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "is_abstract" in data:
+            raise ValueError(
+                f"glossary term {data.get('name')!r}: abstract is derived from grounding, not "
+                "declared -- a term with no column refs and no grounded tables is a Concept"
+            )
+        return data
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product")
+TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product", "term")
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -620,6 +674,43 @@ def split_tag_id(tag_id: str) -> tuple[str, str | None]:
 def base_tag_id(tag_id: str) -> str:
     """The registry id an assigned tag id refers to, parameter stripped."""
     return split_tag_id(tag_id)[0]
+
+
+class CalendarConfig(BaseModel):  # REQ-962, REQ-2120
+    """A named, versioned calendar a config declares (``calendars:``): the ``calendars`` table's
+    columns, as the ``createCalendar`` mutation takes them. A view names it as ``mv_calendar``."""
+
+    name: str
+    version: str
+    base_system: str = "gregorian"
+    tz: str = "UTC"
+    fiscal_anchor_month: int = 1
+    fiscal_anchor_day: int = 1
+    retail_anchor: str | None = None
+    week_start: int = 0
+    holidays: list[str] = Field(default_factory=list)
+    weekend: list[int] = Field(default_factory=lambda: [5, 6])
+    day_close: str | None = None  # REQ-2111: "HH:MM", None = midnight
+
+    @field_validator("retail_anchor", mode="before")
+    @classmethod
+    def _anchor_as_text(cls, v: Any) -> Any:
+        # YAML reads an unquoted date as a date; the column's text form is its ISO date.
+        return v.isoformat() if isinstance(v, date) else v
+
+    @field_validator("holidays", mode="before")
+    @classmethod
+    def _holidays_as_text(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            return [d.isoformat() if isinstance(d, date) else d for d in v]
+        return v
+
+    @model_validator(mode="after")
+    def _defines_a_calendar(self) -> "CalendarConfig":
+        from provisa.events.calendars import calendar_of
+
+        calendar_of(self.model_dump())  # the mutation's own validation (raises InvalidCalendar)
+        return self
 
 
 class Tag(BaseModel):  # REQ-1373, REQ-1375
@@ -666,8 +757,12 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="pii",
         description="Personally identifiable information",
-        applies_to=["column"],
+        # REQ-2145: pii is on columns, and on a Property term, whose every column -- those it
+        # holds now and those it comes to hold -- carries it. Never a source, table, Class or
+        # Concept: a column is what holds a person's data, and a Property is what a column means.
+        applies_to=["column", "term"],
         is_system=True,
+        reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
         sensitive=True,  # REQ-1943: set, and locked -- a system tag is never redefined
     ),
@@ -799,6 +894,11 @@ class TagAssignment(BaseModel):  # REQ-1377
     # the export builder (TableIndex resolves names, not DB serials). Filled from a DB join on
     # hydration; a YAML config may provide it instead of table_id and the loader resolves it.
     table_ref: str | None = None
+    # REQ-2145: a glossary term the tag is on (object_type "term"): its serial, and its name --
+    # the config-vocabulary identity, filled from a DB join on hydration and resolved by the
+    # loader as table_ref is.
+    term_id: int | None = None
+    term: str | None = None
 
     def base_tag_id(self) -> str:
         """The registry tag this assignment refers to, parameter stripped (REQ-1467)."""
@@ -818,6 +918,8 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"column:{self.table_id}:{self.column_name}"
         if self.object_type == "command":
             return f"command:{self.command_name}"
+        if self.object_type == "term":
+            return f"term:{self.term_id}"
         return f"relationship:{self.relationship_id}"
 
 
@@ -828,6 +930,14 @@ class NamingRule(BaseModel):
 
 class NamingConfig(BaseModel):  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-415, REQ-416
     convention: str = "apollo_graphql"
+
+    @field_validator("convention")
+    @classmethod
+    def _preset_convention(cls, v: str) -> str:  # REQ-195, REQ-416
+        from provisa.compiler.naming import preset_convention
+
+        return preset_convention(v)
+
     sql_convention: str = "snake"
     rules: list[NamingRule] = Field(default_factory=list)
     relay_pagination: bool = False  # opt-in: generate _connection fields + Edge/PageInfo types
@@ -887,6 +997,16 @@ class Mask(BaseModel):  # REQ-038, REQ-040, REQ-2059
             )
         if self.type not in ("regex", "constant", "truncate"):
             raise ValueError(f"mask type {self.type!r} is not one of regex, constant, truncate")
+        if self.type == "regex" and self.pattern is not None and self.replace is not None:
+            # REQ-2142: a mask's regex is written in the universal dialect, checked here (the
+            # API's save and the config's load) and nowhere per engine.
+            from provisa.security.universal_regex import NotUniversal, check
+
+            try:
+                check(self.pattern, self.replace)
+            except NotUniversal as exc:
+                field = getattr(exc, "field")
+                raise ValueError(f"mask {field} is not universal: {exc}") from None
         return self
 
 
@@ -1188,6 +1308,10 @@ class LiveKafkaParams(BaseModel):  # REQ-813
     format: str = "json"  # "json" | "avro"
     key_column: str | None = None  # column used as the Kafka message key
     field_mapping: dict[str, str] = Field(default_factory=dict)  # kafka field → table column
+    # REQ-813 (amended 2026-10-21): a column Provisa fills with the time it lands each message,
+    # stamped as mail landing stamps its rows (federation.mail_landing.Stamps): one stamp per
+    # landed batch, each later than the last. None: the table carries no landing time.
+    landing_time_column: str | None = None
 
 
 class DeltaConfig(BaseModel):  # REQ-874
@@ -1339,6 +1463,14 @@ class Table(
     off_peak_window: str | None = None
     off_peak_tz: str | None = None  # None = inherit source off_peak_tz
     gql_naming_convention: str | None = None  # overrides source; None = inherit
+
+    @field_validator("gql_naming_convention")
+    @classmethod
+    def _preset_convention(cls, v: str | None) -> str | None:  # REQ-195, REQ-416
+        from provisa.compiler.naming import stored_convention
+
+        return stored_convention(v)
+
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     # REQ-318: how this table is read page by page -- a paged REST endpoint's paging, or a
@@ -1382,6 +1514,9 @@ class Table(
     # observed target is DERIVED from this text rather than declared beside it (REQ-939); the
     # results columns are the shipped schema and are replaced at parse, not authored.
     dq_contract: str | None = None
+    # REQ-1443 clause 10: the contract's checks, parsed once at registration
+    # (provisa.dq.registration.derive_checker_table) and stored, so the meta domain serves them.
+    dq_rules: list[dict] | None = None
     # REQ-1934: the Data Profiler source this table is a member of. A table belongs to at most one
     # profiler; the profiler's schedule profiles it and its result relations carry its history.
     profiler_source_id: str | None = None
@@ -1469,15 +1604,14 @@ class Table(
     # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
     # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
     mv_preprocess: str | None = None
-    # REQ-1162: append-only bitemporal materialization. None = ordinary MV; "snapshot" appends the
-    # whole fresh dataset each refresh; "delta" appends only engine-computed changes. mv_bitemporal_key
-    # is the business identity a version belongs to (required for delta). Time travel ("as of") is then
-    # derived at read time from the immutable append log — no UPDATE ever retires a row.
-    mv_bitemporal_mode: str | None = None
-    mv_bitemporal_key: list[str] = []
-    # REQ-1163: the view's column holding the source's own change time (an updated_at, or the
-    # commit time a CDC landing carries, source_committed_at): the clock its time travel reads on.
-    mv_bitemporal_source_time: str | None = None
+    # REQ-2109: the bitemporal declaration of a table or a view, all three or none. business_key
+    # names the columns identifying the same thing across versions; valid_time the column holding
+    # the date the business gives the record (when it was agreed, booked or took effect);
+    # recorded_time the column holding when this version was entered or changed. A view declaring
+    # them is materialized and keeps every version, appended (REQ-1162), read on recorded_time.
+    business_key: list[str] = []
+    valid_time: str | None = None
+    recorded_time: str | None = None
     # REQ-965/969/970: how a materialized view's recompute is applied to its own store, and whether
     # it is maintained incrementally. mv_persist ∈ replace|append|upsert; mv_primary_key is the row
     # identity (required for upsert and for incremental); mv_incremental applies upstream deltas
@@ -1486,6 +1620,10 @@ class Table(
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
     product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
+    # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
+    # configuration loads, after the terms it declares or derives exist; the table must have a
+    # primary key.
+    class_term: str | None = None
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
@@ -1523,18 +1661,67 @@ class Table(
                 )
         return self
 
+    @property
+    def is_bitemporal(self) -> bool:
+        """REQ-2109: the table or view declares its business key, valid time and recorded time."""
+        return bool(self.business_key)
+
     @model_validator(mode="after")
-    def _bitemporal_reads_on_source_time(self) -> "Table":
-        """REQ-1163, REQ-2064: a bitemporal view names the key its versions belong to. Its clock is
-        its source-time column when it names one, else Provisa's recorded time (REQ-1163 as
-        amended); its three read columns are added where it is declared or saved
+    def _bitemporal_declares_all_three(self) -> "Table":
+        """REQ-2109: business_key, valid_time and recorded_time are declared together or not at
+        all, each naming a column the table has (where its columns are known); a view declaring
+        them is materialized. Its read columns are added where it is declared or saved
         (mv.bitemporal.with_read_columns)."""
-        if not self.mv_bitemporal_mode:
+        declared = {
+            "business_key": bool(self.business_key),
+            "valid_time": bool(self.valid_time),
+            "recorded_time": bool(self.recorded_time),
+        }
+        if not any(declared.values()):
             return self
-        if not self.mv_bitemporal_key:
+        missing = [name for name, given in declared.items() if not given]
+        if missing:
             raise ValueError(
-                f"view {self.table_name!r}: a bitemporal view names the key its versions belong "
-                "to (bitemporal_key)"
+                f"table {self.table_name!r}: business_key, valid_time and recorded_time are "
+                f"declared together; missing {', '.join(missing)}"
+            )
+        names = {c.name for c in self.columns}
+        if names and "*" not in names:
+            named = [*self.business_key, self.valid_time, self.recorded_time]
+            unknown = [c for c in named if c not in names]
+            if unknown:
+                raise ValueError(
+                    f"table {self.table_name!r}: business_key, valid_time and recorded_time name "
+                    f"columns the table does not have: {unknown}"
+                )
+        if (self.view_sql is not None or self.view_metrics is not None) and not self.materialize:
+            raise ValueError(
+                f"view {self.table_name!r}: a view declaring business_key, valid_time and "
+                "recorded_time is materialized (materialize: true)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _landing_time_names_a_column(self) -> "Table":
+        """REQ-813 (amended 2026-10-21): a live Kafka table's landing-time column is one of its
+        columns (where its columns are known), a timestamp."""
+        kafka = self.live.kafka if self.live is not None else None
+        column = kafka.landing_time_column if kafka is not None else None
+        if column is None:
+            return self
+        declared = {c.name: c for c in self.columns}
+        if not declared or "*" in declared:
+            return self
+        if column not in declared:
+            raise ValueError(
+                f"table {self.table_name!r}: its landing-time column {column!r} is not one of "
+                "its columns"
+            )
+        data_type = declared[column].data_type
+        if data_type is None or not data_type.lower().startswith("timestamp"):
+            raise ValueError(
+                f"table {self.table_name!r}: its landing-time column {column!r} is "
+                f"{data_type or 'untyped'}, not a timestamp"
             )
         return self
 
@@ -1667,17 +1854,23 @@ class Table(
 
     @model_validator(mode="after")
     def _validate_row_materialize(self) -> "Table":
+        if (problem := self.row_materialize_problem()) is not None:
+            raise ValueError(problem)
+        return self
+
+    def row_materialize_problem(self) -> str | None:
+        """Why this table may not be row-materialized by its own fields, or None (REQ-1865)."""
         # REQ-1865: row_materialize requires a declared, trusted primary key (constraint 5) — a
         # declared PK is never runtime-verified for uniqueness, same trust level as data_type.
         if not self.row_materialize:
-            return self
+            return None
         if not any(c.is_primary_key for c in self.columns):
-            raise ValueError(
+            return (
                 f"table {self.table_name!r}: row_materialize requires at least one "
                 "is_primary_key column"
             )
         if self.materialize:
-            raise ValueError(
+            return (
                 f"table {self.table_name!r}: row_materialize and materialize (view_sql CTAS) "
                 "are mutually exclusive — a table is either whole-table-materialized or "
                 "row-materialized, never both"
@@ -1687,7 +1880,7 @@ class Table(
         # registration already combines table.cache_ttl or source.cache_ttl:
         # provisa/core/config_loader.py's _validate_row_materialize, and
         # provisa/federation/residency.py's resolve_landing_args callers.
-        return self
+        return None
 
 
 class HotTablesConfig(BaseModel):  # REQ-544
@@ -1749,6 +1942,9 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
     )
     disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
     hide_target_meta: bool = False  # REQ-1132: when True, suppress the TARGET's metadata from DEFAULT-tier meta discovery
+    # REQ-2141: the rows this edge joins are the same entity -- two tables one class term grounds,
+    # joined one-to-one on a key of each (repositories/identity.py).
+    same_entity: bool = False
     # REQ-1586: junction-backed edge. When via_table is set the join traverses that associative
     # table (source_column = via.via_source_column, via.via_target_column = target_column) and the
     # junction's remaining columns become the relationship's attributes. via_type_column/value
@@ -3121,6 +3317,7 @@ class ProvisaConfig(BaseModel):
     sources: list[Source]
     domains: list[Domain]
     tags: list[Tag] = Field(default_factory=list)  # REQ-1373
+    calendars: list[CalendarConfig] = Field(default_factory=list)  # REQ-2120
     tag_assignments: list[TagAssignment] = Field(default_factory=list)  # REQ-1377
     naming: NamingConfig = Field(default_factory=NamingConfig)
     tables: list[Table]

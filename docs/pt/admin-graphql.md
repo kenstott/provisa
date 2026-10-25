@@ -396,11 +396,11 @@ Executa `ANALYZE` em todas as tabelas registradas de uma fonte. Melhora as decis
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Registra uma nova tabela (ou view) em um domínio. Exige a capacidade `table_registration` e associação ao domínio alvo. Um chamador sem `create_relationship` que envia uma view é enfileirado como uma requisição de criação para um detentor de direitos aprovar.
+Registra uma nova tabela (ou exibição) em um domínio, com cada configuração que a entrada leva, entre elas `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` e `draft`, em uma transação: se qualquer uma for recusada, nada é registrado. Requer a capacidade `table_registration` e participação no domínio de destino; levar `writeGrants` requer também `masking_config` nele. Um chamador sem `create_relationship` que envia uma exibição entra na fila como solicitação de criação para um detentor de direitos aprovar.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Atualiza o alias, descrição, metadados de coluna, configurações de MV e configuração de entrega ao vivo de uma tabela existente. Exige `table_registration`.
+Atualiza o alias, a descrição, os metadados de colunas, as configurações de MV, a configuração de entrega ao vivo de uma tabela existente e as configurações que a entrada leva (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), em uma transação: se qualquer uma for recusada, nada é salvo. Uma configuração omitida mantém o valor armazenado. Requer `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -454,9 +454,11 @@ Cria um relacionamento. A verificação confere o domínio da tabela de origem (
 
 Altera um relacionamento existente, com as mesmas verificações de `createRelationship`. Um id que nenhum relacionamento tem é recusado (`schema.relationship_not_found`). Uma alteração exige o próprio direito; nunca é enfileirada como solicitação.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+Um salvamento que realoca colunas de chave entre uma Propriedade e uma Classe pode tirar `pii` delas. Ele é então recusado com `tag.move_loses`, e `params.columns` lista cada coluna com as tags que ela perde (`loses`) e ganha (`gains`). Salve de novo com `confirmTagLoss` nomeando cada tag perdida, ou com `carryTags: true` para colocá-las no termo para o qual cada coluna vai.
 
-Exclui um relacionamento por ID e reconstrói os esquemas.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+Exclui um relacionamento por ID e reconstrói os esquemas. Uma exclusão que realoca colunas de chave aceita os mesmos `confirmTagLoss` e `carryTags` que um salvamento.
 
 ---
 
@@ -538,11 +540,19 @@ Exclui uma tag. Recusa tags de sistema e derivadas.
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-Atribui uma tag a uma fonte, tabela, coluna, relacionamento, ou command. Aplica as políticas de campo da tag (`reason_policy`, `expires_policy`) e — para tags parametrizadas — valida o valor do parâmetro contra a lista permitida da tag.
+Atribui uma tag a uma fonte, tabela, coluna, relacionamento ou comando. Aplica as políticas de campo da tag (`reason_policy`, `expires_policy`) e, para uma tag parametrizada, verifica o valor do parâmetro contra a lista permitida da tag.
+
+`pii` também pode ir em um termo do glossário, de modo que cada coluna com esse significado carregue a tag, incluindo colunas registradas depois. Defina `objectType: "term"` e `termId`:
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+Em uma coluna, `alsoTerm: true` coloca a tag no termo da coluna em vez disso. `params.covers` no resultado diz quantas colunas a tag alcança: para uma coluna, quantas outras colunas o termo dela tem; para um termo, quantas ele tem. Recusados pelo nome: uma tag diferente de `pii` em um termo (`tag.not_on_terms`), um termo que não é uma Propriedade (`tag.term_not_property`), um termo em rascunho (`tag.term_not_live`, "Defina *termo* para marcá-lo") e, com `alsoTerm`, uma coluna de chave (`tag.key_column`) ou uma coluna sem termo (`tag.column_has_no_term`). Uma coluna marcada diretamente precisa de um motivo.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-Remove uma atribuição de tag.
+Remove uma atribuição de tag, inclusive de um termo (`objectType: "term"`, `termId`). Remover `pii` de uma coluna que a carrega pelo seu termo é recusado (`tag.inherited_from_term`): desmarque o termo, ou mova a coluna para um termo que corresponda ao que ela contém.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 
@@ -728,7 +738,9 @@ O input principal de registro de tabela. Campos-chave além do básico:
 | `mvRefreshInterval` | Segundos entre atualizações |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Manutenção incremental |
-| `mvBitemporalMode` | `snapshot` \| `delta` para tabelas bitemporais |
+| `businessKey` | Colunas que identificam a mesma coisa entre versões; declarada com `validTime` e `recordedTime`, as três ou nenhuma |
+| `validTime` | Coluna com a data que o negócio dá ao registro |
+| `recordedTime` | Coluna com o momento em que esta versão foi inserida ou alterada |
 | `mvCalendar` | Nome do calendário de snapshot |
 | `mvGrain` | Granularidade do snapshot: `daily`, `weekly`, `monthly`, `annual`, ou personalizada `3WE` / `LFR` |
 | `viewSql` | SQL para uma view derivada |
@@ -737,6 +749,15 @@ O input principal de registro de tabela. Campos-chave além do básico:
 | `queryTemplate` | Cypher para uma tabela Neo4j |
 | `live` | Configuração de entrega ao vivo para push SSE/Kafka |
 | `discover` | Infere colunas a partir da fonte ao vivo no momento do registro |
+| `gqlNamingConvention` | Convenção de nomes GraphQL da tabela; `null` herda. Omitida, uma tabela nova herda e uma atualização mantém a armazenada |
+| `roleTtl` | A lista inteira de papel para TTL, `[{ role, ttl }]` |
+| `replicate` | Quando a tabela é servida pela sua réplica; `null` herda o valor da fonte |
+| `writeGrants` | O conjunto inteiro de permissões de escrita da tabela; requer `masking_config` |
+| `draft` | `false` libera a tabela; caso contrário um registro começa como rascunho |
+| `cacheTtl` | O Cache TTL próprio da tabela; `null` não tem um próprio |
+| `pagination` | A paginação declarada da tabela; `null` não declara nenhuma |
+| `region` | Onde ficam os dados da tabela; em uma atualização, outra região a move, julgada como `setTableRegion` julga |
+| `rowRules` | Regras de linha da tabela (`RLSRuleInput`), salvas com ela; requer `masking_config` |
 
 ### `RelationshipInput`
 

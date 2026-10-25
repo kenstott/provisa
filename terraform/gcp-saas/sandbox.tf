@@ -112,6 +112,9 @@ resource "google_compute_instance" "sandbox" {
     scopes = ["cloud-platform"]
   }
 
+  # Its certificate is read from Secret Manager at boot (secrets.tf).
+  depends_on = [google_secret_manager_secret_iam_member.tls_reader]
+
   # It stops itself and the coordinator starts it; terraform must not undo either.
   desired_status = null
 

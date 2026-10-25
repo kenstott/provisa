@@ -155,6 +155,7 @@ def _register_table_in_ctx(
     ctx.pk_columns[t.table_id] = [
         col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
     ]
+    ctx.write_ops[t.table_id] = t.write_ops
 
     # REQ-1093: carry declared UNIQUE constraints (name + ordered columns) into ctx for pgwire.
     ctx.unique_constraints[t.table_id] = _visible_unique_constraints(t, si)
@@ -277,6 +278,15 @@ def _build_junction_meta(  # REQ-1586
         type_column=type_column,
         type_value=rel.get("via_type_value") or None,
         attributes=attributes,
+        # A type column the table does not expose is no property of the relationship.
+        type_attribute=next(
+            (
+                col.get("alias") or apply_gql_name(col["column_name"], convention)
+                for col in via_info.visible_columns
+                if col["column_name"] == type_column
+            ),
+            None,
+        ),
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",
     )
@@ -488,7 +498,10 @@ def _register_ops_synthetic_joins(
     for ops_t in tables:
         if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
             continue
-        if not any(c["column_name"] == "table_name" for c in ops_t.visible_columns):
+        # The link matches the registration's (domain_id, table_name) on the ops row's own pair;
+        # a row naming its table otherwise (replica_build_log: source, schema, physical name)
+        # has no such pair to match.
+        if not {"domain_id", "table_name"} <= {c["column_name"] for c in ops_t.visible_columns}:
             continue
         ops_tgt = TableMeta(
             table_id=ops_t.table_id,
@@ -592,7 +605,7 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
 
     assert isinstance(si, SchemaInput)
-    ctx = CompilationContext()
+    ctx = CompilationContext(role_id=si.role["id"])
 
     domain_alias_map = {
         d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))

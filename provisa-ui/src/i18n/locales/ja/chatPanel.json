@@ -34,6 +34,7 @@
     "chooseFile": "送信するファイル",
     "graphCaption": "ノード: {{nodes}} · リレーションシップ: {{relationships}}",
     "downloadPng": "PNG をダウンロード",
-    "openOnGraphPage": "グラフページで開く"
+    "openOnGraphPage": "グラフページで開く",
+    "choiceClosed": "(選択せずに閉じました)"
   }
 }

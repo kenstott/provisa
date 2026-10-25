@@ -5,7 +5,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect } from "./coverage";
-import { TOUR_STEPS, TOUR_SCOPES } from "../src/tour/tourSteps";
+import { TOUR_STEPS, TOUR_SCOPES, TOPIC_IDS } from "../src/tour/tourSteps";
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -14,7 +14,8 @@ const CORE_LAST_STEP = TOUR_STEPS.findIndex(
 );
 
 // REQ-1945: the core tour starts for a new user, every core step carries a Deep Dives button that
-// leaves for the menu at once, and the menu is a card per topic.
+// leaves for the menu at once, and the menu is a card per topic (the standard demo org has what
+// every topic shows).
 test("the core tour's Deep Dives button leaves for the menu", async ({ page }) => {
   await page.goto("/sources?tour=1");
 
@@ -28,7 +29,7 @@ test("the core tour's Deep Dives button leaves for the menu", async ({ page }) =
   await page.locator(".driver-popover-deepdives-btn").click();
   await expect(page.locator('[data-testid="tour-menu"]')).toBeVisible();
   await expect(page.locator('[data-testid^="tour-topic-"]:not([data-testid*="done"])')).toHaveCount(
-    9,
+    TOPIC_IDS.length,
   );
 });
 
@@ -66,10 +67,14 @@ test("Done on the core tour and on a topic both return to the menu", async ({ pa
   await expect(menu).toBeVisible();
   await expect(page.locator('[data-testid="tour-topic-done-govern"]')).toBeVisible();
 
-  // The mark outlives a reload: the tour button, with the core tour seen, reopens the menu.
+  // The mark outlives a reload: the tour button, with the core tour seen, reopens the menu. After
+  // the reload the menu waits on a cold read of what the org has (the "Starting the tour" card),
+  // the same first-launch cost the waits above budget 60 s for.
   await page.reload();
   await page.locator(".navbar-tour-btn").click();
-  await expect(page.locator('[data-testid="tour-topic-done-govern"]')).toBeVisible();
+  await expect(page.locator('[data-testid="tour-topic-done-govern"]')).toBeVisible({
+    timeout: 60000,
+  });
 });
 
 // REQ-1945: a topic's step also carries Deep Dives, which lands on the catalog, and the catalog's

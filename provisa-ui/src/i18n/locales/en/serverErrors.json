@@ -177,7 +177,8 @@
       "unknown_arg_kind": "Unknown arg_kind '{{arg_kind}}' for '{{name}}'",
       "unknown_command": "Unknown command: '{{name}}'",
       "unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'",
-      "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered"
+      "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered",
+      "host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead."
     },
     "graphql_remote": {
       "introspection_failed": "Introspection failed: {{error}}",
@@ -255,10 +256,15 @@
       "database_unavailable": "Database unavailable",
       "query_engine_unavailable": "Query engine unavailable",
       "role_header_required": "X-Provisa-Role header required to profile a view",
-      "table_not_found": "Table {{table_id}} not found"
+      "table_not_found": "Table {{table_id}} not found",
+      "column_not_found": "Column {{column}} is not a column of the table the org admin reads",
+      "classification_kind_unknown": "Unknown classification kind {{kind}}",
+      "classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
+      "classification_decision_not_found": "No decision on {{column}} as {{kind}}",
+      "classification_pii_refused": "The column could not be marked PII"
     },
     "replication": {
-      "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
+      "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: [{{content_type}}] {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
       "no_whole_copy": "Table {{schema}}.{{table}} of source {{source}} has no whole copy to build: it is replicated row by row, or it has a parameter column.",
       "page_limit_reached": "The replica of {{table}} was not built: its endpoint's paging stops at max_pages={{max_pages}}, and the endpoint had more after page {{max_pages}} ({{rows}} rows read). A replica is the whole table, so it is not cut at the cap. Raise the endpoint's max_pages or its page size.",
       "row_limit_reached": "The replica of {{table}} was not built: a read of it stops at max_rows={{max_rows}} (graphql_remote.max_rows), and the remote had more after {{rows}} rows. A replica is the whole table, so it is not cut at the bound. Raise graphql_remote.max_rows.",
@@ -335,6 +341,7 @@
       "change_signal_no_topic": "Table '{{table}}' of source '{{source}}' is on the kafka change signal but names no topic in its live.kafka.topic, so nothing would refresh it.",
       "change_signal_no_receiver": "Provisa does not receive the {{signal}} change signal from a {{type}} source, so a table of source '{{source}}' would never be refreshed by it. Capture the source with Debezium and use debezium.",
       "change_signal_not_honoured": "A {{type}} source cannot yet be checked for changes, so the {{signal}} change signal would never be asked. Use ttl for source '{{source}}'.",
+      "row_materialize_no_key_fetch": "{{table}} cannot be replicated row by row: its remote schema has no field that returns its rows for a list of its primary key.",
       "sentinel_path_not_applicable": "A {{type}} source cannot have a sentinel path: no producer of yours can mark a change in its data, or the source is not probed. Remove the sentinel path from source '{{source}}'.",
       "source_cache_ttl_required": "Source '{{source}}' needs a Cache TTL: every table of it is a replica, refreshed on that clock under the {{signal}} change signal. Set it under Load Management and Timeliness on the source.",
       "landing_ttl_required": "Table '{{table}}' is a replica refreshed on a Cache TTL, and neither it nor its source '{{source}}' has one. Set the Cache TTL under Load Management and Timeliness on the source, or on the table itself once it is registered.",
@@ -443,7 +450,16 @@
       "role_description_missing": "Role '{{role}}' needs a description of what it is for",
       "rls_rule_description_missing": "A row rule needs a description of what it is for",
       "file_download_refused": "Source {{source}}: {{reason}}",
-      "source_created_without_table": "Source {{source}} created; its table was not set up: {{reason}}"
+      "source_created_without_table": "Source {{source}} created; its table was not set up: {{reason}}",
+      "mv_window_needs_calendar": "MV '{{mv}}' names no calendar: a build sealed at a business day's close needs one",
+      "version_log_updated": "Version log '{{mv}}' updated",
+      "mv_window_held": "MV '{{mv}}' was not sealed at {{day}}'s close: another build of it holds its claim",
+      "mv_window_unchanged": "MV '{{mv}}' was not sealed at {{day}}'s close: nothing it reads changed since its last build",
+      "landing_time_pipeline": "Table '{{table}}' keeps its landing time in {{column}}, but its store lands the topic through its own pipeline, where Provisa does not see each message land.",
+      "relationship_same_entity_direct": "Relationship '{{relationship}}' cannot be marked same entity: it joins through a junction or a function, not one row to one row",
+      "relationship_same_entity_cardinality": "Relationship '{{relationship}}' cannot be marked same entity: it is {{cardinality}}, and the same entity is one row to one row",
+      "relationship_same_entity_not_grounded": "Relationship '{{relationship}}' cannot be marked same entity: {{source}} and {{target}} are not grounded in the same term",
+      "relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}"
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
@@ -517,7 +533,27 @@
       "username_taken": "User '{{username}}' already exists"
     },
     "cypher": {
-      "command_call_refused": "{{reason}}"
+      "command_call_refused": "{{reason}}",
+      "count_unknown": "A count could not be made, so the total is unknown: {{statement}}: {{reason}}",
+      "access_violations": "This role may not run this query:",
+      "invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
+      "unknown_label": "There is no label :{{label}}. Registered labels: {{suggestions}}.",
+      "no_labels": "There is no label :{{label}}: this role can read no table.",
+      "unknown_relationship_type": "There is no relationship type {{types}}. Registered types: {{suggestions}}.",
+      "no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
+      "type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE cannot use the aggregate {{aggregate}}: WHERE filters rows before they are grouped. Aggregate in a WITH and filter after it.",
+      "nested_aggregate": "{{outer}} aggregates the aggregate {{inner}}: an aggregate cannot be taken of another. Aggregate in a WITH first.",
+      "undefined_variable": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} is not a whole number of rows: SKIP takes a count of 0 or more, e.g. SKIP 10.",
+      "engine_refused": "The engine refused the query: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
+      "undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
+      "undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}.",
+      "non_finite_number": "The answer holds a number JSON cannot carry: {{column}} is {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 or later on this engine."
     },
     "requests": {
       "approver_outside_domains": "Your right to create relationships does not reach a domain this request touches ({{domains}})",
@@ -531,7 +567,9 @@
     "statement": {
       "rows_cut": "The answer was cut at {{limit}} rows, the row limit that applies to this read ({{kind}}): more rows match than were returned.",
       "rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}",
-      "approximate_index": "The most similar rows were found through an approximate vector index: a row slightly more similar than the last one returned may be missing."
+      "list_at_ceiling": "A list holds the maximum of {{limit}} entries the row limit allows for this read ({{kind}}); it may have more.",
+      "approximate_index": "The most similar rows were found through an approximate vector index: a row slightly more similar than the last one returned may be missing.",
+      "path_cut": "A path with no upper bound was cut at the graph depth limit of {{limit}} hops: paths longer than that are missing from the answer."
     },
     "wikipedia": {
       "no_pages": "Name at least one page to start from",
@@ -599,6 +637,7 @@
       "wrong_tier": "This sandbox is served elsewhere; open it from its own address.",
       "unknown_demo": "There is no published demo named {{demo}}.",
       "demo_not_ready": "This demo is still being prepared. Try again shortly.",
+      "demo_stores_failed": "This demo could not be started. Try again in a few minutes.",
       "at_capacity": "Every demo sandbox is in use. Try again shortly.",
       "starting": "The demo server is starting. Try again in a minute or two.",
       "disk_full": "This sandbox has used its disk limit of {{limit}} bytes; nothing more can be written to it.",
@@ -614,6 +653,41 @@
       "database_not_connected": "Database not connected",
       "description_missing": "A derived role needs a description of what it is for",
       "not_found": "No derived role from {{name}}"
+    },
+    "glossary": {
+      "term_is_property": "Term '{{term}}' owns column refs ({{columns}}), so it is a Property and cannot ground a table. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
+      "term_is_class": "Term '{{term}}' grounds tables ({{tables}}), so it is a Class and cannot own a column ref. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
+      "abstract_is_derived": "Abstract cannot be set: it is derived from grounding. A term with no column refs and no grounded tables is a Concept.",
+      "key_column_derived": "This column is a key; it follows its table's class. {{table}}.{{column}} stays on '{{class}}' and is not moved by hand.",
+      "reason_required": "A reason is required: say why the term is being deprecated or retired.",
+      "retire_on_past": "The planned retirement date {{retire_on}} is in the past. Choose today or a later date.",
+      "retire_on_invalid": "The planned retirement date {{retire_on}} is not a date (use YYYY-MM-DD).",
+      "successor_is_self": "A term cannot be its own successor.",
+      "successor_retired": "The successor '{{successor}}' is retired. Choose a term that is in service.",
+      "term_not_live": "Only a live term can be deprecated; this one is {{status}}.",
+      "status_by_action": "A term's status changes through Deprecate, Retire or Restore, each with a reason.",
+      "successor_required": "This term still has columns or tables; retiring it moves them to a successor. Choose one.",
+      "successor_role": "A {{role}}'s successor must be a {{role}} or a concept; '{{successor}}' is a {{successor_role}}.",
+      "no_retirement_history": "The model's history has no retirement of this term.",
+      "finding": {
+        "unlinked_tables": "This class is grounded in tables that same-entity relationships don't all join: {{tables}}.",
+        "class_and_attribute": "This class also holds columns that aren't its keys: {{columns}}.",
+        "class_and_attribute_table": "Table {{table}} has no class: its concept is this term, which holds columns that aren't keys ({{columns}}).",
+        "tag_wrong_kind": "This term carries tags ({{tags}}) only a property passes to its columns; it is a {{role}}.",
+        "retirement_blocked": "This term was due for retirement on {{retire_on}} but still holds data. Retire it with a successor to take it.",
+        "no_data": "This concept is connected to no term that holds data."
+      }
+    },
+    "tag": {
+      "not_on_terms": "Tag '{{tag}}' does not go on a term; only pii does.",
+      "term_not_live": "Define '{{term}}' to mark it.",
+      "term_not_property": "Tag '{{tag}}' goes on a term only when it is a Property, one that means columns; '{{term}}' is not.",
+      "term_is_tagged": "Unmark {{tags}} first, or keep a definition.",
+      "key_column": "Column {{column}} is a key: its meaning is its table's class. Tag the column itself.",
+      "column_has_no_term": "Column {{column}} has no term to tag.",
+      "also_term_needs_column": "Tagging the term instead takes a column.",
+      "inherited_from_term": "This column is PII because it means {{term}}. Unmark that meaning, or move the column if it means something else.",
+      "move_loses": "This move takes tags off columns that would no longer carry them. Confirm the loss of each tag, or carry the tags to the term the columns move to."
     }
   }
 }

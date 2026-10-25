@@ -226,6 +226,9 @@ def test_changes_reach_the_replica_through_the_debezium_stream(server):
         f'database: "{os.environ.get("PG_DATABASE", "provisa")}", '
         f'username: "{os.environ.get("PG_USER", "provisa")}", '
         f'password: "{os.environ.get("PG_PASSWORD", "provisa")}", changeSignal: "debezium", '
+        # Served from its replica: the pg engine otherwise reads a PostgreSQL source in place,
+        # through postgres_fdw, and keeps no replica for the stream to keep current (REQ-826).
+        "replicate: 0, "
         f'cdc: {{bootstrapServers: "{bootstrap}", topicPrefix: "{_PREFIX}"}}}})',
     )
     registered = _mutate(

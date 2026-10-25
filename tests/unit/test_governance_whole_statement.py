@@ -114,8 +114,8 @@ def test_a_mask_is_applied_once_however_the_column_is_reached():
     governed = apply_governance(
         "SELECT email, upper(email) AS u FROM sales.orders WHERE email LIKE 'a%'", _gov(regex)
     )
-    assert governed.count("REGEXP_REPLACE") == 3  # one per reference, none nested
-    assert "REGEXP_REPLACE(REGEXP_REPLACE" not in governed
+    assert governed.count("PROVISA_REGEX_REPLACE") == 3  # one per reference, none nested
+    assert "PROVISA_REGEX_REPLACE(PROVISA_REGEX_REPLACE" not in governed
 
 
 @pytest.mark.parametrize(

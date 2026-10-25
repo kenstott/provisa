@@ -367,6 +367,10 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         if not columns:
             log.warning("push listener %s: no typed columns — skipping", node)
             continue
+        if (refused := landing_time_refusal(engine, src, tbl)) is not None:
+            # REQ-813: a declared landing time no listener fills is not landed unfilled.
+            log.error("push listener %s: not landed -- %s", node, refused)
+            continue
         if _lands_by_pipeline(engine, src, tbl):
             # REQ-990: the store lands this topic through its own pipeline; no listener relays it.
             await _wire_pipeline(
@@ -407,6 +411,9 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
                 node=node,
                 row_materialize=row_materialize,
                 key=(src.id, tbl["schema_name"], tbl["table_name"]),
+                landing_time_column=((tbl.get("live") or {}).get("kafka") or {}).get(
+                    "landing_time_column"
+                ),
                 log=log,
                 write_lock=(
                     None
@@ -609,7 +616,35 @@ async def _run_logical_stream(
             await asyncio.sleep(_CHANGE_STREAM_RETRY_SECONDS)
 
 
-def _lands_by_pipeline(engine: Any, src: Any, tbl: dict) -> bool:
+def landing_time_column_of(tbl: Any) -> str | None:
+    """The landing-time column a Kafka table declares (REQ-813), from a registered-table row or a
+    model table; None when it declares none."""
+    live = tbl.get("live") if isinstance(tbl, dict) else tbl.live
+    if not live:
+        return None
+    kafka = live.get("kafka") if isinstance(live, dict) else live.kafka
+    if not kafka:
+        return None
+    return (
+        kafka.get("landing_time_column") if isinstance(kafka, dict) else kafka.landing_time_column
+    )
+
+
+def landing_time_refusal(engine: Any, src: Any, tbl: Any) -> str | None:
+    """Why a table's declared landing-time column cannot be honored, or None (REQ-813): the
+    column is filled by Provisa's own listener as it lands each message, and a table the store
+    lands through its own pipeline (REQ-848 PIPELINE_LAND) has none."""
+    column = landing_time_column_of(tbl)
+    if column is None or engine is None or not _lands_by_pipeline(engine, src, tbl):
+        return None
+    name = tbl["table_name"] if isinstance(tbl, dict) else tbl.table_name
+    return (
+        f"table {name!r} declares the landing-time column {column!r}, but its store lands the "
+        "topic through its own pipeline, where Provisa does not see each message land"
+    )
+
+
+def _lands_by_pipeline(engine: Any, src: Any, tbl: Any) -> bool:
     """Whether this Kafka table lands through a SingleStore pipeline: the engine's own store is
     SingleStore and the table's origin is in the pipeline's scope (REQ-848 PIPELINE_LAND)."""
     from sqlalchemy import make_url
@@ -1033,6 +1068,7 @@ async def _run_listener(
     row_materialize: bool = False,
     write_lock: Any = None,
     key: tuple[str, str, str],
+    landing_time_column: str | None = None,
 ) -> None:
     """One push table's whole lifetime: drain the provider into the landed table through the
     engine's own write face (``EngineRuntime.apply_cdc_events``, REQ-989/REQ-1733 — never a raw
@@ -1048,6 +1084,11 @@ async def _run_listener(
     from provisa.federation.commit_time import SOURCE_COMMITTED_AT
 
     carries_commit_time = any(name == SOURCE_COMMITTED_AT for name, _type in columns)
+    # REQ-813 (amended 2026-10-21): the time Provisa lands each message, stamped as mail landing
+    # stamps its rows -- one stamp per batch, each later than the last, taken while it is written.
+    from provisa.federation.mail_landing import Stamps
+
+    stamps = Stamps()
 
     async def _land(batch: list) -> dict[str, int]:
         # A change without its key has no row to upsert or delete: landed, it would be a row of
@@ -1077,7 +1118,10 @@ async def _run_listener(
         # never written into a table a build is about to replace. A batch that finds a build
         # running waits for it and lands in the new table; applied by key, a change the build
         # already copied is applied again harmlessly.
-        async with _held(write_lock):
+        async with _held(write_lock), stamps.turn() as landed_at:
+            if landing_time_column is not None:
+                for event in events:
+                    event.row = {**event.row, landing_time_column: landed_at}
             counts = await engine.apply_cdc_events(
                 schema=land_schema,
                 table=land_table,

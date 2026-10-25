@@ -10,7 +10,9 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Loader, Modal, ScrollArea, Table, Tabs, Text } from "@mantine/core";
+import { Alert, Box, Loader, Text } from "@mantine/core";
+import { FitModal } from "./profile3d/Expandable3D";
+import { VerticalNav } from "../../components/VerticalNav";
 import {
   fetchProfileRun,
   fetchProfileRuns,
@@ -20,6 +22,11 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { ProfileChecksBar } from "./ProfileChecksBar";
 import { ProfileDriftPanel } from "./ProfileDriftPanel";
+import { ProfileResultTable } from "./ProfileResultTable";
+import { ProfileDriftStrata } from "./profile3d/drift/ProfileDriftStrata";
+import { ProfileJointCloud } from "./profile3d/joint/ProfileJointCloud";
+import { ProfileRelations } from "./profile3d/relations/ProfileRelations";
+import { ProfileTerrain } from "./profile3d/terrain/ProfileTerrain";
 
 // The result relations shown for a run, in this order; ``runs`` is the list itself.
 const KINDS = [
@@ -39,10 +46,15 @@ const KINDS = [
   "joint_counts",
   "constraints",
   "constraint_checks",
+  "classifications",
   "duplicates",
   "repeats",
 ] as const;
 const RUN_KEY = new Set(["run_id", "run_time"]);
+// The key a run's row keeps its run's id under; never shown.
+const RUN_ID = "\u0000run_id";
+// REQ-2123, REQ-2124: the 3D views of a run, as tabs ahead of the result relations.
+const VIEWS_3D = ["terrain", "relationsMap", "jointCloud", "driftStrata"] as const;
 
 function cell(value: unknown): string {
   if (value == null) return "";
@@ -51,7 +63,15 @@ function cell(value: unknown): string {
   return String(value);
 }
 
-function RowsTable({ rows, testId }: { rows: Record<string, unknown>[]; testId: string }) {
+function RowsTable({
+  rows,
+  testId,
+  title,
+}: {
+  rows: Record<string, unknown>[];
+  testId: string;
+  title: string;
+}) {
   const { t } = useTranslation();
   if (rows.length === 0) {
     return (
@@ -62,31 +82,13 @@ function RowsTable({ rows, testId }: { rows: Record<string, unknown>[]; testId: 
   }
   const keys = Object.keys(rows[0]).filter((k) => !RUN_KEY.has(k));
   return (
-    <ScrollArea h={360}>
-      <Table striped withTableBorder fz="xs" data-testid={testId}>
-        <Table.Thead>
-          <Table.Tr>
-            {keys.map((k) => (
-              <Table.Th key={k}>{k}</Table.Th>
-            ))}
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {rows.map((r, i) => (
-            <Table.Tr key={i}>
-              {keys.map((k) => (
-                <Table.Td key={k}>{cell(r[k])}</Table.Td>
-              ))}
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </ScrollArea>
+    <ProfileResultTable rows={rows} columns={keys} testId={testId} title={title} height="fill" />
   );
 }
 
 // REQ-1934: a member table's run history and one run's results, as the profiler wrote them. Opened
-// only from the table editor, so only those who may edit the table see it.
+// from the table editor and, since REQ-2123's amendment, from its read-only panel too (not for a
+// governance-only viewer, who profiles nothing).
 export function ProfileRunsModal({
   tableId,
   tableName,
@@ -105,6 +107,7 @@ export function ProfileRunsModal({
   const [loaded, setLoaded] = useState<{ runId: string; data: ProfileRunResults } | null>(null);
   const results = loaded != null && loaded.runId === selected ? loaded.data : null;
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<string>("columns");
 
   useEffect(() => {
     fetchProfileRuns(tableId)
@@ -123,13 +126,52 @@ export function ProfileRunsModal({
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [tableId, selected, role]);
 
+  // The runs as the grid shows them: one plain value per column, each row keeping its run's id.
+  const runColumns = [
+    t("profileRunsModal.runTime"),
+    t("profileRunsModal.status"),
+    t("profileRunsModal.rowCount"),
+    t("profileRunsModal.profiledRows"),
+    t("profileRunsModal.method"),
+    t("profileRunsModal.duplicates"),
+    t("profileRunsModal.duration"),
+    t("profileRunsModal.error"),
+  ];
+  const runRows = (runs ?? []).map((run) => {
+    const values = [
+      new Date(run.run_time).toLocaleString(),
+      t(`profileRunsModal.status_${run.status}`),
+      run.row_count,
+      `${cell(run.profiled_rows)}${run.sampled ? ` (${t("profileRunsModal.sampled")})` : ""}`,
+      `${run.sample_method == null ? "" : t(`profileRunsModal.method_${run.sample_method}`)}${
+        run.sampled && run.sample_fraction != null
+          ? ` · ${t("profileRunsModal.share", { pct: (run.sample_fraction * 100).toFixed(1) })}`
+          : ""
+      }`,
+      run.duplicate_rows == null
+        ? null
+        : t("profileRunsModal.duplicateRows", {
+            rows: run.duplicate_rows,
+            pct: ((run.duplicate_share ?? 0) * 100).toFixed(1),
+          }),
+      t("profileRunsModal.ms", { ms: run.duration_ms }),
+      run.error,
+    ];
+    return {
+      [RUN_ID]: run.run_id,
+      ...Object.fromEntries(runColumns.map((c, i) => [c, values[i]])),
+    };
+  });
+
   return (
-    <Modal
+    // The modal never scrolls: the runs keep their height, and beneath them the menu and the chosen
+    // result each scroll on their own, side by side, down to the dialog's bottom edge.
+    <FitModal
       opened
       onClose={onClose}
       size="90%"
       title={t("profileRunsModal.title", { table: tableName })}
-      data-testid="profile-runs-modal"
+      testId="profile-runs-modal"
     >
       {error && (
         <Alert color="red" data-testid="profile-runs-error">
@@ -144,92 +186,77 @@ export function ProfileRunsModal({
         </Text>
       )}
       {runs != null && runs.length > 0 && (
-        <ScrollArea h={200} mb="md">
-          <Table highlightOnHover withTableBorder fz="xs" data-testid="profile-runs-list">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("profileRunsModal.runTime")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.status")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.rowCount")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.profiledRows")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.method")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.duplicates")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.duration")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.error")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {runs.map((run) => (
-                <Table.Tr
-                  key={run.run_id}
-                  style={{ cursor: run.status === "succeeded" ? "pointer" : undefined }}
-                  bg={run.run_id === selected ? "var(--mantine-color-blue-light)" : undefined}
-                  onClick={() => run.status === "succeeded" && setSelected(run.run_id)}
-                  data-testid={`profile-run-${run.run_id}`}
-                >
-                  <Table.Td>{new Date(run.run_time).toLocaleString()}</Table.Td>
-                  <Table.Td>
-                    <Badge size="xs" color={run.status === "succeeded" ? "green" : "red"}>
-                      {t(`profileRunsModal.status_${run.status}`)}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>{cell(run.row_count)}</Table.Td>
-                  <Table.Td>
-                    {cell(run.profiled_rows)}
-                    {run.sampled ? ` (${t("profileRunsModal.sampled")})` : ""}
-                  </Table.Td>
-                  <Table.Td data-testid={`profile-run-method-${run.run_id}`}>
-                    {run.sample_method == null
-                      ? ""
-                      : t(`profileRunsModal.method_${run.sample_method}`)}
-                    {run.sampled && run.sample_fraction != null
-                      ? ` · ${t("profileRunsModal.share", {
-                          pct: (run.sample_fraction * 100).toFixed(1),
-                        })}`
-                      : ""}
-                  </Table.Td>
-                  <Table.Td data-testid={`profile-run-duplicates-${run.run_id}`}>
-                    {run.duplicate_rows == null
-                      ? ""
-                      : t("profileRunsModal.duplicateRows", {
-                          rows: run.duplicate_rows,
-                          pct: ((run.duplicate_share ?? 0) * 100).toFixed(1),
-                        })}
-                  </Table.Td>
-                  <Table.Td>{t("profileRunsModal.ms", { ms: run.duration_ms })}</Table.Td>
-                  <Table.Td>{run.error ?? ""}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+        <Box mb="md" style={{ flex: "none" }}>
+          <ProfileResultTable
+            rows={runRows}
+            columns={runColumns}
+            expandable={false}
+            height={220}
+            fitRows
+            title={t("profileRunsModal.title", { table: tableName })}
+            testId="profile-runs-list"
+            selectedRow={(row) => row[RUN_ID] === selected}
+            onRowClick={(row) => {
+              const run = runs.find((r) => r.run_id === row[RUN_ID]);
+              if (run?.status === "succeeded") setSelected(run.run_id);
+            }}
+          />
+        </Box>
       )}
       {selected != null && results == null && !error && <Loader size="sm" />}
       {results != null && (
-        <Tabs defaultValue="columns" keepMounted={false}>
-          <Tabs.List>
-            {KINDS.map((k) => (
-              <Tabs.Tab key={k} value={k} data-testid={`profile-tab-${k}`}>
-                {t(`profileRunsModal.kind_${k}`)}
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
-          {KINDS.map((k) => (
-            <Tabs.Panel key={k} value={k} pt="xs">
-              {k === "drift" && selected != null && role ? (
-                <ProfileDriftPanel
+        // REQ-2123 (amended): the many results read down the side, each title on its own line, in
+        // the app's one vertical menu; the chosen one fills what is left of the dialog.
+        <div className="profile-runs-results">
+          <VerticalNav
+            label={t("profileRunsModal.resultsMenu")}
+            items={[...VIEWS_3D, ...KINDS].map((k) => ({
+              value: k,
+              label: t(`profileRunsModal.kind_${k}`),
+              testId: `profile-tab-${k}`,
+            }))}
+            value={tab}
+            onChange={setTab}
+            className="profile-runs-menu"
+            testId="profile-runs-menu"
+          />
+          <div className="profile-runs-panel" data-testid={`profile-panel-${tab}`}>
+            {tab === "terrain" ? (
+              <ProfileTerrain results={results} tableId={tableId} tableName={tableName} />
+            ) : tab === "relationsMap" ? (
+              <ProfileRelations results={results} tableId={tableId} tableName={tableName} />
+            ) : tab === "jointCloud" ? (
+              <ProfileJointCloud results={results} tableId={tableId} tableName={tableName} />
+            ) : tab === "driftStrata" ? (
+              selected != null &&
+              runs != null &&
+              role && (
+                <ProfileDriftStrata
                   tableId={tableId}
-                  runId={selected}
                   role={role.id}
-                  rows={results.drift ?? []}
+                  runs={runs}
+                  selectedRunId={selected}
+                  results={results}
+                  tableName={tableName}
                 />
-              ) : (
-                <RowsTable rows={results[k] ?? []} testId={`profile-rows-${k}`} />
-              )}
-            </Tabs.Panel>
-          ))}
-        </Tabs>
+              )
+            ) : tab === "drift" && selected != null && role ? (
+              <ProfileDriftPanel
+                tableId={tableId}
+                runId={selected}
+                role={role.id}
+                rows={results.drift ?? []}
+              />
+            ) : (
+              <RowsTable
+                rows={results[tab as (typeof KINDS)[number]] ?? []}
+                testId={`profile-rows-${tab}`}
+                title={`${tableName} · ${t(`profileRunsModal.kind_${tab}`)}`}
+              />
+            )}
+          </div>
+        </div>
       )}
-    </Modal>
+    </FitModal>
   );
 }

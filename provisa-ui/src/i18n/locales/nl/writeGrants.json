@@ -29,6 +29,7 @@
     "addGrant": "Recht toevoegen",
     "removeGrant": "Dit recht verwijderen",
     "save": "Rechten opslaan",
-    "saved": "Rechten opgeslagen."
+    "saved": "Rechten opgeslagen.",
+    "kept": "Bewaard: opgeslagen met de tabel."
   }
 }

@@ -16,7 +16,8 @@ preserved — from source inputs to final outputs. Each edge carries the transfo
 target, and that transform is NAMED/DEFINED, not left as an opaque SQL string: every operation in the
 projection is matched against the union vocabulary of SQL operators/standard functions, engine
 built-ins, and registered commands (REQ-1159), so a `lat,lng <- city, state` edge reads as the chain
-`concat/|| (SQL op) -> geocode (command)`. An inline command call at a leaf is a first-class node: its
+`concat/|| (SQL op) -> geocode (command)`. A column transform's call (REQ-2131) stands for its output
+columns, each a named step from the call's inputs. An inline command call at a leaf is a first-class node: its
 declared input/output contract splices in as taint-closure edges, so the DAG stays continuous across
 the opaque RPC boundary. Static — computed from the definition, no execution.
 """
@@ -249,6 +250,9 @@ def build_column_graph(
     commands = commands or {}
     command_names = frozenset(commands)
     tree = cast(exp.Expression, sqlglot.parse_one(sql, dialect=dialect))
+    if _expand_column_transforms(tree, commands):
+        # As written: a function's name kept, so the call still names its registered command.
+        sql = tree.sql(dialect=dialect, normalize_functions=False)
     graph = LineageGraph()
     for out in _output_columns(tree):
         try:
@@ -261,6 +265,29 @@ def build_column_graph(
         _walk(root, graph, command_names)
     _splice_commands(tree, graph, commands)
     return graph
+
+
+def _expand_column_transforms(tree: exp.Expression, commands: dict[str, dict]) -> bool:
+    """REQ-2131: a select-list call of a registered column transform stands for the function's
+    output columns, each a named step of the projection: the item becomes one per output column,
+    each the call under that column's name, so each output's edges run from the call's inputs
+    through the transform. Whether anything was expanded."""
+    selects = list(getattr(tree, "selects", []) or [])
+    expanded = False
+    items: list[exp.Expression] = []
+    for item in selects:
+        command = commands.get(item.name) if isinstance(item, exp.Anonymous) else None
+        if command is None or command.get("impl_kind") != "code_columns":
+            items.append(item)
+            continue
+        expanded = True
+        items.extend(
+            exp.Alias(this=item.copy(), alias=exp.to_identifier(output["name"]))
+            for output in command["output_columns"]
+        )
+    if expanded:
+        tree.set("expressions", items)
+    return expanded
 
 
 def _splice_commands(tree: exp.Expression, graph: LineageGraph, commands: dict[str, dict]) -> None:

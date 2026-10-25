@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "Strati di deriva di {{table}}",
+    "none": "Nessuna di queste esecuzioni contiene valori che gli strati possano disegnare.",
+    "canvasLabel": "Pila 3D della distribuzione di una colonna in ogni esecuzione, la più vecchia sul fondo",
+    "column": "Colonna",
+    "legendShare": "quota delle righe dell'esecuzione",
+    "legendMedian": "mediana, da un'esecuzione all'altra",
+    "legendDrift": "esecuzione con deriva",
+    "tipShare": "{{pct}} delle righe non null dell'esecuzione",
+    "tipNullShare": "{{pct}} delle righe dell'esecuzione",
+    "drifted": "In deriva ({{reason}})",
+    "steady": "Nessuna deriva segnalata",
+    "noValues": "Nessun valore in questa esecuzione",
+    "runs": "Esecuzioni, le più recenti per prime",
+    "columnsNote": "Mediana e quota di null di ogni esecuzione. L'esecuzione selezionata è la più recente tra quelle mostrate.",
+    "binning_sketch": "Gli stessi intervalli per ogni esecuzione, ricavati dallo sketch dei quantili di ciascuna; le altezze sono la quota di ogni esecuzione sulle sue righe non null.",
+    "binning_categories": "I valori di ogni esecuzione, contati rispetto alle stesse categorie.",
+    "binning_none": "Queste esecuzioni non contengono valori per questa colonna con il tuo ruolo."
+  }
+}

@@ -38,6 +38,30 @@ class ApiNotFoundError(Exception):
     """Raised when the API returns 404 — caller should yield empty rows."""
 
 
+class ApiAnswerNotJson(ValueError):
+    """An endpoint answered with a body that is not JSON: what it answered, so the reason (an XML
+    or HTML page, an empty body) is in the message rather than a decoder's position."""
+
+
+# How much of a non-JSON answer its error quotes.
+_QUOTED_CHARS = 300
+
+
+def _decoded(resp: httpx.Response) -> Any:
+    """``resp``'s JSON body; :class:`ApiAnswerNotJson` naming its status, URL, content type and
+    the start of its body when it is not JSON."""
+    import json
+
+    try:
+        return resp.json()
+    except json.JSONDecodeError as exc:
+        raise ApiAnswerNotJson(
+            f"{resp.request.method} {resp.request.url} answered {resp.status_code} "
+            f"{resp.headers.get('content-type') or 'with no content type'}, not JSON ({exc}): "
+            f"{resp.text[:_QUOTED_CHARS]!r}"
+        ) from None
+
+
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_BASE = 1.0
 _DEFAULT_TIMEOUT = 30.0
@@ -232,7 +256,7 @@ async def _pages(
             form_body=form_body,
             timeout=timeout,
         )
-        yield await loop.run_in_executor(None, resp.json)
+        yield await loop.run_in_executor(None, _decoded, resp)
         return
 
     max_pages = pagination.max_pages
@@ -252,7 +276,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            page = await loop.run_in_executor(None, resp.json)
+            page = await loop.run_in_executor(None, _decoded, resp)
             link = resp.headers.get("link", "")
             match = re.search(r'<([^>]+)>;\s*rel="next"', link)
             next_url = match.group(1) if match else None
@@ -279,7 +303,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             cursor = data.get(cursor_field) if isinstance(data, dict) else None
             if paging is not None:
                 paging.more = bool(cursor)
@@ -308,7 +332,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break
@@ -332,7 +356,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break
@@ -356,7 +380,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break
@@ -530,8 +554,11 @@ def prepare_call(
         # Generic query-API POST with the query as a JSON body
         json_body = {"statement": endpoint.query_template} if endpoint.query_template else body
     elif endpoint.body_encoding == "form":
-        # SPARQL 1.1: POST with form-encoded query parameter
-        form_body = {"query": endpoint.query_template} if endpoint.query_template else {}
+        # SPARQL 1.1: POST with form-encoded query parameter. A statement's conditions pushed into
+        # the table's SELECT (REQ-2138, sparql.pushdown) come as the argument of the field's own
+        # name, the query the call sends in place of the registered one.
+        query = resolved_params["query"] if "query" in resolved_params else endpoint.query_template
+        form_body = {"query": query} if query else {}
         if body:
             form_body.update(body)
     else:
@@ -623,6 +650,13 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
 
         return ApiAnswer(await _call_grpc(endpoint, resolved_params, resolve_secrets(base_url)))
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
+    if endpoint.response_normalizer == "owl_inferred":
+        # REQ-2138: an inferred table of a sparql source's reasoner. Its rows are the source's
+        # classification (provisa/sparql/reasoning), reasoned in the reasoner's own process
+        # from the slice its endpoint answers; they are one page, flattened as declared.
+        from provisa.sparql.reasoning import inferred_rows
+
+        return ApiAnswer([await inferred_rows(endpoint, resolved_params, call.url, call.headers)])
 
     async def _run() -> ApiAnswer:
         paging = Paging()

@@ -55,6 +55,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # REQ-1949: the ceiling that bounds the statement last governed with this context, when a
     # ceiling and not the statement's own LIMIT is what bounds it (compiler/row_limit.RowLimit).
     row_limit: Any = None
+    # REQ-005: the ceiling that bounds each list the statement last governed with this context
+    # nests (compiler/list_cap), when it nests any; None otherwise.
+    list_limit: Any = None
     sample_size: int | None = None
     # The role this context was built for, and what it may write (compiler/write_admission.py):
     # whether it holds the ``write`` right (REQ-868), and per table its write grant for each
@@ -127,6 +130,19 @@ def resolve_row_cap(
     from provisa.compiler.sql_gen import _get_default_row_limit
 
     return _get_default_row_limit()
+
+
+def _readable_term_predicate(column: str, domains: frozenset[str]) -> str:
+    """REQ-1593: ``column`` (a term's domains, as |a|b|) names a term the caller may read by
+    glossary.readable_term: one with no domains, an enterprise ("*") one, or one in a domain of
+    ``domains``."""
+    from provisa.compiler.sql_literals import sql_literal
+
+    tests = [f"{column} IS NULL"] + [
+        f"POSITION({sql_literal(f'|{d}|', 'postgres')} IN {column}) > 0"
+        for d in ("*", *sorted(domains))
+    ]
+    return "(" + " OR ".join(tests) + ")"
 
 
 def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, REQ-971
@@ -202,7 +218,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # every column regardless (REQ-1327). The lockdown domains (ops) need an explicit grant; the
     # meta domain is governed by the tiered rule below.
     from provisa.security.rights import (
+        GLOSSARY_SCOPED_META_VIEWS,
         GOVERNANCE_META_COLUMNS,
+        GOVERNANCE_META_ROWS,
         META_DOMAIN_ID,
         META_ROW_SCOPED_VIEWS,
         Capability,
@@ -315,6 +333,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         gov.table_map[
             physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)
         ] = meta.table_id
+        # And its physical schema.table, which a statement lowered without a catalog names it by.
+        # For most tables that is also the stored name below; for one read through a physical
+        # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
+        # such a read is refused as unregistered.
+        gov.table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")
@@ -336,12 +359,47 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
                 continue
-            scope_col = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
-            if scope_col is None:
+            scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
+            if scope_cols is None:
                 continue
-            predicate = f"{scope_col} IN ({id_list})"
+            predicate = " AND ".join(f"{col} IN ({id_list})" for col in scope_cols)
             existing = gov.rls_rules.get(tm.table_id)
             # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
+            gov.rls_rules[tm.table_id] = (
+                f"({existing}) AND ({predicate})" if existing else predicate
+            )
+
+    # REQ-2126: the governance rows of a meta view are read only with view_governance, under the
+    # same WHERE-injection as the row scope above.
+    if not _has_view_gov:
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+                continue
+            predicate = GOVERNANCE_META_ROWS.get(getattr(tm, "table_name", ""))
+            if predicate is None:
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
+            gov.rls_rules[tm.table_id] = (
+                f"({existing}) AND ({predicate})" if existing else predicate
+            )
+
+    # REQ-1593: the glossary meta views answer what the glossary API does -- a term is read where
+    # glossary.readable_term admits it -- by the same WHERE-injection.
+    from provisa.core import domain_policy
+    from provisa.core.env_authority import domains_within
+
+    readable_in = None if domain_policy.single_domain() else domains_within(role["domain_access"])
+    if readable_in is not None:
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+                continue
+            scope_cols = GLOSSARY_SCOPED_META_VIEWS.get(getattr(tm, "table_name", ""))
+            if scope_cols is None:
+                continue
+            predicate = " AND ".join(
+                _readable_term_predicate(col, readable_in) for col in scope_cols
+            )
+            existing = gov.rls_rules.get(tm.table_id)
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
@@ -379,8 +437,11 @@ def _with_member_reads(gov: GovernanceContext, rls_context) -> None:  # REQ-1620
     for tid, reads in member_reads.items():
         for column, treatments in reads.columns.items():
             gov.masking_rules.pop((tid, column), None)
-            if reads.uniform(column):
-                rank, rule, dtype = treatments[0]
+            resolved = reads.resolved(column)
+            if resolved is not None:
+                # Every row reads it one way: masked as that treatment reads it, as a single
+                # role's column is, with no member projection.
+                rank, rule, dtype = resolved
                 if rule is not None:
                     gov.masking_rules[(tid, column)] = (rule, dtype)
                 continue
@@ -780,13 +841,29 @@ def _project_kept(
 
 
 def _differing_members(tid: int, gov_ctx: GovernanceContext) -> list[str] | None:  # REQ-1620
-    """The columns of ``tid`` the acting meta-role's members read differently, or None when there
-    are none (a single role, or members that read every column alike)."""
+    """The columns of ``tid`` the acting meta-role's members read differently row by row, or None
+    when there are none (a single role, or members whose reads of every column are settled for
+    every row: MemberReads.resolved) -- then the table is read as it is, with no member projection."""
     reads = gov_ctx.member_reads.get(tid)
     if reads is None:
         return None
-    differing = [c for c in reads.columns if not reads.uniform(c)]
+    differing = [c for c in reads.columns if reads.resolved(c) is None]
     return differing or None
+
+
+def _member_branches(reads: Any, column: str) -> tuple[list[tuple[list[int], int]], int | None]:
+    """How the member projection reads ``column``: the WHEN branches, each the members whose
+    flags select it and the treatment it reads, in order from the least restrictive; and the
+    treatment the remaining rows read (a group holding a member that admits every row), or None
+    when they read NULL. A group after one admitting every row is never reached."""
+    treatments = reads.columns[column]
+    branches: list[tuple[list[int], int]] = []
+    for rank in sorted({t[0] for t in treatments}):
+        group = [i for i, t in enumerate(treatments) if t[0] == rank]
+        if any(reads.flags[i] == "TRUE" for i in group):
+            return branches, group[0]
+        branches.append((group, group[0]))
+    return branches, None
 
 
 def _member_carried(
@@ -801,14 +878,15 @@ def _member_carried(
     reads = gov_ctx.member_reads[tid]
     column_types = {name: dtype for name, dtype in gov_ctx.all_columns.get(tid, [])}
     carried: dict[str, tuple[str, str]] = {}
-    for i, flag in enumerate(reads.flags):
+    # Only the flags a WHEN branch reads; a member admitting every row is the branches' ELSE.
+    read = sorted(
+        {i for c in differing for group, _ in _member_branches(reads, c)[0] for i in group}
+    )
+    for i in read:
+        flag = reads.flags[i]
         carried[f"__m_{i}"] = (
-            ("TRUE", "TRUE")
-            if flag == "TRUE"
-            else (
-                f"({_qualify_filter(flag, alias, column_types)})",
-                f"({_qualify_filter(flag, 'l', column_types)})",
-            )
+            f"({_qualify_filter(flag, alias, column_types)})",
+            f"({_qualify_filter(flag, 'l', column_types)})",
         )
     for name in differing:
         sql_name = _quote(apply_sql_name(name))
@@ -870,22 +948,24 @@ def _project_members(
             continue
         real = _quote(f"__real_{sql_name}")
         treatments = reads.columns[name]
-        branches: list[str] = []
-        for rank in sorted({t[0] for t in treatments}):
-            group = [i for i, t in enumerate(treatments) if t[0] == rank]
-            _, rule, dtype = treatments[group[0]]
+
+        def _value(member: int, real: str = real, quoted: str = quoted) -> str:
+            rank, rule, dtype = treatments[member]
             if rank == HIDDEN:
-                value = "NULL"
-            elif rule is None:
-                value = real
-            elif rule.mask_type == MaskType.fake:
-                value = quoted  # the faked projection's value (one fake per column)
-            else:
-                value = build_mask_expression(rule, real, dtype)
-            branches.append(f"WHEN {' OR '.join(flag_names[i] for i in group)} THEN {value}")
-            if any(reads.flags[i] == "TRUE" for i in group):
-                break  # every row is admitted by this group: no later branch is read
-        projections.append(f"CASE {' '.join(branches)} ELSE NULL END AS {quoted}")
+                return "NULL"
+            if rule is None:
+                return real
+            if rule.mask_type == MaskType.fake:
+                return quoted  # the faked projection's value (one fake per column)
+            return build_mask_expression(rule, real, dtype)
+
+        whens, rest = _member_branches(reads, name)
+        branches = [
+            f"WHEN {' OR '.join(flag_names[i] for i in group)} THEN {_value(member)}"
+            for group, member in whens
+        ]
+        otherwise = "NULL" if rest is None else _value(rest)
+        projections.append(f"CASE {' '.join(branches)} ELSE {otherwise} END AS {quoted}")
         if name in keys:
             projections.append(f"{real} AS {real}")
             real_keys[sql_name] = f"__real_{sql_name}"
@@ -1345,14 +1425,27 @@ def apply_governance(
 
     tree = _govern_selects(tree, gov_ctx, answers=not writes)
 
-    governed = tree.sql(dialect="postgres")
-
     # Apply LIMIT ceiling (REQ-005): most restrictive of the role-level ceiling and
     # any per-table ceiling on a table referenced by the query.
     # A ceiling bounds the rows a READ returns; a write returns none, and what it may write
     # is its admission's to decide.
     bound = None if writes else _effective_ceiling(tree, gov_ctx)
     gov_ctx.row_limit = None
+    gov_ctx.list_limit = None
+    if bound is not None:
+        from provisa.compiler.list_cap import cap_lists
+
+        def columns_of(table: exp.Table) -> list[str] | None:
+            tid = _table_id_for_node(table, gov_ctx)
+            if tid is None or tid not in gov_ctx.all_columns:
+                return None
+            return [name for name, _type in gov_ctx.all_columns[tid]]
+
+        # REQ-005 (amended 2026-10-24): and each list the read nests, at the same ceiling.
+        if cap_lists(tree, bound.limit, columns_of):
+            gov_ctx.list_limit = bound
+
+    governed = tree.sql(dialect="postgres")
     if bound is not None:
         from provisa.compiler.row_limit import binds
 

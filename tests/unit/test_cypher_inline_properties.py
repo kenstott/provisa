@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.cypher.parser import CypherParseError, parse_cypher
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.translator import cypher_to_sql
 from provisa.cypher.write_translator import (
     CypherWriteParseError,
     WriteTranslator,

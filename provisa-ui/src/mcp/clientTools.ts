@@ -10,6 +10,7 @@
 
 import type { NavigateFunction } from "react-router-dom";
 import { awaitRun } from "../dataScience/runReports";
+import { readScreen } from "./screenState";
 import { parseUiActions, runUiActions } from "./uiActions";
 
 /** REQ-2115: how long each of Polly's steps on a screen lets itself be seen, and how long a step
@@ -42,7 +43,8 @@ let pollyRuns = 0;
 
 /** REQ-1810: what present_choice asks for and what it resolves with. */
 export type ChoiceMode = "single" | "multi" | "yes_no";
-export type ChoiceAnswer = string | string[] | boolean;
+// null: the user closed the widget without choosing -- an answer of its own, never an empty one.
+export type ChoiceAnswer = string | string[] | boolean | null;
 
 export interface PresentChoiceRequest {
   question: string;
@@ -87,9 +89,10 @@ export const CLIENT_TOOL_NAMES = new Set([
   "present_choice",
   "admin_mutation",
   "admin_request",
+  "read_screen",
 ]);
 
-/** How much of a REST route's answer goes back to the model. */
+/** How much of a REST route's answer, or of the screen, goes back to the model. */
 const ANSWER_LIMIT = 4000;
 
 /** REQ-2114: one of the UI's admin REST routes, called from the user's session -- the global
@@ -224,6 +227,13 @@ export async function executeClientTool(
 
   if (name === "admin_request") return adminRequest(input, ctx);
 
+  // REQ-2115: what the user is looking at, read from their own session.
+  if (name === "read_screen") {
+    const screen = await readScreen(UI_ELEMENT_WAIT_MS);
+    if (typeof screen === "string") return { success: false, message: `read_screen: ${screen}` };
+    return { success: true, message: JSON.stringify(screen).slice(0, ANSWER_LIMIT) };
+  }
+
   if (name === "present_choice") {
     const question = String(input.question ?? "");
     const mode = input.mode as ChoiceMode;
@@ -236,6 +246,13 @@ export async function executeClientTool(
       return { success: false, message: `present_choice: 'options' is required for mode ${mode}` };
     }
     const selected = await ctx.presentChoice({ question, mode, options });
+    if (selected === null) {
+      return {
+        success: true,
+        message: "The user closed the choice without picking an option.",
+        selected,
+      };
+    }
     return { success: true, message: "Answered.", selected };
   }
 

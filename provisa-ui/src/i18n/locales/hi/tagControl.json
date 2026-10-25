@@ -10,6 +10,17 @@
     "apply": "लागू करें",
     "cancel": "रद्द करें",
     "editAssignment": "असाइनमेंट संपादित करें",
-    "plannedRemoval": "नियोजित हटाना: {{date}}"
+    "plannedRemoval": "नियोजित हटाना: {{date}}",
+    "piiViaTerm": "{{term}} जैसा ही अर्थ",
+    "piiSetHere": "यहाँ सेट: {{reason}}",
+    "piiAlsoTerm_one": "'{{term}}' का अर्थ रखने वाले {{count}} अन्य कॉलम को भी चिह्नित करें?",
+    "piiAlsoTerm_other": "'{{term}}' का अर्थ रखने वाले {{count}} अन्य कॉलम को भी चिह्नित करें?",
+    "piiAlsoTermNone": "'{{term}}' चिह्नित करें, ताकि इसका अर्थ रखने वाला हर कॉलम, आगे आने वाले भी, शामिल हो?",
+    "piiYes": "हाँ",
+    "piiJustThis": "सिर्फ़ यह",
+    "piiInherited": "यह कॉलम PII है क्योंकि इसका अर्थ {{term}} है।",
+    "piiUnmarkTerm": "{{term}} का चिह्न हटाएँ",
+    "piiMoveColumn": "कॉलम ले जाएँ…",
+    "piiOpenTerm": "'{{term}}' खोलें"
   }
 }

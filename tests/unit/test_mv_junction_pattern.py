@@ -69,7 +69,7 @@ async def _built_sql(monkeypatch, mv: MVDefinition, columns: dict[str, list[str]
 
     async def _govern_and_route(sql, _role, **_kw):
         routed.append(sql)
-        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None)
+        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None, columns=None)
 
     async def _resident(_state, _plan):
         return None

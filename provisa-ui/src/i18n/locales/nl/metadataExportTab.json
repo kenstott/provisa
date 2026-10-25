@@ -27,6 +27,7 @@
     "newTarget": "Nieuw doel",
     "noTargets": "Nog geen doelen. Voeg de catalogi toe waarnaar deze organisatie publiceert.",
     "catalog": "Catalogus",
-    "catalogHelp": "Een catalogus die is verbonden in Beheer → Catalogi."
+    "catalogHelp": "Een catalogus die is verbonden in Beheer → Catalogi.",
+    "betaProvider": "{{name}} (bèta)"
   }
 }

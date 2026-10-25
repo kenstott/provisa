@@ -88,6 +88,7 @@ function state(
     entitled: true,
     required_tier: "premium",
     providers: ["atlas", "openlineage", "openmetadata"],
+    beta_providers: [],
     config: { enabled: true, reconcile_cron: "0 * * * *", targets },
     last_publish: null,
     ...overrides,
@@ -118,6 +119,29 @@ describe("MetadataExportTab", () => {
       "marquez-lab · openlineage",
     );
     expect(screen.getByTestId("metadata-export-reconcile-cron")).toHaveValue("0 * * * *");
+  });
+
+  it("names a provider not yet proven against a live catalog as beta", async () => {
+    mockCatalogs.mockResolvedValue({
+      providers: [],
+      catalogs: [catalog("atlan-prod", "atlan"), catalog("atlas-prod", "atlas")],
+    });
+    mockFetch.mockResolvedValue(
+      state({ beta_providers: ["atlan"] }, [
+        { ...MARQUEZ, catalog: "atlan-prod" },
+        { ...MARQUEZ, catalog: "atlas-prod" },
+      ]),
+    );
+    render(<MetadataExportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("metadata-export-catalog-0")).toHaveValue(
+        "atlan-prod · atlan (beta)",
+      ),
+    );
+    expect(screen.getByTestId("metadata-export-catalog-1")).toHaveValue("atlas-prod · atlas");
+    expect(screen.getByText(/atlan-prod · atlan \(beta\)/, { selector: "h6" })).toBeInTheDocument();
+    expect(screen.getByText(/atlas-prod · atlas$/, { selector: "h6" })).toBeInTheDocument();
   });
 
   it("shows the plan gate instead of the form for an unentitled org", async () => {

@@ -22,8 +22,8 @@ context exposes), to exactly one of:
 A reference that names nothing, or that two different tables or views answer to, is not resolved:
 a view that reads it is refused when it is declared (save, config load —
 ``readable_inputs.require_readable_inputs``), naming the view and the reference, so it never gets
-as far as being wired. Anything that later meets an unresolved reference (the event graph's
-wiring) has met a defect, and raises.
+as far as being wired. A view that meets one later -- left reading a table since deleted -- is
+refused alone by the event graph's wiring, named with the reference, and the others are wired.
 
 The one resolution for every consumer: the view-input check at declaration, and the event graph's
 edges (``provisa.events.nodes``).
@@ -92,6 +92,33 @@ def _keys(parts: Iterable[str]) -> str:
     return ".".join(p.lower() for p in parts)
 
 
+def row_spellings(row: dict, catalog: str | None) -> list[tuple[str, ...]]:
+    """Every spelling a reference may name the registered table ``row`` by, from the row alone:
+    its name (as registered and as the model spells it), qualified by its domain, its schema, its
+    source's engine ``catalog`` (when known) and the model's own spelling of that catalog, and its
+    alias."""
+    from provisa.compiler.naming import apply_sql_name, domain_to_sql_name, source_to_catalog
+
+    out: list[tuple[str, ...]] = []
+    original = row["table_name"]
+    for name in {original, apply_sql_name(original)}:
+        out.append((name,))
+        if row.get("domain_id"):
+            out.append((domain_to_sql_name(row["domain_id"]), name))
+        out.append((row["schema_name"], name))
+        if catalog is not None:
+            out.append((catalog, row["schema_name"], name))
+        # The model's own spelling of the source's catalog, the same in every org and
+        # environment: a view written once names it so (the demo config's dim_pet reads
+        # "pet_store_sqlite"."pet_store"."pets"), while the physical catalog above is
+        # prefixed outside the default org's prod. The compiler binds a schema-qualified
+        # name whatever catalog it carries (sql_rewrite); this resolves it the same.
+        out.append((source_to_catalog(row["source_id"]), row["schema_name"], name))
+    if row.get("alias"):
+        out.append((apply_sql_name(row["alias"]),))
+    return out
+
+
 class ModelIndex:
     """Every spelling a reference may use, mapped to what it names. Built from the model the
     process holds after its schema build: the registered tables (``state.tables``), each table's
@@ -100,7 +127,7 @@ class ModelIndex:
     materialized views in the registry."""
 
     def __init__(self, state: Any) -> None:
-        from provisa.compiler.naming import apply_sql_name, domain_to_sql_name, source_to_catalog
+        from provisa.compiler.naming import domain_to_sql_name
         from provisa.compiler.sql_rewrite import semantic_table_name
 
         self._names: dict[str, set[tuple[str, Any]]] = {}
@@ -113,24 +140,8 @@ class ModelIndex:
             self._ids[TableIdentity(row["source_id"], row["schema_name"], row["table_name"])] = (
                 table_id
             )
-            target = ("table", table_id)
-            original = row["table_name"]
-            for name in {original, apply_sql_name(original)}:
-                self._add((name,), target)
-                if row.get("domain_id"):
-                    self._add((domain_to_sql_name(row["domain_id"]), name), target)
-                self._add((row["schema_name"], name), target)
-                catalog = catalogs.get(row["source_id"])
-                if catalog is not None:
-                    self._add((catalog, row["schema_name"], name), target)
-                # The model's own spelling of the source's catalog, the same in every org and
-                # environment: a view written once names it so (the demo config's dim_pet reads
-                # "pet_store_sqlite"."pet_store"."pets"), while the physical catalog above is
-                # prefixed outside the default org's prod. The compiler binds a schema-qualified
-                # name whatever catalog it carries (sql_rewrite); this resolves it the same.
-                self._add((source_to_catalog(row["source_id"]), row["schema_name"], name), target)
-            if row.get("alias"):
-                self._add((apply_sql_name(row["alias"]),), target)
+            for parts in row_spellings(row, catalogs.get(row["source_id"])):
+                self._add(parts, ("table", table_id))
         for ctx in state.contexts.values():
             for meta in ctx.tables.values():
                 target = ("table", meta.table_id)

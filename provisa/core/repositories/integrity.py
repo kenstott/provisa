@@ -207,6 +207,8 @@ REFERENCES: tuple[Reference, ...] = (
     _part("synthetic_report", "dataset_id", "synthetic_dataset"),
     # REQ-1934: a decision on a table's constraint is part of the table, removed with it.
     _part("profiler_constraints", "table_id", "table"),
+    # REQ-2147: a steward's decision on a table's column classification is part of the table.
+    _part("profiler_classifications", "table_id", "table"),
     # REQ-2091: an adequacy check's result on a table's column is part of the table.
     _part("fake_adequacy_checks", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),
@@ -305,6 +307,12 @@ REFERENCES: tuple[Reference, ...] = (
     # A term's physical refs point it at real data, so they block it: the operator retires the
     # term or moves its refs to another first. Its edges, domain links and experts go with it.
     _dep("glossary_term_refs", "term_id", "glossary_term", "table", "table_id"),
+    # REQ-2130: a table a class term grounds is real data the term names, so it blocks the term as
+    # a column ref does.
+    _dep("registered_tables", "class_term_id", "glossary_term", "table", "id"),
+    # REQ-2145: a term's tags go with it; a term holding columns is blocked above, so no column
+    # loses a tag it carried through the term.
+    _part("tag_assignments", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
     _part("glossary_term_edges", "from_term_id", "glossary_term"),

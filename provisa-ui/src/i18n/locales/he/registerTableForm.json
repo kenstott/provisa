@@ -23,7 +23,6 @@
     "descriptionLabel": "תיאור",
     "descriptionPlaceholder": "מופיע בתיעוד SDL",
     "dataProductLabel": "מוצר נתונים",
-    "dataProductHint": "(פרסום לקטלוג / ייצוא ל-Atlas, Atlan וכו')",
     "discoverLabel": "גילוי עמודות",
     "discoverHint": "(הסקת עמודות מהמקור החי בעת הרישום — למקורות ללא סכמה/NoSQL; אין צורך בבחירת עמודות ידנית)",
     "watermarkLabel": "עמודת Watermark",
@@ -135,6 +134,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "וקטורים של {{collection}}",
     "qdrantVector": "{{name}}: {{size}} ממדים, מדורג לפי {{distance}}",
-    "qdrantUnnamedVector": "(ללא שם)"
+    "qdrantUnnamedVector": "(ללא שם)",
+    "continue": "המשך"
   }
 }

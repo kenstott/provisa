@@ -349,7 +349,7 @@ def test_a_test_instance_never_gives_a_server_a_port_local_dev_uses():
 def test_every_connector_is_fetched_from_the_pin():
     # engine-v0.117.0 is the first release whose catalog counts no rows; every bundle is at the pin.
     assert rd.CONNECTOR_RELEASE == {}
-    assert rd.RELEASE_TAG == "engine-v0.119.4"
+    assert rd.RELEASE_TAG == "engine-v0.121.3"
     pinned = rd.RELEASE_TAG.removeprefix("engine-v")
     for source_type, connector in rd.BUNDLE_CONNECTOR.items():
         spec = rd.bundle_spec_for(source_type)

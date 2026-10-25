@@ -23,7 +23,6 @@
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "Appears in SDL docs",
     "dataProductLabel": "Data Product",
-    "dataProductHint": "(publish to catalog / export to Atlas, Atlan, etc.)",
     "discoverLabel": "Discover columns",
     "discoverHint": "(infer columns from the live source at registration — for schemaless/NoSQL sources; no manual column selection needed)",
     "watermarkLabel": "Watermark Column",
@@ -135,6 +134,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vectors of {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensions, scored by {{distance}}",
-    "qdrantUnnamedVector": "(unnamed)"
+    "qdrantUnnamedVector": "(unnamed)",
+    "continue": "Continue"
   }
 }

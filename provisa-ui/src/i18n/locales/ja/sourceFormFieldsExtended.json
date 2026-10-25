@@ -203,6 +203,11 @@
     "accountEmailHint": "Atlassian へのサインインに使うメールアドレス。API トークンはこのアカウントのものです。",
     "apiToken": "API トークン",
     "apiTokenHint": "id.atlassian.com で作成（Security, API tokens）。シークレットボールトに保存されます。",
-    "siteAddressInvalid": "https:// で始まるサイトの完全なアドレスを入力してください"
+    "siteAddressInvalid": "https:// で始まるサイトの完全なアドレスを入力してください",
+    "namingInherit": "継承（グローバル）",
+    "reasoner": "推論器",
+    "reasonerNone": "なし",
+    "axioms": "OWL 公理",
+    "axiomsHint": "Turtle、RDF/XML、関数型構文または Manchester 構文。クエリが <http://example.org/kyc#controls> のような単一の IRI であるテーブルは、公理から推論された内容を読み取ります。"
   }
 }

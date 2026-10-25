@@ -101,6 +101,9 @@
     "provColumnsHeading": "Columns",
     "provTypeNumber": "Number",
     "provTypeDate": "Date",
-    "provTypeText": "Text"
+    "provTypeText": "Text",
+    "statementTab": "Result {{n}} · {{name}}",
+    "statementTabUnnamed": "Result {{n}}",
+    "statementFailed": "failed"
   }
 }

@@ -12,7 +12,7 @@
 // a measure shows its history across the window, fetched as the viewer's role.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "../../../test-utils/render";
+import { fireEvent, render, screen, within } from "../../../test-utils/render";
 
 const api = vi.hoisted(() => ({ fetchMeasureHistory: vi.fn() }));
 vi.mock("../../../api/profiler", () => api);
@@ -63,11 +63,19 @@ describe("ProfileDriftPanel", () => {
       ],
     });
     render(<ProfileDriftPanel tableId={7} runId="r9" role="analyst" rows={ROWS} />);
-    expect(screen.getByTestId("profile-drift-flag-0")).toHaveTextContent("distance");
-    expect(screen.queryByTestId("profile-drift-flag-1")).toBeNull();
-    fireEvent.click(screen.getByTestId("profile-drift-row-0"));
-    expect(await screen.findByTestId("profile-drift-point-r9")).toHaveTextContent("130");
-    expect(screen.getByTestId("profile-drift-point-r1")).toHaveTextContent("100");
+    // The drift rows are a results grid (REQ-2123): the last column says why a measure drifts.
+    const drift = screen.getByTestId("profile-rows-drift");
+    const rowOf = (text: string) => within(drift).getByText(text).closest("tr")!;
+    expect(rowOf("table · row_count").lastElementChild).toHaveTextContent("distance");
+    expect(rowOf("column · amount · null_share").lastElementChild).toHaveTextContent("null");
+    fireEvent.click(rowOf("table · row_count"));
+    const history = await screen.findByTestId("profile-drift-history");
+    const point = (runTime: string) =>
+      within(history)
+        .getByText(new RegExp(new Date(runTime).toLocaleString()))
+        .closest("tr")!;
+    expect(point("2026-09-05T03:00:00Z")).toHaveTextContent("130");
+    expect(point("2026-09-01T03:00:00Z")).toHaveTextContent("100");
     expect(api.fetchMeasureHistory).toHaveBeenCalledWith(7, "r9", "analyst", {
       scope: "table",
       measure: "row_count",

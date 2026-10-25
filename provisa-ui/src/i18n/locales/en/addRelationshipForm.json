@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "Name the edge from",
     "viaLabelSourceColumn": "Discriminator value",
     "viaLabelSourceTable": "Junction table name",
-    "viaLabelSourceFixed": "Cypher alias"
+    "viaLabelSourceFixed": "Cypher alias",
+    "cardinalityOneToOne": "one-to-one"
   }
 }

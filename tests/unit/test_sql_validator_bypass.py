@@ -29,7 +29,7 @@ from __future__ import annotations
 from provisa.compiler.sql_gen import CompilationContext, JoinMeta, TableMeta
 from provisa.compiler.sql_validator import validate_sql
 from provisa.compiler.stage2 import GovernanceContext
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
 
 
@@ -377,6 +377,7 @@ class TestInverseRelationshipCollision:
             domain_id: str = ""
             column_presets: list = dc_field(default_factory=list)
             source_type: str = ""
+            original_table_name: str = ""  # as TableMeta: the name before a physical alias
 
         @dataclass
         class _Ctx:

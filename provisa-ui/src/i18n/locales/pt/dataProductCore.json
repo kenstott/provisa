@@ -1,0 +1,24 @@
+{
+  "dataProductCore": {
+    "error": "Não foi possível ler o produto de dados: {{error}}",
+    "tags": "Tags",
+    "tagsEmpty": "Sem tags.",
+    "profiles": "Perfis",
+    "profilesHint": "As tabelas de resultados de perfil registradas para cada tabela membro; abra uma para ler seus resultados.",
+    "profilesEmpty": "Nenhuma tabela membro foi perfilada.",
+    "scans": "verifica {{table}}",
+    "aProduct": "produto de dados",
+    "direct": "direto",
+    "hops_one": "{{count}} salto",
+    "hops_other": "{{count}} saltos",
+    "paths_one": "{{count}} caminho",
+    "paths_other": "{{count}} caminhos",
+    "through": "por meio de {{tables}}",
+    "upstream": "Upstream",
+    "downstream": "Downstream",
+    "via": "via {{vias}}",
+    "unreadable": "Sua função não pode ler os produtos de dados no domínio meta.",
+    "detailExpand": "Mostrar a entrada completa",
+    "detailCollapse": "Mostrar menos"
+  }
+}

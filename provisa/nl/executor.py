@@ -86,22 +86,24 @@ async def _execute_cypher(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
 ) -> dict:
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.label_map import CypherLabelMap
-    from provisa.cypher.translator import cypher_to_sql
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.label_map import CypherLabelMap
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params
-    from provisa.cypher.assembler import assemble_rows, to_serializable
+    from provisa.gql.assembler import assemble_rows, take_cut, to_serializable
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     ctx = _get_ctx(app_state, role)
-    ast = parse_cypher(query)
     from provisa.security.rights import require_role
 
     label_map = CypherLabelMap.from_schema(
         ctx, domain_access=require_role(app_state.roles, role)["domain_access"]
     )
+    # The role's label map: an unbound name that is a bound variable's property is offered as it
+    # in the refusal the NL retry gives back to the model (REQ-778).
+    ast = parse_cypher(query, label_map)
     param_names = collect_param_names(query)
     bind_params(param_names, {})
     sql_ast, _, graph_vars = cypher_to_sql(ast, label_map, {})
@@ -125,7 +127,7 @@ async def _execute_cypher(
     result = await _execute_plan(plan, app_state)
     if result.redirect is not None:
         raise _Delivered(result.redirect)
-    rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
     assembled = assemble_rows(rows, graph_vars)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": [to_serializable(r) for r in assembled]}
@@ -164,26 +166,16 @@ async def _compile_and_execute_graphql(
             exec_params=cq.params or None,
             state=app_state,
             deliver=deliver,
-            # An aggregate's answer is always small: only a row read is landed on the threshold.
-            buffered=cq.nodes_sql is None,
+            # An aggregate's answer is always small (its nodes aside): only a row read, or one
+            # carrying the rows it aggregates, is landed on the threshold.
+            buffered=not cq.has_nodes,
             cache_hint=NO_CACHE_HINT,
             sdl_joins=True,
         )
         result = await _execute_plan(plan, app_state)
         if result.redirect is not None:
             raise _Delivered(result.redirect)
-        nodes_result = None
-        if cq.nodes_sql is not None:
-            nodes_plan = await _govern_and_route_compiled(
-                cq.nodes_sql,
-                role,
-                exec_params=cq.nodes_params or None,
-                state=app_state,
-                cache_hint=NO_CACHE_HINT,
-                sdl_joins=True,
-            )
-            nodes_result = await _execute_plan(nodes_plan, app_state)
-        out.append((cq, result, nodes_result))
+        out.append((cq, result))
     return out
 
 
@@ -191,7 +183,7 @@ async def _run_single_compiled_graphql(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
 ) -> tuple:
     """The single-root-field case (gRPC/JSON:API/OpenAPI aggregate/group-by NL query text always
-    targets exactly one root field) — returns (compiled_query, result, nodes_result)."""
+    targets exactly one root field) — returns (compiled_query, result)."""
     return (await _compile_and_execute_graphql(query, role, app_state, deliver))[0]
 
 
@@ -203,15 +195,10 @@ async def _execute_graphql(
     compiled_results = await _compile_and_execute_graphql(query, role, app_state, deliver)
 
     merged: dict = {}
-    for cq, result, nodes_result in compiled_results:
-        if cq.nodes_sql is not None:
+    for cq, result in compiled_results:
+        if cq.has_nodes and not cq.is_group_by:
             serialized = serialize_aggregate(
-                result.rows,
-                cq.columns,
-                nodes_result.rows,
-                cq.nodes_columns,
-                cq.root_field,
-                agg_alias=cq.agg_alias,
+                result.rows, cq.columns, cq.root_field, agg_alias=cq.agg_alias
             )
         else:
             serialized = serialize_rows(
@@ -241,9 +228,11 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
 
     from provisa.grpc.query_ir import (
         grpc_table_to_semantic_sql,
+        nodes_index,
         split_agg_columns,
         split_group_by_columns,
     )
+    from provisa.executor.serialize import _convert_value
 
     ctx = _get_ctx(app_state, role)
 
@@ -271,21 +260,10 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
         )
         if graphql_text is None:
             raise RuntimeError(f"No table matches gRPC type: {type_name}")
-        cq, result, nodes_result = await _run_single_compiled_graphql(
-            graphql_text, role, app_state, deliver
-        )
+        cq, result = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
         group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(cq.columns)
-        nodes_by_key: dict = {}
-        if include_nodes and nodes_result is not None and cq.nodes_columns is not None:
-            join_key_indices = [
-                i for i, c in enumerate(cq.nodes_columns) if c.nested_in == "__join_key__"
-            ]
-            output_cols = [(i, c) for i, c in enumerate(cq.nodes_columns) if c.nested_in is None]
-            for nrow in nodes_result.rows:
-                jkey = tuple(nrow[i] for i in join_key_indices)
-                nodes_by_key.setdefault(jkey, []).append(
-                    {c.field_name: nrow[i] for i, c in output_cols}
-                )
+        # Each group's nodes are a column of its own row (aggregates._nodes_column).
+        at = nodes_index(cq.columns) if include_nodes else None
         rows = []
         for row in result.rows:
             group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
@@ -295,9 +273,8 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
                 "group_key": json.dumps(group_key, default=str),
                 "aggregate": {**top, **nested},
             }
-            if include_nodes:
-                jkey = tuple(row[i] for i in group_key_idx)
-                out_row["nodes"] = nodes_by_key.get(jkey, [])
+            if at is not None:
+                out_row["nodes"] = _convert_value(row[at])
             rows.append(out_row)
         return {"group_by": rows}
 
@@ -308,7 +285,7 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
         graphql_text = _grpc_aggregate_graphql_text(ctx, type_name, funcs)
         if graphql_text is None:
             raise RuntimeError(f"No table matches gRPC type: {type_name}")
-        cq, result, _ = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
+        cq, result = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
         row = result.rows[0] if result.rows else ()
         top, nested = split_agg_columns(cq.columns, row)
         return {**top, **nested}
@@ -502,7 +479,7 @@ async def _execute_domain_table_aggregate(
     ``include_nodes`` (REQ-1361/REQ-1401) mirrors ``?includeNodes=true`` — the per-group
     row-level detail JSON:API/REST's real group-by endpoints attach via a ``nodes { ... }``
     sub-selection."""
-    from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+    from provisa.executor.serialize import serialize_aggregate, serialize_rows
 
     ctx = _get_ctx(app_state, role)
     meta = next(
@@ -527,18 +504,11 @@ async def _execute_domain_table_aggregate(
     if graphql_text is None:
         raise RuntimeError(f"No aggregate/group-by fields for {domain_id}/{table_name}")
 
-    cq, result, nodes_result = (
-        await _compile_and_execute_graphql(graphql_text, role, app_state, deliver)
-    )[0]
+    cq, result = (await _compile_and_execute_graphql(graphql_text, role, app_state, deliver))[0]
 
     if by_columns:
-        shaped = serialize_group_by(
-            result.rows,
-            cq.columns,
-            nodes_result.rows if nodes_result is not None else None,
-            cq.nodes_columns if nodes_result is not None else None,
-            cq.root_field,
-        )
+        # A group's nodes, when selected, are a column of its own row.
+        shaped = serialize_rows(result.rows, cq.columns, cq.root_field)
         group_rows = shaped.get("data", {}).get(cq.root_field, [])
         if protocol == "jsonapi":
             return {
@@ -549,9 +519,7 @@ async def _execute_domain_table_aggregate(
             }
         return {"data": group_rows}
 
-    shaped = serialize_aggregate(
-        result.rows, cq.columns, None, None, cq.root_field, agg_alias=cq.agg_alias
-    )
+    shaped = serialize_aggregate(result.rows, cq.columns, cq.root_field, agg_alias=cq.agg_alias)
     agg_payload = shaped.get("data", {}).get(cq.root_field, {}).get(cq.agg_alias, {})
     if protocol == "jsonapi":
         return {"data": None, "meta": {"aggregate": agg_payload}}

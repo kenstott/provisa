@@ -1,0 +1,32 @@
+{
+  "profile3d": {
+    "expand": "दृश्य विस्तृत करें",
+    "webglError": "3D दृश्य शुरू नहीं हो सका: {{error}}",
+    "hint": "घुमाने के लिए खींचें · ज़ूम के लिए स्क्रॉल करें · खिसकाने के लिए राइट-क्लिक करके खींचें",
+    "rotate": "घुमाएँ",
+    "resetView": "दृश्य रीसेट करें",
+    "zoomTo": "इस कॉलम पर ज़ूम करें",
+    "attraction": "आकर्षण",
+    "attractionLoose": "ढीला",
+    "attractionTight": "कसा हुआ",
+    "grid": "ग्रिड",
+    "resetSettings": "डिफ़ॉल्ट सेट करें",
+    "resetSettingsHelp": "इस ग्राफ़ के सहेजे गए लेआउट, लेयर, फ़िल्टर और टॉगल भूलकर डिफ़ॉल्ट पर लौटें।",
+    "export": "निर्यात",
+    "exportImage": "छवि",
+    "exportScale": "छवि का पैमाना",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (वेक्टर)",
+    "recordRotation": "घूमना रिकॉर्ड करें",
+    "recordLength": "रिकॉर्डिंग की अवधि",
+    "seconds": "{{count}} से",
+    "format_mp4": "MP4 वीडियो",
+    "format_webm": "WebM वीडियो",
+    "recording": "घुमाव रिकॉर्ड हो रहा है… {{percent}}%",
+    "cancelRecording": "रिकॉर्डिंग रोकें",
+    "exportFailed": "दृश्य निर्यात नहीं हो सका: {{error}}",
+    "lastFormat": "पिछली बार इस्तेमाल किया गया"
+  }
+}

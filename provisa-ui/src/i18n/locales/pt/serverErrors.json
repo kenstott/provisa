@@ -177,7 +177,8 @@
       "unknown_arg_kind": "arg_kind desconhecido '{{arg_kind}}' para '{{name}}'",
       "unknown_command": "Comando desconhecido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de função desconhecido: '{{impl_kind}}'",
-      "written_table_missing": "o comando '{{name}}' escreve '{{table}}', que não está registrada"
+      "written_table_missing": "o comando '{{name}}' escreve '{{table}}', que não está registrada",
+      "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso."
     },
     "graphql_remote": {
       "introspection_failed": "Falha na introspecção: {{error}}",
@@ -255,10 +256,15 @@
       "database_unavailable": "Banco de dados indisponível",
       "query_engine_unavailable": "Mecanismo de consulta indisponível",
       "role_header_required": "Cabeçalho X-Provisa-Role necessário para criar o perfil de uma exibição",
-      "table_not_found": "Tabela {{table_id}} não encontrada"
+      "table_not_found": "Tabela {{table_id}} não encontrada",
+      "column_not_found": "A coluna {{column}} não é uma coluna da tabela que org_admin lê",
+      "classification_kind_unknown": "Tipo de classificação desconhecido {{kind}}",
+      "classification_status_invalid": "Uma decisão de classificação é aceita ou rejeitada, não {{status}}",
+      "classification_decision_not_found": "Nenhuma decisão sobre {{column}} como {{kind}}",
+      "classification_pii_refused": "Não foi possível marcar a coluna como PII"
     },
     "replication": {
-      "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
+      "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: [{{content_type}}] {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
       "no_whole_copy": "A tabela {{schema}}.{{table}} da origem {{source}} não tem uma cópia completa para compilar: ela é replicada linha a linha ou tem uma coluna de parâmetro.",
       "page_limit_reached": "A réplica de {{table}} não foi compilada: a paginação do endpoint para em max_pages={{max_pages}}, e o endpoint tinha mais dados após a página {{max_pages}} ({{rows}} linhas lidas). Uma réplica é a tabela inteira, portanto não é cortada no limite. Aumente max_pages ou o tamanho de página do endpoint.",
       "row_limit_reached": "A réplica de {{table}} não foi compilada: uma leitura para em max_rows={{max_rows}} (graphql_remote.max_rows), e o remoto tinha mais dados após {{rows}} linhas. Uma réplica é a tabela inteira, portanto não é cortada no limite. Aumente graphql_remote.max_rows.",
@@ -335,6 +341,7 @@
       "change_signal_no_topic": "A tabela '{{table}}' da origem '{{source}}' usa o sinal de alteração kafka, mas não indica nenhum topic em live.kafka.topic, então nada a atualizaria.",
       "change_signal_no_receiver": "O Provisa não recebe o sinal de alteração {{signal}} de uma origem do tipo {{type}}, portanto uma tabela da origem '{{source}}' nunca seria atualizada por ele. Capture a origem com o Debezium e use debezium.",
       "change_signal_not_honoured": "Uma fonte do tipo {{type}} ainda não pode ser verificada quanto a alterações, pelo que o sinal de alteração {{signal}} nunca seria consultado. Use ttl para a fonte '{{source}}'.",
+      "row_materialize_no_key_fetch": "{{table}} não pode ser replicada linha a linha: o seu esquema remoto não tem nenhum campo que devolva as suas linhas para uma lista da sua chave primária.",
       "sentinel_path_not_applicable": "Uma fonte do tipo {{type}} não pode ter um caminho sentinela: nenhum produtor seu pode assinalar uma alteração nos seus dados, ou a fonte não é sondada. Remova o caminho sentinela da fonte '{{source}}'.",
       "source_cache_ttl_required": "A fonte '{{source}}' precisa de um TTL do cache: cada tabela sua é uma réplica, atualizada por esse relógio com o sinal de alteração {{signal}}. Defina-o em «Gestão de carga e atualidade» da fonte.",
       "landing_ttl_required": "A tabela '{{table}}' é uma réplica atualizada por um TTL do cache, e nem ela nem a sua fonte '{{source}}' têm um. Defina o TTL do cache em «Gestão de carga e atualidade» da fonte, ou na própria tabela depois de registada.",
@@ -443,7 +450,16 @@
       "role_description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
       "rls_rule_description_missing": "Uma regra de linha precisa de uma descrição da sua finalidade",
       "file_download_refused": "Fonte {{source}}: {{reason}}",
-      "source_created_without_table": "Fonte {{source}} criada; sua tabela não foi configurada: {{reason}}"
+      "source_created_without_table": "Fonte {{source}} criada; sua tabela não foi configurada: {{reason}}",
+      "mv_window_needs_calendar": "A MV '{{mv}}' não indica nenhum calendário: uma compilação selada no fechamento de um dia útil precisa de um",
+      "version_log_updated": "Registro de versões '{{mv}}' atualizado",
+      "mv_window_held": "A MV '{{mv}}' não foi selada no fecho de {{day}}: outra compilação dela detém a reserva",
+      "mv_window_unchanged": "A MV '{{mv}}' não foi selada no fecho de {{day}}: nada do que lê mudou desde a sua última compilação",
+      "landing_time_pipeline": "A tabela '{{table}}' guarda a hora de chegada em {{column}}, mas seu armazenamento carrega o tópico pelo próprio pipeline, onde o Provisa não vê cada mensagem chegar.",
+      "relationship_same_entity_direct": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: ela une por uma tabela de junção ou uma função, não uma linha a uma linha",
+      "relationship_same_entity_cardinality": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: ela é {{cardinality}}, e a mesma entidade é uma linha para uma linha",
+      "relationship_same_entity_not_grounded": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{source}} e {{target}} não estão fundamentadas no mesmo termo",
+      "relationship_same_entity_not_keys": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{columns}} não é a chave primária nem uma chave única de {{table}}"
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",
@@ -517,7 +533,27 @@
       "username_taken": "O usuário '{{username}}' já existe"
     },
     "cypher": {
-      "command_call_refused": "{{reason}}"
+      "command_call_refused": "{{reason}}",
+      "count_unknown": "Não foi possível fazer uma contagem, então o total é desconhecido: {{statement}}: {{reason}}",
+      "access_violations": "Este papel não pode executar esta consulta:",
+      "invalid_regex": "O padrão \"{{pattern}}\" em {{expression}} não é uma expressão regular válida: {{reason}}. =~ espera uma expressão regular, p. ex. \".*{{word}}.*\", ou use CONTAINS \"{{word}}\".",
+      "unknown_label": "Não existe o rótulo :{{label}}. Rótulos registrados: {{suggestions}}.",
+      "no_labels": "Não existe o rótulo :{{label}}: este papel não pode ler nenhuma tabela.",
+      "unknown_relationship_type": "Não existe o tipo de relacionamento {{types}}. Tipos registrados: {{suggestions}}.",
+      "no_relationship_types": "Não existe o tipo de relacionamento {{types}}: este papel não pode percorrer nenhum relacionamento.",
+      "type_mismatch": "Em {{expression}}, {{value}} não pode ser comparado com {{property}}, do tipo {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE não pode usar o agregado {{aggregate}}: WHERE filtra linhas antes de agrupá-las. Agregue em um WITH e filtre depois.",
+      "nested_aggregate": "{{outer}} agrega o agregado {{inner}}: não é possível agregar outro agregado. Agregue primeiro em um WITH.",
+      "undefined_variable": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} não é um número inteiro de linhas: LIMIT espera uma contagem de 0 ou mais, p. ex. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} não é um número inteiro de linhas: SKIP espera uma contagem de 0 ou mais, p. ex. SKIP 10.",
+      "engine_refused": "O mecanismo recusou a consulta: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} lê {{variable}}, mas a instrução não vincula nenhuma variável: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL.",
+      "undefined_variable_property": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tem uma propriedade {{variable}}.",
+      "undefined_variable_properties": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestions}}? Cada uma está vinculada a um rótulo com uma propriedade {{variable}}.",
+      "non_finite_number": "A resposta contém um número que o JSON não consegue representar: {{column}} é {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean de um valor que talvez não se converta exigem PostgreSQL 16 ou posterior neste mecanismo."
     },
     "requests": {
       "approver_outside_domains": "Seu direito de criar relacionamentos não alcança nenhum domínio tocado por esta solicitação ({{domains}})",
@@ -531,7 +567,9 @@
     "statement": {
       "rows_cut": "A resposta foi cortada em {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}): há mais linhas correspondentes do que as devolvidas.",
       "rows_cut_unchecked": "A resposta tem {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}). Não foi possível verificar se há mais linhas correspondentes: {{reason}}",
-      "approximate_index": "As linhas mais semelhantes foram encontradas por meio de um índice vetorial aproximado: pode faltar uma linha um pouco mais semelhante do que a última retornada."
+      "list_at_ceiling": "Uma lista contém o máximo de {{limit}} entradas que o limite de linhas permite para esta leitura ({{kind}}); pode haver mais.",
+      "approximate_index": "As linhas mais semelhantes foram encontradas por meio de um índice vetorial aproximado: pode faltar uma linha um pouco mais semelhante do que a última retornada.",
+      "path_cut": "Um caminho sem limite superior foi cortado no limite de profundidade do grafo de {{limit}} saltos: caminhos mais longos estão ausentes da resposta."
     },
     "wikipedia": {
       "no_pages": "Informe pelo menos uma página inicial",
@@ -599,6 +637,7 @@
       "wrong_tier": "Este sandbox é servido em outro lugar; abra-o pelo seu próprio endereço.",
       "unknown_demo": "Não há nenhuma demonstração publicada chamada {{demo}}.",
       "demo_not_ready": "Esta demonstração ainda está sendo preparada. Tente novamente em instantes.",
+      "demo_stores_failed": "Não foi possível iniciar esta demonstração. Tente novamente em alguns minutos.",
       "at_capacity": "Todos os sandboxes de demonstração estão em uso. Tente novamente em instantes.",
       "starting": "O servidor de demonstração está iniciando. Tente novamente em um ou dois minutos.",
       "disk_full": "Este sandbox atingiu seu limite de disco de {{limit}} bytes; nada mais pode ser gravado nele.",
@@ -614,6 +653,41 @@
       "database_not_connected": "Banco de dados não conectado",
       "description_missing": "Uma função derivada precisa de uma descrição da sua finalidade",
       "not_found": "Nenhuma função derivada de {{name}}"
+    },
+    "glossary": {
+      "term_is_property": "O termo '{{term}}' tem referências de coluna ({{columns}}), portanto é uma Propriedade e não pode ancorar uma tabela. Um termo é uma Classe, ancorada em tabelas, ou uma Propriedade, com referências de coluna, nunca ambas.",
+      "term_is_class": "O termo '{{term}}' ancora tabelas ({{tables}}), portanto é uma Classe e não pode ter uma referência de coluna. Um termo é uma Classe, ancorada em tabelas, ou uma Propriedade, com referências de coluna, nunca ambas.",
+      "abstract_is_derived": "\"Abstrato\" não pode ser definido: deriva da ancoragem. Um termo sem referências de coluna nem tabelas ancoradas é um Conceito.",
+      "key_column_derived": "Esta coluna é uma chave; segue a classe da sua tabela. {{table}}.{{column}} permanece em '{{class}}' e não é movida manualmente.",
+      "reason_required": "É necessário um motivo: diga por que o termo está sendo descontinuado ou retirado.",
+      "retire_on_past": "A data de retirada planejada {{retire_on}} já passou. Escolha hoje ou uma data posterior.",
+      "retire_on_invalid": "A data de retirada planejada {{retire_on}} não é uma data (use AAAA-MM-DD).",
+      "successor_is_self": "Um termo não pode ser seu próprio sucessor.",
+      "successor_retired": "O sucessor '{{successor}}' está retirado. Escolha um termo em serviço.",
+      "term_not_live": "Apenas um termo ativo pode ser descontinuado; este está {{status}}.",
+      "status_by_action": "O status de um termo muda com Descontinuar, Retirar ou Restaurar, cada um com um motivo.",
+      "successor_required": "Este termo ainda tem colunas ou tabelas; retirá-lo as move para um sucessor. Escolha um.",
+      "successor_role": "O sucessor de um {{role}} deve ser um {{role}} ou um conceito; '{{successor}}' é um {{successor_role}}.",
+      "no_retirement_history": "O histórico do modelo não tem nenhuma retirada deste termo.",
+      "finding": {
+        "unlinked_tables": "Esta classe está ancorada em tabelas que as relações de mesma entidade não unem todas: {{tables}}.",
+        "class_and_attribute": "Esta classe também tem colunas que não são suas chaves: {{columns}}.",
+        "class_and_attribute_table": "A tabela {{table}} não tem classe: seu conceito é este termo, que tem colunas que não são chaves ({{columns}}).",
+        "tag_wrong_kind": "Este termo tem etiquetas ({{tags}}) que só uma propriedade passa às suas colunas; ele é um {{role}}.",
+        "retirement_blocked": "Este termo deveria ser retirado em {{retire_on}}, mas ainda tem dados. Retire-o com um sucessor que os receba.",
+        "no_data": "Este conceito não está ligado a nenhum termo que tenha dados."
+      }
+    },
+    "tag": {
+      "not_on_terms": "A tag '{{tag}}' não vai num termo; só pii vai.",
+      "term_not_live": "Defina '{{term}}' para marcá-lo.",
+      "term_not_property": "A tag '{{tag}}' vai num termo só quando ele é uma Propriedade, um termo que significa colunas; '{{term}}' não é.",
+      "term_is_tagged": "Desmarque {{tags}} primeiro, ou mantenha uma definição.",
+      "key_column": "A coluna {{column}} é uma chave: o seu significado é a classe da sua tabela. Aplique a tag à própria coluna.",
+      "column_has_no_term": "A coluna {{column}} não tem um termo para receber a tag.",
+      "also_term_needs_column": "Aplicar a tag ao termo em vez disso requer uma coluna.",
+      "inherited_from_term": "Esta coluna é PII porque significa {{term}}. Desmarque esse significado, ou mova a coluna se ela significar outra coisa.",
+      "move_loses": "Esta movimentação retira tags de colunas que deixariam de tê-las. Confirme a perda de cada tag, ou leve as tags para o termo para o qual as colunas são movidas."
     }
   }
 }

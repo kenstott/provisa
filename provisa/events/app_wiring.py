@@ -46,7 +46,7 @@ async def _load_calendar_registry(db: Any) -> Any:
     a versioned :class:`Calendar` (the immutable holiday/business-day set). An empty table yields an
     empty registry; an MV that then declares an unknown calendar fails loud at wiring (never a silent
     default calendar)."""
-    from datetime import date
+    from datetime import date, time
 
     from sqlalchemy import select
 
@@ -70,6 +70,7 @@ async def _load_calendar_registry(db: Any) -> Any:
                 week_start=m["week_start"],
                 holidays=frozenset(date.fromisoformat(d) for d in (m["holidays"] or [])),
                 weekend=frozenset(m["weekend"] or [5, 6]),
+                day_close=time.fromisoformat(m["day_close"]) if m["day_close"] else None,
             )
         )
     return registry
@@ -350,6 +351,7 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
         make_clickhouse_keyed_loader,
         make_druid_keyed_loader,
         make_elasticsearch_keyed_loader,
+        make_graphql_remote_keyed_loader,
         make_hive_s3_keyed_loader,
         make_kafka_keyed_loader,
         make_mongodb_keyed_loader,
@@ -366,6 +368,8 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     keyed_loaders: dict[str, Any] = {}
     # The table's endpoint is looked up in state at each read (see the adapter loaders).
     keyed_loaders["neo4j"] = make_neo4j_keyed_loader(state)
+    # REQ-1865: a remote GraphQL table whose schema returns its rows for a list of its key.
+    keyed_loaders["graphql_remote"] = make_graphql_remote_keyed_loader(state)
     # sparql has no parser/AST to safely resolve a projected property or splice a filter
     # against (confirmed absent, no rdflib dependency either) -- stays on the loud
     # UnsupportedSourceFetch path in SourceRowLoader.load_keys until one exists.
@@ -407,9 +411,14 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     from provisa.events.source_loader import make_direct_keyed_loader
     from provisa.transpiler.router import API_SOURCES, VIRTUAL_SOURCES
 
+    from provisa.core.source_registry import is_live_only
+
     direct_keyed = make_direct_keyed_loader(state, engine)
     for stype in set(getattr(state, "source_types", {}).values()):
         if stype in keyed_loaders or stype in VIRTUAL_SOURCES or stype in API_SOURCES:
+            continue
+        if is_live_only(stype):
+            # REQ-2000: a live-only source's tables have no replica, so no row is fetched by key.
             continue
         if has_driver(stype) and not engine_attaches(bare_engine, stype):
             keyed_loaders[stype] = direct_keyed
@@ -532,6 +541,10 @@ def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> An
     given its first build, as the built view's change. A replica's landed build is told the same
     way (``state.on_input_landed``, called by replica_builds.run_build)."""
 
+    # The views a landing woke, each with the input it woke on, until the one rewire job takes
+    # them: a landing before that job runs replaces the job, never what an earlier one woke.
+    woken: dict[str, str] = {}
+
     def _built(mv: Any) -> None:
         _landed(view_node(mv))
 
@@ -539,6 +552,8 @@ def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> An
         waiting = [node for node, inputs in state.views_awaiting_input.items() if built in inputs]
         if not waiting:
             return
+        for node in waiting:
+            woken[node] = built
 
         async def _wire_again() -> None:
             from provisa.core.request_context import reset_current_org, set_current_org
@@ -548,15 +563,16 @@ def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> An
             try:
                 await wire_event_loop(scheduler, state=state, log=log, seed=False)
                 wired = {p.node for p in state.event_loop_processors}
-                for node in waiting:
+                for node, by in list(woken.items()):
                     if node not in wired:
                         continue  # still awaiting another input
                     async with state.tenant_db.acquire() as conn:
                         event_id = await queue.post_event(
-                            conn, source_table=built, event_type="replace", payload={}
+                            conn, source_table=by, event_type="replace", payload={}
                         )
                         await queue.fan_out(conn, event_id, [node])
-                    log.info("event loop: %s wired after %s was first built", node, built)
+                    del woken[node]
+                    log.info("event loop: %s wired after %s was first built", node, by)
             finally:
                 reset_current_org(token)
 
@@ -611,19 +627,19 @@ def _views_built_here(registry: Any) -> list[Any]:
 
 def _lineage(mvs: list[Any], state: Any, log: Any) -> dict[str, set[str]]:
     """The views' edges, resolved against the model (``events.nodes.lineage_graph``). A view
-    whose input does not resolve was refused when it was declared, so meeting one here is a
-    defect: the view is marked failed with the reason (the admin's view list and refresh status
-    show it), the error is logged naming the view and the reference, and the wiring raises."""
+    whose input does not resolve -- one left reading a table since deleted, or declared before the
+    check that refuses it existed -- is refused alone: it is marked failed with the reason (the
+    admin's view list and refresh status show it), the error is logged naming the view and the
+    reference, and it is left out of the lineage. Every other view is wired; one view never fails
+    the org's wiring."""
     from provisa.events.nodes import lineage_graph
-    from provisa.mv.view_inputs import InputUnresolved
 
-    try:
-        return lineage_graph(mvs, state)
-    except InputUnresolved as unresolved:
+    def _refuse(mv: Any, unresolved: Exception) -> None:
         reason = f"not wired into the event loop: {unresolved}"
-        state.mv_registry.mark_refresh_failed(unresolved.view, reason)
+        state.mv_registry.mark_refresh_failed(mv.id, reason)
         log.error("event loop: %s", reason)
-        raise
+
+    return lineage_graph(mvs, state, refuse=_refuse)
 
 
 async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
@@ -650,8 +666,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         mvs = _views_built_here(getattr(state, "mv_registry", None))
 
         # The fan-out set: each view's inputs resolved against the model (REQ-939), never matched
-        # by the spelling its SQL uses. A view whose input does not resolve was refused when it was
-        # declared, so meeting one here is a defect: it raises, naming the view and the reference.
+        # by the spelling its SQL uses. A view whose input does not resolve is refused alone, named
+        # with the reference, and left out (_lineage).
         # A cycle is rejected — the loop must be acyclic.
         from provisa.events.nodes import expected_event_nodes, source_node
 
@@ -659,6 +675,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         graph: dict[str, set[str]] = {}
         try:
             graph = _lineage(mvs, state, log)
+            # A view refused by the lineage step is not wired; the others are.
+            mvs = [mv for mv in mvs if view_node(mv) in graph]
             dependents_of = supervisor.dependents_of(graph)
         except ValueError:
             log.warning("event loop: MV lineage has a cycle — skipping event-loop wiring")
@@ -730,10 +748,11 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                 # The statement its build reads (REQ-1922, #257): its definition through the one
                 # pipeline, so a table it reads is read as a direct statement reads it -- a search
                 # table under its arguments among them -- never its physical SQL as written.
-                from provisa.mv.governed_build import view_build_sql
+                from provisa.mv.governed_build import view_shape_sql
 
                 _probe = await engine.execute_engine(
-                    f"SELECT * FROM ({await view_build_sql(_m, engine)}) AS _mv_probe LIMIT 0",
+                    # Its columns alone: never its rows, a column transform's among them.
+                    f"SELECT * FROM ({await view_shape_sql(_m, engine)}) AS _mv_probe LIMIT 0",
                     authorization=system_auth("event signal"),
                 )
             except Exception:

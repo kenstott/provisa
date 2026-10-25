@@ -170,9 +170,6 @@ def test_the_refusal_says_how_the_tables_are_related_outside_a_relationship():
         "explicit_on",
         "comma_where",
         "on_true_where",
-        "cte",
-        "cte_renamed",
-        "derived_table",
         "in_subquery",
         "not_in_subquery",
         "exists",
@@ -182,6 +179,16 @@ def test_the_refusal_says_how_the_tables_are_related_outside_a_relationship():
         "using",
     ):
         assert _v002(_OUTSIDE[shape]) == [unregistered], shape
+    # A side read through a CTE or a derived table: the condition as written, and what it reads.
+    for shape, written, side in (
+        ("cte", "w.region = c.region", "w.region"),
+        ("cte_renamed", "w.r = c.region", "w.r"),
+        ("derived_table", "w.region = c.region", "w.region"),
+    ):
+        assert _v002(_OUTSIDE[shape]) == [
+            f"Invalid JOIN: {written} ({side} reads orders.region) — no approved relationship "
+            "exists between orders.region and customers.region"
+        ], shape
     # NATURAL pairs every column the two tables share: id and region, neither a relationship.
     assert sorted(_v002(_OUTSIDE["natural"])) == sorted(
         [unregistered, unregistered.replace("region", "id")]
@@ -422,7 +429,7 @@ def _computed_model():
     """orders, customers and regions. Two registered relationships with computed edges:
     LOWER(orders.customer_code) = customers.code, and every customer -> the region whose id is
     the constant 1."""
-    from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
     columns = {
         1: ["id", "customer_code"],
@@ -539,7 +546,7 @@ def test_a_pattern_over_a_computed_registered_relationship_passes(cypher):
     """A relationship registered with a computed edge -- an expression, a constant -- is a
     registered relationship: the join a pattern over it lowers to IS its own condition."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
@@ -573,7 +580,7 @@ def test_a_pattern_whose_type_does_not_connect_its_labels_is_refused_saying_so()
     """A registered relationship type named between two labels it does not connect lowers to a
     join that is never true; the refusal says no relationship of that type connects them."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     cypher = "MATCH (o:Orders)-[:HOME]->(r:Regions) RETURN o.id, r.name"
@@ -588,7 +595,7 @@ def test_a_lowering_that_is_not_the_relationships_own_condition_is_refused():
     is lowered on the two plain columns (#148), which is not the registered condition: the guard
     holds the statement to the relationship as registered, whoever wrote the SQL."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     cypher = "MATCH (c:Customers)<-[:PLACED_BY]-(o:Orders) RETURN o.id, c.name"
@@ -685,6 +692,15 @@ _NEVER = {
     "product": "SELECT x.id FROM {a} x CROSS JOIN {b} y",
 }
 _ONE = {"a": "customers", "b": "customers"}
+
+
+def _pairs(said: str, left: str, right: str) -> bool:
+    """Whether a refusal names the pairing of ``left`` with ``right``: as the condition itself
+    where both sides name their tables, or what a side read through a CTE or a derived table
+    reads (the condition then reads as the statement writes it)."""
+    return f"{left} = {right}" in said or f"between {left} and {right}" in said
+
+
 _TWO = {"a": "orders", "b": "customers"}
 
 
@@ -704,7 +720,7 @@ def test_a_table_joined_to_itself_on_its_whole_primary_key_is_the_same_row(shape
     registered key only, and on the whole of it."""
     sql = _SAME_ROW[shape].format(**_ONE)
     assert _refused(sql) == []
-    assert any("customers.id = customers.id" in said for said in _refused(sql, tables=[]))
+    assert any(_pairs(said, "customers.id", "customers.id") for said in _refused(sql, tables=[]))
     # A key registered on another column exempts nothing here, nor does part of a key.
     assert _refused(sql, tables=[_keyed(2, "name")])
     assert _refused(sql, tables=[_keyed(2, "id", "region")])
@@ -723,7 +739,7 @@ def test_a_second_copy_of_a_table_brought_out_needs_a_relationship_to_itself(sha
     other -- refused, and passing once the table has that relationship registered to itself."""
     sql = _SECOND_COPY[shape].format(**_ONE)
     refused = _refused(sql)
-    assert refused and "customers.region = customers.region" in refused[0], refused
+    assert refused and _pairs(refused[0], "customers.region", "customers.region"), refused
     assert _refused(sql, self_related=True) == []
     assert _refused(_SECOND_COPY[shape].format(**_TWO), self_related=True)
 
@@ -828,3 +844,104 @@ def test_a_recursive_statement_relates_its_rows_along_relationships_only():
     )
     refused = _refused(outside)
     assert refused and "customers" in refused[0] and "orders" in refused[0], refused
+
+
+def _union_of_labels(labels: int, props: int = 8):
+    """A statement reading a UNION ALL of ``labels`` tables, each column of it named."""
+    import sqlglot
+
+    names = [f"p{i}_{j}" for i in range(labels) for j in range(props)]
+    branches = " UNION ALL ".join(
+        f"SELECT '{i}' AS __label, "
+        + ", ".join(f"{n} AS {n}" if n.startswith(f"p{i}_") else f"NULL AS {n}" for n in names)
+        + f" FROM t{i}"
+        for i in range(labels)
+    )
+    return sqlglot.parse_one(
+        f"SELECT n.__label, {', '.join(f'n.{c}' for c in names)} FROM ({branches}) AS n LIMIT 1",
+        read="postgres",
+    )
+
+
+def _select_items_read(monkeypatch, labels: int, props: int = 8) -> int:
+    """How many select-list items the relationship guard reads checking ``_union_of_labels``."""
+    from provisa.compiler import join_guard
+
+    read = 0
+
+    class _Counted(list):
+        def __iter__(self):
+            nonlocal read
+            for item in list.__iter__(self):
+                read += 1
+                yield item
+
+    real = join_guard._selects
+    monkeypatch.setattr(join_guard, "_selects", lambda scope: _Counted(real(scope)))
+    found = join_guard.unrelated_tables(
+        _union_of_labels(labels, props),
+        resolve_table_id=lambda t: int(t.name[1:]),
+        columns_of=lambda i: {f"p{i}_{j}" for j in range(props)},
+        registered=set(),
+        exempt_table=lambda i: False,
+        same_remote_source=lambda a, b: False,
+        primary_keys={},
+    )
+    monkeypatch.setattr(join_guard, "_selects", real)
+    assert found == []  # the branches of a union are alternatives, never related
+    return read
+
+
+def test_a_union_of_every_table_with_its_columns_named_is_checked_in_linear_time_per_column(
+    monkeypatch,
+):
+    """Cypher's ``MATCH (n) RETURN n`` reads a UNION ALL of every label's table, and governance
+    names each of its columns: one per property of every label. Each column was traced by
+    re-reading every branch's select list, cubic in the labels -- past the request's 60s deadline
+    for the e2e model (504). Each union's columns are now read once per check: twice the labels
+    reads about four times the items (the columns grow with the labels), never eight."""
+    ratio = _select_items_read(monkeypatch, 60) / _select_items_read(monkeypatch, 30)
+    # Measured: cubic 7.8x, now 3.96x.
+    assert ratio < 5, ratio
+
+
+@pytest.mark.parametrize(
+    ("sql", "written", "side"),
+    [
+        (
+            "SELECT c.name, (SELECT COUNT(*) FROM (SELECT region FROM orders) breed_sub "
+            "WHERE breed_sub.region = c.region) AS n FROM customers c",
+            "breed_sub.region = c.region",
+            "breed_sub.region",
+        ),
+        (
+            "SELECT c.name FROM customers c "
+            "WHERE c.region IN (SELECT w.region FROM (SELECT region FROM orders) w)",
+            "c.region IN (SELECT w.region FROM (SELECT region FROM orders) AS w)",
+            "w.region",
+        ),
+    ],
+    ids=["correlated_scalar_over_a_derived_table", "in_over_a_derived_table"],
+)
+def test_a_side_read_through_a_derived_table_is_named_as_written(sql, written, side):
+    """REQ-603: the refusal names the condition as the statement writes it, and what the side
+    read through a derived table reads -- in a correlated subquery and an IN as in a join."""
+    assert _v002(sql) == [
+        f"Invalid JOIN: {written} ({side} reads orders.region) — no approved relationship "
+        "exists between orders.region and customers.region"
+    ]
+
+
+@pytest.mark.parametrize(
+    "condition",
+    ["c.id = v.customer_id", "v.customer_id = c.id"],
+    ids=["as_registered", "reversed"],
+)
+def test_a_relationship_s_join_is_accepted_whichever_way_round_it_is_written(condition):
+    """REQ-603: customers.id -> visits.customer_id is registered once; the join is the same
+    pairing written either way round, and either table may be the one joined to the other."""
+    for sql in (
+        f"SELECT v.id FROM visits v JOIN customers c ON {condition}",
+        f"SELECT c.name FROM customers c JOIN visits v ON {condition}",
+    ):
+        assert _v002(sql) == [], sql

@@ -27,6 +27,7 @@
     "newTarget": "新目標",
     "noTargets": "尚未有目標。請加入此組織要發佈到的目錄。",
     "catalog": "目錄",
-    "catalogHelp": "在 管理 → 目錄 中連接的目錄。"
+    "catalogHelp": "在 管理 → 目錄 中連接的目錄。",
+    "betaProvider": "{{name}}（測試版）"
   }
 }

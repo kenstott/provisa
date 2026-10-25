@@ -18,10 +18,19 @@ either caller module.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import RelationshipMapping
+from provisa.gql.label_map import RelationshipMapping
+
+
+class UntranslatableSubquery(Exception):
+    """A correlated subquery references a table this pass could not bind to a graph pattern.
+
+    Raised instead of emitting the SQL alias into Cypher, where it would be an unbound variable.
+    semantic_sql_to_cypher catches it and returns None (the documented "cannot translate" result).
+    """
 
 
 def _resolve_label(
@@ -115,10 +124,89 @@ def _src_alias_from_on(
     return default_alias
 
 
-def _sql_to_cypher_expr(sql_expr: str) -> str:
-    """Minimally rewrite a SQL expression fragment to Cypher syntax."""
+_SQL_STRING = re.compile(r"'(?:[^']|'')*'")
+_CYPHER_STRING = re.compile(r"'(?:[^'\\]|\\.)*'")
+#: A regex's metacharacters: each written escaped, so a LIKE pattern's character is itself.
+_REGEX_META = frozenset("\\.^$|?*+()[]{}")
+
+
+def outside_strings(text: str, rewrite: Callable[[str], str]) -> str:
+    """``rewrite`` applied to the parts of the Cypher ``text`` outside its string literals: a
+    literal's characters are the value it is, never a name to rewrite."""
+    out: list[str] = []
+    at = 0
+    for m in _CYPHER_STRING.finditer(text):
+        out += [rewrite(text[at : m.start()]), m.group()]
+        at = m.end()
+    out.append(rewrite(text[at:]))
+    return "".join(out)
+
+
+def _cypher_string(value: str) -> str:
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def like_regex(pattern: str, *, case_insensitive: bool) -> str:
+    """A SQL LIKE pattern as the regex ``=~`` matches the same values with: ``%`` any run of
+    characters (newlines among them), ``_`` any one, a backslash (LIKE's escape character) the
+    character after it itself, every other character itself; anchored at both ends."""
+    out = ["(?is)^" if case_insensitive else "(?s)^"]
+    chars = iter(pattern)
+    for c in chars:
+        if c == "\\":
+            c = next(chars, None)
+            if c is None:
+                raise UntranslatableSubquery(f"the LIKE pattern {pattern!r}, ending in its escape")
+            out.append("\\" + c if c in _REGEX_META else c)
+        elif c == "%":
+            out.append(".*")
+        elif c == "_":
+            out.append(".")
+        else:
+            out.append("\\" + c if c in _REGEX_META else c)
+    return "".join(out) + "$"
+
+
+def _code_to_cypher(code: str) -> str:
     # Remove double-quote wrapping from identifiers (sqlglot emits them)
-    result = re.sub(r'"(\w+)"', r"\1", sql_expr)
-    result = result.replace(" ILIKE ", " =~ ")
-    result = result.replace("TRUE", "true").replace("FALSE", "false")
-    return result
+    result = re.sub(r'"(\w+)"', r"\1", code)
+    return result.replace("TRUE", "true").replace("FALSE", "false")
+
+
+def _sql_to_cypher_expr(sql_expr: str) -> str:
+    """Minimally rewrite a SQL expression fragment to Cypher syntax: its string literals written
+    as Cypher writes them, and ``x LIKE 'p'`` / ``x ILIKE 'p'`` / ``x LIKE LOWER('p')`` as
+    ``x =~ 'regex'`` matching the same values (like_regex). A LIKE over anything but a literal, or with an ESCAPE clause, has no
+    exact Cypher form here and is refused (UntranslatableSubquery)."""
+    out: list[str] = []
+    like: str | None = None  # the LIKE whose pattern the next literal is
+    lowered = False  # that pattern is LOWER('p') (how a GraphQL ilike compiles)
+    at = 0
+    for m in [*_SQL_STRING.finditer(sql_expr), None]:
+        code = sql_expr[at : m.start() if m is not None else len(sql_expr)]
+        if like is not None and code.lstrip().upper().startswith("ESCAPE"):
+            raise UntranslatableSubquery(f"a {like} with an ESCAPE clause")
+        if lowered:
+            # LOWER('p') closes after its pattern.
+            if not code.startswith(")"):
+                raise UntranslatableSubquery(f"a LIKE whose pattern is no literal: {sql_expr}")
+            code = code[1:]
+        op = re.search(r" (I?LIKE) (LOWER\()?$", code)
+        if re.search(r"\bI?LIKE\b", code[: op.start()] if op else code):
+            raise UntranslatableSubquery(f"a LIKE whose pattern is no literal: {sql_expr}")
+        if m is None:
+            out.append(_code_to_cypher(code))
+            break
+        value = m.group()[1:-1].replace("''", "'")
+        if op is not None:
+            like, lowered = op.group(1), op.group(2) is not None
+            out += [_code_to_cypher(code[: op.start()]), " =~ "]
+            value = like_regex(
+                value.lower() if lowered else value, case_insensitive=like == "ILIKE"
+            )
+        else:
+            like, lowered = None, False
+            out.append(_code_to_cypher(code))
+        out.append(_cypher_string(value))
+        at = m.end()
+    return "".join(out)

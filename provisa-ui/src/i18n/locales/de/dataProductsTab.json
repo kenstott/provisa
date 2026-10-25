@@ -82,7 +82,6 @@
     "relatedTermsLabel": "Verwandte Begriffe",
     "relatedTermsEmpty": "Keine verwandten Begriffe",
     "relatedTermsLoading": "Verwandte Begriffe werden geladen…",
-    "relatedTermsAbstract": "abstrakt",
     "graphqlQueriesLabel": "Zugriffsmuster",
     "graphqlQueriesEmpty": "Keine abfragbaren Tabellen oder Beziehungen",
     "graphqlQueryAria": "Beispiel-GraphQL-Abfrage für {{table}} ausführen",
@@ -93,6 +92,7 @@
     "openApiQueryAria": "Beispiel-REST-Anfrage für {{table}} ausführen",
     "detail": {
       "field": {
+        "details": "Details",
         "customProperties": "Benutzerdefinierte Eigenschaften",
         "relatedTables": "Verwandte Tabellen",
         "relationships": "Beziehungen",
@@ -112,14 +112,14 @@
       "lineageLoading": "Lineage wird geladen…",
       "lineageHint": "Spalten-Lineage-Graph, der die Tabellen dieses Produkts als veröffentlichten Endpunkt zeigt, dazu jede vorgelagerte Tabelle, aus der sie abgeleitet sind. Nur zur Information — erfordert die Capability view_governance.",
       "inputPortsEmpty": "Keine vorgelagerten Eingaben erfasst",
-      "inputPortsHint": "Eingabe(n) → Transformation → Ausgabe über einen Schritt, aus der Lineage abgeleitet. Erfordert die Capability view_governance.",
-      "inputPortsColInputs": "Eingabe(n)",
-      "inputPortsColTransform": "Transformation",
-      "inputPortsColOutput": "Ausgabe",
-      "outputPortsHint": "Die abfragbare Oberfläche dieses Produkts: seine Tabellen/Spalten und Befehle, mit Beispielabfragen weiter unten unter Beispielabfragen und Befehle.",
-      "customPropertiesEmpty": "Keine benutzerdefinierten Eigenschaften"
+      "inputPortsHint": "Die Tabellen, die dieses Produkt direkt liest, aus der Lineage. Eine Tabelle aufklappen, um die gelesenen Spalten zu sehen. Erfordert die Capability view_governance.",
+      "outputPortsHint": "Die abfragbare Oberfläche dieses Produkts: seine Mitgliedstabellen und Befehle. Beispielabfragen für jede finden Sie unter Zugriffsmuster.",
+      "customPropertiesEmpty": "Keine benutzerdefinierten Eigenschaften",
+      "lineageLaneUpstream": "Vorgelagert, Schritt {{n}}",
+      "lineageLaneDownstream": "Nachgelagert, Schritt {{n}}"
     },
     "readOnly": "Schreibgeschützt",
-    "readOnlyHint": "Sie haben nur data_product_read — ein org_admin kann data_product_rw zum Bearbeiten erteilen."
+    "readOnlyHint": "Sie haben nur data_product_read — ein org_admin kann data_product_rw zum Bearbeiten erteilen.",
+    "relatedTermsConcept": "Konzept"
   }
 }

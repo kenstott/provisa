@@ -90,11 +90,15 @@ async def test_bringing_a_shard_up_creates_its_secret_and_keeps_one_that_exists(
     monkeypatch.setattr(prov.asyncio, "sleep", _no_sleep)
     await prov.ensure_shard_running("shared_1")
 
-    (create,) = [c for c in calls if c.method == "POST" and c.url.path.endswith("/secrets")]
-    body = json.loads(create.content)
-    assert body["metadata"]["name"] == "trino-shared-1-kafka-client"
-    assert "data" not in body
-    # Never applied: an apply of the empty Secret would drop the keys already written.
+    created = [
+        json.loads(c.content)
+        for c in calls
+        if c.method == "POST" and c.url.path.endswith("/secrets")
+    ]
+    # The Kafka client properties' Secret.
+    assert [b["metadata"]["name"] for b in created] == ["trino-shared-1-kafka-client"]
+    assert all("data" not in b for b in created)
+    # Never applied: an apply of an empty Secret would drop the keys already written.
     assert not [
         c
         for c in calls

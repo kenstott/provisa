@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "Beziehungen in {{table}}",
+    "none": "In diesem Lauf wurden keine Korrelationen oder Abhängigkeiten zwischen Spalten gefunden.",
+    "canvasLabel": "3D-Karte der Spalten der Tabelle, verbunden durch ihre Korrelationen und Abhängigkeiten",
+    "minStrength": "Stärke",
+    "showCorrelation": "Korrelationen",
+    "showDependence": "Abhängigkeiten",
+    "legendPositive": "steigen gemeinsam",
+    "legendNegative": "gegenläufig",
+    "legendRatio": "Kategorie erklärt Zahl",
+    "legendDependence": "hängt ab von (Pfeil zeigt auf die abhängige Spalte)",
+    "tipLinks_one": "Beziehungen: {{count}}",
+    "tipLinks_other": "Beziehungen: {{count}}",
+    "columns": "Spalten",
+    "noLinks": "Keine Beziehungen bei dieser Stärke.",
+    "note": "Die Stabdicke entspricht der Stärke: |Spearman ρ| bei Korrelationen, der erklärte Varianzanteil beim Korrelationsverhältnis und der Anteil der Unsicherheit der Spalte, den ihre Eltern beseitigen, bei einer Abhängigkeit. Graue Spalten gehören zu einer Elterntabelle.",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "Korrelationsverhältnis η²",
+    "measure_dependence": "Abhängigkeit (Anteil beseitigter Unsicherheit)",
+    "family_numeric": "numerisch",
+    "family_temporal": "Datum/Uhrzeit",
+    "family_text": "Text",
+    "family_boolean": "boolesch",
+    "family_other": "andere",
+    "family_foreign": "Spalte der Elterntabelle"
+  }
+}

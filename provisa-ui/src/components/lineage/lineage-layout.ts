@@ -104,6 +104,9 @@ export interface LineageLayoutModel {
 }
 
 export const RESULT_BOX = "result";
+/** A native hop's node relation: this prefix, then the registered relation it lands in
+ *  (provisa/lineage/native.py NATIVE_PREFIX). */
+export const NATIVE_PREFIX = "native:";
 export const boxId = (relation: string) => `rel:${relation}`;
 
 // Geometry in canvas units. Monospace at 11px runs about 6.6px per glyph.
@@ -128,6 +131,9 @@ export interface LineageModelOptions {
   /** REQ-1667: relations that define lane 0. Every other box takes the lane of its distance from
    *  them — contributors -1, -2… by shortest upstream path, consumers +1. */
   lanesAround?: ReadonlySet<string>;
+  /** How a box names its registered relation — a page that knows the catalog names it as the
+   *  catalog does. Unset, a box is named by the relation the server reports. */
+  relationLabel?: (relation: string) => string;
 }
 
 export function buildLineageModel(
@@ -156,13 +162,21 @@ export function buildLineageModel(
   const natives = graph.natives ?? {};
   // REQ-2116: the table a native hop lands in says how it is served.
   const servedOf = new Map(Object.values(natives).map((nt) => [nt.relation, servedText(nt)]));
+  const named = options.relationLabel ?? ((relation: string) => relation);
   const boxOf = (n: LineageNode): { id: string; relation: string | null; label: string } => {
     const native = n.relation ? natives[n.relation] : undefined;
     if (n.relation && native)
       return { id: boxId(n.relation), relation: n.relation, label: nativeLabel(native) };
+    // REQ-2116: natives (where a table is read from) go only to a user with source registration;
+    // for anyone else a native box is named by the registered table it lands in, never by the
+    // internal "native:" key.
+    if (n.relation?.startsWith(NATIVE_PREFIX)) {
+      const label = named(n.relation.slice(NATIVE_PREFIX.length));
+      return { id: boxId(n.relation), relation: n.relation, label };
+    }
     if (n.relation) {
       const served = servedOf.get(n.relation);
-      const label = served ? `${n.relation} · ${served}` : n.relation;
+      const label = served ? `${named(n.relation)} · ${served}` : named(n.relation);
       return { id: boxId(n.relation), relation: n.relation, label };
     }
     if (outputs.has(n.id) || n.kind === "derived")
@@ -355,18 +369,30 @@ function assignLanes(
   graph: LineageGraphData,
   around: ReadonlySet<string>,
 ): void {
-  const feeders = new Map<string, Set<string>>();
-  const consumers = new Map<string, Set<string>>();
+  const links: [string, string][] = [];
   for (const e of graph.edges) {
     const sb = nodeBox.get(e.source);
     const tb = nodeBox.get(e.target);
-    if (!sb || !tb || sb === tb) continue;
-    (feeders.get(tb) ?? feeders.set(tb, new Set()).get(tb)!).add(sb);
-    (consumers.get(sb) ?? consumers.set(sb, new Set()).get(sb)!).add(tb);
+    if (sb && tb) links.push([sb, tb]);
   }
   const zero = [...boxes.values()]
     .filter((b) => b.relation !== null && around.has(b.relation))
     .map((b) => b.id);
+  const lane = lanesFrom(links, zero);
+  for (const box of boxes.values()) box.lane = lane.get(box.id) ?? null;
+}
+
+/** REQ-1667, REQ-2128: the lane of each node of a directed graph (``[from, to]`` links) by its
+ * distance from ``zero`` (lane 0): upstream nodes by their longest path down to lane 0, negated;
+ * a node a lane-0 node feeds directly, not upstream, +1. A node not so connected has no lane. */
+export function lanesFrom(links: [string, string][], zero: string[]): Map<string, number> {
+  const feeders = new Map<string, Set<string>>();
+  const consumers = new Map<string, Set<string>>();
+  for (const [sb, tb] of links) {
+    if (sb === tb) continue;
+    (feeders.get(tb) ?? feeders.set(tb, new Set()).get(tb)!).add(sb);
+    (consumers.get(sb) ?? consumers.set(sb, new Set()).get(sb)!).add(tb);
+  }
   const zeroSet = new Set(zero);
   // Longest path DOWN to lane 0 from each upstream box, memoized; a cycle contributes nothing.
   const depth = new Map<string, number>();
@@ -405,7 +431,7 @@ function assignLanes(
   for (const id of zero) {
     for (const c of consumers.get(id) ?? []) if (!lane.has(c)) lane.set(c, 1);
   }
-  for (const box of boxes.values()) box.lane = lane.get(box.id) ?? null;
+  return lane;
 }
 
 /** REQ-2116: the height of a native box's head -- one line per address part, the logo beside. */

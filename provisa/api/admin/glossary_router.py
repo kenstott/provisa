@@ -16,8 +16,9 @@ rename, definition, ref moves, experts, abstract terms and their typed edges —
 queues a metadata publish after every mutation because the term graph exports.
 """
 
-# Requirements: REQ-1387, REQ-1590, REQ-1591
+# Requirements: REQ-1387, REQ-1590, REQ-1591, REQ-2130
 
+from provisa.core.repositories.identity import TableInIdentity
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Query, Request
@@ -29,6 +30,8 @@ from provisa.core.repositories import glossary as glossary_repo
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
+    from datetime import date as _date
+
     from provisa.core.database import Connection, Database
 
 router = APIRouter(prefix="/admin/glossary", tags=["admin", "glossary"])
@@ -45,6 +48,28 @@ async def _notify(org_id: str, reason: str) -> None:
     from provisa.api.metadata_export.publishing import notify_model_changed
 
     await notify_model_changed(org_id, reason=reason)
+
+
+def _refuse_status_fields(body: dict) -> None:
+    """REQ-2144: a term's status changes only through deprecate, retire and restore, each with
+    what it requires (a reason, and a date or a successor)."""
+    if "retired" in body or "status" in body:
+        raise ApiError(
+            400,
+            "glossary.status_by_action",
+            "a term is retired, deprecated or restored through its own action, with a reason",
+        )
+
+
+def _refuse_abstract(body: dict) -> None:
+    """REQ-2141: whether a term is abstract (a Concept) follows from what it grounds."""
+    if "is_abstract" in body:
+        raise ApiError(
+            400,
+            "glossary.abstract_is_derived",
+            "abstract is derived from grounding: a term with no column refs and no grounded "
+            "tables is a Concept",
+        )
 
 
 def _require_glossary_read(request: Request) -> None:
@@ -299,10 +324,11 @@ async def get_term(request: Request, term_id: int) -> dict:
 
 @router.post("/terms")
 async def create_abstract_term(request: Request) -> dict:
-    """Create an abstract term — a user concept with no physical refs."""
+    """Create a term with no physical refs -- a Concept until it grounds something."""
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
+    _refuse_abstract(body)
     domains = _declared_domains(request, body.get("domains"), current=set())
     pool = await _pool()
     async with pool.acquire() as conn:
@@ -315,7 +341,7 @@ async def create_abstract_term(request: Request) -> dict:
             )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
-    await _notify(org_id, "glossary term created")
+    await _notify(org_id, "ontology term created")
     return {"id": term_id}
 
 
@@ -325,6 +351,8 @@ async def update_term(request: Request, term_id: int) -> dict:
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
+    _refuse_abstract(body)
+    _refuse_status_fields(body)
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -332,9 +360,10 @@ async def update_term(request: Request, term_id: int) -> dict:
         found = False
         try:
             if "domains" in body:
-                # REQ-1591: DECLARED domains, so only an abstract term takes them. A rooted term's
-                # domains are its refs' — writing rows for one would be a second answer that drifts
-                # the moment a column moves; the way to rescope it is to move the refs.
+                # REQ-1591: DECLARED domains, so only a Concept takes them (REQ-2141: no column refs
+                # and no tables). A Property's or a Class's domains are its refs' or its tables' —
+                # writing rows for one would be a second answer that drifts the moment a column
+                # moves; the way to rescope it is to move the refs.
                 existing = await glossary_repo.get_term(_conn, term_id)
                 if existing is None:
                     raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
@@ -342,7 +371,8 @@ async def update_term(request: Request, term_id: int) -> dict:
                     raise ApiError(
                         400,
                         "glossary.invalid",
-                        "a rooted term's domains come from its refs and cannot be set",
+                        "a term grounded in columns or tables takes its domains from them; only a "
+                        "Concept's domains can be set",
                     )
                 await glossary_repo.set_declared_domains(
                     _conn,
@@ -360,13 +390,15 @@ async def update_term(request: Request, term_id: int) -> dict:
                 found = await glossary_repo.set_export_excluded(
                     _conn, term_id, bool(body["export_excluded"])
                 )
-            if "retired" in body:
-                found = await glossary_repo.set_retired(_conn, term_id, bool(body["retired"]))
+        except glossary_repo.TermIsTagged as exc:  # REQ-2145
+            raise ApiError(
+                409, exc.code, str(exc), term=exc.term, tags=", ".join(exc.tags)
+            ) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not found:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
-    await _notify(org_id, "glossary term updated")
+    await _notify(org_id, "ontology term updated")
     return {"ok": True}
 
 
@@ -390,7 +422,7 @@ async def delete_term(request: Request, term_id: int) -> dict:
             ) from refused
     if not deleted:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
-    await _notify(org_id, "glossary term deleted")
+    await _notify(org_id, "ontology term deleted")
     return {"ok": True}
 
 
@@ -464,7 +496,7 @@ async def generate_definition(request: Request, term_id: int) -> dict:
     kind = "an abstract business concept" if term["is_abstract"] else "a business term"
     prompt = (
         f"You are a data catalog assistant. Write a concise one-to-two sentence business "
-        f"definition for {kind} named '{term['name']}' in an enterprise data glossary. "
+        f"definition for {kind} named '{term['name']}' in an enterprise data ontology. "
         f"Define the business concept itself, in plain business language a non-technical "
         f"reader would use — never describe it as 'this field', 'this column', or any other "
         f"database-schema wording, even when physical columns are listed below for context. "
@@ -527,7 +559,7 @@ async def generate_all_definitions(request: Request) -> dict:
                 await glossary_repo.set_definition(_conn, term["id"], definition.strip())
                 generated += 1
     if generated:
-        await _notify(org_id, "glossary definitions generated")
+        await _notify(org_id, "ontology definitions generated")
     return {"generated": generated}
 
 
@@ -559,7 +591,7 @@ async def generate_relationships(request: Request) -> dict:
             f"- {t['name']}" + (f": {t['definition']}" if t["definition"] else "") for t in terms
         )
         prompt = (
-            "You are a data catalog assistant. Given this business-glossary term list, "
+            "You are a data catalog assistant. Given this ontology term list, "
             "propose semantic relationships between terms. Allowed relationship types: "
             "KIND_OF (from is a kind of to), PART_OF (from is a part of to), "
             "SYNONYM_OF (interchangeable terms), RELATED_TO (loosely associated), "
@@ -614,7 +646,7 @@ async def generate_relationships(request: Request) -> dict:
             await glossary_repo.add_edge(_conn, from_id, to_id, rel_type)
             added += 1
     if added:
-        await _notify(org_id, "glossary relationships generated")
+        await _notify(org_id, "ontology relationships generated")
     return {"added": added}
 
 
@@ -641,21 +673,58 @@ async def move_ref(request: Request) -> dict:
             raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
         await _require_term_curatable(_conn, losing["id"], request)
         await _require_term_curatable(_conn, int(body["to_term_id"]), request)
+        from provisa.core.term_tags import (
+            TagLossRefused,
+            TermTagRefused,
+            inherited_snapshot,
+            tag_changes_of_moves,
+        )
+
         try:
-            moved = await glossary_repo.move_ref(
-                _conn,
-                int(body["table_id"]),
-                str(body["column_name"]),
-                int(body["to_term_id"]),
-            )
+            # REQ-2145: a move that takes a tag off the column, inherited from the term it leaves,
+            # is undone unless each lost tag is confirmed or carried to the term it moves to.
+            async with _conn.transaction():
+                table_ids = {int(body["table_id"])}
+                tags_before = await inherited_snapshot(_conn, table_ids)
+                moved = await glossary_repo.move_ref(
+                    _conn,
+                    int(body["table_id"]),
+                    str(body["column_name"]),
+                    int(body["to_term_id"]),
+                )
+                changes = await tag_changes_of_moves(
+                    _conn,
+                    tags_before,
+                    table_ids,
+                    confirm_tag_loss=body.get("confirm_tag_loss") or (),
+                    carry_tags=bool(body.get("carry_tags")),
+                )
+        except TagLossRefused as exc:
+            raise ApiError(409, exc.code, str(exc), columns=exc.columns) from exc
+        except TermTagRefused as exc:
+            raise ApiError(409, exc.code, str(exc), **exc.params) from exc
+        except glossary_repo.TermIsClass as exc:
+            raise ApiError(
+                409, "glossary.term_is_class", str(exc), term=exc.term, tables=", ".join(exc.tables)
+            ) from exc
+        except glossary_repo.KeyColumnDerived as exc:
+            raise ApiError(
+                409,
+                "glossary.key_column_derived",
+                str(exc),
+                # "class" is a keyword, so the param is passed by mapping
+                **cast(
+                    "dict[str, Any]", {"column": exc.column, "table": exc.table, "class": exc.cls}
+                ),
+            ) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if moved is None:
         raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
-    await _notify(org_id, "glossary ref moved")
+    await _notify(org_id, "ontology ref moved")
     # Moving a term's last ref retires it, so the losing term may no longer exist. Report that
     # here: the admin UI has it open and would otherwise re-read it and surface a bare 404.
-    return {"ok": True, **moved}
+    return {"ok": True, **moved, "tag_changes": changes}  # REQ-2145
 
 
 @router.post("/terms/{term_id}/edges")
@@ -677,7 +746,7 @@ async def add_edge(request: Request, term_id: int) -> dict:
             )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
-    await _notify(org_id, "glossary edge added")
+    await _notify(org_id, "ontology edge added")
     return {"ok": True}
 
 
@@ -709,7 +778,7 @@ async def retype_edge(request: Request, term_id: int) -> dict:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not changed:
         raise ApiError(404, "glossary.edge_not_found", "edge not found")
-    await _notify(org_id, "glossary edge retyped")
+    await _notify(org_id, "ontology edge retyped")
     return {"ok": True}
 
 
@@ -724,7 +793,7 @@ async def remove_edge(request: Request, term_id: int, to_term_id: int, rel_type:
         removed = await glossary_repo.remove_edge(_conn, term_id, to_term_id, rel_type)
     if not removed:
         raise ApiError(404, "glossary.edge_not_found", "edge not found")
-    await _notify(org_id, "glossary edge removed")
+    await _notify(org_id, "ontology edge removed")
     return {"ok": True}
 
 
@@ -746,7 +815,7 @@ async def add_expert(request: Request, term_id: int) -> dict:
             )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
-    await _notify(org_id, "glossary expert added")
+    await _notify(org_id, "ontology expert added")
     return {"ok": True}
 
 
@@ -761,5 +830,375 @@ async def remove_expert(request: Request, term_id: int, user_id: str) -> dict:
         removed = await glossary_repo.remove_expert(_conn, term_id, user_id)
     if not removed:
         raise ApiError(404, "glossary.expert_not_found", "expert not found")
-    await _notify(org_id, "glossary expert removed")
+    await _notify(org_id, "ontology expert removed")
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Class grounding: a term names what a whole table's rows are (REQ-2130)
+# ---------------------------------------------------------------------------
+
+
+async def _require_table_groundable(
+    conn: "Connection", term_id: int, table_id: int, request: Request
+) -> None:
+    """The curation gates a grounding passes, the column-ref move's: the table's domain decides
+    whether the caller may touch that table at all, and the term is gated by the curation rule."""
+    from provisa.api.admin.domain_guard import DomainLookupError, table_domain
+
+    if not await glossary_repo.term_exists(conn, term_id):
+        raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+    try:
+        domain = await table_domain(conn, table_id)
+    except DomainLookupError as exc:
+        raise ApiError(404, "glossary.table_not_found", f"table {table_id} not found") from exc
+    _require_domain(request, domain)
+    await _require_term_curatable(conn, term_id, request)
+
+
+async def ground_term_table(
+    conn: "Connection", term_id: int, table_id: int, request: Request
+) -> None:
+    """Gate and ground, shared by the route and the MCP tool."""
+    await _require_table_groundable(conn, term_id, table_id, request)
+    try:
+        await glossary_repo.ground_table(conn, term_id, table_id)
+    except glossary_repo.TableHasNoPrimaryKey as exc:
+        raise ApiError(400, "glossary.table_no_primary_key", str(exc), table=exc.table) from exc
+    except glossary_repo.TermIsProperty as exc:
+        raise ApiError(
+            409,
+            "glossary.term_is_property",
+            str(exc),
+            term=exc.term,
+            columns=", ".join(exc.columns),
+        ) from exc
+    except glossary_repo.TableAlreadyGrounded as exc:
+        raise ApiError(
+            409,
+            "glossary.table_already_grounded",
+            str(exc),
+            table=exc.table,
+            term_id=exc.term_id,
+            term_name=exc.term_name,
+        ) from exc
+
+
+async def unground_term_table(
+    conn: "Connection", term_id: int, table_id: int, request: Request
+) -> None:
+    """Gate and unground, shared by the route and the MCP tool."""
+    await _require_table_groundable(conn, term_id, table_id, request)
+    try:
+        ungrounded = await glossary_repo.unground_table(conn, term_id, table_id)
+    except TableInIdentity as exc:
+        raise ApiError(
+            409,
+            "glossary.table_in_identity",
+            str(exc),
+            table=exc.table,
+            relationship=exc.relationship,
+        ) from exc
+    if not ungrounded:
+        raise ApiError(
+            404, "glossary.table_ref_not_found", f"term {term_id} does not ground table {table_id}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Status (REQ-2144): deprecate, retire, restore -- each a curation act with its reason
+# ---------------------------------------------------------------------------
+
+
+_DONE = {"deprecate": "deprecated", "retire": "retired", "restore": "restored"}
+
+
+def _status_refused(exc: "glossary_repo.StatusRefused") -> ApiError:
+    return ApiError(400, f"glossary.{exc.code}", str(exc), **exc.params)
+
+
+def _iso_date(raw: Any) -> "_date | None":
+    import datetime
+
+    if raw is None:
+        return None
+    try:
+        return datetime.date.fromisoformat(str(raw))
+    except ValueError as exc:
+        raise ApiError(
+            400,
+            "glossary.retire_on_invalid",
+            f"retire_on {raw!r} is not an ISO date",
+            retire_on=raw,
+        ) from exc
+
+
+async def change_status(
+    conn: "Connection", term_id: int, action: str, body: dict, request: Request
+) -> list[dict]:
+    """Gate and apply one status action, shared by the routes and the MCP tools. A retirement's
+    move of the term's columns and tables to its successor goes through the tag move check
+    (REQ-2145, term_tags): its summary of what each moved column's tags did is returned."""
+    from datetime import date
+
+    from provisa.core.term_tags import (
+        TagLossRefused,
+        TermTagRefused,
+        inherited_snapshot,
+        tag_changes_of_moves,
+    )
+
+    await _require_term_curatable(conn, term_id, request)
+    by = _caller_id(request)
+    changes: list[dict] = []
+    try:
+        if action == "deprecate":
+            await glossary_repo.deprecate_term(
+                conn,
+                term_id,
+                reason=body.get("reason"),
+                retire_on=_iso_date(body.get("retire_on")),
+                by=by,
+                today=date.today(),
+            )
+        elif action == "retire":
+            successor = body.get("successor")
+            async with conn.transaction():
+                tags_before = await inherited_snapshot(conn)
+                await glossary_repo.retire_term(
+                    conn,
+                    term_id,
+                    reason=body.get("reason"),
+                    successor=None if successor is None else int(successor),
+                    by=by,
+                )
+                changes = await tag_changes_of_moves(
+                    conn,
+                    tags_before,
+                    confirm_tag_loss=body.get("confirm_tag_loss") or (),
+                    carry_tags=bool(body.get("carry_tags")),
+                )
+        else:
+            assert action == "restore"
+            await glossary_repo.restore_term(conn, term_id, by=by)
+    except glossary_repo.StatusRefused as exc:
+        raise _status_refused(exc) from exc
+    except glossary_repo.TermNotFound as exc:
+        raise ApiError(404, "glossary.term_not_found", str(exc)) from exc
+    except TagLossRefused as exc:
+        raise ApiError(409, exc.code, str(exc), columns=exc.columns) from exc
+    except TermTagRefused as exc:
+        raise ApiError(409, exc.code, str(exc), **exc.params) from exc
+    return changes
+
+
+async def _status_route(request: Request, term_id: int, action: str) -> dict:
+    org_id = require_active_org_id(request)
+    body = await request.json() if action != "restore" else {}
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        if not await glossary_repo.term_exists(_conn, term_id):
+            raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+        changes = await change_status(_conn, term_id, action, body, request)
+        status = (await glossary_repo.term_statuses(_conn))[term_id]
+    await _notify(org_id, f"ontology term {_DONE[action]}")
+    return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
+
+
+@router.post("/terms/{term_id}/deprecate")
+async def deprecate_term(request: Request, term_id: int) -> dict:
+    """Deprecate a live term: {reason, retire_on?}. It stays in service until retire_on."""
+    _require_glossary_rw(request)
+    return await _status_route(request, term_id, "deprecate")
+
+
+@router.post("/terms/{term_id}/retire")
+async def retire_term(request: Request, term_id: int) -> dict:
+    """Retire a term: {reason, successor?, confirm_tag_loss?, carry_tags?}. Its columns and
+    tables move to the successor (required when it has any), which gets the REPLACES edge."""
+    _require_glossary_rw(request)
+    return await _status_route(request, term_id, "retire")
+
+
+@router.post("/terms/{term_id}/restore")
+async def restore_term(request: Request, term_id: int) -> dict:
+    """Clear a retirement or a curator's deprecation."""
+    _require_glossary_rw(request)
+    return await _status_route(request, term_id, "restore")
+
+
+@router.get("/terms/{term_id}/applied-history")
+async def applied_history(request: Request, term_id: int) -> dict:
+    """A retired term's column and table refs as of the model-store commit before its
+    retirement (REQ-2144), read from the environment's repository; 404 when it holds none."""
+    from provisa.core.environments import PROD
+    from provisa.core.request_context import current_env
+    from provisa.core.term_history import applied_history as read_history
+
+    _require_glossary_read(request)
+    org_id = require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_readable(_conn, term_id, request)
+        term = await glossary_repo.get_term(_conn, term_id)
+    if term is None:
+        raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+    history = read_history(org_id, current_env.get() or PROD, term_id, term["name"])
+    if history is None:
+        raise ApiError(
+            404,
+            "glossary.no_retirement_history",
+            f"the model's history holds no retirement of term {term_id}",
+        )
+    return history
+
+
+@router.get("/findings")
+async def list_findings(request: Request) -> list[dict]:
+    """What a curator should look at, for the caller's domains (REQ-2146): each term with its
+    findings, ``[{kind, message, params}]``. It reports; it changes nothing."""
+    from provisa.core.glossary import readable_term
+    from provisa.core.glossary_findings import findings
+
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        return await term_findings(_conn, _authority(request), findings, readable_term)
+
+
+async def term_findings(
+    conn: "Connection", allowed: Any, findings: Any, readable: Any
+) -> list[dict]:
+    """The findings of the terms ``allowed`` reads, with their names, by name -- shared by the
+    route and the MCP tool."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import glossary_terms
+
+    found = await findings(conn)
+    if not found:
+        return []
+    scopes = await glossary_repo.term_domains(conn)
+    names = {
+        r.id: r.name
+        for r in (
+            await conn.execute_core(
+                select(glossary_terms.c.id, glossary_terms.c.name).where(
+                    glossary_terms.c.id.in_(sorted(found))
+                )
+            )
+        ).fetchall()
+    }
+    return sorted(
+        (
+            {"term_id": term_id, "term": names[term_id], "findings": items}
+            for term_id, items in found.items()
+            if allowed is None or readable(allowed, scopes.get(term_id, set()))
+        ),
+        key=lambda t: t["term"],
+    )
+
+
+@router.get("/terms/{term_id}/tables")
+async def list_term_tables(request: Request, term_id: int) -> list[dict]:
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_readable(_conn, term_id, request)
+        try:
+            return await glossary_repo.term_tables(_conn, term_id)
+        except glossary_repo.TermNotFound as exc:
+            raise ApiError(404, "glossary.term_not_found", str(exc)) from exc
+
+
+@router.post("/terms/{term_id}/tables")
+async def add_term_table(request: Request, term_id: int) -> dict:
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    body = await request.json()
+    table_id = int(body["table_id"])
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        await ground_term_table(cast("Connection", conn), term_id, table_id, request)
+    await _notify(org_id, "ontology table grounded")
+    return {"ok": True, "term_id": term_id, "table_id": table_id}
+
+
+@router.delete("/terms/{term_id}/tables/{table_id}")
+async def remove_term_table(request: Request, term_id: int, table_id: int) -> dict:
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        await unground_term_table(cast("Connection", conn), term_id, table_id, request)
+    await _notify(org_id, "ontology table ungrounded")
+    return {"ok": True}
+
+
+async def tag_term(  # REQ-2145
+    conn: "Connection", request: Request, term_id: int, tag_id: str, reason: str | None
+) -> int:
+    """Put tag ``tag_id`` on term ``term_id`` for a caller who may curate the term and assign the
+    tag: a sensitive tag needs sensitive_data in the domains of the columns the term holds. Refused
+    unless the term is defined, in service and a Property. Returns how many columns the tag now
+    covers through it."""
+    from provisa.api.admin.capabilities import (
+        require_capability_request,
+        require_right_in_domains_request,
+    )
+    from provisa.api.admin.schema_mutation import store_tag_assignment
+    from provisa.core.models import TagAssignment
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.core.term_tags import TermTagRefused, refuse_term_tag
+    from provisa.security.sensitive import SENSITIVE_DATA
+
+    await _require_term_curatable(conn, term_id, request)
+    tag_row = await tag_repo.get(conn, tag_id)
+    if tag_row is None:
+        raise ApiError(404, "schema.tag_not_found", f"Tag {tag_id!r} not found", tag=tag_id)
+    if tag_row["sensitive"]:
+        domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
+        require_right_in_domains_request(request, SENSITIVE_DATA, domains)
+    else:
+        require_capability_request(request, Capability.TABLE_REGISTRATION.value)
+    try:
+        await refuse_term_tag(conn, term_id, tag_id)
+    except TermTagRefused as refused:
+        raise ApiError(409, refused.code, str(refused), **refused.params) from refused
+    model = TagAssignment(
+        tag_id=tag_id,
+        object_type="term",
+        term_id=term_id,
+        reason=(reason or "").strip() or None,
+    )
+    refused = await store_tag_assignment(conn, model, tag_row)
+    if refused is not None:
+        raise ApiError(400, refused.code or "schema.tag_refused", refused.message)
+    return await glossary_repo.term_column_count(conn, term_id)
+
+
+async def untag_term(  # REQ-2145
+    conn: "Connection", request: Request, term_id: int, tag_id: str
+) -> bool:
+    """Take tag ``tag_id`` off term ``term_id``, under the rights :func:`tag_term` asks."""
+    from provisa.api.admin.capabilities import (
+        require_capability_request,
+        require_right_in_domains_request,
+    )
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.security.sensitive import SENSITIVE_DATA
+
+    await _require_term_curatable(conn, term_id, request)
+    tag_row = await tag_repo.get(conn, tag_id)
+    if tag_row is not None and tag_row["sensitive"]:
+        domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
+        require_right_in_domains_request(request, SENSITIVE_DATA, domains)
+    else:
+        require_capability_request(request, Capability.TABLE_REGISTRATION.value)
+    return await tag_repo.unassign(conn, tag_id, f"term:{term_id}")

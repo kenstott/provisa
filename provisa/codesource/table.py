@@ -83,7 +83,10 @@ def check_table(table: Any, manifest: Any = None) -> None:  # a Table model or a
     if export is None or export.kind != "table":
         raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
     declared = {parameter_name(c): c for c in columns if _get(c, "native_filter_type") == QUERY_ARG}
-    wanted = {p.name: p for p in export.parameters}
+    from provisa.codesource.manifest import LOADER
+
+    # REQ-2100: a join's keys reach the loader; it is no parameter of the table.
+    wanted = {p.name: p for p in export.parameters if not (export.loader and p.name == LOADER)}
     if set(declared) != set(wanted):
         raise CodeTableRefused(
             name,
@@ -133,16 +136,47 @@ def call_arguments(table: dict, export: Any, given: dict | None) -> tuple[list, 
     return args, [p.name for p in export.parameters]
 
 
+async def pushed_arguments(state: Any, table: dict, name: str, statement: str) -> dict[str, Any]:
+    """The values ``statement`` (PostgreSQL text, reading ``table`` as ``name``) gives the
+    parameters the function declares a predicate is pushed to (REQ-2100): a pre-filter of the rows
+    landed for it. Each pushed predicate stays in the statement, which the engine applies again."""
+    from provisa.codehost import residual
+    from provisa.codesource.source import context_for, prepare
+    from provisa.federation.registry_view import registered_sources
+
+    found = [s for s in await registered_sources(state) if s.id == table["source_id"]]
+    if not found:
+        raise ValueError(f"Table {name!r}: its source {table['source_id']!r} is not registered")
+    source = found[0]
+    prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
+    function = export_of(table)
+    export = next(
+        (e for e in prepared.manifest.exports if e.name == function and e.kind == "table"), None
+    )
+    if export is None:
+        raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
+    pushdown = {
+        p.name: {"column": p.pushes.column, "op": p.pushes.op}
+        for p in export.parameters
+        if p.pushes is not None
+    }
+    return residual.pushed(statement, "postgres", name, pushdown)
+
+
 async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app state
     """Call ``table``'s function with the arguments ``given`` and return its checked rows."""
     return await read_each(state, table, [given])
 
 
-async def read_each(state: Any, table: dict, argument_sets: Sequence[dict | None]) -> Any:
+async def read_each(
+    state: Any, table: dict, argument_sets: Sequence[dict | None], *, joined: bool = False
+) -> Any:
     """Call ``table``'s function once for each of ``argument_sets`` and return their checked rows
     together (REQ-2099: a join over a relationship that feeds the table's parameters calls it
     once per distinct set of the parent's values) -- every set in one request to the worker,
-    which calls the function per set in its own process."""
+    which calls the function per set in its own process. A ``joined`` read of a function that
+    takes a ``loader`` (REQ-2100) calls it with the sets as keys, in batches (codesource.loader);
+    a read of it with its own arguments calls it without one."""
     from provisa.codesource.source import context_for, prepare
     from provisa.core.ir_types import to_ir
     from provisa.federation.registry_view import registered_sources
@@ -173,6 +207,11 @@ async def read_each(state: Any, table: dict, argument_sets: Sequence[dict | None
     schema = schema_text(row_schema(prepared.manifest, export))
 
     def _run() -> list[dict]:
+        if joined and export.loader:
+            return [
+                project(name, row, outputs)
+                for row in _loaded(name, table, export, worker, function, argument_sets, prepared)
+            ]
         return [
             project(name, row, outputs)
             for batch in worker.rows_each(function, calls, schema=schema)
@@ -181,6 +220,44 @@ async def read_each(state: Any, table: dict, argument_sets: Sequence[dict | None
 
     rows = await asyncio.to_thread(_run)
     return PipelineRead(rows=rows, columns=[(c.name, to_ir(c.data_type)) for c in outputs])
+
+
+def _loaded(
+    name: str,
+    table: dict,
+    export: Any,
+    worker: Any,
+    function: str,
+    argument_sets: Sequence[dict | None],
+    prepared: Any,
+) -> list[dict]:
+    """REQ-2100: a join's argument sets through the function's ``loader``: their keys hashed and
+    de-duplicated, sent in batches, and each set given the rows of its own key."""
+    import pyarrow as pa
+
+    from provisa.codesource import loader
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+    from provisa.codesource.manifest import LOADER
+    from provisa.codesource.worker import ABSENT
+
+    keys = [
+        loader.sparse_key({k: v for k, (v, _type) in _arguments(table, given).items()})
+        for given in argument_sets
+    ]
+    hashes = [loader.key_hash(key) for key in keys]
+    unique = dict(zip(hashes, keys, strict=True))
+    names = [p.name for p in export.parameters]
+    calls = [
+        ([batch if p == LOADER else ABSENT for p in names], names)
+        for batch in loader.chunks(unique, export.loader_batch)
+    ]
+    rows_schema = row_schema(prepared.manifest, export).append(pa.field(loader.KEY, pa.utf8()))
+    answered = [
+        row
+        for batch in worker.rows_each(function, calls, schema=schema_text(rows_schema), keyed=True)
+        for row in batch
+    ]
+    return loader.assign(name, keys, hashes, answered, set(unique))
 
 
 async def whole_rows(state: Any, source: Any, table: Any) -> list[dict]:  # the app state;

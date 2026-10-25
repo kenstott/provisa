@@ -75,25 +75,54 @@ def _make_session(roles: list[str], bolt_version: tuple[int, int] = (5, 4)):
 
 
 # ---------------------------------------------------------------------------
-# 1. Unknown db → DatabaseNotFound (no fallback, no execution)
+# 1. A db naming no role → DatabaseNotFound; one naming a role not held → refused (REQ-2076)
 # ---------------------------------------------------------------------------
 
 
-class TestDatabaseNotFoundIntegration:
-    async def test_run_with_unknown_db_sends_database_not_found(self):
-        """REQ-808: RUN targeting an unknown db emits DatabaseNotFound code."""
-        session, writer = _make_session(["analyst"])
-        await session.handle_run(
-            [
-                "MATCH (n) RETURN n",
-                {},
-                {"db": "provisa_nonexistent"},
-            ]
-        )
-        assert b"DatabaseNotFound" in writer.getvalue()
+@pytest.fixture
+def role_probes(monkeypatch):
+    """REQ-2076: a db naming a role the session does not hold is a role probe, recorded through
+    the admin plane (security.role_probe.record), which this in-process session has none of. The
+    events are collected here; tests/unit/test_role_probe.py tests the recording itself."""
+    from provisa.security import role_probe
 
-    async def test_run_with_unknown_db_does_not_call_execute(self):
-        """REQ-808: execution is never reached for unknown db."""
+    events: list = []
+
+    async def _collect(probe):
+        events.append(probe)
+        return role_probe.suspension(probe)
+
+    monkeypatch.setattr(role_probe, "record", _collect)
+    return events
+
+
+def _refused(session, writer, probes, role: str) -> None:
+    """The session was refused as REQ-2076 refuses a role not held: told only Forbidden, ended,
+    and the event names the role."""
+    from provisa.bolt.session import State
+
+    assert b"Neo.ClientError.Security.Forbidden" in writer.getvalue()
+    assert role.encode() not in writer.getvalue()
+    assert session.state is State.DEFUNCT
+    assert [p.requested for p in probes] == [role]
+
+
+class TestDatabaseNotFoundIntegration:
+    async def test_run_with_a_db_naming_no_role_sends_database_not_found(self, role_probes):
+        """REQ-808: a db outside the provisa_<role> forms names no role: DatabaseNotFound."""
+        session, writer = _make_session(["analyst"])
+        await session.handle_run(["MATCH (n) RETURN n", {}, {"db": "neo4j"}])
+        assert b"DatabaseNotFound" in writer.getvalue()
+        assert role_probes == []
+
+    async def test_run_with_a_db_naming_an_unknown_role_is_refused(self, role_probes):
+        """REQ-808/REQ-2076: a role not held is refused whether or not it exists."""
+        session, writer = _make_session(["analyst"])
+        await session.handle_run(["MATCH (n) RETURN n", {}, {"db": "provisa_nonexistent"}])
+        _refused(session, writer, role_probes, "nonexistent")
+
+    async def test_run_with_unknown_db_does_not_call_execute(self, role_probes):
+        """REQ-808: execution is never reached for a db naming a role not held."""
         session, _ = _make_session(["analyst"])
         with patch("provisa.bolt.session._execute_cypher") as mock_exec:
             await session.handle_run(
@@ -105,39 +134,27 @@ class TestDatabaseNotFoundIntegration:
             )
         assert mock_exec.call_count == 0
 
-    async def test_run_with_unauthorized_role_sends_database_not_found(self):
-        """REQ-808: switching to a role the user does not hold → DatabaseNotFound."""
+    async def test_run_with_unauthorized_role_is_refused(self, role_probes):
+        """REQ-808/REQ-2076: switching to a role the user does not hold is refused."""
         session, writer = _make_session(["analyst"])
-        await session.handle_run(
-            [
-                "MATCH (n) RETURN n",
-                {},
-                {"db": "provisa_admin"},
-            ]
-        )
-        assert b"DatabaseNotFound" in writer.getvalue()
+        await session.handle_run(["MATCH (n) RETURN n", {}, {"db": "provisa_admin"}])
+        _refused(session, writer, role_probes, "admin")
 
-    async def test_run_with_unauthorized_ops_role_sends_database_not_found(self):
-        """REQ-808: ops view for a role the user doesn't hold → DatabaseNotFound."""
+    async def test_run_with_unauthorized_ops_role_is_refused(self, role_probes):
+        """REQ-808/REQ-2076: the ops view of a role the user does not hold is refused."""
         session, writer = _make_session(["analyst"])
-        await session.handle_run(
-            [
-                "MATCH (n) RETURN n",
-                {},
-                {"db": "provisa_ops_admin"},
-            ]
-        )
-        assert b"DatabaseNotFound" in writer.getvalue()
+        await session.handle_run(["MATCH (n) RETURN n", {}, {"db": "provisa_ops_admin"}])
+        _refused(session, writer, role_probes, "admin")
 
-    async def test_begin_then_run_unknown_db_sends_database_not_found(self):
-        """REQ-808: explicit-tx path (BEGIN + RUN) also enforces the ceiling."""
+    async def test_begin_then_run_a_role_not_held_is_refused(self, role_probes):
+        """REQ-808: the explicit-tx path (BEGIN + RUN) holds the same ceiling."""
         from provisa.bolt.session import State
 
         session, writer = _make_session(["analyst"])
         session.state = State.READY
         session.handle_begin([{"db": "provisa_bad"}])
         await session.handle_run(["MATCH (n) RETURN n", {}, {}])
-        assert b"DatabaseNotFound" in writer.getvalue()
+        _refused(session, writer, role_probes, "bad")
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +225,7 @@ class TestKnownDbProceedsToExecution:
 
 
 def _make_label_map_from_spec(nodes_spec: list[_NodeSpec]):
-    from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
     nodes: dict[str, NodeMapping] = {}
     for type_name, domain_id in nodes_spec:
@@ -281,7 +298,7 @@ class TestBoltLabelMapIntegration:
         mock_ctx, mock_state, _ = self._make_mock_app_state(["sales"], nodes_spec)
 
         with patch(
-            "provisa.cypher.label_map.CypherLabelMap.from_schema",
+            "provisa.gql.label_map.CypherLabelMap.from_schema",
             return_value=_make_label_map_from_spec(nodes_spec),
         ):
             label_map = _bolt_label_map(
@@ -310,7 +327,7 @@ class TestBoltLabelMapIntegration:
         mock_ctx, mock_state, _ = self._make_mock_app_state(["sales", "ops", "meta"], nodes_spec)
 
         with patch(
-            "provisa.cypher.label_map.CypherLabelMap.from_schema",
+            "provisa.gql.label_map.CypherLabelMap.from_schema",
             return_value=_make_label_map_from_spec(nodes_spec),
         ):
             label_map = _bolt_label_map(mock_ctx, "analyst", include_ops=True, app_state=mock_state)

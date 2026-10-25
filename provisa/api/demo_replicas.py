@@ -46,9 +46,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 #: The seed of a published demo, beside its demo.yaml.
 SEED_DIR = "seeded"
@@ -125,7 +128,7 @@ def bitemporal_view_tables(config: Any) -> list[str]:
     return sorted(
         f"mv_{table.table_name}"
         for table in config.tables
-        if table.source_id == DERIVED_SOURCE_ID and table.materialize and table.mv_bitemporal_mode
+        if table.source_id == DERIVED_SOURCE_ID and table.materialize and table.is_bitemporal
     )
 
 
@@ -388,30 +391,52 @@ async def export_seed(template_org: str, demo_directory: Path) -> None:
     )
 
 
-async def landed_here(template_org: str) -> int:
-    """How many of the template's replicas are landed in THIS deployment's store: recorded as
-    built for it, and held by it with the rows recorded (a table's shape is re-created empty from
-    its record when the runtime is built, so a table that is there is not yet one that is landed:
-    a data directory replaced since keeps the records and loses the rows)."""
+#: A replica's landing (landing) when it is landed.
+LANDED = "landed"
+
+
+def landing(rows: list[dict], built: str, held: dict[str, int]) -> dict[str, str]:
+    """Each recorded replica's landing, by table name: LANDED -- recorded as built for the store
+    ``built`` identifies, and holding there (``held``: rows by table) the rows its build recorded
+    -- or why it is not."""
+    from provisa.federation.replica_address import replica_table_name
+
+    out: dict[str, str] = {}
+    for r in rows:
+        name = replica_table_name(r["source_id"], r["schema_name"], r["table_name"])
+        if r["built_store"] != built:
+            out[name] = f"recorded as built for store {r['built_store']}, not this one ({built})"
+        elif name not in held:
+            out[name] = "recorded as built, and not in the store"
+        elif held[name] != r["completed_rows"]:
+            out[name] = f"holds {held[name]} rows of the {r['completed_rows']} its build recorded"
+        else:
+            out[name] = LANDED
+    return out
+
+
+async def landing_here(template_org: str) -> dict[str, str]:
+    """Each of the template's recorded replicas' landing in THIS deployment's store (landing). A
+    table's shape is re-created empty from its record when the runtime is built, so a table that
+    is there is not yet one that is landed: a data directory replaced since keeps the records and
+    loses the rows."""
     from provisa.api import demo_region_seed
     from provisa.federation import replica_state
     from provisa.federation.replica_address import replica_table_name
 
     if demo_region_seed.regional():
-        return await demo_region_seed.landed_here(template_org)
+        return await demo_region_seed.landing_here(template_org)
 
     async with _state_db(template_org).acquire() as conn:
         rows = await replica_state.completed_rows(conn)
-    built = store_identity(template_org)
-    expected = {
-        replica_table_name(r["source_id"], r["schema_name"], r["table_name"]): r["completed_rows"]
-        for r in rows
-        if r["built_store"] == built
-    }
-    held = await asyncio.to_thread(
-        _held_rows, template_org, list(expected), _replicas_schema(template_org)
-    )
-    return sum(1 for name, count in expected.items() if held.get(name) == count)
+    names = [replica_table_name(r["source_id"], r["schema_name"], r["table_name"]) for r in rows]
+    held = await asyncio.to_thread(_held_rows, template_org, names, _replicas_schema(template_org))
+    return landing(rows, store_identity(template_org), held)
+
+
+async def landed_here(template_org: str) -> int:
+    """How many of the template's replicas are landed in THIS deployment's store (landing_here)."""
+    return sum(1 for state in (await landing_here(template_org)).values() if state == LANDED)
 
 
 def _held_rows(org_id: str, tables: list[str], schema: str) -> dict[str, int]:
@@ -435,10 +460,16 @@ def store_counts(org_id: str) -> dict[str, dict[str, int]]:
     """The rows each replica and each view of ``org_id`` holds in its store file, read without
     its runtime: ``{"replicas": {table: rows}, "views": {table: rows}}``. A store not on disk
     holds none."""
+    from provisa.core import org_files
     from provisa.federation.materialize_broker import get_broker
 
-    store = _store_path(org_id)
     out: dict[str, dict[str, int]] = {"replicas": {}, "views": {}}
+    if not org_files.folder(org_id).is_dir():
+        # A node with a fresh disk under a shared control plane: the org's folder, and its store,
+        # are not here. A template's readiness check reads none, so it is prepared again here.
+        log.warning("%s's folder is not on this node: its store holds nothing here", org_id)
+        return out
+    store = _store_path(org_id)
     if not Path(store).exists():
         return out
     broker = get_broker(store)

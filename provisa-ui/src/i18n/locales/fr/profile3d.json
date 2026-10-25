@@ -1,0 +1,32 @@
+{
+  "profile3d": {
+    "expand": "Développer la vue",
+    "webglError": "Impossible de démarrer la vue 3D : {{error}}",
+    "hint": "Glisser pour orbiter · défiler pour zoomer · glisser avec le clic droit pour déplacer",
+    "rotate": "Pivoter",
+    "resetView": "Réinitialiser la vue",
+    "zoomTo": "Zoomer sur cette colonne",
+    "attraction": "Attraction",
+    "attractionLoose": "Lâche",
+    "attractionTight": "Serré",
+    "grid": "Grille",
+    "resetSettings": "Valeurs par défaut",
+    "resetSettingsHelp": "Oublie la disposition, les couches, les filtres et les bascules enregistrés de ce graphe et revient aux valeurs par défaut.",
+    "export": "Exporter",
+    "exportImage": "Image",
+    "exportScale": "Échelle de l'image",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (vectoriel)",
+    "recordRotation": "Enregistrer la rotation",
+    "recordLength": "Durée de l'enregistrement",
+    "seconds": "{{count}} s",
+    "format_mp4": "Vidéo MP4",
+    "format_webm": "Vidéo WebM",
+    "recording": "Enregistrement du tour… {{percent}} %",
+    "cancelRecording": "Arrêter l'enregistrement",
+    "exportFailed": "La vue n'a pas pu être exportée : {{error}}",
+    "lastFormat": "Dernier utilisé"
+  }
+}

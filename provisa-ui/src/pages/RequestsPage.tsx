@@ -31,6 +31,7 @@ import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/s
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { Tip } from "../components/Tip";
+import { matchesQuery } from "../lib/searchItems";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -185,13 +186,8 @@ export function RequestsPage() {
       ? rows.filter((r) => r.status === "pending")
       : rows.filter((r) => r.status !== "pending");
 
-  const q = search.toLowerCase();
-  const filtered = displayRows.filter(
-    (r) =>
-      String(r.id).includes(q) ||
-      r.request_type.toLowerCase().includes(q) ||
-      (r.requested_by ?? "").toLowerCase().includes(q) ||
-      r.status.toLowerCase().includes(q),
+  const filtered = displayRows.filter((r) =>
+    matchesQuery([String(r.id), r.request_type, r.requested_by, r.status], search),
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);

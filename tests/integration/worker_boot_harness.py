@@ -44,6 +44,7 @@ from pathlib import Path
 import sqlalchemy as sa
 import yaml
 
+from tests.integration.mcp_pin import pinned_roles
 from tests.port_lease import lease_ports
 
 _REPO_ROOT = Path(__file__).parents[2]
@@ -204,9 +205,8 @@ class WorkerBoot:
     def start(self) -> None:
         host, port, user, password = self._pg
         cfg_path = Path(self.data_dir) / "provisa.yaml"
-        cfg_path.write_text(
-            yaml.safe_dump({**_config(host, port, self.database), **self._extra_config})
-        )
+        config = {**_config(host, port, self.database), **self._extra_config}
+        cfg_path.write_text(yaml.safe_dump(config))
         redirect = self._redirect_endpoint or f"http://127.0.0.1:{self._dead_port}"
         env = {
             **os.environ,
@@ -225,6 +225,9 @@ class WorkerBoot:
             "PROVISA_REDIS_EMBEDDED": "1",
             "PROVISA_DATA_DIR": self.data_dir,
             "PROVISA_HOME": self.data_dir,
+            # The launch's trace folder, shared by its workers as a real host's are. Named, not
+            # left to PROVISA_HOME: an inherited PROVISA_TELEMETRY_DIR outranks it.
+            "PROVISA_TELEMETRY_DIR": os.path.join(self.data_dir, "telemetry"),
             # The launch's workers share ONE key store, as the workers of a real host do: the
             # file keystore under the launch's own data dir (REQ-1802). The test session's
             # keyring (tests/conftest.py) is a dict inside one process — inherited, it would give
@@ -248,6 +251,8 @@ class WorkerBoot:
             "PROVISA_BOLT_PORT": str(self.ports["bolt"]),
             "PROVISA_MCP_PORT": str(self.ports["mcp"]),
             "PROVISA_MCP_HOST": "127.0.0.1",
+            # REQ-2075: the roles this launch's MCP agent may act as (tests/integration/mcp_pin).
+            "PROVISA_MCP_ROLE": pinned_roles(config),
             "PROVISA_AIRPORT_PORT": str(self.ports["airport"]),
             "OTEL_SDK_DISABLED": "true",
             **(

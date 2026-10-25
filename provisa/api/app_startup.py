@@ -21,6 +21,7 @@ each function to avoid an app <-> app_startup import cycle.
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
 import os
 
@@ -99,6 +100,10 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
     except Exception:
         _log.exception("admin warmup queries failed; serving anyway")
 
+    # REQ-1911: what the boot built (the model, schemas, caches) lives as long as the worker, so it
+    # moves to the permanent generation once, here: a full collection no longer walks it on every
+    # request's behalf (the stall round measured each gen-2 pass at ~400 ms with it in the heap).
+    gc.freeze()
     state.is_warm = True
     _log.warning("startup phase %-20s ready", "warmup")
 
@@ -410,16 +415,10 @@ async def _start_servers(_log: logging.Logger) -> None:
         # on the Flight handler thread).
         flight_server = _build_flight_server(0)
 
-        import threading
+        from provisa.api.flight.relay import FlightRelay, serve_in_background
 
-        flight_thread = threading.Thread(
-            target=flight_server.serve,
-            daemon=True,
-        )
-        flight_thread.start()
+        serve_in_background(flight_server)
         state._flight_server = flight_server
-
-        from provisa.api.flight.relay import FlightRelay
 
         state._flight_relay = FlightRelay(
             "0.0.0.0",  # nosec B104 - the Flight endpoint intentionally binds all interfaces
@@ -530,6 +529,18 @@ async def _start_servers(_log: logging.Logger) -> None:
         except Exception:
             _log.exception("bolt server startup failed")
 
+    # REQ-2135: the SPARQL 1.1 Protocol endpoint is served on the HTTP listener; its subject IRIs
+    # start with server.public_url, so the line says where they do, or that they can't yet.
+    from provisa.core import settings_registry as _settings
+
+    _public_url = _settings.value("server.public_url")
+    _log.info(
+        "SPARQL endpoint listening at /data/sparql on the HTTP port (subject IRIs under %s)",
+        f"{str(_public_url).rstrip('/')}/id/"
+        if _public_url
+        else "nothing: server.public_url is unset, so a query answering with one is refused",
+    )
+
     # REQ-1008: MCP server (opt-in via PROVISA_MCP_PORT). Isolated one-line hook;
     # touches no scheduler/freshness/audit/meta-view code.
     try:
@@ -620,6 +631,19 @@ def _start_scheduler(_log: logging.Logger) -> None:
                 trigger=CronTrigger.from_crontab("* * * * *"),
                 id="sandbox_late_templates",
                 name="sandboxes:queue_late_templates",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            from provisa.scheduler.jobs import compact_otel_signals
+
+            # REQ-862: the tier lands its own traces, so it merges them as the deployment's API
+            # does; never merged, a first read of an ops view over them opened every batch file.
+            scheduler.add_job(
+                compact_otel_signals,
+                trigger=CronTrigger.from_crontab(state.otel_compact_cron),
+                id="otel_compact",
+                name="otel:compact_signals",
                 replace_existing=True,
                 max_instances=1,
                 coalesce=True,

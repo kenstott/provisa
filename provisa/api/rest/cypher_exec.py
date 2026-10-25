@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import Request
 
 if TYPE_CHECKING:
-    from provisa.cypher.label_map import CypherLabelMap  # noqa: F401
+    from provisa.gql.label_map import CypherLabelMap  # noqa: F401
     from provisa.api.app import AppState  # noqa: F401
     from provisa.compiler.sql_gen import CompilationContext  # noqa: F401
     from provisa.core.database import Connection  # noqa: F401
@@ -59,7 +59,7 @@ def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> 
     generation and kept (``cypher_plan.kept_label_map``), not rebuilt per request.
     """
     from provisa.api.rest.cypher_plan import kept_label_map
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
     from provisa.security.rights import effective_domain_access_role
 
     domain_access = effective_domain_access_role(role_id, state.roles)["domain_access"]
@@ -90,17 +90,19 @@ async def _execute_call_body(
     role_id: str = "default",
 ) -> tuple[list[dict], dict]:
     """Full pipeline execution for a single CALL subquery body."""
-    from provisa.cypher.translator import cypher_to_sql
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled
+    from provisa.cypher.params import bind_params
 
     sql_ast, ordered_params, graph_vars = cypher_to_sql(call_body, label_map, params)
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     sql_str = sql_ast.sql(dialect="postgres")
     semantic_sql = make_semantic_sql(sql_str, ctx)
-    resolved_params = [params.get(name) for name in ordered_params]
+    # An unsupplied parameter is refused, never bound as NULL.
+    resolved_params = bind_params(list(ordered_params), params)
 
     plan = await _govern_and_route_compiled(
         semantic_sql,

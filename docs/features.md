@@ -301,6 +301,14 @@ CREATE, SET and DELETE write to tables through the same write pipeline as SQL, s
 Graph analytics run over a query result in the Graph Explorer. A configurable size limit keeps them in bounds, and the community detection algorithm that cost the most is allowed only on small graphs.
 { #cypher-and-graph-analytics-analytics }
 
+### SPARQL
+
+SPARQL is a graph language beside Cypher, written in the same query editor and sent by standard RDF clients to a SPARQL 1.1 endpoint. A table is a class and its rows are its subjects, a column linked to a term is a predicate, and a relationship is an edge, so there is no triple store to load. Each query becomes one SQL statement, governed and routed like any other. Property paths stop at a depth limit the operator sets, and a result cut there says so.
+{ #sparql-query }
+
+SPARQL Update changes the ontology and the data through the same governed writes as every other surface, under the same rights. It never writes raw triples.
+{ #sparql-update }
+
 ### Natural-language query
 
 Ask a question in plain language and Provisa starts an asynchronous job. It generates the answer as SQL, GraphQL, Cypher, gRPC, JSON:API and OpenAPI requests in parallel, runs each one, and returns the results side by side. Seeing the same answer in every language makes it easy to check and reuse.
@@ -550,7 +558,7 @@ Each way to query Provisa has a page in the browser. The gRPC explorer runs call
 Results from the SQL explorer, reports, and table or view previews share one grid. It sorts, filters per column, and groups by several levels. Previews are paged on the server, so the governed viewer reads only the page you are looking at. Timestamps are shown the way a person reads them, the page size is yours to choose, and a filter that matches nothing leaves the grid in place with a clear-filters button. Export to Excel or CSV covers the whole relation under your current filter and sort, and the workbook has a second sheet recording how it was produced.
 { #explorers-results-grid }
 
-Explore's Python and Notebook tabs run Python in your browser over the data your role is served. The Python tab runs a script, each run starting fresh, that reads a statement into a pandas DataFrame as you, with your current role, org and environment, and shows what it prints, its tables and its matplotlib figures. It holds several scripts as tabs, each with its own code and last output, kept in your browser across reloads. The Notebook tab is a Jupyter notebook (cells, and %%sql, %%graphql and %%cypher magics) that reads as you the same way. Both stay as you left them while you visit other pages, open to 95% of the window, and Polly can write code into either, run it and read what it returned. Python and its packages (pandas, pyarrow, scikit-learn, matplotlib) are served by Provisa itself, so it works with no internet access. They come with every install; an install missing them says so.
+Explore's Python and Notebook tabs run Python in your browser over the data your role is served. The Python tab runs a script, each run starting fresh, that reads a statement into a pandas DataFrame as you, with your current role, org and environment, and shows what it prints, its tables and its matplotlib figures. It holds several scripts as tabs, each with its own code and last output, kept in your browser across reloads. The Notebook tab is a Jupyter notebook (cells, and %%sql, %%graphql and %%cypher magics) that reads as you the same way. Both stay as you left them while you visit other pages, open to 95% of the window, and Polly can write code into either, run it and read what it returned. Python and its packages (pandas, pyarrow, scikit-learn, matplotlib, networkx) are served by Provisa itself, so it works with no internet access. They come with every install; an install missing them says so.
 { #explorers-data-science }
 
 ### Chat assistant

@@ -26,16 +26,23 @@ from provisa.api._meta_views import _META_TABLE_VIEWS
 _BASE_DDL = """
 CREATE TABLE glossary_terms (
     id TEXT PRIMARY KEY, name TEXT, definition TEXT, is_abstract BOOLEAN,
-    deprecated BOOLEAN, retired BOOLEAN, export_excluded BOOLEAN, tenant_id TEXT);
+    deprecated BOOLEAN, retired BOOLEAN, export_excluded BOOLEAN,
+    deprecation_asserted BOOLEAN NOT NULL DEFAULT 0, status_reason TEXT, retire_on TEXT,
+    tenant_id TEXT);
 CREATE TABLE glossary_term_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, column_name TEXT, tenant_id TEXT);
+CREATE TABLE relationships (
+    id TEXT PRIMARY KEY, source_table_id INTEGER, target_table_id INTEGER,
+    same_entity BOOLEAN NOT NULL DEFAULT 0, tenant_id TEXT);
 CREATE TABLE glossary_term_edges (
     id TEXT PRIMARY KEY, from_term_id TEXT, to_term_id TEXT, rel_type TEXT, tenant_id TEXT);
+CREATE TABLE glossary_term_domains (
+    id INTEGER PRIMARY KEY, term_id TEXT, domain_id TEXT, tenant_id TEXT);
 CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
     id INTEGER PRIMARY KEY, source_id TEXT, schema_name TEXT, table_name TEXT,
-    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0);
+    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0, class_term_id TEXT);
 CREATE TABLE table_columns (
     id INTEGER PRIMARY KEY, table_id INTEGER, domain_id TEXT, column_name TEXT, data_type TEXT,
     is_primary_key BOOLEAN, alias TEXT, description TEXT, path TEXT, scope TEXT,
@@ -45,10 +52,13 @@ CREATE TABLE table_columns (
 CREATE TABLE tag_assignments (
     id TEXT PRIMARY KEY, tag_id TEXT, base_tag_id TEXT, object_type TEXT, source_id TEXT,
     table_id INTEGER, column_name TEXT, relationship_id TEXT, command_name TEXT,
-    object_key TEXT, reason TEXT, expires_on TEXT, tenant_id TEXT);
+    object_key TEXT, reason TEXT, expires_on TEXT, tenant_id TEXT, product_id TEXT,
+    term_id INTEGER);
 """
 
 _VIEWS = (
+    # First: the other glossary views read each term's domains from it (REQ-1593).
+    "glossary_term_domains",
     "glossary_terms",
     "glossary_term_refs",
     "glossary_term_edges",
@@ -58,11 +68,25 @@ _VIEWS = (
 )
 
 
+class _StringAgg:
+    def __init__(self) -> None:
+        self.values: list[str] = []
+
+    def step(self, value: str, separator: str) -> None:
+        self.separator = separator
+        self.values.append(value)
+
+    def finalize(self) -> str:
+        return self.separator.join(self.values)
+
+
 @pytest.fixture
 def db() -> sqlite3.Connection:
     """A control plane holding one table, two columns, three terms and four tags."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
+    # The control plane is PostgreSQL; this SQLite build has no STRING_AGG, so the test supplies it.
+    conn.create_aggregate("STRING_AGG", 2, _StringAgg)
     conn.executescript(_BASE_DDL)
     for name in _VIEWS:
         # SQLite has no CREATE OR REPLACE VIEW — startup_seed adapts the same way.
@@ -71,7 +95,7 @@ def db() -> sqlite3.Connection:
         )
 
     conn.execute(
-        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0)"
+        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0, NULL)"
     )
     conn.executemany(
         "INSERT INTO table_columns (id, table_id, column_name, alias, masks, domain_id,"
@@ -91,7 +115,8 @@ def db() -> sqlite3.Connection:
         ],
     )
     conn.executemany(
-        "INSERT INTO glossary_terms VALUES (?, ?, ?, 0, ?, ?, ?, 'org1')",
+        "INSERT INTO glossary_terms (id, name, definition, is_abstract, deprecated, retired,"
+        " export_excluded, tenant_id) VALUES (?, ?, ?, 0, ?, ?, ?, 'org1')",
         [
             # bound to a column and defined -> live
             ("t-user", "user name", "The name a person signs in with.", 0, 0, 0),
@@ -134,6 +159,27 @@ class TestGlossaryMetaViews:
         # Grounding is transitive over in-service edges: t-party publishes without a ref.
         assert (rows["t-party"]["ref_count"], rows["t-party"]["is_rooted"]) == (0, 0)
         assert rows["t-party"]["live"] == 1
+
+    def test_a_class_grounded_in_tables_not_all_joined_as_one_entity_is_a_gap(
+        self, db: sqlite3.Connection
+    ) -> None:
+        """REQ-2141/REQ-2130: three tables, one class term; 7 and 8 joined as the same entity,
+        9 not yet -- a gap until a same-entity relationship reaches 9 too."""
+        db.execute("UPDATE registered_tables SET class_term_id = 't-party' WHERE id = 7")
+        db.executemany(
+            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', 0, ?)",
+            [(8, "accounts", "t-party"), (9, "contacts", "t-party"), (6, "people", "t-user")],
+        )
+        db.execute("INSERT INTO relationships VALUES ('r78', 7, 8, 1, 'org1')")
+        # A relationship not marked same entity joins nothing as one.
+        db.execute("INSERT INTO relationships VALUES ('r79', 7, 9, 0, 'org1')")
+        gap = lambda: {  # noqa: E731
+            r["id"]: r["identity_gap"]
+            for r in db.execute("SELECT id, identity_gap FROM glossary_terms_meta")
+        }
+        assert gap() == {"t-user": 0, "t-party": 1, "t-old": 0}
+        db.execute("INSERT INTO relationships VALUES ('r98', 9, 8, 1, 'org1')")
+        assert gap()["t-party"] == 0
 
     def test_a_retired_or_excluded_term_is_returned_with_its_flag_not_withheld(
         self, db: sqlite3.Connection
@@ -198,8 +244,6 @@ class TestTagGraphMetaJoins:
             ("meta:glossary_term_refs:table_columns", "glossary_term_refs", "table_columns"),
             ("meta:table_columns:tag_assignments", "table_columns", "tag_assignments"),
             ("meta:tag_assignments:table_columns", "tag_assignments", "table_columns"),
-            ("meta:glossary_term_refs:tag_assignments", "glossary_term_refs", "tag_assignments"),
-            ("meta:tag_assignments:glossary_term_refs", "tag_assignments", "glossary_term_refs"),
         ],
     )
     def test_the_column_level_edges_are_registered_on_the_shared_key(
@@ -209,3 +253,12 @@ class TestTagGraphMetaJoins:
         assert (rel[2], rel[7]) == (source, target)
         # Both sides join on column_key, never on the surrogate table_columns.id.
         assert (rel[3], rel[4]) == ("column_key", "column_key")
+
+    def test_a_columns_tags_hang_off_the_column_not_its_glossary_ref(self) -> None:
+        """glossary_term_refs is a junction (term -> column): nothing hangs off it, so a column's
+        tags are reached from table_columns alone."""
+        assert not [
+            r[0]
+            for r in META_RELATIONSHIPS
+            if {r[2], r[7]} == {"glossary_term_refs", "tag_assignments"}
+        ]

@@ -82,7 +82,6 @@
     "relatedTermsLabel": "Связанные термины",
     "relatedTermsEmpty": "Нет связанных терминов",
     "relatedTermsLoading": "Загрузка связанных терминов…",
-    "relatedTermsAbstract": "абстрактный",
     "graphqlQueriesLabel": "Шаблоны доступа",
     "graphqlQueriesEmpty": "Нет таблиц или связей, доступных для запросов",
     "graphqlQueryAria": "Выполнить пример запроса GraphQL для {{table}}",
@@ -93,6 +92,7 @@
     "openApiQueryAria": "Выполнить пример запроса REST для {{table}}",
     "detail": {
       "field": {
+        "details": "Сведения",
         "customProperties": "Пользовательские свойства",
         "relatedTables": "Связанные таблицы",
         "relationships": "Связи",
@@ -112,14 +112,14 @@
       "lineageLoading": "Загрузка происхождения…",
       "lineageHint": "Граф происхождения столбцов: таблицы этого продукта как опубликованная конечная точка и все вышестоящие таблицы, из которых они получены. Только для информации — требуется возможность view_governance.",
       "inputPortsEmpty": "Вышестоящие входы не записаны",
-      "inputPortsHint": "Вход(ы) за один шаг → преобразование → выход, выведено из происхождения. Требуется возможность view_governance.",
-      "inputPortsColInputs": "Вход(ы)",
-      "inputPortsColTransform": "Преобразование",
-      "inputPortsColOutput": "Выход",
-      "outputPortsHint": "Доступная для запросов поверхность этого продукта: его таблицы/столбцы и команды, с примерами запросов ниже в разделе «Примеры запросов и команд».",
-      "customPropertiesEmpty": "Нет пользовательских свойств"
+      "inputPortsHint": "Таблицы, которые этот продукт читает напрямую, по происхождению. Разверните таблицу, чтобы увидеть читаемые столбцы. Требуется возможность view_governance.",
+      "outputPortsHint": "Доступная для запросов поверхность этого продукта: его таблицы-члены и команды. Примеры запросов к каждой — в разделе «Шаблоны доступа».",
+      "customPropertiesEmpty": "Нет пользовательских свойств",
+      "lineageLaneUpstream": "Выше по потоку, шаг {{n}}",
+      "lineageLaneDownstream": "Ниже по потоку, шаг {{n}}"
     },
     "readOnly": "Только чтение",
-    "readOnlyHint": "У вас только data_product_read — org_admin может выдать data_product_rw для изменения."
+    "readOnlyHint": "У вас только data_product_read — org_admin может выдать data_product_rw для изменения.",
+    "relatedTermsConcept": "понятие"
   }
 }

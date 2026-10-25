@@ -31,6 +31,10 @@
       "fail": "未通过",
       "error": "错误",
       "skipped": "已跳过"
-    }
+    },
+    "classTerm": "行是以下术语的实例",
+    "classTermPlaceholder": "选择术语",
+    "noClassTerm": "无术语",
+    "classTermUnreadable": "无法读取其术语：{{error}}"
   }
 }

@@ -614,6 +614,10 @@ def _sync(
     in_use: str | None = None,
     ask_on_pull=False,
     wanted: str | None = None,
+    lingering_until: int | None = None,
+    stores_fail: str | None = None,
+    check_fail: str | None = None,
+    failed_before: str | None = None,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -625,6 +629,11 @@ def _sync(
     (bundles / "weblogs" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
     if requested:
         (bundles / "weblogs" / "requested").write_text("requested\n")
+    if lingering_until is not None:
+        # Its last sandbox closed (provisa.core.demo_bundles.linger) with its stores up.
+        (bundles / "weblogs" / "requested").write_text(f"until {lingering_until}\n")
+        (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
+        (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
     if in_use is not None:
         (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
     if wanted is not None:
@@ -648,9 +657,19 @@ def _sync(
         f'#!/usr/bin/env bash\necho "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
     )
     (fake / "pull").chmod(0o755)
+    # stores_fail: the stores cannot be brought up, and demo_stores.py says why on stderr.
+    failing = f"sys.stderr.write({stores_fail!r} + '\\n')\nsys.exit(1)\n" if stores_fail else ""
+    # check_fail: the stores came up, and the check finds data missing from them.
+    if check_fail:
+        failing = (
+            f"if sys.argv[1] == 'check':\n    sys.stderr.write({check_fail!r} + '\\n')\n"
+            "    sys.exit(1)\n"
+        )
     (fake / "demo_stores.py").write_text(
-        f"import sys\nopen({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        f"import sys\nopen({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n{failing}"
     )
+    if failed_before is not None:
+        (bundles / "weblogs" / "failed").write_text(failed_before + "\n")
     env = {
         **os.environ,
         "PROVISA_DEMO_BUNDLES": "weblogs,later" if ask_on_pull else "weblogs",
@@ -685,8 +704,52 @@ def test_a_demo_not_asked_for_is_pulled_and_offered_and_none_of_its_stores_start
 def test_a_demo_asked_for_has_its_stores_brought_up_and_its_version_marked_ready(tmp_path):
     run, demo, asked = _sync(tmp_path, requested=True)
     assert run.returncode == 0, run.stderr
-    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+    ]
     assert (demo / "ready").read_text().strip() == _VERSION
+
+
+def test_a_demo_whose_stores_cannot_come_up_says_why_for_the_waiting_visitor(tmp_path):
+    """Its stores not brought up (a shared store that would not start), the version is not marked
+    ready and <name>/failed says why, which the tier answers the visitor waiting on it with --
+    never a demo left starting with nothing said (cloud-dev, 2026-10-22)."""
+    said = "Error response from daemon: failed to set up container networking"
+    run, demo, asked = _sync(tmp_path, requested=True, stores_fail=said)
+    assert run.returncode != 0
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert not (demo / "ready").exists()
+    assert said in (demo / "failed").read_text()
+    assert said in run.stderr  # the run's own log says it too
+    assert not (demo / ".up-errors").exists()
+
+
+def test_a_demo_whose_stores_come_up_again_is_ready_and_no_longer_failed(tmp_path):
+    run, demo, _ = _sync(tmp_path, requested=True, failed_before="it did not start")
+    assert run.returncode == 0, run.stderr
+    assert (demo / "ready").read_text().strip() == _VERSION
+    assert not (demo / "failed").exists()
+
+
+def test_the_nodes_start_clears_a_failure_its_last_run_left(tmp_path):
+    run, demo, _ = _sync(tmp_path, "--boot", failed_before="it did not start")
+    assert run.returncode == 0, run.stderr
+    assert not (demo / "failed").exists()
+
+
+def test_a_demo_whose_stores_miss_its_data_is_not_marked_ready(tmp_path):
+    """Its stores up but missing data its version reads (an index dropped since its mark was
+    written), the version is not marked ready and <name>/failed says what is missing."""
+    said = "demo weblogs v: Elasticsearch holds no reviews_weblogs_1a2b3c4d"
+    run, demo, asked = _sync(tmp_path, requested=True, check_fail=said)
+    assert run.returncode != 0
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+    ]
+    assert not (demo / "ready").exists()
+    assert said in (demo / "failed").read_text()
 
 
 def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp_path):
@@ -695,7 +758,10 @@ def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp
     next tick (a first open on the sandbox tier waited up to 15 minutes)."""
     run, demo, asked = _sync(tmp_path, ask_on_pull=True)
     assert run.returncode == 0, run.stderr
-    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+    ]
     assert (demo / "ready").read_text().strip() == _VERSION
     assert not (demo.parent / ".wanted").exists()
 
@@ -709,10 +775,87 @@ def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_p
     assert run.returncode == 0, run.stderr
     assert asked == [
         f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
         "drop weblogs 202601010000-old0001",
     ]
-    assert not (demo / "202601010000-old0001" / "stores.env").exists()
+    assert not (demo / "202601010000-old0001").exists()
     assert (demo / "202601020000-old0002" / "stores.env").exists()
+
+
+def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served_ones_are_kept(
+    tmp_path,
+):
+    """A bundle directory is deleted with its version, whether or not its stores were ever up:
+    reviews held six versions on cloud-dev's sandbox VM. The pulled, ready and in-use ones stay."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-never01", "202601020000-inuse02"):
+        (bundles / old).mkdir(parents=True)
+    run, demo, asked = _sync(tmp_path, requested=True, in_use="202601020000-inuse02")
+    assert run.returncode == 0, run.stderr
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+    ]
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / "202601020000-inuse02").is_dir()
+    assert (demo / _VERSION / "docker-compose.run.yml").is_file()
+    assert {p.name for p in demo.iterdir() if p.is_file()} >= {"pulled", "ready", "in-use"}
+
+
+def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_path):
+    """sandbox.demo_stores_linger after its last sandbox closed, with none opened since, the
+    demo's stores are taken down as an older version's are; its next open asks for it again."""
+    import time
+
+    run, demo, asked = _sync(tmp_path, lingering_until=int(time.time()) - 1)
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"stop weblogs {_VERSION}"]
+    assert not (demo / "requested").exists()
+    assert not (demo / "ready").exists()
+    assert not (demo / _VERSION / "stores.env").exists()
+    assert (demo / _VERSION / "docker-compose.run.yml").is_file()
+    assert (demo / "pulled").read_text().strip() == _VERSION
+
+
+def test_a_demo_still_lingering_keeps_its_stores_up(tmp_path):
+    import time
+
+    until = int(time.time()) + 1800
+    run, demo, asked = _sync(tmp_path, lingering_until=until)
+    assert run.returncode == 0, run.stderr
+    assert not [call for call in asked if call.startswith(("drop", "stop"))]
+    assert (demo / "requested").read_text().strip() == f"until {until}"
+    assert (demo / "ready").read_text().strip() == _VERSION
+    assert (demo / _VERSION / "stores.env").exists()
+
+
+def test_a_demo_asked_for_again_inside_its_linger_is_kept(tmp_path, monkeypatch):
+    """An open before the time marks it requested again (provisa.core.demo_bundles.hold), so the
+    next run keeps its stores up, even once the time has passed."""
+    import time
+
+    from provisa.core import demo_bundles
+
+    root = tmp_path / "bundles"
+    monkeypatch.setattr(demo_bundles, "bundles_root", lambda: root)
+    (root / "weblogs").mkdir(parents=True)
+    (root / "weblogs" / "requested").write_text("requested\n")
+    demo_bundles.linger("weblogs", time.time() - 1)
+    assert (root / "weblogs" / "requested").read_text().startswith("until ")
+    demo_bundles.hold("weblogs")
+    assert (root / "weblogs" / "requested").read_text().strip() == "requested"
+
+
+def test_a_demo_never_asked_for_is_not_marked_to_linger(tmp_path, monkeypatch):
+    """A demo whose stores were never up has nothing to take down: its last sandbox closing leaves
+    it unasked."""
+    from provisa.core import demo_bundles
+
+    root = tmp_path / "bundles"
+    monkeypatch.setattr(demo_bundles, "bundles_root", lambda: root)
+    demo_bundles.linger("weblogs", 0)
+    demo_bundles.hold("weblogs")
+    assert not (root / "weblogs" / "requested").exists()
 
 
 def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):
@@ -864,3 +1007,24 @@ def test_every_demos_relational_store_is_one_the_build_dumps():
         and not str(service.get("image", "")).startswith(builder.POSTGRES_IMAGES)
     }
     assert unknown == {}
+
+
+def test_a_seeding_run_that_never_finished_names_the_tables_it_re_created_and_its_file(tmp_path):
+    import duckdb
+
+    from provisa.api.sandbox_tier import template_org_id
+
+    log = tmp_path / "seed.log"
+    log.write_text(
+        "INFO: started\n"
+        "WARNING: store table s.t re-created, its rows dropped: columns ['a'], key ['a']; "
+        "declared columns ['a'], key []\n"
+    )
+    assert builder._recreated(log) == log.read_text().splitlines()[1]
+    assert "no file at" in builder._embedded_store(tmp_path, "retail")
+    store = tmp_path / "orgs" / template_org_id("retail") / "materialize.duckdb"
+    store.parent.mkdir(parents=True)
+    con = duckdb.connect(str(store))
+    con.execute('CREATE SCHEMA "r"; CREATE TABLE "r"."t" AS SELECT 1 AS a UNION ALL SELECT 2')
+    con.close()
+    assert builder._embedded_store(tmp_path, "retail") == "  r.t: 2 rows"

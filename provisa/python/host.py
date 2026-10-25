@@ -18,7 +18,7 @@ takes the one it inherited, already connected), says which functions it has, and
 until the socket closes, when it exits. A coroutine function is awaited; a generator or an async
 generator is iterated; any other function runs on a thread, so a slow one holds no other call.
 A table's rows go in batches of 1000, a stream's each as it is yielded. A row is a dict, a
-dataclass, a NamedTuple or an object with annotated fields.
+dataclass, a NamedTuple, a Pydantic model or an object with annotated fields.
 
 Rows go as Arrow IPC batches against the schema the call gives (REQ-2098,
 provisa/codesource/arrow_rows.py): a field Arrow has no exact form for (a ``numeric``, a ``json``
@@ -55,9 +55,19 @@ _HEAD = struct.Struct(">I")
 _ID = struct.Struct(">Q")
 _IR_KEY = b"provisa.ir"
 _WHOLE_ROW = "$row"
+#: REQ-2100: the field a loader call's row carries its key in.
+_KEY = "$key"
 _DONE = object()
 #: An argument the read does not give: left out of the call, so the function's default applies.
 _ABSENT = object()
+
+
+def _is_model(value: typing.Any) -> bool:
+    """Whether ``value`` is a Pydantic (v2) model instance; pydantic is the code's, never imported
+    here."""
+    return isinstance(getattr(type(value), "__pydantic_fields__", None), dict) and not isinstance(
+        value, type
+    )
 
 
 def to_wire(value: typing.Any) -> typing.Any:  # a value the code returned: any shape
@@ -76,6 +86,8 @@ def to_wire(value: typing.Any) -> typing.Any:  # a value the code returned: any 
         return to_wire(value.value)
     if isinstance(value, dict):
         return {str(k): to_wire(v) for k, v in value.items()}
+    if _is_model(value):
+        return to_wire(value.model_dump(by_alias=True))
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {f.name: to_wire(getattr(value, f.name)) for f in dataclasses.fields(value)}
     if isinstance(value, tuple) and hasattr(value, "_asdict"):
@@ -143,9 +155,13 @@ def _arrow() -> typing.Any:  # the pyarrow module
 
 
 def _plain(value: typing.Any) -> typing.Any:  # a row or a field of one, as the code made it
-    """A record (a dataclass, a NamedTuple, an annotated object) as a dict; an enum as its value."""
+    """A record (a dataclass, a NamedTuple, a Pydantic model, an annotated object) as a dict; an
+    enum as its value."""
     if isinstance(value, enum.Enum):
         return value.value
+    if _is_model(value):
+        # By alias: the reader names a model's columns by the alias it is sent under.
+        return value.model_dump(by_alias=True)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {f.name: getattr(value, f.name) for f in dataclasses.fields(value)}
     if isinstance(value, tuple) and hasattr(value, "_asdict"):
@@ -238,10 +254,12 @@ class Host:
         calls: list[tuple[list, list[str]]],
         schema: str | None,
         traceparent: str | None = None,
+        keyed: bool = False,
     ) -> None:
         """Run the call: the function once for each of ``calls`` (its arguments and their names),
         in order, every set's rows sent under ``call_id`` and one end after the last (REQ-2099:
-        one round trip for every argument set a join feeds the table)."""
+        one round trip for every argument set a join feeds the table). ``keyed`` (REQ-2100): a
+        call with a loader, answered with each key's rows, each row sent with its ``$key``."""
         started = time.process_time()
         _bind_call(call_id, traceparent)
         try:
@@ -256,7 +274,10 @@ class Host:
                 rows_schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(schema))).schema
             for args, names in calls:
                 positional, keywords = _call_arguments(from_wire(args), names)
-                await self._run(call_id, fn, kind, positional, keywords, rows_schema)
+                if keyed:
+                    await self._run_keyed(call_id, fn, positional, keywords, rows_schema)
+                else:
+                    await self._run(call_id, fn, kind, positional, keywords, rows_schema)
             # REQ-2106: the CPU the call took in this process (every thread of it).
             cpu_ms = round((time.process_time() - started) * 1000, 3)
             await self.send({"op": "end", "id": call_id, "cpu_ms": cpu_ms})
@@ -303,6 +324,29 @@ class Host:
             await self._rows(call_id, kind, self._sync_rows(iter(result)), schema)
         else:
             raise TypeError(f"a {type(result).__name__} is not a collection of rows")
+
+    async def _run_keyed(
+        self, call_id: int, fn: typing.Callable, args: list, keywords: dict, schema: typing.Any
+    ) -> None:
+        """REQ-2100: a loader call. The function answers with a hash of the keys it was given to
+        each key's rows; every row is sent with its key as ``$key``."""
+        if inspect.iscoroutinefunction(fn):
+            result = await fn(*args, **keywords)
+        else:
+            result = await asyncio.to_thread(fn, *args, **keywords)
+        if not isinstance(result, dict):
+            raise TypeError(
+                f"a loader call is answered with a hash of each key's rows, not a "
+                f"{type(result).__name__}"
+            )
+        for key, rows in result.items():
+            if isinstance(rows, dict) or not hasattr(rows, "__iter__"):
+                raise TypeError(
+                    f"key {key}: its rows are a collection, not a {type(rows).__name__}"
+                )
+            tagged = [{**_plain(row), _KEY: key} for row in rows]
+            for at in range(0, len(tagged), BATCH):
+                await self.send_rows(call_id, tagged[at : at + BATCH], schema)
 
     @staticmethod
     async def _async_rows(rows: typing.AsyncIterator) -> typing.AsyncIterator:
@@ -365,8 +409,8 @@ def load(code: str, entry: str) -> typing.Any:  # the code's entry module
 async def serve(
     module: typing.Any, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 ) -> None:
-    """Say hello on one connection to Provisa and serve its calls until it closes. A remote host
-    serves one connection per Provisa process (remote_host.py), each with its own calls."""
+    """Say hello on the connection and serve its calls until it closes: Provisa's, or in a built
+    image its front end's (provisa/codehost/front.py, REQ-2100)."""
     host = Host(module, writer)
     await host.send(
         {
@@ -408,6 +452,7 @@ async def serve(
                     calls,
                     message["schema"],
                     message.get("traceparent"),
+                    bool(message.get("keyed")),
                 )
             )
 

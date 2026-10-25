@@ -22,6 +22,8 @@ Usage: run_lane.py <lane> [--shard K/N] [extra pytest args...]
 from __future__ import annotations
 
 import argparse
+import ast
+import itertools
 import os
 import subprocess
 import sys
@@ -32,10 +34,11 @@ REPO = Path(__file__).resolve().parents[2]
 
 # The selectors scripts/test-all uses, by name. The base exclusions are folded in because a CLI -m
 # replaces the ini addopts -m.
-_BASE = (
+_BASE_NO_BENCH = (
     "not packaging and not cluster and not isolated and not requires_warehouse "
-    "and not requires_vector and not demo_walk"
+    "and not requires_vector and not demo_walk and not leak"
 )
+_BASE = f"{_BASE_NO_BENCH} and not bench"
 _KAFKA = "requires_kafka or requires_debezium"
 _DATASTORE = "requires_elasticsearch or requires_sparql or requires_mongodb or requires_prometheus"
 _HIVE_S3 = "requires_hive_s3"
@@ -88,6 +91,12 @@ LANES: dict[str, Lane] = {
         "and not requires_warehouse",
     ),
     "cluster": Lane(("tests/e2e/test_helm_minikube.py",), "cluster", clear_addopts=True),
+    # REQ-2149: one server under a long mixed request loop and an org churn, its growth measured.
+    # About half an hour, so it runs on demand and before a release, never in an "all" run (ON_DEMAND).
+    "leak": Lane(_SUITE, "leak and not requires_warehouse", clear_addopts=True, bound=3600),
+    # REQ-1911: every benchmark feature end to end over the bench's own four sources (PostgreSQL,
+    # ClickHouse, MongoDB, Neo4j) on a compose project of its own, which no other lane holds.
+    "bench": Lane(_SUITE, f"{_BASE_NO_BENCH} and bench"),
     # Live cloud services: nightly and on demand, with the credentials from repo secrets. A live
     # test runs in CI only in a lane whose job declares its secrets and checks they are present
     # (integration-suite-lanes.yml), so what a lane runs is decided here, by marker, never by a
@@ -142,6 +151,23 @@ SUITE: dict[str, tuple[int, int]] = {
     "isolated": (1, 90),
     "e2e": (1, 120),
     "vector": (1, 90),
+    "leak": (1, 75),
+    "bench": (1, 120),
+}
+
+# Suite lanes a dispatch runs only when it names them: "all" leaves them out.
+ON_DEMAND = ("leak",)
+
+
+# The lanes a dispatch of integration-suite.yml can run, beside the suite matrix: each its own job.
+# A live lane runs only when the dispatch includes it (its include_<lane> input).
+OWN_JOBS = ("cluster",)
+LIVE = ("warehouse", "salesforce", "athena", "servicenow")
+# Lanes another workflow runs, with what they need that no integration-suite.yml dispatch has: a
+# targeted run naming a test only they select is refused, saying where it runs.
+ELSEWHERE = {
+    "demo_walk": "demo-bundles.yml, against the demo bundle it has just built",
+    "polly_bakeoff": "polly-bakeoff.yml",
 }
 
 
@@ -156,24 +182,283 @@ def named_tests() -> list[str]:
     return named
 
 
+# ── Which lanes select a named test ────────────────────────────────────────────────────────────
+# Read from the test's source, never by collecting it: the plan job has only the standard library,
+# and collecting tests/integration starts the test stack. A test's markers are its module's
+# pytestmark, its class's and its own decorators'; a parameter marked with pytest.param(marks=...)
+# -- in its own parametrize, or a fixture's params it uses -- is a variant of the test with those
+# markers too. Each variant must be selected by a lane the run can run.
+
+
+def _is_param(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "param"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "pytest"
+    )
+
+
+def _mark_names(node: ast.AST) -> set[str]:
+    """The ``pytest.mark.<name>`` names under ``node``, but not those of a pytest.param's marks."""
+    found: set[str] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if _is_param(current):
+            continue
+        if (
+            isinstance(current, ast.Attribute)
+            and isinstance(current.value, ast.Attribute)
+            and current.value.attr == "mark"
+            and isinstance(current.value.value, ast.Name)
+            and current.value.value.id == "pytest"
+        ):
+            found.add(current.attr)
+        stack.extend(ast.iter_child_nodes(current))
+    return found
+
+
+def _alternatives(marks: ast.AST) -> list[set[str]]:
+    """The marker sets a pytest.param's ``marks=`` can be: each branch of a conditional."""
+    if isinstance(marks, ast.IfExp):
+        return _alternatives(marks.body) + _alternatives(marks.orelse)
+    return [_mark_names(marks)]
+
+
+def _values_variants(values: ast.AST) -> list[set[str]]:
+    """The extra marker sets of a parametrize's or a fixture's values: one per distinct marking.
+    An empty set is a value with no markers of its own."""
+    variants: list[set[str]] = []
+    elements = values.elts if isinstance(values, (ast.List, ast.Tuple)) else None
+    params = [n for n in ast.walk(values) if isinstance(n, ast.Call) and _is_param(n)]
+    for param in params:
+        marked = [k.value for k in param.keywords if k.arg == "marks"]
+        variants += _alternatives(marked[0]) if marked else [set()]
+    if elements is not None and any(not _is_param(e) for e in elements):
+        variants.append(set())
+    if not params:
+        variants.append(set())
+    unique: list[set[str]] = []
+    for v in variants:
+        if v not in unique:
+            unique.append(v)
+    return unique
+
+
+def _decorator_call(node: ast.AST, attr: str) -> ast.Call | None:
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if node.func.attr == attr:
+            return node
+    return None
+
+
+def _parametrize_variants(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[list[list[set[str]]], set[str]]:
+    """Each parametrize decorator's value variants, and the argument names they parametrize: a
+    parametrized argument is the parameter's value, not a fixture of that name."""
+    axes: list[list[set[str]]] = []
+    argnames: set[str] = set()
+    for deco in func.decorator_list:
+        call = _decorator_call(deco, "parametrize")
+        if call is None or len(call.args) < 2:
+            continue
+        axes.append(_values_variants(call.args[1]))
+        names = call.args[0]
+        if isinstance(names, ast.Constant) and isinstance(names.value, str):
+            argnames |= {n.strip() for n in names.value.split(",")}
+        elif isinstance(names, (ast.List, ast.Tuple)):
+            argnames |= {
+                e.value
+                for e in names.elts
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)
+            }
+    return axes, argnames
+
+
+def _fixture_params(module: ast.Module) -> tuple[dict[str, list[set[str]]], dict[str, list[str]]]:
+    """Each module fixture's param variants (if it has params) and the fixtures it takes."""
+    variants: dict[str, list[set[str]]] = {}
+    takes: dict[str, list[str]] = {}
+    for node in module.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for deco in node.decorator_list:
+            call = _decorator_call(deco, "fixture")
+            named = isinstance(deco, ast.Attribute) and deco.attr == "fixture"
+            if call is None and not named:
+                continue
+            takes[node.name] = [a.arg for a in node.args.args]
+            params = [k.value for k in (call.keywords if call else []) if k.arg == "params"]
+            if params:
+                variants[node.name] = _values_variants(params[0])
+    return variants, takes
+
+
+def _combine(base: set[str], axes: list[list[set[str]]]) -> list[frozenset[str]]:
+    combos = []
+    for picked in itertools.product(*axes) if axes else [()]:
+        combo = frozenset(base.union(*picked))
+        if combo not in combos:
+            combos.append(combo)
+    return combos
+
+
+def test_markers(path: str) -> dict[str, list[frozenset[str]]]:
+    """The tests of the module at ``path`` (``path::name`` or ``path::Class::name``), each with
+    the marker sets its variants run with. A module that defines no test function of its own (a
+    pytest-bdd steps module: its scenarios are generated) is one test, ``path``."""
+    module = ast.parse((REPO / path).read_text(), filename=path)
+    module_marks: set[str] = set()
+    for node in module.body:
+        if isinstance(node, (ast.Assign, ast.AugAssign)):
+            targets_ = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in targets_):
+                module_marks |= _mark_names(node.value)
+        if (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and isinstance(node.value.func.value, ast.Name)
+            and node.value.func.value.id == "pytestmark"
+        ):
+            module_marks |= _mark_names(node.value)
+    fixture_variants, takes = _fixture_params(module)
+
+    def used(names: list[str]) -> list[str]:
+        seen: list[str] = []
+        stack = list(names)
+        while stack:
+            name = stack.pop()
+            if name in seen or name not in takes:
+                continue
+            seen.append(name)
+            stack.extend(takes[name])
+        return seen
+
+    def variants(
+        func: ast.FunctionDef | ast.AsyncFunctionDef, outer: set[str]
+    ) -> list[frozenset[str]]:
+        base = module_marks | outer | set().union(*map(_mark_names, func.decorator_list))
+        axes, parametrized = _parametrize_variants(func)
+        args = [a.arg for a in func.args.args if a.arg not in parametrized]
+        axes += [fixture_variants[f] for f in used(args) if f in fixture_variants]
+        return _combine(base, axes)
+
+    tests: dict[str, list[frozenset[str]]] = {}
+    for node in module.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
+            "test"
+        ):
+            tests[f"{path}::{node.name}"] = variants(node, set())
+        if isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            class_marks = set().union(*map(_mark_names, node.decorator_list))
+            for item in node.body:
+                if isinstance(item, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == "pytestmark" for t in item.targets
+                ):
+                    class_marks |= _mark_names(item.value)
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                    item.name.startswith("test")
+                ):
+                    tests[f"{path}::{node.name}::{item.name}"] = variants(item, class_marks)
+    if not tests:
+        tests[path] = [frozenset(module_marks)]
+    return tests
+
+
+def selects(lane_name: str, marks: frozenset[str]) -> bool:
+    """Whether the lane's ``-m`` expression selects a test carrying ``marks``."""
+    expression = LANES[lane_name].marker
+
+    class _Marks(dict):
+        def __missing__(self, name: str) -> bool:
+            return name in marks
+
+    return bool(eval(expression, {"__builtins__": {}}, _Marks()))  # noqa: S307 - LANES' own
+
+
+def _in_lane(lane_name: str, path: str) -> bool:
+    lane = LANES[lane_name]
+    return _under(path, lane.paths) and not _under(path, lane.ignore)
+
+
+def routes(runnable: tuple[str, ...]) -> dict[str, list[str]]:
+    """For a targeted run: each lane of ``runnable`` that selects a named test, with the named
+    tests it runs. A named test of which a variant no runnable lane selects is refused, naming
+    the test, its markers and the lanes that would select it."""
+    planned: dict[str, list[str]] = {}
+    unrunnable: list[str] = []
+    for name in named_tests():
+        path, _, rest = name.partition("::")
+        found = test_markers(path)
+        if rest:
+            wanted = f"{path}::{rest.split('[', 1)[0]}"
+            chosen = {k: v for k, v in found.items() if k == wanted or k.startswith(wanted + "::")}
+            if not chosen and path in found:  # a steps module: its scenarios are generated
+                chosen = found
+            if not chosen:
+                raise ValueError(f"no such test: {name}")
+        else:
+            chosen = found
+        for test, marker_sets in chosen.items():
+            for marks in marker_sets:
+                lanes = [lane for lane in LANES if _in_lane(lane, path) and selects(lane, marks)]
+                here = [lane for lane in lanes if lane in runnable]
+                if not here:
+                    need = (
+                        ", ".join(
+                            f"{lane} (run by {ELSEWHERE[lane]})" if lane in ELSEWHERE else lane
+                            for lane in lanes
+                        )
+                        if lanes
+                        else "no lane at all"
+                    )
+                    unrunnable.append(
+                        f"{test} [{', '.join(sorted(marks)) or 'no markers'}] needs {need}"
+                    )
+                for lane in here:
+                    if name not in planned.setdefault(lane, []):
+                        planned[lane].append(name)
+    if unrunnable:
+        raise ValueError(
+            "a targeted run must run every test it names; this one cannot run:\n  "
+            + "\n  ".join(unrunnable)
+            + "\n(a live lane runs when the dispatch includes it: include_<lane>)"
+        )
+    return planned
+
+
+def runnable_lanes() -> tuple[str, ...]:
+    """The lanes a targeted run may route to: every suite lane and own job, whatever lanes the
+    dispatch listed (it routes each named test to the lanes that select it), and each live lane
+    the dispatch includes (PROVISA_INCLUDE_LIVE, comma-separated)."""
+    included = [n.strip() for n in os.environ.get("PROVISA_INCLUDE_LIVE", "").split(",")]
+    return (*SUITE, *OWN_JOBS, *(lane for lane in LIVE if lane in included))
+
+
 def matrix(selection: str) -> dict:
     """The suite matrix for ``selection``: "all", or comma-separated lane names. A name that is
     no lane is refused, so a typo cannot dispatch an empty run that reports green. A targeted run
-    (named_tests) runs each lane as one job: its few tests are not sharded."""
+    (named_tests) is routed instead: each lane that selects a named test runs it, as one job (its
+    few tests are not sharded), whatever lanes were listed; one naming a test no lane it can run
+    selects is refused (routes)."""
     names = [n.strip() for n in selection.split(",") if n.strip()]
     if names == ["all"]:
-        names = list(SUITE)
+        names = [name for name in SUITE if name not in ON_DEMAND]
     unknown = [n for n in names if n not in LANES]
     if unknown:
         raise ValueError(f"no such lane: {', '.join(unknown)}; lanes: {', '.join(sorted(LANES))}")
     include = []
     targeted = bool(named_tests())
+    if targeted:
+        routed = routes(runnable_lanes())
+        names = [name for name in SUITE if name in routed]
     for name in names:
         if name not in SUITE:
-            continue
-        # A targeted run plans only the lanes that hold a named test: a lane with none would
-        # collect nothing, write no results and fail its required results upload.
-        if targeted and not targets(name, None):
             continue
         shards, timeout = SUITE[name]
         if shards == 1 or targeted:
@@ -210,10 +495,12 @@ def shard(files: list[str], index: int, total: int) -> list[str]:
 def targets(lane_name: str, shard_spec: str | None) -> list[str]:
     """What the lane (or its shard) hands pytest: the lane's paths, or the shard's files."""
     lane = LANES[lane_name]
-    named = named_tests()
-    if named:
-        # A targeted run: only the named tests that live under this lane's paths.
-        return [t for t in named if _under(t.split("::", 1)[0], lane.paths)]
+    if named_tests():
+        # A targeted run: only the named tests this lane selects. The plan refused every test the
+        # dispatch cannot run (routes over runnable_lanes); a lane's own job does not carry the
+        # dispatch's PROVISA_INCLUDE_LIVE, and is running, so it routes over every lane and takes
+        # its share.
+        return routes(tuple(LANES)).get(lane_name, [])
     if shard_spec is None:
         return list(lane.paths)
     index, total = (int(x) for x in shard_spec.split("/"))
@@ -248,10 +535,11 @@ def main(argv: list[str]) -> int:
         print(json.dumps(matrix(argv[1] if len(argv) > 1 else "all")))
         return 0
     if argv[:1] == ["--has-targets"]:
-        # A job of its own (warehouse, salesforce, athena, servicenow) runs when the run names no
-        # tests (the whole lane) or names one under the lane's paths; otherwise it would collect
+        # A job of its own (cluster, warehouse, salesforce, athena, servicenow) runs when the run
+        # names no tests (the whole lane) or names one the lane selects; otherwise it would collect
         # nothing, write no results and fail its required results upload.
-        print("true" if not named_tests() or targets(argv[1], None) else "false")
+        planned = not named_tests() or routes(runnable_lanes()).get(argv[1])
+        print("true" if planned else "false")
         return 0
     parser = argparse.ArgumentParser()
     parser.add_argument("lane", choices=sorted(LANES))
@@ -264,10 +552,15 @@ def main(argv: list[str]) -> int:
     print("+", " ".join(cmd), flush=True)
     code = subprocess.call(cmd, cwd=REPO, env=os.environ.copy())  # noqa: S603 - fixed argv
     if code == 5 and named_tests():
-        # Lanes share paths and differ by marker: a named test runs in its own lane, and every
-        # other lane of a targeted run deselects it. Collecting nothing there is not a failure.
-        print(f"targeted run: lane {args.lane} selects none of the named tests", flush=True)
-        return 0
+        # The run was routed here because this lane's marker selects these tests (routes): a lane
+        # that then collects none of them means their markers were read wrong, and they ran
+        # nowhere. Never a pass with nothing run.
+        print(
+            f"targeted run: lane {args.lane} was routed {' '.join(targets(args.lane, None))} "
+            "but selected none of them: run_lane.py read their markers differently from pytest",
+            flush=True,
+        )
+        return 1
     return code
 
 

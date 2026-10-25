@@ -39,6 +39,7 @@ import pytest
 from provisa.core.demo_bundles import store_namespaces
 import yaml
 
+from tests.integration import demo_capture
 from tests.integration.serving_wait import await_tables_serving
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse, pytest.mark.local_platform]
@@ -239,6 +240,7 @@ def test_the_answer_is_the_same_live_and_built(server):
 def test_each_example_query_answers_rows(server, path):
     resp = _post(server, "/data/graphql", {"query": path.read_text()})
     assert resp.status_code == 200, resp.text
+    demo_capture.keep("pharma", f"gql-{path.stem}.json", resp.text)
     body = resp.json()
     assert not body.get("errors"), body
     [rows] = body["data"].values()
@@ -250,7 +252,10 @@ _TOUR = yaml.safe_load((_DEMO / "tour.yaml").read_text())["steps"]
 
 @pytest.mark.parametrize("step", [s for s in _TOUR if "sql" in s], ids=lambda s: s["key"])
 def test_each_tour_statement_answers_rows(server, step):
-    assert query(server, step["sql"]), step["key"]
+    resp = _post(server, "/data/sql", {"sql": step["sql"]})
+    assert resp.status_code == 200, f"{step['key']}: HTTP {resp.status_code}: {resp.text}"
+    demo_capture.keep("pharma", f"sql-{step['key']}.json", resp.text)
+    assert resp.json()["data"]["sql"], step["key"]
 
 
 @pytest.mark.parametrize("step", [s for s in _TOUR if "api" in s], ids=lambda s: s["key"])
@@ -258,4 +263,11 @@ def test_each_tour_rest_call_answers_rows(server, step):
     _method, path = step["api"].split(" ", 1)
     resp = httpx.get(f"{server.base_url}{path}", headers={"X-Provisa-Role": _ROLE}, timeout=300)
     assert resp.status_code == 200, resp.text
+    demo_capture.keep("pharma", "rest.json", resp.text)
     assert resp.json()["data"], step["key"]
+
+
+def test_the_pages_beside_the_answers_are_served(server):
+    """The schema, graph, glossary and REST documentation the demo's pages read beside its
+    answers each answer (kept for its card with PROVISA_DEMO_CAPTURE_DIR set)."""
+    demo_capture.keep_served("pharma", server.base_url, _ROLE)

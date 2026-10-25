@@ -9,6 +9,25 @@
     "reachLive": "लाइव (स्थान पर पढ़ा गया)",
     "reachReplica": "प्रतिकृति (ताज़ा की गई प्रति)",
     "reachLiveOn": "केवल {{engines}} पर लाइव",
-    "reachNone": "इस इंजन से पहुँच योग्य नहीं"
+    "reachNone": "इस इंजन से पहुँच योग्य नहीं",
+    "categories": {
+      "Subscriptions": "सदस्यताएँ",
+      "RDBMS": "RDBMS",
+      "Cloud DW": "क्लाउड डेटा वेयरहाउस",
+      "Analytics": "एनालिटिक्स",
+      "Data Lake": "डेटा लेक",
+      "NoSQL": "NoSQL",
+      "Code": "कोड रिज़ॉल्वर",
+      "Graph": "ग्राफ़",
+      "File": "फ़ाइलें",
+      "API": "API",
+      "Streaming": "स्ट्रीमिंग",
+      "Enterprise": "एंटरप्राइज़",
+      "Data Quality": "डेटा गुणवत्ता",
+      "Other": "अन्य"
+    },
+    "categorySubtitles": {
+      "Code": "Python या Node में बिज़नेस लॉजिक"
+    }
   }
 }

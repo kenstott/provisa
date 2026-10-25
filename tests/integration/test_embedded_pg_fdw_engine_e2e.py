@@ -6,7 +6,7 @@
 
 """E2E: the Postgres FDW connectors work on a STOCK embedded PG once core-contrib FDWs are installed.
 
-No docker. Runs the embedded PG 16.2 from the test platform's private pginstall, with the
+No docker. Runs the embedded PG 16.11 from the test platform's private pginstall, with the
 provisa-pg-ext bundle's FDW set staged (tests/embedded_pg.py), then drives the REAL connectors — FileFdwConnector and
 PostgresFdwConnector — and the REAL compiler pipeline (compile -> apply_governance -> rewrite_semantic_to_physical -> transpile("postgres")) against the
 FDW-attached demo sources, asserting on returned rows:
@@ -48,7 +48,12 @@ from tests.embedded_pg import DATABASE, ROLE, LocalPostgres, start_local_postgre
 from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 
 # All CSV columns in file order (file_fdw is positional — the foreign table must list every column).
 _CSV_COLS = [

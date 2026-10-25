@@ -716,7 +716,7 @@ def _plane_engine(plane: str, previous: Any, url: str, *, pool_size: int, max_ov
 async def _init_control_planes(
     config_path: str | None,
     initialise: bool = True,
-) -> tuple[str, int, str, str]:  # REQ-057, REQ-837
+) -> tuple[str, int, str, str, str]:  # REQ-057, REQ-837
     """Bring up both control planes from config and init tenant schema + audit.
 
     ``initialise=False`` (REQ-1900) is a worker whose launch has already created the schemas
@@ -812,7 +812,7 @@ async def _init_control_planes(
     # Every backend identifies a database (a PG database name, a SQLite file path, …).
     # Host/user are backend-specific and validated at connect time, not asserted here.
     assert database, "control_plane.tenant_url must specify a database"
-    return host or "", port, database, username or ""
+    return host or "", port, database, username or "", _pw or ""
 
 
 async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510

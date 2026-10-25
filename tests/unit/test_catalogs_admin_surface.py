@@ -103,6 +103,17 @@ async def test_the_read_reports_credentials_as_set_and_never_returns_them(surfac
 
 
 @pytest.mark.asyncio
+async def test_the_read_names_the_providers_not_yet_proven_as_beta(surface):
+    """The provider picker labels them "(beta)" from the adapter's own flag (AtlanExport.beta)."""
+    from provisa.api.admin.catalogs_router import get_catalogs
+    from provisa.api.metadata_export.registry import beta_providers
+
+    body = await get_catalogs(_request())
+    assert "atlan" in body["beta_providers"]
+    assert body["beta_providers"] == beta_providers()
+    assert set(body["beta_providers"]) <= set(body["providers"])
+
+
 async def test_editing_the_endpoint_does_not_erase_the_stored_credential(surface):
     surface.settings["catalogs"] = [
         {

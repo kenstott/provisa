@@ -10,6 +10,17 @@
     "apply": "Apply",
     "cancel": "Cancel",
     "editAssignment": "Edit assignment",
-    "plannedRemoval": "Planned removal: {{date}}"
+    "plannedRemoval": "Planned removal: {{date}}",
+    "piiViaTerm": "Same meaning as {{term}}",
+    "piiSetHere": "Set here: {{reason}}",
+    "piiAlsoTerm_one": "Also mark the {{count}} other column that means '{{term}}'?",
+    "piiAlsoTerm_other": "Also mark the {{count}} other columns that mean '{{term}}'?",
+    "piiAlsoTermNone": "Mark '{{term}}', so every column that means it is covered, those to come too?",
+    "piiYes": "Yes",
+    "piiJustThis": "Just this one",
+    "piiInherited": "This column is PII because it means {{term}}.",
+    "piiUnmarkTerm": "Unmark {{term}}",
+    "piiMoveColumn": "Move column…",
+    "piiOpenTerm": "Open '{{term}}'"
   }
 }

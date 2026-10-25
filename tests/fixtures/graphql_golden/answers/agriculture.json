@@ -1,0 +1,22 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:agriculture/1-driest-seasons.graphql",
+  "reads": [
+   "govdata",
+   "portfolio"
+  ],
+  "root_field": "a__viewLossesAndWeather"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:agriculture/2-losses-by-year.graphql",
+  "reads": [
+   "govdata",
+   "portfolio"
+  ],
+  "root_field": "a__viewLossesAndWeatherGroupBy"
+ }
+]

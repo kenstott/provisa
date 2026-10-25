@@ -287,6 +287,87 @@ def test_compaction_leaves_full_files_and_a_lone_file_as_they_are(tmp_path):
     assert len(_files(root)["_date=2026-10-17"]) == 2
 
 
+def _trace_ids(root: str) -> list[str]:
+    return sorted(r["trace_id"] for r in nt._landed(root).to_pylist())
+
+
+def test_compactions_racing_on_one_folder_keep_each_row_once(tmp_path):
+    # Every process of a host that shares a telemetry folder compacts it each minute. Two that
+    # merged the same files both wrote their merged copy, and every row was then there twice:
+    # four servers sharing one folder multiplied a day's rows minute by minute.
+    from concurrent.futures import ThreadPoolExecutor
+
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 40})
+    before = _trace_ids(root)
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(lambda _: nt.compact(root), range(8)))
+    assert _trace_ids(root) == before
+
+
+def test_a_folder_another_process_is_compacting_is_left_to_it(tmp_path):
+    from pathlib import Path
+
+    from provisa.core.host_lock import FileLock
+
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 3})
+    held = FileLock(Path(root) / nt.COMPACT_LOCK)
+    assert held.try_acquire()
+    try:
+        assert nt.compact(root) == 0
+        assert len(_files(root)["_date=2026-10-17"]) == 3
+    finally:
+        held.release()
+    assert nt.compact(root) == 3
+
+
+def test_compaction_holds_one_input_file_of_arrow_at_a_time(tmp_path):
+    # A day's small files were read into one Arrow table before any was written: the whole day,
+    # in every process that compacted it. Each input is now written as it is read.
+    import gc
+
+    import pyarrow as pa
+
+    root = str(tmp_path / "traces")
+    folder = tmp_path / "traces" / "_date=2026-10-17"
+    _land(root, {"2026-10-17": 1})
+    template = nt._landed(root).to_pylist()[0]
+    for f in folder.iterdir():
+        f.unlink()
+    for n in range(20):
+        rows = [dict(template, trace_id=f"{n}-{i}", span_attributes="x" * 4096) for i in range(256)]
+        pq.write_table(
+            pa.Table.from_pylist(rows, schema=nt.TRACES_SCHEMA),
+            str(folder / f"batch-{n:02d}.parquet"),
+        )
+    one = pq.ParquetFile(str(folder / "batch-00.parquet")).read().nbytes
+    before = _trace_ids(root)
+    default = pa.default_memory_pool()
+    pool = pa.proxy_memory_pool(default)
+    pa.set_memory_pool(pool)
+    try:
+        assert nt.compact(root) == 20
+    finally:
+        gc.collect()
+        pa.set_memory_pool(default)
+    assert pool.max_memory() < 3 * one
+    assert _trace_ids(root) == before
+
+
+def test_a_pass_an_input_fails_leaves_the_day_as_it_was(tmp_path):
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 6})
+    before = _files(root)
+    one = os.path.getsize(os.path.join(root, "_date=2026-10-17", before["_date=2026-10-17"][0]))
+    with open(os.path.join(root, "_date=2026-10-17", before["_date=2026-10-17"][4]), "wb") as f:
+        f.write(b"not parquet")
+    # A target of two inputs: the first two are rolled into a file before the bad one is read.
+    with pytest.raises(Exception, match="Parquet"):
+        nt.compact(root, target_bytes=2 * one + 1)
+    assert _files(root) == before
+
+
 def test_with_no_folder_compaction_has_nothing_to_do(tmp_path):
     assert nt.compact(str(tmp_path / "absent")) == 0
 
@@ -303,3 +384,59 @@ def test_the_process_lands_traces_only_while_the_engine_reads_them(monkeypatch, 
     otel_setup.land_traces_natively(False)
     assert exports.current() == []
     processor.shutdown()
+
+
+def _vanishing(gone: set[str]) -> duckdb.DuckDBPyConnection:
+    """A connection whose ``vanish://`` filesystem lists the files named in ``gone`` but has
+    them no longer there when they are opened: compaction removed them between glob and read."""
+    from fsspec.implementations.memory import MemoryFileSystem
+
+    class Vanishing(MemoryFileSystem):
+        protocol = ("vanish",)
+        store: dict = {}
+        pseudo_dirs = [""]
+
+        def _open(self, path, mode="rb", *args, **kwargs):
+            if mode.startswith("r") and any(path.endswith(f"/{name}") for name in gone):
+                raise FileNotFoundError(path)
+            return super()._open(path, mode, *args, **kwargs)
+
+    con = duckdb.connect()
+    con.register_filesystem(Vanishing())
+    return con
+
+
+def test_defining_the_view_opens_no_batch_compaction_may_have_removed(tmp_path):
+    """The warm-up's CREATE VIEW once read every listed file to bind the columns, and a batch
+    compaction removed after the listing failed it. It binds from the schema file alone."""
+    local = str(tmp_path / "traces")
+    nt.ensure_schema_file(local)
+    _land(local, {"2026-10-23": 1})
+    [(day, [batch])] = _files(local).items()
+    con = _vanishing({batch})
+    for name in (nt.SCHEMA_FILE, f"{day}/{batch}"):
+        con.execute(f"COPY (SELECT * FROM read_parquet('{local}/{name}')) TO 'vanish://t/{name}'")
+    listed = sorted(
+        r[0] for r in con.execute("SELECT * FROM glob('vanish://t/**/*.parquet')").fetchall()
+    )
+    assert listed == [f"vanish://t/{day}/{batch}", f"vanish://t/{nt.SCHEMA_FILE}"]
+    every_file = (
+        "SELECT * FROM read_parquet('vanish://t/**/*.parquet', "
+        "union_by_name = true, hive_partitioning = false)"
+    )
+    with pytest.raises(duckdb.Error, match="FileNotFoundError"):
+        con.execute(f"CREATE VIEW bound_from_every_file AS {every_file}")
+    con.execute(f"CREATE VIEW traces AS {nt.traces_scan('vanish://t')}")
+    cols = [r[0] for r in con.execute("DESCRIBE traces").fetchall()]
+    assert cols == [c for c, _t, _k in OPS_TABLES["traces"]]
+
+
+def test_a_read_after_compaction_lists_the_folder_again(tmp_path):
+    """The view names a glob, not the files listed when it was defined: a read after compaction
+    finds the merged file and no removed batch."""
+    root = str(tmp_path / "traces")
+    con = _engine(root)
+    _land(root, {"2026-10-23": 3})
+    before = sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall())
+    assert nt.compact(root) == 3
+    assert sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall()) == before

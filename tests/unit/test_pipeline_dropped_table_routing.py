@@ -173,6 +173,8 @@ def _openapi_state() -> SimpleNamespace:
         ttl=60,
         promotions=[],
         default_params={},
+        response_normalizer=None,
+        query_template=None,
         columns=[
             ApiColumn(name="id", type=ApiColumnType.string),
             ApiColumn(name="petId", type=ApiColumnType.string, param_type=ParamType.path),
@@ -265,8 +267,10 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
         )
 
     assert m_handle.await_args.args[1] == {"petId": "1"}
-    assert decision.route != Route.API
-    assert state.source_pools.has(decision.source_id)
+    # Its only source inlined as rows, it is the engine's: never a direct read of the tenant's
+    # database, which it does not read (REQ-863).
+    assert decision.route == Route.ENGINE
+    assert decision.reason == "landed: not_forced: every source it reads was inlined as rows"
 
 
 def _pg_state(*, pooled: bool) -> SimpleNamespace:

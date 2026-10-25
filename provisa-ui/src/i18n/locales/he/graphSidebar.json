@@ -29,6 +29,9 @@
     "resizeSidebar": "שינוי גודל סרגל הצד",
     "tabSettings": "הגדרות תצוגה",
     "maxNodes": "מקסימום צמתים",
-    "maxNodesHint": "מספר הצמתים המרבי ששאילתה מציגה"
+    "maxNodesHint": "מספר הצמתים המרבי ששאילתה מציגה",
+    "notCounted": "לא נספר: {{list}}",
+    "countsFailed": "הספירות אינן זמינות: {{error}}",
+    "schemaFailed": "הסכמה אינה זמינה: {{error}}"
   }
 }

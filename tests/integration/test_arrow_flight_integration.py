@@ -37,6 +37,7 @@ from provisa.compiler.compiled_query_cache import CompiledQueryCache
 pa = pytest.importorskip("pyarrow")
 flight = pytest.importorskip("pyarrow.flight")
 
+from provisa.api.flight.relay import serve_in_background  # noqa: E402
 from provisa.api.flight.server import ProvisaFlightServer  # noqa: E402
 from tests.integration.conftest import no_replica_routes  # noqa: E402
 from tests.helpers import serve_surfaces  # noqa: E402
@@ -133,8 +134,7 @@ def flight_server_and_client():
 
     server = ProvisaFlightServer(state, location=_FLIGHT_LOCATION)
 
-    thread = threading.Thread(target=server.serve, daemon=True)
-    thread.start()
+    serve_in_background(server)
 
     # Give the server time to bind — 30 s tolerates a loaded CI lane.
     import time
@@ -359,7 +359,12 @@ class TestFlightDoGetWithRealData:
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
         state.roles = {
-            "admin": {"id": "admin", "capabilities": ["full_results"], "domain_access": ["*"]}
+            "admin": {
+                "description": "Test role.",
+                "id": "admin",
+                "capabilities": ["full_results"],
+                "domain_access": ["*"],
+            }
         }
         state.source_pools = source_pool
         state.source_types = {"test-pg": "postgresql"}
@@ -418,8 +423,7 @@ class TestFlightDoGetWithRealData:
         state.federation_engine = EngineRuntime(build_trino_engine(), state)  # REQ-825
         server._state = state
 
-        flight_thread = threading.Thread(target=server.serve, daemon=True)
-        flight_thread.start()
+        serve_in_background(server)
 
         import time
 
@@ -578,8 +582,7 @@ def secured_flight_server():
     original = flight_server_module._validate_flight_credential
     flight_server_module._validate_flight_credential = _validate
 
-    thread = threading.Thread(target=server.serve, daemon=True)
-    thread.start()
+    serve_in_background(server)
 
     import time
 

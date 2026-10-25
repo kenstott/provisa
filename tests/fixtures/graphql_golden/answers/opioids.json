@@ -1,0 +1,22 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:opioids/1-most-deaths-per-dollar.graphql",
+  "reads": [
+   "fund",
+   "govdata"
+  ],
+  "root_field": "o__viewTreatmentAgainstBurden"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:opioids/2-by-region.graphql",
+  "reads": [
+   "fund",
+   "govdata"
+  ],
+  "root_field": "o__viewTreatmentAgainstBurdenGroupBy"
+ }
+]

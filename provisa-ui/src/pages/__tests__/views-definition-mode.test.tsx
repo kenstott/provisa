@@ -10,8 +10,8 @@
 
 // REQ-1318: the Views page definition-mode toggle — SQL editor vs metric/dimension
 // picker. A metric view opens in Metrics mode prefilled; a free-hand view opens in
-// SQL mode; mode changes only through the explicit control; Metrics mode submits
-// registerTable with viewMetrics and NO viewSql.
+// SQL mode; mode changes only through the explicit control; Metrics mode hands on a
+// registration with viewMetrics and NO viewSql, whose settings follow (REQ-2109).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "../../test-utils/render";
@@ -90,6 +90,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -113,8 +114,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -161,6 +163,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     computedCypherAlias: null,
     autoSuggested: false,
     disableCypher: false,
+    sameEntity: false,
     // REQ-1586: an FK/PK relationship declares no junction.
     viaTableId: null,
     viaTableName: null,
@@ -185,7 +188,7 @@ const customersTable = makeTable({
   columns: [makeCol({ id: 2, columnName: "region", computedSqlAlias: "region" })],
 });
 
-const registerTable = vi.fn();
+const onContinue = vi.fn();
 const updateTable = vi.fn();
 
 function renderForm(editing: RegisteredTable | null) {
@@ -196,8 +199,8 @@ function renderForm(editing: RegisteredTable | null) {
       tables={[ordersTable, customersTable]}
       relationships={[makeRel()]}
       domainHints={["sales", "ops"]}
-      registerTable={registerTable}
       updateTable={updateTable}
+      onContinue={onContinue}
       onSuccess={onSuccess}
       onCancel={vi.fn()}
     />,
@@ -207,7 +210,6 @@ function renderForm(editing: RegisteredTable | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  registerTable.mockResolvedValue({ success: true, message: "ok" });
   updateTable.mockResolvedValue({ success: true, message: "ok" });
 });
 
@@ -220,10 +222,10 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     expect(screen.queryByTestId("view-definition-metrics-panel")).not.toBeInTheDocument();
   });
 
-  it("creating asks only for a name, a domain and the definition, and says what it made", async () => {
-    // What a view needs in order to exist. Its description is set in the edit it opens in.
+  it("creating asks only for a name, a domain and the definition, and hands them on", async () => {
+    // What a view needs in order to exist. Its description and every other setting follow.
     const user = userEvent.setup();
-    const { onSuccess } = renderForm(null);
+    renderForm(null);
     await user.click(screen.getByRole("radio", { name: "Metrics" }));
     expect(screen.getByTestId("view-definition-name")).toBeInTheDocument();
     expect(screen.getByTestId("view-definition-domain")).toBeInTheDocument();
@@ -236,9 +238,10 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
       "revenue",
     );
     await user.click(screen.getByTestId("view-definition-save"));
-    // The page is told which view was made, so it can select it and open it in edit.
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith("rev_by_region"));
-    expect(registerTable.mock.calls[0][0]).not.toHaveProperty("description");
+    // The page is handed the view's definition: its settings follow in the editor's sections.
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].input.tableName).toBe("rev_by_region");
+    expect(onContinue.mock.calls[0][0].input).not.toHaveProperty("description");
   });
 
   it("switching to Metrics mode shows the metric/dimension picker", async () => {
@@ -249,9 +252,9 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     expect(screen.queryByTestId("view-definition-sql-panel")).not.toBeInTheDocument();
   });
 
-  it("Metrics mode submits registerTable with viewMetrics and no viewSql", async () => {
+  it("Metrics mode hands on a registration with viewMetrics and no viewSql", async () => {
     const user = userEvent.setup();
-    const { onSuccess } = renderForm(null);
+    renderForm(null);
     await user.click(screen.getByRole("radio", { name: "Metrics" }));
 
     await user.type(screen.getByTestId("view-definition-name"), "rev_by_region");
@@ -275,9 +278,8 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     await user.type(screen.getByTestId("view-definition-filters"), "status = 'complete'");
     await user.click(screen.getByTestId("view-definition-save"));
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    expect(registerTable).toHaveBeenCalledTimes(1);
-    const input = registerTable.mock.calls[0][0] as Record<string, unknown>;
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    const input = onContinue.mock.calls[0][0].input as Record<string, unknown>;
     expect(input).toMatchObject({
       sourceId: "__derived__",
       domainId: "sales",
@@ -359,6 +361,6 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     });
     // Mutually exclusive with free-hand SQL: the generated SQL is never echoed back.
     expect(input.viewSql).toBeUndefined();
-    expect(registerTable).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
   });
 });

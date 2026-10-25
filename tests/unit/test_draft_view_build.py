@@ -48,7 +48,9 @@ def model(control_plane):
     return control_plane.org()
 
 
-async def _save_view(conn, name: str, *, draft: bool, materialize: bool) -> None:
+async def _save_view(
+    conn, name: str, *, draft: bool, materialize: bool, view_sql: str = "SELECT id FROM orders"
+) -> None:
     from sqlalchemy import insert, update
 
     from provisa.core.schema_org import registered_tables
@@ -68,7 +70,7 @@ async def _save_view(conn, name: str, *, draft: bool, materialize: bool) -> None
                 domain_id="sales",
                 schema_name="views",
                 table_name=name,
-                view_sql="SELECT id FROM orders",
+                view_sql=view_sql,
                 draft=draft,
                 materialize=materialize,
             )
@@ -89,14 +91,15 @@ def rebuilt(model, monkeypatch):
     monkeypatch.setattr(state, "mv_registry", MVRegistry(), raising=False)
     monkeypatch.setattr(state, "view_sql_map", {}, raising=False)
     monkeypatch.setattr(state, "bitemporal_view_reads", {}, raising=False)
+    monkeypatch.setattr(state, "stored_view_reads", set(), raising=False)
     monkeypatch.setattr(state, "federation_engine", runtime_engine, raising=False)
     monkeypatch.setattr(state, "view_context", object(), raising=False)
     monkeypatch.setattr(app_rebuild, "compile_view_sql_to_physical", lambda sql, ctx: sql)
 
-    async def _rebuild(name: str, *, draft: bool, materialize: bool = True):
+    async def _rebuild(name: str, *, draft: bool, materialize: bool = True, **saved):
         async with model.acquire() as conn:
-            await _save_view(conn, name, draft=draft, materialize=materialize)
-            await app_rebuild._register_user_views_in_state(conn, None)
+            await _save_view(conn, name, draft=draft, materialize=materialize, **saved)
+            await app_rebuild._register_user_views_in_state(conn, None, [], [])
         return state
 
     return _rebuild
@@ -131,6 +134,61 @@ async def test_a_view_set_back_to_draft_keeps_its_build_and_its_release_enables_
     state = await rebuilt("big_orders", draft=False)
     assert state.mv_registry.get("view-big_orders") is released and released.enabled is True
     assert "big_orders" in state.view_sql_map
+
+
+async def test_a_deleted_view_leaves_no_build_registered(rebuilt, model):
+    """REQ-1918: a view's build is a part of it and goes with it. A view over another, both
+    deleted, leaves neither registered -- a build left reading a view that is gone failed the
+    org's event wiring on every later change."""
+    from sqlalchemy import delete
+
+    from provisa.core.schema_org import registered_tables
+
+    await rebuilt("e2e_mv_a", draft=False)
+    state = await rebuilt("e2e_mv_b", draft=False, view_sql="SELECT id FROM views.e2e_mv_a")
+    assert {m.id for m in state.mv_registry.all()} == {"view-e2e_mv_a", "view-e2e_mv_b"}
+    async with model.acquire() as conn:
+        await conn.execute_core(
+            delete(registered_tables).where(registered_tables.c.table_name == "e2e_mv_b")
+        )
+    state = await rebuilt("e2e_mv_a", draft=False)
+    assert {m.id for m in state.mv_registry.all()} == {"view-e2e_mv_a"}
+    async with model.acquire() as conn:
+        await conn.execute_core(
+            delete(registered_tables).where(registered_tables.c.table_name == "e2e_mv_a")
+        )
+        from provisa.api import app_rebuild
+
+        await app_rebuild._register_user_views_in_state(conn, None, [], [])
+    assert state.mv_registry.all() == []
+    assert "e2e_mv_a" not in state.view_sql_map and "e2e_mv_b" not in state.view_sql_map
+
+
+async def test_a_materialized_view_not_built_from_a_view_survives_whatever_its_id(rebuilt):
+    """What is unregistered is decided by what a build was made from, never by its name: a
+    materialized view declared in the config is no view's build, so a rebuild keeps it, even one
+    whose id reads like a view's."""
+    state = await rebuilt("big_orders", draft=False)
+    declared = MVDefinition(
+        id="view-declared_in_config",
+        source_tables=["orders"],
+        target_catalog="store",
+        target_schema="views",
+        target_table="declared_in_config",
+        sql="SELECT id FROM orders",
+    )
+    state.mv_registry.register(declared)
+    state = await rebuilt("big_orders", draft=False)
+    assert state.mv_registry.get("view-declared_in_config") is declared
+    assert state.mv_registry.get("view-big_orders").view_table == "big_orders"
+
+
+async def test_a_view_no_longer_materialized_has_no_build(rebuilt):
+    state = await rebuilt("big_orders", draft=False)
+    assert state.mv_registry.get("view-big_orders") is not None
+    state = await rebuilt("big_orders", draft=False, materialize=False)
+    assert state.mv_registry.get("view-big_orders") is None
+    assert "big_orders" in state.view_sql_map  # still read, through its SQL
 
 
 async def test_a_draft_view_that_is_not_materialized_has_no_build(rebuilt):
@@ -225,7 +283,8 @@ async def test_a_bitemporal_draft_view_answers_as_building_until_its_log_exists(
     from provisa.federation.replica_state import ReplicaBuilding
     from provisa.mv.bitemporal import BitemporalSpec, view_read_sql
 
-    spec = BitemporalSpec(key=("id",), columns=("id",))
+    # REQ-2109: a bitemporal view's reads travel on its valid time.
+    spec = BitemporalSpec(key=("id",), columns=("id", "day"), valid_column="day")
     mv = _registered(bitemporal=spec)
     state = _state(mv)
     with pytest.raises(ReplicaBuilding) as building:
@@ -239,3 +298,37 @@ async def test_a_bitemporal_draft_view_answers_as_building_until_its_log_exists(
     assert table_read._view_body(state, _draft_view()) == view_read_sql(stored, spec)
     await asyncio.sleep(0)
     assert builds == ["view-big_orders"]  # and not started again
+
+
+async def test_a_view_applying_a_column_transform_is_landed_and_read_from_its_store(rebuilt, model):
+    """REQ-2131: a view applying a column transform is built as a materialized view is, though not
+    declared one, and is read only from its stored table: its outputs exist nowhere else."""
+    from sqlalchemy import insert
+
+    from provisa.core.schema_org import tracked_functions
+
+    async with model.acquire() as conn:
+        await conn.execute_core(
+            insert(tracked_functions).values(
+                name="clean_address",
+                source_id="addresses",
+                function_name="clean_address",
+                kind="query",
+                impl_kind="code_columns",
+                arguments=[{"name": "raw_address", "type": "text"}],
+                output_columns=[{"name": "street", "type": "text"}],
+            )
+        )
+    state = await rebuilt(
+        "clean_suppliers",
+        draft=False,
+        materialize=False,
+        view_sql="SELECT id, clean_address(raw_address) FROM suppliers",
+    )
+    mv = state.mv_registry.get("view-clean_suppliers")
+    assert mv is not None and mv.enabled is True and mv.target_table == "mv_clean_suppliers"
+    assert (
+        state.view_sql_map["clean_suppliers"]
+        == 'SELECT * FROM "store"."views"."mv_clean_suppliers"'
+    )
+    assert state.stored_view_reads == {"clean_suppliers"}

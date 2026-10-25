@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "{{table}} 的聯合雲",
+    "none": "本次執行未建立依賴網絡，因此沒有聯合計數。",
+    "canvasLabel": "某欄位的行相對於其父欄位的 3D 雲",
+    "column": "欄位",
+    "colorBy": "著色依據",
+    "colorRows": "行",
+    "colorLift": "提升度",
+    "legendRows": "儲存格中的行",
+    "legendLift": "少於獨立時 · 相當 · 多於獨立時",
+    "decile": "D{{n}}",
+    "nullSlot": "空值",
+    "otherSlot": "另有 {{count}} 個",
+    "tipRows": "{{rows}} 行 · {{pct}} · 提升度 ×{{lift}}",
+    "explainOne": "{{column}}（縱向）對其父欄位 {{parent}}（橫向）。數值按秩切分為十分位數。",
+    "explainTwo": "{{column}}（縱向）對其父欄位 {{parent1}}（橫向）和 {{parent2}}（縱深）。數值按秩切分為十分位數。",
+    "stat_rows": "行",
+    "stat_cells": "佔用的儲存格",
+    "stat_mi": "互信息（奈特）",
+    "stat_uncertainty": "消除的不確定性",
+    "over": "比獨立時更常出現",
+    "under": "比獨立時更少出現",
+    "noneListed": "沒有佔行數 0.5% 及以上的項。",
+    "note": "提升度是儲存格的行數與各欄位互相獨立時該儲存格應有行數之比。球體大小表示行數。"
+  }
+}

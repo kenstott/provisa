@@ -37,6 +37,9 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-1934: the operator's accepted and dismissed constraints are decisions about the
         # model's tables, so they travel with them.
         "profiler_constraints",
+        # REQ-2147: a steward's classification decisions are about the model's columns, as the
+        # constraints are, so they travel with them.
+        "profiler_classifications",
         "metrics",
         # ``roles`` and ``user_role_assignments`` are additionally SEEDED_AT_CREATION: CARRIED,
         # but only by a creation. See that class for why no later copy touches them.
@@ -171,6 +174,10 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "fake_adequacy_checks",
         # REQ-2094: its own review queue, about its own judgments.
         "judgment_findings",
+        # REQ-2129: derived from its own compiled views by its own model build.
+        "lineage_edges",
+        # REQ-2125: resolved from its own contracts by its own model build.
+        "checker_targets",
     }
 )
 

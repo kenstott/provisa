@@ -396,11 +396,11 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-רישום טבלה (או view) חדשה לתוך תחום. דורש את היכולת `table_registration` וחברות בתחום היעד. קורא שאין לו `create_relationship` המגיש view מועמד בתור כבקשת יצירה שמחזיק זכות חייב לאשר.
+רושם טבלה (או view) חדשה בתוך domain, עם כל הגדרה שהקלט נושא, ובהן `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` ו-`draft`, בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נרשם. דורש את היכולת `table_registration` וחברות ב-domain היעד; נשיאת `writeGrants` דורשת שם גם `masking_config`. קורא בלי `create_relationship` שמגיש view נכנס לתור כבקשת יצירה שבעל ההרשאות יאשר.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-עדכון כינוי, תיאור, מטא-דאטה של עמודות, הגדרות MV, והגדרות אספקה חיה של טבלה קיימת. דורש `table_registration`.
+מעדכן את הכינוי, התיאור, מטא-נתוני העמודות, הגדרות ה-MV ותצורת המסירה החיה של טבלה קיימת, ואת ההגדרות שהקלט נושא (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נשמר. הגדרה שהושמטה שומרת את הערך השמור שלה. דורש `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -454,9 +454,11 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 משנה קשר קיים עם אותן בדיקות כמו `createRelationship`. מזהה שאינו בבעלות אף קשר נדחה (`schema.relationship_not_found`). שינוי צריך את הזכות עצמה; הוא לעולם אינו נכנס לתור כבקשה.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+שמירה שמעבירה עמודות מפתח בין תכונה למחלקה עלולה להסיר מהן את `pii`. היא נדחית אז עם `tag.move_loses`, ו-`params.columns` מפרט כל עמודה עם התגים שהיא מאבדת (`loses`) ומקבלת (`gains`). שמרו שוב עם `confirmTagLoss` שמונה כל תג שאבד, או עם `carryTags: true` כדי לשים אותם על המונח שאליו עוברת כל עמודה.
 
-מחיקת קשר לפי מזהה ובניה מחדש של סכמות.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+מחיקת קשר לפי מזהה ובניה מחדש של סכמות. מחיקה שמעבירה עמודות מפתח מקבלת את אותם `confirmTagLoss` ו-`carryTags` כמו שמירה.
 
 ---
 
@@ -538,11 +540,19 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-שיוך תג למקור, טבלה, עמודה, קשר, או פקודה. אוכף את מדיניויות השדה של התג (`reason_policy`, `expires_policy`) — ועבור תגים בעלי פרמטרים — מאמת את ערך הפרמטר כנגד הרשימה המותרת של התג.
+שיוך תג למקור, טבלה, עמודה, קשר, או פקודה. אוכף את מדיניויות השדה של התג (`reason_policy`, `expires_policy`), ועבור תג בעל פרמטר, בודק את ערך הפרמטר כנגד הרשימה המותרת של התג.
+
+אפשר לשים `pii` גם על מונח במילון, כך שכל עמודה בעלת המשמעות הזו נושאת את התג, כולל עמודות שיירשמו בהמשך. קבעו `objectType: "term"` ו-`termId`:
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+על עמודה, `alsoTerm: true` שם את התג במקום זאת על המונח של העמודה. `params.covers` בתוצאה אומר לכמה עמודות התג מגיע: עבור עמודה, כמה עמודות אחרות מחזיק המונח שלה; עבור מונח, כמה הוא מחזיק. נדחים בשמם: תג שאינו `pii` על מונח (`tag.not_on_terms`), מונח שאינו תכונה (`tag.term_not_property`), מונח בטיוטה (`tag.term_not_live`, "הגדירו את *מונח* כדי לסמן אותו") ועם `alsoTerm`, עמודת מפתח (`tag.key_column`) או עמודה ללא מונח (`tag.column_has_no_term`). עמודה שמסומנת ישירות צריכה סיבה.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-הסרת שיוך תג.
+הסרת שיוך תג, גם ממונח (`objectType: "term"`, `termId`). הסרת `pii` מעמודה שנושאת אותו דרך המונח שלה נדחית (`tag.inherited_from_term`): בטלו את הסימון של המונח, או העבירו את העמודה למונח שמתאים למה שהיא מחזיקה.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 
@@ -728,7 +738,9 @@ mutation {
 | `mvRefreshInterval` | שניות בין רענונים |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | תחזוקה מצטברת |
-| `mvBitemporalMode` | `snapshot` \| `delta` עבור טבלאות דו-זמניות |
+| `businessKey` | עמודות שמזהות את אותו הדבר לאורך הגרסאות; מוצהר יחד עם `validTime` ו-`recordedTime`, שלושתם או אף אחד |
+| `validTime` | עמודה שמחזיקה את התאריך שהעסק נותן לרשומה |
+| `recordedTime` | עמודה שמחזיקה את המועד שבו גרסה זו הוזנה או שונתה |
 | `mvCalendar` | שם לוח שנה של תמונת מצב |
 | `mvGrain` | גרעיניות תמונת מצב: `daily`, `weekly`, `monthly`, `annual`, או מותאם `3WE` / `LFR` |
 | `viewSql` | SQL עבור view נגזר |
@@ -737,6 +749,15 @@ mutation {
 | `queryTemplate` | Cypher עבור טבלת Neo4j |
 | `live` | הגדרת אספקה חיה עבור דחיפת SSE/Kafka |
 | `discover` | הסק עמודות מהמקור החי בעת הרישום |
+| `gqlNamingConvention` | מוסכמת השמות של GraphQL לטבלה; `null` יורש. אם הושמטה, טבלה חדשה יורשת ועדכון שומר את השמורה |
+| `roleTtl` | כל רשימת התפקיד ל-TTL, `[{ role, ttl }]` |
+| `replicate` | מתי הטבלה מוגשת מהעותק שלה; `null` יורש את ערך המקור |
+| `writeGrants` | כל קבוצת הרשאות הכתיבה של הטבלה; דורש `masking_config` |
+| `draft` | `false` משחרר את הטבלה; אחרת רישום מתחיל כטיוטה |
+| `cacheTtl` | ה-Cache TTL של הטבלה עצמה; `null` – אין לה משלה |
+| `pagination` | העימוד המוצהר של הטבלה; `null` לא מצהיר על עימוד |
+| `region` | איפה נמצאים נתוני הטבלה; בעדכון, אזור אחר מעביר אותה, ונבדק כמו ב-`setTableRegion` |
+| `rowRules` | כללי השורות של הטבלה (`RLSRuleInput`), נשמרים איתה; דורש `masking_config` |
 
 ### `RelationshipInput`
 

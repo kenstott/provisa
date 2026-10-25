@@ -408,7 +408,12 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
 
     job_store = make_job_store()
     job_id = new_job_id()
-    await job_store.put(NlJob(job_id=job_id, nl_query=question, role=role, strict=False))
+    from provisa.nl.runner import effective_strict
+
+    # REQ-603: non-strict, as this tool asks, only for a role that may bypass the relationship
+    # guard; any other runs strict.
+    strict = effective_strict(False, role, state)
+    await job_store.put(NlJob(job_id=job_id, nl_query=question, role=role, strict=strict))
 
     cfg = await resolve_org_config(state.model_db)
     api_keys = await read_org_api_keys(state.model_db)
@@ -416,7 +421,7 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     # untyped `llm` param relies on) rather than subclassing it.
     llm: Any = ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)
 
-    await run_nl_job(job_id, question, role, state, job_store, llm, strict=False, deliver=None)
+    await run_nl_job(job_id, question, role, state, job_store, llm, strict=strict, deliver=None)
 
     job = await job_store.get(job_id)
     if job is None:
@@ -495,10 +500,10 @@ async def describe_native_table(
 async def list_glossary_terms(
     state: Any, role: str, request: Any, q: str | None = None, include_deprecated: bool = True
 ) -> list[dict]:  # REQ-1835
-    """The org's glossary terms, optionally filtered by a search string. Each result carries
-    `live` (grounded to a real column, or edge-connected to one — see create/update below for
-    what 'finalizing' a term actually means) so you can tell an admitted term from a proposed
-    (draft) one without a second call."""
+    """The org's ontology terms, optionally filtered by a search string. Each result carries
+    `status` -- draft (not admitted), live (admitted: defined and grounded to a real column, or
+    edge-connected to one), deprecated or retired -- so you can tell them apart without a second
+    call; see create/update below for what 'finalizing' a term means."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import _require_glossary_read, _view_scope
     from provisa.core.repositories import glossary as glossary_repo
@@ -520,8 +525,8 @@ async def create_glossary_term(
     definition: str | None = None,
     domains: list[str] | None = None,
 ) -> dict:  # REQ-1835
-    """Create a new abstract glossary term (a definition with no physical column yet). It starts
-    'proposed' — there is no separate live/finalized flag to flip: a term is 'live' automatically
+    """Create a new concept: an ontology term naming no column or table yet. It starts
+    a draft — there is no separate live/finalized flag to flip: a term is 'live' automatically
     once it is grounded, either by a real registered column landing on it (sync happens on table
     registration, outside your control) or by connecting it via add_glossary_term_edge to a term
     that is already live. If the deployment is multi-domain, at least one domain is required."""
@@ -542,7 +547,7 @@ async def create_glossary_term(
             )
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
-    await _notify(org_id, "glossary term created")
+    await _notify(org_id, "ontology term created")
     return {"id": term_id}
 
 
@@ -554,11 +559,9 @@ async def update_glossary_term(
     name: str | None = None,
     definition: str | None = None,
     export_excluded: bool | None = None,
-    retired: bool | None = None,
 ) -> dict:  # REQ-1835
-    """Rename a term, change its definition, exclude it from exports, or retire it. Only the
-    fields you pass are changed. Retiring is the correct way to withdraw a term that no longer
-    belongs — retired counts as curated (kept, out of service), unlike deleting it outright."""
+    """Rename a term, change its definition, or exclude it from exports. Only the fields you
+    pass are changed. To withdraw a term use retire_glossary_term, with a reason."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import (
         _notify,
@@ -582,20 +585,62 @@ async def update_glossary_term(
                 found = await glossary_repo.set_definition(conn, term_id, definition)
             if export_excluded is not None:
                 found = await glossary_repo.set_export_excluded(conn, term_id, export_excluded)
-            if retired is not None:
-                found = await glossary_repo.set_retired(conn, term_id, retired)
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
     if not found:
-        raise ValueError(f"glossary term {term_id} not found")
-    await _notify(org_id, "glossary term updated")
+        raise ValueError(f"ontology term {term_id} not found")
+    await _notify(org_id, "ontology term updated")
     return {"ok": True}
+
+
+async def change_glossary_term_status(
+    state: Any, role: str, request: Any, term_id: int, action: str, body: dict
+) -> dict:  # REQ-2144
+    """Deprecate, retire or restore an ontology term -- the one status path the API has too."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, change_status
+    from provisa.api.errors import ApiError
+    from provisa.core.repositories import glossary as glossary_repo
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        try:
+            changes = await change_status(conn, term_id, action, body, request)
+        except ApiError as exc:
+            if exc.status_code == 403:
+                raise
+            raise ValueError(exc.detail) from exc
+        status = (await glossary_repo.term_statuses(conn))[term_id]
+    from provisa.api.admin.glossary_router import _DONE
+
+    await _notify(org_id, f"ontology term {_DONE[action]}")
+    return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
+
+
+async def list_glossary_findings(state: Any, role: str, request: Any) -> list[dict]:  # REQ-2146
+    """What a curator should look at in the ontology: each term with its findings, each
+    {kind, message, params} -- unlinked_tables, class_and_attribute, tag_wrong_kind,
+    retirement_blocked, no_data. A plain draft term is not a finding."""
+    require_role(role, state)
+    from provisa.api.admin.glossary_router import _authority, _require_glossary_read, term_findings
+    from provisa.core.glossary import readable_term
+    from provisa.core.glossary_findings import findings
+
+    _require_glossary_read(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        return await term_findings(conn, _authority(request), findings, readable_term)
 
 
 async def delete_glossary_term(
     state: Any, role: str, request: Any, term_id: int
 ) -> dict:  # REQ-1835
-    """Permanently delete a glossary term. Irreversible — confirm with the user first, the same
+    """Permanently delete a ontology term. Irreversible — confirm with the user first, the same
     as any other irreversible action. A term that carries curator work (a definition, a
     relationship, or a named expert) should usually be retired via update_glossary_term instead
     of deleted, so a future column reusing its name doesn't silently get a blank term."""
@@ -619,17 +664,17 @@ async def delete_glossary_term(
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
     if not deleted:
-        raise ValueError(f"glossary term {term_id} not found")
-    await _notify(org_id, "glossary term deleted")
+        raise ValueError(f"ontology term {term_id} not found")
+    await _notify(org_id, "ontology term deleted")
     return {"ok": True}
 
 
 async def add_glossary_term_edge(
     state: Any, role: str, request: Any, term_id: int, to_term_id: int, rel_type: str
 ) -> dict:  # REQ-1835
-    """Connect two glossary terms with a typed relationship (e.g. 'broader', 'narrower',
+    """Connect two ontology terms with a typed relationship (e.g. 'broader', 'narrower',
     'synonym' — check existing edges via list_glossary_terms/get_term for the vocabulary this
-    org already uses). This is also how a proposed (not-yet-grounded) term is finalized without
+    org already uses). This is also how a draft (not-yet-grounded) term is finalized without
     waiting for a column to land on it: connect it to an already-live term and it becomes live
     through that edge."""
     require_role(role, state)
@@ -652,14 +697,14 @@ async def add_glossary_term_edge(
             await glossary_repo.add_edge(conn, term_id, to_term_id, rel_type)
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
-    await _notify(org_id, "glossary edge added")
+    await _notify(org_id, "ontology edge added")
     return {"ok": True}
 
 
 async def remove_glossary_term_edge(
     state: Any, role: str, request: Any, term_id: int, to_term_id: int, rel_type: str
 ) -> dict:  # REQ-1835
-    """Remove a relationship edge between two glossary terms."""
+    """Remove a relationship edge between two ontology terms."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import (
         _notify,
@@ -678,7 +723,106 @@ async def remove_glossary_term_edge(
         removed = await glossary_repo.remove_edge(conn, term_id, to_term_id, rel_type)
     if not removed:
         raise ValueError("edge not found")
-    await _notify(org_id, "glossary edge removed")
+    await _notify(org_id, "ontology edge removed")
+    return {"ok": True}
+
+
+async def ground_glossary_term_to_table(
+    state: Any, role: str, request: Any, term_id: int, table_id: int
+) -> dict:  # REQ-2130
+    """Make an ontology term the class term of a registered table or view: the table's rows are
+    instances of what the term names. The table must have a primary key, and a table has one class
+    term -- one already grounded by another term is refused, naming that term."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, ground_term_table
+    from provisa.api.errors import ApiError
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        try:
+            await ground_term_table(conn, term_id, table_id, request)
+        except ApiError as exc:
+            if exc.status_code == 403:
+                raise
+            raise ValueError(exc.detail) from exc
+    await _notify(org_id, "ontology table grounded")
+    return {"ok": True, "term_id": term_id, "table_id": table_id}
+
+
+async def unground_glossary_term_from_table(
+    state: Any, role: str, request: Any, term_id: int, table_id: int
+) -> dict:  # REQ-2130
+    """Withdraw an ontology term as a table's class term."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, unground_term_table
+    from provisa.api.errors import ApiError
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        try:
+            await unground_term_table(conn, term_id, table_id, request)
+        except ApiError as exc:
+            if exc.status_code == 403:
+                raise
+            raise ValueError(exc.detail) from exc
+    await _notify(org_id, "ontology table ungrounded")
+    return {"ok": True}
+
+
+async def tag_glossary_term(
+    state: Any, role: str, request: Any, term_id: int, tag_id: str, reason: str | None = None
+) -> dict:  # REQ-2145
+    """Put a tag (pii) on an ontology term that is a Property: every column the term holds, now
+    and later, carries it. Says how many columns it covers."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, tag_term
+    from provisa.api.admin.schema_mutation import _refresh_config_tags
+    from provisa.api.errors import ApiError
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        try:
+            covers = await tag_term(conn, request, term_id, tag_id, reason)
+        except ApiError as exc:
+            if exc.status_code == 403:
+                raise
+            raise ValueError(exc.detail) from exc
+    await _refresh_config_tags()
+    await _notify(org_id, "ontology term tagged")
+    return {"ok": True, "term_id": term_id, "tag_id": tag_id, "covers": covers}
+
+
+async def untag_glossary_term(
+    state: Any, role: str, request: Any, term_id: int, tag_id: str
+) -> dict:  # REQ-2145
+    """Take a tag off an ontology term: its columns no longer carry it through the term."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, untag_term
+    from provisa.api.admin.schema_mutation import _refresh_config_tags
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        removed = await untag_term(conn, request, term_id, tag_id)
+    if not removed:
+        raise ValueError(f"tag {tag_id!r} is not on term {term_id}")
+    await _refresh_config_tags()
+    await _notify(org_id, "ontology term untagged")
     return {"ok": True}
 
 
@@ -1310,7 +1454,7 @@ async def search_catalog(state: Any, role: str, nl_text: str, k: int = 5) -> lis
 
 
 async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) -> list[dict]:
-    """Business-glossary term lookup (REQ-1387): grounded vocabulary for agent surfaces.
+    """Business-ontology term lookup (REQ-1387): grounded vocabulary for agent surfaces.
 
     Matches term names and definitions; each hit carries its physical refs (which
     tables/columns mean this concept), typed relationships to other terms, and the

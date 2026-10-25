@@ -49,6 +49,9 @@ class _Deployment:
 
     multitenancy = True
     security_high = False
+    # Each organisation declares no derived role: an unsecured call's role resolves to itself
+    # (derived_roles.unsecured_principal, REQ-1952).
+    settings_overrides: dict = {"derived_roles": []}
 
     def __init__(self, protos: dict[str, str], roles: dict[str, dict[str, str]] | None = None):
         self.protos = protos  # organisation -> the proto its wire is encoded with
@@ -318,19 +321,24 @@ def test_a_role_with_no_service_and_a_call_naming_no_role_are_described_nothing(
         assert refused.value.code() == status
 
 
-def test_a_change_to_a_role_is_described_by_the_next_call(deployment):
+def test_a_change_to_a_role_is_described_by_the_next_call(deployment, monkeypatch):
     """A meta-role is a role built from the roles its caller holds; when its members change its
     surface is rebuilt, its proto with it, and the next reflection call describes that."""
+    from provisa.security import meta_role
+
     state, channel = deployment
+    # The caller names a and b; it acts as their meta-role (REQ-1952), whose surface this
+    # deployment stands in for below.
+    monkeypatch.setattr(meta_role, "ensure_meta_role", lambda _s, m: meta_role.meta_role_id(m))
     state.roles["acme"]["meta:a+b"] = _proto("Orders", "id")
-    assert [m.name for m in _described(channel, "acme", "meta:a+b").message_type] == [
+    assert [m.name for m in _described(channel, "acme", "a,b").message_type] == [
         "Orders",
         "OrdersRequest",
     ]
     state.roles["acme"]["meta:a+b"] = _proto("Orders", "id").replace(
         "message Orders { int32 id = 1; }", "message Orders { int32 id = 1; string note = 2; }"
     )
-    orders = _described(channel, "acme", "meta:a+b").message_type[0]
+    orders = _described(channel, "acme", "a,b").message_type[0]
     assert [f.name for f in orders.field] == ["id", "note"]
     # Another role of the same organisation is described as before.
     assert [f.name for f in _described(channel, "acme").message_type[0].field] == ["id"]
@@ -432,7 +440,9 @@ def test_a_meta_role_is_described_what_its_members_are_served_together(built, mo
     for name in ("meta_roles", "meta_resolved_at", "masking_rules"):
         monkeypatch.setattr(state._active_runtime(), name, {}, raising=False)
     meta = ensure_meta_role(state, ["sales_reader", "finance_reader"])
-    methods, messages = _service(_reflected(channel, (("x-provisa-role", meta),)))
+    # The caller names the roles it holds; the server acts as their meta-role (REQ-1952).
+    as_set = (("x-provisa-role", "sales_reader,finance_reader"),)
+    methods, messages = _service(_reflected(channel, as_set))
     assert {"QueryOrders", "QueryLedger"} <= methods
     assert _table_fields(state.schemas[meta]) == ["ledger", "orders"]
     # Each member alone is still described its own.
@@ -509,7 +519,7 @@ def test_a_model_edit_that_rebuilds_a_meta_role_is_described_by_the_next_call(bu
         monkeypatch.setattr(state._active_runtime(), name, {}, raising=False)
     roles = [dict(state.roles[r]) for r in ("sales_reader", "finance_reader")]
     meta = ensure_meta_role(state, ["sales_reader", "finance_reader"])
-    as_meta = (("x-provisa-role", meta),)
+    as_meta = (("x-provisa-role", "sales_reader,finance_reader"),)  # acts as ``meta``
     before, _messages = _service(_reflected(channel, as_meta))
     assert {"QueryOrders", "QueryLedger"} <= before and "QueryPurchases" not in before
 

@@ -8,18 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/translator.py."""
+"""Unit tests for provisa/gql/translator.py."""
 
 import pytest
 
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.label_map import (
+from provisa.gql.label_map import (
     CypherLabelMap,
     JunctionMapping,
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.cypher.translator import cypher_to_sql, cypher_calls_to_sql_list
+from provisa.gql.translator import cypher_to_sql, cypher_calls_to_sql_list
 
 
 def _make_label_map_multi_path() -> CypherLabelMap:
@@ -197,7 +197,7 @@ def test_graph_vars_populated_for_node_return():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) RETURN n")
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
-    from provisa.cypher.translator_types import GraphVarKind
+    from provisa.gql.translator_types import GraphVarKind
 
     assert "n" in graph_vars
     assert graph_vars["n"] == GraphVarKind.NODE
@@ -380,8 +380,10 @@ def test_ends_with_predicate():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WHERE n.name ENDS WITH 'e' RETURN n.name")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
-    assert "like" in sql.lower() or "LIKE" in sql
+    sql = sql_ast.sql(dialect="postgres")
+    # The value's own characters, no LIKE wildcards (a % or _ in it is itself).
+    assert "LIKE" not in sql.upper()
+    assert "(RIGHT(n.\"name\", LENGTH('e')) = 'e')" in sql
 
 
 def test_regex_predicate():
@@ -389,7 +391,8 @@ def test_regex_predicate():
     ast = parse_cypher("MATCH (n:Person) WHERE n.name =~ 'Al.*' RETURN n.name")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "regexp_like" in sql.lower()
+    # Cypher's =~ matches the whole string.
+    assert "regexp_like(n.\"name\", '^(?:al.*)$')" in sql.lower()
 
 
 def test_cypher_calls_to_sql_list():
@@ -694,7 +697,7 @@ def test_domain_union_excludes_nodes_with_native_filter_columns():
     """Domain MATCH must exclude nodes that require a WHERE clause (native_filter_columns set)."""
     lm = _make_label_map(with_domains=True)
     # Inject a node that requires args into the Sales domain
-    from provisa.cypher.label_map import NodeMapping
+    from provisa.gql.label_map import NodeMapping
 
     lm.nodes["Schedule"] = NodeMapping(
         label="Sales:Schedule",
@@ -751,13 +754,14 @@ def test_domain_union_includes_branch_when_any_required_prop_exists():
     assert "companies" in sql.lower()
 
 
-def test_labeled_node_where_missing_prop_short_circuits():
-    """MATCH (n:Person) WHERE n.date IS NOT NULL — Person has no 'date'; WHERE FALSE, no table scan."""
+def test_a_property_the_label_has_not_is_null():
+    """MATCH (n:Person) WHERE n.date IS NOT NULL -- Person has no 'date': it is null, as a graph's
+    missing property is, and no column is read by that name."""
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WHERE n.date IS NOT NULL RETURN n.date LIMIT 25")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "where false" in sql.lower()
+    assert '"date"' not in sql and "NOT NULL IS NULL" in sql
 
 
 def test_labeled_node_where_existing_prop_not_short_circuited():
@@ -769,35 +773,18 @@ def test_labeled_node_where_existing_prop_not_short_circuited():
     assert "persons" in sql.lower()
 
 
-def test_short_circuit_drops_orphaned_bound_param():
-    """A bound $param used only in a now-discarded WHERE FALSE must not survive in param_order —
-    otherwise the caller's positional `[parameters.get(name) for name in ordered_params]` hands the
-    executor one more bound value than the query has `$N` placeholders for, and DuckDB/Postgres both
-    reject it as an argument-count mismatch (the exact crash this test guards against)."""
-    lm = _make_label_map()
-    ast = parse_cypher("MATCH (n:Person) WHERE n.missing_prop = $x RETURN n.name")
-    sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"x": 42})
-    sql = sql_ast.sql(dialect="postgres")
-    assert "where false" in sql.lower()
-    assert param_names == []
-    assert "$1" not in sql
-
-
-def test_short_circuit_renumbers_surviving_param():
-    """A bound param used ONLY inside the discarded WHERE must be pruned, and any surviving param
-    referenced elsewhere (here, in an UNWIND source) must be renumbered to stay contiguous from $1 —
-    dropping the dead entry without renumbering would silently rebind the surviving param's value to
-    the wrong ordinal."""
+def test_a_missing_property_compared_to_a_param_keeps_the_param_bound():
+    """The condition on a missing property stays the statement's (it is null, not dropped), and
+    every parameter keeps its own placeholder."""
     lm = _make_label_map()
     ast = parse_cypher(
         "MATCH (n:Person) WHERE n.missing_prop = $x UNWIND $keep AS k RETURN n.name, k"
     )
     sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"x": 42, "keep": [1, 2]})
     sql = sql_ast.sql(dialect="postgres")
-    assert "where false" in sql.lower()
-    assert param_names == ["keep"]
-    assert "$1" in sql
-    assert "$2" not in sql
+    assert sorted(param_names) == ["keep", "x"]
+    assert f"NULL = ${param_names.index('x') + 1}" in sql
+    assert '"missing_prop"' not in sql
 
 
 def test_type_and_domain_label_uses_type_table():
@@ -867,7 +854,7 @@ def test_allshortestpaths_same_result_as_shortestpath():
 
 def test_shortestpath_no_path_raises():
     lm = _make_label_map()
-    from provisa.cypher.translator_types import CypherTranslateError
+    from provisa.gql.translator_types import CypherTranslateError
 
     ast = parse_cypher("MATCH p = shortestPath((a:Company)-[*..5]->(b:Company)) RETURN a.name")
     with pytest.raises(CypherTranslateError, match="No schema path"):
@@ -927,7 +914,7 @@ def test_fully_unlabeled_match_produces_all_rels_union():
     ast = parse_cypher("MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 50")
     sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    from provisa.cypher.translator_types import GraphVarKind
+    from provisa.gql.translator_types import GraphVarKind
 
     assert graph_vars.get("n") == GraphVarKind.PASSTHROUGH
     assert graph_vars.get("r") == GraphVarKind.PASSTHROUGH
@@ -940,10 +927,10 @@ def test_fully_unlabeled_match_produces_all_rels_union():
 
 
 def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
-    """MATCH ()-[r]-() WHERE r.since IS NOT NULL — r's JSON nests attrs under "properties" (per
-    the all-rels union's edge_json in translator_union.py), so property access on an unlabeled
-    rel var must extract "$.properties.since", not the wrong top-level "$.since" (which would
-    make every row's r.since resolve to NULL, filtering out all rows)."""
+    """MATCH ()-[r]-() WHERE r.since IS NOT NULL — r.since is the edge's own attribute: read from
+    the column of its properties the all-rels union carries beside its JSON (translator_union.py),
+    never from the edge's JSON, whose id is built from both endpoints' keys (a condition on it
+    would match the two tables by their keys, which the join guard refuses, REQ-603)."""
     lm = _make_label_map()
     lm.relationships["LITTERMATE"] = RelationshipMapping(
         rel_type="LITTERMATE",
@@ -968,8 +955,8 @@ def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
     ast = parse_cypher("MATCH ()-[r]-() WHERE r.since IS NOT NULL RETURN r.since LIMIT 25")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "$.properties.since" in sql
-    assert "$.since" not in sql.replace("$.properties.since", "")
+    assert "JSON_EXTRACT_SCALAR(r__properties, '$.since')" in sql
+    assert "JSON_EXTRACT_SCALAR(r," not in sql
 
 
 def test_domain_labeled_target_filters_rels_union():
@@ -1019,7 +1006,7 @@ def test_domain_labeled_target_filters_rels_union():
         table_name="widgets",
         properties={},
     )
-    from provisa.cypher.label_map import RelationshipMapping as RM
+    from provisa.gql.label_map import RelationshipMapping as RM
 
     knows_rel = RM(
         rel_type="KNOWS",
@@ -1061,7 +1048,7 @@ def test_anonymous_nodes_relationship_return_r():
     ast = parse_cypher("MATCH ()-[r:WORKS_AT]->() RETURN r LIMIT 25")
     sql_ast, cols, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    from provisa.cypher.translator_types import GraphVarKind
+    from provisa.gql.translator_types import GraphVarKind
 
     assert graph_vars.get("r") == GraphVarKind.EDGE
     assert "persons" in sql.lower()
@@ -1289,11 +1276,13 @@ def test_an_unregistered_rel_type_is_refused():
     """REQ-603: a relationship type the model does not register is refused by the translation
     every Cypher surface performs -- never lowered to a join that is silently never true -- and a
     registered one translates."""
-    from provisa.cypher.translator_types import UnregisteredRelationshipType
+    from provisa.gql.translator_types import UnregisteredRelationshipType
 
     lm = _make_label_map_with_alias()
     ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
-    with pytest.raises(UnregisteredRelationshipType, match=r"type\(s\): UNKNOWN_REL") as refused:
+    with pytest.raises(
+        UnregisteredRelationshipType, match=r"There is no relationship type :UNKNOWN_REL\."
+    ) as refused:
         cypher_to_sql(ast, lm, {})
     assert refused.value.types == ["UNKNOWN_REL"]
     known = sorted(lm.aliases)[0]
@@ -1459,7 +1448,7 @@ def test_from_schema_table_label_from_field_name():
     table (via physical_table_map) still get distinct, correct labels.
     """
     from provisa.compiler.sql_gen import CompilationContext, TableMeta
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     ctx = CompilationContext()
     ctx.aggregate_columns[1] = [("ticket_id", "integer"), ("subject", "varchar")]
@@ -1506,7 +1495,7 @@ def test_from_schema_table_label_physical_table_map():
     not the shared physical table_name.
     """
     from provisa.compiler.sql_gen import CompilationContext, TableMeta
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     ctx = CompilationContext()
     ctx.aggregate_columns[1] = [("ticket_id", "integer"), ("status", "varchar")]
@@ -1606,7 +1595,7 @@ def _make_cross_domain_label_map() -> CypherLabelMap:
 
 def test_traversal_only_node_as_start_raises():
     """Starting a MATCH on a traversal_only (cross-domain) node must raise CypherTranslateError."""
-    from provisa.cypher.translator_types import CypherTranslateError
+    from provisa.gql.translator_types import CypherTranslateError
 
     lm = _make_cross_domain_label_map()
     ast = parse_cypher("MATCH (s:Logistics:Shipments) RETURN s.status")
@@ -2396,11 +2385,10 @@ def _make_label_map_bidir_multi_hop() -> CypherLabelMap:
 def test_union_all_branch_includes_all_subsequent_optional_match_joins():
     """UNION ALL extra branches must include joins for ALL variables in the SELECT.
 
-    When an undirected OPTIONAL MATCH has multiple relationship candidates (bidir),
-    the translator emits UNION ALL. Each UNION branch must carry every JOIN that
-    appears in the primary query — including ones added by OPTIONAL MATCHes that
-    come AFTER the branching point — so that column references in the shared SELECT
-    are resolvable in every branch.
+    When an undirected hop has multiple relationship candidates (bidir), the translator
+    emits UNION ALL. Each UNION branch must carry every JOIN that appears in the primary
+    query — including ones added by OPTIONAL MATCHes that come AFTER the branching
+    point — so that column references in the shared SELECT are resolvable in every branch.
 
     Regression: without the fix, the extra branch for mPets only contained the
     mPets JOIN, leaving mUsers unresolved → Trino: 'Column musers.id cannot be
@@ -2408,8 +2396,7 @@ def test_union_all_branch_includes_all_subsequent_optional_match_joins():
     """
     lm = _make_label_map_bidir_multi_hop()
     ast = parse_cypher(
-        "MATCH (n:PetStore:Inquiries) "
-        "OPTIONAL MATCH (n)-[rPets]-(mPets:PetStore:Pets) "
+        "MATCH (n:PetStore:Inquiries)-[rPets]-(mPets:PetStore:Pets) "
         "OPTIONAL MATCH (n)-[rUsers]-(mUsers:PetStore:Users) "
         "RETURN n, rPets, mPets, rUsers, mUsers"
     )
@@ -2430,6 +2417,19 @@ def test_union_all_branch_includes_all_subsequent_optional_match_joins():
     assert "mUsers" in from_clause, (
         f"mUsers JOIN missing from UNION ALL branch FROM clause: {from_clause[:300]}"
     )
+
+
+def test_an_optional_hop_reaching_several_relationships_is_refused():
+    """Each relationship an OPTIONAL hop reaches would be its own UNION branch of LEFT JOINs:
+    an inquiry with no pet would come back once per relationship. Refused, not miscounted."""
+    lm = _make_label_map_bidir_multi_hop()
+    ast = parse_cypher(
+        "MATCH (n:PetStore:Inquiries) OPTIONAL MATCH (n)-[r]-(m:PetStore:Pets) RETURN n, m"
+    )
+    from provisa.gql.translator_types import CypherTranslateError
+
+    with pytest.raises(CypherTranslateError, match="name the relationship type"):
+        cypher_to_sql(ast, lm, {})
 
 
 def _make_label_map_breed_chain() -> CypherLabelMap:
@@ -2538,3 +2538,41 @@ def test_undirected_anonymous_path_includes_all_nodes_and_edges():
 
     node_labels = set(re.findall(r"'label',\s*'([^']+)'", sql))
     assert node_labels == {"Pets", "AnimalBreeds", "Inquiries"}, node_labels
+
+
+def test_an_untyped_relationship_from_a_labeled_node_reads_only_that_node_types_relationships():
+    """MATCH (n:Company)-[r]->(m): only the relationships whose source is a Company. The label was
+    dropped, and the union read every relationship of the model -- any source's edge answered
+    `RETURN r LIMIT 1`, and the whole model's union outran the request deadline (ui-core
+    cypher-api REQ-750 edge spec, 504)."""
+    lm = _make_label_map()
+    lm.relationships["EMPLOYS"] = RelationshipMapping(
+        rel_type="EMPLOYS",
+        source_label="Company",
+        target_label="Person",
+        join_source_column="id",
+        join_target_column="company_id",
+        field_name="employs",
+    )
+    sql_ast, _, _ = cypher_to_sql(
+        parse_cypher("MATCH (n:Company)-[r]->(m) RETURN r LIMIT 1"), lm, {}
+    )
+    sql = sql_ast.sql(dialect="trino")
+    assert "'EMPLOYS'" in sql
+    assert "'WORKS_AT'" not in sql and "'KNOWS'" not in sql
+
+
+def test_map_group_key_groups_by_its_values_and_orders_by_alias_key():
+    # REQ-2135: a GraphQL group-by lowers to RETURN {age: n.age} AS groupKey, {...count(*)...}.
+    # The map groups by its values (the same groups), and ORDER BY groupKey.age orders by the
+    # value itself: grouped by the map alone, an engine refuses n.age in the ORDER BY, and the
+    # map's column holds the value JSON-encoded.
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN {age: n.age} AS groupKey, {count: count(*)} AS aggregate "
+        "ORDER BY groupKey.age DESC"
+    )
+    sql = cypher_to_sql(ast, lm, {})[0].sql(dialect="postgres")
+    group_by = sql.split("GROUP BY", 1)[1].split("ORDER BY", 1)[0].strip()
+    assert group_by == 'n."age"'
+    assert sql.split("ORDER BY", 1)[1].strip().startswith('n."age" DESC')

@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 
-from provisa.cypher.assembler import _apply_rel_id_map, _walk_for_edges
+from provisa.gql.assembler import _apply_rel_id_map, _walk_for_edges
 
 
 class TestCompositeIdFormat:

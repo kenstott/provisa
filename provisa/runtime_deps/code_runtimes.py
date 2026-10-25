@@ -32,6 +32,7 @@ import platform
 import shutil
 import stat
 import tarfile
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -287,6 +288,37 @@ RUNTIMES: dict[str, RuntimePin] = {
             ),
         },
     ),
+    # REQ-2138: the Java a sparql source's reasoner (provisa/sparql/reasoner) runs on, as a
+    # separate program: a JDK, since the reasoner is run from its source by java's source
+    # launcher, which needs the compiler. Eclipse Temurin; each sum is Adoptium's published one.
+    "temurin": RuntimePin(
+        "temurin",
+        "21.0.12.1+1",
+        "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/"
+        "{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz",
+                "3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998",
+                "jdk-21.0.12.1+1/Contents/Home/bin/java",
+            ),
+            LINUX_X64: Asset(
+                "OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+                "ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94",
+                "jdk-21.0.12.1+1/bin/java",
+            ),
+            LINUX_ARM64: Asset(
+                "OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.12.1_1.tar.gz",
+                "23e37e026f12f3e706f18938ff611db3032d075b09d0879a25d06718c773e223",
+                "jdk-21.0.12.1+1/bin/java",
+            ),
+            WINDOWS_X64: Asset(
+                "OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
+                "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
+                "jdk-21.0.12.1+1/bin/java.exe",
+            ),
+        },
+    ),
 }
 
 #: Fetch an archive's bytes. Injected so tests never touch the network.
@@ -376,8 +408,10 @@ class CodeRuntimeResolver:  # REQ-1984, REQ-1993
                 f"{asset.filename} from {url} has SHA-256 {found}, not the pinned {asset.sha256}"
             )
         cached.parent.mkdir(parents=True, exist_ok=True)
-        staged = cached.with_name(f".{cached.name}.{os.getpid()}")
-        staged.write_bytes(data)
+        # Staged under a name of its own: two threads of one process fetch at once.
+        fd, staged = tempfile.mkstemp(dir=cached.parent, prefix=f".{cached.name}.")
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
         os.replace(staged, cached)
         return asset, data
 
@@ -396,9 +430,15 @@ class CodeRuntimeResolver:  # REQ-1984, REQ-1993
                 f"{asset.filename} from {url} has SHA-256 {found}, not the pinned {asset.sha256}"
             )
         home = self.home(name)
-        staging = home.parent / f".{home.name}.{os.getpid()}.staging"
-        shutil.rmtree(staging, ignore_errors=True)
-        staging.mkdir(parents=True)
+        home.parent.mkdir(parents=True, exist_ok=True)
+        # A staging directory of this resolution's own: two threads of one process (two code
+        # sources prepared at once) resolve a runtime together, and under one shared name the
+        # second cleared what the first had extracted while the first moved the second's
+        # half-written directory into place.
+        staging = Path(
+            tempfile.mkdtemp(dir=home.parent, prefix=f".{home.name}.", suffix=".staging")
+        )
+        staging.chmod(0o755)  # mkdtemp's is the owner's alone; the runtime is read by its workers
         try:
             try:
                 _extract(asset.filename, data, staging)
@@ -409,10 +449,15 @@ class CodeRuntimeResolver:  # REQ-1984, REQ-1993
                 raise RuntimeUnavailable(f"{asset.filename} holds no {asset.executable}")
             # A zip keeps no permission bits: the executable is made executable here.
             staged.chmod(staged.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-            if executable.exists():  # another process resolved it meanwhile
+            if executable.exists():  # another resolution finished meanwhile
                 return executable
-            home.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(staging, home)
+            try:
+                os.replace(staging, home)
+            except OSError:
+                # Another resolution moved its whole directory into place between the check
+                # above and this move (home is then not empty): that one is the cache's.
+                if not executable.exists():
+                    raise
         finally:
             shutil.rmtree(staging, ignore_errors=True)
         return executable

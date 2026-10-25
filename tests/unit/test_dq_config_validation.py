@@ -129,7 +129,8 @@ def test_an_operators_own_promotion_is_kept_and_not_duplicated():
 def test_great_expectations_is_registered_the_same_way():
     """Two source types, one shape: the licence tier differs, the registration does not."""
     results = _results_table(
-        contract='{"meta": {"dataset": "provisa/sales/orders"}, "expectations": []}'
+        contract='{"meta": {"dataset": "provisa/sales/orders"}, "expectations": '
+        '[{"type": "expect_column_values_to_not_be_null", "kwargs": {"column": "customer"}}]}'
     )
     config = _config(
         results, _target_table(), source=_checker_source(SourceType.great_expectations)
@@ -229,4 +230,71 @@ def test_a_checker_table_without_a_scan_interval_is_refused(ttl):
     results = _results_table()
     results.cache_ttl = ttl
     with pytest.raises(ValueError, match="scans every cache_ttl seconds"):
+        _validate_dq_contracts(_config(results, _target_table()))
+
+
+@pytest.mark.parametrize("checker", ["soda", "great_expectations"])
+def test_a_checker_whose_password_the_deployment_has_not_set_loads_as_written(checker, monkeypatch):
+    """A checker source made in the Sources form names its password by reference; the scan
+    resolves it, so a deployment without the variable still loads its org's model."""
+    from provisa.core.config_loader import parse_config_dict
+
+    monkeypatch.delenv("PROVISA_DQ_PASSWORD", raising=False)
+    mapping = {
+        "host": "localhost",
+        "port": 5439,
+        "database": "provisa",
+        "user": "org_admin",
+        "password": "${env:PROVISA_DQ_PASSWORD}",
+    }
+    config = parse_config_dict(
+        {
+            "sources": [{"id": "dq", "type": checker, "mapping": mapping}],
+            "domains": [],
+            "tables": [],
+            "roles": [],
+        }
+    )
+    assert config.sources[0].mapping == mapping
+    assert config.written.sources[0].mapping == mapping
+
+
+@pytest.mark.parametrize(
+    ("secured", "password"), [(True, "${env:PROVISA_DQ_PASSWORD}"), (False, "")]
+)
+def test_a_checker_made_in_the_sources_form_names_a_password_only_under_an_auth_provider(
+    secured, password, monkeypatch
+):
+    """With no auth provider pgwire is in trust mode and ignores the password, as the shipped
+    dq-checker and dq-soda sources write it; under one, the scan resolves the reference."""
+    from provisa.api.admin import schema_mutation
+    from provisa.api.app import state
+
+    monkeypatch.setattr(state, "auth_middleware_active", secured)
+    monkeypatch.setattr(schema_mutation, "_dq_pgwire_port", lambda: "5439")
+    assert schema_mutation.checker_mapping()["password"] == password
+
+
+def test_the_contracts_rules_are_parsed_once_onto_the_table():
+    """REQ-1443 clause 10: the rules a product's panel lists are the contract's own checks, parsed
+    when the table is registered and stored with it, so the meta domain serves them as rows."""
+    results = _results_table()
+    _validate_dq_contracts(_config(results, _target_table()))
+    assert results.dq_rules == [
+        {"column_name": "customer", "check_type": "missing", "definition": "", "extra": ""}
+    ]
+
+
+def test_a_contract_whose_checks_do_not_parse_is_refused_by_name():
+    results = _results_table(
+        contract="dataset: provisa/sales/orders\nchecks:\n  - {missing: null, duplicate: null}\n"
+    )
+    with pytest.raises(ValueError, match="'orders_scans': "):
+        _validate_dq_contracts(_config(results, _target_table()))
+    assert results.dq_rules is None
+
+
+def test_a_contract_with_no_checks_is_refused_by_name():
+    results = _results_table(contract="dataset: provisa/sales/orders\n")
+    with pytest.raises(ValueError, match="'orders_scans': .*no checks"):
         _validate_dq_contracts(_config(results, _target_table()))

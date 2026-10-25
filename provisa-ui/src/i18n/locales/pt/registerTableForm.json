@@ -23,7 +23,6 @@
     "descriptionLabel": "Descrição",
     "descriptionPlaceholder": "Aparece na documentação SDL",
     "dataProductLabel": "Produto de dados",
-    "dataProductHint": "(publicar no catálogo / exportar para Atlas, Atlan etc.)",
     "discoverLabel": "Descobrir colunas",
     "discoverHint": "(inferir colunas da fonte ativa no registro — para fontes sem esquema/NoSQL; sem necessidade de seleção manual de colunas)",
     "watermarkLabel": "Coluna de marca d'água",
@@ -135,6 +134,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vetores de {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensões, pontuado por {{distance}}",
-    "qdrantUnnamedVector": "(sem nome)"
+    "qdrantUnnamedVector": "(sem nome)",
+    "continue": "Continuar"
   }
 }

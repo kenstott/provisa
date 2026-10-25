@@ -83,11 +83,12 @@ ORDER = {
     "kind": "object",
     "name": "Order",
     "fields": [
-        {"name": "id", "optional": False, "type": N},
-        {"name": "placed", "optional": False, "type": DATE},
+        {"name": "id", "description": "The order's number.", "optional": False, "type": N},
+        {"name": "placed", "description": "", "optional": False, "type": DATE},
         {
             "name": "tier",
             "optional": False,
+            "description": "",
             "type": {
                 "kind": "union",
                 "name": "Tier",
@@ -97,11 +98,15 @@ ORDER = {
                 ],
             },
         },
-        {"name": "lines", "optional": False, "type": arr(ref("Line"))},
-        {"name": "note", "optional": True, "type": opt(S)},
+        {"name": "lines", "description": "", "optional": False, "type": arr(ref("Line"))},
+        {"name": "note", "description": "", "optional": True, "type": opt(S)},
     ],
 }
-LINE = {"kind": "object", "name": "Line", "fields": [{"name": "sku", "optional": False, "type": S}]}
+LINE = {
+    "kind": "object",
+    "name": "Line",
+    "fields": [{"name": "sku", "description": "", "optional": False, "type": S}],
+}
 TYPES = {"Order": ORDER, "Line": LINE}
 
 
@@ -139,7 +144,7 @@ def test_a_table_is_its_functions_parameters_and_its_row_types_fields():
         ("since", Scalar("timestamp"), False, True),
     ]
     assert manifest.types["Order"].fields == (
-        Field("id", Scalar("double"), False),
+        Field("id", Scalar("double"), False, "The order's number."),
         Field("placed", Scalar("timestamp"), False),
         Field("tier", EnumOf("Tier", ("gold", "silver")), False),
         Field("lines", ListOf(Named("Line")), False),
@@ -206,7 +211,14 @@ def test_a_command_returns_rows_one_value_or_nothing():
                 {
                     "kind": "object",
                     "name": None,
-                    "fields": [{"name": "ok", "optional": False, "type": {"kind": "boolean"}}],
+                    "fields": [
+                        {
+                            "name": "ok",
+                            "description": "",
+                            "optional": False,
+                            "type": {"kind": "boolean"},
+                        }
+                    ],
                 },
             ),
         )
@@ -272,6 +284,7 @@ def test_a_field_whose_type_cannot_be_mapped_is_refused_by_its_place():
             {
                 "name": "pair",
                 "optional": False,
+                "description": "",
                 "type": {"kind": "unsupported", "text": "[number, string]"},
             }
         ],
@@ -285,8 +298,8 @@ def test_a_self_referencing_type_is_named_once():
         "kind": "object",
         "name": "Node",
         "fields": [
-            {"name": "id", "optional": False, "type": S},
-            {"name": "children", "optional": False, "type": arr(ref("Node"))},
+            {"name": "id", "description": "", "optional": False, "type": S},
+            {"name": "children", "description": "", "optional": False, "type": arr(ref("Node"))},
         ],
     }
     manifest = read_manifest(raw(fn("tree", ["table"], [], arr(ref("Node"))), types={"Node": node}))
@@ -327,7 +340,10 @@ def test_each_runtime_runs_the_reader_and_deno_reads_only_what_it_is_given(tmp_p
         str(ts),
         str(entry),
     ]
-    assert reader.reader_command("bun", exe, ts, entry)[1:] == [
+    # Bun installs nothing while it runs code: it would install a package an import misses.
+    assert reader.reader_command("bun", exe, ts, entry) == [
+        str(exe),
+        "--no-install",
         str(reader.READER),
         str(ts),
         str(entry),
@@ -336,6 +352,22 @@ def test_each_runtime_runs_the_reader_and_deno_reads_only_what_it_is_given(tmp_p
     assert deno[:2] == [str(exe), "run"]
     assert deno[2] == f"--allow-read={reader.READER.parent},{tmp_path / 'ts'},{tmp_path / 'b'}"
     assert deno[3:] == ["--allow-env", str(reader.READER), str(ts), str(entry)]
+
+
+@pytest.mark.parametrize("runtime, flags", [("node", []), ("bun", ["--no-install"])])
+def test_the_host_runs_the_bundle_installing_nothing(tmp_path, runtime, flags):
+    # The host looks for the code's optional @opentelemetry/api (host-core.mjs); Bun, unless told
+    # not to, installs a package it does not find, which a sandboxed host has nowhere to write.
+    from provisa.node.worker import HOST, host_command
+
+    (tmp_path / "package.json").write_text(json.dumps({"type": "module", "main": "index.js"}))
+    (tmp_path / "index.js").write_text("export const f = () => 1;\n")
+    exe = tmp_path / "rt" / runtime
+    argv = host_command(
+        runtime=runtime, executable=exe, bundle=tmp_path, egress=[], host_lib=tmp_path / "lib"
+    ).argv("fd:3")
+    run = [str(exe), *flags, str(HOST), "fd:3", str(tmp_path / "index.js")]
+    assert any(argv[i : i + len(run)] == run for i in range(len(argv)))
 
 
 def test_a_bundle_is_read_through_the_reader_into_its_manifest(tmp_path):
@@ -379,3 +411,45 @@ def test_the_reader_ships_with_the_package():
     pyproject = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())
     assert "reader.mjs" in pyproject["tool"]["setuptools"]["package-data"]["provisa.node"]
     assert reader.READER.is_file()
+
+
+ADDRESS = {
+    "kind": "object",
+    "name": "Address",
+    "fields": [
+        {"name": n, "description": "", "optional": False, "type": S}
+        for n in ("street", "city", "country")
+    ],
+}
+
+
+def test_a_columns_function_takes_input_columns_as_lists_and_returns_one_object_a_row():
+    """REQ-2131: each parameter is one input column, a list of the batch's values; the result is
+    a list holding one object per input row, whose fields are the output columns."""
+    (transform,) = read_manifest(
+        raw(
+            fn("clean_address", ["columns"], [("raw_address", False, arr(S))], arr(ref("Address"))),
+            types={"Address": ADDRESS},
+        )
+    ).exports
+    assert transform.kind == "columns"
+    assert [(p.name, p.shape) for p in transform.parameters] == [
+        ("raw_address", ListOf(Scalar("text")))
+    ]
+    assert transform.returns == Named("Address") and transform.many
+
+
+def test_a_columns_function_that_does_not_batch_is_refused_by_name():
+    problems = refused(
+        fn("one_at_a_time", ["columns"], [("raw_address", False, S)], arr(ref("Address"))),
+        fn("single", ["columns"], [("raw_address", False, arr(S))], ref("Address")),
+        fn("loose", ["columns"], [("raw_address", False, arr(S))], arr({"kind": "any"})),
+        fn("nothing_in", ["columns"], [], arr(ref("Address"))),
+        types={"Address": ADDRESS},
+    )
+    assert problems == [
+        "one_at_a_time: @columns parameter raw_address is one input column: a list of values",
+        "single: @columns returns a list holding one result per input row",
+        "loose: @columns declares its output columns: its result is a typed object",
+        "nothing_in: @columns takes at least one input column",
+    ]

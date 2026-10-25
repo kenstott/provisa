@@ -12,7 +12,7 @@
     "model": "+ Modell",
     "modelTitle": "Entität oder Fakt modellieren (Sternschema / Data Vault)",
     "reportXlsx": "Arbeitsmappe",
-    "reportXlsxTitle": "Das Modell zur Prüfung als Tabellenkalkulation herunterladen – Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten und Glossarbegriffe, je ein Blatt",
+    "reportXlsxTitle": "Das Modell zur Prüfung als Tabellenkalkulation herunterladen – Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten und Ontologiebegriffe, je ein Blatt",
     "viewErd": "ERD anzeigen",
     "colSource": "Quelle",
     "colDomain": "Domäne",
@@ -64,12 +64,12 @@
     "dataProduct": "Produkt",
     "dataProductTitle": "Datenprodukt — enthalten in provisa metadata export",
     "purposeTitle": "Was die Registrierung einer Tabelle bewirkt",
-    "purposeBody": "Die Registrierung nimmt eine Tabelle in das kontrollierte Modell auf: Sie legt die Spalten fest, die Namen, unter denen sie sichtbar sind, und welche Rollen sie sehen dürfen. Nur registrierte Tabellen sind abfragbar, und alles Nachgelagerte — Beziehungen, Metriken, Views, Glossarbegriffe — benennt registrierte Spalten.",
-    "purposeAdd": "„+ Ansicht“ registriert eine Relation, die durch SQL oder durch Metriken statt durch eine physische Tabelle definiert ist — und mit der Registrierung hört sie auf, eine gespeicherte Abfrage zu sein. Die Definition legt auch fest, wie sie ausgeliefert wird: live oder materialisiert nach Takt oder Kalenderfenster, mit einer Aktualisierung, die ersetzt, upsertet oder anfügt. Bei einem Anfügemodus führt die Ansicht ihre eigene Historie, sodass Konsumenten sie zu einem vergangenen Zeitpunkt lesen können; ihre Eingaben werden als Lineage geführt, sodass eine Aktualisierung auf ihre Abhängigkeiten wartet.",
+    "purposeBody": "Die Registrierung nimmt eine Tabelle in das kontrollierte Modell auf: Sie legt die Spalten fest, die Namen, unter denen sie sichtbar sind, und welche Rollen sie sehen dürfen. Nur registrierte Tabellen sind abfragbar, und alles Nachgelagerte — Beziehungen, Metriken, Views, Ontologiebegriffe — benennt registrierte Spalten.",
+    "purposeAdd": "„+ Ansicht“ registriert eine Relation, die durch SQL oder durch Metriken statt durch eine physische Tabelle definiert ist — und mit der Registrierung hört sie auf, eine gespeicherte Abfrage zu sein. Die Definition legt auch fest, wie sie ausgeliefert wird: live oder materialisiert nach Takt oder Kalenderfenster, mit einer Aktualisierung, die ersetzt, upsertet oder anfügt. Mit eingeschaltetem Time Travel führt die Ansicht ihre eigene Historie, sodass Konsumenten sie zu einem vergangenen Zeitpunkt lesen können; ihre Eingaben werden als Lineage geführt, sodass eine Aktualisierung auf ihre Abhängigkeiten wartet.",
     "purposeAria": "Über registrierte Tabellen",
     "erdHelpTitle": "Entity-Relationship-Diagramm",
     "erdHelpBody": "Zeichnet die registrierten Tabellen und die zwischen ihnen deklarierten Beziehungen, sodass bereits vorhandene Joins sichtbar sind, bevor Sie eine Abfrage schreiben. Es liest das Modell, statt es zu bearbeiten: nach Domäne filtern und das Diagramm als PNG oder SVG exportieren.",
-    "purposeModel": "„+ Modell“ deklariert eine Entität oder einen Fakt — die beiden Bausteine, aus denen sowohl ein Sternschema als auch ein Data Vault besteht — und senkt sie auf dieselben Primitive ab: registriert werden die materialisierte Sicht, ihr Historienmodus und die Beziehungen zu den Entitäten, auf deren Schlüssel sie sich stützt.",
+    "purposeModel": "„+ Modell“ deklariert eine Entität oder einen Fakt — die beiden Bausteine, aus denen sowohl ein Sternschema als auch ein Data Vault besteht — und senkt sie auf dieselben Primitive ab: registriert werden die materialisierte Sicht, ihr Time Travel und die Beziehungen zu den Entitäten, auf deren Schlüssel sie sich stützt.",
     "empty": "Noch keine Tabellen registriert.",
     "resizeDetail": "Größe des Detailbereichs ändern",
     "detailPanel": "Tabellendetails",
@@ -80,6 +80,10 @@
     "backToDetail": "Zurück zu den Details",
     "panelRegisterTable": "Tabelle registrieren",
     "panelNewView": "Neue Ansicht",
-    "panelNewModel": "Neues Modell"
+    "panelNewModel": "Neues Modell",
+    "history": {
+      "badge": "Historie",
+      "title": "Führt Historie: zum Stand eines Datums oder wie erfasst abfragen (Time Travel)"
+    }
   }
 }

@@ -265,6 +265,10 @@
       "port": {
         "label": "Port de l'API HTTP",
         "help": "Le port sur lequel l'API HTTP écoute. Redémarrage requis ; confirmation demandée car l'interface et chaque client doivent suivre un changement."
+      },
+      "public_url": {
+        "label": "Adresse publique",
+        "help": "L'adresse sous laquelle ce déploiement est connu, par exemple https://data.example.com. L'IRI de chaque sujet en SPARQL et dans les exports RDF commence par elle ; elle doit donc rester la même tant que ces IRI sont utilisées. Si elle n'est pas définie, une requête qui renvoie l'IRI d'un sujet est refusée."
       }
     },
     "tls": {
@@ -820,6 +824,10 @@
         "label": "Délai d'inactivité d'un bac à sable de démo",
         "help": "Un bac à sable de démo que personne n'a utilisé depuis ce délai est supprimé, avec tout son contenu."
       },
+      "demo_stores_linger": {
+        "label": "Stockages d'une démo conservés après usage",
+        "help": "Durée pendant laquelle les bases de données d'une démo restent actives après la fermeture de son dernier bac à sable. Rouverte avant, elle s'ouvre aussitôt ; ensuite, elles sont arrêtées et le visiteur suivant attend qu'elles démarrent."
+      },
       "ai_base_url": {
         "label": "Point de terminaison IA du bac à sable",
         "help": "Le point de terminaison au protocole OpenAI (celui d'OpenRouter est https://openrouter.ai/api/v1) qu'utilisent les fonctions IA de chaque bac à sable de démo. Non défini : pas d'IA dans les bacs à sable."
@@ -857,6 +865,22 @@
       "leak_rate_threshold": {
         "label": "Seuil de taux de fuite des valeurs fictives",
         "help": "La part des valeurs échantillonnées d'une colonne sensible que sa valeur fictive peut laisser égales à la valeur réelle avant que la vérification du taux de fuite ne la marque comme inadéquate. 0 fait échouer une valeur fictive qui laisse une valeur inchangée."
+      }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Autoriser les commandes de code hôte",
+        "help": "Activé : les commandes python et script peuvent être enregistrées et appelées. Chacune s'exécute avec l'accès complet du serveur à sa mémoire, ses identifiants, ses fichiers et son réseau, et son code ne suit pas le modèle. Désactivé par défaut ; utilisez plutôt un résolveur de code."
+      }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Chemin de graphe le plus profond",
+        "help": "Le nombre maximal de sauts parcourus par un chemin Cypher de longueur variable ou un chemin de propriétés SPARQL quand la requête ne fixe pas sa propre limite. Un résultat coupé à cette profondeur l'indique."
+      },
+      "union_limit": {
+        "label": "Nombre maximal de prédicats couverts par un prédicat variable",
+        "help": "Un motif SPARQL dont le prédicat est une variable lit chaque prédicat mappé qui pourrait correspondre, une branche chacun. Une requête qui demande plus de branches est refusée, en nommant la limite."
       }
     }
   }

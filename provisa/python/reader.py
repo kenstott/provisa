@@ -41,7 +41,16 @@ import types
 import typing
 
 _TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)$")
+#: REQ-2100: a pushdown tag line, ``@{op}_{column} parameter``.
+_PUSHDOWN_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$")
 _NONE = type(None)
+
+
+def _pydantic_fields(cls: type) -> dict | None:  # name -> pydantic FieldInfo
+    """A Pydantic (v2) model's fields, by attribute name; None for any other class. Read from
+    the class, so pydantic itself is never imported here: it is the code's, when it has it."""
+    fields = getattr(cls, "__pydantic_fields__", None)
+    return fields if isinstance(fields, dict) else None
 
 
 class _Reader:
@@ -118,7 +127,8 @@ class _Reader:
 
     @staticmethod
     def _is_record_type(kind: type) -> bool:
-        """A dataclass, a TypedDict, a NamedTuple, or a class with annotated fields."""
+        """A dataclass, a TypedDict, a NamedTuple, a Pydantic model, or a class with annotated
+        fields."""
         if dataclasses.is_dataclass(kind) or typing.is_typeddict(kind):
             return True
         if issubclass(kind, tuple) and hasattr(kind, "_fields"):
@@ -131,17 +141,33 @@ class _Reader:
             return
         self._reading.add(name)
         hints = typing.get_type_hints(cls, include_extras=True)
+        model_fields = _pydantic_fields(cls)
         optional_keys = getattr(cls, "__optional_keys__", frozenset())
         fields = []
         for field, hint in hints.items():
             if typing.get_origin(hint) is typing.ClassVar:
                 continue
+            description = ""
+            if model_fields is not None:
+                if field not in model_fields:
+                    continue  # a private attribute: not one of the model's fields
+                info = model_fields[field]
+                # A model's row is its dump by alias (host.py), so a column is named as it is sent.
+                field = info.serialization_alias or info.alias or field
+                description = info.description or ""
             optional = field in optional_keys
             origin = typing.get_origin(hint)
             if origin in (typing.NotRequired, typing.Required):
                 optional = origin is typing.NotRequired
                 hint = typing.get_args(hint)[0]
-            fields.append({"name": field, "optional": optional, "type": self.tree(hint)})
+            fields.append(
+                {
+                    "name": field,
+                    "optional": optional,
+                    "type": self.tree(hint),
+                    "description": description,
+                }
+            )
         self.types[name] = {"name": name, "fields": fields}
         self._reading.discard(name)
 
@@ -149,23 +175,28 @@ class _Reader:
 
     def function(self, name: str, fn: typing.Callable) -> dict:
         doc = inspect.getdoc(fn) or ""
-        tags, text = [], []
+        tags, text, tag_arguments = [], [], []
         for line in doc.splitlines():
             match = _TAG.match(line.strip())
+            pushdown = _PUSHDOWN_TAG.match(line.strip())
             if match:
                 tags.append(match.group(1))
+            elif pushdown:
+                tag_arguments.append({"tag": pushdown.group(1), "text": pushdown.group(2)})
             else:
                 text.append(line)
         hints = typing.get_type_hints(fn, include_extras=True)
         parameters = []
         for p in inspect.signature(fn).parameters.values():
             rest = p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+            hint = hints.get(p.name, inspect.Parameter.empty)
             parameters.append(
                 {
                     "name": p.name,
                     "optional": p.default is not p.empty,
                     "rest": rest,
-                    "type": self.tree(hints.get(p.name, inspect.Parameter.empty)),
+                    "type": self.tree(hint),
+                    "pushdown": _annotated_strings(hint),
                 }
             )
         returns = self.tree(hints.get("return", inspect.Parameter.empty))
@@ -174,9 +205,17 @@ class _Reader:
         return {
             "name": name,
             "tags": tags,
+            "tag_arguments": tag_arguments,
             "description": "\n".join(text).strip(),
             "signatures": [{"parameters": parameters, "returns": returns}],
         }
+
+
+def _annotated_strings(hint: typing.Any) -> list[str]:
+    """REQ-2100: the strings a ``typing.Annotated`` hint carries, each a pushdown declaration."""
+    if typing.get_origin(hint) is not typing.Annotated:
+        return []
+    return [m for m in typing.get_args(hint)[1:] if isinstance(m, str)]
 
 
 def functions(module: types.ModuleType) -> list[tuple[str, typing.Callable]]:

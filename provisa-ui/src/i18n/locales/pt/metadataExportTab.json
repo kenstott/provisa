@@ -27,6 +27,7 @@
     "newTarget": "Novo destino",
     "noTargets": "Ainda não há destinos. Adicione os catálogos em que esta organização publica.",
     "catalog": "Catálogo",
-    "catalogHelp": "Um catálogo conectado em Administração → Catálogos."
+    "catalogHelp": "Um catálogo conectado em Administração → Catálogos.",
+    "betaProvider": "{{name}} (beta)"
   }
 }

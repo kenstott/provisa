@@ -185,7 +185,10 @@ interface CellOutput {
 }
 
 interface NotebookPanel {
-  sessionContext?: { ready: Promise<void> };
+  sessionContext?: {
+    ready: Promise<void>;
+    session?: { kernel?: { requestExecute(content: ExecuteContent): { done: Promise<unknown> } } };
+  };
   content: {
     model: {
       sharedModel: {
@@ -194,7 +197,7 @@ interface NotebookPanel {
       };
     };
     activeCellIndex: number;
-    widgets: ReadonlyArray<{ model: { outputs: { toJSON(): CellOutput[] } } }>;
+    widgets: ReadonlyArray<{ model: { outputs: { toJSON(): CellOutput[] } }; node?: HTMLElement }>;
   };
 }
 
@@ -203,6 +206,11 @@ const joined = (text: string | string[] | undefined) =>
 
 /** How long cells handed over wait for the embedded app to open a notebook. */
 const NOTEBOOK_WAIT_MS = 60_000;
+
+/** Matplotlib's first import in a kernel builds its font cache and says so on stderr, above the
+ * first figure drawn. Built silently before cells that draw, it says nothing in them. */
+export const FONT_CACHE_CODE = "import matplotlib.font_manager";
+const DRAWS = /\bmatplotlib\b/;
 
 /** The notebook the user is looking at, or else the first one open. */
 function openNotebook(app: LiteApp): NotebookPanel | null {
@@ -234,6 +242,10 @@ export async function runCells(
   await notebook.sessionContext?.ready;
   // The notebook's kernel now exists: it is handed the user before the first cell runs.
   if (run) await handOff();
+  const kernel = notebook.sessionContext?.session?.kernel;
+  if (run && kernel && cells.some((cell) => DRAWS.test(cell))) {
+    await kernel.requestExecute({ code: FONT_CACHE_CODE, silent: true, store_history: false }).done;
+  }
   const shared = notebook.content.model.sharedModel;
   let stdout = "";
   let value = "";
@@ -258,4 +270,15 @@ export async function runCells(
   }
   if (figures > 0) value += `${value ? "\n" : ""}(${figures} figure(s) drawn)`;
   return clipped({ stdout, value, error: null });
+}
+
+/** The open notebook's last cell's outputs as the notebook draws them (a figure, a table, what it
+ * printed): what a tour step points at once its cells have run. Null while no notebook is open or
+ * its last cell has drawn nothing. */
+export function lastOutputArea(app: LiteApp): HTMLElement | null {
+  const notebook = openNotebook(app);
+  if (notebook === null) return null;
+  const { widgets } = notebook.content;
+  const area = widgets[widgets.length - 1]?.node?.querySelector<HTMLElement>(".jp-OutputArea");
+  return area != null && area.childElementCount > 0 ? area : null;
 }

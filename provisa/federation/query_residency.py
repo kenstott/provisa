@@ -1529,6 +1529,16 @@ async def ensure_rows_resident(
             # Tombstone: a requested key the source returned no row for (section 6a) -- deleted
             # synchronously, inline, here, never deferred.
             tombstoned = [k for k in still_needed if k not in fetched_keys]
+            if not fetched:
+                log.warning(
+                    "row-level replica %s.%s: keys %s asked for, %s stale or missing, %s still "
+                    "needed after the lock; the source returned no row for them",
+                    schema,
+                    name,
+                    list(bound.values),
+                    stale_or_missing,
+                    still_needed,
+                )
 
             await _land_row_cache(
                 engine,

@@ -43,6 +43,7 @@ as an equality on any other column of it does.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, replace
 from itertools import product
 from typing import Any
@@ -90,9 +91,14 @@ def form_of(side: exp.Expr) -> str:
     return shaped.sql(dialect="postgres", identify=True)
 
 
+@functools.lru_cache(maxsize=8192)
 def registered_form(template: str) -> str:
     """A registered relationship's side, written with ``{alias}`` for its table, as
-    :func:`form_of` writes a statement's."""
+    :func:`form_of` writes a statement's.
+
+    Kept by its text: the form is that text's alone, so a relationship saved with another side is
+    another text and its own form, and none can be served stale. Every statement's guard asks
+    for every registered relationship's (``sql_validator.computed_joins``), each a parse."""
     import sqlglot
 
     return form_of(sqlglot.parse_one(template.replace("{alias}", _ANY), read="postgres"))
@@ -108,6 +114,12 @@ class Unrelated:
     reason: str
     left_column: str | None = None
     right_column: str | None = None
+    #: For a condition the statement writes: the condition as written, and each side as written
+    #: (left with ``left_table``), so a refusal names it as the statement does -- a side read
+    #: through a derived table or a CTE is that side, not the base column it resolves to.
+    written: str | None = None
+    left_written: str | None = None
+    right_written: str | None = None
 
 
 def _selects(scope: Scope) -> list[exp.Expr]:
@@ -131,25 +143,66 @@ def _bodies(scope: Scope) -> list[Scope]:
     return found
 
 
-def _by_position(scope: Scope, name: str) -> list[tuple[Scope, str]]:
-    """Each branch of ``scope`` with the name its own column gives the column ``name``: in a
-    UNION / INTERSECT / EXCEPT the first branch names the columns and every branch fills them by
-    position (``SELECT winners AS name ... UNION ALL SELECT team ...``). A scope with no set
-    operation is itself, with ``name``."""
-    leaves = [b for b in _bodies(scope) if not b.set_operation_scopes]
-    first = _selects(leaves[0])
-    names = [s.alias_or_name for s in first]
-    if name not in names or any(s.is_star for s in first):
-        return [(b, name) for b in leaves]
-    at = names.index(name)
-    out: list[tuple[Scope, str]] = []
-    for branch in leaves:
-        selects = _selects(branch)
-        if at < len(selects) and not any(s.is_star for s in selects):
-            out.append((branch, selects[at].alias_or_name))
-        else:
-            out.append((branch, name))
-    return out
+class _Layout:
+    """The columns of ``scope`` and of each of its branches, read once: a statement reading a
+    union of many tables asks of every column of it (a Cypher ``MATCH (n)`` over every label, its
+    star expanded), and reading the branches again for each made the check cubic in the labels."""
+
+    def __init__(self, scope: Scope) -> None:
+        self.leaves = [b for b in _bodies(scope) if not b.set_operation_scopes]
+        first = _selects(self.leaves[0])
+        self.first_star = any(s.is_star for s in first)
+        self.at: dict[str, int] = {}
+        for i, select in enumerate(first):
+            self.at.setdefault(select.alias_or_name, i)
+        # Each branch: its selects, whether one is a star, and its selects by the name each gives.
+        self.branches: list[tuple[list[exp.Expr], bool, dict[str, list[exp.Expr]]]] = []
+        # Each branch's stars and its selects by name, in the order it gives them.
+        self.picked: list[tuple[list[exp.Expr], dict[str, list[exp.Expr]]]] = []
+        for branch in self.leaves:
+            selects = _selects(branch)
+            named: dict[str, list[exp.Expr]] = {}
+            stars: list[exp.Expr] = []
+            for select in selects:
+                named.setdefault(select.alias_or_name, []).append(select)
+                if select.is_star:
+                    stars.append(select)
+            self.branches.append((selects, bool(stars), named))
+            self.picked.append((stars, named))
+
+    def gives(self, name: str) -> bool:
+        """Whether the scope gives a column ``name``: its first branch names it, or reads a star."""
+        return self.first_star or name in self.at
+
+    def reading(self, index: int, name: str) -> list[exp.Expr]:
+        """The selects of branch ``index`` that can give ``name``: its stars and those naming it,
+        in the order the branch lists them."""
+        stars, named = self.picked[index]
+        found = [*stars, *named.get(name, [])]
+        if stars and named.get(name):
+            order = {id(s): i for i, s in enumerate(self.branches[index][0])}
+            found.sort(key=lambda s: order[id(s)])
+        return found
+
+    def by_position(self, name: str) -> list[tuple[Scope, str]]:
+        """Each branch with the name its own column gives the column ``name``: in a UNION /
+        INTERSECT / EXCEPT the first branch names the columns and every branch fills them by
+        position (``SELECT winners AS name ... UNION ALL SELECT team ...``). A scope with no set
+        operation is itself, with ``name``."""
+        at = self.at.get(name)
+        if at is None or self.first_star:
+            return [(b, name) for b in self.leaves]
+        out: list[tuple[Scope, str]] = []
+        for branch, (selects, star, _named) in zip(self.leaves, self.branches, strict=True):
+            if at < len(selects) and not star:
+                out.append((branch, selects[at].alias_or_name))
+            else:
+                out.append((branch, name))
+        return out
+
+    def named(self, index: int, name: str) -> list[exp.Expr]:
+        """The selects of branch ``index`` giving the name ``name``."""
+        return self.branches[index][2].get(name, [])
 
 
 class _Resolver:
@@ -165,6 +218,13 @@ class _Resolver:
         self._view_sources: set[int] = set()  # the marked derived tables themselves
         self._view_instances: set[int] = set()  # each marked view's own instance
         self.view_edges: set[frozenset[int]] = set()  # a view's instance and its SQL's instances
+        self._layouts: dict[int, _Layout] = {}  # a scope -> its columns, read once (_Layout)
+
+    def _layout(self, scope: Scope) -> _Layout:
+        layout = self._layouts.get(id(scope))
+        if layout is None:
+            layout = self._layouts[id(scope)] = _Layout(scope)
+        return layout
 
     def unions_of(self, scopes: list[Scope]) -> None:
         """Note the statement's unions, so a recursive CTE's reading of itself is known, and its
@@ -253,9 +313,7 @@ class _Resolver:
             return table_id is not None and name in self._columns_of(table_id)
         if isinstance(source, Scope):
             branches = source.set_operation_scopes or [source]
-            return any(
-                any(s.alias_or_name == name or s.is_star for s in _selects(b)) for b in branches
-            )
+            return any(self._layout(b).gives(name) for b in branches)
         return False
 
     def resolve(
@@ -316,10 +374,9 @@ class _Resolver:
         for source in sources:
             if not isinstance(source, Scope):
                 continue
-            for branch, name in _by_position(source, column.name):
-                for select in _selects(branch):
-                    if select.alias_or_name != name:
-                        continue
+            layout = self._layout(source)
+            for index, (branch, name) in enumerate(layout.by_position(column.name)):
+                for select in layout.named(index, name):
                     for inner in select.find_all(exp.Column):
                         out |= self.touched(branch, inner, seen)
         return out
@@ -327,11 +384,11 @@ class _Resolver:
     def _projection(self, scope: Scope, name: str, seen: frozenset) -> set[_Base]:
         if scope.set_operation_scopes:
             return set().union(
-                *(self._projection(b, n, seen) for b, n in _by_position(scope, name))
+                *(self._projection(b, n, seen) for b, n in self._layout(scope).by_position(name))
             )
         out: set[_Base] = set()
         named = False  # the scope projects a column of this name
-        for select in _selects(scope):
+        for select in self._layout(scope).reading(0, name):
             inner = select.unalias()
             if select.is_star:
                 table = inner.table if isinstance(inner, exp.Column) else ""
@@ -437,6 +494,18 @@ def _own_columns(scope: Scope) -> list[exp.Column]:
     return [c for c in scope.columns if c.find_ancestor(exp.Query) is query]
 
 
+def _derived_side(scope: Scope, column: exp.Column) -> str | None:
+    """``column`` as written when it is read through a derived table or a CTE of the scope it is
+    named in (or one around it) -- not a plain table's alias, which names its table -- else None."""
+    at: Scope | None = scope
+    while at is not None and column.table:
+        source = at.sources.get(column.table) or at.cte_sources.get(column.table)
+        if source is not None:
+            return None if isinstance(source, exp.Table) else column.sql(dialect="postgres")
+        at = at.parent
+    return None
+
+
 def _conjuncts(condition: exp.Expr | None) -> list[exp.Expr]:
     """``condition`` as the conditions it ANDs together."""
     if condition is None:
@@ -499,8 +568,15 @@ def _unrelated_in(
     def exempt(instance: int) -> bool:
         return exempt_table(table_of[instance])
 
-    def pair(left: set[_Base], right: set[_Base]) -> None:
-        """A pairing of columns the statement makes: registered, or refused."""
+    def pair(
+        left: set[_Base],
+        right: set[_Base],
+        written: exp.Expr | None = None,
+        sides: tuple[str | None, str | None] = (None, None),
+    ) -> None:
+        """A pairing of columns the statement makes: registered, or refused -- naming the
+        condition as written, and each side of it read through a derived table or a CTE
+        (``sides``), when the statement writes one."""
         for a in left:
             for b in right:
                 if a.instance == b.instance or exempt(a.instance) or exempt(b.instance):
@@ -537,8 +613,21 @@ def _unrelated_in(
                 ):
                     edges.add(frozenset({a.instance, b.instance}))
                 else:
-                    x, y = sorted((a, b), key=lambda c: (c.table_id, c.column))
-                    refuse(Unrelated(x.table_id, y.table_id, UNREGISTERED, x.column, y.column))
+                    (x, x_said), (y, y_said) = sorted(
+                        ((a, sides[0]), (b, sides[1])), key=lambda c: (c[0].table_id, c[0].column)
+                    )
+                    refuse(
+                        Unrelated(
+                            x.table_id,
+                            y.table_id,
+                            UNREGISTERED,
+                            x.column,
+                            y.column,
+                            written=None if written is None else written.sql(dialect="postgres"),
+                            left_written=x_said,
+                            right_written=y_said,
+                        )
+                    )
 
     def filters_only(a: int, b: int) -> bool:
         """Whether one of two instances is read in an IN / EXISTS subquery the other is outside
@@ -626,11 +715,15 @@ def _unrelated_in(
                     left = tested.this.unnest()
                     given: set[_Base] = set()
                     drawn: set[int] = set()
+                    # What the subquery's selected column reads, where it reads it through a
+                    # derived table or a CTE of its own scope (the first branch that does).
+                    given_said: str | None = None
                     for branch in inner.set_operation_scopes or [inner]:
                         selects = _selects(branch)
                         only = selects[0].unalias() if len(selects) == 1 else None
                         if isinstance(only, exp.Column):
                             given |= resolver.resolve(branch, only)
+                            given_said = given_said or _derived_side(branch, only)
                         for alt in resolver.alternatives(branch):
                             drawn |= alt
                     mine_plain = (
@@ -644,7 +737,16 @@ def _unrelated_in(
                         if touching & outer_alt:
                             groups.append(frozenset(touching & outer_alt) | inner_alt)
                     if mine_plain and given:
-                        pair(mine_plain, given)
+                        sides = (
+                            _derived_side(scope, left) if isinstance(left, exp.Column) else None,
+                            given_said,
+                        )
+                        pair(
+                            mine_plain,
+                            given,
+                            tested if sides != (None, None) else None,
+                            sides,
+                        )
                     elif touching and drawn:
                         other_matching(touching | drawn)
                     continue
@@ -669,7 +771,16 @@ def _unrelated_in(
                     left_bases = resolver.resolve(scope, left_side)
                     right_bases = resolver.resolve(scope, right_side)
                     if left_bases and right_bases:
-                        pair(left_bases, right_bases)
+                        sides = (
+                            _derived_side(scope, left_side),
+                            _derived_side(scope, right_side),
+                        )
+                        pair(
+                            left_bases,
+                            right_bases,
+                            condition if sides != (None, None) else None,
+                            sides,
+                        )
                         continue
                 # A registered relationship's own condition, where one side of it is computed.
                 left_one = one_instance(left_side)

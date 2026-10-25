@@ -32,7 +32,7 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+  const onContinue = vi.fn();
   const setError = vi.fn();
   render(
     <RegisterTableForm
@@ -45,13 +45,12 @@ function renderForm() {
       roles={[{ id: "admin" } as never]}
       getAvailableColumnsMetadata={vi.fn().mockResolvedValue([{ name: "id", dataType: "integer" }])}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={vi.fn()}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={setError}
     />,
   );
-  return { registerTable, setError };
+  return { onContinue, setError };
 }
 
 async function pickTable(name: string) {
@@ -66,22 +65,22 @@ async function pickTable(name: string) {
 describe("RegisterTableForm paging (REQ-318)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  // Paging is not asked in the short step: a table registers with none declared, and its paging
-  // is set on the Load and timeliness tab of the editor that opens next.
+  // Paging is not asked in the short step: a table registers with none declared unless its
+  // paging is set on the Load and timeliness section that follows the step (REQ-2109).
   it("registers a table whose source suggests paging with none declared, not asking it", async () => {
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pickTable("listPets");
     expect(screen.queryByRole("textbox", { name: "Paging type" })).toBeNull();
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    expect(registerTable.mock.calls[0][0].pagination).toBeUndefined();
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].pagination).toBeNull();
   });
 
   it("registers a table whose source suggests none with no paging", async () => {
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pickTable("getStore");
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    expect(registerTable.mock.calls[0][0].pagination).toBeUndefined();
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].pagination).toBeNull();
   });
 });

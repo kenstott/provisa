@@ -17,7 +17,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
 import { Modal, TextInput, Select, MultiSelect, NumberInput, Button, Alert } from "@mantine/core";
-import { DateInput, DatePickerInput } from "@mantine/dates";
+import { DateInput, DatePickerInput, TimeInput } from "@mantine/dates";
 import { useCreateCalendar, useDeleteCalendar } from "../../hooks/useAdminQueries";
 import type { CalendarSummary } from "../../hooks/useAdminQueries";
 import { IANA_TIME_ZONES } from "./constants";
@@ -76,6 +76,8 @@ export function CalendarCreateModal({
   const [retailAnchor, setRetailAnchor] = useState<string | null>(ec?.retailAnchor ?? null);
   const [holidays, setHolidays] = useState<string[]>(ec?.holidays ?? []);
   const [weekend, setWeekend] = useState<string[]>((ec?.weekend ?? [5, 6]).map(String));
+  // REQ-2111: the local time a day closes at; empty = local midnight.
+  const [dayClose, setDayClose] = useState(ec?.dayClose ?? "");
   const [error, setError] = useState<string | null>(null);
   const thisYear = new Date().getFullYear();
   const [preset, setPreset] = useState<HolidayPreset>("us_federal");
@@ -106,6 +108,7 @@ export function CalendarCreateModal({
           retailAnchor: baseSystem === "retail_445" ? retailAnchor : null,
           holidays,
           weekend: weekend.map((w) => parseInt(w, 10)),
+          dayClose: dayClose || null,
         },
       },
     });
@@ -232,6 +235,14 @@ export function CalendarCreateModal({
             value={tz}
             onChange={(v) => setTz(v || "UTC")}
             comboboxProps={{ withinPortal: true }}
+          />
+        </FormField>
+        <FormField size="short" help={t("tableEditForm.calDayCloseHelp")}>
+          <TimeInput
+            label={t("tableEditForm.calDayCloseLabel")}
+            data-testid="calendar-day-close"
+            value={dayClose}
+            onChange={(e) => setDayClose(e.currentTarget.value)}
           />
         </FormField>
         <FormField size="medium">

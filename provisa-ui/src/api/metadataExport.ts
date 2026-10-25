@@ -53,6 +53,8 @@ export interface MetadataExportState {
   entitled: boolean;
   required_tier: string;
   providers: string[];
+  /** The providers not yet proven against a live instance, which are labelled "(beta)". */
+  beta_providers: string[];
   config: MetadataExportConfig;
   last_publish: PublishOutcome | null;
 }

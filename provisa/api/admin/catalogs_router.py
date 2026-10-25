@@ -33,7 +33,7 @@ from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
 from provisa.api.metadata_export import metadata_export
-from provisa.api.metadata_export.registry import registered_providers
+from provisa.api.metadata_export.registry import beta_providers, registered_providers
 from provisa.core.models import CatalogExport, CatalogsConfig, MetadataExportConfig
 
 router = APIRouter()
@@ -135,6 +135,7 @@ async def get_catalogs(request: Request) -> dict:  # REQ-2122
     config = catalogs_config(await stored_settings())
     return {
         "providers": sorted(registered_providers()),
+        "beta_providers": beta_providers(),
         "catalogs": [_view(c) for c in config.catalogs],
     }
 

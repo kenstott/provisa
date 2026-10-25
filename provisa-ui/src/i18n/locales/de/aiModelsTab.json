@@ -42,7 +42,7 @@
     "addEndpoint": "Endpunkt hinzufügen",
     "removeEndpoint": "Entfernen",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Optional. Ist der Schlüssel gesetzt, verwendet Provisa die API für kalibrierte Konfidenzentscheidungen von Jev, um Vorschläge für Glossar-Beziehungstypen und erkannte Fremdschlüssel-Beziehungen zu bewerten, statt sich allein auf die selbst angegebene Konfidenz des erzeugenden Modells zu verlassen. Ist er nicht gesetzt, verwenden diese Funktionen weiterhin ihr bisheriges, rein modellbasiertes Verhalten. Ist hier keiner gesetzt, wird die Umgebungsvariable TYPESAFEAI_API_KEY der Installation verwendet, sofern vorhanden.",
+    "jevIntro": "Optional. Ist der Schlüssel gesetzt, verwendet Provisa die API für kalibrierte Konfidenzentscheidungen von Jev, um Vorschläge für Ontologie-Beziehungstypen und erkannte Fremdschlüssel-Beziehungen zu bewerten, statt sich allein auf die selbst angegebene Konfidenz des erzeugenden Modells zu verlassen. Ist er nicht gesetzt, verwenden diese Funktionen weiterhin ihr bisheriges, rein modellbasiertes Verhalten. Ist hier keiner gesetzt, wird die Umgebungsvariable TYPESAFEAI_API_KEY der Installation verwendet, sofern vorhanden.",
     "saveButtonLabel": "KI-Modelleinstellungen speichern",
     "loading": "Wird geladen…",
     "saved": "Gespeichert.",

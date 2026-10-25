@@ -1,0 +1,566 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8c5e1a3f-7b2d-4f6a-9c8e-2d4b6f8a1c3e
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Post-execution response assembler for Cypher query results.
+
+Deserializes JSON columns from raw rows into typed Node, Edge, and Path objects.
+Groups path rows sharing the same _path_id into a single Path per group.
+"""
+
+# Requirements: REQ-349, REQ-350, REQ-394
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Any, TypeVar
+
+from sqlalchemy import select
+
+from provisa.core.schema_org import node_ids, rel_ids
+from provisa.gql.translator_types import CUT_COLUMN, GraphVarKind
+
+
+class CypherAssemblyError(Exception):
+    """Raised when a graph column cannot be deserialized."""
+
+
+@dataclass
+class Node:  # REQ-350
+    id: str
+    label: str
+    table_label: str
+    properties: dict[str, Any]
+
+
+@dataclass
+class Edge:  # REQ-350
+    id: str
+    type: str
+    start_node: Node
+    end_node: Node
+    properties: dict[str, Any]
+    # REQ-1586: the junction table an edge's attributes were read from; None on an FK/PK edge.
+    junction_table: str | None = None
+
+
+@dataclass
+class Path:  # REQ-350
+    nodes: list[Node]
+    edges: list[Edge]
+
+
+def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
+    """The rows without the cut column. When a path bounded by the depth limit was cut there, the
+    statement says so through its warnings (REQ-1350), on whichever surface answers it: onto the
+    plan's own list (``of_plan``) and the request's collector, or the collector alone where the
+    rows came from no one plan. A statement with no such path carries no cut column."""
+    cut = False
+    out: list[dict] = []
+    for row in rows:
+        key = next((k for k in row if k.lower() == CUT_COLUMN), None)
+        if key is None:
+            out.append(row)
+            continue
+        cut = cut or bool(row[key])
+        out.append({k: v for k, v in row.items() if k != key})
+    if cut:
+        from provisa.core import settings_registry
+        from provisa.core.statement_warnings import ServerWarning, tell, warn
+
+        limit = settings_registry.value("graph.depth_limit")
+        warning = ServerWarning(
+            code="statement.path_cut",
+            params={"limit": limit},
+            message=(
+                f"A path with no upper bound was cut at the graph depth limit of {limit} "
+                "hops: paths longer than that are missing from the answer."
+            ),
+        )
+        if of_plan is None:
+            warn(warning)
+        else:
+            tell(warning, of_plan)
+    return out
+
+
+def assemble_rows(  # REQ-349, REQ-350
+    raw_rows: list[dict],
+    graph_vars: dict[str, GraphVarKind],
+) -> list[dict]:
+    """Deserialize graph columns in raw_rows and collapse path groups.
+
+    For NODE columns: JSON → Node dataclass.
+    For EDGE columns: JSON → Edge dataclass (with embedded start/end Node).
+    For PATH columns: rows sharing _path_id are grouped → Path dataclass.
+    Scalar columns are passed through unchanged.
+    """
+    if not raw_rows:
+        return []
+
+    # the engine lowercases unquoted column aliases; normalize graph_vars to match.
+    graph_vars = {k.lower(): v for k, v in graph_vars.items()}
+
+    path_cols = {k for k, v in graph_vars.items() if v == GraphVarKind.PATH}
+
+    if path_cols:
+        return _assemble_with_paths(raw_rows, graph_vars, path_cols)
+
+    return [_assemble_row(row, graph_vars) for row in raw_rows]
+
+
+def _assemble_row(row: dict, graph_vars: dict[str, GraphVarKind]) -> dict:
+    # graph_vars keys are already lowercased by assemble_rows; match row keys case-insensitively.
+    result: dict = {}
+    for key, value in row.items():
+        kind = graph_vars.get(key.lower())
+        if kind is not None:
+            result[key] = _deserialize_graph_value(key, value, kind)
+        else:
+            result[key] = value
+    return result
+
+
+def _json_maps(col: str, value: Any) -> Any:
+    """REQ-345: a map literal's answer, its values decoded from the JSON each was encoded to --
+    whether the engine hands the map back as a map (DuckDB, Trino) or as its JSON text
+    (Snowflake), alone or in a list."""
+    try:
+        if isinstance(value, str):
+            value = json.loads(value)
+        if isinstance(value, list):
+            return [None if v is None else _json_maps(col, v) for v in value]
+        if isinstance(value, dict):
+            return {k: json.loads(v) if isinstance(v, str) else v for k, v in value.items()}
+    except json.JSONDecodeError as exc:
+        raise CypherAssemblyError(f"Malformed JSON in map column {col!r}: {exc}") from exc
+    raise CypherAssemblyError(f"Unexpected map column value type for {col!r}: {type(value)}")
+
+
+def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
+    if value is None:
+        return None
+    if kind == GraphVarKind.JSON_MAP:
+        return _json_maps(col, value)
+    if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
+        # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
+        # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise CypherAssemblyError(f"Malformed JSON in map column {col!r}: {exc}") from exc
+        return value
+    try:
+        if isinstance(value, str):
+            data = json.loads(value)
+        elif isinstance(value, dict):
+            data = value
+        else:
+            raise CypherAssemblyError(
+                f"Unexpected graph column value type for {col!r}: {type(value)}"
+            )
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise CypherAssemblyError(f"Malformed JSON in graph column {col!r}: {exc}") from exc
+
+    if kind == GraphVarKind.NODE:
+        if isinstance(data, list):
+            return _present([_parse_node(n) for n in data if isinstance(n, dict)])
+        return _parse_node(data)
+    if kind == GraphVarKind.EDGE:
+        if isinstance(data, list):
+            return _present([_parse_edge(e) for e in data if isinstance(e, dict)])
+        return _parse_edge(data)
+    if kind == GraphVarKind.PASSTHROUGH:
+        # Auto-detect: edge JSON has 'type' + ('identity' or 'startNode'); node JSON has 'label'
+        if "type" in data and ("identity" in data or "startNode" in data or "start_node" in data):
+            return _parse_edge(data)
+        return _parse_node(data)
+    if kind == GraphVarKind.PATH:
+        if "nodes" in data and "edges" in data:
+            nodes = [_parse_node(n) for n in data["nodes"]]
+            edges = [_parse_edge(e) for e in data["edges"]]
+            # A path through a node or relationship that is null is no path: null.
+            if any(n is None for n in nodes) or any(e is None for e in edges):
+                return None
+            return Path(nodes=_present(nodes), edges=_present(edges))
+        # Flat-JOIN path: {start, end, length} — build stub path
+        start_id = str(data.get("start", ""))
+        end_id = str(data.get("end", ""))
+        start_node = Node(id=start_id, label="", table_label="", properties={})
+        end_node = Node(id=end_id, label="", table_label="", properties={})
+        return Path(nodes=[start_node, end_node], edges=[])
+
+
+_T = TypeVar("_T")
+
+
+def _present(items: list[_T | None]) -> list[_T]:
+    """The items that are something: an OPTIONAL MATCH that matched nothing adds no element."""
+    return [i for i in items if i is not None]
+
+
+def _parse_node(data: dict) -> Node | None:
+    """A node, or None when its key is null: an OPTIONAL MATCH that matched nothing gives null, as
+    Neo4j does, never a node of nulls."""
+    if data.get("id") is None:
+        return None
+    raw_props = (
+        data["properties"]
+        if "properties" in data and isinstance(data["properties"], dict)
+        else {k: v for k, v in data.items() if k not in ("id", "label", "tableLabel", "properties")}
+    )
+    return Node(
+        id=str(data.get("id", "")),
+        label=str(data.get("label", "")),
+        table_label=str(data.get("tableLabel", "")),
+        properties={k: v for k, v in raw_props.items() if v is not None},
+    )
+
+
+def _end_of(data: dict, keys: tuple[str, str], id_key: str | None) -> dict | None:
+    """One end of an edge as a node's JSON: its node object, or a stub of its id (an edge carrying
+    only ``start``/``end``, or a legacy edge naming its end by id). None when the end is null."""
+    raw = data.get(keys[0]) or data.get(keys[1])
+    if isinstance(raw, dict):
+        return raw
+    ident = data.get(id_key) if id_key is not None else raw
+    if ident is None:
+        return None
+    return {"id": str(ident), "label": "", "properties": {}}
+
+
+def _parse_edge(data: dict) -> Edge | None:
+    # Support both Neo4j format (identity/start/end) and legacy format (id/startNode/endNode).
+    has_neo4j = "identity" in data
+    edge_id = str(data.get("identity", "")) if has_neo4j else str(data.get("id", ""))
+    start_raw = _end_of(data, ("startNode", "start_node"), "start" if has_neo4j else None)
+    end_raw = _end_of(data, ("endNode", "end_node"), "end" if has_neo4j else None)
+    start_node = _parse_node(start_raw) if start_raw is not None else None
+    end_node = _parse_node(end_raw) if end_raw is not None else None
+    if start_node is None or end_node is None:
+        return None  # a relationship with a null end is null (an OPTIONAL MATCH matched nothing)
+    return Edge(
+        id=edge_id,
+        type=str(data.get("type", "")),
+        start_node=start_node,
+        end_node=end_node,
+        properties=data["properties"]
+        if "properties" in data and isinstance(data["properties"], dict)
+        else {
+            k: v
+            for k, v in data.items()
+            if k
+            not in (
+                "id",
+                "identity",
+                "type",
+                "start",
+                "end",
+                "startNode",
+                "endNode",
+                "start_node",
+                "end_node",
+                "properties",
+                "junctionTable",
+            )
+        },
+        junction_table=data.get("junctionTable"),
+    )
+
+
+def _assemble_with_paths(
+    raw_rows: list[dict],
+    graph_vars: dict[str, GraphVarKind],
+    path_cols: set[str],
+) -> list[dict]:
+    """Group rows by _path_id and collapse into Path objects."""
+    # Partition rows that have _path_id from those that don't
+    has_path_id = "_path_id" in (raw_rows[0].keys() if raw_rows else set())
+
+    if not has_path_id:
+        # No _path_id column — treat each row individually
+        return [_assemble_row(row, graph_vars) for row in raw_rows]
+
+    # Group by _path_id
+    path_groups: dict[str, list[dict]] = {}
+    non_path_rows: list[dict] = []
+
+    for row in raw_rows:
+        path_id = row.get("_path_id")
+        if path_id is not None:
+            path_groups.setdefault(str(path_id), []).append(row)
+        else:
+            non_path_rows.append(_assemble_row(row, graph_vars))
+
+    result: list[dict] = []
+
+    for path_id, group in path_groups.items():
+        # Sort by _depth
+        group.sort(key=lambda r: r.get("_depth", 0))
+        path_result: dict = {}
+
+        for col in path_cols:
+            nodes: list[Node] = []
+            edges: list[Edge] = []
+            for row in group:
+                val = row.get(col)
+                if val is not None:
+                    if isinstance(val, str):
+                        try:
+                            data = json.loads(val)
+                        except json.JSONDecodeError as exc:
+                            raise CypherAssemblyError(
+                                f"Malformed JSON in path column {col!r}: {exc}"
+                            ) from exc
+                    elif isinstance(val, dict):
+                        data = val
+                    else:
+                        continue
+
+                    # Extract nodes and edges arrays from path data
+                    if "nodes" in data and "edges" in data:
+                        found = [_parse_node(n) for n in data["nodes"]]
+                        found_edges = [_parse_edge(e) for e in data["edges"]]
+                    elif "id" in data and "label" in data:
+                        found, found_edges = [_parse_node(data)], []
+                    elif "id" in data and "type" in data:
+                        found, found_edges = [], [_parse_edge(data)]
+                    else:
+                        continue
+                    nodes.extend(_present(found))
+                    edges.extend(_present(found_edges))
+
+            path_result[col] = Path(nodes=nodes, edges=edges)
+
+        # Include scalar columns from first row
+        first_row = group[0]
+        for key, value in first_row.items():
+            if (
+                key.startswith("_path_id")
+                or key.startswith("_depth")
+                or key.startswith("_direction")
+            ):
+                continue
+            if key not in path_cols and key not in path_result:
+                path_result[key] = value
+
+        result.append(path_result)
+
+    result.extend(non_path_rows)
+    return result
+
+
+def _walk_for_nodes(v: Any, out: dict[str, tuple[str, dict]]) -> None:
+    """Recursively collect node dicts from serialized graph output.
+
+    A node dict has 'id' (composite string label|pk), 'label', 'properties',
+    and no 'startNode' key.
+    """
+    if isinstance(v, dict):
+        if (
+            "id" in v
+            and "label" in v
+            and "properties" in v
+            and "startNode" not in v
+            and isinstance(v["id"], str)
+            and "|" in v["id"]
+        ):
+            out[v["id"]] = (v["label"], v.get("properties") or {})
+        if "startNode" in v:
+            _walk_for_nodes(v["startNode"], out)
+        if "endNode" in v:
+            _walk_for_nodes(v["endNode"], out)
+        for val in v.values():
+            if isinstance(val, (dict, list)):
+                _walk_for_nodes(val, out)
+    elif isinstance(v, list):
+        for item in v:
+            _walk_for_nodes(item, out)
+
+
+def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
+    """Replace composite string node IDs with integers from id_map."""
+    if isinstance(v, dict):
+        if "id" in v and isinstance(v["id"], str) and v["id"] in id_map and "startNode" not in v:
+            v = {**v, "id": id_map[v["id"]]}
+        if "startNode" in v or "endNode" in v:
+            new_v = dict(v)
+            if "startNode" in new_v:
+                new_v["startNode"] = _apply_id_map(new_v["startNode"], id_map)
+            if "endNode" in new_v:
+                new_v["endNode"] = _apply_id_map(new_v["endNode"], id_map)
+            # Update flat start/end to match integer IDs
+            if isinstance(new_v.get("start"), str) and new_v["start"] in id_map:
+                new_v["start"] = id_map[new_v["start"]]
+            if isinstance(new_v.get("end"), str) and new_v["end"] in id_map:
+                new_v["end"] = id_map[new_v["end"]]
+            return new_v
+        if "nodes" in v and "edges" in v:
+            # Path dict — recurse into both lists so node IDs get replaced.
+            return {k: _apply_id_map(val, id_map) for k, val in v.items()}
+        return v
+    if isinstance(v, list):
+        return [_apply_id_map(item, id_map) for item in v]
+    return v
+
+
+def _walk_for_edges(v: Any, out: dict[str, tuple[str, dict]]) -> None:
+    """Recursively collect edge dicts from serialized graph output.
+
+    An edge dict has 'identity' (composite string "Type:startPk-endPk"), 'type',
+    and 'startNode'.
+    """
+    if isinstance(v, dict):
+        if "identity" in v and "type" in v and "startNode" in v and isinstance(v["identity"], str):
+            out[v["identity"]] = (str(v.get("type", "")), v.get("properties") or {})
+        for val in v.values():
+            if isinstance(val, (dict, list)):
+                _walk_for_edges(val, out)
+    elif isinstance(v, list):
+        for item in v:
+            _walk_for_edges(item, out)
+
+
+def _apply_rel_id_map(v: Any, rel_map: dict[str, int]) -> Any:
+    """Replace composite string edge identities with integers from rel_map."""
+    if isinstance(v, dict):
+        if (
+            "identity" in v
+            and "type" in v
+            and isinstance(v.get("identity"), str)
+            and v["identity"] in rel_map
+        ):
+            v = {**v, "identity": rel_map[v["identity"]]}
+        return {k: _apply_rel_id_map(val, rel_map) for k, val in v.items()}
+    if isinstance(v, list):
+        return [_apply_rel_id_map(item, rel_map) for item in v]
+    return v
+
+
+async def register_rel_ids(serializable_rows: list[dict], model_db: Any) -> None:
+    """Upsert all graph relationships to rel_ids; replace composite edge identities with ints.
+
+    Mutates serializable_rows in place.  No-op if model_db is None or no edges found.
+    Mirrors register_node_ids so relationships get durable IDs the same way nodes do.
+    """
+    if model_db is None:
+        return
+
+    edges: dict[str, tuple[str, dict]] = {}
+    for row in serializable_rows:
+        for v in row.values():
+            _walk_for_edges(v, edges)
+
+    if not edges:
+        return
+
+    rel_map: dict[str, int] = {}
+    async with model_db.acquire() as conn:
+        for cid, (rel_type, props) in edges.items():
+            new_props = {k: v for k, v in props.items() if v is not None}
+            # Conflict SET merged existing || excluded; resolve the JSON merge in Python.
+            existing = await conn.execute_core(
+                select(rel_ids.c.properties).where(rel_ids.c.composite_id == cid)
+            )
+            erow = existing.fetchone()
+            merged = {**(erow[0] or {}), **new_props} if erow is not None else new_props
+            rid = await conn.upsert_returning(
+                rel_ids,
+                {"composite_id": cid, "rel_type": rel_type, "properties": merged},
+                index_elements=["composite_id"],
+                returning="id",
+                update_columns=["rel_type", "properties"],
+            )
+            rel_map[cid] = rid
+
+    for i, row in enumerate(serializable_rows):
+        serializable_rows[i] = {k: _apply_rel_id_map(v, rel_map) for k, v in row.items()}
+
+
+async def register_node_ids(serializable_rows: list[dict], model_db: Any) -> None:  # REQ-394
+    """Upsert all graph nodes to node_ids table; replace composite string IDs with integers.
+
+    Mutates serializable_rows in place.  No-op if model_db is None or no nodes found.
+    """
+    if model_db is None:
+        return
+
+    nodes: dict[str, tuple[str, dict]] = {}
+    for row in serializable_rows:
+        for v in row.values():
+            _walk_for_nodes(v, nodes)
+
+    if not nodes:
+        return
+
+    id_map: dict[str, int] = {}
+    async with model_db.acquire() as conn:
+        for cid, (label, props) in nodes.items():
+            new_props = {k: v for k, v in props.items() if v is not None}
+            # Conflict SET merged existing || excluded; resolve the JSON merge in Python.
+            existing = await conn.execute_core(
+                select(node_ids.c.properties).where(node_ids.c.composite_id == cid)
+            )
+            erow = existing.fetchone()
+            merged = {**(erow[0] or {}), **new_props} if erow is not None else new_props
+            nid = await conn.upsert_returning(
+                node_ids,
+                {"composite_id": cid, "label": label, "properties": merged},
+                index_elements=["composite_id"],
+                returning="id",
+                update_columns=["label", "properties"],
+            )
+            id_map[cid] = nid
+
+    for i, row in enumerate(serializable_rows):
+        serializable_rows[i] = {k: _apply_id_map(v, id_map) for k, v in row.items()}
+
+
+def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
+    """Recursively convert Node/Edge/Path to JSON-serializable dicts."""
+    import datetime
+    from decimal import Decimal
+
+    if isinstance(obj, Node):
+        return {
+            "id": obj.id,
+            "label": obj.label,
+            "tableLabel": obj.table_label,
+            "properties": obj.properties,
+        }
+    if isinstance(obj, Edge):
+        return {
+            "identity": obj.id,
+            "start": obj.start_node.id,
+            "end": obj.end_node.id,
+            "type": obj.type,
+            "properties": obj.properties,
+            "startNode": to_serializable(obj.start_node),
+            "endNode": to_serializable(obj.end_node),
+            # REQ-1586: omitted entirely on an FK/PK edge, so a consumer tests presence, not null.
+            **({} if obj.junction_table is None else {"junctionTable": obj.junction_table}),
+        }
+    if isinstance(obj, Path):
+        return {
+            "nodes": [to_serializable(n) for n in obj.nodes],
+            "edges": [to_serializable(e) for e in obj.edges],
+        }
+    if isinstance(obj, dict):
+        return {k: to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [to_serializable(i) for i in obj]
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    if isinstance(obj, datetime.date):
+        return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return float(obj)
+    return obj

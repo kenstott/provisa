@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Any
 from provisa.pgwire.governed_plan import PlanSlot
 
 if TYPE_CHECKING:
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
 
 def _registry_anchors(state: Any) -> tuple[Any, ...]:
@@ -138,7 +138,6 @@ class CypherTranslation:
     param_names: tuple[str, ...]
     # RETURN alias -> graph kind, read by row assembly. Shared: never mutated.
     graph_vars: dict[str, Any]
-    span_attrs: dict[str, str] | None = None
 
     def bind(self, params: dict[str, Any]) -> list[Any]:
         """This request's values in binding order; an unsupplied parameter is refused."""

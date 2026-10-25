@@ -13,7 +13,7 @@
 # tour.steps.<key> in the UI's tour.json, in every language.
 #
 # The track: the scenario (the pharmacy's question, and its two kinds of data); how the pieces fit
-# (its own formulary, the public tables landed once, the joins by NDC and by firm, the pharmacy's
+# (its own formulary, the public tables, the joins by NDC and by firm, the pharmacy's
 # terms); the answer in SQL, in GraphQL and over REST, over the view that joins supply to risk; a
 # recap.
 # Where the tour's "Look around on my own" leaves the visitor: the SQL page, with its example queries.
@@ -38,7 +38,7 @@ steps:
   capability: create_relationship
   relationship: RECALLED_BY
 - key: pharmaTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: supply risk
 - key: pharmaAnswer

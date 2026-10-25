@@ -71,6 +71,16 @@ def test_flatten_primitives():
     assert rows[0]["active"] is True
 
 
+def test_boolean_text_is_read_by_its_lexical_form():
+    """A SPARQL binding's value is always text: "false" lands as False, not as a non-empty
+    string's truth; text that is no boolean is refused."""
+    col = [_col("b", ApiColumnType.boolean)]
+    rows = flatten_response([{"b": "false"}, {"b": "true"}, {"b": "0"}, {"b": "1"}], None, col)
+    assert [r["b"] for r in rows] == [False, True, False, True]
+    with pytest.raises(ValueError, match="not a boolean"):
+        flatten_response([{"b": "maybe"}], None, col)
+
+
 def test_flatten_applies_response_normalizer():
     """REQ-299: a response_normalizer is applied before flattening.
 

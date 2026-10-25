@@ -173,10 +173,16 @@ class TestTheReplicaAddress:
 async def test_reconcile_converges_the_store_table_at_that_address(monkeypatch):
     calls: list[dict] = []
 
-    async def _reconcile_table(dsn, *, schema, table, columns, pk_columns):
+    async def _reconcile_table(dsn, *, schema, table, columns, pk_columns, key_after_landing):
         del dsn
         calls.append(
-            {"schema": schema, "table": table, "columns": columns, "pk_columns": pk_columns}
+            {
+                "schema": schema,
+                "table": table,
+                "columns": columns,
+                "pk_columns": pk_columns,
+                "key_after_landing": key_after_landing,
+            }
         )
 
     monkeypatch.setattr("provisa.federation.store_writer.reconcile_table", _reconcile_table)
@@ -201,6 +207,8 @@ async def test_reconcile_converges_the_store_table_at_that_address(monkeypatch):
             "table": "feed__news__items",
             "columns": [("check_name", "text"), ("passed", "boolean")],
             "pk_columns": ["check_name"],
+            # Keyed after it lands (REQ-2015): a reconcile before that keeps its rows.
+            "key_after_landing": True,
         }
     ]
 

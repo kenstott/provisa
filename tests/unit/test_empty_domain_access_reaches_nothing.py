@@ -121,6 +121,8 @@ def _ctx() -> CompilationContext:
             table_name=NAME_OF[tid],
             domain_id=domain,
         )
+        # Each table's one column, as the tables above have it: a graph node is identified by it.
+        ctx.aggregate_columns[tid] = [("id", "integer")]
     return ctx
 
 
@@ -294,7 +296,7 @@ def test_a_role_listing_no_domain_has_no_proto_roots(multi_domain):
 def test_the_catalog_is_a_match_root_only_for_a_role_that_reaches_it(
     multi_domain, held, meta_is_a_match_root
 ):
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     lm = CypherLabelMap.from_schema(_ctx(), domain_access=held)
     meta_nodes = [n for n in lm.nodes.values() if n.domain_id == META_DOMAIN_ID]
@@ -303,7 +305,7 @@ def test_the_catalog_is_a_match_root_only_for_a_role_that_reaches_it(
 
 
 def test_a_label_map_is_never_built_without_the_acting_roles_list():
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     with pytest.raises(ValueError, match="acting role's domain_access"):
         CypherLabelMap.from_schema(_ctx(), domain_access=None)

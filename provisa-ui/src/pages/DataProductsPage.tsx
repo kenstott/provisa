@@ -14,13 +14,10 @@ import { useTranslation } from "react-i18next";
 import { Alert, Button, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
 import { Plus } from "lucide-react";
 import {
-  useDataProducts,
   useDomains,
   useTables,
   useUpdateTable,
-  useRelationships,
   useRoles,
-  useSources,
 } from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
@@ -28,7 +25,7 @@ import {
   useDeleteDataProduct,
 } from "../hooks/useDataProductMutations";
 import { buildTableUpdateInput } from "./tables/helpers";
-import type { DataProduct, RegisteredTable, Relationship } from "../types/admin";
+import type { DataProduct } from "../types/admin";
 import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -36,10 +33,12 @@ import { DataProductDetailPanel, type InputPortRow } from "./data-products/DataP
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
-import { fetchRelatedGlossaryTerms, type RelatedGlossaryTerm } from "../api/glossary";
-import { relationName } from "../naming";
+import { NATIVE_PREFIX } from "../components/lineage/lineage-layout";
+import { catalogTableName, lineageRelationLabel, relationName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
+import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
+import { ProductMapButton } from "../components/graph3d/KnowledgeGraphPanel";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import {
@@ -55,6 +54,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { PageLoading } from "../components/PageLoading";
 import { FormFooter } from "../components/form/FormLayout";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { matchesQuery } from "../lib/searchItems";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
@@ -81,11 +81,12 @@ export function DataProductsPage() {
       { replace: true },
     );
   };
-  const { dataProducts, loading, error } = useDataProducts();
+  // REQ-2127: the list is data_products_meta, read as the user through the governed pipeline.
+  const products = useMetaProducts();
+  const dataProducts = useMemo(() => products.data ?? [], [products.data]);
+  const { loading, error } = products;
   const { domains } = useDomains();
   const { tables } = useTables(); // REQ-1634: member-table list + assignment
-  const { sources } = useSources(); // REQ-1443 clause 10: checker type for a scan's rules modal
-  const { relationships } = useRelationships(); // REQ-1634: related-tables panel
   const [functions, setFunctions] = useState<TrackedFunction[]>([]); // REQ-1634: member-command list + assignment
   const { roles } = useRoles();
   const roleOptions = roles.map((r) => r.id);
@@ -135,6 +136,10 @@ export function DataProductsPage() {
       // localStorage unavailable (private mode, quota) — expanded state just won't persist
     }
   };
+  // REQ-2127: the expanded product's panel core; read again after the product is saved.
+  const [coreVersion, setCoreVersion] = useState(0);
+  const core = useProductCore(expanded, coreVersion);
+  const reader = useMetaReader();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   // REQ-1640: whole-federation provenance graph, fetched once (no domains filter — scoping
@@ -142,11 +147,6 @@ export function DataProductsPage() {
   const [lineageGraph, setLineageGraph] = useState<LineageGraphData | null>(null);
   const [lineageLoading, setLineageLoading] = useState(false);
   const [lineageError, setLineageError] = useState("");
-  // REQ-1634: Related Terms panel — fetched lazily for the expanded product's member tables,
-  // since the transitive-closure BFS is a server-side call, not a client-side derivation like
-  // relatedTables()/lineageFor() above.
-  const [relatedTerms, setRelatedTerms] = useState<RelatedGlossaryTerm[]>([]);
-  const [relatedTermsLoading, setRelatedTermsLoading] = useState(false);
 
   useEffect(() => {
     // REQ-1634: command <-> data product membership lives on the (REST-served) Function row.
@@ -181,33 +181,12 @@ export function DataProductsPage() {
   // Descriptions for the lineage hover come from EVERY registered table: a contributor's or a
   // consumer's column is as hoverable as a member's.
   const describeColumn = useMemo(() => columnDescriber(tables), [tables]);
+  // A lineage relation as a reader is shown it (naming.lineageRelationLabel).
+  const relationLabel = useMemo(() => {
+    const catalog = new Map(tables.map((tb) => [relationName(tb), catalogTableName(tb)]));
+    return (relation: string) => lineageRelationLabel(relation, catalog);
+  }, [tables]);
   const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
-
-  useEffect(() => {
-    if (!expanded) {
-      /* eslint-disable-next-line react-hooks/set-state-in-effect --
-         clears stale related terms synchronously when the expanded product collapses */
-      setRelatedTerms([]);
-      return;
-    }
-    let cancelled = false;
-    setRelatedTermsLoading(true);
-    fetchRelatedGlossaryTerms(memberTables(expanded).map((tb) => tb.id))
-      .then((terms) => {
-        // proposed terms (not yet live) aren't ready for consumers to rely on
-        if (!cancelled) setRelatedTerms(terms.filter((term) => term.live));
-      })
-      .catch(() => {
-        if (!cancelled) setRelatedTerms([]);
-      })
-      .finally(() => {
-        if (!cancelled) setRelatedTermsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- memberTables is derived from tables each render, including it would just restate the tables dep
-  }, [expanded, tables]);
 
   // REQ-1640: subgraph of the whole federation lineage graph scoped to this product's member
   // tables — the published endpoint — plus their full upstream ancestry (walked backward,
@@ -286,64 +265,34 @@ export function DataProductsPage() {
         .map((tb) => relationName(tb)),
     );
 
-  // REQ-1660 (ODPS inputPorts): the 1-hop input(s) -> transform -> output edges landing on this
-  // product's member-table columns, grouped by target column. Unlike lineageFor() this does not
-  // walk transitively upstream — inputPorts is the product's direct contract surface, not its
-  // full provenance.
+  // REQ-1660 (ODPS inputPorts): each dataset one lineage hop upstream of this product's member-table
+  // columns, with the columns of it the product reads. Unlike the Lineage section this does not walk
+  // transitively upstream — inputPorts is the product's direct contract surface, not its full
+  // provenance. A native hop's node relation is NATIVE_PREFIX + the registered relation it lands
+  // in (provisa/lineage/native.py): that registered table is the dataset.
   const inputPortsFor = (id: string): InputPortRow[] => {
     if (!lineageGraph) return [];
     const memberRelations = new Set(memberTables(id).map((tb) => relationName(tb)));
     const nodesById = new Map(lineageGraph.nodes.map((n) => [n.id, n]));
-    const byTarget = new Map<string, { transform: string; inputs: Set<string> }>();
+    const byDataset = new Map<string, Set<string>>();
     for (const edge of lineageGraph.edges) {
       const tgt = nodesById.get(edge.target);
       const src = nodesById.get(edge.source);
-      if (!tgt?.relation || !src || !memberRelations.has(tgt.relation)) continue;
-      const outputLabel = `${tgt.relation}.${tgt.column}`;
-      const inputLabel = src.relation ? `${src.relation}.${src.column}` : src.column;
-      const entry = byTarget.get(outputLabel) ?? {
-        transform: edge.transform,
-        inputs: new Set<string>(),
-      };
-      entry.inputs.add(inputLabel);
-      byTarget.set(outputLabel, entry);
+      if (!tgt?.relation || !src?.relation || !memberRelations.has(tgt.relation)) continue;
+      const dataset = src.relation.startsWith(NATIVE_PREFIX)
+        ? src.relation.slice(NATIVE_PREFIX.length)
+        : src.relation;
+      const columns = byDataset.get(dataset) ?? new Set<string>();
+      columns.add(src.column);
+      byDataset.set(dataset, columns);
     }
-    return Array.from(byTarget.entries()).map(([output, { transform, inputs }]) => ({
-      output,
-      transform,
-      inputs: Array.from(inputs),
-    }));
-  };
-
-  // REQ-1634: tables one approved relationship away from this product's member tables, so a
-  // curated view can pull in the related data or the product's owner can see how to extend it.
-  // Informational only — computed from `relationships` + `registered_tables`, never stored as
-  // membership.
-  const relatedTables = (id: string) => {
-    const memberIds = new Set(memberTables(id).map((tb) => tb.id));
-    // One row per relationship, not per table — two distinct named relationships can lead to the
-    // same related table, and collapsing on the table id silently dropped the second one.
-    const related: { table: RegisteredTable; relationship: Relationship }[] = [];
-    for (const r of relationships) {
-      if (r.targetTableId == null) continue; // computed (function-target) relationship, no table
-      const srcIn = memberIds.has(r.sourceTableId);
-      const tgtIn = memberIds.has(r.targetTableId);
-      const otherId = srcIn && !tgtIn ? r.targetTableId : tgtIn && !srcIn ? r.sourceTableId : null;
-      if (otherId === null) continue;
-      const table = tables.find((tb) => tb.id === otherId);
-      if (table) related.push({ table, relationship: r });
-    }
-    return related;
-  };
-
-  // Relationships where both endpoints are member tables of this product — the connections that
-  // exist entirely within the published surface, as opposed to relatedTables()'s one-hop-outside view.
-  const internalRelationships = (id: string) => {
-    const memberIds = new Set(memberTables(id).map((tb) => tb.id));
-    return relationships.filter(
-      (r) =>
-        memberIds.has(r.sourceTableId) && r.targetTableId != null && memberIds.has(r.targetTableId),
-    );
+    return Array.from(byDataset.entries())
+      .map(([dataset, columns]) => ({
+        id: dataset,
+        table: relationLabel(dataset),
+        columns: Array.from(columns).sort(),
+      }))
+      .sort((x, y) => x.table.localeCompare(y.table));
   };
 
   const openCreate = () => {
@@ -463,6 +412,8 @@ export function DataProductsPage() {
       const refreshed = await fetchActions();
       setFunctions(refreshed.functions);
     }
+    products.reload();
+    setCoreVersion((v) => v + 1);
     closeForm();
   };
 
@@ -473,6 +424,7 @@ export function DataProductsPage() {
     if (refusal.refused(result, deleteTarget)) return;
     if (expanded === deleteTarget) setExpanded(null);
     if (!result.success) setMsg(result.message || t("dataProductsTab.deleteFailed"));
+    else products.reload();
   };
 
   const formCard = (
@@ -496,19 +448,13 @@ export function DataProductsPage() {
   );
 
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredProducts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return q
-      ? dataProducts.filter(
-          (p) =>
-            p.id.toLowerCase().includes(q) ||
-            p.name.toLowerCase().includes(q) ||
-            p.domainId.toLowerCase().includes(q) ||
-            (p.ownerRole ?? "").toLowerCase().includes(q) ||
-            p.purpose.toLowerCase().includes(q),
-        )
-      : dataProducts;
-  }, [dataProducts, search]);
+  const filteredProducts = useMemo(
+    () =>
+      dataProducts.filter((p) =>
+        matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search),
+      ),
+    [dataProducts, search],
+  );
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
       { key: "id", label: t("dataProductsTab.colId"), sortValue: (p) => p.id },
@@ -550,6 +496,7 @@ export function DataProductsPage() {
           placeholder={t("dataProductsTab.filterPlaceholder")}
         />
         <Group gap="xs">
+          <ProductMapButton />
           {/* Hidden while its form is open: the form ends with Save and Cancel. */}
           {canEdit && !creating && (
             <Button
@@ -572,7 +519,17 @@ export function DataProductsPage() {
 
       {error && (
         <Alert color="red" mb="sm">
-          {error.message}
+          {error}
+        </Alert>
+      )}
+      {products.unreadable && (
+        <Alert color="yellow" mb="sm" data-testid="data-products-unreadable">
+          {t("dataProductCore.unreadable")}
+        </Alert>
+      )}
+      {lineageError && (
+        <Alert color="red" mb="sm">
+          {lineageError}
         </Alert>
       )}
       {msg && !creating && editingId === null && (
@@ -669,13 +626,9 @@ export function DataProductsPage() {
                             ) : (
                               <DataProductDetailPanel
                                 p={p}
-                                tables={memberTables(p.id)}
-                                sources={sources}
-                                functions={memberFunctions(p.id)}
-                                relatedTerms={relatedTerms}
-                                relatedTermsLoading={relatedTermsLoading}
-                                relatedTables={relatedTables(p.id)}
-                                internalRelationships={internalRelationships(p.id)}
+                                core={core.data}
+                                coreError={core.error}
+                                reader={reader}
                                 canEdit={canEdit}
                                 canSeeLineage={canSeeLineage}
                                 lineageLoading={lineageLoading}
@@ -683,6 +636,7 @@ export function DataProductsPage() {
                                 lineageGraph={lineageFor(p.id)}
                                 lineageMembers={lineageMembersFor(p.id)}
                                 describeColumn={describeColumn}
+                                relationLabel={relationLabel}
                                 inputPorts={inputPortsFor(p.id)}
                                 onEdit={() => openEdit(p)}
                                 onDelete={() => setDeleteTarget(p.id)}

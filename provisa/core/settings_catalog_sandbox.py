@@ -81,6 +81,20 @@ DECLARED: list[Setting] = [
         min=300,
         unit="seconds",
     ),
+    Setting(
+        key="sandbox.demo_stores_linger",
+        card="limits",
+        type="int",
+        effect="live",  # read when a demo's last sandbox closes
+        # REQ-2049: a demo's stores start at its first open and are taken down this long after
+        # its last sandbox closes, unless it is opened again first; the node cannot hold every
+        # demo's stores at once.
+        req="REQ-2049",
+        env="PROVISA_SANDBOX_DEMO_STORES_LINGER",
+        default=1800,
+        min=0,
+        unit="seconds",
+    ),
     # REQ-2006: the AI models a sandbox's visitor uses -- Polly and every completion role (column
     # and table descriptions, relationship discovery, natural-language SQL, table selection), all
     # through one OpenAI-wire endpoint. Off unless both the endpoint and its key are set. Never an

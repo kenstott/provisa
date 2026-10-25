@@ -33,6 +33,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("front-door")
@@ -67,6 +68,11 @@ WAKE_HOLD_SECONDS = 110  # raw-TCP clients: hold until boot completes or they gi
 STATUS_CACHE_TTL = 10.0
 START_DEBOUNCE_SECONDS = 30.0
 SPLICE_BUF = 65536
+#: How long a spliced connection may carry no byte either way before the proxy drops it. It must
+#: outlast the slowest request the app answers in one go: the UI server's own proxy timeout
+#: (ui.proxy_timeout, REQ-1448: 480 s, the engine wake a first query may wait on) and a demo
+#: sandbox's open. At 300 s it cut those first, and the visitor saw "Server disconnected".
+SPLICE_IDLE_SECONDS = 600
 DRAIN_TIMEOUT = 0.5  # bound on reading the rest of a request before closing; see _drain
 DRAIN_LIMIT = 1 << 20
 
@@ -81,6 +87,8 @@ _last_start_call = 0.0
 _last_woke = float("-inf")
 _status_cache = ("", 0.0)
 _health_cache: dict[int, tuple[bool, float]] = {}
+#: What each port's last /health probe got, and how long it took: the reason a 503 is logged with.
+_health_why: dict[int, tuple[str, float]] = {}
 
 _metadata_token = ("", 0.0)
 
@@ -194,7 +202,13 @@ def _backend_ready(port: int, fresh: bool = False) -> bool:
     if not fresh and time.monotonic() - at < HEALTH_CACHE_TTL:
         return ready
     ready = False
-    sock = _backend_connect(port, timeout=HEALTH_TIMEOUT)
+    started = time.monotonic()
+    try:
+        sock = socket.create_connection((BACKEND_HOST, port), timeout=HEALTH_TIMEOUT)
+    except TimeoutError:
+        sock, why = None, "connect timed out"
+    except OSError as exc:
+        sock, why = None, f"connect failed: {exc}"
     if sock is not None:
         # The backend's certificate is issued for the public hostname and this dials the VM's
         # internal address, so a verifying context would fail on the name for a perfectly healthy
@@ -211,9 +225,13 @@ def _backend_ready(port: int, fresh: bool = False) -> bool:
                 )
                 status_line = tls.recv(SPLICE_BUF).split(b"\r\n", 1)[0].split()
                 ready = len(status_line) > 1 and status_line[1] == b"200"
-        except (OSError, ssl.SSLError):
-            ready = False
+                why = f"answered {b' '.join(status_line[1:]).decode('latin-1') or 'nothing'}"
+        except TimeoutError:
+            why = f"no answer in {HEALTH_TIMEOUT}s"
+        except (OSError, ssl.SSLError) as exc:
+            why = f"failed: {exc}"
     _health_cache[port] = (ready, time.monotonic())
+    _health_why[port] = (why, time.monotonic() - started)
     return ready
 
 
@@ -258,7 +276,7 @@ def _splice(client: socket.socket, backend: socket.socket, activity: bool) -> No
         backend.setblocking(True)
         pairs = {client: backend, backend: client}
         while True:
-            readable, _, errored = select.select(list(pairs), [], list(pairs), 300)
+            readable, _, errored = select.select(list(pairs), [], list(pairs), SPLICE_IDLE_SECONDS)
             if errored or not readable:
                 return
             for sock in readable:
@@ -298,6 +316,11 @@ UPDATING_TEXT = (
     "automatically.",
 )
 
+#: The waking page's binary streams (REQ-1333): the one renderer the app's splash also runs
+#: (provisa-ui/splash/binary-streams.js). Terraform writes it beside this file; in the repository
+#: it is a symlink to the UI's copy.
+BINARY_STREAMS_JS = (Path(__file__).resolve().parent / "binary-streams.js").read_text()
+
 WAKE_HTML = """\
 <!doctype html><html><head><title>Provisa &mdash; waking up</title>
 <meta http-equiv="refresh" content="8">
@@ -311,7 +334,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;d
 h2{margin:18px 0 8px;font-size:1.25rem}
 p{margin:0;color:#9aa3b5;font-size:.9rem;line-height:1.5}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-@media (prefers-reduced-motion: reduce){.mark{animation:none}#wake-canvas{display:none}}
+@media (prefers-reduced-motion: reduce){.mark{animation:none}}
 </style>
 </head><body>
 <canvas id="wake-canvas"></canvas>
@@ -327,75 +350,26 @@ p{margin:0;color:#9aa3b5;font-size:.9rem;line-height:1.5}
 <p>__MESSAGE__</p>
 </div>
 <script>
+__BINARY_STREAMS__
+</script>
+<script>
 (function(){
-var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 var canvas=document.getElementById("wake-canvas");
-if(reduce||!canvas||!canvas.getContext)return;
-var ctx=canvas.getContext("2d");
-var dpr=Math.min(window.devicePixelRatio||1,2);
-var W=0,H=0,cx=0,cy=0,spawnR=0,coreR=0;
+if(!canvas||!canvas.getContext)return;
 var mark=document.querySelector(".mark svg");
-function markCenter(){
-if(mark){var r=mark.getBoundingClientRect();if(r.width)return{x:r.left+r.width/2,y:r.top+r.height/2};}
-return{x:W/2,y:H*0.4};
-}
-function resize(){
-W=canvas.clientWidth;H=canvas.clientHeight;
-canvas.width=W*dpr;canvas.height=H*dpr;
-ctx.setTransform(dpr,0,0,dpr,0,0);
-var c=markCenter();cx=c.x;cy=c.y;
-spawnR=Math.max(W,H)*0.72;
-coreR=Math.max(56,Math.min(W,H)*0.13);
-ctx.fillStyle="#0f1117";ctx.fillRect(0,0,W,H);
-}
-window.addEventListener("resize",resize);
-resize();
-requestAnimationFrame(function(){var c=markCenter();cx=c.x;cy=c.y;});
-setTimeout(function(){var c=markCenter();cx=c.x;cy=c.y;},760);
-var N=Math.max(140,Math.min(320,Math.round((W*H)/5200)));
-var P=[];
-function spawn(p){
-var a=Math.random()*Math.PI*2;
-var r=spawnR*(0.7+Math.random()*0.5);
-p.x=cx+Math.cos(a)*r;p.y=cy+Math.sin(a)*r*0.82;
-p.px=p.x;p.py=p.y;p.spd=0.6+Math.random()*1.1;p.life=0;
-}
-for(var i=0;i<N;i++){var seed={};spawn(seed);P.push(seed);}
-function frame(){
-ctx.fillStyle="rgba(15,17,23,0.085)";ctx.fillRect(0,0,W,H);
-for(var i=0;i<P.length;i++){
-var p=P[i];
-var dx=cx-p.x,dy=cy-p.y;
-var d=Math.sqrt(dx*dx+dy*dy)||1;
-var curl=Math.sin(p.x*0.012+p.y*0.01)*0.9;
-var ang=Math.atan2(dy,dx)+curl*(d/spawnR);
-var v=p.spd*(0.6+(1-d/spawnR)*2.2);
-p.px=p.x;p.py=p.y;
-p.x+=Math.cos(ang)*v;p.y+=Math.sin(ang)*v;
-p.life++;
-var t=Math.max(0,Math.min(1,1-d/(spawnR*0.55)));
-var rr=Math.round(99+(16-99)*t);
-var gg=Math.round(102+(185-102)*t);
-var bb=Math.round(241+(129-241)*t);
-var alpha=0.22+t*0.6;
-ctx.strokeStyle="rgba("+rr+","+gg+","+bb+","+alpha+")";
-ctx.lineWidth=0.9+t*1.6;
-ctx.beginPath();ctx.moveTo(p.px,p.py);ctx.lineTo(p.x,p.y);ctx.stroke();
-if(d<coreR||p.life>900)spawn(p);
-}
-var pulse=0.55+0.45*Math.sin(Date.now()*0.002);
-var g=ctx.createRadialGradient(cx,cy,0,cx,cy,coreR*1.3);
-g.addColorStop(0,"rgba(16,185,129,"+0.16*pulse+")");
-g.addColorStop(0.5,"rgba(52,120,180,"+0.06*pulse+")");
-g.addColorStop(1,"rgba(16,185,129,0)");
-ctx.fillStyle=g;
-ctx.beginPath();ctx.arc(cx,cy,coreR*1.3,0,Math.PI*2);ctx.fill();
-requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
+var card=document.querySelector(".card");
+provisaBinaryStreams(canvas,{
+center:function(){
+var r=mark&&mark.getBoundingClientRect();
+if(r&&r.width)return{x:r.left+r.width/2,y:r.top+r.height/2};
+return{x:canvas.clientWidth/2,y:canvas.clientHeight*0.4};
+},
+avoid:function(){return card;},
+reduce:window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches
+});
 })();
 </script>
-</body></html>"""
+</body></html>""".replace("__BINARY_STREAMS__", BINARY_STREAMS_JS)
 
 
 def _wants_html(request: bytes) -> bool:
@@ -597,6 +571,18 @@ def _handle(client: socket.socket, port: int, peer: str) -> None:
             client.close()
             return
         trigger_wake()
+        # The 503 this proxy answers itself, never the app's: why, for the next one to be read
+        # from the journal (a slow /health on a RUNNING box once gave a walk one with no trace).
+        why, took = _health_why.get(port, ("not probed", 0.0))
+        log.warning(
+            "503 on :%s to %s: /health %s (%.1fs); coordinator %s, %s",
+            port,
+            peer,
+            why,
+            took,
+            _status_cache[0] or "unknown",
+            "waking from idle" if waking_from_idle() else "not woken by this proxy",
+        )
         _serve_wake_response(client, port)
         return
     backend = _backend_connect(port)
@@ -653,9 +639,13 @@ def idle_stop_due() -> float | None:
     # kept running across the stop, so a start from anywhere but this proxy — an operator
     # deploying with `gcloud compute instances start` or `reset` — was already past the idle
     # threshold at boot and got stopped on the next tick, mid startup script.
-    if coordinator_uptime_seconds() < IDLE_STOP_SECONDS:
+    uptime = coordinator_uptime_seconds()
+    if uptime < IDLE_STOP_SECONDS:
         return None
-    return idle_for
+    # Idle since its last counted traffic or its start, whichever is later: a box started from
+    # elsewhere had no traffic through here before it, and the log said "idle 19097s" of one up
+    # for half an hour.
+    return min(idle_for, uptime)
 
 
 def _idle_reaper() -> None:

@@ -620,11 +620,15 @@ def kafka_client_secret(shard: str) -> str:
 
 
 async def _ensure_kafka_client_secret(shard: str) -> None:
-    """Create ``shard``'s Kafka client Secret if it does not exist, empty. Never an apply: the keys
-    are written one catalog at a time (:func:`put_kafka_client_properties`), and an apply of the
-    empty Secret would remove them."""
+    """Create ``shard``'s Kafka client Secret if it does not exist, empty."""
+    await _ensure_shard_secret(shard, kafka_client_secret(shard))
+
+
+async def _ensure_shard_secret(shard: str, name: str) -> None:
+    """Create ``shard``'s Secret ``name`` if it does not exist, empty. Never an apply: its keys are
+    written one at a time (:func:`put_kafka_client_properties`), and an
+    apply of the empty Secret would remove them."""
     settings = provisioner_settings()
-    name = kafka_client_secret(shard)
     resp = await _k8s(
         "POST",
         f"/api/v1/namespaces/{settings['namespace']}/secrets",

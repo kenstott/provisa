@@ -12,7 +12,7 @@
     "model": "+ Modelo",
     "modelTitle": "Modelar uma entidade ou fato (esquema estrela / Data Vault)",
     "reportXlsx": "Planilha",
-    "reportXlsxTitle": "Baixar o modelo como planilha para revisão — fontes, tabelas, colunas, relacionamentos, exibições, métricas, exibições materializadas e termos do glossário, uma aba para cada",
+    "reportXlsxTitle": "Baixar o modelo como planilha para revisão — fontes, tabelas, colunas, relacionamentos, exibições, métricas, exibições materializadas e termos da ontologia, uma aba para cada",
     "viewErd": "Ver ERD",
     "colSource": "Fonte",
     "colDomain": "Domínio",
@@ -64,12 +64,12 @@
     "dataProduct": "produto",
     "dataProductTitle": "Produto de dados — incluído em provisa metadata export",
     "purposeTitle": "O que o registro de uma tabela faz",
-    "purposeBody": "O registro é o que coloca uma tabela no modelo governado: fixa as colunas, os nomes sob os quais são expostas e quais papéis podem vê-las. Somente tabelas registradas podem ser consultadas, e tudo o que vem depois — relacionamentos, métricas, visões, termos do glossário — nomeia colunas registradas.",
-    "purposeAdd": "+ Vista regista uma relação definida por SQL ou por métricas em vez de por uma tabela física — e registá-la é o que a faz deixar de ser uma consulta guardada. A definição decide também como é servida: ao vivo, ou materializada segundo uma cadência ou uma janela de calendário, com uma atualização que substitui, faz upsert ou acrescenta. Ao escolher um modo de acréscimo, a vista mantém o seu próprio histórico e os consumidores podem lê-la tal como estava num momento passado; as suas entradas são seguidas como linhagem, pelo que uma atualização espera por aquilo de que depende.",
+    "purposeBody": "O registro é o que coloca uma tabela no modelo governado: fixa as colunas, os nomes sob os quais são expostas e quais papéis podem vê-las. Somente tabelas registradas podem ser consultadas, e tudo o que vem depois — relacionamentos, métricas, visões, termos da ontologia — nomeia colunas registradas.",
+    "purposeAdd": "+ Vista regista uma relação definida por SQL ou por métricas em vez de por uma tabela física — e registá-la é o que a faz deixar de ser uma consulta guardada. A definição decide também como é servida: ao vivo, ou materializada segundo uma cadência ou uma janela de calendário, com uma atualização que substitui, faz upsert ou acrescenta. Ao ativar a viagem no tempo, a vista mantém o seu próprio histórico e os consumidores podem lê-la tal como estava num momento passado; as suas entradas são seguidas como linhagem, pelo que uma atualização espera por aquilo de que depende.",
     "purposeAria": "Sobre as tabelas registradas",
     "erdHelpTitle": "Diagrama entidade-relacionamento",
     "erdHelpBody": "Desenha as tabelas registadas e os relacionamentos declarados entre elas, para que os joins já existentes fiquem visíveis antes de escrever uma consulta. Lê o modelo em vez de o editar: filtre por domínio e exporte o diagrama como PNG ou SVG.",
-    "purposeModel": "+ Modelo declara uma entidade ou um facto — as duas peças com que se constroem tanto um esquema em estrela como um Data Vault — e baixa-o para essas mesmas primitivas, registando a vista materializada, o seu modo de histórico e os relacionamentos com as entidades cujas chaves usa.",
+    "purposeModel": "+ Modelo declara uma entidade ou um facto — as duas peças com que se constroem tanto um esquema em estrela como um Data Vault — e baixa-o para essas mesmas primitivas, registando a vista materializada, a sua viagem no tempo e os relacionamentos com as entidades cujas chaves usa.",
     "empty": "Nenhuma tabela registrada ainda.",
     "resizeDetail": "Redimensionar o painel de detalhes",
     "detailPanel": "Detalhes da tabela",
@@ -80,6 +80,10 @@
     "backToDetail": "Voltar aos detalhes",
     "panelRegisterTable": "Registar tabela",
     "panelNewView": "Nova vista",
-    "panelNewModel": "Novo modelo"
+    "panelNewModel": "Novo modelo",
+    "history": {
+      "badge": "histórico",
+      "title": "Guarda histórico: consulte-o em uma data ou como registrado (Viagem no tempo)"
+    }
   }
 }

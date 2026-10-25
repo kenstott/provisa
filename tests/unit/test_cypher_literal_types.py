@@ -23,9 +23,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from provisa.cypher.label_map import CypherLabelMap
+from provisa.gql.label_map import CypherLabelMap
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.translator import cypher_to_sql
 
 _COLUMNS = [
     ("id", "integer"),
@@ -81,7 +81,6 @@ def _one_table(predicate: str, params: dict | None = None) -> tuple[str, list[st
         ("o.id <> 7", 'o."id" <> 7'),
         ("o.id = 7.5", 'o."id" = 7.5'),
         ("o.id = '7'", "o.\"id\" = '7'"),
-        ("o.id = true", 'o."id" = TRUE'),
         ("o.id = null", 'o."id" = NULL'),
         ("o.score = 10.5", 'o."score" = 10.5'),
         ("o.active = true", 'o."active" = TRUE'),
@@ -93,6 +92,16 @@ def _one_table(predicate: str, params: dict | None = None) -> tuple[str, list[st
 )
 def test_a_literal_compared_to_a_table_column_keeps_its_type(predicate, sql):
     assert _one_table(predicate) == (sql, [])
+
+
+def test_a_literal_of_a_kind_the_column_never_compares_to_is_refused():
+    """REQ-778: an integer column compared to true is the user's mistake, refused at translation
+    in their terms rather than handed to an engine that refuses (Postgres) or coerces it."""
+    from provisa.gql.translator_types import CypherMistake
+
+    with pytest.raises(CypherMistake) as refused:
+        _one_table("o.id = true")
+    assert refused.value.code == "cypher.type_mismatch"
 
 
 @pytest.mark.parametrize(

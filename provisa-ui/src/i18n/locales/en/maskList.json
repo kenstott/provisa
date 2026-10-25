@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} → {{replace}}",
     "truncateLabel": "truncated to {{precision}}",
     "constantLabel": "constant {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "Common masks",
+    "presetsAria": "Common masks for entry {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "Works on every engine",
+    "universalHelp": "Patterns use one regex dialect; Provisa translates it for each engine. Values that don't match the pattern are fully masked.",
+    "notUniversal": "Not on every engine: {{construct}} at character {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, last 4",
+      "card_last4": "Card number, last 4",
+      "phone_last4": "Phone, last 4",
+      "email_initial_domain": "Email, first letter and domain",
+      "all_but_last4": "All but the last 4 characters",
+      "digits_keep_separators": "Digits, separators kept",
+      "zip3": "US ZIP, first 3",
+      "birth_year": "Date of birth, year only",
+      "iban_last4": "IBAN, last 4",
+      "keep_first_last": "Keep the first and last characters"
+    },
+    "presetParam": {
+      "first": "First",
+      "last": "Last"
+    },
+    "construct": {
+      "lookahead": "a lookahead (?=…)",
+      "lookbehind": "a lookbehind (?<=…)",
+      "backreference": "a backreference \\1 in the pattern",
+      "lazy_quantifier": "a lazy quantifier (*?, +?)",
+      "possessive_quantifier": "a possessive quantifier (*+, ++)",
+      "named_group": "a named group (?<name>…)",
+      "word_boundary": "a word boundary \\b",
+      "unicode_class": "a Unicode class \\p{…}",
+      "posix_class": "a POSIX class [[:…:]]",
+      "inline_flags": "inline flags (?i)",
+      "unknown_escape": "an escape not every engine knows",
+      "open_bound": "an open bound {n,}",
+      "bound_too_large": "a repeat count too large",
+      "unbalanced_paren": "an unbalanced parenthesis",
+      "unbalanced_bracket": "an unbalanced bracket",
+      "empty_class": "an empty class []",
+      "bad_range": "a range whose start is after its end",
+      "nothing_to_repeat": "a quantifier with nothing to repeat",
+      "replace_group_out_of_range": "a $n naming a group the pattern does not have",
+      "replace_named_ref": "a named reference in the replacement",
+      "replace_bad_escape": "an escape the replacement does not take",
+      "alternation_prefix": "alternatives where one is a prefix of another",
+      "alternation_overlap": "alternatives that can match the same text",
+      "negated_class_escape_in_set": "a negated escape like \\D inside a [ ] set"
+    }
   }
 }

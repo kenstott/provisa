@@ -64,7 +64,11 @@ const MARQUEZ: CatalogConnection = {
 };
 
 function state(catalogs: CatalogConnection[] = [MARQUEZ]): CatalogsState {
-  return { providers: ["atlas", "datazone", "openlineage", "unity_catalog"], catalogs };
+  return {
+    providers: ["atlas", "datazone", "openlineage", "unity_catalog"],
+    beta_providers: [],
+    catalogs,
+  };
 }
 
 const SAVED = { success: true, catalogs: ["marquez"] };
@@ -86,6 +90,25 @@ describe("CatalogsTab", () => {
     expect(screen.getByTestId("catalog-id-0")).toHaveValue("marquez");
     expect(screen.getByTestId("catalog-endpoint-0")).toHaveValue("http://marquez:5000");
     expect(screen.getByTestId("catalog-endpoint-1")).toHaveValue("http://lab:5000");
+  });
+
+  it("names a provider not yet proven against a live catalog as beta", async () => {
+    mockFetch.mockResolvedValue({
+      providers: ["atlan", "atlas"],
+      beta_providers: ["atlan"],
+      catalogs: [
+        { ...MARQUEZ, id: "atlan-prod", provider: "atlan" },
+        { ...MARQUEZ, id: "atlas-prod", provider: "atlas" },
+      ],
+    });
+    render(<CatalogsTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("catalog-provider-0")).toHaveValue("atlan (beta)"),
+    );
+    expect(screen.getByTestId("catalog-provider-1")).toHaveValue("atlas");
+    expect(screen.getByText(/atlan-prod · atlan \(beta\)/, { selector: "h6" })).toBeInTheDocument();
+    expect(screen.getByText(/atlas-prod · atlas$/, { selector: "h6" })).toBeInTheDocument();
   });
 
   it("never renders a stored credential and does not send one the user did not type", async () => {

@@ -38,6 +38,12 @@
     "kind_dependencies": "依赖关系",
     "kind_joint_counts": "联合计数",
     "kind_constraints": "建议的约束",
-    "kind_constraint_checks": "约束检查"
+    "kind_constraint_checks": "约束检查",
+    "kind_classifications": "分类",
+    "kind_terrain": "地形",
+    "kind_relationsMap": "关系",
+    "kind_jointCloud": "联合云",
+    "kind_driftStrata": "漂移层",
+    "resultsMenu": "结果"
   }
 }

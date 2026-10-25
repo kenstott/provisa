@@ -38,6 +38,7 @@ import pytest
 
 from provisa.core.connection_loop import LOOP_POOL
 from tests.role_state import RoleState
+from provisa.api.flight.relay import serve_in_background
 
 pytestmark = [pytest.mark.integration]
 
@@ -85,7 +86,7 @@ def flight_server():
         port = _free_port()
         location = f"grpc://127.0.0.1:{port}"
         server = ProvisaFlightServer(state, location=location)
-        threading.Thread(target=server.serve, daemon=True).start()
+        serve_in_background(server)
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             try:
@@ -451,7 +452,14 @@ async def test_graphql_governance_runs_on_the_request_thread_in_parallel():
     state.schemas = {"analyst": schema}
     state.contexts = {"analyst": object()}  # type: ignore[dict-item]
     state.rls_contexts = {}
-    state.roles = {"analyst": {"id": "analyst", "capabilities": [], "domain_access": ["*"]}}
+    state.roles = {
+        "analyst": {
+            "description": "Test role.",
+            "id": "analyst",
+            "capabilities": [],
+            "domain_access": ["*"],
+        }
+    }
     state.apq_cache = None
     request_idents: set[int] = set()
     govern_idents: list[int] = []

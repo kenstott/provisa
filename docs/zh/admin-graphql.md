@@ -396,11 +396,11 @@ query {
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-将一张新表（或视图）注册到某个域中。需要 `table_registration` 能力以及目标域的成员身份。缺少 `create_relationship` 能力而提交视图的调用者，会被加入待权限持有者批准的创建请求队列。
+将一张新表（或视图）注册到某个 domain，并在一个事务中应用输入携带的每项设置，其中包括 `gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules` 和 `draft`：任何一项被拒绝，就不注册任何内容。需要 `table_registration` 能力和目标 domain 的成员身份；携带 `writeGrants` 还需要该 domain 的 `masking_config`。缺少 `create_relationship` 而提交视图的调用者，会作为创建请求排队，等待权限持有者批准。
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-更新一张现有表的别名、描述、列元数据、物化视图设置和实时投递配置。需要 `table_registration`。
+更新现有表的别名、描述、列元数据、MV 设置、实时投递配置，以及输入携带的设置（`gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules`、`draft`），在一个事务中完成：任何一项被拒绝，就不保存任何内容。省略的设置保留其已存储的值。需要 `table_registration`。
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -454,9 +454,11 @@ query {
 
 以与 `createRelationship` 相同的检查修改已有关系。不属于任何关系的 id 会被拒绝（`schema.relationship_not_found`）。修改需要该权利本身；它从不作为请求排队。
 
-#### `deleteRelationship(id: String!) → MutationResult`
+在属性和类之间重新安置键列的保存操作可能会去掉这些列上的 `pii`。这时它会以 `tag.move_loses` 被拒绝，`params.columns` 会列出每一列失去（`loses`）和获得（`gains`）的标签。重新保存时用 `confirmTagLoss` 列出每个丢失的标签，或用 `carryTags: true` 把它们放到每一列要去的术语上。
 
-按 ID 删除一个关系并重建架构。
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+按 ID 删除一个关系并重建架构。会重新安置键列的删除操作接受与保存相同的 `confirmTagLoss` 和 `carryTags`。
 
 ---
 
@@ -538,11 +540,19 @@ query {
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-将一个标签分配给数据源、表、列、关系或命令。强制执行该标签的字段策略（`reason_policy`、`expires_policy`），并且——对于参数化标签——根据标签允许的列表验证参数值。
+将一个标签分配给数据源、表、列、关系或命令。强制执行该标签的字段策略（`reason_policy`、`expires_policy`），对于参数化标签，还会根据标签允许的列表检查参数值。
+
+`pii` 也可以加在术语表的术语上，这样具有该含义的每一列都会带上这个标签，包括以后注册的列。设置 `objectType: "term"` 和 `termId`：
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+在列上，`alsoTerm: true` 会改为把标签加在该列的术语上。结果中的 `params.covers` 说明标签覆盖多少列：对于列，是它的术语持有的其他列数；对于术语，是它持有的列数。以下情况会被明确拒绝：术语上的非 `pii` 标签（`tag.not_on_terms`）、不是属性的术语（`tag.term_not_property`）、草稿术语（`tag.term_not_live`，“定义 *术语* 后才能标记”），以及在使用 `alsoTerm` 时的键列（`tag.key_column`）或没有术语的列（`tag.column_has_no_term`）。直接标记的列需要提供原因。
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-移除一个标签分配。
+移除一个标签分配，也可以从术语上移除（`objectType: "term"`、`termId`）。从一个通过其术语带有 `pii` 的列上移除该标签会被拒绝（`tag.inherited_from_term`）：请取消该术语的标记，或者把该列移到与其内容相符的术语上。
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 
@@ -728,7 +738,9 @@ mutation {
 | `mvRefreshInterval` | 刷新间隔（秒） |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量维护 |
-| `mvBitemporalMode` | 双时态表的 `snapshot` \| `delta` |
+| `businessKey` | 在各个版本之间标识同一事物的列；与 `validTime`、`recordedTime` 一起声明，三者全有或全无 |
+| `validTime` | 保存业务赋予该记录的日期的列 |
+| `recordedTime` | 保存该版本何时录入或修改的列 |
 | `mvCalendar` | 快照日历名称 |
 | `mvGrain` | 快照粒度：`daily`、`weekly`、`monthly`、`annual`，或自定义的 `3WE` / `LFR` |
 | `viewSql` | 派生视图的 SQL |
@@ -737,6 +749,15 @@ mutation {
 | `queryTemplate` | Neo4j 表的 Cypher |
 | `live` | SSE/Kafka 推送的实时投递配置 |
 | `discover` | 在注册时从实时数据源推断列 |
+| `gqlNamingConvention` | 表的 GraphQL 命名约定；`null` 表示继承。省略时，新表继承，更新保留已存储的值 |
+| `roleTtl` | 完整的角色到 TTL 列表，`[{ role, ttl }]` |
+| `replicate` | 表何时由其副本提供；`null` 继承数据源的值 |
+| `writeGrants` | 表的完整写入授权集合；需要 `masking_config` |
+| `draft` | `false` 发布该表；否则注册后为草稿 |
+| `cacheTtl` | 表自身的 Cache TTL；`null` 表示没有自身的 |
+| `pagination` | 表声明的分页；`null` 表示不声明 |
+| `region` | 表数据所在的位置；更新时给出另一个区域会迁移该表，检查方式与 `setTableRegion` 相同 |
+| `rowRules` | 表的行规则（`RLSRuleInput`），随表一起保存；需要 `masking_config` |
 
 ### `RelationshipInput`
 

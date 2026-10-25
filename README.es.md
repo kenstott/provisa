@@ -399,7 +399,7 @@ Consulte [docs/python-client.md](docs/python-client.md) para la referencia compl
 | Diseño del sistema y mapa de componentes | [docs/architecture.md](docs/architecture.md) |
 | Modelo de seguridad (RLS, enmascaramiento, autenticación) | [docs/security.md](docs/security.md) |
 | Almacenamiento de secretos y referencias `${secret:NAME}` | [docs/secrets.md](docs/secrets.md) |
-| Glosario de negocio y curación de términos | [docs/glossary.md](docs/glossary.md) |
+| Glosario de negocio y curación de términos | [docs/ontology.md](docs/ontology.md) |
 | Entornos (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Crear entornos de prueba (perfilado, datos falsos, datos sintéticos) | [docs/test-data.md](docs/test-data.md) |
 | Referencia de métodos de datos falsos | [docs/fake-methods.md](docs/fake-methods.md) |

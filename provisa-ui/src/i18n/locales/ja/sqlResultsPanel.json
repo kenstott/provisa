@@ -101,6 +101,9 @@
     "provColumnsHeading": "列",
     "provTypeNumber": "数値",
     "provTypeDate": "日付",
-    "provTypeText": "テキスト"
+    "provTypeText": "テキスト",
+    "statementTab": "結果 {{n}} · {{name}}",
+    "statementTabUnnamed": "結果 {{n}}",
+    "statementFailed": "失敗"
   }
 }

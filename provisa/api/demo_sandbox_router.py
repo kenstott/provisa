@@ -20,9 +20,13 @@ path there, ui_server.DEMO_OPEN_PREFIXES); every other process refuses it by nam
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Request
 
 from provisa.api.errors import ApiError
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/public/demos", tags=["demo sandboxes"])
 #: A named ("Try it Out") sandbox, opened by a signed-in person (REQ-2006).
@@ -42,12 +46,23 @@ def _require_tier() -> None:
 
 @router.post("/{name}")
 async def open_demo(name: str, request: Request) -> dict:
-    from provisa.api.demo_sandbox import VISITOR, open_sandbox
+    from provisa.api.demo_sandbox import VISITOR, mark_closing, open_sandbox
     from provisa.api.demo_warmup import warm_tour
 
     _require_tier()
     opened = await open_sandbox(name, kind=VISITOR)
     assert opened.token is not None  # a visitor's sandbox is always opened with its token
+    if await request.is_disconnected():
+        # The visitor is gone before the sandbox could be handed over, and its token with them:
+        # nobody can reach it or close it. It is closing as a closed tab's is (REQ-2065), so the
+        # grace passes with no request and its place is freed, rather than held to the idle expiry.
+        log.warning(
+            "demo sandbox %s of %s: its visitor left before it opened; closing it",
+            opened.org_id,
+            opened.demo,
+        )
+        await mark_closing(opened.org_id)
+        return {"org_id": opened.org_id, "demo": opened.demo, "token": opened.token}
     warm_tour(request.app, opened.org_id, opened.demo, {"Authorization": f"Bearer {opened.token}"})
     return {"org_id": opened.org_id, "demo": opened.demo, "token": opened.token}
 

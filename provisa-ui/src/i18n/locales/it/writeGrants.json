@@ -29,6 +29,7 @@
     "addGrant": "Aggiungi un'autorizzazione",
     "removeGrant": "Rimuovi questa autorizzazione",
     "save": "Salva autorizzazioni",
-    "saved": "Autorizzazioni salvate."
+    "saved": "Autorizzazioni salvate.",
+    "kept": "Conservato: salvato con la tabella."
   }
 }

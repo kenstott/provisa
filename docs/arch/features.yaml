@@ -556,6 +556,21 @@
     text: Graph analytics run over a query result in the Graph Explorer. A configurable size limit keeps
       them in bounds, and the community detection algorithm that cost the most is allowed only on small
       graphs.
+- id: sparql
+  name: SPARQL
+  section: Query it any way
+  visibility: feature
+  audience: consumer
+  paragraphs:
+  - id: sparql-query
+    text: SPARQL is a graph language beside Cypher, written in the same query editor and sent by standard
+      RDF clients to a SPARQL 1.1 endpoint. A table is a class and its rows are its subjects, a column
+      linked to a term is a predicate, and a relationship is an edge, so there is no triple store to load.
+      Each query becomes one SQL statement, governed and routed like any other. Property paths stop at a
+      depth limit the operator sets, and a result cut there says so.
+  - id: sparql-update
+    text: SPARQL Update changes the ontology and the data through the same governed writes as every other
+      surface, under the same rights. It never writes raw triples.
 - id: natural-language-query
   name: Natural-language query
   section: Query it any way
@@ -1039,7 +1054,7 @@
       %%cypher magics) that reads as you the same way. Both stay as you left them while you visit other
       pages, open to 95% of the window, and Polly can write code into either, run it and read what it
       returned. Python and its packages
-      (pandas, pyarrow, scikit-learn, matplotlib) are served by Provisa itself, so it works with no
+      (pandas, pyarrow, scikit-learn, matplotlib, networkx) are served by Provisa itself, so it works with no
       internet access. They come with every install; an install missing them says so.
 - id: chat-assistant
   name: Chat assistant

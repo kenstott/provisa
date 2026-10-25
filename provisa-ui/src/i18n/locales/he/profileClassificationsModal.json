@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "הסיווגים של {{table}}",
+    "suggested": "הוצעו בהרצה האחרונה",
+    "none": "ההרצה האחרונה אינה מציעה סיווג.",
+    "column": "עמודה",
+    "kindHeader": "נראית כמו",
+    "evidence": "ראיה",
+    "sensitive": "רגיש",
+    "suggestion": "{{table}}.{{column}} נראית כמו {{kind}}: {{share}} מהערכים שנדגמו עוברים את הבדיקה.",
+    "accept": "קבל",
+    "reject": "דחה",
+    "status_suggested": "מוצע",
+    "status_accepted": "התקבל",
+    "status_rejected": "נדחה",
+    "decided": "החלטות",
+    "noneDecided": "עדיין לא התקבלה או נדחתה אף הצעה.",
+    "withdraw": "בטל החלטה",
+    "linked": "העמודה מציינת עכשיו {{term}}.",
+    "keyColumn": "העמודה שומרת על מונח המחלקה שלה: המשמעות של עמודת מפתח היא מונח המחלקה שלה.",
+    "markedPii": "היא מסומנת כ-PII.",
+    "maskOffered": "מסכה מוצעת: {{mask}}. הוסיפו אותה במסכות של העמודה."
+  }
+}

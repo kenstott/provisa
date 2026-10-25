@@ -269,3 +269,27 @@ def test_a_coordinator_that_never_answers_is_raised(info_server):
     info_server.refusals = 10**6
     with pytest.raises(httpx.ConnectError):
         trino_lifecycle.coordinator_start(_KWARGS, 0)
+
+
+async def test_a_native_terminal_reissues_nothing_beside_a_coordinator_of_another(
+    no_provisioner, monkeypatch
+):
+    """A process whose other terminal answers on a Trino coordinator still serves a native
+    engine's query as it is: that terminal issued no catalogs, and has no address to reissue
+    them to."""
+
+    class _Native:
+        def coordinator_start(self, *, fresh: bool = False) -> str:
+            return ""
+
+    monkeypatch.setattr(engine_wake, "_start_generations", {"": 0, "trino:8080/start1": 1})
+
+    def _unreached(*_a, **_k):
+        raise AssertionError("a native terminal's query must not look up runtimes")
+
+    state = SimpleNamespace(
+        federation_engine=_Native(),
+        org_registry=SimpleNamespace(get=_unreached),
+        engine_conn_kwargs={},
+    )
+    await engine_wake.reissue_after_coordinator_restart(state)

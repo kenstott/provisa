@@ -170,10 +170,9 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
                 await self._connect()
                 assert self._redis is not None
                 rkey = self._prefixed_key(key, tenant_id)
-                pipe = self._redis.pipeline()
-                pipe.get(rkey)
-                pipe.get(rkey + ":meta")
-                data, meta = await pipe.execute()
+                # One command, read atomically: the entry and its meta (a MULTI/EXEC pipeline was
+                # four commands and twice the client's work per hit).
+                data, meta = await self._redis.mget(rkey, rkey + ":meta")
                 if data is None or meta is None:
                     span.set_attribute("cache.hit", False)
                     return None

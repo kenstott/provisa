@@ -34,14 +34,16 @@ class _ModelStore:
 
     def __init__(self) -> None:
         self.ran: list[str] = []
+        self.bound: list[tuple[tuple, bool]] = []
 
     @asynccontextmanager
     async def acquire(self):
         store = self
 
         class _Conn:
-            async def fetch_with_columns(self, sql):
+            async def fetch_with_columns(self, sql, *args, bind_as_given=False):
                 store.ran.append(sql)
+                store.bound.append((args, bind_as_given))
                 return ["n"], [(1,)]
 
         yield _Conn()
@@ -76,6 +78,27 @@ async def test_the_admin_source_is_served_by_the_model_store():
     result = await _run_plan_terminal(_plan("provisa-admin", "SELECT 1 AS n"), _state(store))
     assert result.rows == [(1,)]
     assert store.ran == ["SELECT 1 AS n"]
+
+
+async def test_the_admin_source_receives_the_statements_bound_values():
+    """A pgwire client's statement over ops/meta tables keeps its values: they are bound, a list
+    as an array, not dropped (a psycopg prepare then bound none: "bind message supplies 0
+    parameters")."""
+    store = _ModelStore()
+    sql = (
+        'SELECT table_name FROM "org_default"."queries" AS "queries" '
+        "WHERE id > $1 AND domain_id = ANY($2)"
+    )
+    plan = _Plan(
+        route=Route.DIRECT,
+        sql=sql,
+        source_id="provisa-admin",
+        dialect="postgres",
+        exec_params=[5, ["sales", "ops"]],
+    )
+    await _run_plan_terminal(plan, _state(store))
+    assert store.ran == [sql]
+    assert store.bound == [((5, ["sales", "ops"]), True)]
 
 
 @pytest.mark.parametrize(

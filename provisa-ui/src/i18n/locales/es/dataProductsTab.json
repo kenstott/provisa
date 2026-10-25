@@ -82,7 +82,6 @@
     "relatedTermsLabel": "Términos relacionados",
     "relatedTermsEmpty": "Sin términos relacionados",
     "relatedTermsLoading": "Cargando términos relacionados…",
-    "relatedTermsAbstract": "abstracto",
     "graphqlQueriesLabel": "Patrones de acceso",
     "graphqlQueriesEmpty": "Sin tablas ni relaciones consultables",
     "graphqlQueryAria": "Ejecutar consulta GraphQL de ejemplo para {{table}}",
@@ -93,6 +92,7 @@
     "openApiQueryAria": "Ejecutar solicitud REST de ejemplo para {{table}}",
     "detail": {
       "field": {
+        "details": "Detalles",
         "customProperties": "Propiedades personalizadas",
         "relatedTables": "Tablas relacionadas",
         "relationships": "Relaciones",
@@ -112,14 +112,14 @@
       "lineageLoading": "Cargando linaje…",
       "lineageHint": "Grafo de linaje de columnas que muestra las tablas de este producto como el endpoint publicado, más todas las tablas de origen usadas para derivarlas. Solo informativo: requiere la capacidad view_governance.",
       "inputPortsEmpty": "No se registran entradas de origen",
-      "inputPortsHint": "Entrada(s) → transformación → salida de un salto, derivadas del linaje. Requiere la capacidad view_governance.",
-      "inputPortsColInputs": "Entrada(s)",
-      "inputPortsColTransform": "Transformación",
-      "inputPortsColOutput": "Salida",
-      "outputPortsHint": "La superficie consultable de este producto: sus tablas/columnas y comandos miembros, con consultas de ejemplo más abajo en Consultas y comandos de ejemplo.",
-      "customPropertiesEmpty": "Sin propiedades personalizadas"
+      "inputPortsHint": "Las tablas que este producto lee directamente, según el linaje. Despliegue una tabla para ver las columnas que lee. Requiere la capacidad view_governance.",
+      "outputPortsHint": "La superficie consultable de este producto: sus tablas miembro y sus comandos. Encontrará consultas de ejemplo para cada una en Patrones de acceso.",
+      "customPropertiesEmpty": "Sin propiedades personalizadas",
+      "lineageLaneUpstream": "Aguas arriba, salto {{n}}",
+      "lineageLaneDownstream": "Aguas abajo, salto {{n}}"
     },
     "readOnly": "Solo lectura",
-    "readOnlyHint": "Solo tiene data_product_read: un org_admin puede conceder data_product_rw para editar."
+    "readOnlyHint": "Solo tiene data_product_read: un org_admin puede conceder data_product_rw para editar.",
+    "relatedTermsConcept": "concepto"
   }
 }

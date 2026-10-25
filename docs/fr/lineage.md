@@ -49,6 +49,7 @@ source jusqu'à chaque sortie.
 | `source` | Vert | Une colonne de table de base |
 | `derived` | Bleu | Produite par une expression SQL (fonction, opérateur, CTE) |
 | `command` | Violet | Une colonne de sortie d'une commande enregistrée |
+| `native` | Orange | Le champ brut qu'une source lit, sous la colonne d'une table enregistrée |
 
 Anneaux supplémentaires sur un nœud :
 
@@ -66,6 +67,27 @@ littéraux (`constant`).
 
 Une arête issue d'un appel de commande est rendue dans l'interface par une ligne violette en
 pointillés.
+
+### Sous la table enregistrée
+
+Un utilisateur disposant de l'enregistrement des sources voit un saut de plus sous chaque colonne source : le champ tel que la source le lit, dans une boîte pour l'endroit où il est lu. La boîte porte le logo et le libellé de type de la source, comme les montre la page Sources, et l'adresse selon le type de source :
+
+| Source | Adresse |
+| --- | --- |
+| OpenAPI | L'opération (`GET /v2/customers`), ses paramètres fixes et l'emplacement des lignes |
+| Remote GraphQL | Le champ racine, ses arguments obligatoires et l'emplacement des lignes |
+| MongoDB, Cosmos DB | La base de données et la collection ou le conteneur |
+| Elasticsearch, Qdrant | L'index ou la collection |
+| CSV, Parquet, fichiers, journaux | Le chemin, et le motif de fichiers d'une table qui lit plusieurs fichiers |
+| Kafka | Le topic |
+| Source de code | La fonction |
+| Toute autre | Le schéma et la table natifs |
+
+Le champ brut est le chemin de champ de la colonne quand elle en a un, sinon son propre nom. L'arête qui le relie à la colonne enregistrée nomme le renommage : `path`, `alias` ou `naming` (la convention de nommage). La boîte de la table enregistrée indique comment elle est servie : `virtual`, lue à chaque instruction, ou `replica`, avec son TTL et son dernier chargement. Les identifiants, les références de secrets et l'utilisateur, le mot de passe et la query d'une URL ne sont jamais affichés. Un utilisateur sans enregistrement des sources voit le lignage à partir de la table enregistrée.
+
+### Liens
+
+Chaque élément s'ouvre là où il est défini, quand les droits de l'utilisateur ouvrent cette page. Un clic sur un champ ouvre sa table, sa vue ou sa source ; un double clic sur une boîte ouvre sa relation ; un clic sur l'arête d'une commande ouvre la commande. Une fonction SQL intégrée n'a ni page ni lien.
 
 ## Graphe à l'échelle de la fédération {: #federation-wide-graph }
 
@@ -121,6 +143,26 @@ Forme de la réponse :
   "outputs": ["id", "embedding"]
 }
 ```
+
+Pour un appelant disposant de l'enregistrement des sources, les deux endpoints ajoutent le saut natif : des nœuds de type `native`, et un objet `natives` indexé par la relation de chaque boîte native (`native:<domain>.<table>`) :
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+Le `served` d'une réplique est `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Pour tout autre appelant, `natives` est vide.
 
 Renvoie un HTTP 422 lorsque le SQL ne peut pas être analysé.
 
@@ -184,12 +226,12 @@ La vue lit les enregistrements de rafraîchissement dans `"ops"."traces"` et ré
 
 ## Une vue telle qu'elle était, et telle qu'elle a été enregistrée {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Une vue déclarée bitemporelle conserve chaque version qu'elle a eue : chaque rafraîchissement ajoute, et aucune version n'est réécrite, sur n'importe quel stockage. Une lecture simple répond avec l'état actuel. Deux en-têtes de requête lisent son passé :
+Une vue qui associe les colonnes de sa source comme `business_key`, `valid_time` et `recorded_time` conserve chaque version qu'elle a connue : chaque rafraîchissement ajoute, et aucune version n'est réécrite, sur aucun stockage. Une lecture simple renvoie l'état actuel. Deux en-têtes de requête lisent son passé :
 
-- `X-Provisa-As-Of` lit la vue à une date, ou sur une plage, selon son horloge : l'heure de modification propre à la source lorsque la vue déclare `bitemporal_source_time`, l'heure de chargement de Provisa sinon.
+- `X-Provisa-As-Of` lit la vue à une date ou sur une plage.
 - `X-Provisa-As-Recorded` la lit telle que Provisa l'avait enregistrée à une date. Les versions enregistrées après cette date sont écartées, si bien qu'une correction enregistrée plus tard ne change pas la relecture du passé.
 
-Au 30 septembre et enregistrée le 1er octobre donne le chiffre d'origine ; enregistrée le 5 octobre donne la correction. L'enregistrement d'audit de chaque instruction conserve les deux dates (`as_of`, `as_recorded`), de sorte qu'un rapport peut être reproduit tel qu'il a été produit la première fois. [Vues avec historique](configuration.md#views-with-history-time-travel) décrit la déclaration d'une vue bitemporelle et chaque surface qui accepte les deux valeurs.
+Au 30 septembre et enregistrée le 1er octobre donne le chiffre d'origine ; enregistrée le 5 octobre donne la correction. L'enregistrement d'audit de chaque instruction conserve les deux dates (`as_of`, `as_recorded`), de sorte qu'un rapport peut être reproduit tel qu'il a été produit la première fois. [Vues avec historique](configuration.md#views-with-history-time-travel) décrit les trois déclarations, avec des exemples, et chaque surface qui accepte les deux valeurs.
 
 ## Ce que renommer ou supprimer une colonne casserait {: #what-a-column-rename-or-drop-would-break }
 
@@ -201,7 +243,7 @@ contrats de qualité des données, grains de vues de métriques et clés de lign
 écrits contre ce nom : **renommer un alias les casse donc aussi sûrement que supprimer la colonne**.
 
 Le **nom physique** est `table_columns.column_name`, l'identité qui survit au remplacement en bloc
-des colonnes lors de l'upsert d'une table. Les relations, les liaisons du [glossaire](glossary.md), les affectations
+des colonnes lors de l'upsert d'une table. Les relations, les liaisons de l'[ontologie](ontology.md), les affectations
 d'étiquettes, la colonne de filigrane et les préréglages de colonnes stockent celui-là : ils ne
 cassent donc que lorsque la colonne est **supprimée**.
 

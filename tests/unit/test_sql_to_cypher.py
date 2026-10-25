@@ -14,7 +14,7 @@
 from dataclasses import dataclass, field
 
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
 
 
@@ -35,6 +35,7 @@ class _TableMeta:
     domain_id: str = ""
     column_presets: list = field(default_factory=list)
     source_type: str = ""
+    original_table_name: str = ""  # as TableMeta: the name before a physical alias
 
 
 @dataclass
@@ -323,7 +324,8 @@ class TestTraversalOnlyNode:
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None, f"Got None: {result}"
         assert "CALL {" in result, f"Expected CALL subquery for per-relationship LIMIT: {result}"
-        assert "[..2]" in result, f"Per-relationship LIMIT 2 (as slice) missing: {result}"
+        # Each parent's own rows, cut in the CALL (a row per child, as the LATERAL answers).
+        assert "LIMIT 2\n}" in result, f"Per-relationship LIMIT 2 missing: {result}"
         assert "WITH " in result, f"CALL subquery must include WITH clause: {result}"
 
     def test_lateral_join_parameterized_limit_resolves_call_subquery(self):
@@ -338,7 +340,7 @@ class TestTraversalOnlyNode:
         result = semantic_sql_to_cypher(sql, lm, ctx, params=[3])
         assert result is not None, f"Got None: {result}"
         assert "CALL {" in result, f"Expected CALL subquery: {result}"
-        assert "[..3]" in result, f"Expected resolved limit [..3]: {result}"
+        assert "LIMIT 3\n}" in result, f"Expected resolved limit 3: {result}"
 
     def test_lateral_join_collect_avoids_cartesian_product(self):
         """Regression #44: multiple LATERAL joins must use collect() + list comprehension, not flat OPTIONAL MATCH."""
@@ -350,11 +352,8 @@ class TestTraversalOnlyNode:
         )
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
-        assert "collect(" in result, (
-            f"Expected collect() in CALL subquery to avoid cartesian product: {result}"
-        )
-        # Per-property collect: list comprehensions replaced by direct list var references (issue #49)
-        assert "_list AS " in result, f"Expected per-property list var in RETURN: {result}"
+        # The limited field's rows are each parent's own, picked in its CALL by value.
+        assert "CALL {" in result and "LIMIT 5\n}" in result, result
         assert "OPTIONAL MATCH" not in result.split("CALL")[0].lstrip("MATCH"), (
             f"OPTIONAL MATCH outside CALL block would cause cartesian product: {result}"
         )
@@ -370,16 +369,12 @@ class TestTraversalOnlyNode:
         )
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
-        # collect(b) would be ARRAY_AGG(table_alias) — invalid in Trino
+        # A bare node alias would be a table alias in SQL -- invalid in Trino: the CALL returns
+        # the field's properties by name.
         import re
 
-        bare_collect = re.search(r"\bcollect\s*\(\s*[a-z]\s*\)", result)
-        assert bare_collect is None, (
-            f"Regression #49: collect() must not use bare node alias: {result}"
-        )
-        # collect(b.prop) is the correct form
-        assert re.search(r"\bcollect\s*\(\s*[a-z]\s*\.\s*\w+\s*\)", result), (
-            f"Regression #49: collect() must reference a property: {result}"
+        assert re.search(r"RETURN [a-z]\.\w+ AS [a-z]_\w+", result), (
+            f"Regression #49: the CALL must return properties, not a bare node: {result}"
         )
 
 
@@ -888,16 +883,14 @@ class TestJsonAggChainedSubquery:
             ' FROM "shelter"."pets" AS t0 LIMIT 10000'
         )
 
-    def test_emits_two_optional_matches(self):
-        """json_agg(json_object) with nested json_object must emit OPTIONAL MATCH for assignments and employees."""
+    def test_matches_assignments_and_their_employees(self):
+        """json_agg(json_object) with a nested json_object matches the assignments, as the list
+        the field is (a COLLECT of its own, REQ-2136), and each one's employee inside it."""
         ctx, lm = self._make_ctx_and_label_map()
         result = semantic_sql_to_cypher(self._sql(), lm, ctx)
         assert result is not None, "semantic_sql_to_cypher returned None"
-        assert result.count("OPTIONAL MATCH") == 2, (
-            f"Expected 2 OPTIONAL MATCHes (Assignments, Employees), got:\n{result}"
-        )
-        assert "Assignments" in result
-        assert "Employees" in result
+        assert "COLLECT { MATCH (a)-[:IS_ASSIGNMENT]->(b:Assignments)" in result, result
+        assert "OPTIONAL MATCH (b)-[:HAS_EMPLOYEE]->(c:Employees)" in result, result
 
     def test_employees_source_is_assignments_not_pets(self):
         """Bug: OPTIONAL MATCH for Employees must chain from Assignments, not Pets."""
@@ -943,7 +936,8 @@ class TestJsonAggChainedSubquery:
         ctx, lm = self._make_ctx_and_label_map()
         result = semantic_sql_to_cypher(self._sql_direct(), lm, ctx)
         assert result is not None, "semantic_sql_to_cypher returned None"
-        assert "collect(" in result, f"Expected collect() in RETURN for one-to-many: {result}"
+        # REQ-2136: the one-to-many is the list of its maps, a COLLECT of its own.
+        assert "COLLECT {" in result and "RETURN {breedName:" in result, result
         # Must not return a bare node alias as 'assignment'
         import re
 
@@ -1119,11 +1113,12 @@ class TestFlatReturnClause:
         assert "pets__breedName" in result, f"Missing pets__breedName in: {result}"
 
     def test_non_flat_return_still_uses_collect_map(self):
-        """flat=False (Aggregated mode) must still emit collect({{...}}) AS assignment."""
+        """flat=False (Aggregated mode) returns the list of maps AS assignment (REQ-2136: a
+        COLLECT of its own)."""
         ctx, lm = self._make_ctx_and_label_map()
         result = semantic_sql_to_cypher(self._sql(), lm, ctx, flat=False)
         assert result is not None, "semantic_sql_to_cypher returned None"
-        assert "collect(" in result, f"Expected collect() in non-flat RETURN: {result}"
+        assert "COLLECT {" in result, f"Expected COLLECT in non-flat RETURN: {result}"
         assert "AS assignment" in result, f"Missing AS assignment in: {result}"
 
 
@@ -1281,7 +1276,7 @@ class TestCorrelatedSubqueries:
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None, "jsonb_build_object subquery must translate"
         assert "JSONB_BUILD_OBJECT" not in result.upper(), result
-        assert "collect({" in result, result
+        assert "RETURN {pet_id: b.pet_id} } AS pet_details" in result, result
 
     def test_untranslatable_subquery_returns_none(self):
         """A subquery no pass claims must yield None — never SQL text pasted into RETURN."""

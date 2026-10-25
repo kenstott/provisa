@@ -16,6 +16,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ActionIcon, Button, Table } from "@mantine/core";
 import userEvent from "@testing-library/user-event";
@@ -113,6 +114,28 @@ describe("SplitPane", () => {
     expect(screen.queryByTestId("split-panel")).toBeNull();
   });
 
+  it("leaves Escape to a popover or menu drawn in a portal from inside the panel", () => {
+    // A tag picker's dropdown, portaled to the body: its Escape closes it, not the panel.
+    function WithPortal() {
+      const [open, setOpen] = useState<string | null>("orders");
+      return (
+        <SplitPane
+          testId="split"
+          storageKey={KEY}
+          labels={LABELS}
+          title={open}
+          onClose={() => setOpen(null)}
+          list={<span>list</span>}
+        >
+          {open === null ? null : createPortal(<input aria-label="in a dropdown" />, document.body)}
+        </SplitPane>
+      );
+    }
+    render(<WithPortal />);
+    fireEvent.keyDown(screen.getByLabelText("in a dropdown"), { key: "Escape" });
+    expect(screen.getByTestId("split-panel")).toBeInTheDocument();
+  });
+
   it("leaves Escape alone while leaving would drop what is being typed", () => {
     render(<Page closeOnEscape={false} />);
     fireEvent.click(screen.getByText("orders"));
@@ -128,6 +151,37 @@ describe("SplitPane", () => {
     expect(screen.getByTestId("split-panel")).toHaveFocus();
     fireEvent.click(screen.getByTestId("split-close"));
     expect(row).toHaveFocus();
+  });
+
+  it("leaves the focus in a dialog open over the page when it opens beneath it", () => {
+    // A linked item's panel opens when its data arrives, which on a first visit is after the
+    // welcome dialog is up: the reader's Escape is the dialog's, not the panel's.
+    function Linked() {
+      const [open, setOpen] = useState<string | null>(null);
+      return (
+        <>
+          <div role="dialog" aria-modal="true">
+            <button onClick={() => setOpen("orders")}>data arrives</button>
+          </div>
+          <SplitPane
+            testId="split"
+            storageKey={KEY}
+            labels={LABELS}
+            title={open}
+            onClose={() => setOpen(null)}
+            list={<span>list</span>}
+          >
+            {open === null ? null : <div>detail of {open}</div>}
+          </SplitPane>
+        </>
+      );
+    }
+    render(<Linked />);
+    const inDialog = screen.getByText("data arrives");
+    inDialog.focus();
+    fireEvent.click(inDialog);
+    expect(screen.getByTestId("split-panel")).toBeInTheDocument();
+    expect(inDialog).toHaveFocus();
   });
 
   it("opens at about 60% of its row and keeps the width it is dragged to", () => {

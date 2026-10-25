@@ -41,6 +41,9 @@
     "deleteConsequence": "La relazione viene rimossa dal modello. Le query non possono più eseguire join attraverso di essa.",
     "parametersFed": "Parametri alimentati",
     "parametersFedHelp": "Un join su questa relazione passa al target questi valori da ogni riga di origine.",
-    "parameterNotFed": "Non alimentato"
+    "parameterNotFed": "Non alimentato",
+    "sameEntity": "Stessa entità",
+    "sameEntityHint": "Le righe unite sono la stessa cosa: un termine ancora entrambe le tabelle, unite 1:1 su chiavi",
+    "cardinalityOneToOne": "uno-a-uno"
   }
 }

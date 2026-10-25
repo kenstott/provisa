@@ -14,7 +14,7 @@
 // in order to exist; once saved, the new source is selected and its detail opens in edit.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor, within } from "../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { MutationResult, Source } from "../../types/admin";
 
@@ -107,6 +107,21 @@ beforeEach(() => {
       );
     }
     return new Response(JSON.stringify({ configured: true, organisation_mailboxes: true }));
+  });
+});
+
+describe("the Sources list's search", () => {
+  it("lists the sources matching any word of the search", async () => {
+    SOURCES = [
+      ...SOURCES,
+      source({ id: "shop-api", type: "openapi", host: "", port: 0, database: "" }),
+    ];
+    render(<SourcesPage />);
+    await screen.findByTestId("sources-row-shop-api");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "kafka sales" } });
+    await waitFor(() => expect(screen.queryByTestId("sources-row-shop-api")).toBeNull());
+    expect(screen.getByTestId("sources-row-sales-pg")).toBeInTheDocument();
+    expect(screen.getByTestId("sources-row-events")).toBeInTheDocument();
   });
 });
 

@@ -27,6 +27,7 @@
     "newTarget": "Nuova destinazione",
     "noTargets": "Nessuna destinazione. Aggiungere i cataloghi in cui questa organizzazione pubblica.",
     "catalog": "Catalogo",
-    "catalogHelp": "Un catalogo collegato in Amministrazione → Cataloghi."
+    "catalogHelp": "Un catalogo collegato in Amministrazione → Cataloghi.",
+    "betaProvider": "{{name}} (beta)"
   }
 }

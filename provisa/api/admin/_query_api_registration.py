@@ -35,7 +35,12 @@ QUERY_API_TYPES = frozenset({"neo4j", "sparql"})
 async def source_row(conn: "Connection", source_id: str) -> dict[str, Any] | None:
     res = await conn.execute_core(
         select(
-            sources.c.id, sources.c.type, sources.c.host, sources.c.port, sources.c.database
+            sources.c.id,
+            sources.c.type,
+            sources.c.host,
+            sources.c.port,
+            sources.c.database,
+            sources.c.mapping,
         ).where(sources.c.id == source_id)
     )
     row = res.fetchone()
@@ -43,29 +48,75 @@ async def source_row(conn: "Connection", source_id: str) -> dict[str, Any] | Non
 
 
 async def preview_sparql(conn: "Connection", source_id: str, query: str) -> "QueryPreviewType":
-    """Run the SPARQL SELECT (LIMIT 5) against the source's endpoint and infer the columns —
-    every SPARQL binding is a string, so the columns are ``text``."""
+    """Run the SPARQL SELECT (LIMIT 5) against the source's endpoint and infer the columns: one per
+    variable the answer's head names, typed by its bindings' XSD datatypes (text otherwise)."""
     import httpx
 
     from provisa.api.admin.types import QueryPreviewColumnType, QueryPreviewType
+    from provisa.api_source.normalizers import sparql_bindings
+    from provisa.api_source.persist import data_type_for_api_column
     from provisa.sparql.persist import sparql_config_from_source
-    from provisa.sparql.source import extract_variables, probe_endpoint
+    from provisa.sparql.reasoning import inferred_iri
+    from provisa.sparql.source import infer_columns, probe_endpoint
 
     row = await source_row(conn, source_id)
     if row is None or row["type"] != "sparql":
         return QueryPreviewType(error=f"{source_id!r} is not a registered sparql source")
     cfg, _ = sparql_config_from_source(source_id=source_id, endpoint_url=row["host"])
+    if inferred_iri(query) is not None:
+        return await _preview_inferred(row, query)
     try:
-        rows = await probe_endpoint(cfg, query)
+        results = await probe_endpoint(cfg, query)
     except (httpx.HTTPError, ValueError) as exc:
         return QueryPreviewType(error=f"{type(exc).__name__}: {exc}")
-    names = list(rows[0].keys()) if rows else extract_variables(query)
-    if not names:
+    columns = infer_columns(results)
+    if not columns:
         return QueryPreviewType(
-            error="The query returned no rows and names no SELECT variables; columns cannot be inferred."
+            error="The answer names no SELECT variables; columns cannot be inferred."
         )
     return QueryPreviewType(
-        rows=list(rows),
+        rows=sparql_bindings(results),
+        columns=[
+            QueryPreviewColumnType(name=c.name, data_type=data_type_for_api_column(c.type))
+            for c in columns
+        ],
+    )
+
+
+async def _preview_inferred(row: dict[str, Any], query: str) -> "QueryPreviewType":
+    """REQ-2138: preview an inferred class or property of the source's reasoner: the source's
+    classification, reasoned now, and the first rows of the IRI the query names -- a class's
+    members (``member``), a property's pairs (``subject``, ``value``)."""
+    import httpx
+
+    from provisa.api.admin.types import QueryPreviewColumnType, QueryPreviewType
+    from provisa.core.secrets import resolve_secrets
+    from provisa.sparql import reasoning
+
+    try:
+        reasoner = reasoning.source_reasoner(row["id"], row["mapping"] or {})
+    except ValueError as exc:
+        return QueryPreviewType(error=str(exc))
+    if reasoner is None:
+        return QueryPreviewType(
+            error=f"{row['id']!r} names no reasoner; a query of one IRI reads an inferred class "
+            "or property"
+        )
+    iri = reasoning.inferred_iri(query)
+    assert iri is not None
+    try:
+        found = await reasoning.classification(
+            row["id"], reasoner[1], resolve_secrets(row["host"]), {}, ttl=0
+        )
+    except (reasoning.ReasonerFailed, httpx.HTTPError) as exc:
+        return QueryPreviewType(error=f"{type(exc).__name__}: {exc}")
+    kind = found.signature.kind(iri)
+    if kind is None:
+        return QueryPreviewType(error=f"<{iri}> is not a class or property the axioms name")
+    names = ["member"] if kind == "class" else ["subject", "value"]
+    facts = found.facts.get(iri, [])[:PREVIEW_ROWS]
+    return QueryPreviewType(
+        rows=[dict(zip(names, fact)) for fact in facts],
         columns=[QueryPreviewColumnType(name=n, data_type="text") for n in names],
     )
 
@@ -371,10 +422,13 @@ async def persist_query_api_registration(
     else:
         from provisa.sparql.persist import persist_sparql_table
 
+        from provisa.sparql.reasoning import source_reasoner
+
         api_source, endpoint = await persist_sparql_table(
             conn,
             source_id=model.source_id,
             endpoint_url=row["host"],
+            reasoner=source_reasoner(model.source_id, row["mapping"] or {}),  # REQ-2138
             table_name=model.table_name,
             query_template=model.query_template,
             columns=model.columns,

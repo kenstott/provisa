@@ -45,6 +45,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -68,8 +69,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -102,6 +104,8 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       onSectionChange={vi.fn()}
       savedProfilerId={null}
       editingTable={table}
+      // Saved before any history was declared: what this file stages is still open to change.
+      savedTable={{ ...table, businessKey: [], validTime: null, recordedTime: null }}
       setEditingTable={setEditingTable}
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
@@ -111,10 +115,6 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       dataProducts={[]}
       settings={null}
       saving={false}
-      generatingDesc={false}
-      setGeneratingDesc={vi.fn()}
-      generatingColDesc={null}
-      setGeneratingColDesc={vi.fn()}
       generateTableDescription={vi.fn()}
       generateColumnDescription={vi.fn()}
       cancelEditing={vi.fn()}
@@ -168,15 +168,16 @@ describe("TableEditForm — MV preflight check (REQ-1165)", () => {
   });
 });
 
-describe("TableEditForm — a view with history names its clock (REQ-1163)", () => {
-  it("offers the source-time field beside the key", () => {
-    renderForm(makeTable({ mvBitemporalMode: "delta", mvBitemporalKey: ["id"] }));
-    expect(screen.getByTestId("mv-bitemporal-source-time")).toBeInTheDocument();
-    expect(screen.getByTestId("mv-bitemporal-key")).toBeInTheDocument();
+describe("TableEditForm — a view with history declares its three columns (REQ-2109)", () => {
+  it("offers the valid-time and recorded-time fields beside the business key", () => {
+    renderForm(makeTable({ businessKey: ["id"], validTime: "booked_at", recordedTime: "ts" }));
+    expect(screen.getByTestId("business-key")).toBeInTheDocument();
+    expect(screen.getByTestId("valid-time")).toBeInTheDocument();
+    expect(screen.getByTestId("recorded-time")).toBeInTheDocument();
   });
 
   it("is not offered for a view that keeps no history", () => {
     renderForm(makeTable());
-    expect(screen.queryByTestId("mv-bitemporal-source-time")).toBeNull();
+    expect(screen.queryByTestId("recorded-time")).toBeNull();
   });
 });

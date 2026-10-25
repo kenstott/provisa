@@ -245,6 +245,23 @@ Tutto il resto (un aggregato, un `GROUP BY`, una colonna calcolata o mascherata,
 
 Una ricerca viene letta per istruzione con i suoi argomenti, le sue righe conservate sotto quegli argomenti per il TTL della tabella. Una tabella di ricerca è di sola lettura.
 
+**Una ricerca alimentata da un join.** Una relazione può alimentare gli argomenti di una ricerca con le colonne di un'altra tabella, come alimenta quelli di una tabella di codice: la sua mappa `parameters` nomina ogni argomento e la colonna di origine che riceve. Un'istruzione che unisce la ricerca a quella tabella esegue allora una query Qdrant per ogni insieme distinto di valori dell'origine, così come li legge il ruolo dell'istruzione, con gli argomenti propri dell'istruzione per quelli che la relazione non alimenta. I punti di una ricerca non conservano nulla della query che li ha trovati, quindi la relazione fa il join sulla colonna di parametro della query: ogni punto porta, in quella colonna, il valore per cui è stato cercato.
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+Si cercano le parole di ogni verso, escludendo i punti del suo stesso sonetto tramite il filtro `"@sonnet"` della ricerca, e ogni verso riceve i tre punti trovati per lui. Un'istruzione che fornisce essa stessa uno degli argomenti alimentati, come `WHERE s._nf_query = 'the ravages of time'`, legge la ricerca con i propri argomenti e non viene alimentata.
+
 ### Streaming
 
 | Tipo di origine | Meccanismo | Mutation |
@@ -302,6 +319,14 @@ Un percorso con qualsiasi altro schema (ad esempio `ftp://`) viene rifiutato: "D
 - **Percorso.** Finché il percorso è il file caricato dell'origine, il campo percorso del modulo è di sola lettura.
 - **Nomi.** L'id dell'origine e il nome del file possono contenere solo lettere, cifre, `.`, `_` e `-`.
 - **Archiviazione.** Un file caricato viene archiviato come qualsiasi file dell'organizzazione: nella cartella dell'organizzazione, cifrato quando lo è quella cartella, e visibile a ogni nodo su un mount condiviso.
+
+**Scaricare un file.** Una sorgente `csv` o `parquet` può invece ricevere il suo file per download. Scegliete **Download a copy** nel modulo della sorgente e indicate un file: un percorso sul server, un indirizzo `https://` o un indirizzo `s3://` letto con le credenziali che il modulo conserva per lo storage. Provisa trasmette il file lungo il percorso di caricamento in `files/<source id>/<file name>` nella cartella dell'organizzazione, con lo stesso limite di dimensione, archiviazione e sostituzione di un caricamento, e la sorgente legge quella copia.
+
+- **Quando viene riscaricato.** Lo decide il TTL di cache della sorgente. Una tabella costruita dalla sorgente riscarica prima il file appena il suo TTL è scaduto da quando è stata fatta la copia. Con un TTL di -1 il file viene scaricato una volta e conservato.
+- **Percorsi sul server.** Un percorso del server deve essere un file sotto una directory elencata nell'impostazione `sources.download_roots` (ambiente `PROVISA_SOURCES_DOWNLOAD_ROOTS`), dopo averne seguito i link simbolici. Per impostazione predefinita non ne è elencata nessuna. Un percorso fuori da esse viene rifiutato per nome e non si copia nulla.
+- **Molte organizzazioni.** Su un server di molte organizzazioni (`multitenancy: true`) un percorso del server viene rifiutato per nome qualunque cosa contenga l'impostazione, e sono offerti solo `https://` e `s3://`. Anche un indirizzo il cui host si risolve dentro la rete propria del server (privata, loopback o link-local) viene rifiutato per nome, a ogni reindirizzamento.
+- **La sua tabella, come bozza.** Quando la sorgente viene creata, il modulo propone di impostare subito la sua tabella, come bozza, nel dominio che scegliete. La tabella prende il nome della sorgente ed è tipizzata dal file come la proporrebbe Register Table, e resta fuori servizio finché uno steward non la toglie dalla bozza. L'opzione è attiva per impostazione predefinita.
+- **Tramite Polly.** Date a Polly un percorso completamente risolto di un singolo file CSV o Parquet e lei propone la sorgente con il suo download e la tabella in bozza, e la crea quando confermate. Una directory, un glob o più file diventano invece una sorgente di file.
 
 **Scritture su un file SQLite o DuckDB locale, e lock.** Una scrittura prende il lock del file e non lo attende mai. Quando un altro processo o nodo detiene il file, la scrittura viene rifiutata, indicando l'origine e che il suo file è bloccato.
 
@@ -1602,7 +1627,7 @@ Entrambi i connettori usano la pipeline di cache delle origini API. I risultati 
 
 #### Registrazione da file di configurazione e da UI {: #config-file-and-ui-registration }
 
-L'`host` di un'origine `sparql` è l'URL del suo endpoint SPARQL (il modulo Sources lo memorizza allo stesso modo). Ogni tabella sotto di essa porta `query_template`, un SELECT le cui variabili sono le colonne; ogni binding è `text`.
+L'`host` di un'origine `sparql` è l'URL del suo endpoint SPARQL (il modulo Sources lo memorizza allo stesso modo). Ogni tabella sotto di essa porta `query_template`, un SELECT le cui variabili sono le colonne. L'anteprima tipizza ogni colonna in base al tipo di dato XSD che condividono i suoi binding: i tipi interi come `integer`, `xsd:decimal`, `xsd:double` e `xsd:float` come `double`, `xsd:boolean` come `boolean`, `xsd:date` come `date` e `xsd:dateTime` come `timestamp`. Un IRI, un nodo vuoto, una stringa semplice o con tag di lingua, o una variabile i cui binding differiscono nel tipo, è `text`.
 
 ```yaml
 sources:
@@ -1623,6 +1648,64 @@ tables:
 ```
 
 Registra tabella funziona allo stesso modo di Neo4j: scegli l'origine, digita un nome tabella e il SELECT, premi Anteprima (la query `sparqlPreview` lo esegue con `LIMIT 5` e compila l'elenco delle colonne), poi registra. La registrazione persiste una riga `api_sources` e una riga `api_endpoints` (POST form-encoded al percorso dell'endpoint, normalizzatore `sparql_bindings`), le stesse righe che scrive una registrazione da file di configurazione, e il motore nativo atterra le righe tramite la stessa catena di fetch di Neo4j.
+
+**Pushdown.** Quando un'istruzione legge una tabella SPARQL da sola (senza join), le sue condizioni sulle colonne della tabella entrano nella query inviata all'endpoint. Il SELECT registrato diventa una sottoquery, `SELECT * WHERE { { <the SELECT> } FILTER(...) }`, con le sue righe `PREFIX` e `BASE` mantenute davanti.
+- Spinte: uguaglianza e `IN` su una colonna `text` (confrontate come `STR(?var)`, così un IRI corrisponde al suo testo); qualsiasi confronto su una colonna `integer` o `double`; uguaglianza su un `boolean`.
+- Non spinte: altre condizioni, come un confronto d'ordine sul testo, una data, una funzione di una colonna o un parametro vincolato. Vengono applicate alle righe che Provisa riceve.
+- Ogni condizione viene applicata di nuovo alle righe, quindi spingerne una restringe solo ciò che viene recuperato.
+- Il `LIMIT` dell'istruzione viene spinto solo quando ogni condizione è stata spinta e l'istruzione non raggruppa, non aggrega e non usa `DISTINCT`, `ORDER BY` o `OFFSET`.
+- Una risposta ristretta viene messa in cache sotto la propria query, separata da quella dell'intera tabella.
+
+#### Reasoner {: #reasoner }
+
+Un'origine `sparql` può nominare un reasoner e un documento di assiomi OWL. Una tabella la cui query è un singolo IRI tra parentesi angolari serve allora quella classe o proprietà così come la inferiscono gli assiomi:
+- una classe: una colonna, i suoi membri;
+- una proprietà di oggetto o di dati: due colonne, ogni soggetto e il suo valore.
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+Gli assiomi possono essere scritti in qualsiasi sintassi letta dalla OWL API: Turtle, RDF/XML, sintassi funzionale OWL o sintassi Manchester. HermiT è l'unico reasoner.
+
+Quando si legge una tabella inferita, il reasoner:
+1. legge le classi e le proprietà nominate dagli assiomi;
+2. invia all'endpoint un `CONSTRUCT` per ogni tripla di quelle proprietà e ogni appartenenza a quelle classi, chiedendo N-Triples;
+3. classifica quella porzione secondo gli assiomi;
+4. restituisce i fatti che ne derivano.
+
+Tutte le tabelle inferite di un'origine condividono una classificazione, riusata per il TTL di cache della tabella. La dichiarazione di freschezza dell'origine stabilisce quindi quanto spesso ragiona: `cache_ttl` per una tabella live, l'aggiornamento della replica per una replica, e una sola volta per un TTL di `-1`. Ciò che serve una tabella inferita è governato per ogni lettore come qualsiasi altra tabella.
+
+HermiT gira come programma separato, mai dentro il server. Gira su un JDK 21 Eclipse Temurin fissato, con HermiT, la OWL API e le loro librerie nel class path. Ogni componente viene scaricato al primo uso, verificato rispetto allo SHA-256 fissato da Provisa e messo in cache sotto la radice della cache delle dipendenze di runtime (`$PROVISA_RUNTIME_DEPS_CACHE`, predefinito `~/.cache/provisa/runtime_deps`). Un download che fallisce, o un file la cui somma differisce da quella fissata, fa fallire la lettura indicandolo per nome.
 
 ## Esempi di connessione {: #connection-examples }
 

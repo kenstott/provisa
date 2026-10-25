@@ -919,7 +919,12 @@ def _build_orders_schema_ctx():
         ],
         2: [_col("id", "integer"), _col("name", "varchar(100)")],
     }
-    role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ["query_development"],
+        "domain_access": ["*"],
+    }
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables,
@@ -1230,8 +1235,8 @@ def rest_same_governance_as_graphql(shared_data):
         # A role always lists the domains it reaches; both reach every domain here, so the row
         # filter is the only difference between them.
         roles={
-            "filtered": {"id": "filtered", "domain_access": ["*"]},
-            "unfiltered": {"id": "unfiltered", "domain_access": ["*"]},
+            "filtered": {"description": "Test role.", "id": "filtered", "domain_access": ["*"]},
+            "unfiltered": {"description": "Test role.", "id": "unfiltered", "domain_access": ["*"]},
         },
         source_types={"sales-pg": "postgresql"},
         metrics={},
@@ -1298,7 +1303,7 @@ def ui_requesting_graph_schema(shared_data):
 @when("the endpoint responds")
 def graph_schema_endpoint_responds(shared_data):
     """Build the real CypherLabelMap and serialize node labels like the handler."""
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
     from provisa.api.rest.cypher_router import _cql_prop
 
     label_map = CypherLabelMap.from_schema(shared_data["ctx"], domain_access=["*"])

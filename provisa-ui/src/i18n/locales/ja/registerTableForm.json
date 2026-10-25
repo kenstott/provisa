@@ -23,7 +23,6 @@
     "descriptionLabel": "説明",
     "descriptionPlaceholder": "SDL ドキュメントに表示されます",
     "dataProductLabel": "データプロダクト",
-    "dataProductHint": "（カタログへ公開 / Atlas、Atlan などへエクスポート）",
     "discoverLabel": "列を検出",
     "discoverHint": "（登録時にライブソースから列を推測 — スキーマレス/NoSQL ソース向け。手動での列選択は不要）",
     "watermarkLabel": "ウォーターマーク列",
@@ -135,6 +134,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "{{collection}} のベクトル",
     "qdrantVector": "{{name}}: {{size}} 次元、{{distance}} でスコア付け",
-    "qdrantUnnamedVector": "(名前なし)"
+    "qdrantUnnamedVector": "(名前なし)",
+    "continue": "次へ"
   }
 }

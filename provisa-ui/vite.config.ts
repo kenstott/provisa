@@ -15,7 +15,13 @@ import react from "@vitejs/plugin-react";
 import istanbul from "vite-plugin-istanbul";
 import fs from "fs";
 import path from "path";
+import { binaryStreams } from "./src/plugins/binaryStreams";
 import { graphqlLoader } from "./src/plugins/graphql-loader";
+import {
+  assertPatchedMonaco,
+  backportCancelCatch,
+  monacoCancelBackport,
+} from "./src/plugins/monacoCancelBackport";
 import _monacoEditorPluginModule from "vite-plugin-monaco-editor";
 type MonacoPluginFactory = (...args: unknown[]) => Plugin;
 const monacoEditorPlugin: MonacoPluginFactory =
@@ -123,7 +129,7 @@ const E2E_BACKEND_PORTS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "").split(",
 
 // Same prefixes `server.proxy` below forwards to the backend. Kept as one list so the two cannot
 // drift into disagreeing about what is an API call.
-const BACKEND_PREFIXES = ["/data", "/admin", "/query", "/health", "/setup", "/auth/"];
+const BACKEND_PREFIXES = ["/data/", "/admin", "/query", "/health", "/setup", "/auth/"];
 
 /** Routes e2e API traffic to the calling worker's own backend.
  *
@@ -194,8 +200,14 @@ function e2eWorkerBackendRouter(): Plugin {
   };
 }
 
+// The word highlighter's dropped promises, caught as monaco-editor 0.57.0 catches them; refused
+// outright on any monaco-editor but the 0.52.2 @graphiql/react pins (src/plugins/monacoCancelBackport.ts).
+assertPatchedMonaco(__dirname);
+
 export default defineConfig((config) => ({
   plugins: [
+    binaryStreams(),
+    monacoCancelBackport(),
     e2eWorkerBackendRouter(),
     react(),
     serveOfflineDocsSite(),
@@ -235,6 +247,18 @@ export default defineConfig((config) => ({
     // rolldown (Vite 8) rejects internal ./lib/ sub-path imports not listed in package exports
     // Apollo Client v4 has issues with pre-bundling, exclude it
     exclude: ["@neo4j-cypher/codemirror", "@apollo/client"],
+    // Dev serves monaco pre-bundled, where the plugin list above does not reach: the same backport.
+    rolldownOptions: {
+      plugins: [
+        {
+          name: "monaco-cancel-backport-prebundle",
+          transform(code: string, id: string) {
+            const out = backportCancelCatch(code, id);
+            return out === null ? null : { code: out };
+          },
+        },
+      ],
+    },
   },
   build: {
     chunkSizeWarningLimit: 6000,
@@ -257,6 +281,8 @@ export default defineConfig((config) => ({
           if (id.includes("node_modules/@mui") || id.includes("node_modules/@emotion"))
             return "vendor-mui";
           if (id.includes("node_modules/cytoscape")) return "vendor-cytoscape";
+          // REQ-2123: only the profile terrain's lazily imported scene uses three.js.
+          if (id.includes("node_modules/three")) return "vendor-three";
           if (
             id.includes("node_modules/monaco-editor") ||
             id.includes("node_modules/monaco-graphql") ||
@@ -292,7 +318,10 @@ export default defineConfig((config) => ({
       ignored: ["**/._*"],
     },
     proxy: {
-      "/data": BACKEND_TARGET,
+      // The trailing slash matters, as for "/auth/" below: a bare "/data" also captured the
+      // /data-products page and forwarded its navigation to the API. Every data endpoint is under
+      // /data/.
+      "/data/": BACKEND_TARGET,
       "/admin": {
         target: BACKEND_TARGET,
         bypass(req) {

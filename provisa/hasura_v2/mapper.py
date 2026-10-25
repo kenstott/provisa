@@ -125,6 +125,8 @@ def _map_source(
             "database, user and password in the import's source settings and convert again.",
         )
     pool = conn.get("pool_settings") or {}
+    if pool.get("min_connections"):  # REQ-623: both pool settings are preserved
+        fields["pool_min"] = int(pool["min_connections"])
     if pool.get("max_connections"):
         fields["pool_max"] = int(pool["max_connections"])
     source = Source(id=hs.name, type=_source_type_from_kind(hs.kind), **fields)
@@ -633,11 +635,14 @@ def _change_trigger(
     return ScheduledTrigger(id=et.name, on_table=table, on_event="change", url=url)
 
 
-def _ir_type(gql: str) -> str:
-    """An action argument's GraphQL type as the IR type a command argument declares."""
+def _ir_type(gql: str, input_types: set[str]) -> str:
+    """An action argument's GraphQL type as the IR type a command argument declares; an input
+    object (``input_types``) is the JSON object the handler receives."""
     from provisa.core.ir_types import to_ir
 
     named = gql.strip().rstrip("!").strip("[]!")
+    if named in input_types:
+        return "json"
     # GraphQL serializes an ID as a string.
     return to_ir("String" if named == "ID" else named, "graphql")
 
@@ -645,6 +650,7 @@ def _ir_type(gql: str) -> str:
 def _map_action(
     action: HasuraAction,
     custom_types: dict[str, list[tuple[str, str]]],
+    input_types: set[str],
     collector: WarningCollector,
 ) -> Webhook:  # REQ-205, REQ-209
     """A Hasura action as a command calling the same handler, with its arguments and output."""
@@ -680,7 +686,10 @@ def _map_action(
         url=_env_template(defn.handler),
         method="POST",
         arguments=[
-            FunctionArgument(name=a.get("name", ""), type=_ir_type(str(a.get("type", "String"))))
+            FunctionArgument(
+                name=a.get("name", ""),
+                type=_ir_type(str(a.get("type", "String")), input_types),
+            )
             for a in defn.arguments
         ],
         inline_return_type=[
@@ -983,7 +992,7 @@ def convert_metadata(
     # Actions -> commands calling their handler
     webhooks: list[Webhook] = []
     for action in metadata.actions:
-        webhooks.append(_map_action(action, metadata.custom_types, collector))
+        webhooks.append(_map_action(action, metadata.custom_types, metadata.input_types, collector))
 
     # Cron triggers -> scheduled triggers
     for ct in metadata.cron_triggers:

@@ -210,7 +210,10 @@ async def test_a_contract_pointed_at_its_own_results_table_is_rejected(control_p
         await apply_dq_registration(conn, registered)
         await table_repo.upsert(conn, registered)
 
-        model = _results_table(contract="dataset: provisa/default/orders_scans\n")
+        # A check of its own, so the contract is refused for its target, not for naming none.
+        model = _results_table(
+            contract=CONTRACT.replace("provisa/sales/orders", "provisa/default/orders_scans")
+        )
         with pytest.raises(ValueError, match="resolves to the results table itself"):
             await apply_dq_registration(conn, model)
 

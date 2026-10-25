@@ -126,7 +126,9 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     state = no_replica_routes(MagicMock())
     state.contexts = {role: ctx}
     state.rls_contexts = {role: RLSContext.empty()}
-    state.roles = {role: {"id": role, "capabilities": [], "domain_access": ["*"]}}
+    state.roles = {
+        role: {"description": "Test role.", "id": role, "capabilities": [], "domain_access": ["*"]}
+    }
     state.schema_build_cache = {"column_types": {}}
     state.auth_config = {"provider": provider, "default_role": role, "role_mapping": []}
     state.auth_middleware_active = provider != "none"
@@ -173,7 +175,7 @@ class TestPgwireAuth:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _noop(*_, deliver):
+        async def _noop(*_, deliver, as_of=None):
             return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
@@ -217,7 +219,7 @@ class TestPgwireAuth:
         port, _ = pgwire_srv
         state = _make_mock_state("analyst", "none")
 
-        async def _echo_role(_, role_id, params=None, wire_formats=None, *, deliver):
+        async def _echo_role(_, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
             return EngineResult(rows=[(role_id,)], column_names=["role"])
 
         with (
@@ -483,7 +485,7 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver):
+        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
             received.append((sql, params))
             return EngineResult(rows=[("hello",)], column_names=["v"])
 
@@ -515,7 +517,7 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver):
+        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
             received.append((sql, params))
             return EngineResult(rows=[(42,)], column_names=["v"])
 
@@ -545,7 +547,7 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver):
+        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
             received.append((sql, params))
             return EngineResult(rows=[(None,)], column_names=["v"])
 
@@ -576,7 +578,7 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver):
+        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
             received.append((sql, params))
             return EngineResult(rows=[("a", 7)], column_names=["s", "n"])
 
@@ -613,7 +615,7 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver):
+        async def _capture(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
             received.append((sql, params))
             return EngineResult(rows=[(99,)], column_names=["v"])
 
@@ -826,7 +828,7 @@ class TestPgwireTLS:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _one(*_, deliver):
+        async def _one(*_, deliver, as_of=None):
             return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
@@ -911,7 +913,7 @@ class TestPgwireTLS:
             client_ssl.check_hostname = False
             client_ssl.verify_mode = ssl.CERT_NONE
 
-            async def _one(*_, deliver):
+            async def _one(*_, deliver, as_of=None):
                 return EngineResult(rows=[(1,)], column_names=["v"])
 
             with (
@@ -1165,10 +1167,12 @@ class TestPgwireConcurrentGovernanceIsolation:
 
         from provisa.pgwire import _pipeline
 
-        async def _fake_govern(sql, role_id, params=None, wire_formats=None, *, deliver):
+        async def _fake_govern(
+            sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None
+        ):
             return EngineResult(rows=[(role_id,)], column_names=["role"])
 
-        async def _fake_describe(sql, role_id):
+        async def _fake_describe(sql, role_id, *, as_of=None):
             # asyncpg's extended protocol governs the statement at its Describe (REQ-589).
             from provisa.pgwire._pipeline import _Described
 
@@ -1230,7 +1234,7 @@ class TestPgwireConcurrentGovernanceIsolation:
             handler_idents.add(threading.get_ident())
             real_handle(self)
 
-        async def _blocking_describe(sql, role_id):
+        async def _blocking_describe(sql, role_id, *, as_of=None):
             # The statement's one governance pass runs at its Describe (REQ-589).
             from provisa.pgwire._pipeline import _Described
 
@@ -1239,7 +1243,7 @@ class TestPgwireConcurrentGovernanceIsolation:
             both_governing.wait(timeout=10)  # blocks this connection's thread AND its loop
             return _Described([("role", "VARCHAR")], None)
 
-        async def _execute(sql, role_id, params=None, wire_formats=None, *, deliver):
+        async def _execute(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
             del sql, params, wire_formats
             govern_idents.append(threading.get_ident())
             return EngineResult(rows=[(role_id,)], column_names=["role"])

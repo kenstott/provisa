@@ -27,6 +27,7 @@ DECLARATIONS = """
 export interface Line { sku: string; qty: number; }
 export type Tier = "gold" | "silver";
 export interface Order {
+  /** The order's number. */
   id: number;
   placed: Date;
   tier: Tier;
@@ -79,7 +80,7 @@ def test_each_runtime_reads_the_same_tables_commands_and_streams(runtime, cache,
     ]
     assert orders.returns == Named("Order")
     assert manifest.types["Order"].fields == (
-        Field("id", Scalar("double"), False),
+        Field("id", Scalar("double"), False, "The order's number."),
         Field("placed", Scalar("timestamp"), False),
         Field("tier", EnumOf("Tier", ("gold", "silver")), False),
         Field("lines", ListOf(Named("Line")), False),

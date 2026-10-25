@@ -223,5 +223,18 @@ export function buildGraphStylesheet({
         "text-halign": "center" as const,
       },
     },
+    // An Overview pill's highlight: its label's nodes (or its type's edges) stand out, the rest dim.
+    {
+      selector: ".gc-dim",
+      style: { opacity: 0.15 },
+    },
+    {
+      selector: "node.gc-lit",
+      style: { "border-width": 4, "border-color": "#fff", "border-opacity": 1 },
+    },
+    {
+      selector: "edge.gc-lit",
+      style: { width: 4 },
+    },
   ];
 }

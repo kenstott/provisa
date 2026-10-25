@@ -1,0 +1,17 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:hasuramigration/1-my-orders.graphql",
+  "root_field": "s__orders"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:hasuramigration/2-my-profile.graphql",
+  "root_field": "s__customers"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:hasuramigration/3-order-with-account.graphql",
+  "root_field": "s__orders"
+ }
+]

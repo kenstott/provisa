@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "../test-utils/render";
+import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import type { Tag, TagAssignment } from "../types/admin";
 import { TagControl } from "../components/TagControl";
 
@@ -29,8 +29,22 @@ vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   useUnassignTag: () => ({ unassignTag: unassignSpy }),
 }));
 
+// A column's term, as the pii flow reads it: none unless a test names one.
+const termByRef = vi.hoisted(() => ({ term: null as unknown }));
+vi.mock("../api/glossary", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/glossary")>()),
+  fetchGlossaryTermByRef: vi.fn(async () => termByRef.term),
+}));
+const navigateTo = vi.hoisted(() => vi.fn());
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useNavigate: () => navigateTo,
+}));
+
 describe("TagControl", () => {
   beforeEach(() => {
+    termByRef.term = null;
+    navigateTo.mockClear();
     assignSpy.mockClear();
     unassignSpy.mockClear();
     mockTags = [
@@ -151,7 +165,8 @@ describe("TagControl", () => {
     fireEvent.click(option);
     // Checking no longer assigns immediately; it opens the inline form.
     expect(assignSpy).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("tag-apply-pii"));
+    // A column's pii first reads its term; with none, the tag's own form.
+    fireEvent.click(await screen.findByTestId("tag-apply-pii"));
     expect(assignSpy).toHaveBeenCalledWith({
       tagId: "pii",
       objectType: "column",
@@ -203,7 +218,7 @@ describe("TagControl", () => {
     render(<TagControl objectType="column" tableId={7} columnName="name" />);
     fireEvent.click(screen.getByTestId("tag-picker-toggle"));
     fireEvent.click(await screen.findByTestId("tag-option-pii"));
-    expect(screen.getByTestId("tag-reason-pii")).toBeInTheDocument();
+    expect(await screen.findByTestId("tag-reason-pii")).toBeInTheDocument();
     expect(screen.queryByTestId("tag-expires-pii")).toBeNull();
     expect(screen.getByTestId("tag-apply-pii")).not.toBeDisabled();
   });
@@ -372,5 +387,104 @@ describe("TagControl", () => {
     render(<TagControl objectType="table" tableId={7} readOnly />);
     expect(screen.getByTestId("tag-pill-deprecated")).toBeInTheDocument();
     expect(screen.queryByTestId("tag-picker-toggle")).toBeNull();
+  });
+});
+
+// REQ-2145: pii on a column whose term is a Property goes on the term -- every column with the
+// same meaning -- or on the column alone with a reason; a column pii through its term says so, and
+// is unmarked on the term.
+describe("TagControl: pii on a column", () => {
+  const EMAIL = {
+    id: 7,
+    name: "Email",
+    definition: "An address mail reaches.",
+    ref_count: 3,
+    table_count: 0,
+    tags: [],
+  };
+  beforeEach(() => {
+    assignSpy.mockClear();
+    unassignSpy.mockClear();
+    navigateTo.mockClear();
+    mockAssignments = [];
+    termByRef.term = EMAIL;
+  });
+
+  const openPii = async (piiTerm?: string) => {
+    render(<TagControl objectType="column" tableId={1} columnName="email" piiTerm={piiTerm} />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    fireEvent.click(await screen.findByTestId("tag-option-pii"));
+  };
+
+  it("asks whether to mark the other columns that mean the term, and marks the term on Yes", async () => {
+    await openPii();
+    expect(await screen.findByTestId("pii-also-term")).toHaveTextContent(
+      "Also mark the 2 other columns that mean 'Email'?",
+    );
+    fireEvent.click(screen.getByTestId("pii-yes"));
+    await waitFor(() =>
+      expect(assignSpy).toHaveBeenCalledWith({
+        tagId: "pii",
+        objectType: "column",
+        tableId: 1,
+        columnName: "email",
+        alsoTerm: true,
+      }),
+    );
+  });
+
+  it("marks this column alone, with the reason it needs", async () => {
+    await openPii();
+    fireEvent.click(await screen.findByTestId("pii-just-this"));
+    const apply = screen.getByTestId("pii-apply");
+    expect(apply).toBeDisabled();
+    fireEvent.change(screen.getByTestId("pii-reason"), { target: { value: "holds a phone too" } });
+    fireEvent.click(apply);
+    await waitFor(() =>
+      expect(assignSpy).toHaveBeenCalledWith({
+        tagId: "pii",
+        objectType: "column",
+        tableId: 1,
+        columnName: "email",
+        reason: "holds a phone too",
+      }),
+    );
+  });
+
+  it("says a draft term must be defined to be marked, and opens it", async () => {
+    assignSpy.mockResolvedValueOnce({
+      success: false,
+      message: "define it",
+      code: "tag.term_not_live",
+      params: { term: "Email" },
+    } as never);
+    await openPii();
+    fireEvent.click(await screen.findByTestId("pii-yes"));
+    expect(await screen.findByTestId("pii-refusal")).toHaveTextContent(
+      "Define 'Email' to mark it.",
+    );
+    fireEvent.click(screen.getByTestId("pii-define-term"));
+    expect(navigateTo).toHaveBeenCalledWith("/admin/ontology?term=7");
+  });
+
+  it("shows a column pii through its term, and unmarks it on the term", async () => {
+    await openPii("Email");
+    expect(screen.getByTestId("tag-pill-pii")).toBeInTheDocument();
+    // Its box is checked by the term's mark; unchecking it asks how.
+    fireEvent.click(screen.getByTestId("tag-option-pii"));
+    expect(await screen.findByTestId("pii-inherited")).toHaveTextContent(
+      "This column is PII because it means Email.",
+    );
+    fireEvent.click(screen.getByTestId("pii-unmark-term"));
+    await waitFor(() =>
+      expect(unassignSpy).toHaveBeenCalledWith({ tagId: "pii", objectType: "term", termId: 7 }),
+    );
+  });
+
+  it("marks a column with no term as any other tag", async () => {
+    termByRef.term = null;
+    await openPii();
+    expect(await screen.findByTestId("tag-apply-pii")).toBeInTheDocument();
+    expect(screen.queryByTestId("pii-also-term")).toBeNull();
   });
 });

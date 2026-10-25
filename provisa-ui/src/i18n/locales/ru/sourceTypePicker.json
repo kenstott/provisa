@@ -9,6 +9,25 @@
     "reachLive": "Напрямую (чтение на месте)",
     "reachReplica": "Реплика (обновляемая копия)",
     "reachLiveOn": "Напрямую только в {{engines}}",
-    "reachNone": "Недоступно из этого движка"
+    "reachNone": "Недоступно из этого движка",
+    "categories": {
+      "Subscriptions": "Подписки",
+      "RDBMS": "RDBMS",
+      "Cloud DW": "Облачное хранилище данных",
+      "Analytics": "Аналитика",
+      "Data Lake": "Озеро данных",
+      "NoSQL": "NoSQL",
+      "Code": "Резолверы кода",
+      "Graph": "Графы",
+      "File": "Файлы",
+      "API": "API",
+      "Streaming": "Потоковые данные",
+      "Enterprise": "Корпоративные",
+      "Data Quality": "Качество данных",
+      "Other": "Другое"
+    },
+    "categorySubtitles": {
+      "Code": "Бизнес-логика на Python или Node"
+    }
   }
 }

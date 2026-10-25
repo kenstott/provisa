@@ -78,6 +78,7 @@ function table(
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -104,8 +105,9 @@ function table(
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -127,7 +129,19 @@ function table(
 }
 
 const TABLES = [
-  table(7, "orders", [], { region: "eu" }),
+  table(7, "orders", [], {
+    region: "eu",
+    // A column a graph links to (?column=).
+    columns: [
+      {
+        id: 70,
+        columnName: "email",
+        visibleTo: [],
+        masks: [],
+        scope: "domain",
+      } as unknown as RegisteredTable["columns"][number],
+    ],
+  }),
   table(8, "staging", [], { region: "eu", draft: true }),
 ];
 const SOURCES = [
@@ -213,6 +227,19 @@ async function select(name: string) {
 describe("TablesPage — the detail panel", () => {
   beforeEach(() => localStorage.clear());
 
+  it("opens on a linked column: its table's Columns section, the row marked", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    render(<TablesPage />, {
+      initialEntries: ["/tables?table=7&section=columns&column=email"],
+    });
+    const panel = await screen.findByTestId("tables-split-panel");
+    expect(within(panel).getByTestId("tables-split-title")).toHaveTextContent("orders");
+    expect(within(panel).getByTestId("table-read-column-email")).toHaveAttribute(
+      "data-linked",
+      "true",
+    );
+  });
+
   it("has no panel until a table is selected", async () => {
     render(<TablesPage />);
     await screen.findByTestId("tables-list");
@@ -292,11 +319,12 @@ describe("TablesPage — the detail panel", () => {
     expect(within(head).queryByTestId("table-edit-save")).toBeNull();
   });
 
-  it("puts a create form's Save and Cancel in the head too", async () => {
+  it("puts a create form's Continue and Cancel in the head too", async () => {
     render(<TablesPage />);
     await userEvent.click(await screen.findByTestId("tables-add-toggle"));
     const head = (await screen.findByTestId("tables-split-title")).parentElement as HTMLElement;
-    expect(await within(head).findByTestId("register-table-submit")).toHaveTextContent("Save");
+    // Choosing what is registered continues to its settings, where Save registers it (REQ-2109).
+    expect(await within(head).findByTestId("register-table-submit")).toHaveTextContent("Continue");
     expect(within(head).getByTestId("register-table-cancel")).toHaveTextContent("Cancel");
     const body = screen.getByTestId("tables-split-panel").querySelector(".split-pane__body")!;
     expect(body.querySelector(".form-footer")).toBeNull();

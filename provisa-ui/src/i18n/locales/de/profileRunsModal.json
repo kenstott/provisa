@@ -38,6 +38,12 @@
     "kind_dependencies": "Abhängigkeiten",
     "kind_joint_counts": "Gemeinsame Häufigkeiten",
     "kind_constraints": "Vorgeschlagene Constraints",
-    "kind_constraint_checks": "Constraint-Prüfungen"
+    "kind_constraint_checks": "Constraint-Prüfungen",
+    "kind_classifications": "Klassifizierungen",
+    "kind_terrain": "Terrain",
+    "kind_relationsMap": "Beziehungen",
+    "kind_jointCloud": "Gemeinsame Wolke",
+    "kind_driftStrata": "Drift-Schichten",
+    "resultsMenu": "Ergebnisse"
   }
 }

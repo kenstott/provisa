@@ -13,9 +13,10 @@ import type { ViewerRequest } from "../components/nativeParams";
 import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
-import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
+import { columnKeys, rowByKeys } from "../lib/columnKeys";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -1592,6 +1593,39 @@ function timeTravelHeaders(travel: TimeTravel | undefined): Record<string, strin
   return headers;
 }
 
+/** What a refused statement says: in the reader's language by its code and params (serverErrors),
+ * else in the server's own words; never the body it came in. */
+async function refusal(resp: Response, op: string): Promise<string> {
+  const text = await resp.text();
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // Not JSON (a proxy's page, a bare message): its text is all there is to say.
+  }
+  return body !== null && typeof body === "object"
+    ? serverMessage(body as ServerMessageShape, requestFailed(op, resp.status))
+    : text || requestFailed(op, resp.status);
+}
+
+function sqlHeaders(
+  role: string,
+  statsEnabled: boolean,
+  timeTravel: TimeTravel | undefined,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    // REQ-273: the server trusts only this header to select the acting role — the body's
+    // `role` is a fallback for callers with no auth context at all. Without it here, the
+    // middleware's default-assigned role silently overrode the SQL Explorer's picker.
+    "X-Provisa-Role": role,
+    ...timeTravelHeaders(timeTravel),
+  };
+  if (statsEnabled) headers["X-Provisa-Stats"] = "true";
+  return headers;
+}
+
 export async function runSql(
   // A statement, or a statement with the values of its $1…$n placeholders. The values are
   // sent beside the text and bound by the server; they are never written into it.
@@ -1615,16 +1649,7 @@ export async function runSql(
   redirect?: ResultRedirect;
 }> {
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      // REQ-273: the server trusts only this header to select the acting role — the body's
-      // `role` is a fallback for callers with no auth context at all. Without it here, the
-      // middleware's default-assigned role silently overrode the SQL Explorer's picker.
-      "X-Provisa-Role": role,
-      ...timeTravelHeaders(timeTravel),
-    };
-    if (statsEnabled) headers["X-Provisa-Stats"] = "true";
+    const headers = sqlHeaders(role, statsEnabled, timeTravel);
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       // The acting role travels ONLY in X-Provisa-Role. Under "Role: All" that header is the
       // comma-separated set; a body `role` repeating it is refused as a mismatch (data.role_mismatch,
@@ -1640,8 +1665,7 @@ export async function runSql(
       ),
     });
     if (!resp.ok) {
-      const text = await resp.text();
-      return { columns: [], column_types: null, rows: [], error: text };
+      return { columns: [], column_types: null, rows: [], error: await refusal(resp, "runSql") };
     }
     const json = await resp.json();
     // A result landed in the results store comes back as a handle to it, not rows.
@@ -1687,6 +1711,93 @@ export async function runSql(
   }
 }
 
+/** One statement's answer in a batch answered one result per statement. */
+export interface StatementAnswer {
+  statement: string;
+  /** Each column's key, unique by position (lib/columnKeys); columnLabel gives its name. */
+  columns: string[];
+  column_types: string[] | null;
+  rows: Record<string, unknown>[];
+  warnings: StatementWarning[];
+  /** Why the statement failed, as it alone would have been refused; the others still ran. */
+  error?: string;
+  /** REQ-1194 / REQ-1224: landed in the results store, not in `rows`. */
+  redirect?: ResultRedirect;
+}
+
+/** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a
+ * dollar-quoted block does not split). Nothing is run. */
+export async function splitSql(sql: string): Promise<string[]> {
+  const resp = await fetch(`${API_BASE_RAW}/data/sql/statements`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ sql }),
+  });
+  if (!resp.ok) throw new Error(await refusal(resp, "splitSql"));
+  return ((await resp.json()) as { statements: string[] }).statements;
+}
+
+interface EachEntry {
+  statement: string;
+  warnings: StatementWarning[];
+  /** Each row's values in column order. */
+  data?: unknown[][];
+  columns?: string[];
+  column_types?: string[] | null;
+  redirect?: Parameters<typeof toResultRedirect>[0];
+  error?: { status: number; body: unknown };
+}
+
+/** Run a batch answered one result per statement, in order: each governed and run on its own,
+ * in one request. `error` is the request's own failure (refused before any statement ran). */
+export async function runSqlEach(
+  sql: string,
+  role: string,
+  statsEnabled: boolean,
+  timeTravel?: TimeTravel,
+): Promise<{ answers: StatementAnswer[]; provisa_stats?: unknown; error?: string }> {
+  try {
+    const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
+      method: "POST",
+      headers: sqlHeaders(role, statsEnabled, timeTravel),
+      body: JSON.stringify({ sql, results: "each" }),
+    });
+    if (!resp.ok) return { answers: [], error: await refusal(resp, "runSql") };
+    const json = (await resp.json()) as { results: EachEntry[]; provisa_stats?: unknown };
+    const answers = await Promise.all(
+      json.results.map(async (e): Promise<StatementAnswer> => {
+        const empty = { statement: e.statement, columns: [], column_types: null, rows: [] };
+        if (e.error)
+          return {
+            ...empty,
+            warnings: e.warnings,
+            // Said as the same statement's refusal alone is said.
+            error: await refusal(
+              new Response(JSON.stringify(e.error.body), { status: e.error.status }),
+              "runSql",
+            ),
+          };
+        if (e.redirect)
+          return { ...empty, warnings: e.warnings, redirect: toResultRedirect(e.redirect) };
+        if (!Array.isArray(e.columns) || !Array.isArray(e.data))
+          throw new Error(`runSql: an answer for "${e.statement}" holds neither rows nor error`);
+        // Keyed by position, so two columns of one name each keep their own value.
+        const keys = columnKeys(e.columns);
+        return {
+          statement: e.statement,
+          columns: keys,
+          column_types: e.column_types ?? null,
+          rows: e.data.map((row) => rowByKeys(keys, row)),
+          warnings: e.warnings,
+        };
+      }),
+    );
+    return { answers, provisa_stats: json.provisa_stats };
+  } catch (e) {
+    return { answers: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // REQ-1519: the plan the ONE pipeline would have executed, described by the target's own EXPLAIN.
 export interface ExplainNodeDto {
   op: string;
@@ -1729,7 +1840,7 @@ export async function explainSql(
     },
     body: JSON.stringify({ sql: sqlText, analyze }),
   });
-  if (!resp.ok) throw new Error(await resp.text());
+  if (!resp.ok) throw new Error(await refusal(resp, "explainSql"));
   return resp.json();
 }
 
@@ -1745,8 +1856,7 @@ export async function nlToSql(
       body: JSON.stringify({ question, strict }),
     });
     if (!resp.ok) {
-      const text = await resp.text();
-      return { sql: "", attempts: 0, error: text };
+      return { sql: "", attempts: 0, error: await refusal(resp, "nlToSql") };
     }
     const result = await resp.json();
     if (result.sql) {
@@ -1787,6 +1897,10 @@ export interface MVInfo {
   lastRefreshAt: number | null;
   rowCount: number | null;
   lastError: string | null;
+  /** The table whose version log this view is; null for any other view. */
+  versionLogOf: string | null;
+  /** Seconds a row its refresh reads may be committed late. */
+  allowedLateness: number;
 }
 
 export interface CacheStats {
@@ -2384,6 +2498,17 @@ export async function submitNlQuery(
   return res.json();
 }
 
+/** Whether `role` may run non-strict NL: only a role that may bypass the relationship guard, by the
+ * server's one bypass rule (REQ-603). The NL page holds its Strict switch on for any other. */
+export async function fetchNlMode(role: string): Promise<{ non_strict: boolean }> {
+  const res = await fetch(`${API_BASE}/query/nl/mode`, { headers: { "X-Provisa-Role": role } });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(serverMessage(data, data.error || requestFailed("NL mode", res.status)));
+  }
+  return res.json();
+}
+
 export interface NlBranchEvent {
   target: "sql" | "graphql" | "cypher";
   query: string | null;
@@ -2701,10 +2826,45 @@ export async function generateOrgFilesKey(): Promise<string> {
   return ((await resp.json()) as { key: string }).key;
 }
 
+/** The server's verdict on a regex entry's pattern or replacement: a construct outside the
+ *  universal regex dialect, where it starts. ``ok`` true is a warning, not a refusal. */
+export interface MaskPatternVerdict {
+  entry: number;
+  field: "pattern" | "replace";
+  ok: boolean;
+  construct: string;
+  position: number;
+  message: string;
+}
+
 export interface MasksReport {
   unreachable: { entry: number; covered_by: number | null }[];
   unlisted_unmasked: boolean;
   applies: number | null;
+  /** Each construct of a regex entry outside the universal dialect; empty when all pass. */
+  patterns: MaskPatternVerdict[];
+}
+
+/** A regex mask the server offers, in the universal dialect, with an example of what it does.
+ *  One with ``params`` has a ``pattern_template`` the editor fills with a number for each. */
+export interface MaskPreset {
+  id: string;
+  label: string;
+  pattern?: string;
+  pattern_template?: string;
+  params?: string[];
+  replace: string;
+  example: { input: string; output: string };
+}
+
+/** The regex masks offered beside a regex entry's Pattern and Replacement. */
+export async function maskPresets(): Promise<MaskPreset[]> {
+  const res = await fetch(`${API_BASE}/admin/masks/presets`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("mask presets", res.status)));
+  }
+  return res.json();
 }
 
 /** The server's check of a mask list as edited: unreachable entries, readers left unmasked, and

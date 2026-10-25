@@ -94,11 +94,33 @@ async def start_org_live_engine(scheduler: Any) -> None:  # REQ-286, REQ-1266
         await _reconcile_live_engine(conn)
 
 
-async def _register_user_views_in_state(conn: "Connection", raw_config: dict | None) -> None:
-    """Register __derived__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
+async def _register_user_views_in_state(
+    conn: "Connection", raw_config: dict | None, tables: list[dict], draft_tables: list[dict]
+) -> None:
+    """Register __derived__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal.
+    ``tables`` are the registered table rows this build loaded: what a view inheriting its
+    versions is judged against (REQ-2109) -- ``state.tables`` is published only after this.
+    ``draft_tables`` are its draft ones: a draft table keeps its version log, uncaptured."""
     from provisa.api.app import state
 
     with tolerate_startup_failure("user views for inline expansion"):
+        # REQ-2131: the org's column transforms, by name: a view applying one is landed (built as
+        # a materialized view, declared or not) and read only from its stored table.
+        from provisa.codesource.columns import COLUMN_TRANSFORM
+        from provisa.codesource.columns_fold import called
+        from provisa.core.schema_org import tracked_functions as _tracked_functions_t
+
+        _transforms = {
+            _r.name
+            for _r in (
+                await conn.execute_core(
+                    select(_tracked_functions_t.c.name).where(
+                        _tracked_functions_t.c.impl_kind == COLUMN_TRANSFORM
+                    )
+                )
+            ).fetchall()
+        }
+        state.stored_view_reads = set()
         _view_rows = [
             dict(_r._mapping)
             for _r in (
@@ -111,9 +133,9 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.mv_refresh_interval,
                         _registered_tables_t.c.change_signal,
                         _registered_tables_t.c.mv_preprocess,  # REQ-957
-                        _registered_tables_t.c.mv_bitemporal_mode,  # REQ-1162
-                        _registered_tables_t.c.mv_bitemporal_key,  # REQ-1162
-                        _registered_tables_t.c.mv_bitemporal_source_time,  # REQ-1163
+                        _registered_tables_t.c.business_key,  # REQ-2109
+                        _registered_tables_t.c.valid_time,  # REQ-2109
+                        _registered_tables_t.c.recorded_time,  # REQ-2109
                         _registered_tables_t.c.mv_persist,  # REQ-965
                         _registered_tables_t.c.mv_primary_key,  # REQ-970
                         _registered_tables_t.c.mv_incremental,  # REQ-969
@@ -154,17 +176,23 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             # is unqueryable: its raw source catalog (e.g. __derived__) reaches the engine and fails
             # with "Catalog __derived__ does not exist".
             _semantic_sql = _vr["view_sql"].rstrip().rstrip(";")
-            # REQ-1162: reconstruct the bitemporal spec from the persisted mode/key (None = ordinary).
+            # REQ-1162, REQ-2109: reconstruct the bitemporal spec from the persisted declaration;
+            # a materialized view declaring none may inherit its versions from the one versioned
+            # table it groups (None = ordinary).
             _bt_spec = None
-            if _vr.get("mv_bitemporal_mode"):
-                from provisa.mv.bitemporal import BitemporalSpec
+            if _vr["business_key"]:
+                from provisa.mv.bitemporal import declared_spec
 
-                _bt_spec = BitemporalSpec(
-                    key=tuple(_vr.get("mv_bitemporal_key") or []),
-                    mode=_vr["mv_bitemporal_mode"],
-                    source_column=_vr["mv_bitemporal_source_time"],
-                    columns=tuple(_view_columns[_vr["id"]]),
+                _bt_spec = declared_spec(
+                    list(_vr["business_key"]),
+                    _vr["valid_time"],
+                    _vr["recorded_time"],
+                    _view_columns[_vr["id"]],
                 )
+            elif _vr.get("materialize"):
+                from provisa.mv.bitemporal_inherit import inherited_spec
+
+                _bt_spec = inherited_spec(_semantic_sql, tables)
             if _bt_spec is not None and _vr.get("materialize"):
                 # REQ-1163: a bitemporal MV is served from its materialized append log — the read
                 # reconstructs CURRENT state (the live view SQL would carry no history). Point the
@@ -186,6 +214,22 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                 # REQ-1163: remember (target, spec) so a request-level as-of can overlay an as-of
                 # reconstruction over this view's append log at query time.
                 state.bitemporal_view_reads[_vr["table_name"]] = (_mv_ref, _bt_spec)
+            elif called(_semantic_sql, _transforms):
+                # REQ-2131: its outputs exist only in its stored table, so that is what it reads.
+                from provisa.mv.models import stored_table_ref
+
+                _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
+                    state.active_org_id
+                )
+                _stored = stored_table_ref(
+                    _tgt_cat,
+                    _tgt_schema,
+                    f"mv_{_vr['table_name']}",
+                    catalog_qualified=state.federation_engine.engine.catalog_qualified,
+                )
+                _vr["materialize"] = True  # landed, declared or not
+                state.view_sql_map[_vr["table_name"]] = f"SELECT * FROM {_stored}"
+                state.stored_view_reads.add(_vr["table_name"])
             else:
                 state.view_sql_map[_vr["table_name"]] = _semantic_sql
             if _vr.get("materialize"):
@@ -228,6 +272,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             sql=_semantic_sql,
                             semantic_sql=_semantic_sql,  # REQ-1921/1922
                             region=_vr.get("region"),  # REQ-1921
+                            view_table=_vr["table_name"],  # REQ-1918: the view it builds
                             read_tables=read_table_names(_semantic_sql),
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
@@ -288,6 +333,23 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             state.bitemporal_view_reads.pop(_vr["table_name"], None)
             if not _vr.get("materialize") and state.mv_registry.get(f"view-{_vr['table_name']}"):
                 state.mv_registry.unregister(f"view-{_vr['table_name']}")
+        # REQ-1918: a view's read and its build are parts of it. A view deleted leaves neither,
+        # and one no longer materialized leaves no build -- a build left reading a view that is
+        # gone would fail the org's event wiring on every later change.
+        _views = {_vr["table_name"] for _vr in _view_rows}
+        _built = {_vr["table_name"] for _vr in _view_rows if _vr.get("materialize")}
+        for _mv in state.mv_registry.all():
+            if _mv.view_table is not None and _mv.view_table not in _built:
+                state.mv_registry.unregister(_mv.id)
+        for _name in [n for n in state.view_sql_map if n not in _views]:
+            state.view_sql_map.pop(_name)
+            state.bitemporal_view_reads.pop(_name, None)
+            state.stored_view_reads.discard(_name)
+        # REQ-2109: a bitemporal table updated in place keeps its versions in a log Provisa
+        # captures, an MV of its own refreshed on that MV's interval.
+        from provisa.mv.bitemporal_capture import register_logs
+
+        register_logs(state, [*tables, *draft_tables], int(_mv_default_ttl))
 
 
 async def serve_registered_tables(state) -> None:
@@ -347,8 +409,14 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
             # rewrite mangles the fully-qualified store ref (drops the schema). Only the ordinary
             # semantic view SQL needs compiling.
             _bt_views = getattr(state, "bitemporal_view_reads", {})
+            # REQ-2131: a view applying a column transform reads its stored table, already physical.
+            _stored_views = getattr(state, "stored_view_reads", set())
             state.view_sql_map = {
-                name: (sql if name in _bt_views else compile_view_sql_to_physical(sql, ctx))
+                name: (
+                    sql
+                    if name in _bt_views or name in _stored_views
+                    else compile_view_sql_to_physical(sql, ctx)
+                )
                 for name, sql in state.view_sql_map.items()
             }
         compile_registry_mvs_to_physical(state.mv_registry, ctx)

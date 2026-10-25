@@ -48,6 +48,7 @@ zu jeder Ausgabe.
 | `source` | Grün | Eine Basistabellenspalte |
 | `derived` | Blau | Erzeugt durch einen SQL-Ausdruck (Funktion, Operator, CTE) |
 | `command` | Violett | Eine Ausgabespalte eines registrierten Commands |
+| `native` | Orange | Das rohe Feld, das eine Quelle liest, unter der Spalte einer registrierten Tabelle |
 
 Zusätzliche Ringe an einem Knoten:
 
@@ -63,6 +64,27 @@ Operationen: SQL-Funktionen (`sql_function`), arithmetische/logische Operatoren 
 registrierte Commands (`command`), reine Spaltenreferenzen (`identity`) und Literale (`constant`).
 
 Eine Kante aus einem Command-Aufruf wird in der UI als gestrichelte violette Linie dargestellt.
+
+### Unter der registrierten Tabelle
+
+Ein Benutzer mit Quellenregistrierung sieht unter jeder Quellspalte einen weiteren Schritt: das Feld, wie die Quelle es liest, in einem Kasten für den Ort, von dem es gelesen wird. Der Kasten trägt das Logo und die Typbezeichnung der Quelle, wie die Seite Sources sie zeigt, und die Adresse je nach Art der Quelle:
+
+| Quelle | Adresse |
+| --- | --- |
+| OpenAPI | Die Operation (`GET /v2/customers`), ihre festen Parameter und die Position der Zeilen |
+| Remote GraphQL | Das Wurzelfeld, seine Pflichtargumente und die Position der Zeilen |
+| MongoDB, Cosmos DB | Die Datenbank und die Collection oder der Container |
+| Elasticsearch, Qdrant | Der Index oder die Collection |
+| CSV, Parquet, Dateien, Logs | Der Pfad und das Dateimuster einer Tabelle, die viele Dateien liest |
+| Kafka | Das Topic |
+| Code-Quelle | Die Funktion |
+| Jede andere | Das native Schema und die native Tabelle |
+
+Das rohe Feld ist der Feldpfad der Spalte, wenn sie einen hat, sonst ihr eigener Name. Die Kante davon zur registrierten Spalte nennt die Umbenennung: `path`, `alias` oder `naming` (die Namenskonvention). Der Kasten der registrierten Tabelle sagt, wie sie bereitgestellt wird: `virtual`, bei jeder Anweisung gelesen, oder `replica`, mit ihrem TTL und dem Zeitpunkt des letzten Ladens. Zugangsdaten, Secret-Referenzen sowie Benutzer, Passwort und Query einer URL werden nie gezeigt. Ein Benutzer ohne Quellenregistrierung sieht die Lineage ab der registrierten Tabelle aufwärts.
+
+### Links
+
+Jedes Element öffnet sich dort, wo es definiert ist, wenn die Rechte des Benutzers diese Seite öffnen. Ein Klick auf ein Feld öffnet seine Tabelle, Sicht oder Quelle; ein Doppelklick auf einen Kasten öffnet seine Relation; ein Klick auf die Kante eines Commands öffnet den Command. Eine eingebaute SQL-Funktion hat keine Seite und keinen Link.
 
 ## Föderationsweiter Graph {: #federation-wide-graph }
 
@@ -118,6 +140,26 @@ Form der Antwort:
   "outputs": ["id", "embedding"]
 }
 ```
+
+Für einen Aufrufer mit Quellenregistrierung fügen beide Endpunkte den nativen Schritt hinzu: Knoten der Art `native` und ein Objekt `natives`, nach der Relation jedes nativen Kastens geschlüsselt (`native:<domain>.<table>`):
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+Das `served` einer Replica ist `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Für jeden anderen Aufrufer ist `natives` leer.
 
 Liefert HTTP 422, wenn das SQL nicht geparst werden kann.
 
@@ -181,12 +223,12 @@ Die Sicht liest die Aktualisierungsdatensätze in `"ops"."traces"` und antwortet
 
 ## Eine Sicht, wie sie stand und wie sie erfasst wurde {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Eine als bitemporal deklarierte Sicht behält jede Version, die sie je hatte: Jede Aktualisierung hängt an, und keine Version wird überschrieben, auf jedem Speicher. Ein einfacher Lesezugriff liefert den aktuellen Stand. Zwei Request-Header lesen ihre Vergangenheit:
+Eine Sicht, die die Spalten ihrer Quelle als `business_key`, `valid_time` und `recorded_time` abbildet, behält jede Version, die sie je hatte: Jede Aktualisierung hängt an, und keine Version wird überschrieben, auf jedem Speicher. Ein einfacher Lesezugriff liefert den aktuellen Stand. Zwei Request-Header lesen ihre Vergangenheit:
 
-- `X-Provisa-As-Of` liest die Sicht zu einem Zeitpunkt oder über einen Zeitraum, auf ihrer Uhr: der eigenen Änderungszeit der Quelle, wo die Sicht `bitemporal_source_time` deklariert, sonst der Ladezeit von Provisa.
+- `X-Provisa-As-Of` liest die Sicht zu einem Zeitpunkt oder über einen Zeitraum.
 - `X-Provisa-As-Recorded` liest sie so, wie Provisa sie zu einem Zeitpunkt erfasst hatte. Später erfasste Versionen bleiben außen vor, sodass eine später erfasste Korrektur die Wiedergabe der Vergangenheit nicht ändert.
 
-Stand 30. September, erfasst am 1. Oktober, ergibt den ursprünglichen Wert; erfasst am 5. Oktober ergibt die Korrektur. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest (`as_of`, `as_recorded`), sodass sich ein Bericht so reproduzieren lässt, wie er zuerst erstellt wurde. [Sichten mit Historie](configuration.md#views-with-history-time-travel) beschreibt, wie eine bitemporale Sicht deklariert wird, und jede Oberfläche, die die beiden Werte annimmt.
+Stand 30. September, erfasst am 1. Oktober, ergibt den ursprünglichen Wert; erfasst am 5. Oktober ergibt die Korrektur. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest (`as_of`, `as_recorded`), sodass sich ein Bericht so reproduzieren lässt, wie er zuerst erstellt wurde. [Sichten mit Historie](configuration.md#views-with-history-time-travel) beschreibt die drei Deklarationen mit Beispielen und jede Oberfläche, die die beiden Werte annimmt.
 
 ## Was eine Spaltenumbenennung oder -löschung beeinträchtigen würde {: #what-a-column-rename-or-drop-would-break }
 
@@ -199,7 +241,7 @@ alle gegen diesen Namen geschrieben, sodass **das Umbenennen eines Alias sie gen
 bricht wie das Löschen der Spalte**.
 
 Der **physische Name** ist `table_columns.column_name`, die Identität, die den vollständigen
-Spaltenersatz beim Tabellen-Upsert überlebt. Relationships, [Glossar](glossary.md)-Bindungen,
+Spaltenersatz beim Tabellen-Upsert überlebt. Relationships, [Ontologie](ontology.md)-Bindungen,
 Tag-Zuweisungen, die Watermark-Spalte und Spalten-Presets speichern diesen, sodass sie nur
 brechen, wenn die Spalte **entfernt** wird.
 

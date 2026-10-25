@@ -40,6 +40,13 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   grounded: true,
   domains: [],
   ref_count: 1,
+  table_count: 0,
+  identity_gap: false,
+  findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   refs: [
     {
       table_id: 10,
@@ -54,6 +61,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   edges_out: [{ term_id: 2, rel_type: "KIND_OF", name: "Income" }],
   edges_in: [],
   experts: [{ user_id: "alice", kind: "expert" }],
+  tags: [],
 };
 
 function renderHover(tableId: number, columnName: string) {
@@ -90,6 +98,7 @@ describe("ColumnGlossaryHover (REQ-1387)", () => {
       definition: null,
       deprecated: true,
       experts: [],
+      tags: [],
       edges_out: [],
     });
     renderHover(11, "legacy_col");

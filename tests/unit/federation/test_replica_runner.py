@@ -12,12 +12,14 @@ PostgreSQL's advisory locks are in ``tests/integration/test_replica_build_locks_
 """
 
 import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from provisa.core import process_mode
+from provisa.federation import replica_runner
 from provisa.federation import replica_state as build_state
 from provisa.federation.replica_locks import BuildLocks
 from provisa.federation.replica_errors import WAITING_ENGINE, WAITING_SOURCE
@@ -28,11 +30,10 @@ from provisa.federation.replica_runner import (
 )
 from provisa.federation.replica_state import RetryPolicy
 
-ORG = "org1"
-
 # PostgreSQL advisory locks are held server-wide, not per database: every xdist worker's control
-# plane shares one server, so each worker process names an engine of its own, or a slot another
-# worker's test holds reads here as taken.
+# plane shares one server, so each worker process names an org and an engine of its own, or a
+# replica lock or slot another worker's test holds reads here as taken.
+ORG = f"org1{uuid.uuid4().hex[:8]}"
 ENGINE = f"trino@engine-{uuid.uuid4().hex[:8]}:8080"
 
 
@@ -255,16 +256,49 @@ async def test_the_engine_job_cap_holds_across_nodes_and_a_dead_builder_frees_it
         r.build_state == build_state.IDLE and r.exists for r in (await _records(db_a)).values()
     )
 
-    # A builder that dies: its claim's locks go with it, and the slot is free at once.
+    # A builder that dies: its claim's locks go with its session. PostgreSQL frees a session's
+    # advisory locks once it has ended the backend, which it does after the client's socket
+    # closes, not before close() returns; once that session is gone, the slot is free.
     dead = BuildLocks(url).claim()
     assert dead.try_engine_slot(ENGINE, 1)
+    pid = _backend_pid(dead)
     survivor = BuildLocks(url).claim()
     try:
         assert not survivor.try_engine_slot(ENGINE, 1)
         dead.close()  # what the operating system does to a dead process's open files
+        await _session_ended(url, pid)
         assert survivor.try_engine_slot(ENGINE, 1)
     finally:
         survivor.close()
+
+
+def _backend_pid(claim) -> int:
+    """The server process of the session a claim holds its locks on."""
+    from sqlalchemy import text
+
+    return claim._conn.execute(text("SELECT pg_backend_pid()")).scalar()  # noqa: SLF001
+
+
+async def _session_ended(url: str, pid: int) -> None:
+    """Return once the control plane no longer runs backend ``pid``; fail after 10s."""
+    from sqlalchemy import text
+
+    from provisa.core.database import control_plane_lock_engine
+
+    engine = control_plane_lock_engine(url)
+    try:
+        # Autocommit: a transaction reads pg_stat_activity once and keeps that snapshot.
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            for _ in range(200):
+                alive = conn.execute(
+                    text("SELECT count(*) FROM pg_stat_activity WHERE pid = :pid"), {"pid": pid}
+                ).scalar()
+                if not alive:
+                    return
+                await asyncio.sleep(0.05)
+        raise AssertionError(f"backend {pid} still running 10s after its client closed")
+    finally:
+        engine.dispose()
 
 
 async def test_a_row_left_building_by_a_dead_builder_is_rebuilt(plane, tmp_path):
@@ -494,3 +528,109 @@ async def test_a_build_finishing_after_the_stop_chains_into_no_further_build(pla
     assert len(built) == 1
     states = sorted(r.build_state for r in (await _records(db)).values())
     assert states == [build_state.IDLE, build_state.REQUESTED]
+
+
+def _holds(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == replica_runner.__name__]
+
+
+async def test_a_build_held_for_a_node_slot_says_so_once(plane, tmp_path, caplog):
+    """A requested build left waiting says why, once, where the server log shows it (WARNING)."""
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0), _key(1))
+    release = asyncio.Event()
+
+    async def build(key, progress):
+        await release.wait()
+        return BuildOutcome(rows_copied=0, method="stream_batches")
+
+    node = _Node("a", url, db, tmp_path, build=build, permits=_Permits(), per_node=1)
+    with caplog.at_level(logging.WARNING, logger=replica_runner.__name__):
+        assert await node.runner.run_pass() == 1
+        await asyncio.sleep(0)
+        assert _holds(caplog) == []  # a pass that started a build is not one held
+        assert await node.runner.run_pass() == 0
+        assert await node.runner.run_pass() == 0
+    assert _holds(caplog) == [
+        f"replica builds of org {ORG} wait for a build slot on this node: all 1 are in use"
+    ]
+    release.set()
+    await node.drain()
+
+
+async def test_a_build_held_for_its_source_permit_says_so_once(plane, tmp_path, caplog):
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0))
+    permits = _Permits()
+    assert permits.try_acquire(permits.key(ORG, "src"), 1)
+
+    async def build(key, progress):
+        raise AssertionError("a build must not start without its source permit")
+
+    node = _Node("a", url, db, tmp_path, build=build, permits=permits, cap=1)
+    with caplog.at_level(logging.WARNING, logger=replica_runner.__name__):
+        assert await node.runner.run_pass() == 0
+        assert await node.runner.run_pass() == 0
+    assert _holds(caplog) == [
+        f"replica src.public.t0 of org {ORG} waits for a read permit of source src: all 1 are "
+        "in use"
+    ]
+
+
+async def test_a_build_held_for_the_engine_says_so_once(plane, tmp_path, caplog):
+    url, connect = plane
+    db_a, db_b = connect(), connect()
+    await _request(db_a, _key(0), _key(1))
+    release = asyncio.Event()
+
+    async def build(key, progress):
+        await release.wait()
+        return BuildOutcome(rows_copied=0, method="engine_statement")
+
+    permits = _Permits()
+    a = _Node("a", url, db_a, tmp_path, build=build, permits=permits, engine_jobs=1)
+    b = _Node("b", url, db_b, tmp_path, build=build, permits=permits, engine_jobs=1)
+    assert await a.runner.run_pass() == 1
+    await asyncio.sleep(0)
+    with caplog.at_level(logging.WARNING, logger=replica_runner.__name__):
+        assert await b.runner.run_pass() == 0
+        assert await b.runner.run_pass() == 0
+    [held] = _holds(caplog)
+    assert held.startswith(
+        f"replica builds of org {ORG} wait for a job slot on engine {ENGINE}: all 1 are in use"
+    )
+    release.set()
+    await a.drain()
+
+
+async def test_the_heap_freezes_once_at_the_first_pass_with_no_build_left(
+    plane, tmp_path, monkeypatch
+):
+    """REQ-1911: boot's builds leave long-lived objects (model rows, compiled plans, imports) a
+    full collection would walk on every request's behalf; the first pass that starts no build
+    while none of the runner's builds still run moves them to the permanent generation, once."""
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0))
+    frozen: list[int] = []
+    monkeypatch.setattr(replica_runner, "_boot_builds_frozen", False)
+    monkeypatch.setattr(replica_runner.gc, "freeze", lambda: frozen.append(1))
+    release = asyncio.Event()
+
+    async def build(key, progress):
+        await asyncio.wait_for(release.wait(), 5)
+        return BuildOutcome(rows_copied=1, method="stream_batches")
+
+    node = _Node("a", url, db, tmp_path, build=build, permits=_Permits(), per_node=2)
+    assert await node.runner.run_pass() == 1
+    assert await node.runner.run_pass() == 0  # nothing to start, but the build still runs
+    assert frozen == []
+    release.set()
+    await node.drain()  # the build's own chained pass still counts it as running
+    assert frozen == []
+    assert await node.runner.run_pass() == 0
+    assert frozen == [1]
+    assert await node.runner.run_pass() == 0
+    assert frozen == [1]  # once per process

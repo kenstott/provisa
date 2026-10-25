@@ -34,6 +34,8 @@ steps:
   capability: table_registration
   table: code.dependabot_alerts
 - key: vulnerabilitiesNvd
+  route: /tables
+  capability: table_registration
   table: govdata.vulnerabilities
   # Its detail panel: its landing filter is shown in its load section.
   open: load
@@ -44,7 +46,7 @@ steps:
   capability: create_relationship
   relationship: EXPLOITED_AS
 - key: vulnerabilitiesTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: known exploited vulnerability
 # The answer, in SQL, GraphQL, Cypher and REST.

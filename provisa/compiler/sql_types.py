@@ -39,6 +39,7 @@ class _TableInfoProto(Protocol):
     native_filter_columns: list[dict]
     alias: str | None
     metrics: list[dict]  # REQ-1319: role-visible single-table metrics for this table
+    write_ops: frozenset[str]  # REQ-209: the operations the table's source takes
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -89,6 +90,9 @@ class JunctionMeta:
     type_column: str | None = None
     type_value: str | None = None
     attributes: tuple[tuple[str, str], ...] = ()
+    #: The type column's exposed name: what a row's own type is read as (r.relType) where a hop
+    #: reads every row of the junction, whatever its type.
+    type_attribute: str | None = None
     # REQ-1586: which nomination names the exposed type — "column", "table" or "fixed".
     label_source: str = ""
     label_fixed: str = ""  # the cypher_alias, carried here so "fixed" can be resolved standalone
@@ -130,6 +134,11 @@ class CompilationContext:
     # REQ-1942: why every statement compiled for this environment is refused (a Test (fake)
     # environment showing a sensitive column with no fake); None when it serves.
     refusal: str | None = None
+    # REQ-2074: the role this context is built for, and per table the operations its source takes.
+    # The schema offers a mutation only where both the source takes it and the role holds a grant
+    # for it; these say which of the two an absent one lacks.
+    role_id: str | None = None
+    write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
     # REQ-1942: per table with kept mutations (a Reversible environment), its change log's
     # address and primary key columns.
     kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
@@ -246,10 +255,10 @@ class CompiledQuery:
     sort_columns: list[str] = field(default_factory=list)
     page_size: int | None = None
     has_cursor: bool = False
-    # Aggregate + nodes: plain SELECT for nodes field (issue #12)
-    nodes_sql: str | None = None
-    nodes_columns: list[ColumnRef] | None = None
-    nodes_params: list = field(default_factory=list)
+    # An aggregate or group-by root that selects its nodes (issue #12): one statement, whose row
+    # (each group's, under group-by) holds them as a column beside the aggregates
+    # (aggregates._nodes_column).
+    has_nodes: bool = False
     # Alias for the "aggregate" response key (e.g. "derived: aggregate" → "derived")
     agg_alias: str = "aggregate"
     # Native filter args for API-routed sources (path/query params extracted from GQL args)

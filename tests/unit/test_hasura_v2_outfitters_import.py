@@ -283,3 +283,27 @@ def test_a_relationship_declaring_a_join_already_declared_merges_into_it():
     config, collector = _with(duplicate)
     assert "orders.lines" not in {r.id for r in config.relationships}
     assert any(c.item == "orders.lines" and "merged" in c.detail for c in collector.carried)
+
+
+def test_an_input_object_argument_is_the_json_object_the_handler_receives():
+    """Hasura's own sample: action foo takes foo: FooInput!, an input object of custom_types."""
+    collector = WarningCollector()
+    sample = _FIXTURE.parent / "hasura_v2_t1_metadata.json"
+    metadata = parse_metadata_document(json.loads(sample.read_text()), collector)
+    (hook,) = convert_metadata(metadata, collector).webhooks
+    assert [(a.name, a.type) for a in hook.arguments] == [("foo", "json")]
+
+
+def test_an_input_object_in_the_actions_sdl_is_the_json_object_the_handler_receives(tmp_path):
+    from provisa.hasura_v2.models import HasuraAction, HasuraMetadata
+    from provisa.hasura_v2.parser import _read_actions_sdl
+
+    metadata = HasuraMetadata(actions=[HasuraAction(name="refund_order")])
+    _read_actions_sdl(
+        "input RefundInput { order_id: Int! }\n"
+        "type Mutation { refund_order(refund: RefundInput!, note: String): RefundResult }\n"
+        "type RefundResult { status: String! }\n",
+        metadata,
+    )
+    (hook,) = convert_metadata(metadata, WarningCollector()).webhooks
+    assert [(a.name, a.type) for a in hook.arguments] == [("refund", "json"), ("note", "text")]

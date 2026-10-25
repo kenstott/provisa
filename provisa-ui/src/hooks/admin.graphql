@@ -45,6 +45,7 @@ fragment ColumnFields on TableColumnType {
   fakeStableVersion
   syntheticRule
   isPii
+  piiTerm
 }
 
 fragment WriteGrantFields on WriteGrantType {
@@ -113,6 +114,7 @@ query SourcesQuery {
     federationHintsJson
     passwordRef
     changeSignal
+    rowFetchByKeys
     cdc {
       bootstrapServers
       topicPrefix
@@ -240,6 +242,7 @@ query TablesQuery {
     replicate
     region
     draft
+    rowMaterialize
     loadProtected
     offPeakWindow
     offPeakTz
@@ -284,9 +287,9 @@ query TablesQuery {
     pushDebounceMaxDelay
     mvConsistency
     mvPreprocess
-    mvBitemporalMode
-    mvBitemporalKey
-    mvBitemporalSourceTime
+    businessKey
+    validTime
+    recordedTime
     mvPersist
     mvPrimaryKey
     mvIncremental
@@ -315,6 +318,7 @@ query TablesQuery {
         topic
         format
         keyColumn
+        landingTimeColumn
       }
       outputs {
         type
@@ -590,6 +594,7 @@ query RelationshipsQuery {
     computedCypherAlias
     autoSuggested
     disableCypher
+    sameEntity
     viaTableId
     viaTableName
     viaSourceColumn
@@ -625,6 +630,7 @@ query AllRelationshipsQuery {
     computedCypherAlias
     autoSuggested
     disableCypher
+    sameEntity
     viaTableId
     viaTableName
     viaSourceColumn
@@ -778,6 +784,8 @@ query MVList {
     lastRefreshAt
     rowCount
     lastError
+    versionLogOf
+    allowedLateness
   }
 }
 
@@ -1040,6 +1048,7 @@ query Calendars {
     weekStart
     holidays
     weekend
+    dayClose
   }
 }
 
@@ -1086,8 +1095,8 @@ mutation UpdateRelationship($input: RelationshipInput!) {
   }
 }
 
-mutation DeleteRelationship($id: String!) {
-  deleteRelationship(id: $id) {
+mutation DeleteRelationship($id: String!, $confirmTagLoss: [String!], $carryTags: Boolean! = false) {
+  deleteRelationship(id: $id, confirmTagLoss: $confirmTagLoss, carryTags: $carryTags) {
     ...MutationResult
   }
 }
@@ -1296,8 +1305,14 @@ mutation DeployViewToDb($tableId: Int!) {
   }
 }
 
-mutation RefreshMv($mvId: String!) {
-  refreshMv(mvId: $mvId) {
+mutation RefreshMv($mvId: String!, $full: Boolean! = false) {
+  refreshMv(mvId: $mvId, full: $full) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateVersionLog($mvId: String!, $refreshInterval: Int!, $allowedLateness: Float!) {
+  updateVersionLog(mvId: $mvId, refreshInterval: $refreshInterval, allowedLateness: $allowedLateness) {
     ...MutationResult
   }
 }
@@ -1473,4 +1488,9 @@ query SampleOpenapiColumns($sourceId: String!, $tableName: String!, $params: JSO
     name
     dataType
   }
+}
+
+# REQ-416: the naming conventions the server takes -- the one list the admin offers.
+query NamingConventions {
+  namingConventions
 }

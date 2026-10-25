@@ -41,6 +41,9 @@
     "deleteConsequence": "該關聯將從模型中移除。查詢將無法再透過它進行聯結。",
     "parametersFed": "傳入的參數",
     "parametersFedHelp": "經此關係的聯結會把每個來源列中的這些值傳給目標。",
-    "parameterNotFed": "不傳入"
+    "parameterNotFed": "不傳入",
+    "sameEntity": "同一實體",
+    "sameEntityHint": "它連接的行是同一事物：一個術語關聯兩張表，按鍵一對一連接",
+    "cardinalityOneToOne": "一對一"
   }
 }

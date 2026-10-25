@@ -73,6 +73,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -96,8 +97,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -130,6 +132,7 @@ function formEl(table: RegisteredTable) {
       onSectionChange={vi.fn()}
       savedProfilerId={null}
       editingTable={table}
+      savedTable={table}
       setEditingTable={vi.fn()}
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
@@ -139,10 +142,6 @@ function formEl(table: RegisteredTable) {
       dataProducts={[]}
       settings={null}
       saving={false}
-      generatingDesc={false}
-      setGeneratingDesc={vi.fn()}
-      generatingColDesc={null}
-      setGeneratingColDesc={vi.fn()}
       generateTableDescription={vi.fn()}
       generateColumnDescription={vi.fn()}
       cancelEditing={vi.fn()}

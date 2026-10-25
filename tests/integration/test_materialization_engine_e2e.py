@@ -41,7 +41,12 @@ from provisa.transpiler.transpile import transpile  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _CSV = str(Path(__file__).parent.parent.parent / "demo" / "files" / "customers.csv")
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 
 
 def _dsn(driver: str = "") -> str:

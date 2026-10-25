@@ -22,6 +22,7 @@ from pydantic import AliasChoices, BaseModel
 import yaml
 from sqlalchemy import insert, select, update
 
+from provisa.core.repositories.identity import TableInIdentity
 from provisa.core.models import (
     ControlPlaneConfig,
     Domain,
@@ -129,12 +130,11 @@ _VIEW_KEYS = {
     # REQ-2009: a view offers the GraphQL Aggregate and GroupBy root fields as a table does.
     "enable_aggregates": "enable_aggregates",
     "enable_group_by": "enable_group_by",
-    # REQ-1162: a materialized view keeps every version of its rows, appended (snapshot | delta),
-    # keyed on its business identity.
-    "bitemporal_mode": "mv_bitemporal_mode",
-    "bitemporal_key": "mv_bitemporal_key",
-    # REQ-1163: the column holding the source's change time, the clock its time travel reads on.
-    "bitemporal_source_time": "mv_bitemporal_source_time",
+    # REQ-2109: the bitemporal declaration -- business key, valid time and recorded time, all
+    # three or none; a materialized view declaring them keeps every version of its rows.
+    "business_key": "business_key",
+    "valid_time": "valid_time",
+    "recorded_time": "recorded_time",
     # REQ-2066: a materialized view's load management window, when consumers may read it.
     "off_peak_window": "off_peak_window",
     "off_peak_tz": "off_peak_tz",
@@ -142,6 +142,12 @@ _VIEW_KEYS = {
     "region": "region",
     # REQ-1634: a view is a member of a data product as a table is.
     "product_id": "product_id",
+    # REQ-2120: a materialized view's snapshot schedule, as a table entry's mv_* keys (REQ-961/962).
+    "calendar": "mv_calendar",
+    "grain": "mv_grain",
+    "business_day_grain": "mv_business_day_grain",
+    "allowed_lateness": "mv_allowed_lateness",
+    "expected_events": "mv_expected_events",
 }
 
 
@@ -238,14 +244,14 @@ def views_as_tables(raw: dict) -> dict:
             "table": f"view_{view['id'].replace('-', '_')}",
         }
         entry.update({_VIEW_KEYS[k]: v for k, v in view.items() if k in _VIEW_KEYS})
-        if entry.get("mv_bitemporal_mode") and entry.get("columns"):
+        if entry.get("business_key") and entry.get("columns"):
             # REQ-2064: a bitemporal view answers each version's times beside its own columns.
             from provisa.mv.bitemporal import with_read_columns
 
             entry["columns"] = with_read_columns(
                 entry["columns"],
-                list(entry.get("mv_bitemporal_key") or []),
-                entry.get("mv_bitemporal_source_time"),
+                list(entry["business_key"]),
+                entry.get("recorded_time"),
             )
         tables.append(entry)
     return raw
@@ -319,26 +325,33 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
 
 
 def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
-    """``resolve(data)``, but a code source's declared secrets kept as the references written
-    (REQ-2104): each is resolved only when the code reads it, through Provisa's services
-    (provisa/codesource/services.py), so a config naming a secret not yet in the vault loads."""
+    """``resolve(data)``, but the mapping values resolved at use kept as the references written:
+    a code source's declared secrets (REQ-2104), each resolved only when the code reads it,
+    through Provisa's services (provisa/codesource/services.py), so a config naming a secret not
+    yet in the vault loads; and a data-quality checker's whole connection (REQ-1443), resolved at
+    each scan from the stored mapping (dq.scan.checker_connection), so a password the deployment
+    has not set fails that scan by its name rather than every load of the org's model."""
     from provisa.codesource.source import CODE_SOURCE_TYPES
+    from provisa.dq.contract import CHECKERS
 
-    held: dict[int, Any] = {}
+    held: dict[int, dict[str, Any]] = {}
     sources = data.get("sources")
     if isinstance(sources, list):
         for i, source in enumerate(sources):
             mapping = source.get("mapping") if isinstance(source, dict) else None
-            if source.get("type") in CODE_SOURCE_TYPES and isinstance(mapping, dict):
-                if "secrets" in mapping:
-                    held[i] = mapping["secrets"]
+            if not isinstance(mapping, dict):
+                continue
+            if source.get("type") in CHECKERS:
+                held[i] = dict(mapping)
+            elif source.get("type") in CODE_SOURCE_TYPES and "secrets" in mapping:
+                held[i] = {"secrets": mapping["secrets"]}
     if not held:
         return resolve(data)
     resolved = resolve(
         {
             **data,
             "sources": [
-                {**s, "mapping": {k: v for k, v in s["mapping"].items() if k != "secrets"}}
+                {**s, "mapping": {k: v for k, v in s["mapping"].items() if k not in held[i]}}
                 if i in held
                 else s
                 for i, s in enumerate(sources)  # type: ignore[arg-type]
@@ -346,7 +359,7 @@ def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
         }
     )
     for i, written in held.items():
-        resolved["sources"][i]["mapping"]["secrets"] = written
+        resolved["sources"][i]["mapping"].update(written)
     return resolved
 
 
@@ -563,6 +576,9 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
                     f"sparql source {src.id!r}: host must be the SPARQL endpoint URL "
                     "(e.g. http://fuseki:3030/ds/query)"
                 )
+            from provisa.sparql.reasoning import source_reasoner
+
+            source_reasoner(src.id, src.mapping)  # REQ-2138
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
         stype = src.type.value if src is not None else None
@@ -572,6 +588,14 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
                 f"table {tbl.table_name!r}: a table under {stype} source {tbl.source_id!r} requires "
                 "query_template (the query that produces its rows)"
             )
+        if stype == "sparql" and src is not None:
+            from provisa.sparql.reasoning import inferred_iri, source_reasoner
+
+            if inferred_iri(tbl.query_template) and source_reasoner(src.id, src.mapping) is None:
+                raise ValueError(
+                    f"table {tbl.table_name!r}: its query names one IRI, an inferred class or "
+                    f"property, and sparql source {src.id!r} names no reasoner"
+                )
         if stype == "cosmosdb":
             # REQ-1982: a container table, or a query table; its parameters checked either way.
             from provisa.cosmosdb.table import check_table as check_cosmos_table
@@ -655,6 +679,7 @@ async def _handle_neo4j_table(conn: "Connection", tbl: Table, src: Source) -> No
 async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> None:  # REQ-1683
     """Persist the config table's SPARQL as an api_endpoints row (plus its api_sources row)."""
     from provisa.sparql.persist import persist_sparql_table
+    from provisa.sparql.reasoning import source_reasoner
 
     assert tbl.query_template is not None  # _validate_neo4j_sources
     await persist_sparql_table(
@@ -666,6 +691,7 @@ async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> N
         columns=tbl.columns,
         ttl=tbl.cache_ttl or src.cache_ttl or 300,
         default_graph_uri=src.federation_hints.get("default_graph_uri"),  # REQ-1740
+        reasoner=source_reasoner(src.id, src.mapping),  # REQ-2138
     )
 
 
@@ -1038,7 +1064,7 @@ async def _resolve_tag_assignment_table(
 
 
 async def _load_after_tables(  # REQ-1919
-    conn: "Connection", config: ProvisaConfig, *, domains_before: Any, defer_unregistered: bool
+    conn: "Connection", config: ProvisaConfig, *, refs_before: Any, defer_unregistered: bool
 ) -> None:
     """The apply's steps after the tables: what refers to tables."""
 
@@ -1060,6 +1086,8 @@ async def _load_after_tables(  # REQ-1919
             continue
         await tag_repo.upsert(conn, tg)
     for ta in config.tag_assignments:
+        if ta.object_type == "term":
+            continue  # REQ-2145: placed once the glossary has settled, below
         await tag_repo.assign(conn, await _resolve_tag_assignment_table(conn, ta))
 
     # 7. RLS rules (tables + roles must exist first)
@@ -1117,10 +1145,164 @@ async def _load_after_tables(  # REQ-1919
                     )
                 await glossary_repo.add_edge(conn, from_id, term_ids[target], edge.rel_type)
 
+    # 10.6 Class terms (REQ-2141): resolved by name, like the edges above, once every term the
+    # config declares or derives exists and every table has its columns (a class needs a key).
+    await _declare_class_terms(conn, config)
+    # The relationships this load replaced (step 10) and the class terms it declared re-settle
+    # every key ref on its Class (REQ-2141).
+    await glossary_repo.rehome_keys(
+        conn,
+        {r.id for r in (await conn.execute_core(select(registered_tables.c.id))).fetchall()},
+    )
+    # 10.7 Same-entity relationships (REQ-2141): held to their rule once both their tables have
+    # the class terms this config declares (the relationships were saved before them, at 10).
+    await _check_identities(conn, config)
+    # 10.8 Term statuses (REQ-2144): what the config asserts of each declared term's status,
+    # once its edges, refs and class groundings make its admission what it will be.
+    await _declare_term_statuses(conn, config)
+
     # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
     # same column names revives its terms instead of losing their definitions to an early sweep.
-    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+    await glossary_repo.sweep_refless_terms(conn, before=refs_before)
+
+    # 12. Tags on glossary terms (REQ-2145), once every term and its refs have settled.
+    for ta in config.tag_assignments:
+        if ta.object_type == "term":
+            await tag_repo.assign(conn, await _resolve_tag_assignment_term(conn, ta))
+
+
+async def _resolve_tag_assignment_term(
+    conn: "Connection", ta: TagAssignment
+) -> TagAssignment:  # REQ-2145
+    """The term assignment with ``term_id`` resolved by its term's name, refused as the term's own
+    tagging refuses it (provisa.core.term_tags.refuse_term_tag)."""
+    from provisa.core.term_tags import TermTagRefused, refuse_term_tag
+
+    if not ta.term:
+        raise ValueError(f"tag assignment {ta.tag_id!r} on a term names no term")
+    name = ta.term.strip().lower()  # REQ-1844: every term name in the catalog is lowercase
+    row = (
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"tag assignment {ta.tag_id!r} names term {ta.term!r}, which does not exist in this "
+            "config or the catalog"
+        )
+    try:
+        await refuse_term_tag(conn, row.id, ta.tag_id)
+    except TermTagRefused as refused:
+        raise ValueError(f"tag {ta.tag_id!r} cannot go on term {ta.term!r}: {refused}") from None
+    return ta.model_copy(update={"term_id": row.id})
+
+
+async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> None:
+    import datetime
+
+    stated = [
+        t
+        for t in config.glossary_terms
+        if t.deprecate is not None or t.retire is not None or t.restore
+    ]
+    if not stated:
+        return
+    term_ids = {
+        row.name: row.id
+        for row in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+    }
+    statuses = await glossary_repo.term_statuses(conn)
+    today = datetime.date.today()
+    for gt in stated:
+        term_id = term_ids[gt.name.strip().lower()]
+        try:
+            if gt.restore:
+                if statuses[term_id] in ("deprecated", "retired"):
+                    await glossary_repo.restore_term(conn, term_id, by=None)
+            elif gt.retire is not None:
+                successor = None
+                if gt.retire.successor is not None:
+                    named = gt.retire.successor.strip().lower()
+                    if named not in term_ids:
+                        raise ValueError(
+                            f"glossary term {gt.name!r} names {gt.retire.successor!r} as its "
+                            "successor, which does not exist in this config or the catalog"
+                        )
+                    successor = term_ids[named]
+                if statuses[term_id] != "retired":
+                    await glossary_repo.retire_term(
+                        conn, term_id, reason=gt.retire.reason, successor=successor, by=None
+                    )
+            elif gt.deprecate is not None:
+                # Loading the same configuration again changes nothing: a deprecation already
+                # stated stands, and one its planned date has retired stays retired.
+                if statuses[term_id] == "live":
+                    await glossary_repo.deprecate_term(
+                        conn,
+                        term_id,
+                        reason=gt.deprecate.reason,
+                        retire_on=gt.deprecate.retire_on,
+                        by=None,
+                        today=today,
+                    )
+                elif statuses[term_id] == "draft":
+                    raise glossary_repo.StatusRefused(
+                        "term_not_live", "only a live term is deprecated; this one is draft"
+                    )
+        except glossary_repo.StatusRefused as exc:
+            raise ValueError(f"glossary term {gt.name!r}: {exc}") from exc
+
+
+async def _check_identities(conn: "Connection", config: ProvisaConfig) -> None:
+    from provisa.core.repositories.identity import stored_refusal
+
+    for rel in config.relationships:
+        if rel.same_entity:
+            refused = await stored_refusal(conn, rel.id)
+            if refused is not None:
+                raise ValueError(refused.message)
+
+
+async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> None:
+    declared = [t for t in config.tables if t.class_term is not None]
+    if not declared:
+        return
+    term_ids = {
+        row.name: row.id
+        for row in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+    }
+    for table in declared:
+        assert table.class_term is not None
+        address = f"{table.source_id}.{table.schema_name}.{table.table_name}"
+        # REQ-1844: every term name in the catalog is lowercase.
+        name = table.class_term.strip().lower()
+        if name not in term_ids:
+            raise ValueError(
+                f"table {address} names {table.class_term!r} as its class term, "
+                "which does not exist in this config or the catalog"
+            )
+        row = (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(
+                    (registered_tables.c.source_id == table.source_id)
+                    & (registered_tables.c.schema_name == table.schema_name)
+                    & (registered_tables.c.table_name == table.table_name)
+                )
+            )
+        ).fetchone()
+        assert row is not None, f"table {address} was upserted by this load"
+        try:
+            await glossary_repo.declare_class_term(conn, row.id, term_ids[name])
+        except (
+            glossary_repo.TableHasNoPrimaryKey,
+            glossary_repo.TermIsProperty,
+            TableInIdentity,
+        ) as exc:
+            raise ValueError(f"table {address} cannot have a class term: {exc}") from exc
 
 
 async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266, REQ-1919
@@ -1135,7 +1317,7 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
     # snapshot step 11's sweep needs is taken here — before the column replace in _upsert_tables
     # removes the very rows it reads.
-    domains_before = await glossary_repo.term_domains(conn)
+    refs_before = await glossary_repo.before_ref_removal(conn)
 
     # 0. Regions and their stores (REQ-1921/1922), before the sources and tables that name them.
     from provisa.core.repositories import region as region_repo
@@ -1179,6 +1361,17 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
             conn, gt.name, definition=gt.definition, domains=set(gt.domains)
         )
 
+    # 4.7 Calendars (REQ-2120): before the tables, whose views name one as their mv_calendar.
+    from provisa.core.repositories import calendar as calendar_repo
+    from provisa.events.calendars import calendar_of
+
+    for declared in config.calendars:
+        fields = declared.model_dump()
+        # Validated when the config was parsed (CalendarConfig); the column holds a date.
+        await calendar_repo.upsert(
+            conn, {**fields, "retail_anchor": calendar_of(fields).retail_anchor}
+        )
+
     # 5. Tables + columns
     openapi_specs = _load_openapi_specs(config)
     _validate_table_live_delivery(config)
@@ -1202,7 +1395,7 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     failed_feeds = await _check_change_feeds(config)
     await _upsert_tables(conn, engine, config, openapi_specs)
     await _load_after_tables(
-        conn, config, domains_before=domains_before, defer_unregistered=defer_unregistered
+        conn, config, refs_before=refs_before, defer_unregistered=defer_unregistered
     )
     return failed_feeds
 
@@ -1660,38 +1853,13 @@ def _validate_file_globs(config) -> None:  # REQ-788
 #: filtered by its own parameters (its parameter sets are its row-level reads); govdata is read live
 #: on every request and never replicated; the remaining types have no connector or driver that
 #: reaches them yet (REQ-1874), so nothing can read their rows at all.
-_ROW_LEVEL_REFUSED: dict[str, str] = {
-    **{
-        t: "an API source is filtered by its own parameters, not replicated row by row"
-        for t in ("openapi", "graphql_remote", "grpc_remote")
-    },
-    "govdata": "a govdata source is read live on every request and is never replicated",
-    **{
-        t: "no connector or driver reaches this source type yet"
-        for t in (
-            "airtable",
-            "auth0",
-            "aws_cognito",
-            "dynamodb",
-            "firebase",
-            "logflare",
-            "s3_vectors",
-            "stripe",
-            "calcom",
-            "calendly",
-            "clerk",
-            "cloudflare_d1",
-            "gravatar",
-            "hubspot",
-            "infura",
-            "notion",
-            "orb",
-            "paddle",
-            "shopify",
-            "slack",
-        )
-    },
-}
+def _table_fetches_by_keys(source: Any, table: Any) -> bool:  # REQ-1865
+    """Whether a remote GraphQL ``table`` fetches its rows by its primary key: the fetch its
+    spec, stored on the source when it was registered, names (graphql_remote.by_keys)."""
+    from provisa.graphql_remote.by_keys import fetches_by_keys
+
+    pk_columns = [c.name for c in table.columns if c.is_primary_key]
+    return fetches_by_keys(source.mapping, table.table_name, pk_columns)
 
 
 def _validate_row_materialize(config) -> None:  # REQ-1865
@@ -1707,6 +1875,7 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
     a keyed-fetch translation wired at all (today: neo4j only — sparql has no parser/AST to safely
     resolve a projected property against, confirmed absent). Both are registration-time
     ValueErrors, never a silent fallback to an undefined TTL or an unbounded per-lookup scan."""
+    from provisa.core.source_registry import ROW_FETCH_BY_KEYS_PER_TABLE, row_materialize_refusal
     from provisa.cypher.query_template_filter import (
         ProjectionFilterError,
         resolve_projected_property,
@@ -1719,12 +1888,17 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
         source = sources_by_id.get(table.source_id)
         if source is not None:
             stype = source.type.value if hasattr(source.type, "value") else str(source.type)
-            refused = _ROW_LEVEL_REFUSED.get(stype)
+            # REQ-1865, REQ-1915: the type's own declaration (core.source_registry), and for a
+            # type whose fetch by keys is each table's own, this table's.
+            refused = row_materialize_refusal(
+                table.table_name,
+                stype,
+                table_fetches_by_keys=_table_fetches_by_keys(source, table)
+                if stype in ROW_FETCH_BY_KEYS_PER_TABLE
+                else None,
+            )
             if refused is not None:
-                raise ValueError(  # REQ-1915
-                    f"table {table.table_name!r}: row_materialize=True is refused for source type "
-                    f"{stype!r}: {refused}"
-                )
+                raise ValueError(refused)
         eff_ttl = (
             table.cache_ttl
             if table.cache_ttl is not None
@@ -1815,6 +1989,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         calendars,
         data_products,
         domains,
+        glossary_term_refs,
         glossary_terms,
         kafka_sources,
         metrics,
@@ -1836,7 +2011,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         return [r[0] for r in (await conn.execute_core(statement)).fetchall()]
 
     # REQ-1591: taken before the tables go — a term's domains are derived from its refs.
-    domains_before = await glossary_repo.term_domains(conn)
+    refs_before = await glossary_repo.before_ref_removal(conn)
 
     seeded_sources = SEEDED_SOURCE_IDS - {DERIVED_SOURCE_ID}
     internal = select(registered_tables.c.id).where(
@@ -1898,7 +2073,13 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         ),
         (
             "glossary_term",
-            await _ids(select(glossary_terms.c.id).where(glossary_terms.c.is_abstract.is_(True))),
+            # A term holding no column ref is the config's or a curator's (a Concept or a Class);
+            # a Property is derived from its columns and goes with its tables (REQ-2141).
+            await _ids(
+                select(glossary_terms.c.id).where(
+                    glossary_terms.c.id.not_in(select(glossary_term_refs.c.term_id))
+                )
+            ),
         ),
         (
             "tag",
@@ -1910,7 +2091,8 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
             "source",
             await _ids(select(sources.c.id).where(sources.c.id.not_in(sorted(SEEDED_SOURCE_IDS)))),
         ),
-        ("calendar", await _ids(select(calendars.c.name))),
+        # A calendar is removed by name, every version at once (integrity.discard).
+        ("calendar", await _ids(select(calendars.c.name).distinct())),
     ]
     for kind, idents in order:
         for ident in idents:
@@ -1946,7 +2128,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         await discard(conn, ObjectRef("region", region_id))
     for store_id in await _ids(select(stores.c.id)):
         await discard(conn, ObjectRef("store", store_id))
-    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+    await glossary_repo.sweep_refless_terms(conn, before=refs_before)
 
 
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG

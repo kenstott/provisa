@@ -9,6 +9,25 @@
     "reachLive": "חי (נקרא במקום)",
     "reachReplica": "העתק (עותק מתרענן)",
     "reachLiveOn": "חי רק ב-{{engines}}",
-    "reachNone": "לא נגיש ממנוע זה"
+    "reachNone": "לא נגיש ממנוע זה",
+    "categories": {
+      "Subscriptions": "מינויים",
+      "RDBMS": "RDBMS",
+      "Cloud DW": "מחסן נתונים בענן",
+      "Analytics": "אנליטיקה",
+      "Data Lake": "Data Lake",
+      "NoSQL": "NoSQL",
+      "Code": "Resolvers של קוד",
+      "Graph": "גרפים",
+      "File": "קבצים",
+      "API": "API",
+      "Streaming": "סטרימינג",
+      "Enterprise": "ארגוני",
+      "Data Quality": "איכות נתונים",
+      "Other": "אחר"
+    },
+    "categorySubtitles": {
+      "Code": "לוגיקה עסקית ב-Python או ב-Node"
+    }
   }
 }

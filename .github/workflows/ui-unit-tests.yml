@@ -19,10 +19,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ui:
-    name: tsc + vitest
+  # The type check, lint and the generated-page checks, beside the vitest shards. It also lists
+  # the test files for the check that every one ran in one shard.
+  static:
+    name: tsc + lint
     runs-on: ubuntu-latest
-    # One job: the type check and the tests share one install and one runner.
     timeout-minutes: 30
     defaults:
       run:
@@ -39,8 +40,19 @@ jobs:
       - name: Type check
         run: npx tsc -b --noEmit
 
-      - name: Unit tests
-        run: npx vitest run
+      # eslint over the whole package, e2e/ included. No workflow ran it before, so e2e files went
+      # past max-lines and kept unused imports unseen.
+      - name: Lint
+        run: npx eslint .
+
+      - name: List the vitest files
+        run: npx vitest list --filesOnly --json="$GITHUB_WORKSPACE/vitest-files.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vitest-files
+          path: vitest-files.json
+          if-no-files-found: error
 
       # REQ-2006: provisa.dev's live demos page is generated from demo/named/*/demo.yaml; a demo
       # published, changed or withdrawn without regenerating the page fails here.
@@ -60,3 +72,70 @@ jobs:
           npm run typecheck
           npm run build
           npm test
+
+  # Vitest's own file shards, each on its own runner. Each writes its json report for the check.
+  vitest:
+    name: vitest ${{ matrix.shard }}/3
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    defaults:
+      run:
+        working-directory: provisa-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the UI toolchain
+        uses: ./.github/actions/setup-ui
+
+      - name: Unit tests
+        env:
+          SHARD: ${{ matrix.shard }}/3
+        run: >-
+          npx vitest run --shard="$SHARD" --reporter=default --reporter=json
+          --outputFile.json="$GITHUB_WORKSPACE/vitest-results.json"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vitest-results-${{ matrix.shard }}
+          path: vitest-results.json
+          if-no-files-found: error
+
+  # Every test runs once: each listed test file in exactly one shard's results.
+  check:
+    name: every vitest file in one shard
+    needs: [static, vitest]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+
+      - name: Compare
+        run: >-
+          python3 scripts/ci/unit_shard.py check-vitest results/vitest-files/vitest-files.json
+          results/vitest-results-*/vitest-results.json
+
+  # The workflow's verdict under the job name it had before sharding.
+  ui:
+    name: tsc + vitest
+    needs: [static, vitest, check]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: The checks passed, and every shard ran every test once
+        env:
+          STATIC: ${{ needs.static.result }}
+          VITEST: ${{ needs.vitest.result }}
+          CHECK: ${{ needs.check.result }}
+        run: |
+          echo "tsc + lint: $STATIC; vitest: $VITEST; check: $CHECK"
+          [ "$STATIC" = success ] && [ "$VITEST" = success ] && [ "$CHECK" = success ]

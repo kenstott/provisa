@@ -249,9 +249,10 @@ body {
 .navbar-user-wrapper {
   position: relative;
 }
+/* An icon-only button: borderless, as every one is; the hover says it is a button. */
 .navbar-user-btn {
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   color: var(--text-muted);
   padding: 0.375rem 0.5rem;
   cursor: pointer;
@@ -259,12 +260,13 @@ body {
   align-items: center;
 }
 .navbar-user-btn:hover {
-  border-color: var(--text-muted);
+  background: var(--surface);
   color: var(--text);
 }
+/* An icon-only button: borderless, as every one is; the hover says it is a button. */
 .navbar-tour-btn {
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   color: var(--text-muted);
   padding: 0.375rem 0.5rem;
   cursor: pointer;
@@ -272,7 +274,7 @@ body {
   align-items: center;
 }
 .navbar-tour-btn:hover {
-  border-color: var(--text-muted);
+  background: var(--surface);
   color: var(--text);
 }
 .navbar-user-panel {
@@ -535,7 +537,9 @@ main {
   border-collapse: collapse;
   background: var(--surface);
   border-radius: 8px;
-  overflow: hidden;
+  /* clip, not hidden: the rounded corners are kept, and the table is no scroll container, so a
+   * row's actions (.list-actions) stay pinned against the page's own scroll. */
+  overflow: clip;
 }
 .data-table th,
 .data-table td {
@@ -574,6 +578,11 @@ main {
   line-clamp: 1;
   /* Broken at any letter, not first at a hyphen, so its one line is filled before the ellipsis. */
   word-break: break-all;
+}
+/* A one-line column (an error message) gives up width first: down to its header, not to a cut
+ * value's minimum; the whole text is in the cell's tip. */
+.list-cell--token.list-cell--one-line {
+  min-width: 0;
 }
 /* A pill or a control in a cell the page drew is never cut: it keeps its own width, and text set
  * beside it in the same row (ListTable's capGroupText) gives way instead. */
@@ -931,6 +940,28 @@ main {
 .data-table tbody :where(tr.list-row:nth-child(even of .list-row)),
 .data-table tbody :where(tr.list-row:nth-child(even of .list-row) + tr.list-expand) {
   background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+/* A row's actions (ListActions): the list's last column, pinned at the visible end of the row, so
+ * a list wider than its room scrolls under them and they are never cut. It is opaque, in its row's
+ * stripe, hover and selection colors, with a divider on its leading edge. */
+.data-table .list-actions {
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 1;
+  white-space: nowrap;
+  background-color: var(--surface);
+  box-shadow: inset 1px 0 0 var(--border);
+}
+.data-table tbody tr.list-row:nth-child(even of .list-row) > .list-actions {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--text) 4%, transparent),
+    color-mix(in srgb, var(--text) 4%, transparent)
+  );
+}
+.data-table tr.clickable:hover > .list-actions,
+.data-table tr.row-selected > .list-actions {
+  background-color: var(--border);
+  background-image: none;
 }
 /* REQ-1940: expanded-row content for lists whose detail is simple fields. */
 .list-detail {
@@ -2532,30 +2563,42 @@ main {
   min-height: 0;
   display: flex;
 }
-.admin-rail {
-  flex: 0 0 12.5rem;
+/* The one vertical menu (components/VerticalNav.tsx; the Admin rail is the same over route links):
+   items left-aligned down a column that scrolls on its own, the chosen one filled. */
+.vertical-nav {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
-  padding: 0.75rem 0.5rem;
-  background: var(--bg);
-  border-right: 1px solid var(--border);
   overflow-y: auto;
 }
-.admin-rail a {
+.vertical-nav a,
+.vertical-nav button {
   color: var(--text-muted);
   text-decoration: none;
+  font: inherit;
   font-size: 0.8125rem;
+  text-align: start;
   padding: 0.3rem 0.625rem;
+  border: 0;
   border-radius: 4px;
+  background: none;
+  cursor: pointer;
 }
-.admin-rail a:hover {
+.vertical-nav a:hover,
+.vertical-nav button:hover {
   color: var(--text);
   background: var(--border);
 }
-.admin-rail a.active {
+.vertical-nav a.active,
+.vertical-nav button.active {
   color: #fff;
   background: var(--primary-strong);
+}
+.admin-rail {
+  flex: 0 0 12.5rem;
+  padding: 0.75rem 0.5rem;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
 }
 .admin-rail-coming-soon {
   color: var(--text-muted);
@@ -2851,7 +2894,9 @@ main {
 /* Transitional: a child a form has not wrapped in a FormField yet keeps a row to itself. Goes when
  * the guard's not-yet-converted list is empty. */
 .form-layout
-  > :not(.form-field):not(.form-field-group):not(.form-identifiers):not(.form-footer):not(.form-layout):not(.form-checks):not(.form-section),
+  > :not(.form-field):not(.form-field-group):not(.form-identifiers):not(.form-footer):not(
+    .form-layout
+  ):not(.form-checks):not(.form-section),
 .form-identifiers > :not(.form-field):not(.form-field-group):not(.form-identifiers__heading) {
   flex: 1 1 100%;
 }

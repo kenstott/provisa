@@ -71,6 +71,10 @@ async def test_reclaim_sends_no_iceberg_procedure_to_duckdb(monkeypatch):
 async def test_reclaim_runs_the_iceberg_procedures_on_trino(monkeypatch):
     runtime = _Runtime("trino")
     _state(monkeypatch, runtime)
+    # The bucket's side of the probe (ops_trino.metadata_files_gone) has no store here: every
+    # table's metadata is there.
+    monkeypatch.setattr("provisa.observability.ops_trino.otel_bucket_keys", lambda: None)
+    monkeypatch.setattr("provisa.observability.ops_trino.metadata_files_gone", lambda *_: False)
     await jobs.reclaim_otel_storage()
     # Each table is probed before its procedures run (ops_trino.metadata_missing).
     procedures = [sql for sql in runtime.sent if "EXECUTE" in sql]

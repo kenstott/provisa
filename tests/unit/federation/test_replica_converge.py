@@ -11,6 +11,7 @@ replicas the model no longer declares. No save or delete path asks for either.""
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -34,7 +35,10 @@ from provisa.federation.replica_state import RetryPolicy
 pytestmark = pytest.mark.unit
 
 STORE = "store-a"
-ORG = "org1"
+# PostgreSQL advisory locks are held server-wide, not per database, and every xdist worker's
+# control plane is a database on one server: each worker process names an org of its own, or a
+# replica lock another worker's test holds reads here as another build's.
+ORG = f"org1{uuid.uuid4().hex[:8]}"
 COLUMNS = [("id", "bigint"), ("name", "text")]
 
 
@@ -373,6 +377,36 @@ async def test_a_table_declared_again_before_the_drop_keeps_its_replica(model, m
     monkeypatch.setattr(replica_converge, "drop_grace_seconds", lambda: 0.0)
     assert await drop_retired(model.state, BuildLocks(model.url), ORG) == []
     assert model.store.dropped == []
+
+
+async def test_a_table_declared_again_while_its_replica_is_dropped_is_built_again(
+    model, monkeypatch
+):
+    key = model.declare("orders")
+    await converge_replicas(model.state)
+    await model.build(key)
+    declared = model.tables.pop(key)
+    assert (await converge_replicas(model.state)).retired == [key]
+    target, during = model.store.target, []
+
+    def racing(address):
+        inner = target(address)
+
+        class _Target:
+            async def drop(self) -> None:
+                await inner.drop()
+                # Declared again after its table went and before its record did.
+                model.tables[key] = declared
+                during.append(await converge_replicas(model.state))
+
+        return _Target()
+
+    monkeypatch.setattr(model.store, "target", racing)
+    monkeypatch.setattr(replica_converge, "drop_grace_seconds", lambda: 0.0)
+    assert await drop_retired(model.state, BuildLocks(model.url), ORG) == []
+    # Its table is gone, so the declaration asks for a build; the record stays to hold it.
+    assert during[0].kept == [key] and during[0].requested == [key]
+    assert (await model.record(key)).retired_at is None
 
 
 async def test_a_node_with_an_older_model_does_not_retire_a_newer_tables_replica(

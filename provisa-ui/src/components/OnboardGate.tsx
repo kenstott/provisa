@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { lazyPage } from "../pageChunks";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
@@ -19,7 +20,7 @@ import { storedToken } from "../lib/sessionToken";
 import { PageLoading } from "./PageLoading";
 import { JoinNotice } from "./JoinNotice";
 
-const OnboardOrgPage = lazy(() =>
+const OnboardOrgPage = lazyPage(() =>
   import("../pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })),
 );
 

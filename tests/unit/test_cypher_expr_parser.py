@@ -12,7 +12,7 @@ evolve with a safety net before the visitor and integration land.
 
 import pytest
 
-from provisa.cypher.expr_ast import (
+from provisa.gql.expr_ast import (
     Binary,
     Case,
     FunctionCall,
@@ -192,14 +192,17 @@ class TestStructures:
     def test_pattern_comprehension(self):
         node = P("[(a)-[:KNOWS]->(b) WHERE b.age > 20 | b.name]")
         assert isinstance(node, PatternComprehension)
-        assert "(a)-[:KNOWS]->(b)" in node.pattern
+        assert [n.variable for n in node.pattern.nodes] == ["a", "b"]
+        assert node.pattern.rels[0].types == ["KNOWS"]
         assert node.projection == Property(Variable("b"), "name")
         assert node.path_var is None
 
     def test_pattern_comprehension_path_binding(self):
         node = P("[p = (a)-[:KNOWS]->(b) | b.name]")
         assert isinstance(node, PatternComprehension) and node.path_var == "p"
-        assert "(a)-[:KNOWS]->(b)" in node.pattern
+        # REQ-2135: the pattern is the IR's path pattern.
+        assert [n.variable for n in node.pattern.nodes] == ["a", "b"]
+        assert node.pattern.rels[0].types == ["KNOWS"]
 
     def test_map_projection(self):
         node = P("n{.name, .age, label: n.type, .*}")
@@ -210,7 +213,28 @@ class TestStructures:
     def test_subquery_expr(self):
         node = P("EXISTS { MATCH (n)-[:R]->(m) }")
         assert isinstance(node, SubqueryExpr) and node.kind == "EXISTS"
-        assert "MATCH (n)-[:R]->(m)" in node.body
+        # REQ-2135: the body is the statement it is, parsed into the IR.
+        [match] = node.body.match_clauses
+        assert [n.variable for n in match.pattern.nodes] == ["n", "m"]
+        assert match.pattern.rels[0].types == ["R"]
+
+    def test_deeply_nested_subqueries_parse(self):
+        # A subquery's body is parsed after the expression around it: parsed inside it, each level
+        # stacked its grammar frames on the level's around it, and six levels of COLLECT in maps
+        # under CASE (a GraphQL read six relationships deep) exceeded Python's recursion limit.
+        text = "n5.id"
+        for depth in range(5, 0, -1):
+            text = (
+                f"COLLECT {{ MATCH (n{depth - 1})-[:R]->(n{depth}:L) RETURN {{x: CASE WHEN "
+                f"n{depth}.id IS NULL THEN NULL ELSE {{id: n{depth}.id, next: {text}}} END}} AS row }}"
+            )
+        node = P(text)
+        for _ in range(5):
+            assert isinstance(node, SubqueryExpr) and node.kind == "COLLECT"
+            [item] = node.body.return_clause.items
+            case = item.expression.entries[0][1]
+            node = case.default.entries[1][1]
+        assert node == Property(Variable("n5"), "id")
 
     def test_subquery_keywords_are_not_reserved(self):
         # Cypher does not reserve EXISTS/COUNT/COLLECT; only a following "{" makes them a subquery

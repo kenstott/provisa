@@ -245,6 +245,23 @@ Todo lo demás (un agregado, un `GROUP BY`, una columna calculada o enmascarada,
 
 Una búsqueda se lee por instrucción con sus argumentos, y sus filas se conservan bajo esos argumentos durante el TTL de la tabla. Una tabla de búsqueda es de solo lectura.
 
+**Una búsqueda alimentada por un join.** Una relación puede alimentar los argumentos de una búsqueda con las columnas de otra tabla, igual que alimenta los de una tabla de código: su mapa `parameters` nombra cada argumento y la columna de origen que recibe. Una sentencia que une la búsqueda con esa tabla ejecuta entonces una consulta Qdrant por cada conjunto distinto de valores del origen, tal como los lee el rol de la sentencia, con los propios argumentos de la sentencia para los que la relación no alimenta. Los puntos de una búsqueda no guardan nada de la consulta que los encontró, así que la relación une por la columna de parámetro de la consulta: cada punto lleva, en esa columna, el valor por el que se buscó.
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+Se buscan las palabras de cada verso, dejando fuera los puntos de su propio soneto mediante el filtro `"@sonnet"` de la búsqueda, y cada verso recibe los tres puntos encontrados para él. Una sentencia que da ella misma uno de los argumentos alimentados, como `WHERE s._nf_query = 'the ravages of time'`, lee la búsqueda con sus propios argumentos y no se alimenta.
+
 ### Streaming
 
 | Tipo de origen | Mecanismo | Mutaciones |
@@ -302,6 +319,14 @@ Una ruta con cualquier otro esquema (`ftp://`, por ejemplo) se rechaza: "DuckDB 
 - **Ruta.** Mientras la ruta sea el archivo subido del origen, el campo de ruta del formulario es de solo lectura.
 - **Nombres.** El id del origen y el nombre del archivo solo pueden usar letras, dígitos, `.`, `_` y `-`.
 - **Almacenamiento.** Un archivo subido se guarda como cualquier archivo de la organización: en la carpeta de la organización, cifrado cuando esa carpeta lo está, y visible para todos los nodos en un montaje compartido.
+
+**Descargar un archivo.** Una fuente `csv` o `parquet` puede recibir su archivo por descarga. Elija **Download a copy** en el formulario de la fuente e indique un archivo: una ruta en el servidor, una dirección `https://` o una dirección `s3://` leída con las credenciales que el formulario guarda para el almacén. Provisa transmite el archivo por la ruta de subida a `files/<source id>/<file name>` en la carpeta de la organización, con el mismo límite de tamaño, almacenamiento y reemplazo que una subida, y la fuente lee esa copia.
+
+- **Cuándo se vuelve a descargar.** Lo decide el TTL de caché de la fuente. Una tabla construida a partir de la fuente vuelve a descargar el archivo primero cuando su TTL ha vencido desde que se hizo la copia. Con un TTL de -1 el archivo se descarga una vez y se conserva.
+- **Rutas en el servidor.** Una ruta del servidor debe ser un archivo bajo un directorio listado en el ajuste `sources.download_roots` (entorno `PROVISA_SOURCES_DOWNLOAD_ROOTS`), una vez seguidos sus enlaces simbólicos. Por defecto no hay ninguno. Una ruta fuera de ellos se rechaza por su nombre y no se copia nada.
+- **Muchas organizaciones.** En un servidor de muchas organizaciones (`multitenancy: true`) una ruta del servidor se rechaza por su nombre contenga lo que contenga el ajuste, y solo se ofrecen `https://` y `s3://`. Una dirección cuyo host se resuelve dentro de la red propia del servidor (privada, loopback o link-local) también se rechaza por su nombre, en cada redirección.
+- **Su tabla, como borrador.** Al crear la fuente, el formulario ofrece crear su tabla de inmediato, como borrador, en el dominio que elija. La tabla toma el nombre de la fuente y se tipa a partir del archivo como lo propondría Register Table, y queda fuera de servicio hasta que un steward la saca del borrador. La opción está activada por defecto.
+- **Con Polly.** Dé a Polly una ruta completamente resuelta a un único archivo CSV o Parquet y ella propone la fuente con su descarga y su tabla en borrador, y la crea cuando usted confirma. Un directorio, un glob o varios archivos se convierten en cambio en una fuente de archivos.
 
 **Escrituras en un archivo SQLite o DuckDB local, y bloqueos.** Una escritura toma el bloqueo del archivo y nunca lo espera. Cuando otro proceso o nodo tiene el archivo, la escritura se rechaza, indicando el origen y que su archivo está bloqueado.
 
@@ -1584,7 +1609,7 @@ Ambos conectores usan el pipeline de caché de origen de API. Los resultados se 
 
 #### Registro por archivo de configuración y por UI {: #config-file-and-ui-registration }
 
-El `host` de un origen `sparql` es la URL de su endpoint SPARQL (el formulario de Orígenes lo almacena de la misma manera). Cada tabla bajo él lleva `query_template`, un SELECT cuyas variables son las columnas; cada binding es `text`.
+El `host` de un origen `sparql` es la URL de su endpoint SPARQL (el formulario de Orígenes lo almacena de la misma manera). Cada tabla bajo él lleva `query_template`, un SELECT cuyas variables son las columnas. La vista previa tipa cada columna por el tipo de datos XSD que comparten sus bindings: los tipos enteros como `integer`, `xsd:decimal`, `xsd:double` y `xsd:float` como `double`, `xsd:boolean` como `boolean`, `xsd:date` como `date` y `xsd:dateTime` como `timestamp`. Un IRI, un nodo en blanco, una cadena simple o con etiqueta de idioma, o una variable cuyos bindings difieren en tipo es `text`.
 
 ```yaml
 sources:
@@ -1605,6 +1630,64 @@ tables:
 ```
 
 Register Table funciona de la misma manera que para Neo4j: elija el origen, escriba un nombre de tabla y el SELECT, pulse Preview (la consulta `sparqlPreview` lo ejecuta con `LIMIT 5` y completa la lista de columnas), luego registre. El registro persiste una fila `api_sources` y una fila `api_endpoints` (POST codificado como formulario a la ruta del endpoint, normalizador `sparql_bindings`), las mismas filas que escribe un registro por archivo de configuración, y el motor nativo aterriza las filas a través de la misma cadena de obtención que Neo4j.
+
+**Pushdown.** Cuando una sentencia lee una tabla SPARQL sola (sin join), sus condiciones sobre las columnas de la tabla van a la consulta enviada al endpoint. El SELECT registrado se convierte en una subconsulta, `SELECT * WHERE { { <the SELECT> } FILTER(...) }`, con sus líneas `PREFIX` y `BASE` delante.
+- Se empujan: la igualdad e `IN` sobre una columna `text` (comparadas como `STR(?var)`, de modo que un IRI coincide con su texto); cualquier comparación sobre una columna `integer` o `double`; la igualdad sobre un `boolean`.
+- No se empujan: otras condiciones, como una comparación de orden sobre texto, una fecha, una función de una columna o un parámetro enlazado. Se aplican a las filas que recibe Provisa.
+- Cada condición se vuelve a aplicar a las filas, así que empujar una solo reduce lo que se obtiene.
+- El `LIMIT` de la sentencia solo se empuja cuando se empujaron todas las condiciones y la sentencia no agrupa, no agrega ni usa `DISTINCT`, `ORDER BY` u `OFFSET`.
+- Una respuesta reducida se almacena en caché bajo su propia consulta, aparte de la de la tabla completa.
+
+#### Razonador {: #reasoner }
+
+Un origen `sparql` puede nombrar un razonador y un documento de axiomas OWL. Una tabla cuya consulta es un único IRI entre corchetes angulares sirve entonces esa clase o propiedad tal como la infieren los axiomas:
+- una clase: una columna, sus miembros;
+- una propiedad de objeto o de datos: dos columnas, cada sujeto y su valor.
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+Los axiomas pueden escribirse en cualquier sintaxis que lea la OWL API: Turtle, RDF/XML, sintaxis funcional OWL o sintaxis Manchester. HermiT es el único razonador.
+
+Cuando se lee una tabla inferida, el razonador:
+1. lee las clases y propiedades que nombran los axiomas;
+2. envía al endpoint un `CONSTRUCT` por cada tripleta de esas propiedades y cada pertenencia a esas clases, pidiendo N-Triples;
+3. clasifica ese fragmento bajo los axiomas;
+4. devuelve los hechos que se derivan.
+
+Todas las tablas inferidas de un origen comparten una clasificación, que se reutiliza durante el TTL de caché de la tabla. La declaración de frescura del origen es, por tanto, la frecuencia con la que razona: `cache_ttl` para una tabla en vivo, la actualización de la réplica para una réplica, y una sola vez para un TTL de `-1`. Lo que sirve una tabla inferida se gobierna para cada lector como cualquier otra tabla.
+
+HermiT se ejecuta como un programa aparte, nunca dentro del servidor. Corre sobre un JDK 21 Eclipse Temurin fijado, con HermiT, la OWL API y sus bibliotecas en su class path. Cada pieza se descarga en el primer uso, se verifica contra el SHA-256 que fija Provisa y se almacena en caché bajo la raíz de caché de dependencias de ejecución (`$PROVISA_RUNTIME_DEPS_CACHE`, por defecto `~/.cache/provisa/runtime_deps`). Una descarga que falla, o un archivo cuya suma difiere de la fijada, hace fallar la lectura indicándolo por nombre.
 
 ---
 

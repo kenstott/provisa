@@ -18,6 +18,10 @@ import type { DataProduct } from "../../../types/admin";
 
 // Who an owner role resolves to is its own fetch, held by its own tests.
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
+// The panel's 3D graph is its own component, held by its own tests.
+vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
+  KnowledgeGraphPanel: () => null,
+}));
 
 const PRODUCT = {
   id: "pet_health",
@@ -38,13 +42,9 @@ function fields(p: DataProduct): [string, string][] {
   render(
     <DataProductDetailPanel
       p={p}
-      tables={[]}
-      sources={[]}
-      functions={[]}
-      relatedTerms={[]}
-      relatedTermsLoading={false}
-      relatedTables={[]}
-      internalRelationships={[]}
+      core={{ product: p, queries: { graphql: "", sql: "", jsonapi: "" } }}
+      coreError={null}
+      reader={null}
       canEdit={false}
       canSeeLineage={false}
       lineageLoading={false}

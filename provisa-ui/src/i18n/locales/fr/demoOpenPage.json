@@ -2,6 +2,7 @@
   "demoOpenPage": {
     "title": "Ouverture de votre bac à sable de démo",
     "opening": "Nous préparons une copie de la démo pour vous. Cela prend quelques secondes.",
+    "starting": "Démarrage de cette démo…",
     "retry": "Réessayer"
   }
 }

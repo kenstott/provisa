@@ -245,6 +245,23 @@ Tudo o mais (um agregado, um `GROUP BY`, uma coluna calculada ou mascarada, uma 
 
 Uma busca é lida por instrução sob seus argumentos, suas linhas mantidas sob esses argumentos durante o TTL da tabela. Uma tabela de busca é somente leitura.
 
+**Uma busca alimentada por um join.** Um relacionamento pode alimentar os argumentos de uma busca com as colunas de outra tabela, do mesmo jeito que alimenta os de uma tabela de código: seu mapa `parameters` nomeia cada argumento e a coluna de origem que ele recebe. Uma instrução que junta a busca a essa tabela roda então uma consulta Qdrant para cada conjunto distinto de valores da origem, como o papel da instrução os lê, com os próprios argumentos da instrução para os que o relacionamento não alimenta. Os pontos de uma busca não guardam nada da consulta que os encontrou, então o relacionamento junta pela coluna de parâmetro da consulta: cada ponto carrega, nessa coluna, o valor pelo qual foi buscado.
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+As palavras de cada verso são buscadas, com os pontos do seu próprio soneto deixados de fora pelo filtro `"@sonnet"` da busca, e cada verso recebe os três pontos encontrados para ele. Uma instrução que fornece ela mesma um dos argumentos alimentados, como `WHERE s._nf_query = 'the ravages of time'`, lê a busca com os próprios argumentos e não é alimentada.
+
 ### Streaming
 
 | Tipo de Fonte | Mecanismo | Mutações |
@@ -302,6 +319,14 @@ Um caminho com qualquer outro esquema (`ftp://`, por exemplo) é recusado: "Duck
 - **Caminho.** Enquanto o caminho for o arquivo enviado da fonte, o campo de caminho do formulário é somente leitura.
 - **Nomes.** O id da fonte e o nome do arquivo só podem usar letras, dígitos, `.`, `_` e `-`.
 - **Armazenamento.** Um arquivo enviado é armazenado como qualquer arquivo da organização: na pasta da organização, criptografado quando essa pasta é, e visto por todos os nós em um mount compartilhado.
+
+**Baixar um arquivo.** Uma fonte `csv` ou `parquet` pode receber o seu arquivo por download. Escolha **Download a copy** no formulário da fonte e indique um arquivo: um caminho no servidor, um endereço `https://` ou um endereço `s3://` lido com as credenciais que o formulário guarda para o armazenamento. O Provisa transmite o arquivo pelo caminho de upload para `files/<source id>/<file name>` na pasta da organização, com o mesmo limite de tamanho, armazenamento e substituição de um upload, e a fonte lê essa cópia.
+
+- **Quando é baixado de novo.** Quem decide é o TTL de cache da fonte. Uma tabela construída a partir da fonte baixa o arquivo de novo primeiro quando o TTL dela venceu desde que a cópia foi feita. Com um TTL de -1, o arquivo é baixado uma vez e mantido.
+- **Caminhos no servidor.** Um caminho do servidor precisa ser um arquivo sob um diretório listado na configuração `sources.download_roots` (ambiente `PROVISA_SOURCES_DOWNLOAD_ROOTS`), depois de seguidos os links simbólicos. Nenhum é listado por padrão. Um caminho fora deles é recusado pelo nome e nada é copiado.
+- **Muitas organizações.** Num servidor de muitas organizações (`multitenancy: true`), um caminho do servidor é recusado pelo nome seja o que for que a configuração tenha, e só `https://` e `s3://` são oferecidos. Um endereço cujo host resolve dentro da própria rede do servidor (privada, loopback ou link-local) também é recusado pelo nome, em cada redirecionamento.
+- **A tabela dela, como rascunho.** Quando a fonte é criada, o formulário oferece configurar a tabela dela na hora, como rascunho, no domínio que você escolher. A tabela recebe o nome da fonte e é tipada a partir do arquivo como o Register Table a proporia, e fica fora de serviço até que um steward a tire do rascunho. A opção vem ligada por padrão.
+- **Pela Polly.** Dê à Polly um caminho totalmente resolvido para um único arquivo CSV ou Parquet e ela propõe a fonte com o download e a tabela em rascunho, e a cria quando você confirma. Um diretório, um glob ou vários arquivos viram em vez disso uma fonte de arquivos.
 
 **Escritas em um arquivo SQLite ou DuckDB local, e bloqueios.** Uma escrita pega o bloqueio do arquivo e nunca espera por ele. Quando outro processo ou nó detém o arquivo, a escrita é recusada, indicando a fonte e que seu arquivo está bloqueado.
 
@@ -1602,7 +1627,7 @@ Ambos os conectores usam o pipeline de cache de fonte de API. Os resultados são
 
 #### Registro via arquivo de config e UI {: #config-file-and-ui-registration }
 
-O `host` de uma fonte `sparql` é a URL do seu endpoint SPARQL (o formulário de Fontes o armazena da mesma forma). Cada tabela sob ela carrega `query_template`, um SELECT cujas variáveis são as colunas; todo binding é `text`.
+O `host` de uma fonte `sparql` é a URL do seu endpoint SPARQL (o formulário de Fontes o armazena da mesma forma). Cada tabela sob ela carrega `query_template`, um SELECT cujas variáveis são as colunas. A pré-visualização tipa cada coluna pelo tipo de dado XSD que seus bindings compartilham: os tipos inteiros como `integer`, `xsd:decimal`, `xsd:double` e `xsd:float` como `double`, `xsd:boolean` como `boolean`, `xsd:date` como `date` e `xsd:dateTime` como `timestamp`. Um IRI, um nó em branco, uma string simples ou com etiqueta de idioma, ou uma variável cujos bindings diferem no tipo, é `text`.
 
 ```yaml
 sources:
@@ -1623,6 +1648,64 @@ tables:
 ```
 
 Register Table funciona da mesma forma que para Neo4j: escolha a fonte, digite um nome de tabela e o SELECT, pressione Preview (a consulta `sparqlPreview` a roda com `LIMIT 5` e preenche a lista de colunas), então registre. O registro persiste uma linha `api_sources` e uma linha `api_endpoints` (POST form-encoded para o caminho do endpoint, normalizador `sparql_bindings`), as mesmas linhas que um registro via arquivo de config escreve, e o motor nativo pousa as linhas através da mesma cadeia de busca que o Neo4j.
+
+**Pushdown.** Quando uma instrução lê uma tabela SPARQL sozinha (sem join), suas condições sobre as colunas da tabela vão para a consulta enviada ao endpoint. O SELECT registrado vira uma subconsulta, `SELECT * WHERE { { <the SELECT> } FILTER(...) }`, com suas linhas `PREFIX` e `BASE` mantidas na frente.
+- Empurradas: igualdade e `IN` em uma coluna `text` (comparadas como `STR(?var)`, de modo que um IRI corresponde ao seu texto); qualquer comparação em uma coluna `integer` ou `double`; igualdade em um `boolean`.
+- Não empurradas: outras condições, como uma comparação de ordem sobre texto, uma data, uma função de uma coluna ou um parâmetro vinculado. Elas são aplicadas às linhas que o Provisa recebe.
+- Toda condição é aplicada de novo às linhas, então empurrar uma só reduz o que é buscado.
+- O `LIMIT` da instrução só é empurrado quando todas as condições foram empurradas e a instrução não agrupa, não agrega nem usa `DISTINCT`, `ORDER BY` ou `OFFSET`.
+- Uma resposta reduzida é cacheada sob a própria consulta, separada da da tabela inteira.
+
+#### Reasoner {: #reasoner }
+
+Uma fonte `sparql` pode nomear um reasoner e um documento de axiomas OWL. Uma tabela cuja consulta é um único IRI entre colchetes angulares serve então essa classe ou propriedade como os axiomas a inferem:
+- uma classe: uma coluna, seus membros;
+- uma propriedade de objeto ou de dados: duas colunas, cada sujeito e seu valor.
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+Os axiomas podem ser escritos em qualquer sintaxe que a OWL API leia: Turtle, RDF/XML, sintaxe funcional OWL ou sintaxe Manchester. O HermiT é o único reasoner.
+
+Quando uma tabela inferida é lida, o reasoner:
+1. lê as classes e propriedades que os axiomas nomeiam;
+2. envia ao endpoint um `CONSTRUCT` para cada tripla dessas propriedades e cada pertinência a essas classes, pedindo N-Triples;
+3. classifica essa fatia sob os axiomas;
+4. devolve os fatos que decorrem disso.
+
+Todas as tabelas inferidas de uma fonte compartilham uma classificação, reaproveitada pelo TTL de cache da tabela. A declaração de atualidade da fonte é, portanto, a frequência com que ela raciocina: `cache_ttl` para uma tabela ao vivo, a atualização da réplica para uma réplica, e uma única vez para um TTL de `-1`. O que uma tabela inferida serve é governado para cada leitor como qualquer outra tabela.
+
+O HermiT roda como um programa separado, nunca dentro do servidor. Ele roda em um JDK 21 Eclipse Temurin fixado, com o HermiT, a OWL API e suas bibliotecas no class path. Cada peça é baixada no primeiro uso, verificada contra o SHA-256 que o Provisa fixa e cacheada sob a raiz de cache das dependências de execução (`$PROVISA_RUNTIME_DEPS_CACHE`, padrão `~/.cache/provisa/runtime_deps`). Um download que falha, ou um arquivo cuja soma difere da fixada, faz a leitura falhar indicando-o pelo nome.
 
 ## Exemplos de Conexão {: #connection-examples }
 

@@ -210,11 +210,16 @@ def _seed_zip(*, catalog: bytes = b"the prebuilt catalog") -> bytes:
     import io
     import zipfile
 
+    # Each entry carries a fixed time: a zip stamps the wall clock (to two seconds), so two seeds
+    # built either side of a tick would differ, and the installed seed's fingerprint with them.
+    def entry(name: str) -> zipfile.ZipInfo:
+        return zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as seed:
-        seed.writestr(".duckdb/govdata.duckdb", catalog)
+        seed.writestr(entry(".duckdb/govdata.duckdb"), catalog)
         for schema in _SEED_SCHEMAS:
-            seed.writestr(f".aperio/{schema}/.conversions.json", f'{{"schema": "{schema}"}}')
+            seed.writestr(entry(f".aperio/{schema}/.conversions.json"), f'{{"schema": "{schema}"}}')
     return out.getvalue()
 
 
@@ -960,6 +965,7 @@ def test_a_statement_reading_it_alone_is_the_engines():
         source_types={"test-askamerica": "govdata"},
         source_dialects={},
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
 
@@ -972,6 +978,7 @@ def test_a_join_with_another_source_is_the_engines():
         source_types={"test-askamerica": "govdata", "sales-pg": "postgresql"},
         source_dialects={"sales-pg": "postgres"},
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
 
@@ -1348,6 +1355,29 @@ async def test_a_source_read_from_its_landed_replicas_alone_is_not_waited_for(mo
         SimpleNamespace(route=Route.ENGINE), {"test-askamerica", "lake"}, state
     )
     assert asked == [("test-askamerica", "govdata")]
+
+
+async def test_a_source_the_engine_reads_with_a_connector_of_its_own_is_not_waited_for(
+    monkeypatch,
+):
+    # Trino reads Splunk with its own connector: a server a discovery call started for the
+    # source (and that could not reach Splunk) is no part of the statement. An engine that
+    # attaches the source through its server (DuckDB) still waits for it.
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
+
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(pr, "await_serving", lambda sid, stype, _t: asked.append((sid, stype)))
+    for served_by_bundle, expected in ((False, []), (True, [("logs", "splunk")])):
+        asked.clear()
+        splunk = SimpleNamespace(reads_in_place=True, served_by_bundle=served_by_bundle)
+        state = _pipeline_state([])
+        state.source_types["logs"] = "splunk"
+        engine = state.federation_engine.engine
+        engine.connectors = {"splunk": splunk}
+        engine.connector_for = lambda _type: splunk
+        await _pipeline._await_source_servers(SimpleNamespace(route=Route.ENGINE), {"logs"}, state)
+        assert asked == expected
 
 
 async def test_the_engine_attaches_again_once_the_statement_has_waited_for_its_servers(

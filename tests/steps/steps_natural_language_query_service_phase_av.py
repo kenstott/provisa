@@ -51,10 +51,20 @@ class _FakeAppState:
         from graphql import build_schema as _build_schema
 
         self.schemas = {"default": _build_schema(_SDL)}
-        self.contexts = {}
+        # One build installs a role's schema and its compilation context together (RoleSurface).
+        self.contexts = {"default": CompilationContext()}
         self.rls_contexts = {}
         self.masking_rules = {}
         self.engine_conn = None
+        # REQ-603: the role may bypass the relationship guard, so non-strict runs as asked.
+        self.roles = {
+            "default": {
+                "id": "default",
+                "capabilities": [],
+                "domain_access": ["*"],
+                "relationship_guard": False,
+            }
+        }
         # A request takes its role's whole surface from ``surfaces``, as the runtime serves it.
         from tests.role_state import with_surfaces
 
@@ -326,7 +336,15 @@ def all_three_loops_complete(shared_data: dict, job_store: InMemoryJobStore) -> 
         app_state = _FakeAppState()
         app_state.contexts[role] = CompilationContext()
         # The acting role as the state holds it: table selection reads the domains it reaches.
-        app_state.roles = {role: {"id": role, "domain_access": ["*"]}}
+        # REQ-603: non-strict NL is a role's that may bypass the relationship guard.
+        app_state.roles = {
+            role: {
+                "description": "Test role.",
+                "id": role,
+                "domain_access": ["*"],
+                "relationship_guard": False,
+            }
+        }
         # Its surfaces as they stand now, with the role's context: they were taken when it was built.
         from tests.role_state import with_surfaces
 
@@ -355,11 +373,8 @@ def results_are_returned(shared_data: dict) -> None:
                 return {"data": {"persons": [{"id": "1", "name": "Alice"}]}}
             return {"columns": ["id", "name"], "rows": [{"id": 1, "name": "Alice"}]}
 
-        async def _fake_sql(nl_query, role, app_state, pre_selected_types=None):
+        async def _fake_sql(nl_query, role, app_state, pre_selected_types=None, check=None):
             return ("SELECT id, name FROM persons LIMIT 10", None)
-
-        def _fake_cypher(sql, ctx, role, app_state):
-            return "MATCH (n:Person) RETURN n LIMIT 10"
 
         async def _fake_table_selection(
             u_nodes, nl_query, sql_dom, tbl_to_type, config=None, api_keys=None
@@ -367,21 +382,20 @@ def results_are_returned(shared_data: dict) -> None:
             return set()
 
         with patch("provisa.nl.runner._generate_sql_from_nl", side_effect=_fake_sql):
-            with patch("provisa.nl.runner.best_effort_cypher_for_sql", side_effect=_fake_cypher):
-                with patch(
-                    "provisa.api.data.endpoint_dev._run_table_selection",
-                    side_effect=_fake_table_selection,
-                ):
-                    with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
-                        await run_nl_job(
-                            job_id,
-                            shared_data["nl_query"],
-                            shared_data["role"],
-                            shared_data["app_state"],
-                            store,
-                            shared_data["llm"],
-                            deliver=None,
-                        )
+            with patch(
+                "provisa.api.data.endpoint_dev._run_table_selection",
+                side_effect=_fake_table_selection,
+            ):
+                with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
+                    await run_nl_job(
+                        job_id,
+                        shared_data["nl_query"],
+                        shared_data["role"],
+                        shared_data["app_state"],
+                        store,
+                        shared_data["llm"],
+                        deliver=None,
+                    )
 
         job = await store.get(job_id)
         assert job is not None

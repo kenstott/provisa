@@ -1,0 +1,32 @@
+{
+  "profile3d": {
+    "expand": "ビューを展開",
+    "webglError": "3D ビューを起動できませんでした: {{error}}",
+    "hint": "ドラッグで回転 · スクロールでズーム · 右ドラッグで移動",
+    "rotate": "回転",
+    "resetView": "ビューをリセット",
+    "zoomTo": "この列にズーム",
+    "attraction": "引力",
+    "attractionLoose": "疎",
+    "attractionTight": "密",
+    "grid": "グリッド",
+    "resetSettings": "既定値に戻す",
+    "resetSettingsHelp": "このグラフに保存されたレイアウト、レイヤー、フィルター、切り替えを破棄し、既定値に戻します。",
+    "export": "エクスポート",
+    "exportImage": "画像",
+    "exportScale": "画像の倍率",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG（ベクター）",
+    "recordRotation": "回転を録画",
+    "recordLength": "録画の長さ",
+    "seconds": "{{count}} 秒",
+    "format_mp4": "MP4 動画",
+    "format_webm": "WebM 動画",
+    "recording": "回転を録画中… {{percent}}%",
+    "cancelRecording": "録画を停止",
+    "exportFailed": "ビューをエクスポートできませんでした: {{error}}",
+    "lastFormat": "前回使用"
+  }
+}

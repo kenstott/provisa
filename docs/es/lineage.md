@@ -48,6 +48,7 @@ hasta cada salida.
 | `source` | Verde | Una columna de una tabla base |
 | `derived` | Azul | Producida por una expresión SQL (función, operador, CTE) |
 | `command` | Púrpura | Una columna de salida de un comando registrado |
+| `native` | Naranja | El campo en bruto que lee una fuente, debajo de la columna de una tabla registrada |
 
 Anillos adicionales en un nodo:
 
@@ -65,6 +66,27 @@ literales (`constant`).
 
 Una arista proveniente de una llamada de comando se representa como una línea púrpura discontinua
 en la interfaz.
+
+### Debajo de la tabla registrada
+
+Un usuario con registro de fuentes ve un salto más debajo de cada columna de origen: el campo tal como lo lee la fuente, en un recuadro para el lugar del que se lee. El recuadro lleva el logotipo y la etiqueta de tipo de la fuente, como los muestra la página Sources, y la dirección según el tipo de fuente:
+
+| Fuente | Dirección |
+| --- | --- |
+| OpenAPI | La operación (`GET /v2/customers`), sus parámetros fijos y la ubicación de las filas |
+| Remote GraphQL | El campo raíz, sus argumentos obligatorios y la ubicación de las filas |
+| MongoDB, Cosmos DB | La base de datos y la colección o el contenedor |
+| Elasticsearch, Qdrant | El índice o la colección |
+| CSV, Parquet, archivos, logs | La ruta, y el patrón de archivos de una tabla que lee muchos archivos |
+| Kafka | El topic |
+| Fuente de código | La función |
+| Cualquier otra | El esquema y la tabla nativos |
+
+El campo en bruto es la ruta de campo de la columna cuando la tiene, si no su propio nombre. La arista de él a la columna registrada nombra el cambio de nombre: `path`, `alias` o `naming` (la convención de nombres). El recuadro de la tabla registrada dice cómo se sirve: `virtual`, leída en cada sentencia, o `replica`, con su TTL y cuándo se cargó por última vez. Nunca se muestran credenciales, referencias a secretos ni el usuario, la contraseña o la query de una URL. Un usuario sin registro de fuentes ve el linaje desde la tabla registrada hacia arriba.
+
+### Enlaces
+
+Cada elemento se abre donde está definido, cuando los permisos del usuario abren esa página. Un clic en un campo abre su tabla, vista o fuente; un doble clic en un recuadro abre su relación; un clic en la arista de un comando abre el comando. Una función SQL integrada no tiene página ni enlace.
 
 ## Grafo a escala de la federación {: #federation-wide-graph }
 
@@ -120,6 +142,26 @@ Forma de la respuesta:
   "outputs": ["id", "embedding"]
 }
 ```
+
+Para quien llama con registro de fuentes, ambos endpoints añaden el salto nativo: nodos de tipo `native` y un objeto `natives` con clave por la relación de cada recuadro nativo (`native:<domain>.<table>`):
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+El `served` de una réplica es `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Para cualquier otro llamante, `natives` está vacío.
 
 Devuelve HTTP 422 cuando el SQL no se puede analizar (parsear).
 
@@ -183,12 +225,12 @@ La vista lee los registros de refresco de `"ops"."traces"` y responde en todo mo
 
 ## Una vista tal como estaba y tal como se registró {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Una vista declarada bitemporal conserva cada versión que ha tenido: cada refresco añade, y ninguna versión se reescribe, en cualquier almacén. Una lectura simple responde con el estado actual. Dos cabeceras de la petición leen su pasado:
+Una vista que asigna las columnas de su origen como `business_key`, `valid_time` y `recorded_time` conserva cada versión que ha tenido: cada actualización agrega, y ninguna versión se reescribe, en ningún almacén. Una lectura simple responde el estado actual. Dos cabeceras de solicitud leen su pasado:
 
-- `X-Provisa-As-Of` lee la vista a una fecha, o sobre un rango, según su reloj: el tiempo de cambio propio de la fuente cuando la vista declara `bitemporal_source_time`, el tiempo de carga de Provisa cuando no.
+- `X-Provisa-As-Of` lee la vista en un momento o en un rango.
 - `X-Provisa-As-Recorded` la lee tal como Provisa la tenía registrada en un momento. Las versiones registradas después quedan fuera, así que una corrección registrada más tarde no cambia la reproducción del pasado.
 
-A 30 de septiembre y registrada el 1 de octubre da la cifra original; registrada el 5 de octubre da la corrección. El registro de auditoría de cada sentencia guarda ambos tiempos (`as_of`, `as_recorded`), de modo que un informe se puede reproducir tal como se produjo por primera vez. [Vistas con historial](configuration.md#views-with-history-time-travel) explica cómo declarar una vista bitemporal y cada superficie que acepta los dos valores.
+A 30 de septiembre y registrada el 1 de octubre da la cifra original; registrada el 5 de octubre da la corrección. El registro de auditoría de cada sentencia guarda ambos tiempos (`as_of`, `as_recorded`), de modo que un informe se puede reproducir tal como se produjo por primera vez. [Vistas con historial](configuration.md#views-with-history-time-travel) explica las tres declaraciones, con ejemplos, y cada superficie que acepta los dos valores.
 
 ## Qué rompería un renombrado o una eliminación de columna {: #what-a-column-rename-or-drop-would-break }
 
@@ -201,7 +243,7 @@ de MV se escriben todos contra ese nombre, así que **renombrar un alias los rom
 certeza que eliminar la columna**.
 
 El **nombre físico** es `table_columns.column_name`, la identidad que sobrevive al reemplazo
-completo de columnas del upsert de la tabla. Las relaciones, los enlaces del [glosario](glossary.md), las
+completo de columnas del upsert de la tabla. Las relaciones, los enlaces de la [ontología](ontology.md), las
 asignaciones de etiquetas, la columna de marca de agua (watermark) y los ajustes preestablecidos de
 columna almacenan este, así que solo se rompen cuando la columna se **elimina**.
 

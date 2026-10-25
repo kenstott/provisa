@@ -114,6 +114,9 @@ async def _run(
             patch("provisa.core.repositories.tag.list_all", AsyncMock(return_value=[]))
         )
         stack.enter_context(
+            patch("provisa.core.repositories.calendar.list_all", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
             patch("provisa.core.repositories.tag.list_assignments", AsyncMock(return_value=[]))
         )
         stack.enter_context(
@@ -121,6 +124,9 @@ async def _run(
         )
         stack.enter_context(
             patch("provisa.core.store_config._naming_rules", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
+            patch("provisa.core.store_config._class_terms", AsyncMock(return_value={}))
         )
         stack.enter_context(
             patch("provisa.core.repositories.kafka_source.list_specs", AsyncMock(return_value=[]))

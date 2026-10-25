@@ -44,6 +44,8 @@ export interface CatalogConnection {
 
 export interface CatalogsState {
   providers: string[];
+  /** The providers not yet proven against a live instance, which are labelled "(beta)". */
+  beta_providers: string[];
   catalogs: CatalogConnection[];
 }
 

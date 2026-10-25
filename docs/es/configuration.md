@@ -912,32 +912,45 @@ Las vistas pasan por el mismo pipeline de gobernanza que las tablas: RLS, enmasc
 
 ### Vistas con historial (viaje en el tiempo) {: #views-with-history-time-travel }
 
-Una vista materializada puede conservar cada versión de sus filas y leerse en un momento pasado. Declara cómo las conserva y a qué clave pertenece una versión:
+Una tabla o una vista materializada puede conservar cada versión de sus filas y leerse en un momento pasado. Para ello usted asigna tres columnas del origen, y declara las tres o ninguna:
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| Campo | Obligatorio | Descripción |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | Sí | `snapshot` añade el resultado completo en cada actualización; `delta` añade solo lo que cambió |
-| `bitemporal_key` | Sí | Las columnas a las que pertenece una versión |
-| `bitemporal_source_time` | No | La columna que indica cuándo cambió cada fila en el origen: el reloj con el que lee el viaje en el tiempo |
+| Campo | Descripción |
+| ------- | ------------- |
+| `business_key` | Las columnas que identifican la misma cosa entre versiones, como `transaction_id`. Todas las versiones de un registro comparten esta clave. |
+| `valid_time` | La columna con la fecha que su negocio da al registro: cuándo se acordó, se contabilizó o entró en vigor. |
+| `recorded_time` | La columna con el momento en que se introdujo o modificó esta versión del registro, como `updated_at`. |
 
-**Elegir el reloj.** Con `bitemporal_source_time`, las versiones se ordenan y leen por la hora del propio origen: "a fecha del martes pasado" significa el martes pasado en el origen. Sin él, se ordenan y leen por el momento en que Provisa aterrizó cada cambio, que sigue la cadencia de actualización y no el momento en que la fila cambió en el origen. Las dos opciones son válidas. La hora de carga va bien con una cadencia de actualización frecuente, con datos cuya hora en el origen no importa y con lecturas que deben referirse a la hora de carga, como auditar qué tenía Provisa y cuándo.
+Cada una nombra una columna de la tabla o vista. Una vista que las declara indica `materialize: true`, y Provisa elige cómo guarda las versiones. Una entrada bajo `tables:` acepta las mismas tres claves.
 
-Una versión rige desde su momento hasta el de la versión siguiente. Un borrado no tiene hora de cambio en el origen y surte efecto cuando Provisa lo registró.
+Las dos horas tienen otros nombres: el tiempo de registro (recorded time), llamado tiempo de transacción en la literatura de bases de datos temporales y tiempo de sistema en SQL:2011; el tiempo válido (valid time), llamado tiempo de aplicación en SQL:2011 o fecha efectiva.
+
+Las dos pueden diferir para la misma versión:
+
+| Ejemplo | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| Un pago de 100 del 3 de octubre se corrige a 120 el 5 de octubre. | La corrección conserva el 3 de octubre. | La corrección recibe el 5 de octubre. |
+| Una medición de campo tomada el 3 de octubre a las 14:10 se introduce el 6 de octubre. Una errata en ella se corrige el 7 de octubre. | 3 de octubre 14:10, conservado por la corrección. | 6 de octubre. La corrección recibe el 7 de octubre. |
+| Una operación se registra al ejecutarse con fecha de operación 3 de octubre. El 4 de octubre se descubre que la cantidad es errónea y se modifica. | Fecha de operación 3 de octubre, conservada por la modificación. | 3 de octubre 10:02. La modificación recibe el 4 de octubre. |
+
+Leída tal como estaba registrada el 3 de octubre, la operación muestra la cantidad errónea. Leída según lo que se sabe ahora, muestra la corregida.
+
+Una versión rige desde su momento hasta el de la siguiente versión. Un borrado surte efecto cuando Provisa lo registra.
 
 **Lectura.** Una lectura simple responde la versión de cada clave vigente ahora. La cabecera `X-Provisa-As-Of` lee en un momento, o sobre un rango dado como intervalo ISO 8601 `start/end`:
 
@@ -973,6 +986,72 @@ Toda vista con historial responde tres columnas más, concedidas como lo está s
 - PostgreSQL con la señal de cambio `native`: la hora de confirmación que PostgreSQL guarda para cada fila (`pg_xact_commit_timestamp(xmin)`), leída por el propio controlador del origen cuando se construye la réplica. PostgreSQL solo la guarda con `track_commit_timestamp = on`. Actívelo para obtener la hora de origen con la señal nativa; sin ello, `source_committed_at` está vacío. Activar o desactivar la opción reconstruye la réplica.
 
 Los temas de Kafka sin sobre de Debezium no llevan hora de confirmación.
+
+### Vistas según un calendario {: #views-on-a-calendar }
+
+Una vista materializada puede tomar su programación de un calendario: se construye al cierre de cada ventana que el calendario le da (un día hábil, una semana, un mes, un trimestre o un año), y una vista que conserva historial marca cada versión con ese cierre. Una configuración declara sus calendarios bajo `calendars:`:
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| Campo | Requerido | Descripción |
+| ------- | ---------- | ------------- |
+| `name` | Sí | El nombre que una vista da como su `calendar` |
+| `version` | Sí | La etiqueta de versión. Un nombre puede tener varias versiones, cada una con sus propios festivos. |
+| `base_system` | No | `gregorian` (predeterminado), `fiscal` o `retail_445` |
+| `tz` | No | La zona horaria IANA en la que están los días del calendario (predeterminado `UTC`) |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | No | El mes y el día en que empieza un año fiscal (predeterminado 1 y 1) |
+| `retail_anchor` | No | La primera fecha de un año 4-4-5 de referencia; `retail_445` la necesita |
+| `week_start` | No | El día en que empieza una semana, 0 = lunes a 6 = domingo (predeterminado 0) |
+| `holidays` | No | Fechas que no son días hábiles |
+| `weekend` | No | Los días de la semana que no son hábiles, 0 = lunes (predeterminado `[5, 6]`) |
+| `day_close` | No | La hora local a la que cierra un día hábil, `"HH:MM"`. El día D va entonces del cierre del día anterior al cierre de D. Sin ella, un día termina a medianoche. Póngala entre comillas: YAML lee un `18:00` sin comillas como un número. |
+
+Un calendario se guarda antes que las tablas, de modo que las vistas que lo nombran lo encuentran. Una entrada que la mutación `createCalendar` rechazaría se rechaza con el mismo mensaje `invalid calendar: ...`, y la configuración no se carga. La exportación del modelo escribe cada calendario bajo `calendars:`.
+
+Una vista nombra su calendario con estas claves. Una entrada bajo `tables:` las toma como `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` y `mv_expected_events`.
+
+| Campo | Descripción |
+| ------- | ------------- |
+| `calendar` | El `name` del calendario |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` o `annual`; un enésimo día de la semana como `3WE` (tercer miércoles) o `LFR` (último viernes); o una regla RFC 5545 como `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`: una ventana diaria existe solo en un día hábil, así que ninguna construcción se ejecuta en fin de semana o festivo |
+| `allowed_lateness` | Segundos después del cierre de una ventana que la construcción espera a la entrada confirmada con retraso (predeterminado 0) |
+| `expected_events` | Las entradas que deben estar actualizadas hasta el cierre de la ventana. Si se omite, cada entrada que lee la vista; `[]`, ninguna. |
+
+Una vista que nombra un calendario que ninguna configuración ni `createCalendar` ha declarado se rechaza por su nombre cuando arranca el bucle de eventos: `unknown calendar 'ledger'; registered: [...]`.
+
+**Construir un día hábil.** El argumento `window` de la mutación `refreshMv`, una fecha, construye la vista sellada al cierre de ese día hábil:
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+Lo que la construcción añade se marca con el cierre de la ventana del calendario para esa fecha, como lo marcaría la propia construcción al cierre, de modo que una lectura según lo registrado en ese cierre lo devuelve. Una vista con historial construida así reconstruye las fechas cuya entrada cambió desde su última construcción, de modo que una corrección registrada antes de la construcción del día siguiente se recoge para su propia fecha. Una vista que no nombra ningún calendario se rechaza (`schema.mv_window_needs_calendar`), igual que una fecha en la que su calendario no tiene ventana, como un festivo con una granularidad de días hábiles.
 
 ### Vistas de solo consulta {: #query-only-views }
 
@@ -1652,6 +1731,7 @@ Para orígenes de Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` con la r
 | `PROVISA_DATA_DIR` | `~/.provisa` | Directorio de datos para el almacén DuckDB integrado |
 | `TRINO_HOST` | `localhost` | Host del coordinador Trino |
 | `TRINO_PORT` | `8080` | Puerto HTTP del coordinador Trino |
+| `PROVISA_ENGINE_FILES_GID` | `1000` | Grupo con el que Trino lee sus archivos secretos (la configuración SASL de una fuente Kafka, la clave de cliente de un host de código) cuando Provisa no se ejecuta como root ni como el usuario de Trino, como hace una app nativa junto al contenedor de Trino. El usuario de Provisa debe pertenecer a él, o el archivo se rechaza por nombre. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Ruta al JSON de clave de cuenta de servicio de GCP (motor/origen BigQuery) |
 | `GOOGLE_CLOUD_PROJECT` | — | Proyecto de GCP por defecto (BigQuery; anulado por la URL) |
 | `FABRIC_SQL_SERVER` | — | Endpoint SQL del Fabric Warehouse (alternativa a `PROVISA_ENGINE_URL`) |

@@ -20,9 +20,10 @@ import { render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { Fragment } from "react";
 
+const navigateTo = vi.fn();
 vi.mock("react-router-dom", () => ({
   MemoryRouter: ({ children }: { children: React.ReactNode }) => <Fragment>{children}</Fragment>,
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigateTo,
   useLocation: () => ({ state: null, pathname: "/sql", search: "", hash: "", key: "x" }),
 }));
 import { MemoryRouter } from "react-router-dom";
@@ -55,11 +56,17 @@ vi.mock("../../hooks/useCapability", () => ({
   useCapability: () => true,
 }));
 
-const runSql = vi.fn().mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
+// The page runs a batch answered one result per statement, split as the server splits it.
+const runSql = vi.fn().mockResolvedValue({
+  answers: [
+    { statement: "SELECT 1", columns: ["id"], column_types: null, rows: [{ id: 1 }], warnings: [] },
+  ],
+});
 const registerTable = vi.fn().mockResolvedValue({ success: true, message: "View created (id=7)" });
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  runSql: (...a: unknown[]) => runSql(...a),
+  runSqlEach: (...a: unknown[]) => runSql(...a),
+  splitSql: async (sql: string) => [sql],
 }));
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
@@ -75,7 +82,10 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   }),
   useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
   useRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
-  useRegisterTable: () => ({ registerTable: (...a: unknown[]) => registerTable(...a), loading: false }),
+  useRegisterTable: () => ({
+    registerTable: (...a: unknown[]) => registerTable(...a),
+    loading: false,
+  }),
   useUpdateTable: () => ({ updateTable: vi.fn(), loading: false }),
 }));
 
@@ -132,8 +142,17 @@ describe("SQL Explorer under Role: All (REQ-1620)", () => {
       await within(listbox).findByRole("option", { name: /pet-store/, hidden: true }),
     );
     await userEvent.click(screen.getByTestId("save-view-button"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    const input = registerTable.mock.calls[0][0] as { columns: { visibleTo: unknown }[] };
-    expect(input.columns[0].visibleTo).toEqual(["analyst", "org_admin"]);
+    // REQ-2109: the view is handed to the Views page, where its settings follow and Save registers it.
+    await waitFor(() =>
+      expect(navigateTo).toHaveBeenCalledWith(
+        "/views",
+        expect.objectContaining({ state: expect.anything() }),
+      ),
+    );
+    const sent = navigateTo.mock.calls.at(-1)![1] as {
+      state: { createView: { input: { columns: { visibleTo: unknown }[] } } };
+    };
+    expect(sent.state.createView.input.columns[0].visibleTo).toEqual(["analyst", "org_admin"]);
+    expect(registerTable).not.toHaveBeenCalled();
   });
 });

@@ -150,13 +150,34 @@ def views(server) -> dict[str, tuple[str, int | None]]:
     }
 
 
+def _reads_now(server) -> str:
+    """What silver holds and what gold's own statement answers now, read as a reader reads them:
+    a gold left empty by a build that ran too early answers rows here; one whose build reads silver
+    as empty answers none."""
+    out = []
+    for label, sql in (
+        ("silver rows", 'SELECT COUNT(*) AS n FROM "sales"."view_silver"'),
+        (
+            "gold's statement",
+            'SELECT COUNT(*) AS n FROM (SELECT sale_day, product FROM "sales"."view_silver" '
+            "GROUP BY sale_day, product) g",
+        ),
+    ):
+        resp = _post(server, "/data/sql", {"sql": sql})
+        out.append(f"{label}: HTTP {resp.status_code} {resp.text[:300]}")
+    return "\n".join(out)
+
+
 def follow(server, done: Callable[[dict], bool]) -> dict:
     deadline = time.monotonic() + _FOLLOW_S
     while True:
         state = views(server)
         if done(state):
             return state
-        assert time.monotonic() < deadline, f"the views did not follow the landing: {state}"
+        assert time.monotonic() < deadline, (
+            f"the views did not follow the landing: {state}\n{_reads_now(server)}\n"
+            f"{server.dump_stderr_debug()[-8000:]}"
+        )
         time.sleep(2)
 
 

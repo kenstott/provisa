@@ -12,13 +12,14 @@
 
 import pytest
 
-from provisa.cypher.parser import (
-    CallSubquery,
-    CypherParseError,
-    PathFunction,
-    extract_parameters,
-    parse_cypher,
-)
+from provisa.cypher.parser import CypherParseError, extract_parameters, parse_cypher
+from provisa.gql.expr_ast import CypherExpr, Literal, Property, Variable, walk
+from provisa.gql.ir import CallSubquery, PathFunction
+
+
+def _holds_number(expr: CypherExpr, value: int) -> bool:
+    """Whether the expression tree holds the number ``value``."""
+    return any(isinstance(n, Literal) and n.value == value for n in walk(expr))
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +36,9 @@ def test_simple_match_return():
     assert len(nodes) == 1
     assert nodes[0].labels == ["Person"]
     assert nodes[0].variable == "n"
-    assert ast.return_clause.items[0].expression.strip() in ("n . name", "n.name", "n . name")
+    # REQ-2135: a clause's expression is the IR's tree; the item keeps how it is written.
+    assert ast.return_clause.items[0].expression == Property(Variable("n"), "name")
+    assert ast.return_clause.items[0].name.replace(" ", "") == "n.name"
 
 
 def test_optional_match_flag():
@@ -47,7 +50,7 @@ def test_optional_match_flag():
 def test_where_clause_parsed():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 RETURN n.name")
     assert ast.where is not None
-    assert "30" in ast.where.expression
+    assert _holds_number(ast.where.expression, 30)
 
 
 def test_limit_skip_parsed():
@@ -65,8 +68,8 @@ def test_order_by_parsed():
 def test_order_by_multiple_columns_parsed():
     ast = parse_cypher("MATCH (u:Person)-[:WROTE]->(p:Post) RETURN u.id, p.id ORDER BY u.id, p.id")
     assert len(ast.order_by) == 2
-    assert ast.order_by[0].expression.replace(" ", "") == "u.id"
-    assert ast.order_by[1].expression.replace(" ", "") == "p.id"
+    assert ast.order_by[0].expression == Property(Variable("u"), "id")
+    assert ast.order_by[1].expression == Property(Variable("p"), "id")
     assert ast.order_by[0].direction == "ASC"
     assert ast.order_by[1].direction == "ASC"
 
@@ -202,9 +205,9 @@ def test_call_subquery_with_outer_return():
     ast = parse_cypher(query)
     assert len(ast.call_subqueries) == 2
     assert ast.return_clause is not None
-    outer_exprs = [item.expression.strip() for item in ast.return_clause.items]
-    assert any("x_name" in e for e in outer_exprs)
-    assert any("y_name" in e for e in outer_exprs)
+    outer_exprs = [item.expression for item in ast.return_clause.items]
+    assert Variable("x_name") in outer_exprs
+    assert Variable("y_name") in outer_exprs
 
 
 def test_call_subquery_no_outer_return():
@@ -250,7 +253,7 @@ def test_union_sub_ast_has_match():
 
 def test_with_creates_pipeline_stages():
     ast = parse_cypher("MATCH (n:Person) WITH n.name AS nm RETURN nm")
-    from provisa.cypher.parser import MatchStep, WithClause
+    from provisa.gql.ir import MatchStep, WithClause
 
     assert len(ast.pipeline) == 2
     assert isinstance(ast.pipeline[0], MatchStep)
@@ -260,12 +263,12 @@ def test_with_creates_pipeline_stages():
 
 def test_with_preserves_match_group_where():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 WITH n RETURN n")
-    from provisa.cypher.parser import MatchStep
+    from provisa.gql.ir import MatchStep
 
     step = ast.pipeline[0]
     assert isinstance(step, MatchStep)
     assert step.where is not None
-    assert "30" in step.where.expression
+    assert _holds_number(step.where.expression, 30)
 
 
 def test_multi_with_pipeline():
@@ -277,7 +280,7 @@ def test_multi_with_pipeline():
         "RETURN nm, cn"
     )
     ast = parse_cypher(q)
-    from provisa.cypher.parser import MatchStep, WithClause
+    from provisa.gql.ir import MatchStep, WithClause
 
     assert len(ast.pipeline) == 4  # MatchStep, WithClause, MatchStep, WithClause
     assert isinstance(ast.pipeline[0], MatchStep)
@@ -294,7 +297,7 @@ def test_match_clauses_property_backward_compat():
 def test_where_property_backward_compat():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 RETURN n.name")
     assert ast.where is not None
-    assert "30" in ast.where.expression
+    assert _holds_number(ast.where.expression, 30)
 
 
 # ---------------------------------------------------------------------------
@@ -342,3 +345,37 @@ def test_detect_procedure_unknown_proc_returns_none():
     from provisa.api.rest.cypher_router import _detect_procedure
 
     assert _detect_procedure("CALL db.unknown()") is None
+
+
+# ---------------------------------------------------------------------------
+# One statement per query
+# ---------------------------------------------------------------------------
+
+
+def test_two_statements_in_one_query_are_refused_never_joined():
+    """Once read as one MATCH (a)...MATCH (b) RETURN b: a cross join that answered only the second."""
+    with pytest.raises(CypherParseError, match="exactly one statement per query but got: 2"):
+        parse_cypher("MATCH (a:A) RETURN a.x; MATCH (b:B) RETURN b.y")
+    with pytest.raises(CypherParseError, match="but got: 3"):
+        parse_cypher("MATCH (a:A) RETURN a.x;\nMATCH (b:B) RETURN b.y;\nRETURN 1;")
+
+
+def test_a_semicolon_ending_the_one_statement_is_allowed():
+    alone = parse_cypher("MATCH (a:A) RETURN a.x")
+    assert parse_cypher("MATCH (a:A) RETURN a.x;") == alone
+    assert parse_cypher("MATCH (a:A) RETURN a.x ;\n// done\n") == parse_cypher(
+        "MATCH (a:A) RETURN a.x // done"
+    )
+
+
+def test_a_semicolon_in_a_string_or_a_comment_separates_nothing():
+    parse_cypher("MATCH (a:A) WHERE a.x = 'one; two' RETURN a.x")
+    parse_cypher('MATCH (a:A) WHERE a.x = "one; two" RETURN a.x')
+    parse_cypher("MATCH (a:A) // first; then\nRETURN a.x")
+
+
+def test_two_writes_in_one_query_are_refused():
+    from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
+
+    with pytest.raises(CypherWriteParseError, match="but got: 2"):
+        parse_cypher_write("CREATE (a:A {x: 1}); CREATE (b:A {x: 2})")

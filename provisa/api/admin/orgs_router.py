@@ -1027,6 +1027,8 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
         org_invites,
         personal_access_tokens,
     )
+    from provisa.api.app import state as _app_state
+    from provisa.scheduler.jobs import unschedule_org
 
     async with _admin_pool().acquire() as conn:
         # REQ-1921/REQ-1922: every environment of the org, in every region store its models
@@ -1034,7 +1036,15 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
         # naming its region, before anything here is removed.
         envs = [e["name"] for e in await list_envs(_admin_pool(), org_id)]
         try:
-            await purge_org_regions(_pool(), org_id, envs)
+            # REQ-2006: its scheduled jobs (its replica build pass fires every 2 s) stop once the
+            # purge can go ahead and before anything is dropped: none fires against a store or
+            # schema this removes, and a refused delete leaves the org running, whole.
+            await purge_org_regions(
+                _pool(),
+                org_id,
+                envs,
+                before_drop=lambda: unschedule_org(getattr(_app_state, "_scheduler", None), org_id),
+            )
         except RegionStoreUnreachable as refused:
             raise ApiError(
                 409,
@@ -1067,19 +1077,17 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
     await deprovision_org(_pool(), org_id, redis_url=_redis_url())
     # Evict the cached runtime last: an in-flight request must not rebuild it from a registry row
     # that still exists.
-    from provisa.api.app import state as _app_state
-
     # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
     _app_state.org_registry.invalidate_org(org_id)
+    # What this process holds for it, kept by its id, its schemas or its users (REQ-2006).
+    from provisa.core.org_forget import forget_org
+
+    forget_org(org_id)
     # And the connector servers started for its sources (a files source's JVM, hundreds of
     # megabytes): nothing else stops them, so every reaped demo sandbox left its own running.
     from provisa.federation.pgwire_replica import stop_org_servers
 
     await asyncio.to_thread(stop_org_servers, org_id)
-    # REQ-2006: and its scheduled jobs, which would otherwise fire against the org it no longer is.
-    from provisa.scheduler.jobs import unschedule_org
-
-    unschedule_org(getattr(_app_state, "_scheduler", None), org_id)
     # REQ-1301: the registry view names the dropped schema, so it must stop naming it before anyone
     # queries it again.
     await _refresh_root_registry_view()

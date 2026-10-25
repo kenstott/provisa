@@ -218,3 +218,17 @@ class Connector(ABC):  # REQ-842
             mechanism=self.mechanism,
             details=self.details(source),
         )
+
+
+async def probe_pg_extension(fetch, ext: str, *, auto_create: bool) -> ProbeResult:  # REQ-904
+    """Probe a Postgres extension/FDW: created -> available; installable -> available iff the engine
+    auto-creates it on attach; absent -> unavailable with an install remediation."""
+    if await fetch(f"SELECT 1 FROM pg_extension WHERE extname = '{ext}'"):
+        return ProbeResult(True, f"{ext} installed")
+    if await fetch(f"SELECT 1 FROM pg_available_extensions WHERE name = '{ext}'"):
+        return ProbeResult(
+            auto_create,
+            f"{ext} available" + ("" if auto_create else " but not created"),
+            None if auto_create else f"CREATE EXTENSION {ext}",
+        )
+    return ProbeResult(False, f"{ext} not installed in this Postgres", f"install {ext} extension")

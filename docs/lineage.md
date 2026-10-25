@@ -233,12 +233,12 @@ The view reads the refresh records in `"ops"."traces"` and answers on every engi
 
 ## A view as it stood, and as it was recorded
 
-A view declared bitemporal keeps every version it has held: each refresh appends, and no version is rewritten, on any store. A plain read answers the current state. Two request headers read its past:
+A view that maps its source's columns as `business_key`, `valid_time` and `recorded_time` keeps every version it has held: each refresh appends, and no version is rewritten, on any store. A plain read answers the current state. Two request headers read its past:
 
-- `X-Provisa-As-Of` reads the view as of a time, or over a range, on its clock: the source's own change time where the view declares `bitemporal_source_time`, Provisa's load time where it does not.
+- `X-Provisa-As-Of` reads the view as of a time, or over a range.
 - `X-Provisa-As-Recorded` reads it as Provisa had recorded it at a time. Versions recorded after that time are left out, so a correction recorded later does not change a replay of the past.
 
-As of 30 September and as recorded on 1 October gives the original figure; as recorded on 5 October gives the correction. The audit record of each statement keeps both times (`as_of`, `as_recorded`), so a report can be reproduced as it was first produced. [Views with history](configuration.md#views-with-history-time-travel) covers declaring a bitemporal view and every surface that takes the two values.
+As of 30 September and as recorded on 1 October gives the original figure; as recorded on 5 October gives the correction. The audit record of each statement keeps both times (`as_of`, `as_recorded`), so a report can be reproduced as it was first produced. [Views with history](configuration.md#views-with-history-time-travel) covers the three declarations, with examples, and every surface that takes the two values.
 
 ## What a column rename or drop would break
 
@@ -250,7 +250,7 @@ contracts, metric-view grains and MV row keys are all authored against that name
 alias breaks them just as surely as deleting the column does**.
 
 The **physical name** is `table_columns.column_name`, the identity that survives the table upsert's
-wholesale column replace. Relationships, [glossary](glossary.md) bindings, tag assignments, the watermark column
+wholesale column replace. Relationships, [ontology](ontology.md) bindings, tag assignments, the watermark column
 and column presets store this one, so they only break when the column is **removed**.
 
 `columnDependents` reports both. Downstream views and MVs come from slicing the federation graph at

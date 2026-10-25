@@ -36,20 +36,56 @@ from provisa.nl.loop import (
     CompileResult,
     LLMClient,
     generation_loop,
+    make_cypher_compiler,
     make_graphql_compiler,
     make_sql_compiler,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from provisa.executor.redirect import Delivery
     from provisa.api.app import AppState
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
 JobStore = InMemoryJobStore | RedisJobStore
 
 log = logging.getLogger(__name__)
 
 _TARGETS: list[NlTarget] = ["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
+
+#: Non-strict NL's SQL opts out of the relationship guard (REQ-603): the statement's half of the one
+#: bypass rule, which takes effect only for a role whose flag allows it (relationship_guard_bypassed).
+GUARD_OPT_OUT = "-- relationship-guard=false"
+
+#: A panel's answer when no valid query of its language could be produced: the reason, no query.
+NOT_AVAILABLE = "Not available: {reason}"
+
+
+def nl_may_bypass(role: str, app_state: Any) -> bool:
+    """Whether the acting role(s) may relate tables outside the approved relationships when the
+    statement opts out (REQ-603): the one bypass rule (``relationship_guard_bypassed``), for the
+    role the pipeline resolves (``effective_domain_access_role``). A role that may not uses strict
+    NL only: a non-strict request from it is run as strict, never refused."""
+    from provisa.pgwire._pipeline import relationship_guard_bypassed
+    from provisa.security.rights import effective_domain_access_role
+
+    return relationship_guard_bypassed(
+        effective_domain_access_role(role, app_state.roles), app_state, statement_opts_out=True
+    )
+
+
+def effective_strict(requested: bool, role: str, app_state: Any) -> bool:
+    """Whether an NL job runs strict: as requested, and always for a role that may not bypass the
+    relationship guard (:func:`nl_may_bypass`)."""
+    return requested or not nl_may_bypass(role, app_state)
+
+
+def not_available(reason: str) -> str:
+    """A panel's reason in the user's terms: the refusal's message without its code."""
+    import re
+
+    return NOT_AVAILABLE.format(reason=re.sub(r"\[[A-Z]+\d*\]\s*", "", reason).strip())
 
 
 _AGG_EXPR_TYPES: dict[Any, str] = {}
@@ -532,10 +568,14 @@ async def _generate_sql_from_nl(
     role: str,
     app_state: AppState,
     pre_selected_types: "set[str] | None" = None,
+    check: "Callable[[str], Awaitable[str | None]] | None" = None,
 ) -> tuple[str | None, str | None]:
-    """Generate semantic SQL via the proven endpoint_dev pipeline.
+    """Generate semantic SQL via the proven endpoint_dev pipeline -- non-strict NL's SQL.
 
-    Returns (sql, None) on success or (None, error_message) on failure.
+    The statement is the semantic SQL with the relationship guard's opt-out (GUARD_OPT_OUT,
+    REQ-603). ``check`` runs it through the governed path; each attempt is refined against that
+    run, so a statement with an error is never answered. Returns (sql, None) on success or
+    (None, error_message) on failure.
     """
     from provisa.api.data.endpoint_dev import (
         _collect_nl_user_tables,
@@ -591,6 +631,10 @@ async def _generate_sql_from_nl(
         all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines
     )
 
+    async def _check_shown(sql: str) -> str | None:
+        assert check is not None
+        return await check(non_strict_sql(sql, ctx))
+
     last_sql, _, last_error = await _run_sql_generation_loop(
         nl_query,
         schema_block,
@@ -601,22 +645,57 @@ async def _generate_sql_from_nl(
         table_columns,
         config=llm_config,
         api_keys=llm_api_keys,
+        check=None if check is None else _check_shown,
+        best_effort=True,
     )
 
-    if last_error == "NOT_APPLICABLE":
-        return None, "NOT_APPLICABLE"
     if last_error:
-        return last_sql or None, last_error
+        return None, last_error
+    return non_strict_sql(last_sql, ctx), None
+
+
+def _relationship_hints(refused: Any, role: str, app_state: AppState) -> list[str]:
+    """The registered path between each pair of tables ``refused`` (a GovernanceRefused) names
+    as joined outside a relationship, in the role's graph and named as its SQL writes them."""
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.nl.paths import relationship_hints
+
+    if not any(v.tables is not None for v in refused.violations):
+        return []
+    surface = role_surface(app_state, role)
+    if surface is None:
+        return []  # no schema for the role: the refusal alone (run_nl refuses it first)
+    label_map = _build_cypher_label_map(surface.context, role, app_state)
+    return relationship_hints(
+        label_map,
+        refused.violations,
+        lambda domain_id: domain_to_sql_name(domain_id) if domain_id else "default",
+    )
+
+
+def non_strict_sql(sql: str, ctx: Any) -> str:
+    """Non-strict NL's statement for the model's ``sql``: its semantic SQL, opting out of the
+    relationship guard (REQ-603) -- the bypass takes effect only for a role whose flag allows it.
+    Strict NL's SQL never carries the opt-out."""
+    from provisa.compiler.sql_rewrite import make_semantic_sql, rewrite_semantic_to_physical
 
     # Queries are always expressed in semantic SQL with {schema}.{table} using the
     # logical domain schema (e.g. pet_store.users), never the physical schema (default).
     # The model may emit bare or physical-schema refs; normalize to physical first to
     # qualify every table, then lift to the semantic domain form for display/execution.
     # _execute_sql re-runs make_semantic_sql, so semantic input round-trips correctly.
-    from provisa.compiler.sql_rewrite import make_semantic_sql, rewrite_semantic_to_physical
+    return f"{GUARD_OPT_OUT}\n{make_semantic_sql(rewrite_semantic_to_physical(sql, ctx), ctx)}"
 
-    semantic_sql = make_semantic_sql(rewrite_semantic_to_physical(last_sql, ctx), ctx)
-    return semantic_sql, None
+
+def _nl_cypher_compiler(surface: Any, role: str, app_state: AppState) -> Any:
+    """The validator non-strict NL's Cypher is refined against: with the role's label map, an
+    unbound name that is a bound variable's property is offered as it in the refusal the retry is
+    given (REQ-778), as every other Cypher surface offers it."""
+    if surface is None:
+        # No schema for the role: no graph to read a label map from. The SQL branch refuses the
+        # job by name ("No schema context for role"); Cypher is checked for its syntax alone.
+        return make_cypher_compiler()
+    return make_cypher_compiler(_build_cypher_label_map(surface.context, role, app_state))
 
 
 def _build_cypher_label_map(
@@ -624,7 +703,7 @@ def _build_cypher_label_map(
     role: str,
     app_state: AppState,
 ) -> "CypherLabelMap":
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     from provisa.security.rights import require_role
 
@@ -663,6 +742,7 @@ async def _generate_graphql_sql_from_nl(
     nl_query: str,
     role: str,
     app_state: AppState,
+    check: "Callable[[NlTarget, str], Awaitable[str | None]] | None" = None,
 ) -> tuple[str | None, str | None, str | None, str | None]:
     """Generate GraphQL, SQL, and Cypher via the GraphQL-backed pipeline ("strict" mode).
 
@@ -677,6 +757,10 @@ async def _generate_graphql_sql_from_nl(
     Returns (graphql, sql, cypher, None) on success or (None, None, None, error_message) on
     failure. ``cypher`` is None when the query structure has no Cypher-representable pattern
     (not itself an error).
+
+    ``check`` (the NL page, REQ-603): the GraphQL and its SQL are run through the governed path as
+    the loop's last validation, so an error -- a V002 refusal among them -- is regenerated against,
+    never shown. Strict is exact or refused: no best-effort fallback.
     """
     from graphql import GraphQLSchema
     from provisa.api.admin.dev_queries import compile_query as _compile_query_governed
@@ -719,6 +803,11 @@ async def _generate_graphql_sql_from_nl(
                 valid=False,
                 error=f"The query compiled to SQL that does not parse: {sql.error}",
             )
+        if check is not None:
+            for target, statement in (("graphql", query), ("sql", compiled["semantic_sql"])):
+                run_error = await check(target, statement)  # type: ignore[arg-type]
+                if run_error:
+                    return CompileResult(valid=False, error=run_error)
         compiled_for[query] = compiled
         return CompileResult(valid=True)
 
@@ -753,14 +842,21 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     delivered to the results store and its handle is the branch's result.
 
     ``strict`` (REQ-1400) selects the generation order for the graphql/sql/cypher branches:
-    strict compiles NL -> GraphQL first (schema-validated), then GraphQL -> SQL, then SQL ->
-    Cypher, so join reachability and aggregate shape come from the approved schema relationships
-    rather than prompt discipline. Non-strict keeps NL -> SQL and NL -> GraphQL independent
-    (direct LLM generation each), and derives Cypher from the SQL branch's result (best-effort).
-    grpc/jsonapi/openapi are unaffected by ``strict`` — both modes drive them off the SQL
-    branch's compiled semantic SQL.
+    strict compiles NL -> GraphQL first (schema-validated), then GraphQL -> SQL, and prints the
+    Cypher from its IR (exact, or not available), so join reachability and aggregate shape come
+    from the approved schema relationships rather than prompt discipline. Non-strict generates
+    SQL, GraphQL and Cypher independently, each the model's best effort from the question, and
+    its SQL carries the relationship guard's opt-out (REQ-603). grpc/jsonapi/openapi are derived
+    from the GraphQL in both modes. A role that may not bypass the relationship guard runs strict
+    whatever is asked (:func:`effective_strict`).
+
+    No panel shows a query with an error (REQ-603): every query is run through the governed path
+    before it is answered, a generator's retries are refined against that run, and a panel with no
+    valid query answers ``Not available: <reason>``.
     """
     await job_store.set_state(job_id, "running")
+    # REQ-603: a role that may not bypass the relationship guard uses strict NL only.
+    strict = effective_strict(strict, role, app_state)
 
     schema_sdl = _get_schema_sdl(app_state, role)
     # One snapshot of the role's surface for the whole job: its schema and its context.
@@ -806,8 +902,12 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     # _run_branch), leaving the other branches unaffected. Strict mode's graphql/sql/cypher
     # branches run through the shared chain below instead of this compiler map.
     compilers: dict[str, Any] = {}
-    if not strict and graphql_schema is not None:
-        compilers["graphql"] = make_graphql_compiler(graphql_schema)
+    if not strict:
+        # Non-strict: each of SQL, GraphQL and Cypher is the model's best effort from the question,
+        # generated on its own (REQ-603); Cypher is generated like GraphQL, not derived from SQL.
+        compilers["cypher"] = _nl_cypher_compiler(surface, role, app_state)
+        if graphql_schema is not None:
+            compilers["graphql"] = make_graphql_compiler(graphql_schema)
 
     ctx = None if surface is None else surface.context
 
@@ -849,8 +949,6 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             table_selection_error = str(exc)
         shared_user_nodes = _u_nodes
 
-    _QUERY_TARGETS = {"cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"}
-
     # Strict mode (REQ-1400): graphql/sql/cypher come from a single NL -> GraphQL -> SQL ->
     # Cypher chain, run once and shared by all three branches, instead of being generated
     # independently. The chain's future caches its result, so awaiting it from three branches
@@ -861,13 +959,47 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     # connection across an await while another blocks the thread inline would deadlock. Branches
     # that depend on another await its thread-safe future via asyncio.wrap_future.
     from provisa.core.connection_loop import run_on_own_thread
+    from provisa.nl.executor import execute as _execute
+
+    # REQ-603: no panel shows a query with an error. Each query is run through the governed path
+    # it would run on -- parse, translate, governance (V002 among it) and execution -- before it
+    # is answered; a generator's loop is refined against that run, and its result is the panel's.
+    checked: dict[tuple[str, str], Any] = {}
+
+    async def _governed(target: NlTarget, query: str) -> str | None:
+        from provisa.compiler.sql_validator import GovernanceRefused
+
+        try:
+            checked[(target, query)] = await _execute(
+                query, target, role, app_state, deliver=deliver
+            )
+        except GovernanceRefused as refused:
+            # Two tables joined outside a relationship: the retry is given the registered path
+            # between them, and a strict "Not available" names it (REQ-603).
+            return "\n".join([str(refused), *_relationship_hints(refused, role, app_state)])
+        # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL execution boundary: running a generated query against the pluggable engine has an unbounded failure surface; a failure is that query's error, which its generation loop refines against or its panel shows as the reason it has no query -- never an abort of the other branches."
+        except Exception as exc:
+            return str(exc)
+        return None
+
+    def _run_checked(compiler: Any, target: NlTarget) -> Any:
+        async def _check(query: str) -> CompileResult:
+            compiled = compiler(query)
+            if not compiled.valid:
+                return compiled
+            error = await _governed(target, query)
+            return CompileResult(valid=error is None, error=error)
+
+        return _check
 
     strict_chain_fut: "concurrent.futures.Future[tuple[str | None, str | None, str | None, str | None]] | None" = None
     if strict:
 
         async def _run_strict_chain() -> tuple[str | None, str | None, str | None, str | None]:
             try:
-                return await _generate_graphql_sql_from_nl(nl_query, role, app_state)
+                return await _generate_graphql_sql_from_nl(
+                    nl_query, role, app_state, check=_governed
+                )
             # complexity-gate: allow-ble=3 reason="[file ceiling 3] The strict chain runs an
             # LLM + compiler pipeline with an unbounded failure surface; a failure must become
             # the shared error surfaced to the graphql/sql/cypher branches, not crash the job."
@@ -877,7 +1009,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
 
         strict_chain_fut = run_on_own_thread(_run_strict_chain, name="nl-strict-chain")
 
-    async def _run_branch(target: NlTarget) -> tuple[NlTarget, str | None, str | None]:
+    async def _generate_branch(target: NlTarget) -> tuple[NlTarget, str | None, str | None]:
         # Each branch is independent: a failure in one (e.g. SQL generation
         # raising) must not abort the asyncio.as_completed loop and discard the
         # other branches' results. Convert any exception into a branch error.
@@ -890,7 +1022,12 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                     return target, graphql_query, chain_error if graphql_query is None else None
                 if target == "sql":
                     return target, chain_sql, chain_error if chain_sql is None else None
-                return target, chain_cypher, chain_error if chain_sql is None else None
+                if chain_sql is None:
+                    return target, None, chain_error
+                if chain_cypher is None:
+                    # Strict is exact or refused: the query's IR has no Cypher form.
+                    return target, None, "the question's query has no Cypher form"
+                return target, chain_cypher, None
             if target == "sql":
                 # REQ-1319: a metric-shaped question resolves to the governed semantic
                 # form (metric + matched dimension columns) instead of asking the model
@@ -901,21 +1038,13 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 if table_selection_error is not None:
                     return target, None, table_selection_error
                 valid_query, error = await _generate_sql_from_nl(
-                    nl_query, role, app_state, pre_selected_types=shared_selected_types
+                    nl_query,
+                    role,
+                    app_state,
+                    pre_selected_types=shared_selected_types,
+                    check=lambda query: _governed("sql", query),
                 )
                 return target, valid_query, error
-            if target == "cypher":
-                # Non-strict: derive Cypher from the SQL branch's result (best-effort,
-                # sql-to-cypher) instead of generating it independently from NL.
-                if table_selection_error is not None:
-                    return target, None, table_selection_error
-                _, sql_query, sql_error = await asyncio.wrap_future(sql_fut)
-                if sql_query is None or sql_error is not None:
-                    return target, None, sql_error
-                if ctx is None:
-                    return target, None, f"No schema context for role: {role}"
-                cypher_query = best_effort_cypher_for_sql(sql_query, ctx, role, app_state)
-                return target, cypher_query, None
             if target in ("grpc", "jsonapi", "openapi"):
                 # REQ-1359: wait for the SQL branch's compiled semantic SQL so these three
                 # protocol surfaces target the identical table/GROUP BY it resolved to,
@@ -949,9 +1078,10 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 nl_query,
                 target,
                 schema_sdl,
-                compiler,
+                _run_checked(compiler, target),
                 llm,
                 relevant_entities=relevant_entities,  # type: ignore[arg-type]
+                best_effort=True,
             )
             return target, valid_query, error
         # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL compilation boundary: each target (graphql/cypher/…) runs an LLM + compiler pipeline with an unbounded failure surface; a failing branch must be captured as that branch's error string and returned so sibling branches still complete — never abort the whole NL run."
@@ -959,9 +1089,17 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             log.warning("NL branch %s failed: %s", target, exc)
             return target, None, str(exc)
 
-    # The sql and graphql branches must be scheduled before grpc/jsonapi/openapi (and,
-    # non-strict, cypher) so those can await the compiled semantic SQL and the GraphQL query
-    # they rewrite (see _run_branch) without a forward reference.
+    async def _run_branch(target: NlTarget) -> tuple[NlTarget, str | None, str | None]:
+        # A query no loop ran (a metric's, strict's Cypher, a protocol plan's) is run here, once:
+        # one that fails is not answered, its error is (REQ-603).
+        target, query, error = await _generate_branch(target)
+        if query is not None and error is None and (target, query) not in checked:
+            error = await _governed(target, query)
+        return target, (None if error else query), error
+
+    # The sql and graphql branches must be scheduled before grpc/jsonapi/openapi so those can
+    # await the compiled semantic SQL and the GraphQL query they rewrite (see _generate_branch)
+    # without a forward reference.
     def _branch(
         target: NlTarget,
     ) -> "concurrent.futures.Future[tuple[NlTarget, str | None, str | None]]":
@@ -974,21 +1112,14 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     ]
     branch_tasks = [asyncio.wrap_future(f) for f in branch_futs]
 
-    from provisa.nl.executor import execute as _execute
-
     for coro in asyncio.as_completed(branch_tasks):
         target, valid_query, error = await coro
-        result = None
-        if valid_query is not None and error is None and target in _QUERY_TARGETS:
-            try:
-                result = await _execute(valid_query, target, role, app_state, deliver=deliver)  # type: ignore[arg-type]
-            # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL execution boundary: running a generated query against the pluggable engine has an unbounded failure surface; a failure is captured as this branch's error (valid_query kept so the UI shows the query alongside it) and must not abort the other branches' execution."
-            except Exception as exc:
-                error = str(exc)
-                # Keep valid_query so the UI can show the generated query alongside the error
-        await job_store.update_branch(
-            job_id, target, BranchResult(query=valid_query, result=result, error=error)
-        )
+        if valid_query is None:
+            # A panel with no valid query shows none: only the reason, in the user's terms.
+            branch = BranchResult(error=not_available(error or "no query was produced"))
+        else:
+            branch = BranchResult(query=valid_query, result=checked[(target, valid_query)])
+        await job_store.update_branch(job_id, target, branch)
         log.debug("Branch %s complete: valid=%s", target, valid_query is not None)
 
     await job_store.set_state(job_id, "complete")

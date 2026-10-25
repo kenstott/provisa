@@ -28,7 +28,7 @@
 import type { Capability } from "../types/auth";
 import type { OrgHas, TourPrerequisites } from "./tourPrerequisites";
 import type { UiAction } from "../mcp/uiActions";
-import PREREQUISITES from "./tourPrerequisites.json";
+import PREREQUISITES from "./tourPrerequisites.json" with { type: "json" };
 
 export interface TourStep {
   /** Route to navigate to before the step is shown. Omit to stay put. */
@@ -163,7 +163,7 @@ export interface TourStep {
    * step entered again by Back or a resume finds what it built). Only what is very unlikely to
    * fail live is done so: a static known address, or what Provisa handles itself.
    */
-  actions?: UiAction[];
+  actions?: UiAction[] | ((ctx: TourContext) => UiAction[]);
   /**
    * Selector clicked when the user advances *past* this step via Next — used to
    * undo `clickBefore`, e.g. cancelling the form or closing a modal.
@@ -187,6 +187,23 @@ export interface TourStep {
 const SOURCES_ADD = '[data-tour="sources-add"]';
 // REQ-2115: the Parquet file Provisa publishes (REQ-2113), the core tour's live-built source.
 export const SUPPLIES_PARQUET_URL = "https://provisa.dev/demo-data/supplies.parquet";
+/** REQ-2101 (amended): the copy a demo ships into its org's own folder (starthere's org_files/). */
+export const SUPPLIES_ORG_FILE = "supplies.parquet";
+
+/** What a step's actions may read about where the tour runs. */
+export interface TourContext {
+  /** The org files the demo ships, each in the org's folder as {files}/<path>. */
+  orgFiles: string[];
+}
+
+/** Where the live-built source reads supplies.parquet: the org's own copy where its demo ships
+ * one, read in place with no network (a sandbox may reach no address its demo does not declare);
+ * else the copy Provisa publishes. */
+export function suppliesAddress(orgFiles: string[]): string {
+  return orgFiles.includes(SUPPLIES_ORG_FILE)
+    ? `{files}/${SUPPLIES_ORG_FILE}`
+    : SUPPLIES_PARQUET_URL;
+}
 const SUPPLIES_SOURCE_ID = "supplies";
 const TABLES_ADD = '[data-tour="tables-add"]';
 const RELS_ADD = '[data-tour="rels-add"]';
@@ -296,14 +313,14 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-2115: a source built live, as the visitor would build it: the picker opened and its
-    // whole list shown, Parquet File chosen, the file Provisa publishes given as its address, and
-    // saved. A static known address, so very unlikely to fail; the popover then explains the row.
-    actions: [
+    // whole list shown, Parquet File chosen, the file given as its address, and saved. A static
+    // known address, so very unlikely to fail; the popover then explains the row.
+    actions: ({ orgFiles }) => [
       { do: "press", target: { testId: "sources-add-toggle" } },
       { do: "show", target: { testId: "source-type-picker-body" } },
       { do: "press", target: { testId: "source-type-option-parquet" } },
       { do: "fill", target: { testId: "sources-id-input" }, value: SUPPLIES_SOURCE_ID },
-      { do: "fill", target: { testId: "source-file-location" }, value: SUPPLIES_PARQUET_URL },
+      { do: "fill", target: { testId: "source-file-location" }, value: suppliesAddress(orgFiles) },
       { do: "press", target: { role: "button", name: "Save" } },
     ],
     // The new row's first cell, its ID: the row runs on under the source's detail, which Save
@@ -672,16 +689,16 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
-    route: "/admin/glossary",
-    // REQ-1590: stricter than the route's own gate. /admin/glossary opens to `glossary_read`, but
-    // what this step points at is the AI-generation buttons, which only a curator is shown — so a
+    route: "/admin/ontology",
+    // REQ-1590: stricter than the route's own gate. /admin/ontology opens to `glossary_read`, but
+    // what this step points at is the AI-generation menu, which only a curator is shown — so a
     // read-only viewer skips the step rather than waiting out an anchor that never mounts.
     capability: "glossary_rw",
-    element: '[data-testid="glossary-bulk-definitions-btn"]',
+    element: '[data-testid="glossary-generate-menu"]',
     key: "stepGlossary",
   },
   {
-    route: "/admin/glossary",
+    route: "/admin/ontology",
     capability: "glossary_rw",
     element: '[data-testid="glossary-new-btn"]',
     key: "stepGlossaryTerm",

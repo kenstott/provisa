@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/translator.py — recursive CTEs, CASE, UNWIND, paths."""
+"""Unit tests for provisa/gql/translator.py — recursive CTEs, CASE, UNWIND, paths."""
 
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.translator import cypher_to_sql
 
 
 def _make_label_map_multi_path() -> CypherLabelMap:
@@ -431,7 +431,7 @@ def test_unwind_of_collect_map_property_is_map_access():
     lm = _make_label_map()
     ast = parse_cypher(
         "MATCH (n:Person) "
-        "WITH n.age AS age, COUNT(*) AS count, collect({pid: n.id, pname: n.name}) AS _nodes "
+        "WITH n.age AS age, COUNT(*) AS count, collect({pid: n._id, pname: n.name}) AS _nodes "
         "UNWIND _nodes AS node "
         "RETURN age, count, node.pid AS pid, node.pname AS pname"
     )

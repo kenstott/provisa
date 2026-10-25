@@ -1,0 +1,24 @@
+{
+  "dataProductCore": {
+    "error": "The data product could not be read: {{error}}",
+    "tags": "Tags",
+    "tagsEmpty": "No tags.",
+    "profiles": "Profiles",
+    "profilesHint": "The profile result tables registered for each member table; open one to read its results.",
+    "profilesEmpty": "No member table has been profiled.",
+    "scans": "scans {{table}}",
+    "aProduct": "data product",
+    "direct": "direct",
+    "hops_one": "{{count}} hop",
+    "hops_other": "{{count}} hops",
+    "paths_one": "{{count}} path",
+    "paths_other": "{{count}} paths",
+    "through": "through {{tables}}",
+    "upstream": "Upstream",
+    "downstream": "Downstream",
+    "via": "via {{vias}}",
+    "unreadable": "Your role cannot read the data products in the meta domain.",
+    "detailExpand": "Show the whole entry",
+    "detailCollapse": "Show less"
+  }
+}

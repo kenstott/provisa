@@ -835,9 +835,25 @@ services:
       retries: 30
       start_period: 60s
 
-  # REQ-1069 — OpenMetadata, the asset target. Its own MySQL; search reuses the core-stack
-  # `elasticsearch` service rather than a second cluster, because two 512m JVMs plus the
-  # OpenMetadata server itself is more than the Docker VM has to spare.
+  # REQ-1069 — OpenMetadata, the asset target. Its own MySQL and its own search: 2.0.5's
+  # elasticsearch-java 9.2.4 client sends `compatible-with=9`, which the core stack's 8.13
+  # `elasticsearch` refuses (media_type_header_exception on lineage's update_by_query), so search
+  # is the 9.3.0 that OpenMetadata's own 2.0.5 quickstart pairs it with. It is a heavy service,
+  # up only for the OpenMetadata tests.
+  openmetadata-search:
+    restart: unless-stopped
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms256m -Xmx512m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
   openmetadata-db:
     restart: unless-stopped
     image: mysql:8.0
@@ -867,7 +883,7 @@ services:
     depends_on:
       openmetadata-db:
         condition: service_healthy
-      elasticsearch:
+      openmetadata-search:
         condition: service_healthy
     ports:
       - "${OPENMETADATA_PORT:-8585}:8585"
@@ -885,7 +901,7 @@ services:
       DB_USER_PASSWORD: openmetadata_password
       OM_DATABASE: openmetadata_db
       SEARCH_TYPE: elasticsearch
-      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_HOST: openmetadata-search
       ELASTICSEARCH_PORT: 9200
       ELASTICSEARCH_SCHEME: http
       AUTHENTICATION_PROVIDER: basic

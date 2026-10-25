@@ -23,7 +23,6 @@
     "descriptionLabel": "Описание",
     "descriptionPlaceholder": "Отображается в документации SDL",
     "dataProductLabel": "Дата-продукт",
-    "dataProductHint": "(публикация в каталог / экспорт в Atlas, Atlan и др.)",
     "discoverLabel": "Обнаружить столбцы",
     "discoverHint": "(вывод столбцов из живого источника при регистрации — для бессхемных/NoSQL-источников; ручной выбор столбцов не требуется)",
     "watermarkLabel": "Столбец водяного знака",
@@ -135,6 +134,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Векторы {{collection}}",
     "qdrantVector": "{{name}}: {{size}} измерений, оценка по {{distance}}",
-    "qdrantUnnamedVector": "(без имени)"
+    "qdrantUnnamedVector": "(без имени)",
+    "continue": "Далее"
   }
 }

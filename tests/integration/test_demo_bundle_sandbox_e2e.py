@@ -207,10 +207,12 @@ def test_a_newer_version_is_asked_for_served_once_ready_and_an_open_sandbox_keep
         second = _publish(registry, work / "named2", work / "out2", "b" * 40, ["asp", "auk", "ant"])
         assert second != first
 
-        meanwhile = _open(tier)  # asks for the new version, and is served the ready one
+        meanwhile = _open(tier)  # asks for the demo, and is served the ready version
         assert _names(tier, meanwhile) == ["ant", "ape"]
         bundles = work / "data" / "demo-bundles"
-        assert (bundles / "alpha" / "wanted").read_text().strip() == second
+        # The tier asks only; the node's sync pulls the latest published (f87058c07).
+        assert (bundles / "alpha" / "requested").read_text().strip() == "requested"
+        assert not (bundles / "alpha" / "wanted").exists()
         assert (bundles / ".wanted").exists()  # what the node's path unit watches
 
         assert _synced(work, registry) == second
@@ -289,7 +291,12 @@ def test_a_visitor_reads_what_the_demo_shows_its_admin_and_runs_as_its_own_roles
     demo = published_demo(named, "alpha")
     config = yaml.safe_load((demo / "config.yaml").read_text())
     config["roles"] = [
-        {"id": "keeper", "capabilities": ["query_development"], "domain_access": ["zoo"]}
+        {
+            "description": "Test role.",
+            "id": "keeper",
+            "capabilities": ["query_development"],
+            "domain_access": ["zoo"],
+        }
     ]
     for column in config["tables"][0]["columns"]:
         column["visible_to"] = (

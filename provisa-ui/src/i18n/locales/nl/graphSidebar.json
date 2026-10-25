@@ -29,6 +29,9 @@
     "resizeSidebar": "Zijbalk vergroten of verkleinen",
     "tabSettings": "Weergave-instellingen",
     "maxNodes": "Max. knooppunten",
-    "maxNodesHint": "Het maximale aantal knooppunten dat een query tekent"
+    "maxNodesHint": "Het maximale aantal knooppunten dat een query tekent",
+    "notCounted": "Niet geteld: {{list}}",
+    "countsFailed": "Aantallen niet beschikbaar: {{error}}",
+    "schemaFailed": "Schema niet beschikbaar: {{error}}"
   }
 }

@@ -14,7 +14,7 @@ content changed at the same source time is a correction, and the latest content 
 one in force -- as a delta view's is. Its content is compared on the view's declared columns.
 Run on DuckDB."""
 
-# Requirements: REQ-1162, REQ-1163
+# Requirements: REQ-1162, REQ-1163, REQ-2109
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ pytestmark = pytest.mark.unit
 _SPEC = BitemporalSpec(
     key=("desk",),
     mode=MODE_SNAPSHOT,
-    source_column="valid_from",
+    valid_column="valid_from",  # REQ-2109: the view's valid time
     columns=("desk", "exposure", "valid_from", "source_from", "source_to", "recorded_at"),
 )
 
@@ -85,6 +85,6 @@ def test_a_correction_then_unchanged_refreshes_keeps_the_corrections_record():
 
 
 def test_a_snapshot_views_read_needs_its_columns():
-    spec = BitemporalSpec(key=("desk",), mode=MODE_SNAPSHOT, source_column="valid_from")
+    spec = BitemporalSpec(key=("desk",), mode=MODE_SNAPSHOT, valid_column="valid_from")
     with pytest.raises(ValueError, match="names no columns"):
         view_read_sql("log", spec)

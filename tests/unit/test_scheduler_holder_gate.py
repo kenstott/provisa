@@ -268,3 +268,69 @@ def test_a_nodes_region_claim_is_its_regions_and_with_no_regions_the_deployments
         if state._region_holder is not state._scheduler_holder:
             state._region_holder.close()
         state._scheduler_holder.close()
+
+
+# -- REQ-2049: a template's work waits while its demo's stores are down -------------------------
+
+
+@pytest.fixture
+def bundles(tmp_path, monkeypatch):
+    from provisa.core import demo_bundles
+
+    monkeypatch.setenv("PROVISA_DEMO_BUNDLES", "agriculture")
+    monkeypatch.setattr(demo_bundles, "bundles_root", lambda: tmp_path)
+    (tmp_path / "agriculture").mkdir()
+    return tmp_path / "agriculture"
+
+
+def test_a_templates_jobs_wait_while_its_demos_stores_are_taken_down(bundles):
+    """After its last sandbox closed and the linger passed, the node took the demo's stores down
+    and cleared its ready marker: its template's view builds would read databases that are gone
+    (cloud-dev: database agriculture_agriculture_e7cbf2cc does not exist). They are skipped, the
+    job's slot released, until the next open brings the stores back."""
+    for job_id in (
+        "poll:analytics.mv_view_yield:org_sbxtplagriculture",
+        "events:tick:org_sbxtplagriculture",
+    ):
+        assert _submit(None, job_id) == ([], [("success", job_id, [])])
+    (bundles / "ready").write_text("v1\n")
+    job_id = "events:tick:org_sbxtplagriculture"
+    assert _submit(None, job_id) == ([job_id], [("success", job_id, ["event"])])
+
+
+def test_another_orgs_jobs_run_whatever_a_demos_stores_are(bundles):
+    for job_id in ("events:tick:org_default", "events:tick:org_sbx1a2b3c", "otel_compact"):
+        assert _submit(None, job_id)[0] == [job_id]
+
+
+def test_a_tier_that_serves_sandboxes_schedules_the_trace_compaction(monkeypatch):
+    """REQ-862/REQ-2006: the sandbox tier lands its own traces, so it merges them as the
+    deployment's API does: the same otel_compact job, under the tier's own holder. A tier that
+    never compacted kept one file per export batch, and a sandbox's first read of an ops view
+    over the traces opened every one of them (34,149 on cloud.provisa.dev)."""
+    import logging
+
+    from provisa import sandbox_wake
+    from provisa.api import app_startup, sandbox_tier
+    from provisa.api.app import state
+    from provisa.scheduler import jobs
+
+    added: dict[str, object] = {}
+
+    class _Scheduler:
+        def add_job(self, func, *, id, **kwargs):  # noqa: A002 - APScheduler's keyword
+            added[id] = func
+
+        def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(sandbox_tier, "serves_sandboxes", lambda: True)
+    monkeypatch.setattr(sandbox_wake, "SANDBOX_INSTANCE", None)
+    monkeypatch.setattr(app_startup, "_scheduler_holders", lambda _state: None)
+    monkeypatch.setattr(jobs, "new_scheduler", lambda _holders: _Scheduler())
+    monkeypatch.setattr(state, "_scheduler", None, raising=False)
+
+    app_startup._start_scheduler(logging.getLogger("test"))
+
+    assert added["otel_compact"] is jobs.compact_otel_signals
+    assert {"sandbox_reap", "sandbox_late_templates"} <= set(added)

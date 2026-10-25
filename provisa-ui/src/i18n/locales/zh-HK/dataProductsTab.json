@@ -82,7 +82,6 @@
     "relatedTermsLabel": "相關術語",
     "relatedTermsEmpty": "沒有相關術語",
     "relatedTermsLoading": "正在載入相關術語…",
-    "relatedTermsAbstract": "抽象",
     "graphqlQueriesLabel": "存取模式",
     "graphqlQueriesEmpty": "沒有可查詢的數據表或關係",
     "graphqlQueryAria": "執行 {{table}} 的 GraphQL 查詢範例",
@@ -93,6 +92,7 @@
     "openApiQueryAria": "執行 {{table}} 的 REST 要求範例",
     "detail": {
       "field": {
+        "details": "詳情",
         "customProperties": "自訂屬性",
         "relatedTables": "相關數據表",
         "relationships": "關係",
@@ -112,14 +112,14 @@
       "lineageLoading": "正在載入血緣…",
       "lineageHint": "欄位血緣圖，以此產品的數據表作為發佈端點，並列出用於衍生它們的所有上游數據表。僅供參考，需要 view_governance 能力。",
       "inputPortsEmpty": "未記錄上游輸入",
-      "inputPortsHint": "由血緣衍生的單跳輸入 → 轉換 → 輸出。需要 view_governance 能力。",
-      "inputPortsColInputs": "輸入",
-      "inputPortsColTransform": "轉換",
-      "inputPortsColOutput": "輸出",
-      "outputPortsHint": "此產品可供查詢的介面：其成員數據表／欄位及命令，範例查詢見下方「範例查詢與命令」。",
-      "customPropertiesEmpty": "沒有自訂屬性"
+      "inputPortsHint": "此產品直接讀取的表（來自血緣）。展開表可查看其讀取的欄。需要 view_governance 能力。",
+      "outputPortsHint": "此產品可查詢的範圍：其成員資料表和指令。每個的範例查詢見「存取模式」。",
+      "customPropertiesEmpty": "沒有自訂屬性",
+      "lineageLaneUpstream": "上游，第 {{n}} 跳",
+      "lineageLaneDownstream": "下游，第 {{n}} 跳"
     },
     "readOnly": "唯讀",
-    "readOnlyHint": "你只有 data_product_read 權限 — org_admin 可授予 data_product_rw 以進行編輯。"
+    "readOnlyHint": "你只有 data_product_read 權限 — org_admin 可授予 data_product_rw 以進行編輯。",
+    "relatedTermsConcept": "概念"
   }
 }

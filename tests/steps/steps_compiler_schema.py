@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from tests.helpers import registry_write_ops, registry_write_returns_rows
+from tests.write_governance import grants_over
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 
@@ -106,6 +107,7 @@ def _make_default_schema_input(role_id: str = "admin") -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": role_id,
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -188,6 +190,7 @@ def _make_federation_schema_input(role_id: str = "admin") -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": role_id,
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -239,6 +242,7 @@ def _make_sampling_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -294,6 +298,7 @@ def _make_group_by_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -372,6 +377,7 @@ def _make_req009_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -483,6 +489,7 @@ def _make_mongo_discover_schema_input(
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -565,6 +572,7 @@ def _make_naming_convention_schema_input(
     }
 
     role = {
+        "description": "Test role.",
         "id": role_id,
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -687,7 +695,7 @@ def _build_cypher_label_map_for_event() -> Any:
     """
     Build a minimal CypherLabelMap for an Event node with a timestamp PK column.
     """
-    from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
     event_meta = NodeMapping(
         label="Event",
@@ -733,6 +741,11 @@ def _make_hasura_default_schema_input() -> SchemaInput:
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
             "write_refused_forms": [],
+            "write_grants": list(
+                grants_over(
+                    "admin", ["id", "customer_id", "order_total", "order_status", "created_at"]
+                ).values()
+            ),  # REQ-2074
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -754,6 +767,7 @@ def _make_hasura_default_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -803,6 +817,11 @@ def _make_graphql_default_schema_input() -> SchemaInput:
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
             "write_refused_forms": [],
+            "write_grants": list(
+                grants_over(
+                    "admin", ["id", "customer_id", "order_total", "order_status", "created_at"]
+                ).values()
+            ),  # REQ-2074
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -820,6 +839,9 @@ def _make_graphql_default_schema_input() -> SchemaInput:
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
             "write_refused_forms": [],
+            "write_grants": list(
+                grants_over("admin", ["id", "order_id", "product_name", "unit_price"]).values()
+            ),  # REQ-2074
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "order_id", "visible_to": ["admin"]},
@@ -846,6 +868,7 @@ def _make_graphql_default_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -874,7 +897,6 @@ from provisa.security.row_filters import resolve_table_rules  # noqa: E402
 from tests.helpers import governed_for_role  # noqa: E402
 from provisa.compiler.sql_gen import compile_query  # noqa: E402
 from provisa.compiler.context import build_context  # noqa: E402
-from provisa.cypher.translator_helpers import _coerce_ts_literals  # noqa: E402
 from provisa.grpc.proto_gen import generate_proto  # noqa: E402
 
 scenarios("../features/REQ-008.feature")
@@ -991,12 +1013,14 @@ def req253_assert_fresh(shared_data):
 def req403_rules(shared_data):
     rules = [
         {
+            "description": "Test rule.",
             "table_id": 1,
             "domain_id": None,
             "role_id": "analyst",
             "filter_expr": "owner_id = current_user",
         },
         {
+            "description": "Test rule.",
             "table_id": None,
             "domain_id": "sales",
             "role_id": "analyst",
@@ -1037,30 +1061,36 @@ def req403_assert(shared_data):
 # ---------------------------------------------------------------------------
 
 
+def _translated_where(query: str) -> str:
+    """The Trino WHERE ``query`` over the Event node translates to."""
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.translator import cypher_to_sql
+
+    sql, _params, _vars = cypher_to_sql(
+        parse_cypher(query), _build_cypher_label_map_for_event(), {}
+    )
+    return sql.sql(dialect="trino").split(" WHERE ", 1)[1]
+
+
 @given("a Cypher WHERE clause with an ISO 8601 datetime string literal")
 def req409_where(shared_data):
-    shared_data["req409_where"] = "e.created_at = '2024-01-15T00:00:00'"
+    shared_data["req409_query"] = _build_cypher_where_with_datetime("2024-01-15T00:00:00")
 
 
 @when("the translator processes it")
 def req409_process(shared_data):
-    shared_data["req409_out"] = _coerce_ts_literals(shared_data["req409_where"])
+    shared_data["req409_out"] = _translated_where(shared_data["req409_query"])
 
 
 @then("it wraps the literal as TIMESTAMP '...' before SQLGlot parsing")
 def req409_assert(shared_data):
-    out = shared_data["req409_out"]
-    assert out == "e.created_at = TIMESTAMP '2024-01-15T00:00:00'"
-    assert "TIMESTAMP '2024-01-15T00:00:00'" in out
-
-    # The coerced literal must be parseable by SQLGlot as a real TIMESTAMP.
-    import sqlglot
-
-    parsed = sqlglot.parse_one(f"SELECT * FROM t WHERE {out}", read="trino")
-    assert "TIMESTAMP" in parsed.sql(dialect="trino").upper()
-
+    # The literal compares as the timestamp it writes, on the engine too.
+    assert (
+        shared_data["req409_out"] == "e.\"created_at\" = CAST('2024-01-15T00:00:00' AS TIMESTAMP)"
+    )
     # A plain non-datetime string literal is left untouched.
-    assert _coerce_ts_literals("e.name = 'alice'") == "e.name = 'alice'"
+    plain = _translated_where("MATCH (e:Event) WHERE e.name = 'alice' RETURN e.name")
+    assert plain == "e.\"name\" = 'alice'"
 
 
 # ---------------------------------------------------------------------------

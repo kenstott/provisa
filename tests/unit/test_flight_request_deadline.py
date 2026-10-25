@@ -41,6 +41,7 @@ class _State:
         self.flight_global_cap = cap
         _flight_timeout(request_timeout)
         self.security_high = False
+        self.settings_overrides = {"derived_roles": []}  # the org declares no derived role
 
 
 @pytest.fixture(autouse=True)
@@ -150,9 +151,9 @@ def test_execution_gets_what_the_wait_left_of_the_one_deadline(stream_clock, mon
 def test_a_stream_that_waited_is_cut_off_at_the_deadline_not_at_wait_plus_budget(
     stream_clock, monkeypatch
 ):
-    # Every time here is a binary fraction, and no batch lands ON the deadline: the clock starts
-    # at the machine's uptime, so a sum of tenths rounds differently from one run to another and
-    # a batch due exactly when the budget ends falls on either side of it.
+    # Every time here is a binary fraction and the clock starts on a whole second
+    # (tests/deadline_clock.py), so every sum is exact; and no batch lands ON the deadline, where a
+    # batch due exactly when the budget ends would fall on either side of it.
     budget, wait, each = 0.9375, 0.25, 0.125
 
     def _execute(_request):

@@ -27,6 +27,7 @@
     "newTarget": "新目标",
     "noTargets": "暂无目标。请添加此组织要发布到的目录。",
     "catalog": "目录",
-    "catalogHelp": "在 管理 → 目录 中连接的目录。"
+    "catalogHelp": "在 管理 → 目录 中连接的目录。",
+    "betaProvider": "{{name}}（测试版）"
   }
 }

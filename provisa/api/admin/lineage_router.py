@@ -17,6 +17,8 @@ are first-class, non-opaque nodes. The payload is render-ready graph JSON for th
 
 from __future__ import annotations
 
+import dataclasses
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlglot.errors import SqlglotError
@@ -134,7 +136,11 @@ async def lineage_graph(request: Request, body: LineageGraphRequest) -> dict:
     require_capability_request(request, "view_governance")
     from provisa.api.app import state
 
-    commands = getattr(state, "tracked_functions", None) or {}
+    # REQ-2131: a column transform is a named step of the projections that apply it.
+    commands = {
+        **(getattr(state, "tracked_functions", None) or {}),
+        **(getattr(state, "column_transforms", None) or {}),
+    }
     view_rows = await _fetch_view_rows(state)
     views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
     natives = await _native_tables(request, state)
@@ -165,24 +171,29 @@ async def _fetch_view_rows(state) -> list[dict]:
     (materialized targets like ``mv_test``, rewritten source refs), which is exactly what must not
     surface in lineage. The registry rows carry the semantic SQL plus the view's domain, so the graph
     speaks the names the user defined (``<domain>.<table>``, e.g. ``pet_store.test``)."""
+    if getattr(state, "model_db", None) is None:
+        return []
+    async with state.model_db.acquire() as conn:
+        return await _view_rows(conn)
+
+
+async def _view_rows(conn) -> list[dict]:
+    """The semantic view definitions (:func:`_fetch_view_rows`), read on ``conn``."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import registered_tables
 
-    if getattr(state, "model_db", None) is None:
-        return []
-    async with state.model_db.acquire() as conn:
-        res = await conn.execute_core(
-            select(
-                registered_tables.c.domain_id,
-                registered_tables.c.table_name,
-                registered_tables.c.view_sql,
-            ).where(
-                registered_tables.c.source_id == DERIVED_SOURCE_ID,
-                registered_tables.c.view_sql.is_not(None),
-            )
+    res = await conn.execute_core(
+        select(
+            registered_tables.c.domain_id,
+            registered_tables.c.table_name,
+            registered_tables.c.view_sql,
+        ).where(
+            registered_tables.c.source_id == DERIVED_SOURCE_ID,
+            registered_tables.c.view_sql.is_not(None),
         )
-        return [dict(r._mapping) for r in res.fetchall()]
+    )
+    return [dict(r._mapping) for r in res.fetchall()]
 
 
 async def _fetch_registry_columns(state) -> list[dict]:
@@ -193,27 +204,88 @@ async def _fetch_registry_columns(state) -> list[dict]:
     reads it by, so the registry's column and a view's reference to it are one node.
     This is the registry's whole surface — base tables as well as views — so Complete Lineage can show
     a registered table that nothing derives from, and can seed the role cut from what a role may query."""
+    if getattr(state, "model_db", None) is None:
+        return []
+    async with state.model_db.acquire() as conn:
+        return await _registry_columns(conn)
+
+
+async def _registry_columns(conn) -> list[dict]:
+    """The registry's columns (:func:`_fetch_registry_columns`), read on ``conn``, each with its
+    table's id."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import registered_tables, table_columns
 
-    if getattr(state, "model_db", None) is None:
-        return []
-    async with state.model_db.acquire() as conn:
-        res = await conn.execute_core(
-            select(
-                registered_tables.c.domain_id,
-                registered_tables.c.table_name,
-                table_columns.c.column_name,
-                table_columns.c.alias,
-                table_columns.c.visible_to,
-            ).select_from(
-                registered_tables.join(
-                    table_columns, table_columns.c.table_id == registered_tables.c.id
-                )
+    res = await conn.execute_core(
+        select(
+            registered_tables.c.domain_id,
+            registered_tables.c.table_name,
+            table_columns.c.column_name,
+            table_columns.c.alias,
+            table_columns.c.visible_to,
+            table_columns.c.table_id,
+        ).select_from(
+            registered_tables.join(
+                table_columns, table_columns.c.table_id == registered_tables.c.id
             )
         )
-        return [dict(r._mapping) for r in res.fetchall()]
+    )
+    return [dict(r._mapping) for r in res.fetchall()]
+
+
+async def write_lineage_edges(conn, state) -> None:
+    """Replace the lineage edge table with the model's column lineage edges (REQ-2129).
+
+    Run by every model build. The inputs are the federation graph's (GET /admin/lineage/federation):
+    every registered view definition, the served commands, the registry's relations. The edges are
+    folded from the same per-view sub-DAGs that graph is the union of, so the two never differ. An
+    end that is a registered column is stored with its table and its stored name."""
+    from sqlalchemy import delete, insert
+
+    from provisa.core.schema_org import lineage_edges
+    from provisa.lineage.commands import command_write_graphs
+    from provisa.lineage.edges import folded_edges
+    from provisa.lineage.merge import federation_subdags
+
+    commands = state.tracked_functions
+    column_rows = await _registry_columns(conn)
+    views, mats = _registry_views(await _view_rows(conn), getattr(state, "mv_registry", None))
+    registry_relations = sorted(
+        {_relation_of(r["domain_id"], r["table_name"]) for r in column_rows}
+    )
+    edges = folded_edges(
+        federation_subdags(
+            views,
+            commands=commands,
+            materialized_relations=mats,
+            extra_relations=registry_relations,
+        ),
+        command_write_graphs(commands),
+    )
+    registered = {
+        (_relation_of(r["domain_id"], r["table_name"]), sql_column_name(r)): (
+            r["table_id"],
+            r["column_name"],
+        )
+        for r in column_rows
+    }
+    rows = []
+    for e in sorted(edges, key=lambda e: dataclasses.astuple(e)):
+        source = registered.get((e.source_relation, e.source_column), (None, None))
+        target = registered.get((e.target_relation, e.target_column), (None, None))
+        rows.append(
+            {
+                **dataclasses.asdict(e),
+                "source_table_id": source[0],
+                "source_column_name": source[1],
+                "target_table_id": target[0],
+                "target_column_name": target[1],
+            }
+        )
+    await conn.execute_core(delete(lineage_edges))
+    if rows:
+        await conn.execute_core(insert(lineage_edges).values(rows))
 
 
 def _relation_of(domain_id: str, table_name: str) -> str:
@@ -321,7 +393,11 @@ async def federation_graph(
 
     require_capability_request(request, "view_governance")
 
-    commands = getattr(state, "tracked_functions", None) or {}
+    # REQ-2131: a column transform is a named step of the projections that apply it.
+    commands = {
+        **(getattr(state, "tracked_functions", None) or {}),
+        **(getattr(state, "column_transforms", None) or {}),
+    }
     view_rows = await _fetch_view_rows(state)
     column_rows = await _fetch_registry_columns(state)
     domain_filter = {d for d in (domains or "").split(",") if d}

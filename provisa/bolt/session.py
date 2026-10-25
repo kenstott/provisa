@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from enum import Enum, auto
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -23,11 +25,17 @@ import provisa.bolt.messages as msg
 from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
-from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for
+from provisa.compiler.directives import (
+    NO_CACHE_HINT,
+    cache_hint_for,
+    extract_directives_from_cypher_comments,
+)
 from provisa.core import request_deadline
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+
+from provisa.core.statement_warnings import ServerWarning, warn
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -81,6 +89,18 @@ class State(Enum):
     DEFUNCT = auto()
 
 
+@dataclass
+class _OpenResult:
+    """A result of an explicit transaction that a later RUN of it set aside before all its records
+    were pulled: its client pulls the rest by its qid (Bolt 4+)."""
+
+    columns: list[str]
+    rows: list[list[Any]]
+    redirect: dict | None
+    offset: int
+    deadline: request_deadline.Deadline | None
+
+
 class BoltSession:
     def __init__(self, writer: BoltWriter, bolt_version: tuple[int, int]) -> None:
         self.writer = writer
@@ -115,6 +135,13 @@ class BoltSession:
         # ended with the last PULL/DISCARD, a RESET or a failure.
         self._deadline: request_deadline.Deadline | None = None
         self._pull_offset: int = 0
+        # An explicit transaction's results, each named by the qid its RUN's SUCCESS gave: the one
+        # buffered above while open (_qid), and those a later RUN set aside unpulled (_set_aside).
+        # A driver holds several and pulls each by its qid; qids count from 0 at each BEGIN.
+        self._qid: int | None = None
+        self._last_qid: int | None = None  # the transaction's last RUN's: what qid -1 names
+        self._next_qid: int = 0
+        self._set_aside: dict[int, _OpenResult] = {}
 
     # ── Response helpers ───────────────────────────────────────────────────────
 
@@ -148,12 +175,68 @@ class BoltSession:
     def send_failure(self, code: str, message: str) -> None:
         self._send(pack_message(msg.FAILURE, {"code": code, "message": message}))
         self.state = State.FAILED
-        self._end_request()
+        self._end_all_requests()
 
     def _end_request(self) -> None:
         deadline, self._deadline = self._deadline, None
         if deadline is not None:
             deadline.stop()
+        self._qid = None
+
+    def _end_all_requests(self) -> None:
+        """The buffered result's request and every one set aside in the transaction end."""
+        self._end_request()
+        self._last_qid = None
+        set_aside, self._set_aside = self._set_aside, {}
+        for result in set_aside.values():
+            if result.deadline is not None:
+                result.deadline.stop()
+
+    def _set_current_aside(self) -> None:
+        """The open result of the transaction stays pullable by its qid while another is current."""
+        assert self._qid is not None
+        self._set_aside[self._qid] = _OpenResult(
+            self._result_columns,
+            self._result_rows,
+            self._result_redirect,
+            self._pull_offset,
+            self._deadline,
+        )
+        self._deadline = None
+        self._qid = None
+
+    def _select_result(self, meta: dict) -> bool:
+        """Make the result a PULL or DISCARD names by its qid the buffered one. -1, or none, is
+        the last RUN's. A qid naming no open result of the transaction is refused."""
+        qid = meta.get("qid", -1)
+        if qid == -1:
+            if self._last_qid is None:  # an auto-commit RUN's: the one buffered
+                return True
+            qid = self._last_qid
+        if qid == self._qid:
+            return True
+        if qid not in self._set_aside:
+            self.send_failure("Neo.ClientError.Request.Invalid", f"No open result has qid {qid}")
+            return False
+        if self._qid is not None:
+            self._set_current_aside()
+        result = self._set_aside.pop(qid)
+        self._result_columns = result.columns
+        self._result_rows = result.rows
+        self._result_redirect = result.redirect
+        self._pull_offset = result.offset
+        self._deadline = result.deadline
+        self._qid = qid
+        return True
+
+    def _result_done(self) -> None:
+        """The buffered result has sent its last record: its request ends, and the transaction
+        streams on while a result set aside is still open."""
+        self._end_request()
+        if self.state == State.TX_STREAMING:
+            self.state = State.TX_STREAMING if self._set_aside else State.TX_READY
+        else:
+            self.state = State.READY
 
     def _fail_timed_out(self, deadline: request_deadline.Deadline) -> None:
         """REQ-1905: the request outran Bolt's request timeout — a FAILURE naming the transport
@@ -239,10 +322,12 @@ class BoltSession:
         all_roles = [r for r in app_state.contexts if not is_meta_role_id(r)]
 
         if provider == "none" or not getattr(app_state, "auth_middleware_active", False):
-            # No auth — every role is available; default to principal if it names a real role.
+            # No auth — every role is available; default to principal if it names a real role,
+            # or a set of roles: unsecured, the set acts as its meta-role, resolved once the
+            # session's org is bound (_meta_role), as X-Provisa-Role is on HTTP (REQ-1952).
             ordered = (
                 [principal, *[r for r in all_roles if r != principal]]
-                if principal and principal in app_state.contexts
+                if principal and (principal in app_state.contexts or "," in principal)
                 else all_roles
             )
             self._identity = None
@@ -329,8 +414,16 @@ class BoltSession:
         try:
             # REQ-2057: a derived role the session's identity holds is named like any role.
             identity = self._identity
-            if identity is None:  # an unsecured session holds no derived role
-                return resolve_requested_role(app_state, set(self.roles), named)
+            if identity is None:
+                # Unsecured: a declared derived role named in the set is held, taken at its word
+                # as the HTTP middleware takes X-Provisa-Role's (REQ-1952, REQ-2057).
+                from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+
+                def named_derived() -> dict[str, str]:
+                    names = [r.strip() for r in named.split(",") if r.strip()]
+                    return named_unsecured(names, declared_derived_roles(app_state))[1]
+
+                return resolve_requested_role(app_state, set(self.roles), named, named_derived)
             from provisa.auth.derived_roles import principal_of
 
             return resolve_requested_role(
@@ -375,7 +468,29 @@ class BoltSession:
         self.send_failure("Neo.ClientError.Security.Forbidden", role_probe.NOT_PERMITTED)
         self.state = State.DEFUNCT
 
-    def _resolve_db(self, db: Any) -> tuple[str, bool] | None:
+    def _derived_held(self, app_state: Any) -> Callable[[str], bool]:
+        """Whether a name is a derived role this session holds (REQ-2057), read in its bound org:
+        signed in, one the identity's attributes give it; unsecured, any the org declares, taken at
+        its word as X-Provisa-Role's are on HTTP (REQ-1952) -- what :meth:`_meta_role` resolves."""
+        from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._bound_org())
+        try:
+            identity = self._identity
+            if identity is None:
+                declared = declared_derived_roles(app_state)
+                return lambda name: bool(named_unsecured([name], declared)[1])
+            from provisa.auth.derived_roles import principal_of
+
+            held = principal_of(app_state, identity)[1]
+            return lambda name: name in held
+        finally:
+            reset_current_org(token)
+
+    def _resolve_db(
+        self, db: Any, derived_held: Callable[[str], bool] | None = None
+    ) -> tuple[str, bool] | None:
         """Map a Bolt `db` value to (role_id, include_ops), or None if unauthorized.
 
         The db name encodes two axes:
@@ -384,7 +499,8 @@ class BoltSession:
         Empty / "system" / "provisa" → default role, business view.
         ``<role>`` may be a comma-separated set of held roles, which acts as their meta-role
         (security/meta_role.py; resolved once the session's org is bound). Every role must be in
-        the user's set; anything else → None.
+        the user's set, or a derived role the session holds (``derived_held``, read once its org
+        is bound; None before then: no derived role is known held); anything else → None.
         """
         from provisa.security.meta_role import RoleNotHeld, is_meta_role_id
 
@@ -398,7 +514,11 @@ class BoltSession:
                 named = [r.strip() for r in db[len(prefix) :].split(",") if r.strip()]
                 if any(is_meta_role_id(r) for r in named):
                     return None  # a meta-role is never named; the roles it is made of are
-                unheld = [r for r in named if r not in self.roles]
+                unheld = [
+                    r
+                    for r in named
+                    if r not in self.roles and not (derived_held is not None and derived_held(r))
+                ]
                 if named and unheld:
                     # REQ-2076: a role named that the caller does not hold, not an unknown name.
                     raise RoleNotHeld(unheld[0], set(self.roles))
@@ -488,10 +608,10 @@ class BoltSession:
     def close(self) -> None:
         """The connection has ended (GOODBYE, the client gone, or the session defunct): a request
         whose records were never pulled ends with it — its deadline stops (REQ-1905)."""
-        self._end_request()
+        self._end_all_requests()
 
     def handle_reset(self) -> None:
-        self._end_request()
+        self._end_all_requests()
         self._result_columns = []
         self._result_rows = []
         self._result_redirect = None
@@ -506,6 +626,8 @@ class BoltSession:
             return
         meta: dict = fields[0] if fields and isinstance(fields[0], dict) else {}
         self._tx_db = meta.get("db")
+        self._next_qid = 0
+        self._last_qid = None
         self.state = State.TX_READY
         self.send_success({})
 
@@ -514,6 +636,7 @@ class BoltSession:
             self.send_ignored()
             return
         self._tx_db = None
+        self._end_all_requests()
         self.state = State.READY
         self.send_success({})
 
@@ -522,6 +645,7 @@ class BoltSession:
             self.send_ignored()
             return
         self._tx_db = None
+        self._end_all_requests()
         self.state = State.READY
         self.send_success({})
 
@@ -613,8 +737,18 @@ class BoltSession:
         from provisa.security import role_probe
         from provisa.security.meta_role import RoleNotHeld
 
+        derived_held: Callable[[str], bool] | None = None
+        if self.roles and self.state != State.FAILED:
+            # A derived role the session holds is known only in its org (REQ-2057, REQ-1952): the
+            # org is resolved before the database's roles are checked.
+            try:
+                await self._ensure_org(database_org)
+            except OrgResolutionError as exc:
+                self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
+                return
+            derived_held = self._derived_held(_app_state)
         try:
-            resolved = self._resolve_db(db) if self.roles else None
+            resolved = self._resolve_db(db, derived_held) if self.roles else None
         except RoleNotHeld as refused:
             await self._probed(refused, database_org)
             return
@@ -660,8 +794,9 @@ class BoltSession:
             self.state = State.DEFUNCT
             return
 
-        if "," in role_id:
-            # A set of held roles acts as their meta-role, built in this session's org.
+        if "," in role_id or role_id not in self.roles:
+            # A set of held roles, or a held derived role, acts as their meta-role, built in this
+            # session's org.
             try:
                 role_id = self._meta_role(_app_state, role_id)
             except RoleNotHeld as refused:
@@ -701,7 +836,11 @@ class BoltSession:
         # Bolt executes on the event loop (no thread hop), so a plain scope binds it. A connection
         # that named no principal (an unsecured deployment) is audited as the anonymous one.
         _audit_scope = audit_identity_scope(self.user_id or ANONYMOUS_USER, "bolt")
-        self._end_request()  # a RUN over a result that was never drained ends that request
+        if self._qid is not None:
+            # Another RUN of the transaction: its open result stays pullable by its qid.
+            self._set_current_aside()
+        else:
+            self._end_request()  # a RUN over a result that was never drained ends that request
         shield = request_deadline.shielded()
         deadline = request_deadline.open_request("bolt")
         from provisa.core.statement_warnings import collecting
@@ -772,6 +911,12 @@ class BoltSession:
         in_tx = self.state in (State.TX_READY, State.TX_STREAMING)
         self.state = State.TX_STREAMING if in_tx else State.STREAMING
         meta: dict = {"fields": columns, "t_first": 0}
+        if in_tx:
+            self._qid, self._next_qid = self._next_qid, self._next_qid + 1
+            self._last_qid = self._qid
+            meta["qid"] = self._qid
+        else:
+            self._last_qid = None
         notifications = [
             {
                 "code": f"Provisa.{w.code}",
@@ -823,6 +968,8 @@ class BoltSession:
             return
 
         meta: dict = fields[0] if fields and isinstance(fields[0], dict) else {}
+        if not self._select_result(meta):
+            return
         n = meta.get("n", -1)
 
         _dbg = logging.getLogger("uvicorn.error")
@@ -869,10 +1016,8 @@ class BoltSession:
             return
 
         has_more = self._pull_offset < len(self._result_rows)
-        in_tx = self.state == State.TX_STREAMING
         if not has_more:
-            self.state = State.TX_READY if in_tx else State.READY
-            self._end_request()
+            self._result_done()
         summary: dict = {"has_more": has_more, "t_last": 0, "type": "r"}
         if not has_more and self._result_redirect is not None:
             summary["redirect"] = self._result_redirect  # REQ-1194/REQ-1195
@@ -883,16 +1028,16 @@ class BoltSession:
             self.send_ignored()
             return
         meta: dict = fields[0] if fields and isinstance(fields[0], dict) else {}
+        if not self._select_result(meta):
+            return
         n = meta.get("n", -1)
         if n == -1:
             self._pull_offset = len(self._result_rows)
         else:
             self._pull_offset = min(self._pull_offset + n, len(self._result_rows))
-        in_tx = self.state == State.TX_STREAMING
         has_more = self._pull_offset < len(self._result_rows)
         if not has_more:
-            self.state = State.TX_READY if in_tx else State.READY
-            self._end_request()
+            self._result_done()
         self.send_success({"has_more": has_more})
 
     def handle_route(self) -> None:
@@ -928,7 +1073,7 @@ def _bolt_label_map(ctx: Any, role_id: str, include_ops: bool, app_state: Any) -
     domain_access is always applied first, so no db name can exceed the role's rights.
     """
     from provisa.api.rest.cypher_plan import kept_label_map
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     domain_access = _bolt_domain_access(app_state, role_id)
     cache = app_state.schema_build_cache
@@ -978,7 +1123,7 @@ def _business_view(base: Any) -> Any:
     from_schema's domain_access only gates cross-domain node addition — it does not filter the
     base node set — so the exclusion happens here, post-build."""
     from provisa.core import domain_policy
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     sys_ids = set(domain_policy.system_domain_ids())
     biz_nodes = {tn: nm for tn, nm in base.nodes.items() if (nm.domain_id or "") not in sys_ids}
@@ -1183,8 +1328,9 @@ def _system_query(
 
 async def _graph_counts(
     ctx: Any, role_id: str, include_ops: bool, app_state: Any
-) -> tuple[int, int]:
-    """Total node/rel counts: sum of per-label count(n) and per-rel-type count(r).
+) -> tuple[int | None, int | None]:
+    """Total node/rel counts: sum of per-label count(n) and per-rel-type count(r); None when a
+    count in it could not be made (each logged and sent as a warning notification).
 
     Mirrors /data/graph-counts (REQ-392); view-labels over the same physical rows
     are counted per-label, matching the internal graph browser.
@@ -1205,22 +1351,39 @@ async def _graph_counts(
             seen.add(rel.rel_type)
             rel_types.append(rel.rel_type)
 
-    async def _count(cypher: str) -> int:
+    async def _count(cypher: str) -> int | None:
+        """The count, or None when the engine could not make it: logged, and said to the client
+        as a warning notification -- never counted as 0 rows."""
         try:
             _cols, rows, _ = await _execute_cypher(cypher, {}, role_id, include_ops=include_ops)
-            return int(rows[0][0]) if rows and rows[0] else 0
-        except Exception:
-            return 0
+        except (
+            Exception
+        ) as exc:  # allow-ble: any engine error leaves this one count unknown, said below
+            log.warning("[BOLT] graph count not made: %s: %s", cypher, exc)
+            warn(count_unknown_warning(cypher, str(exc)))
+            return None
+        return int(rows[0][0]) if rows and rows[0] else 0
 
     # Sequential, not asyncio.gather: a native engine (DuckDB) runs on ONE non-reentrant connection,
     # so concurrent count queries race and return sporadic zeros for attached/materialized sources.
-    node_count = 0
-    for lbl in node_labels:
-        node_count += await _count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt")
-    rel_count = 0
-    for rt in rel_types:
-        rel_count += await _count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt")
-    return node_count, rel_count
+    # A total is a total only when every count in it was made: otherwise it is unknown (None).
+    node_counts = [await _count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt") for lbl in node_labels]
+    rel_counts = [await _count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt") for rt in rel_types]
+    return _sum_known(node_counts), _sum_known(rel_counts)
+
+
+def _sum_known(counts: list[int | None]) -> int | None:
+    """The sum, or None when any count is unknown."""
+    return None if None in counts else sum(c for c in counts if c is not None)
+
+
+def count_unknown_warning(statement: str, reason: str) -> ServerWarning:
+    """What the browser's node/relationship totals say when one count could not be made."""
+    return ServerWarning(
+        code="cypher.count_unknown",
+        params={"statement": statement, "reason": reason},
+        message=f"A count could not be made, so the total is unknown: {statement}: {reason}",
+    )
 
 
 async def _impute_relationships(
@@ -1471,26 +1634,38 @@ async def _execute_cypher(
     the read path honours it — catalog/system, command, and write branches never redirect (REQ-1194).
     """
     from provisa.api.app import state as app_state
-    from provisa.cypher.assembler import (
+    from provisa.gql.assembler import (
         assemble_rows,
         register_node_ids,
         register_rel_ids,
+        take_cut,
         to_serializable,
     )
     from provisa.cypher.params import CypherParamError, bind_params, collect_param_names
-    from provisa.cypher.parser import CypherParseError, parse_cypher
-    from provisa.cypher.translator import (
+    from provisa.cypher.parser import (
+        CypherParseError,
+        parse_cypher,
+        refuse_multiple_statements,
+    )
+    from provisa.gql.translator import (
         CypherCrossSourceError,
         CypherTranslateError,
         cypher_to_sql,
     )
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     ctx = app_state.contexts.get(role_id)
     if ctx is None:
         raise PermissionError("Schema not loaded")
+
+    # One statement per RUN, as Neo4j takes it: "stmt1; stmt2" is refused whole, never run in
+    # part. Before every branch below, so a catalog query or a command call is held to it too.
+    try:
+        refuse_multiple_statements(cypher)
+    except CypherParseError as exc:
+        raise ValueError(str(exc)) from exc
 
     result = _system_query(cypher, ctx, role_id, include_ops, app_state, roles, orgs)
     if result is not None:
@@ -1559,12 +1734,11 @@ async def _execute_cypher(
         except CypherWriteParseError:
             pass
 
+        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
         try:
-            ast = parse_cypher(cypher)
+            ast = parse_cypher(cypher, label_map)
         except CypherParseError as exc:
             raise ValueError(str(exc)) from exc
-
-        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
 
         param_names = collect_param_names(cypher)
         try:
@@ -1611,6 +1785,8 @@ async def _execute_cypher(
         buffered=True,
         # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
         cache_hint=cache_hint_for("cypher", cypher),
+        # REQ-030: the statement's own `// @provisa route=...` comment.
+        steward_hint=extract_directives_from_cypher_comments(cypher).steward_hint,
         # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
         serve_cached=True,
         sdl_joins=False,
@@ -1619,7 +1795,7 @@ async def _execute_cypher(
     if result.redirect is not None:
         # Materialized to a sink — no records stream; the handle rides the trailing SUCCESS metadata.
         return [], [], result.redirect
-    raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    raw_rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r) for r in assembled]
 

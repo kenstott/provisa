@@ -1,0 +1,24 @@
+{
+  "dataProductCore": {
+    "error": "データプロダクトを読み込めませんでした: {{error}}",
+    "tags": "タグ",
+    "tagsEmpty": "タグはありません。",
+    "profiles": "プロファイル",
+    "profilesHint": "各メンバーテーブルに登録されたプロファイル結果テーブルです。開くと結果を読めます。",
+    "profilesEmpty": "プロファイルされたメンバーテーブルはありません。",
+    "scans": "{{table}} をチェック",
+    "aProduct": "データプロダクト",
+    "direct": "直接",
+    "hops_one": "ホップ: {{count}}",
+    "hops_other": "ホップ: {{count}}",
+    "paths_one": "パス: {{count}}",
+    "paths_other": "パス: {{count}}",
+    "through": "経由: {{tables}}",
+    "upstream": "アップストリーム",
+    "downstream": "ダウンストリーム",
+    "via": "経由: {{vias}}",
+    "unreadable": "あなたのロールは meta ドメインのデータプロダクトを読み取れません。",
+    "detailExpand": "項目全体を表示",
+    "detailCollapse": "表示を減らす"
+  }
+}
