@@ -172,3 +172,26 @@ async def test_a_change_of_naming_convention_respells_the_stored_graphql_field(c
             assert served["order-to-line-items"]["graphql_alias"] == "line_items"
     finally:
         naming.configure()
+
+
+async def test_a_build_writes_no_name_already_stored(control_plane):
+    """REQ-351, REQ-1524: a worker reloading another's change runs the build outside any model
+    change scope, where a model write is refused (ModelChangeOutsideScope). Names that are already
+    stored are not written again, so the reload reaches the stored stamp."""
+    from sqlalchemy.sql.dml import Update
+
+    from provisa.core.relationship_names import store_effective_names
+
+    db = await _plane(control_plane)
+    async with db.acquire() as conn:
+        written: list[object] = []
+        execute = conn.execute_core
+
+        async def _recording(stmt, *args, **kwargs):
+            if isinstance(stmt, Update):
+                written.append(stmt)
+            return await execute(stmt, *args, **kwargs)
+
+        conn.execute_core = _recording  # type: ignore[method-assign]
+        await store_effective_names(conn)
+    assert written == []
