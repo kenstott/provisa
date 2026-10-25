@@ -88569,10 +88569,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     are its branches. Data access: every table the role reaches once scope is applied (its domains, and
     listed or public columns of other domains), each expanding to its columns with scope, read or write,
     mask, row rule and the granting role. A derived role has the data access tab only. (Amended 2026-10-25,
-    DOMAIN SELECTOR:) The data access tab has a domain selector. For a role with domain reach it defaults
-    to that reach and can narrow to one domain. For a standard role, which reaches none, it previews the
-    role as if it reached the chosen domain, which is what a child role reaching that domain gets. The selected
-    domain decides which other domains'' columns appear as listed or public.'
+    DOMAIN SELECTOR:) [SUPERSEDED by REQ-2161, 2026-10-25 -- no selector: a role''s reach is the selection;
+    a standard role shows capabilities only. Kept here for history; do not implement against it.] The data
+    access tab has a domain selector. For a role with domain reach it defaults to that reach and can narrow
+    to one domain. For a standard role, which reaches none, it previews the role as if it reached the chosen
+    domain, which is what a child role reaching that domain gets. The selected domain decides which other
+    domains'' columns appear as listed or public. [END SUPERSEDED BLOCK] (Amended 2026-10-25, NO DOMAIN
+    SELECTOR:) The data access tab shows the role''s own reach, with the listed and public columns of other
+    domains; domain-specific roles are how reach varies, so there is no selector. A standard role, which
+    reaches no domain, shows the Capabilities tab only. The table list has the ordinary domain filter every
+    list page has.'
   scenario: 'Given role dq_lead inheriting Data quality steward and Data product owner
 
     When a security admin opens dq_lead on the Security page
