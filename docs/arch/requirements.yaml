@@ -88554,12 +88554,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   description: 'The Security page''s role detail panel shows the role''s effective rights, as the composition
     of scope, capabilities and grants (REQ-2159): every capability the role holds with the role it comes
     from (its own or the ancestor that carries it), its domain reach, and per table and column the access
-    it has (read, write, masked, row rule) with the grant that gives it and the column''s scope. It is
-    shown for any role, including a meta-role, whose view is the union of its members''. A derived role
-    (REQ-2057) carries no capabilities and is never granted by hand: its panel shows only the grants that
-    name it, so it reads as what an attribute value unlocks. The view is itself capped by the viewer''s
-    read rights (REQ-2152): it lists only tables and columns the viewer can read, and nothing marks that
-    others exist.'
+    it has (read, write, masked, row rule) with the grant that gives it and the column''s scope. It is shown
+    for any role, including a meta-role, whose view is the union of its members''. A derived role (REQ-2057)
+    carries no capabilities and is never granted by hand: its panel shows only the grants that name it,
+    so it reads as what an attribute value unlocks. The view is itself capped by the viewer''s read rights
+    (REQ-2152): it lists only tables and columns the viewer can read, and nothing marks that others exist.
+    (Amended 2026-10-25, TWO DIMENSIONS:) The effective rights are shown in two tabs, one per dimension.
+    Capabilities: a role lineage drawn left to right with the lineage diagram component, from the standard
+    roles to the selected role, each node listing the capabilities it adds and the last the accumulated
+    set; a capability reached through two parents is shown where it first enters; a meta-role''s members
+    are its branches. Data access: every table the role reaches once scope is applied (its domains, and
+    listed or public columns of other domains), each expanding to its columns with scope, read or write,
+    mask, row rule and the granting role. A derived role has the data access tab only.'
   scenario: 'Given role dq_lead inheriting Data quality steward and Data product owner
 
     When a security admin opens dq_lead on the Security page
