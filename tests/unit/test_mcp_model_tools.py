@@ -799,8 +799,9 @@ async def test_propose_fakes_refuses_an_unprofiled_table(monkeypatch, app_state,
 
 async def test_propose_fakes_returns_proposals_and_saves_nothing(monkeypatch, app_state, acme):
     _use_db(monkeypatch, app_state, {})
+    # Proposals.columns maps each column to its proposal (fakes.propose.Proposals).
     proposed = SimpleNamespace(
-        run_id="r2", columns=[{"column": "email", "fake": "email()"}], unmatched_pii=[]
+        run_id="r2", columns={"email": {"fake": "email()"}}, unmatched_pii=[]
     )
     with (
         patch(
@@ -815,7 +816,7 @@ async def test_propose_fakes_returns_proposals_and_saves_nothing(monkeypatch, ap
         out = await model_tools.propose_fakes(app_state, "steward", _request("steward"), 7)
     assert out == {
         "runId": "r2",
-        "columns": [{"column": "email", "fake": "email()"}],
+        "columns": {"email": {"fake": "email()"}},
         "unmatchedPii": [],
     }
     save.assert_not_called()

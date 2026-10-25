@@ -21,6 +21,14 @@ from provisa.core import glossary_findings
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import tag_assignments
 from tests.unit.test_glossary_class_grounding import _ground, _request, _surface
+from tests.unit.gate_identity import serve_every_column
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which columns a caller may read is REQ-2152's own tests
+    (test_glossary_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 async def _found(kind: str) -> dict[int, list[dict]]:
