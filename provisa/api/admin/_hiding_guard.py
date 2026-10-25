@@ -341,7 +341,7 @@ async def keep_unserved_columns(info: Any, input_: Any) -> Any:  # REQ-2152
         stored = await stored_table(conn, input_)
     if stored is None:
         return input_
-    served = scope.columns(stored["id"], stored["domain_id"])
+    served = scope.columns(stored["id"])
     if served is None:
         return input_
     held = table_input(await read_table(stored["id"])).columns
