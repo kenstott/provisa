@@ -153,6 +153,11 @@ class ExprContext(Protocol):
         """``EXISTS/COUNT/COLLECT { … }`` — builds the correlated subquery."""
         ...
 
+    def resolve_graph_absent(self, name: str) -> exp.Expression | None:
+        """Where a bound node or relationship variable is null (an OPTIONAL MATCH bound none),
+        None for any other name (#304)."""
+        ...
+
     def resolve_pattern_comprehension(self, node: PatternComprehension) -> exp.Expression:
         """``[(a)-[r]->(b) WHERE p | e]`` — builds the correlated path subquery."""
         ...
@@ -324,6 +329,11 @@ class ExprLowering:
         return exp.In(this=left, field=right)
 
     def _lower_IsNull(self, node: IsNull) -> exp.Expression:
+        if isinstance(node.operand, Variable):
+            # A node or relationship is null by its own row, not by a column of its name (#304).
+            absent = self._ctx.resolve_graph_absent(node.operand.name)
+            if absent is not None:
+                return exp.Not(this=exp.Paren(this=absent)) if node.negated else absent
         is_expr = exp.Is(this=self.lower(node.operand), expression=exp.Null())
         return exp.Not(this=is_expr) if node.negated else is_expr
 

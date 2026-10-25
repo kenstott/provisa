@@ -478,6 +478,28 @@ class TranslatorExprContext:
             return node_json(alias, nm)
         return None
 
+    def resolve_graph_absent(self, name: str) -> exp.Expression | None:
+        t = self._t
+        if name in t._rel_var_types:
+            matched = t._rel_var_matched.get(name)
+            if matched is not None:
+                # Between two held nodes (#303): absent where its condition does not hold.
+                return exp.Case(
+                    ifs=[exp.If(this=matched.copy(), true=exp.false())], default=exp.true()
+                )
+            endpoints = t._rel_var_endpoints.get(name)
+            if name in t._optional_rel_vars and endpoints is not None:
+                # As RETURN r reads it (select_builder): absent where its far end joined no row.
+                _, _, tgt_alias, tgt_nm, _ = endpoints
+                return exp.Is(this=_col(tgt_nm.id_column, tgt_alias), expression=exp.Null())
+            if name not in t._optional_rel_vars:
+                return exp.false()
+            return None
+        alias, nm = t._var_table.get(name, (name, None))
+        if nm is not None:
+            return exp.Is(this=_col(nm.id_column, alias), expression=exp.Null())
+        return None
+
     def resolve_map_projection(self, node: MapProjection) -> exp.Expression:
         # n{.a, x: e, .*} → MAP(ARRAY['a','x',...], ARRAY[n."a", (e), ...]) — dotted selectors use the
         # raw property name; literal entries lower their value expression (matching the text path).
