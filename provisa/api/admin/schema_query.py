@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
@@ -348,6 +349,23 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
         )
         for r in src_res.fetchall()
     ]
+
+
+def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
+    """Whether the caller is served a column of every registered table named ``name`` (a name
+    held by a table it is not served is not told) -- for the observability lists, which name
+    tables rather than address them (REQ-2152, ruling Q3)."""
+    ids: dict[str, list[int]] = {}
+    for t in state.tables:
+        ids.setdefault(t["table_name"], []).append(t["id"])
+
+    def _reads(name: str) -> bool:
+        if scope.whole:
+            return True
+        bare = name.split(".")[-1]
+        return bare in ids and all(scope.lists_table(i) for i in ids[bare])
+
+    return _reads
 
 
 async def _table_region_maps(
@@ -1403,6 +1421,13 @@ class Query:  # REQ-021, REQ-042
         from provisa.mv.bitemporal_capture import logged_table_id
 
         names = {row["id"]: row["table_name"] for row in state.tables}
+        # REQ-2152 (Q3): only the materialized views over tables the caller reads.
+        reads = _names_read(state, catalog_scope(info))
+
+        def _readable(mv: Any) -> bool:
+            over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
+            return all(reads(name) for name in over)
+
         return [
             MVType(
                 id=mv.id,
@@ -1418,6 +1443,7 @@ class Query:  # REQ-021, REQ-042
                 version_log_of=(None if (tid := logged_table_id(mv.id)) is None else names[tid]),
             )
             for mv in state.mv_registry._mvs.values()
+            if _readable(mv)
         ]
 
     @strawberry.field
@@ -1764,7 +1790,12 @@ class Query:  # REQ-021, REQ-042
 
         # REQ-595: the acting org's entries in the acting environment, no other org's.
         counts = await state.response_cache_store.table_entry_counts(cache_place(state))
-        return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
+        scope = catalog_scope(info)  # REQ-2152 (Q3): only the tables the caller reads
+        return [
+            CacheTableStatType(table_id=tid, cached_entries=n)
+            for tid, n in counts.items()
+            if scope.lists_table(tid)
+        ]
 
     @strawberry.field
     async def region_choices(self) -> RegionChoicesType:  # REQ-1921
@@ -1836,6 +1867,7 @@ class Query:  # REQ-021, REQ-042
                 return by_id.get(e["table_id"])
             return by_key.get((e["catalog"], e["schema"], e["table_name"]))
 
+        reads = _names_read(state, catalog_scope(info))  # REQ-2152 (Q3)
         return [
             HotTableStatType(
                 table_name=e["table_name"],
@@ -1846,6 +1878,7 @@ class Query:  # REQ-021, REQ-042
                 region=_region_of(e),
             )
             for e, kind in entries
+            if reads(e["table_name"])
         ]
 
     @strawberry.field
@@ -1871,6 +1904,7 @@ class Query:  # REQ-021, REQ-042
         failure = replica_converge.last_error.get(current_org.get(None))
         # REQ-1922: stamp each replica with its table's stored home region (key is source/schema/table).
         _, by_key = await _table_region_maps(state)
+        reads = _names_read(state, catalog_scope(info))
         return ReplicaBuildsType(
             builds=[
                 ReplicaBuildType(
@@ -1881,6 +1915,7 @@ class Query:  # REQ-021, REQ-042
                     region=by_key.get((record.key[0], record.key[1], record.key[2])),
                 )
                 for record in records
+                if reads(record.key[2])  # REQ-2152 (Q3): only the tables the caller reads
             ],
             convergence_error=failure["cause"] if failure else None,
             convergence_error_at=failure["at"].isoformat() if failure else None,
@@ -1932,8 +1967,12 @@ class Query:  # REQ-021, REQ-042
         runs = await last_runs(state)
         org_id = require_current_org()
         scheduler = state._scheduler
+        reads = _names_read(state, catalog_scope(info))
         result = []
         for row in rows:
+            # REQ-2152 (Q3): a trigger on a table's change or event names that table.
+            if row["on_table"] is not None and not reads(row["on_table"]):
+                continue
             job = (
                 scheduler.get_job(trigger_job_id(row["id"], org_id))
                 if scheduler is not None

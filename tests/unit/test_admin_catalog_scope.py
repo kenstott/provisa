@@ -511,3 +511,42 @@ def test_the_scope_is_decided_by_rights_and_reach_never_by_a_role_id(monkeypatch
     assert set(analyst.served) == {1, 2}
     platform = catalog_scope(_caller(by_old["platform"]))
     assert platform.served == {}
+
+
+# --- observability (REQ-2152, ruling Q3) ----------------------------------------------------------
+
+
+async def test_observability_lists_only_the_tables_its_caller_reads(monkeypatch):
+    """The cache and materialized-view lists name tables; a caller is told only of those it is
+    served a column of (the analyst reads orders and customers, not staff)."""
+
+    class _Cache:
+        async def table_entry_counts(self, place):
+            return {1: 3, 3: 5}
+
+    monkeypatch.setattr(appmod.state, "response_cache_store", _Cache(), raising=False)
+    monkeypatch.setattr("provisa.cache.tenancy.cache_place", lambda state: "p")
+    monkeypatch.setattr(schema_query, "require_capability", lambda info, cap: None)
+    stats = await Query().cache_table_stats(_caller("analyst"))
+    assert [s.table_id for s in stats] == [1]
+
+    def _mv(mv_id, source_tables):
+        return types.SimpleNamespace(
+            id=mv_id,
+            source_tables=source_tables,
+            target_table="",
+            refresh_interval=60,
+            enabled=True,
+            status=types.SimpleNamespace(value="fresh"),
+            last_refresh_at=None,
+            row_count=0,
+            last_error=None,
+            allowed_lateness=None,
+        )
+
+    registry = types.SimpleNamespace(
+        _mvs={"a": _mv("mv_orders", ["orders"]), "b": _mv("mv_staff", ["staff"])}
+    )
+    monkeypatch.setattr(appmod.state, "mv_registry", registry, raising=False)
+    monkeypatch.setattr("provisa.mv.bitemporal_capture.logged_table_id", lambda mv_id: None)
+    assert [m.id for m in await Query().mv_list(_caller("analyst"))] == ["mv_orders"]

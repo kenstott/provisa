@@ -3608,8 +3608,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     try:
                         await apply_dq_registration(_conn, model)
                         # REQ-1934: a profile result table's derivation, and a table's profiler membership.
-                        from provisa.profiler.registration import apply_registration
+                        from provisa.profiler.registration import (
+                            apply_registration,
+                            profile_reach_refusal,
+                        )
+                        from provisa.api.admin.catalog_scope import catalog_scope
+                        from provisa.api.admin.read_rights import serves_every_column
 
+                        _scope = catalog_scope(info)
+
+                        async def _serves_all(table_id: int) -> bool:
+                            return await serves_every_column(_conn, _scope, table_id)
+
+                        # REQ-2152 (Q6a): profiling a table takes reading all of it.
+                        _reach = await profile_reach_refusal(_conn, model, _serves_all)
+                        if _reach is not None:
+                            raise ValueError(_reach)
                         await apply_registration(_conn, model)
                     except ValueError as _dq_err:
                         raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))

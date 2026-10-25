@@ -48,7 +48,9 @@ def serve_every_column(monkeypatch) -> None:
     whose subject is not which columns its caller is served (REQ-2152 has its own tests)."""
     from provisa.api.admin.catalog_scope import CatalogScope
 
-    monkeypatch.setattr(
-        "provisa.api.admin.catalog_scope.catalog_scope",
-        lambda info: CatalogScope(whole=True, reach=None, served={}, governance=True, role=None),
-    )
+    def whole(info):
+        return CatalogScope(whole=True, reach=None, served={}, governance=True, role=None)
+
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", whole)
+    # schema_query binds the name at import, so its reference is replaced too.
+    monkeypatch.setattr("provisa.api.admin.schema_query.catalog_scope", whole)
