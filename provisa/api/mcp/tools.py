@@ -505,16 +505,21 @@ async def list_glossary_terms(
     edge-connected to one), deprecated or retired -- so you can tell them apart without a second
     call; see create/update below for what 'finalizing' a term means."""
     require_role(role, state)
-    from provisa.api.admin.glossary_router import _require_glossary_read, _view_scope
+    from provisa.api.admin.glossary_router import (
+        _require_glossary_read,
+        _view_scope,
+        counted_as_served,
+    )
     from provisa.core.repositories import glossary as glossary_repo
 
     _require_glossary_read(request)
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        return await glossary_repo.list_terms(
+        terms = await glossary_repo.list_terms(
             conn, q=q, include_deprecated=include_deprecated, domains=_view_scope(request, None)
         )
+        return await counted_as_served(conn, request, terms)
 
 
 async def create_glossary_term(

@@ -123,7 +123,6 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
     from provisa.core.schema_org import (
         materialized_views,
         metrics,
-        relationships,
         rls_rules,
         table_columns,
         tag_assignments,
@@ -142,23 +141,7 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
         ).fetchone()
         return row is not None and reader.column(row.table_id, row.column_name)
     if kind == "relationship":
-        row = (
-            await conn.execute_core(select(relationships).where(relationships.c.id == key))
-        ).fetchone()
-        if row is None:
-            return False
-        ends = [
-            (row.source_table_id, row.source_column),
-            (row.target_table_id, row.target_column),
-            (row.via_table_id, None),
-        ]
-        return all(
-            reader.column(table_id, c)
-            for table_id, column in ends
-            if table_id is not None
-            # A composite key lists its columns comma-separated (REQ-1586).
-            for c in ([part.strip() for part in column.split(",")] if column else [None])
-        )
+        return await relationship_readable(conn, reader, str(key))
     if kind == "metric":
         row = (await conn.execute_core(select(metrics).where(metrics.c.name == key))).fetchone()
         return row is not None and reader.metric(dict(row._mapping))
@@ -197,6 +180,30 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
         tables = await _tables_named(conn, names)
         return bool(tables) and all(reader.column(t, None) for t in tables)
     return True
+
+
+async def relationship_readable(conn: "Connection", reader: DependentsReader, rel_id: str) -> bool:
+    """Whether ``reader`` is served every column relationship ``rel_id`` joins on, and the table
+    it goes through; a relationship that does not exist is not readable."""
+    from provisa.core.schema_org import relationships
+
+    row = (
+        await conn.execute_core(select(relationships).where(relationships.c.id == rel_id))
+    ).fetchone()
+    if row is None:
+        return False
+    ends = [
+        (row.source_table_id, row.source_column),
+        (row.target_table_id, row.target_column),
+        (row.via_table_id, None),
+    ]
+    return all(
+        reader.column(table_id, c)
+        for table_id, column in ends
+        if table_id is not None
+        # A composite key lists its columns comma-separated (REQ-1586).
+        for c in ([part.strip() for part in column.split(",")] if column else [None])
+    )
 
 
 async def readable_dependents(
