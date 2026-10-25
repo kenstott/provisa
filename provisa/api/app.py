@@ -2838,6 +2838,14 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # lands while the build reads leaves the runtime at the older stamp, so the config watcher
     # rebuilds once more; reading it afterwards would record a stamp newer than the model built.
     from provisa.core import config_stamp as _config_stamp
+    from provisa.core.relationship_names import store_effective_names
+
+    # REQ-351: every relationship's effective names, in the naming convention now in force: a build
+    # follows each save, configuration load and change of convention. Stored before the stamp is
+    # read, as each row it changes advances the stamp: read first, the runtime would be loaded at
+    # a stamp the model has already left, and no audit row could name its commit (REQ-1524).
+    async with state.model_db.acquire() as _names_conn:
+        await store_effective_names(cast("Connection", _names_conn))
 
     _stamped_runtime = state._active_runtime()
     _model_stamp = (await _config_stamp.read(state.model_db))[_config_stamp.MODEL]
@@ -2886,11 +2894,6 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # REQ-1921: out of service — offered in no schema, refused by name when named.
         draft_tables = await _fetch_tables(_pg, draft=True)
         _assert_domain_table_unique(tables)
-        # REQ-351: every relationship's effective names, in the naming convention now in force:
-        # a build follows each save, configuration load and change of convention.
-        from provisa.core.relationship_names import store_effective_names
-
-        await store_effective_names(_pg)
         relationships = await _fetch_relationships(_pg)
 
         # Apply schema visibility filters (schema.include_ops / schema.include_metrics)

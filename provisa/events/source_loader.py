@@ -282,6 +282,7 @@ class SourceRowLoader:
             self._adapter_loaders.get(stype)
             or _floored_file_loader(source, stype)
             or _floored_server_loader(source, stype)
+            or _floored_mongodb_loader(source, stype)
         )
         if loader is not None:
             return await loader(source, table)
@@ -304,7 +305,8 @@ class SourceRowLoader:
           cursor or Arrow stream where its client has one, else whole, as a single document.
         - A floored csv or parquet source, which no engine attaches, is read from its file
           (:func:`_floored_file_loader`); a floored source served by its own pgwire server, through
-          that server (:func:`_floored_server_loader`).
+          that server (:func:`_floored_server_loader`); a floored MongoDB source, over its driver
+          (:func:`_floored_mongodb_loader`).
         - Any other type is read by the engine, which streams Arrow batches; where the engine
           attaches the source in place it is also declared engine-reachable.
 
@@ -367,6 +369,7 @@ class SourceRowLoader:
             self._adapter_loaders.get(stype)
             or _floored_file_loader(source, stype)
             or _floored_server_loader(source, stype)
+            or _floored_mongodb_loader(source, stype)
         )
         if (
             loader is not None
@@ -765,6 +768,20 @@ def _floored_server_loader(source: Any, stype: str) -> AdapterLoader | None:
     if stype not in PGWIRE_REPLICA_TYPES or floor_setting(source) is None:
         return None
     return load_through_server
+
+
+def _floored_mongodb_loader(source: Any, stype: str) -> AdapterLoader | None:
+    """The reader of a MongoDB source the operator floors, None for any other.
+
+    A floored source has no live attach on any engine (REQ-1912), so an engine that attaches
+    MongoDB in place (DuckDB) has no catalog of it to read; its rows are read over its driver, as
+    on an engine with no MongoDB connector (:func:`make_mongodb_loader`, REQ-1730). A source that
+    is not floored keeps the engine's read of its attach."""
+    from provisa.core.operator_floor import floor_setting
+
+    if stype != "mongodb" or floor_setting(source) is None:
+        return None
+    return make_mongodb_loader()
 
 
 def make_file_loader(source_type: str) -> AdapterLoader:
