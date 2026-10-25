@@ -50,7 +50,7 @@ CONFIG_KEY = "metadata_export"
 
 # A target's fields: the catalog it names in the Catalogs panel and its export settings alone
 # (REQ-2122). The catalog holds the endpoint and the credentials.
-_TARGET_FIELDS = ("catalog", "datazone_project_id", "delta_share")
+_TARGET_FIELDS = ("catalog", "datazone_project_id", "delta_share", "role")  # REQ-2152: role
 
 # The settings of the export as a whole.
 _EXPORT_FIELDS = ("enabled", "reconcile_cron")

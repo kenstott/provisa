@@ -7375,6 +7375,8 @@
   "zh-HK/catalogsTab.json::catalogsTab.domainsHelp": "The domains that work with this catalog. Their tables and data products publish to it, and their tables offer it.",
   "zh-HK/metadataExportTab.json::metadataExportTab.catalog": "Catalog",
   "zh-HK/metadataExportTab.json::metadataExportTab.catalogHelp": "A catalog connected in Admin → Catalogs.",
+  "zh-HK/metadataExportTab.json::metadataExportTab.role": "Publish as role",
+  "zh-HK/metadataExportTab.json::metadataExportTab.roleHelp": "The catalog is sent only what this role can read.",
   "zh-HK/navBar.json::navBar.itemCatalogs": "Catalogs",
   "zh-HK.json::pageError.body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one.",
   "zh-HK.json::pageError.title": "This page could not be shown",

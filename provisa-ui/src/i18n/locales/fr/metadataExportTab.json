@@ -28,6 +28,8 @@
     "noTargets": "Aucune cible pour l'instant. Ajoutez les catalogues vers lesquels cette organisation publie.",
     "catalog": "Catalogue",
     "catalogHelp": "Un catalogue connecté dans Admin → Catalogues.",
+    "role": "Publier en tant que rôle",
+    "roleHelp": "Le catalogue ne reçoit que ce que ce rôle peut lire.",
     "betaProvider": "{{name}} (bêta)"
   }
 }

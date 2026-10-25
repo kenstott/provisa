@@ -34,7 +34,7 @@ import { fetchMetadataExport } from "../api/metadataExport";
 const config: MetadataExportState["config"] = {
   enabled: true,
   reconcile_cron: "0 * * * *",
-  targets: [{ catalog: "marquez", datazone_project_id: "", delta_share: false }],
+  targets: [{ catalog: "marquez", datazone_project_id: "", delta_share: false, role: "steward" }],
 };
 
 const STATES: Record<string, MetadataExportState> = {

@@ -166,6 +166,29 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
     return snapshot, model
 
 
+async def _as_served(
+    request: Request, snapshot: "MetadataSnapshot", config: "ProvisaConfig"
+) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
+    """The workbook's model as its caller reads it (REQ-2152): the columns its acting role is
+    served and the tables holding one (``scope.for_role``), and the metrics granted to it. The
+    right that opens the workbook does not widen what it shows."""
+    import types
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.app import state
+    from provisa.api.flight.catalog import role_sees_metric
+    from provisa.api.metadata_export.publishing import snapshot_reader
+    from provisa.api.metadata_export.scope import for_role
+
+    caller = catalog_scope(types.SimpleNamespace(context={"request": request}))
+    if caller.whole:
+        return snapshot, config
+    narrowed = for_role(snapshot, await snapshot_reader(state, caller.columns))
+    role = caller.role
+    metrics = [m for m in config.metrics if role is not None and role_sees_metric(state, role, m)]
+    return narrowed, config.model_copy(update={"metrics": metrics})
+
+
 @router.get("/admin/report.xlsx", tags=["admin"])
 async def model_report(
     request: Request,
@@ -179,7 +202,8 @@ async def model_report(
     omitted = tuple(name for name in wb.OBJECT_SHEETS if name not in included)
     scope = _view_scope(request, domains)
     snapshot, config = await _hydrate(org_id)
-    rows = wb.sheet_rows(_narrow(snapshot, scope), config, org_id=org_id)
+    snapshot, config = await _as_served(request, _narrow(snapshot, scope), config)
+    rows = wb.sheet_rows(snapshot, config, org_id=org_id)
     header = wb.ReportHeader(
         org_id=org_id,
         environment=active_env(),
