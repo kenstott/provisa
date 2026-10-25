@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3d650b04-f2be-46c3-bdb3-7610e2d08a27
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A relationship whose far end the statement already holds (#303): the graph back end reads it as
 a condition between the two rows held, never as a second copy of the far end's table -- which
 shadowed the one held (a wrong answer inside EXISTS) or named one alias twice (refused). Each
