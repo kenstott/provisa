@@ -547,7 +547,10 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 continue
             ids[term.term_id] = response.json()["id"]
             published.add(ids[term.term_id])
-            result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
+            # Counted apart from the Data Map's terms, which the Atlas pass counts as glossary_term.
+            result.published["unified_catalog_term"] = (
+                result.published.get("unified_catalog_term", 0) + 1
+            )
         # The data assets of the tables a Class term grounds -- the only ones a term is related to.
         grounded = {ref.fqn() for t in terms if t.role == "class" for ref in t.assigned_to()}
         guids = {
@@ -626,7 +629,11 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 headers=catalog,
             )
             added.raise_for_status()
-            key = "term_assignment" if category == DATA_ASSET else "term_relationship"
+            key = (
+                "unified_catalog_term_assignment"
+                if category == DATA_ASSET
+                else "unified_catalog_term_relationship"
+            )
             result.published[key] = result.published.get(key, 0) + 1
         for entity_id, kind in sorted(ours - wanted):
             removed = await client.delete(

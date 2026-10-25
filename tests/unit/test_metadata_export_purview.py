@@ -307,11 +307,14 @@ def api(monkeypatch):
 
 @pytest.fixture
 def data_map(monkeypatch):
-    """The Data Map publish: each table's guid, as the Atlas adapter returns it."""
+    """The Data Map publish: each table's guid, and a count of the glossary terms it wrote, as
+    the Atlas adapter returns them."""
     guids: dict[str, str] = {}
 
     async def _published(self, snapshot):
         result = PublishResult(provider_name=self.provider_name)
+        if snapshot.glossary_terms:
+            result.published["glossary_term"] = len(snapshot.glossary_terms)
         for table in snapshot.tables:
             name = table.ref.parts[-1]
             if name in guids:
@@ -474,7 +477,12 @@ async def test_terms_land_in_their_domain_with_parent_status_and_relationships(a
     # REQ-1389: the Class term is related to the data asset of the table it grounds.
     assert _relations(api, ids["order"], "DATAASSET") == {("asset-guid-orders", "Related")}
     assert _relations(api, ids["party"], "DATAASSET") == set()
-    assert result.published["glossary_term"] == 3 and result.published["term_assignment"] == 1
+    # The Data Map's terms and the Unified Catalog's are counted apart: each term is written to
+    # both, and the publish's glossary_term is the Data Map's, as on Atlas.
+    assert result.published["glossary_term"] == 3
+    assert result.published["unified_catalog_term"] == 3
+    assert result.published["unified_catalog_term_assignment"] == 1
+    assert result.published["unified_catalog_term_relationship"] == 1
 
 
 async def test_a_republish_keeps_a_stewards_curation_and_adds_nothing(api, data_map):
