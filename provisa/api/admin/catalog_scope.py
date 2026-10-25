@@ -54,19 +54,19 @@ class CatalogScope:
     # The role the request acts as (a meta-role for a set), None when there is none.
     role: str | None
 
-    def lists_table(self, table_id: int, domain_id: str) -> bool:  # noqa: ARG002
+    def lists_table(self, table_id: int) -> bool:
         return self.whole or table_id in self.served
 
-    def columns(self, table_id: int, domain_id: str) -> set[str] | None:  # noqa: ARG002
+    def columns(self, table_id: int) -> set[str] | None:
         """The columns of a listed table the caller is answered; None = all of them."""
         if self.whole:
             return None
         return self.served.get(table_id, set())
 
-    def lists_column(self, table_id: int, domain_id: str, column: str | None) -> bool:
-        if not self.lists_table(table_id, domain_id):
+    def lists_column(self, table_id: int, column: str | None) -> bool:
+        if not self.lists_table(table_id):
             return False
-        columns = self.columns(table_id, domain_id)
+        columns = self.columns(table_id)
         return columns is None or column is None or column in columns
 
     def lists_domain(self, domain_id: str, with_listed_table: bool) -> bool:

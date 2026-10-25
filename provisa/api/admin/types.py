@@ -565,7 +565,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
                 scan_time=c["scan_time"].isoformat() if c["scan_time"] else None,
             )
             for c in found
-            if scope.lists_table(c["table_id"], c["domain_id"])
+            if scope.lists_table(c["table_id"])
         ]
 
 

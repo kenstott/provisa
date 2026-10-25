@@ -450,8 +450,8 @@ def test_the_admin_catalog_lists_a_published_table_across_domains_with_its_publi
         governance=False,
         role=role["id"],
     )
-    assert scope.lists_table(1, HR) and scope.columns(1, HR) == {"id", "name"}
-    assert scope.lists_column(1, HR, "name") and not scope.lists_column(1, HR, "salary")
-    assert not scope.lists_table(2, HR), "the domain's unpublished table"
+    assert scope.lists_table(1) and scope.columns(1) == {"id", "name"}
+    assert scope.lists_column(1, "name") and not scope.lists_column(1, "salary")
+    assert not scope.lists_table(2), "the domain's unpublished table"
     assert scope.lists_domain(HR, with_listed_table=True)
     assert not scope.lists_domain(HR, with_listed_table=False)
