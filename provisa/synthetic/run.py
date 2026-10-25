@@ -24,7 +24,7 @@ governed pipeline and compared with the profile it was drawn from (the report).
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -1580,8 +1580,9 @@ async def check_conditions_of(conn: Any, table_ids: list[int], conditions: list[
             )
 
 
-async def check_closure_of(conn: Any, table_ids: list[int]) -> None:
-    """Refuse naming a table without the parent of one of its relationships (REQ-1939)."""
+async def check_closure_of(conn: Any, table_ids: list[int], *, told: Callable[[int], bool]) -> None:
+    """Refuse naming a table without the parent of one of its relationships (REQ-1939); a parent
+    ``told`` says its reader may not be told of is not named (REQ-2152)."""
     from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
     from provisa.synthetic.plan import check_closure
 
@@ -1590,7 +1591,10 @@ async def check_closure_of(conn: Any, table_ids: list[int]) -> None:
     if missing:
         raise DatasetRefused(f"table {missing[0]} is not registered in this environment")
     check_closure(
-        {t: names[t] for t in table_ids}, names, edges_of(await fetch_relationships(conn))
+        {t: names[t] for t in table_ids},
+        names,
+        edges_of(await fetch_relationships(conn)),
+        told=told,
     )
 
 
@@ -1713,7 +1717,8 @@ async def bootstrap(
                         found[0]["id"], profile_env, runs[name]["runs"][0]["runId"], None
                     )
                 )
-            await check_closure_of(conn, [r.table_id for r in rows])
+            # Provisa's own generation: every table is told (REQ-2152's service identity).
+            await check_closure_of(conn, [r.table_id for r in rows], told=lambda _table_id: True)
             await define(
                 conn,
                 dataset_id=dataset_id,

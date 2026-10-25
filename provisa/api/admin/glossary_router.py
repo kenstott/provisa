@@ -747,8 +747,12 @@ async def move_ref(request: Request) -> dict:
         except TermTagRefused as exc:
             raise ApiError(409, exc.code, str(exc), **exc.params) from exc
         except glossary_repo.TermIsClass as exc:
+            from provisa.api.admin.read_rights import reader_for_request, told_glossary_refusal
+
+            # REQ-2152: only the tables the caller reads are named.
+            said, tables = await told_glossary_refusal(_conn, reader_for_request(request), exc)
             raise ApiError(
-                409, "glossary.term_is_class", str(exc), term=exc.term, tables=", ".join(exc.tables)
+                409, "glossary.term_is_class", said, term=exc.term, tables=tables
             ) from exc
         except glossary_repo.KeyColumnDerived as exc:
             raise ApiError(
@@ -914,12 +918,16 @@ async def ground_term_table(
     except glossary_repo.TableHasNoPrimaryKey as exc:
         raise ApiError(400, "glossary.table_no_primary_key", str(exc), table=exc.table) from exc
     except glossary_repo.TermIsProperty as exc:
+        from provisa.api.admin.read_rights import reader_for_request, told_glossary_refusal
+
+        # REQ-2152: only the columns the caller reads are named.
+        said, columns = await told_glossary_refusal(conn, reader_for_request(request), exc)
         raise ApiError(
             409,
             "glossary.term_is_property",
-            str(exc),
+            said,
             term=exc.term,
-            columns=", ".join(exc.columns),
+            columns=columns,
         ) from exc
     except glossary_repo.TableAlreadyGrounded as exc:
         raise ApiError(
@@ -1100,7 +1108,37 @@ async def applied_history(request: Request, term_id: int) -> dict:
             "glossary.no_retirement_history",
             f"the model's history holds no retirement of term {term_id}",
         )
-    return history
+    return await _history_as_read(request, history)
+
+
+async def _history_as_read(request: Request, history: dict) -> dict:
+    """``history`` with only the refs its caller reads (REQ-2152): a table path is told when the
+    table it names now is one the caller is served a column of, a column ref when the caller is
+    served that column. A path naming no table now cannot be told of, and is left out."""
+    from sqlalchemy import select
+
+    from provisa.api.admin.read_rights import reader_for_request
+    from provisa.core.env_files import table_path
+    from provisa.core.schema_org import registered_tables as rt
+
+    reader = reader_for_request(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        rows = (
+            await conn.execute_core(select(rt.c.id, rt.c.domain_id, rt.c.table_name, rt.c.alias))
+        ).fetchall()
+    by_path = {table_path(r.domain_id, r.alias or r.table_name): r.id for r in rows}
+    return {
+        **history,
+        "columns": [
+            c
+            for c in history["columns"]
+            if c["table"] in by_path and reader.column(by_path[c["table"]], c["column"])
+        ],
+        "tables": [
+            t for t in history["tables"] if t in by_path and reader.column(by_path[t], None)
+        ],
+    }
 
 
 @router.get("/findings")

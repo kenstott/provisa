@@ -148,7 +148,8 @@ def resolve_contract_target(dataset: str, contexts: Mapping) -> Any:
         raise ContractError(f"contract dataset {dataset!r} resolves to no governed table")
     if len(matches) > 1:
         raise ContractError(
-            f"contract dataset {dataset!r} is ambiguous: {len(matches)} governed tables publish it"
+            # REQ-2152: not how many -- the count would include tables its author cannot read.
+            f"contract dataset {dataset!r} is ambiguous: more than one governed table publishes it"
         )
     return next(iter(matches.values()))
 

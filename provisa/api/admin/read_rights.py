@@ -330,3 +330,37 @@ def role_within(state: Any, scope: Any, role: str) -> bool:
         columns <= scope.served.get(table_id, set())
         for table_id, columns in role_visibility(state, role).items()
     )
+
+
+async def readable_addresses(
+    conn: "Connection", reader: DependentsReader, addresses: list[str]
+) -> list[str]:
+    """The table (``source.schema.table``) and column (``source.schema.table.column``)
+    addresses of ``addresses`` that ``reader`` may be told of (REQ-2152)."""
+    from provisa.core.schema_org import registered_tables as rt
+
+    rows = (
+        await conn.execute_core(select(rt.c.id, rt.c.source_id, rt.c.schema_name, rt.c.table_name))
+    ).fetchall()
+    ids = {(r.source_id, r.schema_name, r.table_name): r.id for r in rows}
+    told = []
+    for address in addresses:
+        parts = address.split(".")
+        table_id = ids.get((parts[0], parts[1], parts[2]))
+        column = parts[3] if len(parts) > 3 else None
+        if table_id is not None and reader.column(table_id, column):
+            told.append(address)
+    return told
+
+
+async def told_glossary_refusal(
+    conn: "Connection", reader: DependentsReader, refused: Any
+) -> tuple[str, str]:
+    """A glossary refusal naming tables (``TermIsClass.tables``) or columns
+    (``TermIsProperty.columns``) as ``reader`` is answered it (REQ-2152): its message and the
+    names it lists, only those ``reader`` may read; when it may read none, that they are outside
+    its grants. The refusal stands either way."""
+    field = "tables" if hasattr(refused, "tables") else "columns"
+    readable = await readable_addresses(conn, reader, getattr(refused, field))
+    names = readable or ["outside your grants"]
+    return str(type(refused)(refused.term, names)), ", ".join(names)

@@ -413,7 +413,8 @@ async def _generate(
             for tid, (held_in, run_id) in sorted(runs.items())
         ]
         async with state.model_db.acquire() as conn:
-            await check_closure_of(conn, [r.table_id for r in rows])
+            # Provisa's own environment build: every table is told (REQ-2152's service identity).
+            await check_closure_of(conn, [r.table_id for r in rows], told=lambda _table_id: True)
             await define(
                 conn,
                 dataset_id=DATASET_ID,

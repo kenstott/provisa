@@ -234,7 +234,15 @@ async def define_dataset(request: Request, dataset_id: str, body: DatasetIn) -> 
                         f"table {t.table_id} is not registered",
                         table=t.table_id,
                     )
-            await check_closure_of(conn, [t.table_id for t in tables])
+            # REQ-2152: a missing parent the caller is not served is not named.
+            from provisa.api.admin.read_rights import reader_for_request
+
+            reader = reader_for_request(request)
+            await check_closure_of(
+                conn,
+                [t.table_id for t in tables],
+                told=lambda table_id: reader.column(table_id, None),
+            )
             await check_conditions_of(conn, [t.table_id for t in tables], conditions)
             await define(
                 conn,
