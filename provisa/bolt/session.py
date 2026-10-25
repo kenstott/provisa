@@ -321,10 +321,12 @@ class BoltSession:
         all_roles = [r for r in app_state.contexts if not is_meta_role_id(r)]
 
         if provider == "none" or not getattr(app_state, "auth_middleware_active", False):
-            # No auth — every role is available; default to principal if it names a real role.
+            # No auth — every role is available; default to principal if it names a real role,
+            # or a set of roles: unsecured, the set acts as its meta-role, resolved once the
+            # session's org is bound (_meta_role), as X-Provisa-Role is on HTTP (REQ-1952).
             ordered = (
                 [principal, *[r for r in all_roles if r != principal]]
-                if principal and principal in app_state.contexts
+                if principal and (principal in app_state.contexts or "," in principal)
                 else all_roles
             )
             self._identity = None
@@ -411,8 +413,16 @@ class BoltSession:
         try:
             # REQ-2057: a derived role the session's identity holds is named like any role.
             identity = self._identity
-            if identity is None:  # an unsecured session holds no derived role
-                return resolve_requested_role(app_state, set(self.roles), named)
+            if identity is None:
+                # Unsecured: a declared derived role named in the set is held, taken at its word
+                # as the HTTP middleware takes X-Provisa-Role's (REQ-1952, REQ-2057).
+                from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+
+                def named_derived() -> dict[str, str]:
+                    names = [r.strip() for r in named.split(",") if r.strip()]
+                    return named_unsecured(names, declared_derived_roles(app_state))[1]
+
+                return resolve_requested_role(app_state, set(self.roles), named, named_derived)
             from provisa.auth.derived_roles import principal_of
 
             return resolve_requested_role(

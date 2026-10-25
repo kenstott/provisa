@@ -80218,6 +80218,7 @@
   - tests/unit/test_flight_catalog_credential.py
   - tests/unit/test_path_role_is_held.py
   - tests/unit/test_spec_document_role.py
+  - tests/unit/test_role_set_every_route.py
   scenario: 'Given an authenticated caller holding the analyst role
 
     When a request to any data route carries a body naming a different role

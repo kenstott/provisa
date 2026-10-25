@@ -214,7 +214,8 @@ def _rpc_role(metadata: dict) -> str | None:
     On a secured deployment the auth interceptor has already validated the caller's credential and
     derived the role from that identity; it is published on the task and is the only value a handler
     may use, so ``x-provisa-role`` here is the client's request and has no authority. On an
-    unsecured deployment there is no identity to derive from and the metadata role stands.
+    unsecured deployment there is no identity to derive from and the metadata role stands; once
+    the RPC's org is bound, a set it names acts as its meta-role (:meth:`ProvisaServicer._acting`).
     """
     from provisa.grpc.auth import authorized_role
 
@@ -403,6 +404,23 @@ class ProvisaServicer:  # REQ-045, REQ-143
         await ensure_serving_runtime(org_id)
         return set_current_org(org_id)
 
+    async def _acting(self, role_id: str, context) -> str:
+        """The role an RPC acts as, once its org is bound (REQ-1952). Secured, the interceptor
+        resolved it from the identity. Unsecured, ``x-provisa-role`` naming a set of roles, or a
+        declared derived role, acts as its meta-role, built in the bound org -- resolved as the
+        HTTP middleware resolves the header (``resolve_unsecured_role``)."""
+        from provisa.grpc.auth import authorized_role
+
+        if authorized_role() is not None:
+            return role_id
+        from provisa.auth.derived_roles import resolve_unsecured_role
+
+        try:
+            return resolve_unsecured_role(self._state, role_id)
+        except PermissionError as exc:
+            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            raise  # abort ends the RPC by raising; never proceed as an unresolved role
+
     async def _received(self, method: str, raw: bytes, context):
         """Bind the organisation of an RPC that arrived as bytes and decode its request with THAT
         organisation's service: ``(request, reset)``. The organisation is known only from the
@@ -414,6 +432,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         role_id = _rpc_role(metadata)
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            raise RuntimeError("abort ends the RPC by raising")
         try:
             org_token = await self._bind_org(metadata)
         except ValueError as exc:
@@ -427,6 +446,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 reset_current_org(org_token)
 
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             service = self._pb2
             described = service.method(method)
             if described is None or not self._offered(role_id, method):
@@ -530,6 +550,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
                 raise
             try:
+                role_id = await self._acting(role_id, context)  # REQ-1952
                 found = role_descriptor(self._state, role_id)
             finally:
                 if token is not None:
@@ -732,6 +753,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             state = self._state
             fn = (
                 getattr(state, "tracked_functions", {}).get(cmd_name)
@@ -787,6 +809,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             from provisa.core.request_context import require_current_org
 
             try:
@@ -837,6 +860,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             state = self._state
             try:
                 given = json.loads(request.args_json) if request.args_json else {}
@@ -889,6 +913,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             async for _m in self._handle_query_bound(request, context, type_name, role_id):
                 yield self._meter_msg(_m)
         finally:
@@ -928,6 +953,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             batch_cls = getattr(self._pb2, f"{type_name}Batch", None)
             if batch_cls is None:
                 await context.abort(
@@ -1363,6 +1389,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return None
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             return self._meter_msg(
                 await self._handle_query_aggregate_bound(request, context, type_name, role_id)
             )
@@ -1447,6 +1474,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             async for _m in self._handle_query_group_by_bound(request, context, type_name, role_id):
                 yield self._meter_msg(_m)
         finally:

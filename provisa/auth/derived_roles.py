@@ -74,6 +74,32 @@ def named_unsecured(
     return roles, held, attributes
 
 
+def unsecured_acting_role(state, roles: list[str], held: Mapping[str, str]) -> str:
+    """The role an unsecured request acts as from its :func:`named_unsecured` split (REQ-1952):
+    one data role naming no derived role is that role; a set, or any named derived role, acts as
+    its meta-role, built in the org bound now. Named with no data role it reaches no data
+    (PermissionError)."""
+    from provisa.security.meta_role import ensure_meta_role
+
+    if held:
+        return ensure_meta_role(state, roles, tuple(held))
+    if len(set(roles)) > 1:
+        return ensure_meta_role(state, roles)
+    return roles[0]
+
+
+def resolve_unsecured_role(state, requested: str) -> str:
+    """The role an unsecured call naming ``requested`` (one role, or a comma-separated set) acts
+    as -- what the HTTP middleware resolves ``X-Provisa-Role`` to, for a transport that reads its
+    own role (gRPC, Flight, Bolt; REQ-1952). A meta-role named directly is refused (MetaRoleNamed)."""
+    from provisa.security.meta_role import refuse_named_meta_role
+
+    names = [r.strip() for r in requested.split(",") if r.strip()]
+    refuse_named_meta_role(names)
+    roles, held, _attributes = named_unsecured(names, declared_derived_roles(state))
+    return unsecured_acting_role(state, roles, held)
+
+
 def declared_derived_role_entries(state) -> list[DerivedRole]:  # REQ-2078
     """The derived roles the bound org declares, each an attribute and its description: its own
     ``derived_roles`` setting (org_settings) where it has one, which replaces the deployment

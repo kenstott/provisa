@@ -189,6 +189,10 @@ class TestRoleSetDatabase:
         assert built == [("acme", ["analyst", "auditor"])]
 
     def test_a_role_not_held_is_refused_by_name(self):
+        from types import SimpleNamespace
+
         session = self._session(["analyst"], org_id="acme")  # resolved before any RUN (REQ-1266)
+        # the org declares no derived role, so org_admin names no held one either (REQ-2057)
+        state = SimpleNamespace(settings_overrides={"derived_roles": []})
         with pytest.raises(PermissionError, match="'org_admin'"):
-            session._meta_role(object(), "analyst,org_admin")
+            session._meta_role(state, "analyst,org_admin")
