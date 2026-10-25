@@ -20,21 +20,27 @@ export interface SparqlVocabulary {
   base: string;
   /** Prefix → namespace: the standard ones, ``rel``, ``term`` and one per domain. */
   prefixes: Record<string, string>;
-  /** A table's own class ("table") or a Class term ("class"). */
-  classes: { iri: string; kind: "table" | "class"; labels: string[]; term: string | null }[];
-  /** A column's predicate ("column") or a Property term ("property"). */
+  /** A table's own class ("table") or a Class term's ("term"), with the labels it types and, for a
+   * Class term, the terms it is a KIND_OF. */
+  classes: { iri: string; kind: "table" | "term"; labels: string[]; superclasses: string[] }[];
+  /** A column's predicate ("column") or a Property term's ("term"). */
   predicates: {
     iri: string;
-    kind: "column" | "property";
+    kind: "column" | "term";
     label: string;
     property: string;
     datatype: string;
-    term: string | null;
   }[];
-  /** Declared relationships and term edges, each a predicate between two classes. */
-  edges: { iri: string; rel_type: string; source: string; target: string }[];
+  /** An edge type's predicate, from its source label's class to its target's. */
+  edges: { iri: string; type: string; source: string; target: string }[];
   /** The live Concept terms (the SKOS vocabulary). */
-  concepts: { iri: string; term: string }[];
+  concepts: { iri: string; name: string; definition: string | null }[];
+}
+
+/** A term's name, read back from its IRI under the ``term`` prefix; null for any other IRI. */
+export function termName(iri: string, prefixes: Record<string, string>): string | null {
+  const ns = prefixes.term;
+  return ns !== undefined && iri.startsWith(ns) ? decodeURIComponent(iri.slice(ns.length)) : null;
 }
 
 /** The prefixes every vocabulary has; any other is a domain's. */
@@ -199,12 +205,19 @@ export function triplesGraph(triples: Triple[]): {
   for (const { s, p, o } of triples)
     if (p.value === RDF_TYPE && o.rdfTerm === "iri" && !typeOf.has(s.value))
       typeOf.set(s.value, o.shown);
+  // Keyed as GraphCanvas keys a node (`${label}:${id}`), which draws an edge only between two
+  // nodes it finds so; a resource is found again by its term.
   const nodes = new Map<string, GNode>();
   const edges = new Map<string, GEdge>();
+  const resources = new Map<string, GNode>();
   let next = 0;
+  const add = (n: GNode): GNode => {
+    nodes.set(`${n.label}:${n.id}`, n);
+    return n;
+  };
   const resource = (c: RdfCell): GNode => {
     const key = `${c.rdfTerm}:${c.value}`;
-    let n = nodes.get(key);
+    let n = resources.get(key);
     if (!n) {
       const label =
         typeOf.get(c.value) ??
@@ -215,7 +228,7 @@ export function triplesGraph(triples: Triple[]): {
         tableLabel: label,
         properties: { name: c.shown, iri: c.value },
       };
-      nodes.set(key, n);
+      resources.set(key, add(n));
     }
     return n;
   };
@@ -224,20 +237,16 @@ export function triplesGraph(triples: Triple[]): {
     // A literal is the triple's own: the same value under two subjects is two nodes.
     const b =
       o.rdfTerm === "literal"
-        ? (() => {
-            const n: GNode = {
-              id: next++,
-              label: LITERAL_LABEL,
-              tableLabel: LITERAL_LABEL,
-              properties: {
-                name: o.shown,
-                ...(o.datatype ? { datatype: o.datatype } : {}),
-                ...(o.lang ? { lang: o.lang } : {}),
-              },
-            };
-            nodes.set(`literal:${i}`, n);
-            return n;
-          })()
+        ? add({
+            id: next++,
+            label: LITERAL_LABEL,
+            tableLabel: LITERAL_LABEL,
+            properties: {
+              name: o.shown,
+              ...(o.datatype ? { datatype: o.datatype } : {}),
+              ...(o.lang ? { lang: o.lang } : {}),
+            },
+          })
         : resource(o);
     const identity = `t${i}`;
     edges.set(identity, {

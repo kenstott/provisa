@@ -10,7 +10,8 @@
 
 // REQ-2135 phase 5: the SPARQL vocabulary, in the sidebar where Cypher's labels are -- Domains,
 // Classes (Class terms and tables' classes, each Class term with the classes it is a KIND_OF),
-// Properties (Property terms and columns), Relationships (declared relationships and term edges),
+// Properties (Property terms and columns),
+// Relationships (the edge types between the tables' labels),
 // Concepts (the SKOS vocabulary) and Prefixes. A pill adds to the query in the bar: a class, a
 // property, a relationship or a concept its triple pattern; a prefix or a domain its PREFIX line,
 // and a domain picked narrows the lists to its vocabulary.
@@ -19,14 +20,12 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { Tip } from "../Tip";
-import { compactIri, domainPrefixes, type SparqlVocabulary } from "./sparql";
+import { compactIri, domainPrefixes, termName, type SparqlVocabulary } from "./sparql";
 
 /** What a pill asks of the query. */
 export type VocabularyPick =
   | { kind: "class" | "predicate" | "edge" | "concept"; iri: string }
   | { kind: "prefix"; prefix: string };
-
-const KIND_OF = "KIND_OF";
 
 function Pill({
   text,
@@ -75,33 +74,42 @@ export function SparqlVocabularyPanel({
     const ns = domain === null ? null : p[domain];
     const inDomain = (iri: string) => ns === null || iri.startsWith(ns);
     const c = (iri: string) => compactIri(iri, p);
-    // A Class term's superclasses: the classes it is a KIND_OF.
-    const parents = new Map<string, string[]>();
-    for (const e of vocabulary.edges)
-      if (e.rel_type === KIND_OF)
-        parents.set(e.source, [...(parents.get(e.source) ?? []), e.target]);
+    // An edge is between two labels; it is in a domain where either label's table class is.
+    const labelInDomain = (label: string) =>
+      vocabulary.classes.some(
+        (x) => x.kind === "table" && x.labels.includes(label) && inDomain(x.iri),
+      );
     const byName = <T,>(rows: T[], name: (r: T) => string) =>
       [...rows].sort((a, b) => name(a).localeCompare(name(b)));
     return {
       classes: byName(
-        vocabulary.classes.filter((x) => inDomain(x.iri) || x.kind === "class"),
+        vocabulary.classes.filter((x) => inDomain(x.iri) || x.kind === "term"),
         (x) => c(x.iri),
-      ).map((x) => ({ ...x, shown: c(x.iri), parents: (parents.get(x.iri) ?? []).map(c) })),
+      ).map((x) => ({
+        ...x,
+        shown: c(x.iri),
+        term: termName(x.iri, p),
+        parents: x.superclasses.map(c),
+      })),
       predicates: byName(
-        vocabulary.predicates.filter((x) => inDomain(x.iri) || x.kind === "property"),
+        vocabulary.predicates.filter((x) => inDomain(x.iri) || x.kind === "term"),
         (x) => c(x.iri),
       ).map((x) => {
         const iri = c(x.iri);
         // A column's IRI has no prefixed name (its local part holds '#'): it is shown by its column.
-        return { ...x, shown: x.kind === "column" && iri.startsWith("<") ? x.label : iri };
+        return {
+          ...x,
+          shown: x.kind === "column" && iri.startsWith("<") ? x.label : iri,
+          term: termName(x.iri, p),
+        };
       }),
       edges: byName(
         [...new Map(vocabulary.edges.map((e) => [e.iri, e])).values()].filter(
-          (e) => inDomain(e.source) || inDomain(e.target),
+          (e) => labelInDomain(e.source) || labelInDomain(e.target),
         ),
         (e) => c(e.iri),
       ).map((e) => ({ ...e, shown: c(e.iri) })),
-      concepts: byName(vocabulary.concepts, (x) => x.term).map((x) => ({ ...x, shown: c(x.iri) })),
+      concepts: byName(vocabulary.concepts, (x) => x.name).map((x) => ({ ...x, shown: c(x.iri) })),
     };
   }, [vocabulary, domain]);
 
@@ -152,7 +160,7 @@ export function SparqlVocabularyPanel({
                   muted={x.parents.length > 0 ? `⊂ ${x.parents.join(", ")}` : undefined}
                   tip={[
                     x.iri,
-                    x.kind === "class"
+                    x.kind === "term"
                       ? t("sparqlVocabulary.classTerm", { term: x.term ?? "" })
                       : t("sparqlVocabulary.tableClass"),
                   ].join(" · ")}
@@ -172,7 +180,7 @@ export function SparqlVocabularyPanel({
                   text={x.shown}
                   tip={[
                     x.iri,
-                    x.kind === "property"
+                    x.kind === "term"
                       ? t("sparqlVocabulary.propertyTerm", { term: x.term ?? "" })
                       : t("sparqlVocabulary.columnPredicate", { column: x.label }),
                   ].join(" · ")}
@@ -190,7 +198,7 @@ export function SparqlVocabularyPanel({
                 <Pill
                   key={e.iri}
                   text={e.shown}
-                  tip={`${e.iri} · ${compactIri(e.source, vocabulary.prefixes)} → ${compactIri(e.target, vocabulary.prefixes)}`}
+                  tip={`${e.iri} · ${e.source} → ${e.target}`}
                   onClick={() => onPick({ kind: "edge", iri: e.iri })}
                   testId={`sparql-edge-${e.shown}`}
                 />
@@ -204,10 +212,10 @@ export function SparqlVocabularyPanel({
             : shown.concepts.map((x) => (
                 <Pill
                   key={x.iri}
-                  text={x.term}
-                  tip={x.iri}
+                  text={x.name}
+                  tip={x.definition ? `${x.iri} · ${x.definition}` : x.iri}
                   onClick={() => onPick({ kind: "concept", iri: x.iri })}
-                  testId={`sparql-concept-${x.term}`}
+                  testId={`sparql-concept-${x.name}`}
                 />
               )),
         )}

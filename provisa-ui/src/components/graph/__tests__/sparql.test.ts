@@ -126,6 +126,17 @@ describe("a CONSTRUCT's triples", () => {
       "sales:note",
     ]);
   });
+
+  it("are keyed as the canvas keys a node, so each edge is drawn between its ends", () => {
+    // GraphCanvas draws an edge only when both its ends are in the frame's nodes under
+    // `${label}:${id}`, as a Cypher frame keys them.
+    const { nodes, edges } = triplesGraph(parseNTriples(NT, P));
+    for (const [key, n] of nodes) expect(key).toBe(`${n.label}:${n.id}`);
+    for (const e of edges.values()) {
+      expect(nodes.has(`${e.startNode.label}:${e.startNode.id}`)).toBe(true);
+      expect(nodes.has(`${e.endNode.label}:${e.endNode.id}`)).toBe(true);
+    }
+  });
 });
 
 const response = (body: string, type: string, status = 200) =>

@@ -1375,6 +1375,18 @@ async def move_ref(
     return {"source_term_removed": row.term_id in removed}
 
 
+async def term_edges(conn: "Connection") -> list[tuple[int, int, str]]:  # REQ-2135
+    """Every edge between terms: (from term id, to term id, relationship type)."""
+    rows = await conn.execute_core(
+        select(
+            glossary_term_edges.c.from_term_id,
+            glossary_term_edges.c.to_term_id,
+            glossary_term_edges.c.rel_type,
+        )
+    )
+    return [(r.from_term_id, r.to_term_id, r.rel_type) for r in rows.fetchall()]
+
+
 async def add_edge(conn: "Connection", from_term_id: int, to_term_id: int, rel_type: str) -> None:
     if rel_type not in TERM_EDGE_TYPES:
         raise ValueError(f"rel_type must be one of {TERM_EDGE_TYPES}")

@@ -58,9 +58,18 @@ const VOCABULARY = {
     rel: `${BASE}/vocab/rel/`,
     sales: `${BASE}/vocab/sales/`,
   },
+  // As GET /data/sparql/vocabulary answers (provisa.sparql_query.vocabulary.vocabulary_document):
+  // a table's own class, or a Class term's ("term"), with the labels it types and the terms it is
+  // a KIND_OF.
   classes: [
-    { iri: `${BASE}/vocab/sales/orders`, kind: "table", labels: ["orders"], term: null },
-    { iri: `${BASE}/vocab/term/Customer`, kind: "class", labels: ["Customer"], term: "Customer" },
+    { iri: `${BASE}/vocab/sales/orders`, kind: "table", labels: ["orders"], superclasses: [] },
+    { iri: `${BASE}/vocab/sales/customers`, kind: "table", labels: ["customers"], superclasses: [] },
+    {
+      iri: `${BASE}/vocab/term/Customer`,
+      kind: "term",
+      labels: ["customers"],
+      superclasses: [`${BASE}/vocab/term/Party`],
+    },
   ],
   predicates: [
     {
@@ -69,7 +78,6 @@ const VOCABULARY = {
       label: "orders.amount",
       property: "amount",
       datatype: "http://www.w3.org/2001/XMLSchema#decimal",
-      term: null,
     },
     {
       // A column predicate as the server names it: its table's class IRI and '#'.
@@ -78,18 +86,13 @@ const VOCABULARY = {
       label: "orders.total",
       property: "total",
       datatype: "http://www.w3.org/2001/XMLSchema#decimal",
-      term: null,
     },
   ],
+  // An edge type's predicate between two labels.
   edges: [
-    {
-      iri: `${BASE}/vocab/rel/KIND_OF`,
-      rel_type: "KIND_OF",
-      source: `${BASE}/vocab/term/Customer`,
-      target: `${BASE}/vocab/term/Party`,
-    },
+    { iri: `${BASE}/vocab/rel/PLACED_BY`, type: "PLACED_BY", source: "orders", target: "customers" },
   ],
-  concepts: [{ iri: `${BASE}/vocab/term/Revenue`, term: "Revenue" }],
+  concepts: [{ iri: `${BASE}/vocab/term/Revenue`, name: "Revenue", definition: "Money in" }],
 };
 const NT = [
   `<${BASE}/id/sales/orders/1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <${BASE}/vocab/sales/orders> .`,
@@ -148,6 +151,9 @@ describe("the SPARQL tab", () => {
     expect(screen.getByTestId("sparql-class-sales:orders")).toHaveTextContent("sales:orders");
     // A Class term with the class it is a KIND_OF.
     expect(screen.getByTestId("sparql-class-term:Customer")).toHaveTextContent("⊂ term:Party");
+    // An edge type, from its source label's class to its target's.
+    expect(screen.getByTestId("sparql-edge-rel:PLACED_BY")).toBeInTheDocument();
+    expect(screen.getByTestId("sparql-concept-Revenue")).toHaveTextContent("Revenue");
     // A column predicate's IRI has no prefixed name: its pill shows its column.
     expect(screen.getByTestId("sparql-predicate-orders.total")).toHaveTextContent("orders.total");
   });
