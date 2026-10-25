@@ -88593,7 +88593,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the registrant''s and Viewer''s default grants, public scope), so that governing a model does not demand
     a stream of manual grant entries. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect
     in the access model''s requirements, not a feature: the earlier rules let a capability or a default
-    reveal or reach more than a role''s grants. It is resolved before the product is declared green.'
+    reveal or reach more than a role''s grants. It is resolved before the product is declared green. (Amended
+    2026-10-25, ADDITIVE ONLY, NO DENY:) Capabilities and grants are additive only. There is no deny: nothing
+    subtracts from what another role or an ancestor grants, so no precedence rule exists to learn. Revoking
+    takes back a grant itself and nothing else. What a deny would be used for is expressed additively: a
+    role that should not have some inherited capability is composed from narrower parents; a column for
+    everyone but some people is granted to the roles that should read it rather than to Viewer; seeing a
+    column without its values is a mask, whose unmasking is a grant; and only some rows is a row rule, which
+    adding a parent never lifts (REQ-2155).'
 - id: REQ-2160
   status: proposed
   target: 2027-Q1
