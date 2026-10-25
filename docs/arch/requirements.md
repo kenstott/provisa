@@ -23668,7 +23668,7 @@ A role is the one the request runs as, on every data route, and a catalog is lis
 
 **Code:** `provisa/api/acting_role.py`, `provisa/api/flight/catalog.py`, `provisa/api/data/endpoint_grpc_proxy.py`
 
-**Tests:** `tests/unit/test_flight_catalog_credential.py`, `tests/unit/test_path_role_is_held.py`, `tests/unit/test_spec_document_role.py`
+**Tests:** `tests/unit/test_flight_catalog_credential.py`, `tests/unit/test_path_role_is_held.py`, `tests/unit/test_spec_document_role.py`, `tests/unit/test_role_set_every_route.py`
 
 ## 10. UI & Admin Surfaces
 
