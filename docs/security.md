@@ -4,6 +4,8 @@ Every query passes the same governance, whichever language it's written in (Grap
 
 The checks run in order. A request has to pass each one before the next is looked at.
 
+[Access Model](access-model.md) covers how scope, capabilities and grants combine into a role's rights.
+
 ## Layered Model
 
 ### Layer 0 — Introspection filtering
@@ -14,7 +16,7 @@ See [Schema Visibility](#schema-visibility).
 
 ### Layer 1 — Public access
 
-A column published with scope `public` is served to every role in the org, even one whose `domain_access` doesn't reach the table's domain. That role sees the table with its public columns and nothing else. Nothing is public until whoever registered the table says so. See [Public columns](#public-columns).
+A column published with scope `public` is served to every role in the org, even one whose `domain_access` doesn't reach the table's domain. That role sees the table with its public columns and nothing else. A column with scope `listed` shows its table's name and its own name in every role's catalog, and serves nothing. Nothing is listed or public until whoever registered the table says so. See [Public columns](#public-columns).
 
 ### Layer 2 — Domain access
 
@@ -67,36 +69,21 @@ The layers stack. A role with domain access, row filters and masked columns has 
 
 ## Rights Model
 
-Independently assigned capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all.
+A role holds capabilities, and a capability opens a feature: querying, registering sources, editing the glossary, managing data quality checks. What the feature then reads or changes is limited by the role's grants. No capability reaches past them, and no role is a superuser. Bypassing relationship governance is a capability too, held by the standard Modeler role, and high-security mode ignores it.
 
-| Capability | Description |
-| ----------- | ------------- |
-| `source_registration` | Register data sources |
-| `table_registration` | Register tables, columns |
-| `create_relationship` | Define FK relationships |
-| `access_config` | Configure RLS, masking |
-| `query_development` | Execute queries |
-| `write` | Invoke registered mutations (coarse gate; see Mutation Authorization) |
-| `full_results` | Bypass sampling limits |
-| `ignore_relationships` | Bypass relationship governance (V002). Held by `modeler` only among the system roles, and ignored entirely in high-security mode |
-| `admin` | Superuser — grants all |
+Provisa ships standard roles, from Viewer up to Org admin, and you build your own roles as children of them. [Access Model](access-model.md#capabilities) lists each standard role and what it adds.
 
 ### Role Inheritance
 
-Roles can inherit from one parent role via `parent_role_id`, set in config or on the Security page as "Inherits from". The chain is folded in at startup: a child holds the union of its ancestors' capabilities and domain access, every column, metric, function and webhook grant that names an ancestor, and the ancestors' RLS rules per table with the child taking precedence. The nearest role in the chain with a rule for a table supplies that table's predicate, and a rule saved for the child replaces the parent's for that table.
+A role names its parents on the Security page under "Inherits from", and it may have several. It holds the union of its own capabilities and every ancestor's. Grants and residency are unions over the ancestors as well, so a column, metric, function or webhook granted to an ancestor is granted to the child.
 
-```yaml
-roles:
-  - id: basic_user
-    description: Queries the public domain.
-    capabilities: [query_development]
-    domain_access: [public]
-  - id: analyst
-    description: Analyses sales; reads full results.
-    capabilities: [full_results]
-    domain_access: [sales, analytics]
-    parent_role_id: basic_user   # inherits query_development + public domain
-```
+Domain reach does not pass down. Each role states its own reach, either ALL domains or a list, and its inherited capabilities apply within that reach. You can give a role reach only to domains you reach yourself.
+
+A role's own row rule for a table stands. When it has none, the rules of its ancestors for that table are combined with OR. A parent with no rule contributes nothing, so adding a parent never lifts a row rule. A role with no rule anywhere in its ancestry reads every row.
+
+Rate limits, row limits and session variables are properties. A role's own value is used; failing that, the first ancestor that sets one supplies it. The search is depth-first, in the order the parents are declared.
+
+Nothing in the model subtracts. A role that should lack an inherited capability is built from narrower parents, and [Access Model](access-model.md#no-deny) gives the additive form of each other use of a deny.
 
 ## Roles: granted, derived and meta
 
@@ -104,7 +91,7 @@ Three kinds of role work together in Provisa's access model. The Roles page list
 
 ### Granted roles
 
-A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. Inheritance (`parent_role_id`) folds an ancestor's rights into the child at startup. Rights only add; there is no subtraction. To restrict a reader, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one.
+A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. Inheritance gives the child every ancestor's capabilities and grants. Rights only add; there is no subtraction. To restrict a reader, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one.
 
 ### Expiring and unused grants
 
@@ -148,7 +135,7 @@ The audit record names every acting role, not the meta-role id. Since a meta-rol
 
 Every role and every row rule says what it is for. An access review reads who may see what and why. A role or a rule nobody can explain is one nobody can review, so the description is required: a role, a derived parent role or a row rule with an empty one is refused by the configuration load, the admin API and the UI, with the reason. The Roles and Row rules lists show each description, and their detail panels show and edit it.
 
-A role has one description, not one per domain. A general role that does not describe its responsibilities within a particular domain means that domain needs a role of its own, usually a child of the general role (`parent_role_id`), which inherits its rights and describes what it does there.
+A role has one description, not one per domain. A general role that does not describe its responsibilities within a particular domain means that domain needs a role of its own, usually a child of the general role, which inherits its rights and describes what it does there.
 
 ### How a request names roles
 
@@ -206,13 +193,13 @@ Each column has a permission model controlling read, write, and masking access p
 
 ### Public columns
 
-Every column has a `scope`, set in the model file, the admin API or the Tables page. The three scopes are ordered by who they serve: `restricted`, then `domain`, then `public`. A table editor (`table_registration` in the table's domain) may narrow a column's scope. Widening it — `restricted` to `domain` or `public`, `domain` to `public` — serves the column to more roles and takes the right that granting it takes: `column_grant` or `access_config` in the table's domain. A column being registered is compared with `domain`, so registering it `public` is a widening. On a column carrying a sensitive tag, any change of scope takes `sensitive_data`. A refused change names the column and the right.
+Every column has a `scope`, set in the model file, the admin API or the Tables page. Scope says how far beyond its table's domain a column reaches, and `visible_to` alone says who reads it. In every scope, an empty `visible_to` means no role. A table editor may narrow a column's scope. Widening it serves the column to more roles, so it takes the right that granting it takes. A column being registered is compared with `domain`, so registering it `public` is a widening. On a column carrying a sensitive tag, any change of scope takes the right to govern sensitive data. A refused change names the column and the right.
 
 | Scope | Served to |
 | ------- | ----------- |
-| `domain` (the default) | Roles that reach the table's domain, as `visible_to` says. An empty `visible_to` is every such role. |
-| `public` | The same roles, and also roles that do not reach the table's domain. |
-| `restricted` | Only the roles `visible_to` names. An empty `visible_to` is nobody. |
+| `domain` (the default) | Roles that reach the table's domain, as `visible_to` says. Outside the domain the column does not exist. |
+| `listed` | The same roles. Every role in the organisation also sees the table's name and the column's name in the catalog, and nothing else about it. |
+| `public` | The same roles, and also roles that do not reach the table's domain, as `visible_to` says. Every role in the organisation sees the names and descriptions. |
 
 Publishing a column removes the domain condition for that column and nothing else:
 
@@ -221,13 +208,12 @@ Publishing a column removes the domain condition for that column and nothing els
 - Masks, row filters, row limits and the relationship guard apply as they do inside the domain. With no row filter for the role, the published columns are read unfiltered; a row filter on the table or its domain still applies.
 - A relationship is served when both of its ends' columns are.
 - A parameter column of an API table (a path or query argument) is not data and publishes nothing.
-- The `ops` domain needs an explicit grant for every column; nothing in it is served across domains, whatever its scope.
 
 The rule is the same on every surface, because each one reads the role's compiled schema: GraphQL, SQL (HTTP, pgwire, Flight, JDBC), Cypher and Bolt, gRPC, REST and JSON:API, the Flight and MCP catalogs and the admin listings. A scope that is not one of the three values is refused when a column is saved.
 
 ### Write Grants
 
-Reading a column is controlled by `visible_to` (empty means all roles can read). Writing is controlled per table by `write_grants`, not per column. A table holds no grants by default, so no role can write it.
+Reading a column is controlled by `visible_to`, and an empty list means no role can read it. Registering a table puts the registering role and `viewer` in every column's `visible_to`. Writing is controlled per table by `write_grants`. A table holds no grants by default, so no role can write it.
 
 A write grant states what one role may write to one table by one operation (`insert`, `update` or `delete`):
 
@@ -256,7 +242,7 @@ tables:
     table: employees
     columns:
       - name: id
-        visible_to: []                # all can read
+        visible_to: [hr, viewer]      # every role built on viewer can read
       - name: email
         visible_to: [admin, analyst, viewer]
         masks:
@@ -270,7 +256,7 @@ tables:
           - to: ["*"]                 # all other visible roles see 0
             mask: {type: constant, value: 0}
       - name: created_at
-        visible_to: []                # all can read
+        visible_to: [hr, viewer]      # every role built on viewer can read
     write_grants:
       - role: admin
         operation: update
@@ -290,7 +276,7 @@ In this example:
 
 - `email`: admin sees `alice@example.com` and can update it on any row; analyst and viewer see `a***@example.com` and cannot write
 - `salary`: admin and hr see the real value; hr can update it on the rows hr can read, because the grant states no `rows`; every other visible role sees `0`
-- `created_at`: everyone can read it, no role supplies it, and an hr insert sets it to the time of the write
+- `created_at`: every role built on viewer can read it, no role supplies it, and an hr insert sets it to the time of the write
 
 ## Mutation Authorization
 
