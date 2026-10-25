@@ -2640,11 +2640,38 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
         return value if value.strip() else DEFAULT_UI_ORIGIN
 
 
-class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
-    """One external catalog an org's governance metadata is published to.
+# The fields of a catalog connection: where the catalog is and how to sign in to it (REQ-2122).
+# Export and import both read a catalog through one connection, so these live on the connection,
+# and an export target names its catalog instead of holding them.
+_CATALOG_CONNECTION_FIELDS = (
+    "id",
+    "provider",
+    "endpoint",
+    "api_key",
+    "token",
+    "auth_mode",
+    "username",
+    "entra_tenant_id",
+    "entra_client_id",
+    "entra_client_secret",
+    "google_service_account_json",
+    "gcp_project",
+    "gcp_location",
+    "aws_region",
+    "datazone_domain_id",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "timeout_seconds",
+)
 
-    id: the target's name within the org, unique there; its catalog bindings are kept under it,
-        so two targets of one provider (two OpenMetadata servers) never share them (REQ-2118).
+
+class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
+    """What an export provider is built from: one catalog's connection with the export's own
+    settings for it (REQ-2122). Never stored: :meth:`CatalogConnection.export_target` builds it
+    from the stored catalog and the export's :class:`CatalogExport` for it.
+
+    id: the catalog's name within the org, unique there; its catalog bindings are kept under it,
+        so two catalogs of one provider (two OpenMetadata servers) never share them (REQ-2118).
     provider: which MetadataExport adapter backs the port — "openlineage", "openmetadata",
         "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
         "datahub", "atlan", "collibra", "snowflake_horizon", "dataplex", "purview" (the Data
@@ -2665,6 +2692,7 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         requests (REQ-2118).
     delta_share: whether a unity_catalog target also publishes each product as a Delta Share
         (REQ-2117).
+    domains: the domains whose tables and data products this catalog is published (REQ-2122).
     """
 
     id: str
@@ -2687,6 +2715,7 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
     aws_secret_access_key: SecretStr = SecretStr("")
     delta_share: bool = False
     timeout_seconds: int = 30
+    domains: list[str] = Field(default_factory=list)
 
     @field_validator("id")
     @classmethod
@@ -2697,58 +2726,138 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
 
     @model_validator(mode="after")
     def _validate_endpoint(self) -> "MetadataExportTarget":
-        # REQ-1068: a target with no endpoint cannot publish. Failing here names the setting;
-        # failing at publish time names a connection. REQ-1635: snowflake_horizon is
-        # engine-native — it opens its own connection off configured_engine_url() rather than a
-        # remote catalog's endpoint, so endpoint is not a setting this provider has.
-        # REQ-2118: datazone signs AWS requests to its region's own service address.
-        if (
-            self.provider not in ("snowflake_horizon", "datazone", "unity_catalog")
-            and not self.endpoint
-        ):
-            raise ValueError(f"metadata export target {self.id!r} has no endpoint")
-        # REQ-2118: a DataZone data product lives in a domain, owned by a project, in a region.
-        if self.provider == "datazone" and not (
-            self.aws_region and self.datazone_domain_id and self.datazone_project_id
-        ):
-            raise ValueError(
-                f"metadata export target {self.id!r} needs the AWS region, the DataZone domain "
-                "and the project that owns its data products"
-            )
-        # REQ-2118: Purview's Unified Catalog is reached with the tenant's Entra credentials.
-        if self.provider == "purview" and self.auth_mode != "entra":
-            raise ValueError(
-                f"metadata export target {self.id!r} signs in to Purview with Microsoft Entra"
-            )
-        # REQ-2118: a Dataplex data product lives in a project and a location.
-        if self.provider == "dataplex" and not (self.gcp_project and self.gcp_location):
-            raise ValueError(
-                f"metadata export target {self.id!r} needs the GCP project and location its "
-                "data products are kept in"
-            )
+        _check_catalog_connection(self)
         return self
 
 
-class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118
+def _check_catalog_connection(catalog: Any) -> None:  # REQ-1068, REQ-2118, REQ-2122
+    """Refuse a connection that cannot reach its catalog, naming the setting it lacks."""
+    # REQ-1068: a target with no endpoint cannot publish. Failing here names the setting;
+    # failing at publish time names a connection. REQ-1635: snowflake_horizon is
+    # engine-native — it opens its own connection off configured_engine_url() rather than a
+    # remote catalog's endpoint, so endpoint is not a setting this provider has.
+    # REQ-2118: datazone signs AWS requests to its region's own service address.
+    if (
+        catalog.provider not in ("snowflake_horizon", "datazone", "unity_catalog")
+        and not catalog.endpoint
+    ):
+        raise ValueError(f"catalog {catalog.id!r} has no endpoint")
+    # REQ-2118: DataZone's assets live in a domain, in a region.
+    if catalog.provider == "datazone" and not (catalog.aws_region and catalog.datazone_domain_id):
+        raise ValueError(f"catalog {catalog.id!r} needs the AWS region and the DataZone domain")
+    # REQ-2118: Purview's Unified Catalog is reached with the tenant's Entra credentials.
+    if catalog.provider == "purview" and catalog.auth_mode != "entra":
+        raise ValueError(f"catalog {catalog.id!r} signs in to Purview with Microsoft Entra")
+    # REQ-2118: a Dataplex data product lives in a project and a location.
+    if catalog.provider == "dataplex" and not (catalog.gcp_project and catalog.gcp_location):
+        raise ValueError(
+            f"catalog {catalog.id!r} needs the GCP project and location its data products are "
+            "kept in"
+        )
+
+
+class CatalogConnection(BaseModel):  # REQ-2122
+    """One external catalog an org connects to once, for export and import alike.
+
+    Its fields are :class:`MetadataExportTarget`'s connection fields (``_CATALOG_CONNECTION_FIELDS``),
+    each held as entered and resolved at use. ``domains`` are the domains that work with it: their
+    tables offer only their catalogs, and their tables and data products publish to them. A
+    connection serves at least one domain.
+    """
+
+    id: str
+    provider: str
+    endpoint: str = ""
+    api_key: SecretStr = SecretStr("")
+    token: SecretStr = SecretStr("")
+    auth_mode: str = "api_key"
+    username: str = ""
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""
+    entra_client_secret: SecretStr = SecretStr("")
+    google_service_account_json: SecretStr = SecretStr("")
+    gcp_project: str = ""
+    gcp_location: str = ""
+    aws_region: str = ""
+    datazone_domain_id: str = ""
+    aws_access_key_id: SecretStr = SecretStr("")
+    aws_secret_access_key: SecretStr = SecretStr("")
+    timeout_seconds: int = 30
+    domains: list[str]
+
+    @field_validator("id")
+    @classmethod
+    def _validate_id(cls, v: str) -> str:
+        if not _SAFE_ID_PATTERN.match(v):
+            raise ValueError(f"a catalog's id is a name like 'catalog-1', not {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CatalogConnection":
+        if not self.domains:
+            raise ValueError(f"catalog {self.id!r} is assigned to no domain")
+        _check_catalog_connection(self)
+        return self
+
+    def export_target(self, export: "CatalogExport") -> MetadataExportTarget:
+        """The export provider's settings for this catalog: its connection and ``export``."""
+        return MetadataExportTarget(
+            **{name: getattr(self, name) for name in _CATALOG_CONNECTION_FIELDS},
+            datazone_project_id=export.datazone_project_id,
+            delta_share=export.delta_share,
+            domains=list(self.domains),
+        )
+
+
+class CatalogsConfig(BaseModel):  # REQ-2122
+    """The org's catalog connections, each held once (the Catalogs panel)."""
+
+    catalogs: list[CatalogConnection] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_ids(self) -> "CatalogsConfig":
+        ids = [c.id for c in self.catalogs]
+        repeated = sorted({i for i in ids if ids.count(i) > 1})
+        if repeated:
+            raise ValueError(f"catalogs named twice: {', '.join(repeated)}")
+        return self
+
+    def by_id(self) -> dict[str, CatalogConnection]:
+        return {c.id: c for c in self.catalogs}
+
+
+class CatalogExport(BaseModel):  # REQ-2118, REQ-2122
+    """The export to one catalog: the catalog it names, and its export settings alone.
+
+    datazone_project_id: the DataZone project that owns the org's data products (REQ-2118).
+    delta_share: whether a unity_catalog catalog also gets each product as a Delta Share
+        (REQ-2117).
+    """
+
+    catalog: str
+    datazone_project_id: str = ""
+    delta_share: bool = False
+
+
+class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118, REQ-2122
     """Outbound publication of governance metadata to external catalogs.
 
-    Per-org, premium-gated (REQ-1073). Outbound only — there is no ingest counterpart, by
-    design (REQ-1068): Provisa is the upstream, and an external catalog is never read back
-    as the source of truth.
+    Per-org, premium-gated (REQ-1073).
 
-    targets: every catalog the org publishes to; one publish reaches each (REQ-2118).
+    targets: the catalogs the org publishes to, each named by its id in the Catalogs panel with
+        its export settings; one publish reaches each (REQ-2118, REQ-2122).
     reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from
         dropped events (REQ-1072). Empty disables the reconcile and leaves only the
         event-driven path.
     """
 
     enabled: bool = False
-    targets: list[MetadataExportTarget] = Field(default_factory=list)
+    targets: list[CatalogExport] = Field(default_factory=list)
     reconcile_cron: str = "0 * * * *"
 
     @model_validator(mode="after")
     def _validate_targets(self) -> "MetadataExportConfig":
-        ids = [t.id for t in self.targets]
+        ids = [t.catalog for t in self.targets]
         repeated = sorted({i for i in ids if ids.count(i) > 1})
         if repeated:
             raise ValueError(f"metadata export targets named twice: {', '.join(repeated)}")
@@ -2756,6 +2865,27 @@ class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118
         if self.enabled and not self.targets:
             raise ValueError("metadata_export.enabled is true but no target is configured")
         return self
+
+    def export_targets(self, catalogs: CatalogsConfig) -> list[MetadataExportTarget]:
+        """Each target as its provider is built from: the named catalog with its export settings.
+        A target naming no catalog of the org is refused by name (REQ-2122)."""
+        known = catalogs.by_id()
+        missing = sorted(t.catalog for t in self.targets if t.catalog not in known)
+        if missing:
+            raise ValueError(
+                f"metadata export targets name no catalog of the org: {', '.join(missing)}"
+            )
+        targets = [known[t.catalog].export_target(t) for t in self.targets]
+        # REQ-2118: a DataZone data product is owned by a project, which only the export names.
+        unowned = sorted(
+            t.id for t in targets if t.provider == "datazone" and not t.datazone_project_id
+        )
+        if unowned:
+            raise ValueError(
+                f"the export to {', '.join(unowned)} needs the DataZone project that owns its "
+                "data products"
+            )
+        return targets
 
 
 class SubsystemTracesConfig(BaseModel):  # REQ-1432
@@ -3220,6 +3350,8 @@ class ProvisaConfig(BaseModel):
     row_materialize: RowMaterializeConfig = Field(default_factory=RowMaterializeConfig)  # REQ-1865
     observability: OtelConfig = Field(default_factory=OtelConfig)
     mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
+    # REQ-2122: the catalogs the org connects to once, for export and import.
+    catalogs: list[CatalogConnection] = Field(default_factory=list)
     metadata_export: MetadataExportConfig = Field(default_factory=MetadataExportConfig)  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)

@@ -12,35 +12,15 @@ import { requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-// --- Metadata export admin surface (REQ-1068, REQ-1072, REQ-1073, REQ-1074, REQ-2118) ---
+// --- Metadata export admin surface (REQ-1068, REQ-1072, REQ-1073, REQ-1074, REQ-2118, REQ-2122) ---
 
-/** One catalog the org publishes to, as the server reports it (REQ-2118: an org may have several,
- *  two of one provider among them).
- *
- *  Credentials appear only as `*_set` booleans: the server never returns a stored secret, so
- *  the form has nothing to render into a password field and nothing to send back unchanged.
- */
+/** One catalog the org publishes to (REQ-2118: an org may have several, two of one provider
+ *  among them). It names a catalog of the Catalogs panel, which holds the catalog's address and
+ *  credentials, and carries only the export's own settings for it (REQ-2122). */
 export interface MetadataExportTarget {
-  id: string;
-  provider: string;
-  endpoint: string;
-  auth_mode: string;
-  username: string;
-  entra_tenant_id: string;
-  entra_client_id: string;
-  gcp_project: string;
-  gcp_location: string;
-  aws_region: string;
-  datazone_domain_id: string;
+  catalog: string;
   datazone_project_id: string;
   delta_share: boolean;
-  timeout_seconds: number;
-  api_key_set: boolean;
-  token_set: boolean;
-  entra_client_secret_set: boolean;
-  google_service_account_json_set: boolean;
-  aws_access_key_id_set: boolean;
-  aws_secret_access_key_set: boolean;
 }
 
 export interface MetadataExportConfig {
@@ -79,30 +59,11 @@ export interface MetadataExportState {
   last_publish: PublishOutcome | null;
 }
 
-/** A target as saved: its settings, and only the credentials the administrator typed. A
- *  credential omitted keeps the one stored for that target; sent empty, it is cleared. */
-export type MetadataExportTargetUpdate = Omit<
-  MetadataExportTarget,
-  | "api_key_set"
-  | "token_set"
-  | "entra_client_secret_set"
-  | "google_service_account_json_set"
-  | "aws_access_key_id_set"
-  | "aws_secret_access_key_set"
-> & {
-  api_key?: string;
-  token?: string;
-  entra_client_secret?: string;
-  google_service_account_json?: string;
-  aws_access_key_id?: string;
-  aws_secret_access_key?: string;
-};
-
 /** The whole list is sent: a target left out of it is removed. */
 export interface MetadataExportUpdate {
   enabled?: boolean;
   reconcile_cron?: string;
-  targets?: MetadataExportTargetUpdate[];
+  targets?: MetadataExportTarget[];
 }
 
 export async function fetchMetadataExport(): Promise<MetadataExportState> {

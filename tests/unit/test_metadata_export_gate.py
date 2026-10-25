@@ -29,11 +29,14 @@ from provisa.api.metadata_export import publishing
 ORG_ID = "acme"
 
 _CONFIGURED = {
+    "catalogs": [
+        {"id": "atlas", "provider": "atlas", "endpoint": "http://atlas:21000", "domains": ["sales"]}
+    ],
     "metadata_export": {
         "enabled": True,
-        "targets": [{"id": "atlas", "provider": "atlas", "endpoint": "http://atlas:21000"}],
+        "targets": [{"catalog": "atlas"}],
         "reconcile_cron": "0 * * * *",
-    }
+    },
 }
 
 
