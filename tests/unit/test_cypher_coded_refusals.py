@@ -82,3 +82,42 @@ def test_a_refusal_at_execution_is_answered_by_its_own_handler(monkeypatch, refu
 def test_the_refusals_are_coded_api_errors_or_read_refusals():
     # What the route lets through is exactly what the app has a handler for.
     assert all(isinstance(e, (ApiError, ReadRefused)) for e in _REFUSALS)
+
+
+@pytest.mark.parametrize("refusal", _REFUSALS, ids=lambda e: type(e).__name__)
+def test_a_refusal_in_an_independent_call_is_answered_by_its_own_handler(monkeypatch, refusal):
+    async def _refuse(*_a, **_k):
+        raise refusal
+
+    monkeypatch.setattr(cypher_router, "_execute_call_body", _refuse)
+    body = cypher_router.CypherRequest(query="CALL { MATCH (o:Order) RETURN o } RETURN o")
+    with pytest.raises(type(refusal)):
+        asyncio.run(
+            cypher_router._execute_multi_call(
+                [SimpleNamespace(body=None)], None, body, None, "analyst", None, None, None
+            )
+        )
+
+
+def test_a_write_lets_a_refusal_past_its_catch_all():
+    """The write path answers a source's error of any type as "Write failed" (500); a refusal by
+    name is not one of those."""
+    from pathlib import Path
+
+    source = Path(cypher_router.__file__).read_text(encoding="utf-8")
+    write = source[source.index("_plan = await _govern_write(") :]
+    write = write[: write.index('"cypher.write_failed"')]
+    assert "except (ApiError, ReadRefused):" in write
+
+
+def test_the_neo4j_endpoint_answers_a_coded_refusal_with_its_own_status_and_message():
+    import json
+
+    from provisa.api.rest.neo4j_compat_router import _refused
+
+    response = _refused(RowLevelFilterRequired("bench_order_node"))
+    assert response.status_code == 400
+    (error,) = json.loads(response.body)["errors"]
+    assert "bench_order_node" in error["message"] and "Failed" not in error["message"]
+    assert error["code"] == "Neo.ClientError.Statement.ArgumentError"
+    assert _refused(_Unavailable()).status_code == 503
