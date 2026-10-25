@@ -234,7 +234,7 @@ push_api() {
 # The set is the SAME explicit list the Dockerfile bakes (Dockerfile:31-34) — never the whole
 # config/ dir, which also holds the divergent dev-local config/provisa.yaml.
 CONFIG_FILES="capabilities.yaml pg_extension_catalog.yaml custom_connectors.yaml \
-provisa-install.yaml provisa-install-base.yaml"
+provisa-install.yaml provisa-install-base.yaml provisa-sandbox-regions.yaml"
 
 # The sample data provisa-install.yaml's SQLite sources resolve to, via ${env:PROVISA_DEMO_DIR},
 # which the demo overlay sets to /app/config/demo/files (Dockerfile:41-45). It ships WITH the config
@@ -452,6 +452,16 @@ services:
       PROVISA_SANDBOX_AI_BASE_URL: "https://openrouter.ai/api/v1"
       PROVISA_SANDBOX_AI_API_KEY: "\$\${env:OPENROUTER_API_KEY}"
       OPENROUTER_API_KEY: "\${OPENROUTER_API_KEY:-}"
+  # REQ-2068: the regions sandbox tier runs the same app under its own deployment config
+  # (provisa-sandbox-regions.yaml, shipped in CONFIG_FILES); without the tree it ran the image's
+  # code and the image's config directory.
+  provisa-sandbox-regions:
+    volumes:
+      - ${OVERLAY_DIR}/static:/app/static
+      - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/config:/app/config
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
 YAML
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"

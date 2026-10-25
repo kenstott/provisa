@@ -377,6 +377,28 @@ def test_the_sandbox_tier_finds_the_deployments_demo_data():
     assert (root / "demo" / "files" / "pet_store.sqlite").is_file()  # what the Dockerfile bakes
 
 
+def test_a_deploy_gives_the_regions_tier_the_deployed_tree_and_its_config():
+    """REQ-2068: the regions tier runs the deployed code under provisa-sandbox-regions.yaml. A
+    patch that left it out of the overlay left it on the image's code and the image's config
+    directory, which an image built before that file has no copy of: the tier then started with no
+    platform regions and refused its --region us at every boot."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    deploy = (root / "scripts" / "deploy-cloud.sh").read_text()
+    overlay = deploy[deploy.index("push_overlay() {") :]
+    overlay = overlay[: overlay.index("\nYAML\n")]
+    regions = overlay[overlay.index("  provisa-sandbox-regions:\n") :]
+    for mount in ("/app/static", "/app/provisa", "/app/config"):
+        assert f"${{OVERLAY_DIR}}/{mount.rsplit('/', 1)[1]}:{mount}" in regions
+    listed = re.search(r'CONFIG_FILES="([^"]*)"', deploy)
+    assert listed is not None
+    shipped = listed.group(1).split()
+    assert "provisa-sandbox-regions.yaml" in shipped
+    assert (root / "config" / "provisa-sandbox-regions.yaml").is_file()
+
+
 def test_every_cloud_deploy_refreshes_the_demo_stores_sync():
     """The node's demo-stores sync and its units are installed with the node; deploy-cloud.sh
     copies them on every deploy that pushes the app, or a fix to the sync never reaches a node."""
