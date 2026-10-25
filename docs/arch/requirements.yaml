@@ -43986,14 +43986,17 @@
   priority: SHOULD
   type: behavioral
   since: 2026-07
-  description: Provisa has a first-class Metric object - a named, governed aggregate definition with no
-    grain of its own. Shape follows Apache Ossie's metric natively (name, aggregate ANSI-SQL expression,
+  description: 'Provisa has a first-class Metric object - a named, governed aggregate definition with no
+    grain of its own. Shape follows Apache Ossie''s metric natively (name, aggregate ANSI-SQL expression,
     datatype, description, ai_context) plus Provisa governance fields (role visibility, steward/version,
     same pattern as tables). Dataset binding is implicit through the field references inside the expression,
     with relationship-derived joins when an expansion spans datasets. A metric query (metric plus a requested
     dimension set) is expanded by the compiler into GROUP BY SQL inside the single settled query pipeline
     - metrics are a compile-time expansion, never a second pipeline. Metrics appear in the UI as a third
-    Model-nav item beside Views and Commands.
+    Model-nav item beside Views and Commands. (Amended 2026-10-25, NO EVERYONE DEFAULT:) A metric''s grant
+    list has no everyone default and ''*'' names no role (REQ-2153, REQ-2154): an empty list means no role,
+    and creating a metric grants it to the acting role and to Viewer, as registering a table does. The same
+    holds for the role lists of functions, webhooks and commands.'
   use_case: A metric is neither a derived column (which has per-row grain) nor a view (which has fixed
     grain) - it is an aggregate definition whose grain is bound at query time, the concept every semantic
     layer since BusinessObjects has converged on. Defining it once, governed, gives every consumer the
