@@ -88124,3 +88124,38 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     each way. Nodes are named by their catalog names only. It reads the same metadata query the view
     already reads, with no request of its own. It is compact by default, and an expand control shows
     it at full size.
+- id: REQ-2151
+  status: proposed
+  target: "2027-Q1"
+  group: 11. Platform, Infrastructure & Delivery
+  category: Demo Provisioning
+  feature: product-tour-and-demos-sandbox
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A published named demo may declare, in its demo.yaml, the attributes its sandbox visitor carries
+    (visitor: attributes: {name: value}). Opening a visitor's sandbox records each one as the org's
+    attribute for that visitor, through the same user-attribute record an administrator writes, so a
+    derived role the demo's tour acts as (retail's region__eu, REQ-2057) is held from an attribute as
+    it is for any member. A visitor's token is a signed-in credential, and a signed-in principal holds
+    a derived role only from its attributes; without the declaration a tour step naming one is refused
+    as a role the visitor does not hold. Only a visitor's sandbox is given them, and there is no other
+    path by which a visitor gets an attribute. A value that is not text, or a name that may not be
+    recorded, refuses the demo by name.
+  use_case: >-
+    Retail's tour acts as reviewer,region__eu to show the EU-only reveal of a flagged message's sender;
+    its visitor carries region eu, so the step answers instead of being refused.
+  scenario: 'Given a published demo whose demo.yaml declares visitor attributes region eu
+
+
+    When a visitor opens its sandbox
+
+
+    Then the visitor''s org record says region eu
+
+
+    And the visitor may act as reviewer,region__eu'
+  related_reqs:
+  - REQ-2057
+  - REQ-2006
+  - REQ-2068
