@@ -2654,9 +2654,9 @@ async def _build_org_runtime(
                     async with bound_to_request_org():
                         await rebuild_from_config(seed, conn, state.federation_engine)
                     if is_template_org(org_id):
-                        from provisa.api.demo_templates import write_declared_vector_models
+                        from provisa.api.demo_templates import write_declared_settings
 
-                        await write_declared_vector_models(state.model_db, seed)
+                        await write_declared_settings(state.model_db, seed)
                 async with bound_to_request_org():
                     org_config = await store_config(state.raw_config, conn)
                 unbound: set[str] = set()

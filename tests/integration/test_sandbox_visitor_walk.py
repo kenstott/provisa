@@ -33,10 +33,12 @@ by name, before the bundle is published (demo-bundles.yml runs this test on the 
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +46,7 @@ import httpx
 import pytest
 import yaml
 
+from tests.integration.regions_tier import regions_tier, serves_on_regions_tier
 from tests.integration.test_demo_sandboxes_e2e import _JWT_SECRET, _deployment_config
 
 # local_platform: the tier's control plane is the local platform's, no shared stack (only the
@@ -92,17 +95,44 @@ def _bundle(demo: str, out: Path) -> Path:
 @pytest.fixture(params=published_demos())
 def tier(request, tmp_path_factory):
     """A sandbox tier serving the demo ``request.param`` from its bundle, as the cloud's node does:
-    the bundle in a registry of this test's own, pulled by the node's sync, its stores up."""
-    from tests.integration.demo_registry import DemoRegistry
-    from tests.integration.isolated_server import IsolatedServer
-
+    the bundle in a registry of this test's own, pulled by the node's sync, its stores up. A demo
+    whose demo.yaml names regions is served by a regions tier node, as the cloud's regions tier
+    serves it; every other demo by the plain sandbox tier."""
     demo = request.param
     work = tmp_path_factory.mktemp(f"visitor_{demo}")
     bundle = _bundle(demo, work / "built")
     version = bundle.name.removeprefix(f"{demo}-").removesuffix(".tar.gz")
+    project = f"provisa-demo-{demo}-{version}"
+    serve = _regions_tier if serves_on_regions_tier(_NAMED / demo) else _plain_tier
+    try:
+        with serve(demo, bundle, work) as (server, bundles):
+            assert (bundles / demo / "ready").read_text().strip() == version
+            server.demo = demo
+            server.directory = bundles / demo / version
+            yield server
+    finally:
+        subprocess.run(["docker", "compose", "-p", project, "down", "-v"], check=False)
+
+
+_AUTH = {"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"}
+
+
+@contextlib.contextmanager
+def _regions_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path]]:
+    bundles = work / "data" / "demo-bundles"
+    env = {"PROVISA_LOGS_ALLOWED_ROOTS": str(bundles)}
+    with regions_tier(f"visitor{demo}", demo, bundle, work, auth=_AUTH, env=env) as served:
+        server, _stack, synced_into = served
+        yield server, synced_into
+
+
+@contextlib.contextmanager
+def _plain_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path]]:
+    from tests.integration.demo_registry import DemoRegistry
+    from tests.integration.isolated_server import IsolatedServer
+
     registry = DemoRegistry()
     registry.start()
-    project = f"provisa-demo-{demo}-{version}"
     server = None
     try:
         print(registry.push(bundle))
@@ -110,7 +140,6 @@ def tier(request, tmp_path_factory):
         synced = registry.sync(demo, bundles)
         print(synced.stdout, synced.stderr)
         assert synced.returncode == 0, (demo, synced.stdout, synced.stderr)
-        assert (bundles / demo / "ready").read_text().strip() == version
         config = work / "config.yaml"
         _deployment_config(config)
         # The deployment's naming is the one every org's schema is named by: the cloud's sandbox
@@ -123,7 +152,7 @@ def tier(request, tmp_path_factory):
             f"visitor{demo}",
             engine="duckdb",
             config=str(config),
-            auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
+            auth=_AUTH,
             env={
                 "PROVISA_SANDBOX_TIER": "true",
                 "PROVISA_DEMO_BUNDLES": demo,
@@ -132,14 +161,11 @@ def tier(request, tmp_path_factory):
                 "PROVISA_LOGS_ALLOWED_ROOTS": str(bundles),
             },
         )
-        server.demo = demo
-        server.directory = bundles / demo / version
         server.start(timeout=600)
-        yield server
+        yield server, bundles
     finally:
         if server is not None:
             server.stop_process()
-        subprocess.run(["docker", "compose", "-p", project, "down", "-v"], check=False)
         registry.stop()
 
 
