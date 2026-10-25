@@ -21,6 +21,7 @@ from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.gql.translator import cypher_to_sql
 from provisa.gql.translator_types import CypherTranslateError
+from tests.unit.table_ids import table_id
 
 
 def _node(label: str, table: str) -> NodeMapping:
@@ -29,7 +30,7 @@ def _node(label: str, table: str) -> NodeMapping:
         type_name=label,
         domain_label=None,
         table_label=label,
-        table_id=hash(label) % 1000,
+        table_id=table_id(label),
         source_id="pg-main",
         id_column="id",
         pk_columns=[],
