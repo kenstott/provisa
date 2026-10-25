@@ -59,7 +59,7 @@ from provisa.gql.translator_helpers import (
     _properties_of,
     _fold_where_into_optional_joins,
     _node_table_expr,
-    _optional_vars,
+    _clause_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
 )
@@ -255,20 +255,53 @@ def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: igno
     return node
 
 
-def _steps_where(steps: list) -> WhereClause | None:
-    """Every condition of a segment's MATCH steps, each step's own WHERE, ANDed: a WHERE after a
-    MATCH is that MATCH's, one after an OPTIONAL MATCH is folded into its join
-    (_fold_where_into_optional_joins), and none is dropped for another."""
-    wheres = [step.where.expression for step in steps if step.where is not None]
-    if not wheres:
-        return None
-    if len(wheres) == 1:
-        return WhereClause(wheres[0])
-    # Each step's WHERE one conjunct of the whole, which the fold routes to its own join.
-    joined: CypherExpr = Paren(wheres[0])
-    for w in wheres[1:]:
+#: A segment's WHEREs: the MATCHes' (filtering the rows) and each OPTIONAL MATCH's own, with the
+#: variables it introduces (_steps_where).
+_StageWheres = tuple["WhereClause | None", list[tuple[set[str], WhereClause]]]
+
+
+def _and(
+    left: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    right: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> "exp.Expression | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return exp.And(this=left, expression=right)
+
+
+def _steps_where(
+    steps: list,
+) -> tuple[WhereClause | None, list[tuple[set[str], WhereClause]]]:
+    """A segment's MATCH steps' WHEREs, each its own clause's, as openCypher scopes it (REQ-345).
+    A WHERE after a MATCH filters the rows: those WHEREs ANDed, none dropped for another, returned
+    first. A WHERE after an OPTIONAL MATCH is that match's condition and never removes a row,
+    whatever it names: returned with the variables the OPTIONAL MATCH introduces, whose join it
+    conditions (_fold_where_into_optional_joins)."""
+    required: list[CypherExpr] = []
+    optional: list[tuple[set[str], WhereClause]] = []
+    seen: set[str] = set()
+    for step in steps:
+        new: set[str] = set()
+        for m in step.matches:
+            mine = _clause_vars(m)
+            new = mine - seen
+            seen |= mine
+        if step.where is None:
+            continue
+        if step.matches and step.matches[-1].optional:
+            optional.append((new, step.where))
+        else:
+            required.append(step.where.expression)
+    if not required:
+        return None, optional
+    if len(required) == 1:
+        return WhereClause(required[0]), optional
+    joined: CypherExpr = Paren(required[0])
+    for w in required[1:]:
         joined = Binary("AND", joined, Paren(w))
-    return WhereClause(joined)
+    return WhereClause(joined), optional
 
 
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
@@ -386,7 +419,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
         ]
-        stage_where = _steps_where(match_steps)
+        stage_where, optional_wheres = _steps_where(match_steps)
         held: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
@@ -410,10 +443,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         select_exprs = self._build_with_select_items(with_clause.items)
         where_expr = self._build_where(stage_where)
-        if where_expr and stage_where is not None:
-            joins, where_expr = _fold_where_into_optional_joins(
-                where_expr, _optional_vars(all_matches), joins
+        for step_vars, owned in optional_wheres:
+            joins, kept = _fold_where_into_optional_joins(
+                self._lower_where(owned), step_vars, joins
             )
+            where_expr = _and(where_expr, kept)
 
         stage_query = exp.select(*select_exprs).from_(from_clause)
         for join in joins:
@@ -479,10 +513,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         final_match_steps: list,
         final_unwinds: list,
         cte_defs: list[tuple[str, exp.Expression]],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "WhereClause | None"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "_StageWheres"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/joins for the final segment.
 
-        Returns (from_clause, joins, all_matches, stage_where).
+        Returns (from_clause, joins, all_matches, its WHEREs as _steps_where gives them).
         """
         all_matches = [
             _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
@@ -519,31 +553,31 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _apply_where_and_fold(
         self,
-        stage_where: "WhereClause | None",
-        all_matches: list[MatchClause],
+        stage_where: "_StageWheres",
         joins: list[dict],
     ) -> tuple["exp.Expression | None", list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Build WHERE and fold optional-join conditions.
+        """Build the WHERE of the MATCHes and fold each OPTIONAL MATCH's own WHERE into its join.
 
-        Also updates self._extra_path_branches with folded WHERE.
+        Also updates self._extra_path_branches with the folded joins.
         """
-        where_expr = self._build_where(stage_where)
-        if where_expr and stage_where is not None:
-            opt_vars = _optional_vars(all_matches)
-            joins, where_expr = _fold_where_into_optional_joins(where_expr, opt_vars, joins)
-            raw_where = self._build_where(stage_where)
-            if raw_where is not None:
-                self._extra_path_branches = [
-                    (
-                        bf,
-                        _fold_where_into_optional_joins(_of_branch(raw_where, types), opt_vars, bj)[
-                            0
-                        ],
-                        bps,
-                        types,
-                    )
-                    for bf, bj, bps, types in self._extra_path_branches
-                ]
+        required, optional_wheres = stage_where
+        where_expr = self._build_where(required)
+        for step_vars, owned in optional_wheres:
+            joins, kept = _fold_where_into_optional_joins(
+                self._lower_where(owned), step_vars, joins
+            )
+            where_expr = _and(where_expr, kept)
+            self._extra_path_branches = [
+                (
+                    bf,
+                    _fold_where_into_optional_joins(
+                        _of_branch(self._lower_where(owned), types), step_vars, bj
+                    )[0],
+                    bps,
+                    types,
+                )
+                for bf, bj, bps, types in self._extra_path_branches
+            ]
         return where_expr, joins
 
     def _build_main_query(
@@ -730,7 +764,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             cut = self._cut_column()
             for select_exprs in selects:
                 select_exprs.append(cut.copy())
-        where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
+        where_expr, joins = self._apply_where_and_fold(stage_where, joins)
 
         order_exprs = self._build_order_by(
             self._ast.order_by,
@@ -1011,6 +1045,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _build_where(self, where: WhereClause | None) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is None:
             return None
+        return self._lower_where(where)
+
+    def _lower_where(self, where: WhereClause) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         return self._lower_expr(where.expression).transform(_timestamp_literal)
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
