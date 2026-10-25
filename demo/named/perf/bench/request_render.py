@@ -25,6 +25,7 @@ from request_mix import RequestSpec
 _BASE_DESCRIPTION = "One row, one column, no predicate — the per-transport overhead floor"
 _SQL_HINT = "-- @provisa cache=true"
 _CYPHER_HINT = "// @provisa cache=true"
+_SPARQL_HINT = "# @provisa cache=true"
 _GRAPHQL_HINT = "@cached"
 _GRPC_CACHE_METADATA = ("x-provisa-cache", "true")
 # REST and JSON:API state the opt-in only in a header: gRPC's metadata name, as an HTTP header.
@@ -205,7 +206,8 @@ class Renderer:
             lines.append(f"?t{k} a <{child.sparql_class}> .")
             lines.append(f"OPTIONAL {{ ?t{k} <{base.names['sparql']}> {var} }}")
         body = " ".join(lines)
-        return f"SELECT {' '.join(selected)} WHERE {{ {body} }} LIMIT {spec.rows}"
+        hint = f"{_SPARQL_HINT}\n" if spec.cached else ""
+        return f"{hint}SELECT {' '.join(selected)} WHERE {{ {body} }} LIMIT {spec.rows}"
 
     def _graphql(
         self, spec: RequestSpec, table: contract_model.Table, cols: list, filters: list

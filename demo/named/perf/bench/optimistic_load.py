@@ -73,8 +73,8 @@ TRANSPORTS: dict[str, tuple[str, str | None]] = {
     "rest": ("GET /data/rest/{domain}/{table}", "x-provisa-cache: true header"),
     "jsonapi": ("GET /data/jsonapi/{domain}/{table}", "x-provisa-cache: true header"),
     "mcp": ("MCP tools/call run_sql, Streamable HTTP", "-- @provisa cache=true"),
-    # The SPARQL 1.1 Protocol endpoint: no per-request cache opt-in and no route hint exist there.
-    "sparql": ("POST /data/sparql, SPARQL 1.1 Protocol", None),
+    # The SPARQL 1.1 Protocol endpoint: no route hint exists there.
+    "sparql": ("POST /data/sparql, SPARQL 1.1 Protocol", "# @provisa cache=true"),
 }
 
 DEFAULT_STEPS = (1, 16, 64, 256)
@@ -248,25 +248,24 @@ class SparqlHttpClient(_HttpClient):
     """POST /data/sparql as an RDF client sends it: the query as a form field, the answer asked
     for as SPARQL JSON results (REQ-2135)."""
 
-    def _send(self, query: Query, role: str) -> dict[str, Any]:
+    def _send(self, query: Query, role: str) -> tuple[dict[str, Any], bool | None]:
         resp = self._http.post(
             "/data/sparql",
             data={"query": query.sparql},
             headers=self._headers(role, {"Accept": "application/sparql-results+json"}),
         )
         resp.raise_for_status()
-        return resp.json()
+        return resp.json(), self._hit(resp)
 
     def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
-        body = self._send(query, role)
-        # The endpoint takes no cache opt-in, so a hit is not known.
-        return len(body["results"]["bindings"]), len(body["head"]["vars"]), None
+        body, hit = self._send(query, role)
+        return len(body["results"]["bindings"]), len(body["head"]["vars"]), hit
 
     def rows(self, query: Query, role: str) -> Answer:
-        body = self._send(query, role)
+        body, hit = self._send(query, role)
         names = list(body["head"]["vars"])
         rows = [{n: _sparql_value(b.get(n)) for n in names} for b in body["results"]["bindings"]]
-        return names, rows, None
+        return names, rows, hit
 
 
 class McpClient:

@@ -12,7 +12,8 @@
 
 Its names come from the deployment's SPARQL vocabulary (a table's class, a column's predicate, an
 edge type's predicate), its requests are rendered from the same spec every transport's are, and
-it joins. It has no route hint and no per-request cache opt-in.
+it joins. It opts into the response cache on a comment line, as SQL and Cypher do; it has no route
+hint.
 
 FIXTURE: the deployment's answers are recorded shapes (deployment_fixture.py); the requests
 against a real server are test_bench_features_e2e's."""
@@ -41,8 +42,8 @@ ITEMS = lookup.TableIdentity("bench-postgresql", "public", "order_items", ("item
 def test_sparql_is_its_own_transport_and_joins() -> None:
     assert contract_model.TRANSPORT_LANGUAGE["sparql"] == "sparql"
     assert "sparql" in contract_model.JOIN_TRANSPORTS
-    # no per-request cache opt-in exists on the endpoint
-    assert ol.TRANSPORTS["sparql"][1] is None
+    # its per-request cache opt-in: the comment line SQL and Cypher take, in SPARQL's syntax
+    assert ol.TRANSPORTS["sparql"][1] == "# @provisa cache=true"
     assert ol.CLIENTS["sparql"] is ol.SparqlHttpClient
 
 
@@ -112,3 +113,9 @@ def test_an_answer_is_read_by_its_datatypes() -> None:
     assert ol._sparql_value({"value": "true", "datatype": f"{xsd}boolean"}) is True  # noqa: SLF001
     assert ol._sparql_value({"value": "us-east"}) == "us-east"  # noqa: SLF001
     assert ol._sparql_value(None) is None  # noqa: SLF001
+
+
+def test_a_cached_request_opts_in_on_its_own_comment_line(tmp_path: Path) -> None:
+    q = request_render.Renderer(_setup(tmp_path)).render(_spec("orders", (), cached=True))
+    assert q.sparql is not None
+    assert q.sparql.startswith("# @provisa cache=true\nSELECT ?order_id WHERE {")
