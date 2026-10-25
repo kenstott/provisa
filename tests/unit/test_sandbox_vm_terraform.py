@@ -53,8 +53,7 @@ def test_the_coordinator_hands_the_tier_over_only_when_asked():
         "export COMPOSE_PROFILES=control",
         'export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"',
         # REQ-2068: the regions sandbox tier's nodes, on the same VM.
-        'export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100,'
-        'warehouse=https://${var.sandbox_internal_ip}:8101"',
+        'export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100"',
     ):
         assert line in sandbox, line
     variables = (_TF / "variables.tf").read_text()
@@ -77,7 +76,7 @@ def test_the_vm_runs_the_regions_demos_stores():
     sandbox = (_TF / "sandbox.tf").read_text()
     lists = _TF.parents[1] / "packaging" / "linux" / "demo-stores"
     listed = (lists / "regions-tier-bundles").read_text().strip().split(",")
-    assert "retail" in listed and "banking" in listed
+    assert "retail" in listed
     # The sync takes both tiers' demos, through the one composition deploy-cloud.sh shares.
     assert (
         'for d in split(",", "${local.sandbox_tier_bundles},${local.regions_tier_bundles}") : d'

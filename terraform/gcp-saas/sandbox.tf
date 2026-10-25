@@ -22,7 +22,7 @@ locals {
   coordinator_sandbox_vm_exports = <<-SHELL
     export COMPOSE_PROFILES=control
     export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"
-    export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100,warehouse=https://${var.sandbox_internal_ip}:8101"
+    export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100"
     export PROVISA_SANDBOX_INSTANCE="${local.sandbox_instance_path}"
   SHELL
 
