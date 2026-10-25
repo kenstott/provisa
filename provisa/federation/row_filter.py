@@ -207,6 +207,16 @@ def _record_table(schema: str, table: str, dialect: str | None) -> Any:
     )
 
 
+async def _ensure_record_table(conn: Any, schema: str, record: Any) -> None:
+    """The filter record beside the replica, in the replica's schema: a row-level table is read
+    before anything is landed for it, so the schema may not exist yet."""
+    from sqlalchemy.schema import CreateSchema, CreateTable
+
+    if schema and conn.capabilities.schemas:
+        await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+    await conn.execute_core(CreateTable(record, if_not_exists=True))
+
+
 async def filter_fetched_at(
     state: Any, backend: Any, engine: Any, schema: str, table: str, digest: str
 ) -> datetime | None:
@@ -226,9 +236,7 @@ async def filter_fetched_at(
         dsn = engine.engine.materialize_store()
         record = _record_table(schema, table, _store_dialect(dsn))
         async with store_writer.store_connection(dsn) as conn:
-            from sqlalchemy.schema import CreateTable
-
-            await conn.execute_core(CreateTable(record, if_not_exists=True))
+            await _ensure_record_table(conn, schema, record)
             row = (
                 await conn.execute_core(
                     select(record.c.fetched_at).where(record.c.filter_hash == digest)
@@ -297,7 +305,7 @@ async def replace_filtered_rows(
         await require_store_replica_table(conn, schema, table, action="write the row-level replica")
         async with conn.transaction():
             await conn.execute_core(CreateTable(cache_table, if_not_exists=True))
-            await conn.execute_core(CreateTable(record, if_not_exists=True))
+            await _ensure_record_table(conn, schema, record)
             await conn.execute_core(delete(cache_table).where(text(where_sql)))
             with pa.memory_map(spool_path) as source:
                 reader = pa.ipc.open_file(source)
