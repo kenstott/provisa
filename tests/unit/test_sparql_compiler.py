@@ -293,7 +293,12 @@ def test_a_predicate_the_vocabulary_lacks_matches_nothing(con):
         ("CONSTRUCT { ?s ?s ?s } WHERE { ?s p:name ?n } GROUP BY ?s", "CONSTRUCT"),
         ("SELECT ?s WHERE { VALUES ?s { 1 } }", "VALUES"),
         ("DESCRIBE ?s WHERE { ?s p:name ?n }", "DESCRIBE|Describe"),
-        ("SELECT ?n WHERE { ?s p:name ?n FILTER(STRLEN(?n) > 2) }", "STRLEN"),
+        ('SELECT ?n WHERE { ?s p:name ?n FILTER(MD5(?n) = "x") }', "MD5"),
+        ('SELECT ?x WHERE { ?s p:name ?n BIND(REPLACE(?n, "a", "b", "i") AS ?x) }', "flags i"),
+        ('SELECT ?x WHERE { ?s p:name ?n BIND(REPLACE(?n, "(?=a)", "b") AS ?x) }', "pattern"),
+        ('SELECT ?x WHERE { ?s p:name ?n BIND(REPLACE(?n, ?n, "b") AS ?x) }', "literals"),
+        ("SELECT ?x WHERE { ?s p:name ?n BIND(isNUMERIC(STRLEN(?n)) AS ?x) }", "isNUMERIC"),
+        ("SELECT ?x WHERE { ?s p:name ?n BIND(<urn:f>(?n) AS ?x) }", "urn:f"),
     ],
 )
 def test_what_is_not_lowered_is_refused_by_name(query, refusal):
@@ -450,3 +455,89 @@ def test_group_by_an_expression_groups_by_its_value(con):
         con, "SELECT count(*) FROM pg.public.persons WHERE age IS NOT NULL GROUP BY age > 30"
     )
     assert [(r["n"],) for r in rows] == want
+
+
+@pytest.mark.parametrize(
+    "sparql, sql",
+    [
+        ("STRLEN(?n)", "length(name)"),
+        ('CONCAT(?n, "-", STR(?a))', "name || '-' || CAST(age AS VARCHAR)"),
+        ("CONCAT()", "''"),
+        ("SUBSTR(?n, 2)", "substr(name, 2)"),
+        ("SUBSTR(?n, 1, 2)", "substr(name, 1, 2)"),
+        ('REPLACE(?n, "[aeiou]", "_")', "regexp_replace(name, '[aeiou]', '_', 'g')"),
+        ('REPLACE(?n, "(.)(.)", "$2$1")', "regexp_replace(name, '(.)(.)', '\\2\\1', 'g')"),
+        ('REPLACE(?n, "n.", "_", "q")', "replace(name, 'n.', '_')"),
+        ('REPLACE(?n, "^ A", "_", "x")', "regexp_replace(name, '^A', '_')"),
+        (
+            'STRBEFORE(?n, "n")',
+            "CASE WHEN strpos(name, 'n') = 0 THEN '' "
+            "ELSE substr(name, 1, strpos(name, 'n') - 1) END",
+        ),
+        (
+            'STRAFTER(?n, "n")',
+            "CASE WHEN strpos(name, 'n') = 0 THEN '' ELSE substr(name, strpos(name, 'n') + 1) END",
+        ),
+        ('STRAFTER(?n, "")', "name"),
+        (
+            'STRBEFORE(LCASE(SUBSTR(?n, 2)), "y")',
+            "CASE WHEN strpos(lower(substr(name, 2)), 'y') = 0 "
+            "THEN '' ELSE substr(lower(substr(name, 2)), 1, strpos(lower(substr(name, 2)), 'y') - 1) END",
+        ),
+        ("CEIL(?a / 10)", "ceil(age / 10)"),
+        ("FLOOR(?a / 10)", "floor(age / 10)"),
+        ("ROUND(?a / 10)", "floor(age / 10 + 0.5)"),  # a half rounds up
+        ("ROUND(-?a / 10)", "floor(-age / 10 + 0.5)"),
+        ("isNUMERIC(?a)", "true"),
+        ("isNUMERIC(?n)", "false"),
+        ('isNUMERIC("1"^^xsd:integer)', "true"),
+        ("xsd:integer(STR(?a))", "TRY_CAST(CAST(age AS VARCHAR) AS BIGINT)"),
+        ("xsd:double(?a)", "CAST(age AS DOUBLE)"),
+        ("xsd:decimal(?a)", "CAST(age AS DECIMAL)"),
+        ("xsd:string(?a)", "CAST(age AS VARCHAR)"),
+        ("xsd:boolean(?a)", "CAST(age AS BOOLEAN)"),
+        ("xsd:integer(?n)", "TRY_CAST(name AS BIGINT)"),
+        ("xsd:integer(SUBSTR(STR(?a), 2))", "TRY_CAST(substr(CAST(age AS VARCHAR), 2) AS BIGINT)"),
+    ],
+)
+def test_a_scalar_function_answers_as_its_sql_does(con, sparql, sql):
+    rows = _answer(
+        con,
+        f"SELECT ?s ?x WHERE {{ ?s p:name ?n ; p:age ?a BIND({sparql} AS ?x) }}",
+    )
+    want = _sql(con, f"SELECT id, {sql} FROM pg.public.persons WHERE age IS NOT NULL")
+    assert sorted((r["s"], r["x"]) for r in rows) == [
+        (subject_iri(BASE, "hr", "persons", [i]), x) for i, x in want
+    ]
+
+
+@pytest.mark.parametrize(
+    "part, field",
+    [
+        ("YEAR", "year"),
+        ("MONTH", "month"),
+        ("DAY", "day"),
+        ("HOURS", "hour"),
+        ("MINUTES", "minute"),
+        ("SECONDS", "second"),
+    ],
+)
+def test_a_date_part_of_a_date_time(con, part, field):
+    at = "2024-03-05T10:20:30"
+    rows = _answer(
+        con, f'SELECT ?x WHERE {{ ?s p:name "Ann" BIND({part}("{at}"^^xsd:dateTime) AS ?x) }}'
+    )
+    want = _sql(con, f"SELECT extract({field} FROM TIMESTAMP '{at}')")
+    assert [(r["x"],) for r in rows] == want
+
+
+def test_a_date_part_of_a_cast(con):
+    rows = _answer(
+        con, 'SELECT ?x WHERE { ?s p:name "Ann" BIND(YEAR(xsd:date("2024-03-05")) AS ?x) }'
+    )
+    assert [r["x"] for r in rows] == [2024]
+
+
+def test_now_is_one_instant_for_the_whole_query(con):
+    rows = _answer(con, "SELECT ?s ?x WHERE { ?s p:name ?n BIND(YEAR(NOW()) AS ?x) }")
+    assert {r["x"] for r in rows} == {_sql(con, "SELECT year(now())")[0][0]}
