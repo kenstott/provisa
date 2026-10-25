@@ -18,8 +18,10 @@ catalog stored — not what the adapter believed it sent.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
+import time
 
 import httpx
 import pytest
@@ -178,13 +180,18 @@ async def test_no_rule_body_is_stored_in_the_external_catalog(published, token):
 
 async def test_the_data_product_holds_its_members(published, token):
     """REQ-1634, REQ-2118: OpenMetadata's own data product, in its domain, with every member."""
-    product = await _get(token, f"/api/v1/dataProducts/name/{PRODUCT}", fields="assets,domains")
+    product = await _get(token, f"/api/v1/dataProducts/name/{PRODUCT}", fields="domains")
     assert [d["name"] for d in product["domains"]] == ["sales"]
-    assert {a["fullyQualifiedName"] for a in product["assets"]} == {
-        ORDERS_FQN,
-        f"{SOURCE}.default.{SCHEMA}.customers",
-        TOTALS_FQN,
-    }
+    members = {ORDERS_FQN, f"{SOURCE}.default.{SCHEMA}.customers", TOTALS_FQN}
+    # OpenMetadata 2 answers a product's assets from its search index, which trails the add.
+    deadline = time.monotonic() + 60
+    while True:
+        assets = await _get(token, f"/api/v1/dataProducts/name/{PRODUCT}/assets", limit="1000")
+        held = {a["fullyQualifiedName"] for a in assets["data"]}
+        if held == members or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(2)
+    assert held == members
     assert product["description"].startswith(PRODUCT_FIELDS["purpose"])
     assert f"Limitations: {PRODUCT_FIELDS['limitations']}" in product["description"]
 
@@ -198,7 +205,17 @@ async def test_each_member_carries_its_odcs_contract(published, token):
     )
     odcs = await _get(token, f"/api/v1/dataContracts/{contract['id']}/odcs")
     assert odcs["apiVersion"] == "v3.1.0"
-    assert odcs["version"] == PRODUCT_FIELDS["version"]
+    # OpenMetadata 2.0.5 keeps no imported ODCS ``version``: its import keeps the contract
+    # entity's own revision and its export reports that (ODCSConverter.toODCS/fullReplace).
+    assert odcs["version"] == str(contract["version"])
+    # What Provisa sent, as OpenMetadata keeps it: the member's name, the product's status
+    # (active is OpenMetadata's APPROVED, and back), and the description's three parts in one.
+    assert odcs["name"] == "orders"
+    assert odcs["status"] == PRODUCT_FIELDS["status"]
+    assert odcs["description"] == {
+        "purpose": f"{PRODUCT_FIELDS['purpose']}\n\n**Limitations:**\n"
+        f"{PRODUCT_FIELDS['limitations']}\n\n**Usage:**\n{PRODUCT_FIELDS['usage']}"
+    }
     (schema,) = odcs["schema"]
     columns = {p["name"]: p for p in schema["properties"]}
     assert set(columns) == {"id", "customer_id", "amount", "region", "ssn", "margin"}

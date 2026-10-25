@@ -36,6 +36,9 @@ from typing import Any
 import httpx
 import yaml
 
+from provisa.core.db import SEEDED_ROLE_IDS
+from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
+
 SCHEMA = "mdx_e2e"
 SOURCE = "mdx-wh"
 DOMAIN = "sales"
@@ -63,6 +66,11 @@ MEMBER_TTL = 3600
 GLOSSARY_TERM = "customer"
 GLOSSARY_DEFINITION = "A person or company that has placed at least one order."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.
+# The org's data roles: the model's, and the ones every org schema is seeded with. A column read
+# by the model's roles alone is visibility-restricted for the seeded ones.
+MODEL_ROLES = ["analyst", "data_owner", "admin"]
+AUDIENCE = sorted({*MODEL_ROLES, *SEEDED_ROLE_IDS} - {ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
+
 VIEW = "order_totals"
 VIEW_SQL = f'SELECT o.id AS id, o.amount * 2 AS net FROM "{DOMAIN}"."orders" o'
 
@@ -115,10 +123,10 @@ def model_config(
     for the run (provisa_e2e_*). ``domain`` is the members' domain: a catalog that files a product
     under a domain of its own name (Purview) is given the one that exists there. ``product_name``
     is its name: a catalog read back by name is given the run's own."""
-    roles = ["analyst", "data_owner", "admin"]
+    roles = MODEL_ROLES
     # The org's own admin reads every member as well: the tests read as org_admin, the role the
     # server's default assignment gives.
-    everyone = [*roles, "org_admin"]
+    everyone = [*AUDIENCE, ORG_ADMIN_ROLE]
     config = {
         "federation_engine": engine,
         "auth": {
@@ -196,9 +204,9 @@ def model_config(
                     {
                         "name": "ssn",
                         "data_type": "text",
-                        # The masked column's audience is the model's roles: masked for all but
+                        # The masked column's audience is the org's roles: masked for all but
                         # admin, as the catalogs' restricted and exempt roles show it.
-                        "visible_to": roles,
+                        "visible_to": AUDIENCE,
                         "masks": [
                             {"to": ["admin"], "mask": None},
                             {
