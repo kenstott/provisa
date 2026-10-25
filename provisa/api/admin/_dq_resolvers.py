@@ -75,7 +75,7 @@ def _kind_document(kind: Any) -> dict:
     }
 
 
-async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -> dict:
+async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str, scope: Any) -> dict:
     """The checks the picker may offer, scoped to the columns of the contract's own dataset.
 
     The scoping input is the DATASET the contract names, not a table the panel was handed: the
@@ -94,10 +94,21 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
     except ContractError as exc:
         return {"error": str(exc), "dataset_checks": [], "columns": []}
     dataset_checks = [_kind_document(k) for k in kinds if k.scope == "dataset"]
+    from provisa.api.admin.read_rights import served_columns_of
+
     try:
         target = resolve_contract_target(dataset, state.contexts)
     except ContractError as exc:
         return {"error": str(exc), "dataset_checks": dataset_checks, "columns": []}
+    # REQ-2152: only the columns the caller is served; a dataset it is served none of is
+    # answered as one that resolves to no governed table.
+    served = await served_columns_of(conn, scope, target.table_id)
+    if served == set():
+        return {
+            "error": f"contract dataset {dataset!r} resolves to no governed table",
+            "dataset_checks": dataset_checks,
+            "columns": [],
+        }
     columns = (
         await conn.execute_core(
             select(table_columns.c.column_name, table_columns.c.data_type)
@@ -117,6 +128,7 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
                 ],
             }
             for c in columns
+            if served is None or c._mapping["column_name"] in served
         ],
     }
 

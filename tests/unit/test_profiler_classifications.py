@@ -77,12 +77,13 @@ async def _model(control_plane, monkeypatch, *, allowed: frozenset[str] | None =
         c.execute(insert(sources).values(id="__derived__", type="derived"))
     db = control_plane.org()
 
-    async def _member(conn, table_id):
-        return {}
+    async def _member(conn, table_id, request):
+        # Every column served: which ones a caller may read is test_profiler_read_rights.
+        return {"served": None}
 
     monkeypatch.setattr(router_mod, "_db", lambda: db)
     monkeypatch.setattr(router_mod, "_member", _member)
-    monkeypatch.setattr(router_mod, "_physical", lambda table_id, column: column)
+    monkeypatch.setattr(router_mod, "_physical", lambda table_id, column, served: column)
     monkeypatch.setattr(router_mod, "require_capability_request", lambda request, cap: None)
     monkeypatch.setattr(
         router_mod, "allowed_domains_for_capability_request", lambda request, cap: allowed

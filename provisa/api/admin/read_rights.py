@@ -253,3 +253,46 @@ def column_drop_text(table_name: str, report: dict[str, list[dict]]) -> str:
         for column, dependents in report.items()
     )
     return f"Table {table_name!r} cannot drop column(s) that are still referred to: {named}"
+
+
+async def served_columns_of(conn: "Connection", scope: Any, table_id: int) -> set[str] | None:
+    """The physical columns of table ``table_id`` the caller behind ``scope`` (its
+    :class:`~provisa.api.admin.catalog_scope.CatalogScope`) is served; None when nothing narrows
+    it. A table no schema build compiled yet is judged by the rule over its stored grants
+    (``CatalogScope.answered_columns``), read here (REQ-2152)."""
+    from provisa.core.schema_org import registered_tables, table_columns
+
+    if scope.whole:
+        return None
+    if table_id in scope.compiled or table_id in scope.served:
+        return scope.served.get(table_id, set())
+    domain = (
+        await conn.execute_core(
+            select(registered_tables.c.domain_id).where(registered_tables.c.id == table_id)
+        )
+    ).fetchone()
+    if domain is None:
+        return set()
+    columns = await conn.execute_core(
+        select(
+            table_columns.c.column_name, table_columns.c.visible_to, table_columns.c.scope
+        ).where(table_columns.c.table_id == table_id)
+    )
+    return scope.stored_columns(
+        {
+            "id": table_id,
+            "domain_id": domain.domain_id,
+            "columns": [dict(r._mapping) for r in columns.fetchall()],
+        }
+    )
+
+
+async def served_columns_request(
+    conn: "Connection", request: Any, table_id: int
+) -> set[str] | None:
+    """:func:`served_columns_of` for a REST handler's ``request``."""
+    from provisa.api.admin.catalog_scope import catalog_scope
+
+    return await served_columns_of(
+        conn, catalog_scope(types.SimpleNamespace(context={"request": request})), table_id
+    )

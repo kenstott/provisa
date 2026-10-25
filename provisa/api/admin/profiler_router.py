@@ -59,6 +59,7 @@ def _jsonable(row: dict) -> dict:
 @router.get("/profilers")
 async def list_profilers(request: Request) -> list[dict]:
     require_dq_read_request(request)
+    from provisa.api.admin.read_rights import served_columns_request
     from provisa.profiler.source import members, profiler_sources
 
     async with _db().acquire() as conn:
@@ -73,7 +74,12 @@ async def list_profilers(request: Request) -> list[dict]:
                     "lowCardinalityMax": settings.low_cardinality_max,
                     "driftWindow": settings.drift_window,
                     "driftSeason": settings.drift_season,
-                    "members": [m["table_name"] for m in await members(conn, p["id"])],
+                    # REQ-2152: only the members the caller is served a column of.
+                    "members": [
+                        m["table_name"]
+                        for m in await members(conn, p["id"])
+                        if await served_columns_request(conn, request, m["id"]) != set()
+                    ],
                 }
             )
     return out
@@ -122,7 +128,13 @@ async def profiler_catalog(request: Request, source_id: str) -> list[dict]:
     return out
 
 
-async def _member(conn: Any, table_id: int) -> dict:
+async def _member(conn: Any, table_id: int, request: Request) -> dict:
+    """The profiled table ``table_id`` -- its name, its profiler, and the columns the caller is
+    served (``served``; None when nothing narrows it). A table the caller is served no column of
+    is answered as one that does not exist (REQ-2152): ``table_registration`` opens the profiler,
+    never more of the model."""
+    from provisa.api.admin.read_rights import served_columns_request
+
     row = (
         await conn.execute_core(
             select(registered_tables.c.table_name, registered_tables.c.profiler_source_id).where(
@@ -130,7 +142,8 @@ async def _member(conn: Any, table_id: int) -> dict:
             )
         )
     ).fetchone()
-    if row is None:
+    served = None if row is None else await served_columns_request(conn, request, table_id)
+    if row is None or served == set():
         raise ApiError(
             404, "profile.table_not_found", f"Table {table_id} not found", table_id=table_id
         )
@@ -141,7 +154,7 @@ async def _member(conn: Any, table_id: int) -> dict:
             f"Table {row[0]!r} has not joined a profiler",
             table=row[0],
         )
-    return {"table_name": row[0], "source_id": row[1]}
+    return {"table_name": row[0], "source_id": row[1], "served": served}
 
 
 @router.post("/tables/{table_id}/profile-runs")
@@ -150,7 +163,7 @@ async def run_profile_now(request: Request, table_id: int) -> dict:
     from provisa.profiler.run import ProfileError, profile_table
 
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         settings = await _settings(conn, member["source_id"])
     try:
         run = await profile_table(
@@ -196,7 +209,7 @@ def _viewer_roles(request: Request, x_provisa_role: str | None) -> frozenset[str
 async def list_profile_runs(request: Request, table_id: int) -> list[dict]:
     require_dq_read_request(request)
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         runs = await _relation(conn, member["table_name"], table_id, "runs")
         result = await conn.execute_core(select(runs).order_by(runs.c.run_time.desc()))
         return [_jsonable(dict(r._mapping)) for r in result.fetchall()]
@@ -218,7 +231,7 @@ async def get_profile_run(
     roles = _viewer_roles(request, x_provisa_role)
     out: dict[str, list[dict]] = {}
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         rules = await column_rules(conn, state, table_id)
         for kind in RESULT_KINDS:
             relation = await _relation(conn, member["table_name"], table_id, kind)
@@ -254,7 +267,7 @@ async def get_measure_history(
 
     roles = _viewer_roles(request, x_provisa_role)
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         settings = await _settings(conn, member["source_id"])
         rules = await column_rules(conn, state, table_id)
         drift = await _relation(conn, member["table_name"], table_id, "drift")
