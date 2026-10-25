@@ -531,6 +531,9 @@ export default defineConfig({
             PROVISA_MCP_PORT: String(b.port + 4),
             PROVISA_PGWIRE_PORT: String(b.port + 5),
             PROVISA_DATA_DIR: b.dataDir,
+            // Its own trace folder, not ~/.provisa/telemetry (local-dev's): every backend compacts
+            // its folder each minute, and four sharing one compacted each other's files.
+            PROVISA_TELEMETRY_DIR: path.resolve(b.dataDir, "telemetry"),
             PROVISA_CONFIG: b.configPath,
             ORG_ID: b.orgId,
             GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
@@ -568,6 +571,7 @@ export default defineConfig({
                   PROVISA_MCP_PORT: String(E2E_TRINO_MCP_PORT),
                   PROVISA_PGWIRE_PORT: String(E2E_TRINO_PGWIRE_PORT),
                   PROVISA_DATA_DIR: E2E_TRINO_DATA_DIR,
+                  PROVISA_TELEMETRY_DIR: path.resolve(E2E_TRINO_DATA_DIR, "telemetry"),
                   PROVISA_CONFIG: E2E_TRINO_CONFIG_PATH,
                   ORG_ID: E2E_TRINO_ORG_ID,
                   GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,

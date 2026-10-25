@@ -27,11 +27,13 @@ from __future__ import annotations
 import logging
 import os
 import uuid
+from pathlib import Path
 from typing import Any, Callable, Sequence
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from provisa.core.host_lock import FileLock
 from provisa.observability.ops_schema import (
     CATALOG_DRIVER_SCOPES,
     OPS_SIGNAL_VIEWS,
@@ -50,6 +52,10 @@ COMPACT_TARGET_BYTES = 64 * 1024 * 1024
 #: over the folder binds its columns from it alone (traces_scan), and the folder's glob always
 #: matches it (DuckDB refuses a glob matching no file).
 SCHEMA_FILE = "_schema.parquet"
+
+#: The lock file at the folder's root a compaction pass holds (``compact``). Dot-named and not
+#: Parquet, so no read of the folder lists it.
+COMPACT_LOCK = ".compact.lock"
 
 _ARROW = {
     "text": pa.string(),
@@ -171,39 +177,79 @@ def compact(root: str, target_bytes: int = COMPACT_TARGET_BYTES) -> int:
     """Merge each day's files smaller than ``target_bytes`` into files of up to that size, then
     remove the files merged; the number of files removed.
 
-    The merged files are renamed into place before their inputs are removed, so no row is ever
-    absent from the folder; a read in the instant between the two can see the merged rows twice.
+    Every process of a host that shares the folder compacts it on the same schedule, so a pass
+    runs only under the folder's lock (``COMPACT_LOCK``): a pass that finds it held leaves the
+    folder to its holder and removes nothing. Two passes that merged the same files would each
+    write their merged copy, and every row of them would then be there twice.
+
+    Each input is written to the merged file as it is read, so a pass holds one input file of
+    Arrow at a time, never a day's. The merged files are renamed into place before their inputs
+    are removed, so no row is ever absent from the folder; a read in the instant between the two
+    can see the merged rows twice.
     """
     if not os.path.isdir(root):
         return 0
-    removed = 0
-    for entry in sorted(os.listdir(root)):
-        folder = os.path.join(root, entry)
-        if not (entry.startswith("_date=") and os.path.isdir(folder)):
-            continue
-        small = [
-            os.path.join(folder, name)
-            for name in sorted(os.listdir(folder))
-            if name.endswith(".parquet")
-            and os.path.getsize(os.path.join(folder, name)) < target_bytes
-        ]
-        if len(small) < 2:
-            continue
-        # Each file read as itself: a dataset read of a path under ``_date=...`` would take the
-        # folder name for a partition column and clash with the file's own ``_date``.
-        table = pa.concat_tables([pq.ParquetFile(p).read().cast(TRACES_SCHEMA) for p in small])
-        in_bytes = sum(os.path.getsize(p) for p in small)
-        # Rows per merged file, from the inputs' own bytes per row: files of about target_bytes.
-        per_file = max(1, table.num_rows * target_bytes // max(in_bytes, 1))
-        for start in range(0, table.num_rows, per_file):
-            _write_atomic(
-                table.slice(start, per_file),
-                os.path.join(folder, f"rolled-{uuid.uuid4().hex}.parquet"),
-            )
+    lock = FileLock(Path(root) / COMPACT_LOCK)
+    if not lock.try_acquire():
+        return 0  # another process is compacting this folder: what it merges is its pass
+    try:
+        removed = 0
+        for entry in sorted(os.listdir(root)):
+            folder = os.path.join(root, entry)
+            if entry.startswith("_date=") and os.path.isdir(folder):
+                removed += _compact_day(folder, target_bytes)
+        return removed
+    finally:
+        lock.release()
+
+
+def _compact_day(folder: str, target_bytes: int) -> int:
+    """:func:`compact` for one day's folder, under the folder's lock."""
+    small = [
+        os.path.join(folder, name)
+        for name in sorted(os.listdir(folder))
+        if name.endswith(".parquet") and os.path.getsize(os.path.join(folder, name)) < target_bytes
+    ]
+    if len(small) < 2:
+        return 0
+    writer: pq.ParquetWriter | None = None
+    tmp = ""
+    filled = 0
+    rolled: list[str] = []
+
+    def roll() -> None:
+        assert writer is not None
+        writer.close()
+        rolled.append(os.path.join(folder, f"rolled-{uuid.uuid4().hex}.parquet"))
+        os.replace(tmp, rolled[-1])
+
+    try:
         for path in small:
+            size = os.path.getsize(path)
+            if writer is not None and filled + size > target_bytes:
+                roll()
+                writer = None
+            if writer is None:
+                tmp = os.path.join(folder, f".{uuid.uuid4().hex}.tmp")
+                writer = pq.ParquetWriter(tmp, TRACES_SCHEMA)
+                filled = 0
+            # Each file read as itself: a dataset read of a path under ``_date=...`` would take
+            # the folder name for a partition column and clash with the file's own ``_date``.
+            writer.write_table(pq.ParquetFile(path).read().cast(TRACES_SCHEMA))
+            filled += size
+        roll()
+        writer = None
+    except BaseException:
+        # The inputs stay, so the merged files of this pass go: kept, their rows would be twice.
+        if writer is not None:
+            writer.close()
+            os.remove(tmp)
+        for path in rolled:
             os.remove(path)
-        removed += len(small)
-    return removed
+        raise
+    for path in small:
+        os.remove(path)
+    return len(small)
 
 
 def _landed(root: str) -> pa.Table:
