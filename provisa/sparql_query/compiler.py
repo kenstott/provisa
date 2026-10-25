@@ -36,6 +36,7 @@ the keys. What the front end does not lower is refused by name.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import re
 from dataclasses import dataclass, field
@@ -60,6 +61,7 @@ from provisa.gql.expr_ast import (
     ListLiteral,
     Literal,
     Property,
+    SubqueryExpr,
     Term,
     TypedLiteral,
     Unary,
@@ -628,9 +630,20 @@ class _Lowering:
                 matched = Binary("AND", matched, c)
             conditions = []
         else:
-            # An edge or a variable predicate between subjects already matched has no node of
-            # its own to tell its match by (#303).
-            return conditions
+            # Edges between subjects already matched: no row of their own, it matched where they
+            # exist between the two rows (#303).
+            body = CypherAST(
+                pipeline=[MatchStep([dataclasses.replace(m, optional=False) for m in matches])],
+                return_clause=ReturnClause([ReturnItem(Literal(1, "number"), "one", name="one")]),
+                order_by=[],
+                skip=None,
+                limit=None,
+            )
+            matched = SubqueryExpr("EXISTS", body)
+            for c in conditions:
+                matched = Binary("AND", matched, c)
+            matches.clear()
+            conditions = []
         for var in bound:
             value, datatype = bindings[var]
             bindings[var] = (Case(None, [(matched, value)], None), datatype)
