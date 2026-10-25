@@ -88408,7 +88408,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     among its ancestors are ORed, and a parent with no rule contributes nothing, so adding a parent never
     lifts a row rule; a role with no rule anywhere among its ancestors is unrestricted, as before. Write-grant
     row conditions resolve the same way. A property (rate limit, row limit, session variables) is the role''s
-    own, else the first ancestor''s that sets it, depth-first in declared parent order.'
+    own, else the first ancestor''s that sets it, depth-first in declared parent order. (Amended 2026-10-25,
+    STANDARD ROLES REACH NO DOMAIN:) A standard role carries no domain reach: domain reach is a union over
+    ancestors, so a standard role reaching a domain would hand it to every role built on it. An organisation''s
+    own child roles carry the reach (a Finance steward is a child of Data steward reaching finance).'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -88565,7 +88568,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     set; a capability reached through two parents is shown where it first enters; a meta-role''s members
     are its branches. Data access: every table the role reaches once scope is applied (its domains, and
     listed or public columns of other domains), each expanding to its columns with scope, read or write,
-    mask, row rule and the granting role. A derived role has the data access tab only.'
+    mask, row rule and the granting role. A derived role has the data access tab only. (Amended 2026-10-25,
+    DOMAIN SELECTOR:) The data access tab has a domain selector. For a role with domain reach it defaults
+    to that reach and can narrow to one domain. For a standard role, which reaches none, it previews the
+    role as if it reached the chosen domain, which is what a child role reaching that domain gets. The selected
+    domain decides which other domains'' columns appear as listed or public.'
   scenario: 'Given role dq_lead inheriting Data quality steward and Data product owner
 
     When a security admin opens dq_lead on the Security page
