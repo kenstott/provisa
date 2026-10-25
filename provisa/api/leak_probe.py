@@ -68,10 +68,22 @@ def _thread_names() -> dict[str, int]:
     """Live threads by name, a pool's worker number left off: which pool or server a rise in
     ``threads`` is in."""
     return dict(
-        collections.Counter(
-            re.sub(r"(_\d+|-\d+.*|:.*)$", "", t.name) for t in threading.enumerate()
-        )
+        collections.Counter(re.sub(r"(_\d+|-\d+.*)$", "", t.name) for t in threading.enumerate())
     )
+
+
+def _thread_stacks() -> list[dict[str, Any]]:
+    """Every live thread's name and stack, innermost frame last: what a thread that never goes
+    idle is waiting on."""
+    import sys
+    import traceback
+
+    frames = sys._current_frames()  # noqa: SLF001 - the interpreter's own per-thread frames
+    return [
+        {"name": t.name, "stack": traceback.format_stack(frames[t.ident])}
+        for t in threading.enumerate()
+        if t.ident in frames
+    ]
 
 
 def mount(app: Any) -> None:
@@ -91,7 +103,11 @@ def mount(app: Any) -> None:
     worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="leak-probe")
 
     @app.get("/debug/leak-probe")
-    async def leak_probe(top: int = 15) -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
+    async def leak_probe(top: int = 15, stacks: bool = False) -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
+        if stacks:
+            # What each thread is doing, without a snapshot: the next growth reading still
+            # compares against the last one.
+            return {"stacks": _thread_stacks()}
         # Garbage first: cyclic garbage awaiting its collection is not held, and counted as if it
         # were it looked like growth (a SPARQL request's vocabulary is freed only by a full pass).
         # The snapshot walks every traced block: off the loop, which goes on serving.
