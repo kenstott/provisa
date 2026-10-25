@@ -415,16 +415,10 @@ async def _start_servers(_log: logging.Logger) -> None:
         # on the Flight handler thread).
         flight_server = _build_flight_server(0)
 
-        import threading
+        from provisa.api.flight.relay import FlightRelay, serve_in_background
 
-        flight_thread = threading.Thread(
-            target=flight_server.serve,
-            daemon=True,
-        )
-        flight_thread.start()
+        serve_in_background(flight_server)
         state._flight_server = flight_server
-
-        from provisa.api.flight.relay import FlightRelay
 
         state._flight_relay = FlightRelay(
             "0.0.0.0",  # nosec B104 - the Flight endpoint intentionally binds all interfaces

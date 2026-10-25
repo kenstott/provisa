@@ -43,6 +43,7 @@ import logging
 import socket
 import threading
 import time
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,21 @@ _UPSTREAM_CONNECT_TIMEOUT = 5.0
 _ACCEPT_POLL_SECONDS = 0.5
 # How long a copy waits before sending again when the host has no buffer space (ENOBUFS).
 _NO_BUFFER_SPACE_WAIT = 0.005
+
+
+def serve_in_background(server: Any) -> threading.Thread:
+    """Hold a pyarrow Flight server's thread until ``server.shutdown()``: it is listening from its
+    construction, and the thread only keeps it company.
+
+    Never ``server.serve()``: that hands the server to Arrow's signal handling, which keeps ONE
+    running server for the whole process (a static). A SIGINT then stops that server, not
+    uvicorn's lifespan; and when any server's ``serve()`` returns, its signal thread stops
+    whichever server ``serve()``d last -- a worker runs two (Flight and airport), and a stopped
+    one leaves its relay answering every connection with a reset. ``wait()`` blocks the same way
+    without any of it."""
+    thread = threading.Thread(target=server.wait, daemon=True)
+    thread.start()
+    return thread
 
 
 class FlightRelay:

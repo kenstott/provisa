@@ -19,14 +19,17 @@ itself (SO_REUSEPORT) and relays the bytes to its own Flight server on a loopbac
 from __future__ import annotations
 
 import datetime
+import os
+import signal
 import socket
 import threading
+import time
 
 import pyarrow as pa
 import pyarrow.flight as fl
 import pytest
 
-from provisa.api.flight.relay import FlightRelay
+from provisa.api.flight.relay import FlightRelay, serve_in_background
 from tests.port_lease import lease_port
 
 
@@ -50,7 +53,7 @@ def started():
     def _start(thing):
         opened.append(thing)
         if isinstance(thing, fl.FlightServerBase):
-            threading.Thread(target=thing.serve, daemon=True).start()
+            serve_in_background(thing)
         return thing
 
     yield _start
@@ -157,6 +160,28 @@ def test_a_large_stream_arrives_whole_through_the_relay(started):
         client.close()
     assert table.num_rows == 3_000_000
     assert table["n"][2_999_999].as_py() == 2_999_999
+
+
+def test_a_server_served_in_the_background_is_not_stopped_by_a_signal_to_the_process(started):
+    """pyarrow's serve() hands the server to Arrow's signal handling, which keeps ONE running
+    server for the whole process: a SIGINT stops it, and a server whose serve() returns stops
+    whichever server serve()d last -- under -n 4 the next test's, moments after it was bound (the
+    relay found its port refused). A server run behind the relay is stopped only by shutdown()."""
+    got: list[int] = []
+    previous = signal.signal(signal.SIGINT, lambda signum, _frame: got.append(signum))
+    try:
+        server = started(_Echo("w1"))
+        time.sleep(0.5)  # serve() takes over SIGINT when its thread starts serving
+        os.kill(os.getpid(), signal.SIGINT)
+        deadline = time.monotonic() + 5
+        while not got and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert got == [signal.SIGINT]  # the process's own handler received it
+        port = lease_port()
+        started(FlightRelay("127.0.0.1", port, server.port))
+        assert _get(port, "after", upstream=server.port) == {"server": "w1", "ticket": "after"}
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def test_two_workers_bind_the_same_advertised_port(started):
