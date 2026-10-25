@@ -30,7 +30,7 @@ import uuid
 import httpx
 import pytest
 
-from provisa.api.metadata_export.purview import API_VERSION, token_oid
+from provisa.api.metadata_export.purview import API_VERSION
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
     PRODUCT_FIELDS,
@@ -255,12 +255,13 @@ async def test_the_class_term_is_in_its_domain_and_related_to_its_tables_asset(p
     """REQ-1387/1389: the Class term lands in the Unified Catalog glossary, in its domain's
     governance domain, and is related to the data asset of the table it grounds, as Provisa's
     own relationship."""
-    result, term, term_assets = published[0], published[5], published[6]
+    result, assets, term, term_assets = published[0], published[2], published[5], published[6]
     assert term is not None, "the Unified Catalog has no term for the class term"
     assert term["name"] == CLASS_TERM and term["status"] == "Published"
     assert result["published"]["glossary_term"] == 2
+    # The service lists a relationship as its entity and type alone: the one the Class term has
+    # is a Related one to a data asset of the product's members, the orders table's.
     assert len(term_assets) == 1, term_assets
-    provisa = token_oid(_token(_credentials(), "https://purview.azure.net/.default"))
-    # The relationship as the service lists it, whole, when it names no author.
-    assert "systemData" in term_assets[0], term_assets[0]
-    assert term_assets[0]["systemData"]["createdBy"] == provisa, term_assets[0]
+    related = term_assets[0]
+    assert related["relationshipType"] == "Related", term_assets
+    assert related["entityId"] in {a["entityId"] for a in assets}, (term_assets, assets)

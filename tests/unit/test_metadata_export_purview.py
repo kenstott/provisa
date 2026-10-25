@@ -31,6 +31,7 @@ from pydantic import ValidationError
 from provisa.api.metadata_export import purview
 from provisa.api.metadata_export.atlas import AtlasExport
 from provisa.api.metadata_export.builder import build_snapshot
+from provisa.api.metadata_export.publishing import _snapshot_uris
 from provisa.api.metadata_export.provider import PublishResult
 from provisa.api.metadata_export.purview import (
     PurviewExport,
@@ -156,6 +157,8 @@ class _Purview:
         self.related: dict[str, set[str]] = {}
         self.calls: list[tuple[str, str]] = []
         self.terms: dict[str, dict] = {}
+        # The bindings the publish path keeps for this target between publishes (REQ-1389).
+        self.bindings: dict[str, tuple[str, str]] = {}
         # term id -> its relationships, as the catalog lists them
         self.term_relations: dict[str, list[dict]] = {}
         # governance domain ids whose terms cannot be listed (503)
@@ -246,13 +249,15 @@ class _Purview:
             relations = self.term_relations.setdefault(tid, [])
             category = url.params["entityType"]
             if method == "GET":
-                return httpx.Response(
-                    200, json={"value": [r for r in relations if r["category"] == category]}
-                )
+                # As the service lists a term's relationships: the entity and the type, no author.
+                listed = [
+                    {"entityId": r["entityId"], "relationshipType": r["relationshipType"]}
+                    for r in relations
+                    if r["category"] == category
+                ]
+                return httpx.Response(200, json={"value": listed})
             if method == "POST":
-                relations.append(
-                    {**body, "category": category, "systemData": {"createdBy": PROVISA_OID}}
-                )
+                relations.append({**body, "category": category})
                 return httpx.Response(200, json=body)
             relations[:] = [
                 r
@@ -302,6 +307,20 @@ def api(monkeypatch):
         "AsyncClient",
         lambda **kw: real(transport=httpx.MockTransport(fake.handle), **kw),
     )
+    # Each publish is handed the bindings the earlier ones captured, and what it captures is
+    # kept after it, pruned to what it published, as the publish path does (publish_snapshot).
+    published = PurviewExport.publish
+
+    async def _publish(self, snapshot):
+        self.stored_bindings = dict(fake.bindings)
+        result = await published(self, snapshot)
+        keep = _snapshot_uris(snapshot) | set(result.bindings)
+        fake.bindings = {
+            uri: bound for uri, bound in {**fake.bindings, **result.bindings}.items() if uri in keep
+        }
+        return result
+
+    monkeypatch.setattr(PurviewExport, "publish", _publish)
     return fake
 
 
@@ -542,19 +561,14 @@ async def test_a_domain_whose_terms_cannot_be_listed_has_none_written(api, data_
 
 
 async def test_a_stewards_relationships_stand_and_provisas_stale_ones_leave(api, data_map):
-    """systemData.createdBy decides: a relationship another principal created is a person's.
-    Provisa's own that the snapshot no longer carries is removed, and a term that left the
-    snapshot loses Provisa's relationships but keeps its entry."""
+    """The service lists a relationship with no author, so Provisa's are the ones its publishes
+    recorded writing: a relationship it has no record of is a person's and stands. Provisa's
+    own that the snapshot no longer carries is removed, and a term that left the snapshot loses
+    Provisa's relationships but keeps its entry."""
     await _export().publish(_snapshot(glossary=_glossary()))
     ids = _ids(api)
-    steward = {"createdBy": "oid-steward"}
     api.term_relations[ids["order"]].append(
-        {
-            "entityId": "asset-x",
-            "relationshipType": "Related",
-            "category": "DATAASSET",
-            "systemData": steward,
-        }
+        {"entityId": "asset-x", "relationshipType": "Related", "category": "DATAASSET"}
     )
     gone = {**_glossary(), "terms": _glossary()["terms"][:2], "edges": []}
     gone["domains"] = [d for d in gone["domains"] if d["term_id"] != 3]

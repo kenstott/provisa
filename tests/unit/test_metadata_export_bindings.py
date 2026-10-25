@@ -593,6 +593,40 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
 
 
 @pytest.mark.asyncio
+async def test_a_binding_the_publish_captured_is_kept_though_it_names_no_snapshot_asset(
+    snapshot, control_plane, monkeypatch
+):
+    """A provider records what it wrote that has no asset of its own in the snapshot (Purview's
+    term relationships, REQ-1389); what this publish captured is current, so the prune after it
+    keeps it, and drops it once a later publish no longer captures it."""
+    from provisa.api.metadata_export import publishing
+    from provisa.api.metadata_export.provider import PublishResult
+    from provisa.core.repositories import catalog_binding
+
+    db = control_plane.org()
+    captured = {"purview:relationship/t1/DATAASSET/Related/a1": ("a1", "Related")}
+
+    class _Exporter:
+        stored_bindings: dict = {}
+        needs_export_views = False
+
+        async def publish(self, published_snapshot):
+            result = PublishResult(provider_name="atlas", published={"table": 1})
+            result.bindings = dict(captured)
+            return result
+
+    _route_publish(monkeypatch, snapshot, db, {"atlas": _Exporter()})
+
+    await publishing.publish_snapshot("acme")
+    async with db.acquire() as conn:
+        assert await catalog_binding.load_bindings(conn, "atlas") == captured
+    captured = {snapshot.tables[0].semantic_uri: ("guid-1", f"{TABLE_FQN}@provisa")}
+    await publishing.publish_snapshot("acme")
+    async with db.acquire() as conn:
+        assert await catalog_binding.load_bindings(conn, "atlas") == captured
+
+
+@pytest.mark.asyncio
 async def test_a_refusal_an_adapter_does_not_report_is_its_targets_named_failure(
     snapshot, control_plane, monkeypatch
 ):

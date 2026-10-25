@@ -308,8 +308,10 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
             if result.bindings:
                 async with model_db.acquire() as conn:
                     await catalog_binding.upsert_bindings(conn, target.id, result.bindings)
+                    # What this publish captured is current, though it may name no snapshot
+                    # asset (a term relationship Purview lists with no author, REQ-1389).
                     await catalog_binding.remove_stale_bindings(
-                        conn, target.id, keep_uris=_snapshot_uris(snapshot)
+                        conn, target.id, keep_uris=_snapshot_uris(snapshot) | set(result.bindings)
                     )
             results[target.id] = result
         return results

@@ -35,9 +35,9 @@ Synonym relationship and every other edge a Related one. A Class term is related
 assets of the tables it grounds (REQ-1389); a Property term's columns have no Unified Catalog
 id this adapter can resolve, so Property assignments reach Purview through the Data Map only.
 The Unified Catalog term has no free property for the term's role, which the Data Map term
-carries (REQ-2141). Provisa's service principal is the author of every relationship it writes,
-and ``systemData.createdBy`` is the ownership test: Provisa adds and removes only its own, and
-a term that left the snapshot loses only those.
+carries (REQ-2141). The service lists a term's relationships with no author, so each one Provisa
+writes is recorded in its bindings, and that record is the ownership test: Provisa adds and
+removes only its own, and a term that left the snapshot loses only those.
 """
 
 # Requirements: REQ-2118, REQ-1387, REQ-1389, REQ-2141
@@ -77,6 +77,14 @@ _FREQUENCIES = (
     (31 * 86400, "Monthly"),
     (92 * 86400, "Quarterly"),
 )
+
+
+def _relationship_key(term: str, category: str, entity_id: str, kind: str) -> str:
+    """The binding that records a relationship Provisa wrote on Unified Catalog term ``term``
+    (REQ-1389): the service lists a relationship with no author, so this record is what tells
+    Provisa's from a person's. Outside the org's term URIs, which the Data Map pass reads as
+    its terms."""
+    return f"purview:relationship/{term}/{category}/{kind}/{entity_id}"
 
 
 def catalog_status(product: "DataProductAsset") -> str:
@@ -572,15 +580,13 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 for other, kind in related.get(term.term_id, set())
                 if other in ids
             }
-            await self._sync_relationships(client, catalog, author, tid, TERM, wanted_terms, result)
+            await self._sync_relationships(client, catalog, tid, TERM, wanted_terms, result)
             wanted_assets = {
                 (assets[guids[ref.fqn()]], "Related")
                 for ref in term.assigned_to()
                 if term.role == "class" and ref.fqn() in guids
             }
-            await self._sync_relationships(
-                client, catalog, author, tid, DATA_ASSET, wanted_assets, result
-            )
+            await self._sync_relationships(client, catalog, tid, DATA_ASSET, wanted_assets, result)
         # A term this publish no longer carries keeps its catalog entry, and loses Provisa's
         # relationships (REQ-1389).
         for domain_id in sorted(set(domains.values())):
@@ -592,34 +598,31 @@ class PurviewExport(AtlasExport):  # REQ-2118
                     continue
                 for category in (TERM, DATA_ASSET):
                     await self._sync_relationships(
-                        client, catalog, author, live["id"], category, set(), result
+                        client, catalog, live["id"], category, set(), result
                     )
 
     async def _sync_relationships(
         self,
         client: httpx.AsyncClient,
         catalog: dict,
-        author: str,
         term: str,
         category: str,
         wanted: set[tuple[str, str]],
         result: PublishResult,
     ) -> None:
         """Make Provisa's relationships of one category on one term exactly ``wanted``
-        ((entity id, relationship type) pairs). A relationship another principal created is a
-        person's: it is never removed, and Provisa adds none beside it."""
+        ((entity id, relationship type) pairs). The service lists a relationship with no
+        author, so Provisa's are those its publishes recorded writing (``_relationship_key``);
+        one with no record is a person's: it is never removed, and Provisa adds none beside it."""
         url = self._catalog(f"/terms/{term}/relationships")
-        live = await self._paged(client, catalog, url, entityType=category)
-        ours = {
+        live = {
             (r["entityId"], r["relationshipType"])
-            for r in live
-            if (r.get("systemData") or {}).get("createdBy") == author
+            for r in await self._paged(client, catalog, url, entityType=category)
         }
-        held = {
-            (r["entityId"], r["relationshipType"])
-            for r in live
-            if (r.get("systemData") or {}).get("createdBy") != author
-        }
+        ours = {pair for pair in live if _relationship_key(term, category, *pair) in self._bindings}
+        held = live - ours
+        for pair in sorted(wanted & ours):
+            result.bindings[_relationship_key(term, category, *pair)] = pair
         params = {"api-version": API_VERSION, "entityType": category}
         for entity_id, kind in sorted(wanted - ours - held):
             added = await client.post(
@@ -629,6 +632,10 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 headers=catalog,
             )
             added.raise_for_status()
+            result.bindings[_relationship_key(term, category, entity_id, kind)] = (
+                entity_id,
+                kind,
+            )
             key = (
                 "unified_catalog_term_assignment"
                 if category == DATA_ASSET
