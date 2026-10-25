@@ -214,6 +214,8 @@ async def test_whether_a_table_is_landed_is_read_from_the_landing_databases_cata
     """REQ-318: absent is False, landed is True, and a catalog that cannot be read raises --
     never read as a table that is not there."""
     columns = [("id", "integer")]
+    # A replica's DDL is reconciled before it is landed, which overwrites its rows.
+    await runtime.reconcile_replica(schema=_SCHEMA, table="lte_landed", columns=columns)
     await runtime.land_table(schema=_SCHEMA, table="lte_landed", columns=columns, rows=[{"id": 1}])
     try:
         assert await runtime.landed_table_exists(schema=_SCHEMA, table="lte_landed") is True

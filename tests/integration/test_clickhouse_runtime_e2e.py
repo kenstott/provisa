@@ -224,9 +224,10 @@ async def test_whether_a_table_is_landed_is_read_from_system_tables():
     never read as a table that is not there."""
     rt = ClickHouseFederationRuntime.embedded()
     try:
-        await rt.land_table(
-            schema="lte", table="landed", columns=[("id", "bigint")], rows=[{"id": 1}]
-        )
+        # A table's DDL is reconciled before it is landed (its database too), as a replica's is.
+        columns = [("id", "bigint")]
+        await rt.reconcile_replica(schema="lte", table="landed", columns=columns)
+        await rt.land_table(schema="lte", table="landed", columns=columns, rows=[{"id": 1}])
         assert await rt.landed_table_exists(schema="lte", table="landed") is True
         assert await rt.landed_table_exists(schema="lte", table="never") is False
         assert await rt.landed_table_exists(schema="no_such_db", table="x") is False

@@ -160,6 +160,8 @@ async def test_whether_a_table_is_landed_is_read_from_the_servers_system_tables(
     from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 
     runtime = ClickHouseFederationRuntime(server)
+    # A table's DDL is reconciled before it is landed (its database too), as a replica's is.
+    await runtime.reconcile_replica(schema=SCHEMA, table="lte_landed", columns=COLUMNS)
     await runtime.land_table(schema=SCHEMA, table="lte_landed", columns=COLUMNS, rows=_rows(2))
     assert await runtime.landed_table_exists(schema=SCHEMA, table="lte_landed") is True
     assert await runtime.landed_table_exists(schema=SCHEMA, table="lte_never") is False

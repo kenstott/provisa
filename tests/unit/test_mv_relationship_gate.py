@@ -25,6 +25,7 @@ from provisa.mv.relationship_gate import (
     extract_join_deps,
     relationship_present,
 )
+from tests.unit.table_ids import table_id
 
 
 # ------------------------------------------------------- extract_join_deps
@@ -184,7 +185,7 @@ def _gate_env(monkeypatch):
     monkeypatch.setattr(ops, "_get_pool", lambda: _async(_FakePool(object())))
     monkeypatch.setattr(rel_repo, "list_all", lambda conn: _async([]))
     monkeypatch.setattr(
-        table_repo, "find_by_table_name", lambda conn, name: _async({"id": hash(name) % 1000})
+        table_repo, "find_by_table_name", lambda conn, name: _async({"id": table_id(name)})
     )
 
     async def _upsert(conn, rel):
