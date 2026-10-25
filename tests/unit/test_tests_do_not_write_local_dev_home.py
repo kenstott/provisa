@@ -242,3 +242,65 @@ def test_every_server_a_test_starts_names_a_telemetry_folder_of_its_own():
     servers = playwright.count("exec .venv/bin/uvicorn main:app")
     assert servers == 2  # the core backends' entry, and the Trino backend's
     assert playwright.count("PROVISA_TELEMETRY_DIR: path.resolve(") == servers
+
+
+# --- the e2e backends ---------------------------------------------------------------------------
+
+
+def _playwright_config() -> str:
+    repo = Path(__file__).resolve().parents[2]
+    return (repo / "provisa-ui" / "playwright.config.ts").read_text()
+
+
+def test_every_e2e_backend_names_a_home_of_its_own():
+    """The Playwright backends are the test instance too. Each gets, under its own data dir: a
+    PROVISA_HOME (the MCP TLS certificates, provisa/api/mcp/tls.py, else ~/.provisa/certs), a
+    licensing sandbox (the trial anchors and high-water mark, else ~/.provisa), and the test key
+    store (the encryption master key is read from the keyring before PROVISA_ENCRYPTION_KEY, and
+    the OS keychain is local-dev's)."""
+    playwright = _playwright_config()
+    helper = playwright[playwright.index("function homeEnvFor(dataDir: string)") :]
+    helper = helper[: helper.index("\n}\n")]
+    assert "PROVISA_HOME: dataDir," in helper
+    assert 'PROVISA_LICENSING_SANDBOX_DIR: path.resolve(dataDir, "licensing"),' in helper
+    assert 'PYTHON_KEYRING_BACKEND: "tests._memory_keyring.MemoryKeyring",' in helper
+    servers = playwright.count("exec .venv/bin/uvicorn main:app")
+    assert servers == 2  # the core backends' entry, and the Trino backend's
+    assert playwright.count("...homeEnvFor(") == servers
+    assert "...homeEnvFor(b.dataDir)," in playwright
+    assert "...homeEnvFor(E2E_TRINO_DATA_DIR)," in playwright
+
+
+def test_the_e2e_key_store_loads_in_a_backend_and_writes_its_data_dir(tmp_path):
+    """A backend runs from the repo root (``cd ..``), with uvicorn's app dir (the root) first on
+    the path: there the key store the config names loads, and a key stored lands in the backend's
+    own data dir, not the OS keychain."""
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parents[2]
+    probe = (
+        "import sys; sys.path.insert(0, '');"
+        "import keyring; keyring.set_password('provisa', 'probe', 'k');"
+        "print(type(keyring.get_keyring()).__name__, keyring.get_password('provisa', 'probe'))"
+    )
+    env = {
+        **os.environ,
+        "PROVISA_DATA_DIR": str(tmp_path),
+        "PYTHON_KEYRING_BACKEND": "tests._memory_keyring.MemoryKeyring",
+        "PYTHONPATH": "",
+    }
+    out = subprocess.run(  # noqa: S603 - the venv's interpreter, a fixed probe
+        [sys.executable, "-I", "-c", probe], cwd=repo, env=env, capture_output=True, text=True
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.split() == ["MemoryKeyring", "k"]
+    assert (tmp_path / "test-keyring.json").is_file()
+
+
+def test_this_session_keeps_mcp_certificates_outside_the_real_home():
+    from provisa.api.mcp.tls import _cert_dir
+
+    folder = _cert_dir().resolve()
+    real = (Path.home() / ".provisa").resolve()
+    assert real not in (folder, *folder.parents)

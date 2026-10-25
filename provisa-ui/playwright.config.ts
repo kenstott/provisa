@@ -407,6 +407,20 @@ function wipeStaleMaterializeStore(dataDir: string): void {
   }
 }
 
+// A backend's own home, not local-dev's ~/.provisa (three-instance isolation; the same values
+// tests/conftest.py forces for pytest): the MCP TLS certificates and the ops store follow
+// PROVISA_HOME; licensing writes its trial anchors and high-water mark only under its sandbox
+// (provisa/licensing/home.py), still reading the real trial clock; and the encryption master key
+// is read from the keyring BEFORE PROVISA_ENCRYPTION_KEY (REQ-684, REQ-1802), so the OS keychain
+// is swapped for the test key store, a file under PROVISA_DATA_DIR (tests/_memory_keyring.py).
+function homeEnvFor(dataDir: string): Record<string, string> {
+  return {
+    PROVISA_HOME: dataDir,
+    PROVISA_LICENSING_SANDBOX_DIR: path.resolve(dataDir, "licensing"),
+    PYTHON_KEYRING_BACKEND: "tests._memory_keyring.MemoryKeyring",
+  };
+}
+
 const embeddedControlPlaneDir = (dataDir: string) => path.join(dataDir, "control-pg");
 
 function controlPlanePg(...args: string[]): string {
@@ -539,6 +553,7 @@ export default defineConfig({
             GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
             PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
             PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+            ...homeEnvFor(b.dataDir),
             ...controlPlaneEnvFor(b.dataDir),
           },
           reuseExistingServer: !process.env.CI,
@@ -577,6 +592,7 @@ export default defineConfig({
                   GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
                   PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
                   PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+                  ...homeEnvFor(E2E_TRINO_DATA_DIR),
                   PROVISA_ENGINE: "trino",
                   // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
                   // Trino container itself, not the host. These vars make engine_visible_address()
