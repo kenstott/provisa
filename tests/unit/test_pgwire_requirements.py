@@ -1474,6 +1474,38 @@ class TestRoleSetOnPgwire:
         assert ctx.session.role_set == ("analyst",)
         assert ctx.session.role_quals == ("region", "region__eu")
 
+    def test_trust_mode_reads_the_derived_roles_of_the_deployments_org(self):
+        """REQ-1266: the startup packet arrives with no org bound; the declarations read are the
+        deployment org's, the one the session then serves."""
+        from provisa.core.request_context import current_org
+        from provisa.pgwire.server import ProvisaHandler
+
+        ctx = MagicMock()
+        ctx.params = {"user": "analyst"}
+        ctx.session = _session()
+        handler = object.__new__(ProvisaHandler)
+        handler.wfile = MagicMock()
+        handler.send_authentication_ok = MagicMock()
+        handler.handle_post_auth = MagicMock()
+        fake_state = MagicMock()
+        fake_state.org_id = "acme"
+        fake_state.auth_config = {"provider": "none"}
+        fake_state.auth_middleware_active = False
+        read_under: list[str | None] = []
+        ambient = current_org.get()
+
+        def declared(_state):
+            read_under.append(current_org.get())
+            return []
+
+        with (
+            patch("provisa.pgwire.server.state", fake_state),
+            patch("provisa.auth.derived_roles.declared_derived_roles", declared),
+        ):
+            handler.handle_md5_password(ctx, b"x\x00")
+        assert read_under == ["acme"] and current_org.get() == ambient
+        assert ctx.session.org_id == "acme"
+
     def test_trust_mode_refuses_a_named_meta_role(self):
         from provisa.pgwire.server import ProvisaHandler
 
