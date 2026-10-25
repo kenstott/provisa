@@ -204,6 +204,23 @@ def _alternatives(p: CompValue) -> list[_Group]:
 
 
 @dataclass
+class _Deferred:
+    """A group's BINDs and FILTERs read after its OPTIONALs are lowered."""
+
+    binds: list[tuple[str, Any]] = field(default_factory=list)
+    filters: list[Any] = field(default_factory=list)
+
+
+def _free_vars(expr: Any) -> set[str]:
+    """The variables an expression reads."""
+    if isinstance(expr, RdfVariable):
+        return {str(expr)}
+    if isinstance(expr, CompValue):
+        return {str(v) for v in expr["_vars"]}
+    return set()
+
+
+@dataclass
 class _Aggregation:
     """A query's GROUP BY: its keys (variables; empty for one group of every solution), its
     aggregates by the variable each result is, the projection's rebindings over them (in the
@@ -500,6 +517,7 @@ class _Lowering:
         labels: dict[str, str],
         bindings: dict[str, tuple[CypherExpr, str | None]],
         optional: bool,
+        deferred: "_Deferred | None" = None,
     ) -> MatchStep:
         """The MATCH of ``group`` with its nodes labelled ``labels``. ``bindings`` gains each
         variable the group binds to a value: (its expression, its datatype)."""
@@ -556,9 +574,15 @@ class _Lowering:
         for var, (iri,) in keys.items():
             conditions.extend(self._key_conditions(var, labels[var], iri))
         for var, expr in group.binds:
-            bindings[var] = (self.expr(expr, bindings, labels), None)
-        for f in group.filters:
-            conditions.append(self.expr(f, bindings, labels))
+            if deferred is not None and not _free_vars(expr) <= {*bindings, *labels}:
+                deferred.binds.append((var, expr))
+            else:
+                bindings[var] = (self.expr(expr, bindings, labels), None)
+        if deferred is not None:
+            deferred.filters.extend(group.filters)
+        else:
+            for f in group.filters:
+                conditions.append(self.expr(f, bindings, labels))
 
         matches = self._clauses(nodes, edges, labels, optional)
         matches.extend(MatchClause(t, None, optional=optional) for t in triples)
@@ -974,7 +998,10 @@ class _Lowering:
         """One UNION ALL part: ``group`` under one interpretation, answered as ``form``."""
         self._placed = set()
         bindings: dict[str, tuple[CypherExpr, str | None]] = {}
-        steps = [self.lower_group(group, labels, bindings, optional=False)]
+        # A group's FILTER holds over its OPTIONALs' answers too, and a BIND may read what they
+        # bind: both are read once the OPTIONALs are lowered, on the group's own MATCH.
+        deferred = _Deferred() if group.optionals else None
+        steps = [self.lower_group(group, labels, bindings, optional=False, deferred=deferred)]
         for opt in group.optionals:
             opt_labels = self.interpretations(opt, labels)
             if len(opt_labels) != 1:
@@ -986,6 +1013,20 @@ class _Lowering:
                 self.lower_group(opt, {**labels, **opt_labels[0]}, bindings, optional=True)
             )
             labels = {**labels, **opt_labels[0]}
+        if deferred is not None:
+            conditions: list[CypherExpr] = []
+            for var, expr in deferred.binds:
+                bindings[var] = (self.expr(expr, bindings, labels), None)
+            for f in deferred.filters:
+                conditions.append(self.expr(f, bindings, labels))
+            first = steps[0]
+            if first.where is not None:
+                conditions.insert(0, first.where.expression)
+            if conditions:
+                cond = conditions[0]
+                for c in conditions[1:]:
+                    cond = Binary("AND", cond, c)
+                first.where = WhereClause(cond)
 
         group_keys: list[CypherExpr] | None = None
         having: CypherExpr | None = None
