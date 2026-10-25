@@ -16,7 +16,7 @@ description: >-
   that is never copied there. Each day reads as it was reported and as restated since, and the
   dashboard, BI and an agent give the same answer, down to the postings behind every total.
 screenshot: card.png
-published: true
+published: false
 # REQ-2035: the regions the demo runs in. start-ui-install.sh starts a headless node for each
 # region in headless and the node the visitor uses in visitor's region; both on one model store.
 regions:
