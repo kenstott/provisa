@@ -147,6 +147,18 @@ async def test_one_classification_answers_every_table_until_its_ttl_passes():
 
 
 @pytest.mark.asyncio
+async def test_a_source_keeps_one_classification_replaced_when_its_axioms_or_endpoint_change():
+    """One per source: a classification made from other axioms or another endpoint replaces the
+    source's last, which is never read again -- kept, each edit of the axioms grew the cache."""
+    program, fetch = _Program(), AsyncMock(return_value=b"")
+    await reasoning.classification("kyc", AXIOMS, "u", {}, -1, run=program, fetch=fetch)
+    await reasoning.classification("kyc", AXIOMS + " ", "u", {}, -1, run=program, fetch=fetch)
+    await reasoning.classification("kyc", AXIOMS + " ", "u2", {}, -1, run=program, fetch=fetch)
+    assert len(program.calls) == 6
+    assert len(reasoning._classified) == 1 and len(reasoning._locks) == 1
+
+
+@pytest.mark.asyncio
 async def test_an_inferred_tables_call_is_answered_by_the_reasoner():
     from provisa.api_source.caller import answer_rows, call_api
 

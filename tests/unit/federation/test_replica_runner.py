@@ -30,11 +30,10 @@ from provisa.federation.replica_runner import (
 )
 from provisa.federation.replica_state import RetryPolicy
 
-ORG = "org1"
-
 # PostgreSQL advisory locks are held server-wide, not per database: every xdist worker's control
-# plane shares one server, so each worker process names an engine of its own, or a slot another
-# worker's test holds reads here as taken.
+# plane shares one server, so each worker process names an org and an engine of its own, or a
+# replica lock or slot another worker's test holds reads here as taken.
+ORG = f"org1{uuid.uuid4().hex[:8]}"
 ENGINE = f"trino@engine-{uuid.uuid4().hex[:8]}:8080"
 
 

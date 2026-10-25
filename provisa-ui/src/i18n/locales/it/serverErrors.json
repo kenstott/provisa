@@ -256,7 +256,12 @@
       "database_unavailable": "Database non disponibile",
       "query_engine_unavailable": "Motore di query non disponibile",
       "role_header_required": "Intestazione X-Provisa-Role richiesta per profilare una vista",
-      "table_not_found": "Tabella {{table_id}} non trovata"
+      "table_not_found": "Tabella {{table_id}} non trovata",
+      "column_not_found": "La colonna {{column}} non è una colonna della tabella che org_admin legge",
+      "classification_kind_unknown": "Tipo di classificazione sconosciuto {{kind}}",
+      "classification_status_invalid": "Una decisione di classificazione è accettata o rifiutata, non {{status}}",
+      "classification_decision_not_found": "Nessuna decisione su {{column}} come {{kind}}",
+      "classification_pii_refused": "Non è stato possibile contrassegnare la colonna come PII"
     },
     "replication": {
       "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: [{{content_type}}] {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
@@ -336,6 +341,7 @@
       "change_signal_no_topic": "La tabella '{{table}}' dell'origine '{{source}}' usa il segnale di modifica kafka ma non indica alcun topic in live.kafka.topic, quindi nulla la aggiornerebbe.",
       "change_signal_no_receiver": "Provisa non riceve il segnale di modifica {{signal}} da un'origine di tipo {{type}}, quindi una tabella dell'origine '{{source}}' non verrebbe mai aggiornata da esso. Acquisisci l'origine con Debezium e usa debezium.",
       "change_signal_not_honoured": "Un'origine di tipo {{type}} non può ancora essere controllata per rilevare modifiche, quindi il segnale di modifica {{signal}} non verrebbe mai interrogato. Usa ttl per l'origine '{{source}}'.",
+      "row_materialize_no_key_fetch": "{{table}} non può essere replicata riga per riga: il suo schema remoto non ha alcun campo che restituisca le sue righe per un elenco della sua chiave primaria.",
       "sentinel_path_not_applicable": "Un'origine di tipo {{type}} non può avere un percorso sentinella: nessun tuo produttore può segnalare una modifica dei suoi dati, oppure l'origine non viene sondata. Rimuovi il percorso sentinella dall'origine '{{source}}'.",
       "source_cache_ttl_required": "L'origine '{{source}}' richiede un TTL cache: ogni sua tabella è una replica, aggiornata secondo quell'orologio con il segnale di modifica {{signal}}. Impostalo in «Gestione del carico e tempestività» dell'origine.",
       "landing_ttl_required": "La tabella '{{table}}' è una replica aggiornata secondo un TTL cache, e né essa né la sua origine '{{source}}' ne hanno uno. Imposta il TTL cache in «Gestione del carico e tempestività» dell'origine, oppure sulla tabella stessa una volta registrata.",
@@ -528,7 +534,26 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Non è stato possibile effettuare un conteggio, quindi il totale è sconosciuto: {{statement}}: {{reason}}"
+      "count_unknown": "Non è stato possibile effettuare un conteggio, quindi il totale è sconosciuto: {{statement}}: {{reason}}",
+      "access_violations": "Questo ruolo non può eseguire questa query:",
+      "invalid_regex": "Il pattern \"{{pattern}}\" in {{expression}} non è un'espressione regolare valida: {{reason}}. =~ accetta un'espressione regolare, ad es. \".*{{word}}.*\", oppure usa CONTAINS \"{{word}}\".",
+      "unknown_label": "Non esiste l'etichetta :{{label}}. Etichette registrate: {{suggestions}}.",
+      "no_labels": "Non esiste l'etichetta :{{label}}: questo ruolo non può leggere alcuna tabella.",
+      "unknown_relationship_type": "Non esiste il tipo di relazione {{types}}. Tipi registrati: {{suggestions}}.",
+      "no_relationship_types": "Non esiste il tipo di relazione {{types}}: questo ruolo non può attraversare alcuna relazione.",
+      "type_mismatch": "In {{expression}}, {{value}} non può essere confrontato con {{property}}, di tipo {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE non può usare l'aggregato {{aggregate}}: WHERE filtra le righe prima che siano raggruppate. Aggrega in un WITH e filtra dopo.",
+      "nested_aggregate": "{{outer}} aggrega l'aggregato {{inner}}: non si può aggregare un altro aggregato. Aggrega prima in un WITH.",
+      "undefined_variable": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} non è un numero intero di righe: LIMIT accetta un conteggio da 0 in su, ad es. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} non è un numero intero di righe: SKIP accetta un conteggio da 0 in su, ad es. SKIP 10.",
+      "engine_refused": "Il motore ha rifiutato la query: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} legge {{variable}}, ma l'istruzione non vincola alcuna variabile: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL.",
+      "undefined_variable_property": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestion}}? {{owner}} è vincolata a :{{label}}, che ha una proprietà {{variable}}.",
+      "undefined_variable_properties": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestions}}? Ciascuna è vincolata a un'etichetta con una proprietà {{variable}}.",
+      "non_finite_number": "La risposta contiene un numero che JSON non può rappresentare: {{column}} è {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean di un valore che potrebbe non convertirsi richiedono PostgreSQL 16 o successivo su questo motore."
     },
     "requests": {
       "approver_outside_domains": "Il tuo diritto di creare relazioni non raggiunge alcun dominio toccato da questa richiesta ({{domains}})",
@@ -542,6 +567,7 @@
     "statement": {
       "rows_cut": "La risposta è stata troncata a {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}): corrispondono più righe di quelle restituite.",
       "rows_cut_unchecked": "La risposta ha {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}). Non è stato possibile verificare se corrispondono altre righe: {{reason}}",
+      "list_at_ceiling": "Un elenco contiene il massimo di {{limit}} voci consentito dal limite di righe per questa lettura ({{kind}}); potrebbero essercene di più.",
       "approximate_index": "Le righe più simili sono state trovate tramite un indice vettoriale approssimato: potrebbe mancare una riga leggermente più simile dell'ultima restituita.",
       "path_cut": "Un percorso senza limite superiore è stato troncato al limite di profondità del grafo di {{limit}} salti: i percorsi più lunghi mancano dalla risposta."
     },

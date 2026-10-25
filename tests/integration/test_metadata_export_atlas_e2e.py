@@ -34,6 +34,7 @@ import pytest
 
 from provisa.api.metadata_export.atlas import ASSIGNMENT_SOURCE, CLUSTER, _glossary_qn
 from tests.integration.metadata_export_server import (
+    AUDIENCE,
     CLASS_TERM,
     GLOSSARY_TERM,
     DOMAIN,
@@ -41,7 +42,6 @@ from tests.integration.metadata_export_server import (
     ORDERS_AMOUNT_DESCRIPTION,
     RLS_FILTER,
     SCHEMA,
-    SERVER_ROLES,
     SOURCE,
     VIEW,
     publish,
@@ -145,10 +145,11 @@ async def test_governance_signals_arrive_as_atlas_classifications(published):
     masked = next(c for c in ssn["classifications"] if c["typeName"] == "provisa_masked")
     assert (
         masked["attributes"]["ruleId"]
+        # REQ-2059: the mask list's entry 1 (entry 0 leaves admin unmasked).
         == f"mask:provisa://{ORG}/{DOMAIN}/tables/orders#field:ssn:1:regex"
     )
     assert masked["attributes"]["exemptRoles"] == ["admin"]
-    assert masked["attributes"]["restrictedRoles"] == sorted(set(SERVER_ROLES) - {"admin"})
+    assert masked["attributes"]["restrictedRoles"] == [r for r in AUDIENCE if r != "admin"]
 
     margin = await _entity("provisa_column", f"{_ORDERS}.margin@{CLUSTER}")
     assert [c["typeName"] for c in margin["classifications"]] == ["provisa_visibility_restricted"]

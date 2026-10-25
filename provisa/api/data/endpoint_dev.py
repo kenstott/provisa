@@ -30,6 +30,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from provisa.gql.label_map import CypherLabelMap
     from provisa.pgwire._pipeline import StatementOutcome
 
@@ -840,10 +842,17 @@ async def _run_sql_generation_loop(
     *,
     config: dict | None = None,
     api_keys: dict[str, str] | None = None,
+    check: "Callable[[str], Awaitable[str | None]] | None" = None,
+    best_effort: bool = False,
 ) -> tuple[str, int, str]:
+    """``check``: the governed run of a generated statement, answering its error or None -- given,
+    it takes the place of the local governance check, so the statement is refined against the
+    path it runs on (the NL page shows no statement with an error). ``best_effort``: an error
+    saying the question cannot be expressed is answered with the closest expressible query."""
     import sqlglot
     from provisa.llm.client import ProvisaLLMClient
     from provisa.compiler.sql_validator import validate_sql
+    from provisa.nl.prompt import BEST_EFFORT_RETRY
     from provisa.nl.sql_group_by import (
         GROUP_BY_GUIDANCE,
         check_distinct_json_agg,
@@ -892,7 +901,8 @@ async def _run_sql_generation_loop(
         if last_error:
             current_prompt = (
                 f"{question}\n\nPrevious attempt:\n{last_sql}\n\n"
-                f"Error: {last_error}\nFix it and output only the corrected SQL."
+                f"Error: {last_error}\nFix this error and output only the corrected SQL."
+                + (f" {BEST_EFFORT_RETRY}" if best_effort else "")
             )
 
         last_sql = await _sql_gen.complete(
@@ -938,11 +948,17 @@ async def _run_sql_generation_loop(
             last_error = group_by_error
             continue
 
-        normalized = rewrite_semantic_to_physical(last_sql, ctx)
-        violations = validate_sql(normalized, ctx, gov_ctx, role_obj, raw_tables)
-        if violations:
-            last_error = "; ".join(f"[{v.code}] {v.message}" for v in violations)
-            continue
+        if check is not None:
+            checked_error = await check(last_sql)
+            if checked_error:
+                last_error = checked_error
+                continue
+        else:
+            normalized = rewrite_semantic_to_physical(last_sql, ctx)
+            violations = validate_sql(normalized, ctx, gov_ctx, role_obj, raw_tables)
+            if violations:
+                last_error = "; ".join(f"[{v.code}] {v.message}" for v in violations)
+                continue
 
         last_error = ""
         break

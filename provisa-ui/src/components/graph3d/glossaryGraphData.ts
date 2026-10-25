@@ -35,8 +35,10 @@ import type {
 /** REQ-1593: a term in every domain, the org's shared vocabulary. */
 export const ENTERPRISE_DOMAIN = "*";
 
-/** A relationship declared from a table: its name is its alias, else its id. */
-const RELATIONSHIP: Selection = { fields: ["id", "alias", "target_table_id"] };
+/** A relationship declared from a table: its name is the Cypher type it is served under
+ * (relationships.cypher_type), as the Relationships page shows it. Its id is configuration, never
+ * a label. */
+const RELATIONSHIP: Selection = { fields: ["id", "cypher_type", "target_table_id"] };
 
 /** The term standings ``hidden`` leaves out, as conditions on glossary_terms_meta's columns. */
 const NOT_STATUS: Record<TermStatus, Where> = {
@@ -55,16 +57,9 @@ const all = (conds: Where[]): Where | undefined =>
 const inDomains = (domains: string[], column = "domain_id"): Where | undefined =>
   domains.length === 0 ? undefined : { [column]: { in: domains } };
 
-/** A relationship named by one of ``types``: by its alias, else (declared without one) its id. */
+/** A relationship served under one of the Cypher ``types``. */
 const named = (types: string[]): Where | undefined =>
-  types.length === 0
-    ? undefined
-    : {
-        _or: [
-          { alias: { in: types } },
-          { _and: [{ alias: { is_null: true } }, { id: { in: types } }] },
-        ],
-      };
+  types.length === 0 ? undefined : { cypher_type: { in: types } };
 
 function relationships(s: QueryScope): Selection["rels"] {
   return s.layers.has("ownerTables") && s.layers.has("columns")
@@ -197,7 +192,7 @@ function termSelection(s: QueryScope, level: number): Selection {
     if (s.layers.has("ontology"))
       rels.tables = {
         alias: "tables",
-        sel: { fields: ["table_id", "table_name", "domain_id"] },
+        sel: { fields: ["id", "table_name", "domain_id"] },
         where: inDomains(s.domains),
       };
     if (s.layers.has("domains"))
@@ -388,7 +383,7 @@ export interface TermRow {
   edges_out?: (TermEdgeRow & { target_term?: TermRow | { id: number } | null })[] | null;
   edges_in?: (TermEdgeRow & { source_term?: TermRow | { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
-  tables?: { table_id: number; table_name: string; domain_id: string }[] | null;
+  tables?: { id: number; table_name: string; domain_id: string }[] | null;
   refs?:
     | {
         column_key: string;
@@ -407,7 +402,8 @@ export interface TermRow {
 
 interface RelationshipRow {
   id: string;
-  alias: string | null;
+  // Every relationship has its served type stored (relationship_names.store_effective_names).
+  cypher_type: string;
   target_table_id: number | null;
 }
 
@@ -508,7 +504,7 @@ export function glossaryGraph(
   const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
     for (const r of rows ?? [])
       if (r.target_table_id !== null)
-        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.alias ?? r.id, [
+        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.cypher_type, [
           "ownerTables",
         ]);
   };
@@ -544,14 +540,14 @@ export function glossaryGraph(
     // with the ontology.
     for (const g of t.tables ?? []) {
       node({
-        id: `t:${g.table_id}`,
+        id: `t:${g.id}`,
         type: "table",
         label: `${g.domain_id}.${g.table_name}`,
         domains: [g.domain_id],
         stored: true,
         layers: ["ontology"],
       });
-      edge(id, `t:${g.table_id}`, "term_binding", "IS", ["ontology"]);
+      edge(id, `t:${g.id}`, "term_binding", "IS", ["ontology"]);
     }
     for (const r of t.refs ?? []) {
       const tid = `t:${r.table_id}`;

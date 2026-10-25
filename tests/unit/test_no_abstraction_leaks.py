@@ -91,6 +91,9 @@ OWNERS: dict[str, set[str]] = {
         # Unity Catalog publishing maps the connector's own error class to report a refused
         # statement against its product, as Horizon does for Snowflake's (REQ-2117).
         "provisa/api/metadata_export/unity_catalog.py",
+        # The engine runtime maps the connector's errors to a refused statement or a lost
+        # warehouse (REQ-778), as clickhouse_runtime and snowflake_runtime do for theirs.
+        "provisa/federation/databricks_runtime.py",
     },
     "google.cloud.bigquery": set(),
     "asyncpg": {

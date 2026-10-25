@@ -872,3 +872,16 @@ def test_the_plan_routes_the_cluster_job_and_passes_the_included_live_lanes():
     assert "run_lane.py --has-targets cluster" in step["run"]
     for lane in ("warehouse", "salesforce", "athena", "servicenow"):
         assert f"inputs.include_{lane} && '{lane}'" in step["env"]["PROVISA_INCLUDE_LIVE"]
+
+
+def test_the_leak_lane_runs_only_when_named(monkeypatch):
+    """REQ-2149: the leak loop takes about half an hour, so an "all" run leaves it out; a dispatch
+    naming it runs it, and no other lane selects its test."""
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    run_lane = _runner()
+    lanes = lambda selection: [job["lane"] for job in run_lane.matrix(selection)["include"]]  # noqa: E731
+    assert "leak" not in lanes("all")
+    assert lanes("leak") == ["leak"]
+    assert "not leak" in run_lane._BASE
+    pyproject = (REPO / "pyproject.toml").read_text()
+    assert "and not leak'" in pyproject  # deselected by default

@@ -256,7 +256,12 @@
       "database_unavailable": "Database niet beschikbaar",
       "query_engine_unavailable": "Query-engine niet beschikbaar",
       "role_header_required": "X-Provisa-Role-header vereist om een view te profileren",
-      "table_not_found": "Tabel {{table_id}} niet gevonden"
+      "table_not_found": "Tabel {{table_id}} niet gevonden",
+      "column_not_found": "Kolom {{column}} is geen kolom van de tabel die org_admin leest",
+      "classification_kind_unknown": "Onbekende classificatiesoort {{kind}}",
+      "classification_status_invalid": "Een classificatiebeslissing is aangenomen of afgewezen, niet {{status}}",
+      "classification_decision_not_found": "Geen beslissing over {{column}} als {{kind}}",
+      "classification_pii_refused": "De kolom kon niet als PII worden gemarkeerd"
     },
     "replication": {
       "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: [{{content_type}}] {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
@@ -336,6 +341,7 @@
       "change_signal_no_topic": "Tabel '{{table}}' van bron '{{source}}' gebruikt het wijzigingssignaal kafka maar noemt geen topic in live.kafka.topic, dus niets zou hem vernieuwen.",
       "change_signal_no_receiver": "Provisa ontvangt het wijzigingssignaal {{signal}} niet van een bron van het type {{type}}, dus een tabel van bron '{{source}}' zou er nooit door worden vernieuwd. Leg de bron vast met Debezium en gebruik debezium.",
       "change_signal_not_honoured": "Een bron van het type {{type}} kan nog niet op wijzigingen worden gecontroleerd, dus het wijzigingssignaal {{signal}} zou nooit worden geraadpleegd. Gebruik ttl voor bron '{{source}}'.",
+      "row_materialize_no_key_fetch": "{{table}} kan niet rij voor rij worden gerepliceerd: het externe schema heeft geen veld dat de rijen teruggeeft voor een lijst van de primaire sleutel.",
       "sentinel_path_not_applicable": "Een bron van het type {{type}} kan geen sentinelpad hebben: geen eigen producent kan een wijziging in de gegevens markeren, of de bron wordt niet gepeild. Verwijder het sentinelpad uit bron '{{source}}'.",
       "source_cache_ttl_required": "Bron '{{source}}' heeft een Cache-TTL nodig: elke tabel ervan is een replica die onder het wijzigingssignaal {{signal}} volgens die klok wordt vernieuwd. Stel deze in onder 'Belastingbeheer en actualiteit' van de bron.",
       "landing_ttl_required": "Tabel '{{table}}' is een replica die volgens een Cache-TTL wordt vernieuwd, en noch de tabel noch de bron '{{source}}' heeft er een. Stel de Cache-TTL in onder 'Belastingbeheer en actualiteit' van de bron, of op de tabel zelf zodra die is geregistreerd.",
@@ -528,7 +534,26 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Een telling kon niet worden gemaakt, dus het totaal is onbekend: {{statement}}: {{reason}}"
+      "count_unknown": "Een telling kon niet worden gemaakt, dus het totaal is onbekend: {{statement}}: {{reason}}",
+      "access_violations": "Deze rol mag deze query niet uitvoeren:",
+      "invalid_regex": "Het patroon \"{{pattern}}\" in {{expression}} is geen geldige reguliere expressie: {{reason}}. =~ verwacht een reguliere expressie, bijv. \".*{{word}}.*\", of gebruik CONTAINS \"{{word}}\".",
+      "unknown_label": "Er is geen label :{{label}}. Geregistreerde labels: {{suggestions}}.",
+      "no_labels": "Er is geen label :{{label}}: deze rol kan geen enkele tabel lezen.",
+      "unknown_relationship_type": "Er is geen relatietype {{types}}. Geregistreerde typen: {{suggestions}}.",
+      "no_relationship_types": "Er is geen relatietype {{types}}: deze rol kan geen enkele relatie doorlopen.",
+      "type_mismatch": "In {{expression}} kan {{value}} niet worden vergeleken met {{property}}, van type {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE kan het aggregaat {{aggregate}} niet gebruiken: WHERE filtert rijen voordat ze worden gegroepeerd. Aggregeer in een WITH en filter daarna.",
+      "nested_aggregate": "{{outer}} aggregeert het aggregaat {{inner}}: een aggregaat kan niet over een ander worden genomen. Aggregeer eerst in een WITH.",
+      "undefined_variable": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} is geen geheel aantal rijen: LIMIT verwacht een aantal van 0 of meer, bijv. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} is geen geheel aantal rijen: SKIP verwacht een aantal van 0 of meer, bijv. SKIP 10.",
+      "engine_refused": "De engine heeft de query geweigerd: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} leest {{variable}}, maar de opdracht bindt geen enkele variabele: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL.",
+      "undefined_variable_property": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestion}}? {{owner}} is gebonden aan :{{label}}, dat een eigenschap {{variable}} heeft.",
+      "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}.",
+      "non_finite_number": "Het antwoord bevat een getal dat JSON niet kan weergeven: {{column}} is {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat en toBoolean van een waarde die mogelijk niet omgezet kan worden, vereisen op deze engine PostgreSQL 16 of later."
     },
     "requests": {
       "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",
@@ -542,6 +567,7 @@
     "statement": {
       "rows_cut": "Het antwoord is afgekapt op {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}): er komen meer rijen overeen dan er zijn teruggegeven.",
       "rows_cut_unchecked": "Het antwoord heeft {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}). Of er meer rijen overeenkomen, kon niet worden gecontroleerd: {{reason}}",
+      "list_at_ceiling": "Een lijst bevat het maximum van {{limit}} items dat de rijlimiet voor deze leesactie toestaat ({{kind}}); er kunnen er meer zijn.",
       "approximate_index": "De meest gelijkende rijen zijn gevonden via een benaderende vectorindex: een rij die iets meer lijkt dan de laatst teruggegeven rij kan ontbreken.",
       "path_cut": "Een pad zonder bovengrens is afgekapt op de dieptegrens van de graaf van {{limit}} hops: langere paden ontbreken in het antwoord."
     },

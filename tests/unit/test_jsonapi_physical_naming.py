@@ -308,7 +308,7 @@ async def test_group_by_keys_come_back_physically_named(client, monkeypatch):
     """``groupKey`` is keyed by the ``by:`` argument this handler synthesized, which went through
     the GQL convention — so it needs translating back exactly as ``nodes`` does."""
 
-    def _fake_group_by(rows, columns, node_rows, node_columns, root_field):
+    def _fake_group_by(rows, columns, root_field, result_limit=None):
         return {
             "data": {
                 root_field: [
@@ -321,7 +321,8 @@ async def test_group_by_keys_come_back_physically_named(client, monkeypatch):
             }
         }
 
-    monkeypatch.setattr("provisa.executor.serialize.serialize_group_by", _fake_group_by)
+    # A group's row carries its nodes; serialize_rows shapes it (aggregates._nodes_column).
+    monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_group_by)
     async with client as c:
         r = await c.get(
             "/data/jsonapi/pet-store/inquiries",
@@ -340,8 +341,8 @@ async def test_a_group_by_is_sorted_by_its_group_keys_only(client, monkeypatch):
     """REQ-2007: a group-by's sort orders by its group keys; a field it does not group by is
     refused, named physically, before anything runs."""
     monkeypatch.setattr(
-        "provisa.executor.serialize.serialize_group_by",
-        lambda rows, columns, node_rows, node_columns, root_field: {"data": {root_field: []}},
+        "provisa.executor.serialize.serialize_rows",
+        lambda rows, columns, root_field, result_limit=None: {"data": {root_field: []}},
     )
     async with client as c:
         refused = await c.get(

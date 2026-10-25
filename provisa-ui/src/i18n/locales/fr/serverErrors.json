@@ -256,7 +256,12 @@
       "database_unavailable": "Base de données indisponible",
       "query_engine_unavailable": "Moteur de requête indisponible",
       "role_header_required": "En-tête X-Provisa-Role requis pour profiler une vue",
-      "table_not_found": "Table {{table_id}} introuvable"
+      "table_not_found": "Table {{table_id}} introuvable",
+      "column_not_found": "La colonne {{column}} n'est pas une colonne de la table que lit org_admin",
+      "classification_kind_unknown": "Type de classification inconnu {{kind}}",
+      "classification_status_invalid": "Une décision de classification est acceptée ou rejetée, pas {{status}}",
+      "classification_decision_not_found": "Aucune décision sur {{column}} en tant que {{kind}}",
+      "classification_pii_refused": "La colonne n'a pas pu être marquée PII"
     },
     "replication": {
       "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : [{{content_type}}] {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
@@ -336,6 +341,7 @@
       "change_signal_no_topic": "La table '{{table}}' de la source '{{source}}' utilise le signal de changement kafka mais n'indique aucun topic dans live.kafka.topic : rien ne l'actualiserait.",
       "change_signal_no_receiver": "Provisa ne reçoit pas le signal de changement {{signal}} d'une source de type {{type}} : une table de la source '{{source}}' ne serait donc jamais actualisée par celui-ci. Capturez la source avec Debezium et utilisez debezium.",
       "change_signal_not_honoured": "Une source de type {{type}} ne peut pas encore être vérifiée pour détecter des changements ; le signal de changement {{signal}} ne serait donc jamais interrogé. Utilisez ttl pour la source « {{source}} ».",
+      "row_materialize_no_key_fetch": "{{table}} ne peut pas être répliquée ligne par ligne : son schéma distant n'a aucun champ qui renvoie ses lignes pour une liste de sa clé primaire.",
       "sentinel_path_not_applicable": "Une source de type {{type}} ne peut pas avoir de chemin sentinelle : aucun producteur à vous ne peut signaler un changement de ses données, ou la source n’est pas sondée. Retirez le chemin sentinelle de la source « {{source}} ».",
       "source_cache_ttl_required": "La source « {{source}} » a besoin d’un TTL du cache : chacune de ses tables est une réplique, actualisée selon cette horloge avec le signal de changement {{signal}}. Définissez-le dans « Gestion de la charge et fraîcheur » de la source.",
       "landing_ttl_required": "La table « {{table}} » est une réplique actualisée selon un TTL du cache, et ni elle ni sa source « {{source}} » n’en ont. Définissez le TTL du cache dans « Gestion de la charge et fraîcheur » de la source, ou sur la table elle-même une fois enregistrée.",
@@ -528,7 +534,26 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Un comptage n’a pas pu être effectué, le total est donc inconnu : {{statement}} : {{reason}}"
+      "count_unknown": "Un comptage n’a pas pu être effectué, le total est donc inconnu : {{statement}} : {{reason}}",
+      "access_violations": "Ce rôle ne peut pas exécuter cette requête :",
+      "invalid_regex": "Le motif \"{{pattern}}\" dans {{expression}} n'est pas une expression régulière valide : {{reason}}. =~ attend une expression régulière, par ex. \".*{{word}}.*\", ou utilisez CONTAINS \"{{word}}\".",
+      "unknown_label": "Il n'existe pas de libellé :{{label}}. Libellés enregistrés : {{suggestions}}.",
+      "no_labels": "Il n'existe pas de libellé :{{label}} : ce rôle ne peut lire aucune table.",
+      "unknown_relationship_type": "Il n'existe pas de type de relation {{types}}. Types enregistrés : {{suggestions}}.",
+      "no_relationship_types": "Il n'existe pas de type de relation {{types}} : ce rôle ne peut parcourir aucune relation.",
+      "type_mismatch": "Dans {{expression}}, {{value}} ne peut pas être comparé à {{property}}, de type {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE ne peut pas utiliser l'agrégat {{aggregate}} : WHERE filtre les lignes avant leur regroupement. Agrégez dans un WITH et filtrez ensuite.",
+      "nested_aggregate": "{{outer}} agrège l'agrégat {{inner}} : on ne peut pas agréger un autre agrégat. Agrégez d'abord dans un WITH.",
+      "undefined_variable": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} n'est pas un nombre entier de lignes : LIMIT attend un nombre supérieur ou égal à 0, par ex. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} n'est pas un nombre entier de lignes : SKIP attend un nombre supérieur ou égal à 0, par ex. SKIP 10.",
+      "engine_refused": "Le moteur a refusé la requête : {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} lit {{variable}}, mais l'instruction ne lie aucune variable : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL.",
+      "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
+      "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}.",
+      "non_finite_number": "La réponse contient un nombre que JSON ne peut pas représenter : {{column}} vaut {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur."
     },
     "requests": {
       "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",
@@ -542,6 +567,7 @@
     "statement": {
       "rows_cut": "La réponse a été coupée à {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}) : plus de lignes correspondent que celles renvoyées.",
       "rows_cut_unchecked": "La réponse compte {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}). Impossible de vérifier si d'autres lignes correspondent : {{reason}}",
+      "list_at_ceiling": "Une liste contient le maximum de {{limit}} entrées que permet la limite de lignes pour cette lecture ({{kind}}) ; il peut y en avoir davantage.",
       "approximate_index": "Les lignes les plus similaires ont été trouvées au moyen d'un index vectoriel approximatif : une ligne légèrement plus similaire que la dernière renvoyée peut manquer.",
       "path_cut": "Un chemin sans borne supérieure a été coupé à la limite de profondeur du graphe de {{limit}} sauts : les chemins plus longs manquent dans la réponse."
     },

@@ -37,6 +37,9 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-1934: the operator's accepted and dismissed constraints are decisions about the
         # model's tables, so they travel with them.
         "profiler_constraints",
+        # REQ-2147: a steward's classification decisions are about the model's columns, as the
+        # constraints are, so they travel with them.
+        "profiler_classifications",
         "metrics",
         # ``roles`` and ``user_role_assignments`` are additionally SEEDED_AT_CREATION: CARRIED,
         # but only by a creation. See that class for why no later copy touches them.
@@ -59,7 +62,6 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_terms",
         "judgment_bases",  # REQ-2094: the named bases judgments cite, as the glossary travels
         "glossary_term_refs",
-        "glossary_term_table_refs",  # REQ-2130: a table's class term travels with it
         "glossary_term_edges",
         "glossary_term_experts",
         "glossary_term_domains",

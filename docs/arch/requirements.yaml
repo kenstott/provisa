@@ -174,12 +174,21 @@
   type: behavioral
   description: Result-size ceilings are defined per role/table in config (`max_rows`); Stage 2 injects
     LIMIT when a query would exceed the role's ceiling for any referenced table. Clients may always narrow
-    further (fewer columns, additional filters).
+    further (fewer columns, additional filters). (Amended 2026-10-24, EVERY NESTED LIST TOO:) The same
+    ceiling bounds every list a read nests -- an aggregate or group-by's nodes, a to-many relationship's
+    rows, a Cypher collect() or COLLECT { } -- at that many entries (a distinct list, of distinct values), as one AST rewrite of the governed statement (each json_agg beside a
+    grouping or other aggregates aggregates only the rows ROW_NUMBER numbers within the ceiling per group;
+    one that is its select's one value reads at most that many rows). The statement's own LIMIT is
+    unchanged, and counts and other aggregates stay over every row. A list of exactly the ceiling's entries
+    carries the warning statement.list_at_ceiling (it may have more); a list in a shape the rewrite has no
+    form for is refused by name, never left unbounded.
   use_case: Per-role/table row ceilings bound result size without an approved-query registry.
   code:
   - provisa/core/
+  - provisa/compiler/list_cap.py
   tests:
   - tests/unit/test_governance.py
+  - tests/unit/test_list_cap.py
   - tests/integration/test_governance_integration.py
   since: 2026-01
   scenario: 'Given a role with a configured max_rows ceiling for a table
@@ -1464,7 +1473,8 @@
     A registered view is its own table. Not relating, and so allowed without a relationship: the branches of UNION,
     INTERSECT and EXCEPT, and a subquery that refers to nothing outside itself. A relationship type that is not
     registered is refused on every Cypher surface alike. Found 2026-10-07: the check read only ON equalities between
-    directly named tables, and the Cypher surfaces did not run it. (Amended 2026-10-08:) A table joined to itself on equality of its whole registered primary key re-reads the same row and relates nothing; it needs no relationship. A table with no registered key has no such exemption. (Maintainer ruling 2026-10-08, after the any-row rule refused ordinary same-table subqueries and the profiler''s own sampling:) A table paired with itself needs no relationship in exactly two cases: the same row, as above; and a filter (IN, NOT IN, EXISTS or NOT EXISTS) over the same table, whose rows do not come out and which only decides which outer rows appear. Anything that brings out a second copy of the table on other columns -- a self-join of any spelling, a CTE, derived table or LATERAL of the table joined back, a correlated scalar subquery, a recursive walk -- needs a relationship registered from the table to itself, like any pair; a bare product of a table with itself stays refused. Pairings inside a recursive branch are judged like any other. A statement the product writes for itself -- the data profiler''s sampling -- is not a role''s query: it states so at its one call site and the relationship guard is not applied to it, every other check still is, and no surface can state it for a role''s SQL.'
+    directly named tables, and the Cypher surfaces did not run it. (Amended 2026-10-08:) A table joined to itself on equality of its whole registered primary key re-reads the same row and relates nothing; it needs no relationship. A table with no registered key has no such exemption. (Maintainer ruling 2026-10-08, after the any-row rule refused ordinary same-table subqueries and the profiler''s own sampling:) A table paired with itself needs no relationship in exactly two cases: the same row, as above; and a filter (IN, NOT IN, EXISTS or NOT EXISTS) over the same table, whose rows do not come out and which only decides which outer rows appear. Anything that brings out a second copy of the table on other columns -- a self-join of any spelling, a CTE, derived table or LATERAL of the table joined back, a correlated scalar subquery, a recursive walk -- needs a relationship registered from the table to itself, like any pair; a bare product of a table with itself stays refused. Pairings inside a recursive branch are judged like any other. A statement the product writes for itself -- the data profiler''s sampling -- is not a role''s query: it states so at its one call site and the relationship guard is not applied to it, every other check still is, and no surface can state it for a role''s SQL. (Amended 2026-10-24, maintainer, natural-language queries:) Non-strict NL''s generated SQL carries the opt-out comment (-- relationship-guard=false), so the one bypass rule decides it: for a role whose flag allows the bypass, V002 does not apply to non-strict NL; for a role without it, it does. There is no NL-only bypass. Strict NL never carries the comment. Every other control -- row filters, masking, column visibility, domain scope -- still applies. A role that may not bypass uses strict NL only: the NL page''s Strict switch is held on and says why (this role may only use approved relationships), and a non-strict request from it is run as strict, never refused; with several roles selected, the same rule decides as for the bypass itself. In non-strict NL, SQL, GraphQL and Cypher are each generated independently from the question, each the closest query its language can express; Cypher is no longer derived from the SQL. Strict is unchanged: the GraphQL is canonical, the SQL is compiled from it and the Cypher printed from its IR, exact or not available. gRPC, JSON:API and OpenAPI are derived from the GraphQL in both modes. No NL panel shows a query that has an error: each generated query is run through the governed path it would run on -- parse, translation, governance including V002, and execution -- before it is shown. A failure is given to the generation loop as the specific error to fix, within its existing bounds; in non-strict, an error saying the language cannot express part of the question is answered with the closest expressible query. A panel with no valid query shows only Not available: <reason>, in the user''s terms.
+    (Amended 2026-10-24, A REFUSAL AS WRITTEN AND THE PATH THERE:) A V002 refusal for a side read through a derived table, a CTE or a view names the condition as the statement writes it and what that side reads ("Invalid JOIN: w.region = c.region (w.region reads orders.region) — no approved relationship exists between orders.region and customers.region"), in a join, a correlated subquery and an IN alike; a condition between two plain tables is named as before. A relationship''s join is accepted whichever way round it is written. A natural-language query refused V002 is retried with, for each pair of tables the refusal names, the shortest registered path between them (up to four hops) as the JOINs that walk it, or that no relationship relates them; a strict query refused for good answers "Not available" with the same text, naming the tables and the path the question needs.'
   use_case: V002 enforces approved navigation paths so joins between sensitive tables require explicit
     steward registration and approval, providing an audit surface for cross-table data access.
   code:
@@ -21958,9 +21968,14 @@
   feature: row-security-and-masking-masking
   priority: MUST
   type: behavioral
-  description: Column masking output uses ANSI SQL dialects (REGEXP_REPLACE, DATE_TRUNC, SQL literals)
-    independent of source type. Dialect-specific transpilation via SQLGlot occurs downstream, after masking
-    injection.
+  description: '[SUPERSEDED by REQ-2142, 2026-10-23 -- a regex mask is the universal provisa_regex_replace
+    call, not REGEXP_REPLACE. Kept here for history; do not implement against it.] Column masking output
+    uses ANSI SQL dialects (REGEXP_REPLACE, DATE_TRUNC, SQL literals) independent of source type. [END SUPERSEDED
+    BLOCK] Dialect-specific transpilation via SQLGlot occurs downstream, after masking injection. (Amended
+    2026-10-24, UNIVERSAL REGEX:) Column masking output is independent of source type: a regex mask is
+    provisa_regex_replace(column, pattern, replacement, the full mask), in the universal regex dialect
+    (REQ-2142), a truncate mask is DATE_TRUNC, a constant mask a SQL literal; the transpiler lowers
+    provisa_regex_replace into each engine''s own REGEXP_REPLACE after masking injection.'
   use_case: Dialect-agnostic masking generation ensures consistent governance behavior across heterogeneous
     federated sources (PostgreSQL, MySQL, Snowflake, BigQuery).
   code:
@@ -21974,7 +21989,7 @@
 
     When build_mask_expression generates the mask
 
-    Then output is ANSI REGEXP_REPLACE/DATE_TRUNC regardless of source dialect
+    Then output is the universal provisa_regex_replace and ANSI DATE_TRUNC regardless of source dialect
 
     '
   integration_test: not_required
@@ -23307,9 +23322,40 @@
   feature: cypher-and-graph-analytics-endpoint
   priority: MUST
   type: behavioral
-  description: Cypher /query/cypher endpoint returns a typed response with `columns` (array of column
-    names), `rows` (array of result objects), `error` (null or error detail), and `type` (always "cypher").
-    No row truncation or implicit result limiting occurs beyond query-specified LIMIT.
+  description: '[SUPERSEDED by REQ-778, 2026-10-24 -- an error is answered in the app''s ApiError body, not
+    an `error` field. Kept here for history; do not implement against it.] Cypher /query/cypher endpoint
+    returns a typed response with `columns` (array of column names), `rows` (array of result objects),
+    `error` (null or error detail), and `type` (always "cypher"). [END SUPERSEDED BLOCK] No row truncation
+    or implicit result limiting occurs beyond query-specified LIMIT. (Amended 2026-10-24, ERRORS IN THE
+    APP''S ERROR BODY:) A successful answer is `columns`, `rows` and `type` ("cypher"). Every error of the
+    graph routes (/data/cypher and its graph-schema, graph-counts and export routes) is answered in the
+    app''s ApiError body (REQ-1350): `detail` (the English reason), `code` (stable, e.g. cypher.refused,
+    cypher.access_violations, cypher.execution_failed) and `params`, so every client reads the reason the
+    same way. An access refusal also lists each violation (`violations`: code and message), which `detail`
+    joins; an execution failure also carries the physical `sql`. (Amended 2026-10-24, A MISTAKE IS REFUSED
+    IN THE USER''S TERMS:) A mistake in the user''s statement is refused at translation, before any engine
+    runs it, with status 400, its own code and a message naming the clause or expression, what is wrong,
+    and the fix: a literal =~ pattern that RE2 (DuckDB) or Java (Trino) would reject (cypher.invalid_regex),
+    a label no table this role reads has (cypher.unknown_label, offering registered labels, the nearest
+    first; a label beside a known one is refused, never widened to the domain), a relationship type that
+    is not registered (cypher.unknown_relationship_type, 400 -- a registered type the role may not traverse
+    stays a 403 refusal), a property compared with a literal its registered type never compares to
+    (cypher.type_mismatch), an aggregate in a WHERE or inside another aggregate
+    (cypher.aggregate_in_where, cypher.nested_aggregate), a variable nothing in the statement binds
+    (cypher.undefined_variable), and a LIMIT or SKIP that is not a whole number of 0 or more
+    (cypher.invalid_limit, cypher.invalid_skip -- a fraction is never cut to its whole part). The engine''s
+    own text is said only for what the engine refused, as "The engine refused the query: ..."
+    (cypher.engine_refused). Each code is worded in the UI''s serverErrors catalog in every locale.
+    (Amended 2026-10-24, WHAT A READ CANNOT ANSWER HAS A CODE:) toInteger, toFloat and toBoolean of a
+    value that does not convert are null, as Neo4j''s are: the semantic SQL keeps TRY_CAST through
+    every rewrite and each engine writes its own null-on-failure cast (TRY_CAST, SAFE_CAST,
+    Snowflake''s TRY_CAST of the value as text, ClickHouse''s accurateCastOrNull, MySQL''s CAST where
+    the text reads as the type, or pg_input_is_valid on PostgreSQL, which needs PostgreSQL 16 or
+    later; an older one refuses it by name, cypher.try_cast_needs_postgres_16). Every route
+    transpiles the statement for its target: none sends the semantic SQL to a source as it is. An answer holding a number JSON cannot carry (Infinity,
+    NaN) is a 400 naming the column (cypher.non_finite_number). What the engine refused is
+    cypher.engine_refused on every engine, each by its own driver''s errors (a value it cannot
+    convert, a name it does not know); a lost engine is a 503.'
   use_case: Consistent response shape enables client libraries to deserialize typed Cypher query results.
   code:
   - provisa/api/rest/cypher_router.py
@@ -69940,7 +69986,39 @@
     runs for every governed statement on every surface, so it reads no control plane: the row_materialize
     tables come from the registry `_rebuild_schemas` publishes in memory (`state.tables`), selected and
     keyed exactly as `row_materialized_tables_by_name` does (flag set, engine cannot direct-attach the
-    source type; bare table name and alias). A statement that touches no such table pays a list scan.'
+    source type; bare table name and alias). A statement that touches no such table pays a list scan.
+    (Amended 2026-10-23, row fetch by keys is the source''s declaration:) row_materialize needs a row fetch
+    by primary keys, and whether a source type has one is a declaration of that type in the source-type
+    registry (`provisa/core/source_registry.py` ROW_FETCH_BY_KEYS, default none), each entry naming the
+    type''s keyed fetch: its own keyed loader (cassandra, clickhouse, cosmosdb, druid, elasticsearch, hive_s3,
+    kafka, mongodb, neo4j through its query_template, pinot, redis), the direct driver''s WHERE (pk) IN
+    read for a SQL source read through its own driver, the Calcite pgwire bridge for the bridged types, or
+    the engine''s own key read for a lake it scans in place (delta_lake, hive, iceberg). The declaration is
+    held to the code in both directions: every entry resolves, and the declared types are exactly those the
+    key fetch is wired for. A table whose source''s type declares none is refused at config load and on save,
+    by name: "<table>: row_materialize needs row fetch by primary keys, which <source type> sources don''t
+    support" [SUPERSEDED by REQ-1865, 2026-10-23 -- a GraphQL-remote table now has a fetch by keys of its
+    own where its remote''s schema offers one, and is refused for lacking it. Kept here for history; do not
+    implement against it.] -- among them REST/OpenAPI, GraphQL-remote, gRPC-remote, SPARQL, code sources and
+    Qdrant (a live-only type has no key fetch). API sources and govdata keep their own reasons (filtered by
+    their own parameters; read live). [END SUPERSEDED BLOCK] The declaration is one of the source
+    contract''s capabilities, to be absorbed by it (REQ-1756), not a second mechanism.
+    (Amended 2026-10-23, a remote GraphQL table fetches by keys where its schema offers it:) For a remote
+    GraphQL source the fetch by keys is each table''s own (ROW_FETCH_BY_KEYS_PER_TABLE): the type declares
+    one (its keyed loader), and a table has it only where the remote''s schema has a field returning the
+    table''s full rows for a LIST of its primary key in one request -- a Hasura-style `where: {<pk>: {_in:
+    [...]}}` on the table''s own root field, or a root field taking one list of IDs and returning the
+    table''s type or an interface or union it is one of (Relay `nodes(ids:)`); the list is of the type''s
+    `id`. The fetch is read off the schema when the table is registered or refreshed
+    (`graphql_remote.by_keys`) and stored with the table''s spec on the source; a table registered before
+    it was kept has it read off the schema when row_materialize is next saved. row_materialize is set on
+    registerTable and on an update (TableInput.rowMaterialize; left out, a registration is not
+    row-materialized and an update keeps what the table has), and in the table form''s Load and timeliness
+    tab, offered only for a source whose type declares a fetch by keys (Source.rowFetchByKeys). A table
+    with a single primary-key column whose remote has such a field is fetched in ONE request for the keys a
+    statement names and kept for its TTL; one without is refused by name at registration and on save,
+    code schema.row_materialize_no_key_fetch: "<table>: row_materialize needs row fetch by primary keys,
+    and its remote schema has no field that returns its rows for a list of its primary key".'
   use_case: A large, expensive-to-fully-land source table (e.g. a multi-million-row Neo4j query_template
     scan) can serve point-lookup queries in milliseconds via a per-row cache instead of paying a 60-120s
     full re-land for a handful of rows, without ever pre-warming keys nothing has asked for.
@@ -69964,10 +70042,18 @@
   - provisa/events/app_wiring.py
   - provisa/executor/drivers/clickhouse.py
   - provisa/federation/materialize_broker.py
+  - provisa/core/source_registry.py
+  - provisa/graphql_remote/by_keys.py
+  - provisa/api/admin/_graphql_table_registration.py
+  - provisa/api/admin/_landing_ttl.py
+  - provisa-ui/src/pages/tables/RowMaterializeField.tsx
   tests:
   - tests/unit/pgwire/test_statement_stages.py - tests/unit/federation/test_row_materialize_attach_rule.py - tests/unit/events/test_source_loader_load_keys.py - tests/unit/test_duckdb_store_native.py - tests/unit/test_row_materialize_model.py - tests/unit/compiler/test_pk_bounds.py - tests/unit/federation/test_materialize_exec_land_rows.py - tests/unit/federation/test_row_lock.py - tests/unit/federation/test_ensure_rows_resident.py - tests/unit/test_operator_floor_routing.py
   - tests/unit/test_pk_bounds.py
   - tests/unit/test_row_materialize_model.py
+  - tests/unit/test_row_fetch_by_keys.py
+  - tests/unit/test_graphql_remote_by_keys.py
+  - tests/integration/test_graphql_remote_row_materialize.py
   since: 2026-09
   scenario: 'Given a registered table with row_materialize=true, a declared primary key column, and a
 
@@ -74447,6 +74533,7 @@
   tests:
   - tests/unit/perf_bench/test_mix.py
   - tests/unit/perf_bench/test_filters_knob.py
+  - tests/unit/perf_bench/test_soak.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1912
   status: complete
@@ -74759,7 +74846,7 @@
     truncated copy. (Amended 2026-10-03, NO WHOLE COPY, NO WHOLE BUILD:) A table that has no whole copy
     (parameterized or row-level) is never built whole, by convergence, by the runner or by the read backstop.
     Its parameter-set fills live in the store''s API cache schema, not in the control plane, and call
-    the remote through `call_api`. (Amended 2026-10-05, ANY FILTER) A read of a table replicated row by row (row_materialize, on an engine that cannot attach its source) that the engine federates must filter it: a key bound (=, IN, or an OR of key equalities), a key a join supplies, or any predicate on the table''s own columns with literals or bound parameters (= <> < <= > >= IN BETWEEN LIKE, IS [NOT] NULL, AND/OR/NOT); with none it is refused at planning, data.row_level_filter_required naming the table. The filter is translated into the source''s own query and pushed down; matching rows are streamed and replace that filter''s rows in the copy in one transaction; each fetch is recorded by the filter''s exact hash and served from the copy within the reader''s TTL. A filter a source type cannot evaluate natively is refused by name, data.row_level_filter_not_pushable naming the table, source type and reason, and is never answered by a whole fetch. (Amended 2026-10-15, lead ruling: scope of the pushdown) The filter is pushed down for a source read through a SQL direct driver, as a WHERE in the source''s dialect, with the region''s row rule pushed beside it where it reads only the table''s columns. Every other source type is refused by name for a filter, data.row_level_filter_not_pushable (its key still reads it); per-type translations (bool queries, find filters, CQL restrictions, label matchers and the like) are not part of this requirement. This requirement is complete for that scope. Registration refuses row_materialize on API sources (filtered by their own parameters), on govdata (read live) and on types no connector reaches. A single-source read through the source''s own driver (DIRECT, maintainer 2026-10-05) reads the source live, with no filter required and nothing fetched into the copy; the copy serves only federated reads, and a statement that filters such a table neither way is never answered from the response cache.'
+    the remote through `call_api`. (Amended 2026-10-05, ANY FILTER) A read of a table replicated row by row (row_materialize, on an engine that cannot attach its source) that the engine federates must filter it: a key bound (=, IN, or an OR of key equalities), a key a join supplies, or any predicate on the table''s own columns with literals or bound parameters (= <> < <= > >= IN BETWEEN LIKE, IS [NOT] NULL, AND/OR/NOT); with none it is refused at planning, data.row_level_filter_required naming the table. The filter is translated into the source''s own query and pushed down; matching rows are streamed and replace that filter''s rows in the copy in one transaction; each fetch is recorded by the filter''s exact hash and served from the copy within the reader''s TTL. A filter a source type cannot evaluate natively is refused by name, data.row_level_filter_not_pushable naming the table, source type and reason, and is never answered by a whole fetch. (Amended 2026-10-15, lead ruling: scope of the pushdown) The filter is pushed down for a source read through a SQL direct driver, as a WHERE in the source''s dialect, with the region''s row rule pushed beside it where it reads only the table''s columns. Every other source type is refused by name for a filter, data.row_level_filter_not_pushable (its key still reads it); per-type translations (bool queries, find filters, CQL restrictions, label matchers and the like) are not part of this requirement. This requirement is complete for that scope. [SUPERSEDED by REQ-1865, 2026-10-23 -- a type is refused row_materialize when it declares no row fetch by primary keys; API sources and govdata keep their own reasons. Kept here for history; do not implement against it.] Registration refuses row_materialize on API sources (filtered by their own parameters), on govdata (read live) and on types no connector reaches. [END SUPERSEDED BLOCK] A single-source read through the source''s own driver (DIRECT, maintainer 2026-10-05) reads the source live, with no filter required and nothing fetched into the copy; the copy serves only federated reads, and a statement that filters such a table neither way is never answered from the response cache.'
   use_case: An operator can set a large table to be replicated without taking the server down, and a reader
     either gets a complete answer from the replica or a clear statement that it is not ready yet.
   related_reqs:
@@ -78875,9 +78962,10 @@
   since: 2026-08
   description: 'Natural-language jobs and /nl-to-sql take a strict flag. Strict mode runs one NL to GraphQL
     to SQL to Cypher chain, schema-validated, shared by the graphql, sql and cypher branches, so join
-    reachability and aggregate shape come from the schema''s relationships. Non-strict generates SQL and
-    GraphQL directly and independently from the LLM and derives Cypher from the SQL result. grpc, jsonapi
-    and openapi are unaffected. Defaults: /nl-to-sql True, NL job and nl_router False.'
+    reachability and aggregate shape come from the schema''s relationships. [SUPERSEDED by REQ-603, 2026-10-24
+    -- non-strict generates Cypher on its own, not from the SQL. Kept here for history; do not implement
+    against it.] Non-strict generates SQL and GraphQL directly and independently from the LLM and derives
+    Cypher from the SQL result. [END SUPERSEDED BLOCK] grpc, jsonapi and openapi are unaffected. Defaults: /nl-to-sql True, NL job and nl_router False.'
   code:
   - provisa/nl/runner.py
   - provisa/nl/job.py
@@ -79248,7 +79336,7 @@
     values, shapes and fitted parameters -- left out; every other column shows in full. It shows each
     run''s comparison with the previous run beside the run, and a measure''s history across the drift
     window with its drift marked, safe for its viewer as the run is. The table view''s Quick Profile --
-    a sample computed in the browser and stored nowhere -- stays as it is. The result kinds also include duplicates and repeats (the duplicate rows and duplicate keys of a run), constraints (the proposals and their decisions) and constraint_checks (each accepted constraint''s pass share and violations per run). A profiler''s run defaults also bound the number of category columns entered in the correlation matrix and the joint counts, the most frequent categories being kept.'
+    a sample computed in the browser and stored nowhere -- stays as it is. The result kinds also include duplicates and repeats (the duplicate rows and duplicate keys of a run), constraints (the proposals and their decisions) and constraint_checks (each accepted constraint''s pass share and violations per run). A profiler''s run defaults also bound the number of category columns entered in the correlation matrix and the joint counts, the most frequent categories being kept. (Amended 2026-10-24, CLASSIFICATION, REQ-2147:) A run also tests a sample of each column''s values against the profiler''s classification kinds (REQ-2147): one further statement over the run''s sample draws at random up to the run default classification sample rows (default 500, a field on the profiler''s form); the values are tested in memory and never stored, and only the counts are recorded. The result kinds also include classifications: one row per column and kind whose test the column''s sampled values passed at the kind''s threshold, with the values tested and passed, the share, the evidence and the steward''s decision at the run''s time. A column that passed a classification kind has that kind as its plausible type -- the first passing kind in the catalogue''s order, sensitive kinds first -- so the plausible types also include the classification kinds. A classifications row holds no value of its column, so it is shown for a column masked to the viewer or tagged pii, as its plausible type is. (Amended 2026-10-24, CLASSIFICATION READ:) The classification statement is a further statement over the run''s sample, as the dependence statements are: a block or row-filter sample is its own draw at the same method and size, and its read, the rows the sample held, is recorded on the runs row as classification_attempts, as the dependence statements'' reads are recorded as dependence_attempts.'
   use_case: 'A steward registers the orders table on the profiler and gives analysts read access to its
     profile: they see each column''s null share, distinct count and spread without reading a row, and
     a masked column''s profile shows its shape but never a real value. A data-quality check written over
@@ -87022,7 +87110,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (grounded in nothing, the abstract terms). A class term grounded in several tables with no
     declared same-entity identity between them is flagged on the page as a curation gap. The page
     keeps the curation words (term, concrete, abstract, grounds) beside the badge; the words class,
-    property, instance and mapping belong to the docs, the export and SPARQL.
+    property, instance and mapping belong to the docs, the export and SPARQL. (Amended 2026-10-24,
+    CLASS TERM ON THE TABLE; GLOSSARY JUNCTIONS:) A table's class term is
+    registered_tables.class_term_id, and only that: there is no separate grounding table. The meta
+    graph reaches it over CLASS_TERM (table to term) and GROUNDS (term to its tables, the Ontology
+    View's tables), both on that column. registered_tables.class_term_derived carries the existing
+    REQ-2141 draft rule (a grounding sync derived, on an uncurated term, is a draft: not exported,
+    and it goes with its table); it adds no rule. A table a class term grounds blocks deleting the
+    term, as a column ref does. glossary_term_refs and glossary_term_domains are junctions
+    (REQ-1586), as glossary_term_edges is: neither is a node in the graph, and a term reaches its
+    columns over REFERENCED_BY and its domains over IN_DOMAIN in one hop. Both stay queryable in SQL
+    and GraphQL, where the Ontology View reads them; a column's tags are the column's, reached from
+    table_columns, and nothing hangs off a ref.
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -87207,7 +87306,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2104
   target: "2027-Q1"
 - id: REQ-2135
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
   category: SPARQL Query Frontend
@@ -87349,6 +87448,35 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1387
   - REQ-1913
   target: "2027-Q1"
+  code:
+    - provisa/sparql_query/compiler.py
+    - provisa/sparql_query/results.py
+    - provisa/sparql_query/vocabulary.py
+    - provisa/api/rest/sparql_router.py
+    - provisa/gql/ir.py
+    - provisa/gql/translator.py
+    - provisa/gql/select_builder.py
+    - provisa/gql/assembler.py
+    - provisa/gql/graph_rewriter.py
+    - provisa/gql/path_expr.py
+    - provisa/gql/path_functions.py
+    - provisa/gql/iri.py
+    - provisa/gql/terms.py
+    - provisa/gql/expr_ast.py
+    - provisa/graphql_front/lower.py
+    - provisa/core/settings_catalog.py
+    - provisa/api/app_startup.py
+  tests:
+    - tests/unit/test_sparql_compiler.py
+    - tests/unit/test_sparql_protocol.py
+    - tests/unit/test_sparql_vocabulary_refs.py
+    - tests/unit/test_gql_path_expr.py
+    - tests/unit/test_gql_terms.py
+    - tests/unit/test_graph_depth_limit.py
+    - tests/unit/test_cypher_golden_sql.py
+    - tests/unit/test_graphql_golden_sql.py
+    - tests/unit/test_graphql_front_answers.py
+    - tests/integration/test_sparql_endpoint.py
 - id: REQ-2136
   status: proposed
   since: 2026-10
@@ -87866,3 +87994,130 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When a curator opens the findings
     Then the class is listed with an unlinked_tables finding naming both tables
     And a term that is only an undefined draft is not listed
+- id: REQ-2147
+  status: in-progress
+  target: "2027-Q1"
+  group: 4. Source Connectors
+  category: Data Quality Sources
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The profiler classifies columns from their profiled values, as Purview's classification rules do.
+    Its plausible types (REQ-1934) gain classification kinds, each recognised by a test applied to the
+    profile's sampled values, not only a shape. Most kinds are sensitive, each with a value validator:
+    US social security numbers (area, group and serial rules), payment card numbers (Luhn), IBANs
+    (mod-97), passport and national-identifier formats, and similar. Others are reference data,
+    recognised by membership in a shipped reference list: world cities, countries, currency codes,
+    language codes, and similar. When the share of a column's sampled non-null values that pass a
+    kind's test reaches that kind's threshold, the column gets a classification suggestion stating the
+    kind and its evidence, for example "customers.tax_id looks like a US SSN: 97% of sampled values pass
+    the SSN rules" or "stores.city looks like a world city: 99% of sampled values are known cities". A
+    data steward accepts or rejects it. Accepting links the column to the glossary Property term for
+    that kind; for a sensitive kind it also marks the column PII (PII lives on columns or Property
+    terms) and offers the kind's mask preset (for example ssn_last4). A rejected suggestion is not
+    raised again for the same column and kind. The classification kinds are listed in the admin UI,
+    each with its test, threshold and whether it is sensitive; an org admin can disable a kind, and a
+    disabled kind is not tested and raises no suggestions until it is enabled again.
+    (Amended 2026-10-24, DECISIONS AND KINDS:) A decision is made by a holder of sensitive_data in the
+    table's own domain: a data steward in its domains, an org admin in every one. On a key column,
+    accepting marks the column PII and offers the mask but does not link the Property term, because a
+    key column's meaning is its Class term (REQ-2141); the answer says so. A suggestion needs at least
+    ten sampled non-null values; a number column is tested by its whole numbers, any other number
+    failing. A decision can be withdrawn, which makes the suggestion new again and undoes nothing
+    accepting did. The shipped kinds are the US social security number, payment card number, IBAN, UK
+    National Insurance number, Canadian social insurance number, Spanish DNI or NIE, Dutch citizen
+    service number, Indian Aadhaar number and US passport number (sensitive), and the country name, ISO
+    3166 country code, ISO 4217 currency code, ISO 639 language code and world city (reference, the
+    lists derived from GeoNames under CC BY 4.0), each with a threshold of 90%. A kind's test,
+    threshold, term and mask are the shipped catalogue's; only whether it is enabled is the org's.
+  scenario: |
+    Given a profiled column whose sampled values are valid US social security numbers
+    When the profile run completes
+    Then the column has a suggestion that it looks like a US SSN, with the share of values that passed
+    When a steward accepts the suggestion
+    Then the column is PII, linked to the SSN Property term, and the ssn_last4 mask is offered
+    Given a profiled column whose sampled values are world cities
+    When a steward accepts its world-city suggestion
+    Then the column is linked to the City Property term and is not marked PII
+    And a rejected suggestion for a column and kind is not raised on the next run
+    Given an org admin has disabled the world-city kind
+    When a profile run completes
+    Then no column gets a world-city suggestion
+  code:
+    - provisa/profiler/classify.py
+    - provisa/profiler/classifications.py
+    - provisa/profiler/classification_kinds.yaml
+    - provisa/profiler/run.py
+    - provisa/api/admin/profiler_classifications_router.py
+    - provisa-ui/src/pages/tables/ProfileClassificationsModal.tsx
+    - provisa-ui/src/components/admin/ClassificationKindsTab.tsx
+  tests:
+    - tests/unit/test_profiler_classify.py
+    - tests/unit/test_profiler_classifications.py
+    - provisa-ui/src/pages/tables/__tests__/ProfileClassificationsModal.test.tsx
+    - provisa-ui/src/__tests__/ClassificationKindsTab.test.tsx
+    - tests/integration/test_profiler_classification_e2e.py
+- id: REQ-2148
+  status: proposed
+  target: "2027-Q1"
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-warehouse-listings
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A feature that works but is not yet proven for production, such as a metadata export target not
+    yet verified against a live tenant of that product, is shown as "<Name> (beta)" wherever a user
+    picks or sees it, and its documentation states why it is beta. The label comes from one flag on
+    the feature (for an export target, a beta attribute on its provider, returned by the admin API and
+    written into a generated list for pages that cannot call that API), so clearing it is a one-line
+    change followed by regenerating the list. The Atlan export is the first beta feature.
+  scenario: |
+    Given the Atlan export provider is flagged beta
+    When an admin opens the metadata export target picker
+    Then Atlan is listed as "atlan (beta)"
+    And the table form's data product hint names Atlan as "Atlan (beta)"
+    When the flag is cleared and the provider list regenerated
+    Then Atlan is listed without "(beta)"
+- id: REQ-2149
+  status: proposed
+  target: 2027-Q1
+  group: 11. Platform, Infrastructure & Delivery
+  category: CI/CD
+  feature: test-infrastructure-ci
+  priority: MUST
+  type: behavioral
+  description: 'CI runs a leak test on the local platform (embedded PostgreSQL and DuckDB): one server
+    process serves a mixed request loop over every surface -- GraphQL, SQL, Cypher, SPARQL, pgwire,
+    Arrow Flight, REST and JSON:API reads, a write, a subscription opened and closed, a sign-in and a
+    sign-out -- for N iterations after a warm-up, then N more, and a churn of K demo sandbox orgs,
+    each created, used and reaped. Over the second N, the process''s resident memory, open file
+    descriptors, threads, sockets and asyncio tasks grow by no more than a slack stated with the
+    test, near zero; after the churn, every map the process keeps by org, by its schemas or by its
+    users is the size it was before it. A failure names what grew, and for memory the allocation
+    sites that grew most, from tracemalloc snapshot diffs taken over the second N.'
+  scenario: 'Given one server on the local platform, warmed up
+    When it serves N iterations of the mixed request loop, then N more
+    Then its RSS, open fds, threads, sockets and asyncio tasks over the second N grow within the stated slack
+    When K demo sandboxes are created, used and reaped
+    Then every org-keyed map is the size it was before them
+    And a failure names the measure that grew and the top allocation sites that grew
+
+    '
+- id: REQ-2150
+  status: proposed
+  target: "2027-Q1"
+  group: 10. UI & Admin Surfaces
+  category: Glossary Admin
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: ui
+  description: >-
+    A glossary term's read view shows the term's neighbourhood as a small graph laid out left to right
+    in layers: the terms whose relationships point to this term, the term itself, the terms this term's
+    relationships point to, then what the term refers to (the columns it is applied to, and for a Class
+    term the tables). Each arrow is labelled with its relationship type, and the graph reaches one hop
+    each way. Nodes are named by their catalog names only. It reads the same metadata query the view
+    already reads, with no request of its own. It is compact by default, and an expand control shows
+    it at full size.

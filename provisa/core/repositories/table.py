@@ -349,6 +349,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         ],  # REQ-1093
         "view_sql": getattr(table, "view_sql", None),
         "dq_contract": getattr(table, "dq_contract", None),  # REQ-1443
+        "dq_rules": getattr(table, "dq_rules", None),  # REQ-1443 clause 10
         "profiler_source_id": getattr(table, "profiler_source_id", None),  # REQ-1934
         "view_metrics": (
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
@@ -422,6 +423,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "unique_constraints",  # REQ-1093
         "view_sql",
         "dq_contract",  # REQ-1443
+        "dq_rules",  # REQ-1443 clause 10
         "profiler_source_id",  # REQ-1934
         "view_metrics",  # REQ-1318
         "product_id",

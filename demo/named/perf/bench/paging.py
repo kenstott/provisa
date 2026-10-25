@@ -49,7 +49,7 @@ def _children(proc: Path, pid: int) -> list[int]:
     return out
 
 
-def _tree(proc: Path, root: int) -> list[int]:
+def pid_tree(proc: Path, root: int) -> list[int]:
     pids, todo = [], [root]
     while todo:
         pid = todo.pop()
@@ -65,7 +65,7 @@ def majflt(proc: Path, root: int) -> int:
     """Major faults of ``root`` and every live descendant, with the faults of the children each
     has reaped (``cmajflt``), from field 12 and 13 of ``/proc/<pid>/stat``."""
     total = 0
-    for pid in _tree(proc, root):
+    for pid in pid_tree(proc, root):
         try:
             text = (proc / str(pid) / "stat").read_text()
         except FileNotFoundError:

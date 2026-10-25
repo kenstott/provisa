@@ -42,7 +42,6 @@ function open(onSaveEdgeAlias: (id: number, cql: string, gql: string) => Promise
       onResizeStart={() => {}}
       relationships={[rel]}
       onSaveEdgeAlias={onSaveEdgeAlias}
-      pkMap={{}}
       labelToTableId={{}}
     />,
   );

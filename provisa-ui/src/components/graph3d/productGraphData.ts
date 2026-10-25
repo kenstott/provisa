@@ -21,6 +21,7 @@ import {
   type Where,
 } from "../../api/metaGraph";
 import type { GraphData, GraphEdge, GraphNode, QueryScope } from "./graphModel";
+import { catalogTableName } from "../../naming";
 
 /** What the product graph's query keeps (REQ-2136): its domain, tag, sensitivity and term edge
  * type filters, in its where. None of one is every one. A row the filters drop takes what hangs off
@@ -179,6 +180,10 @@ function productSel(f: ProductFilters): Selection {
               alias: "targetProduct",
               sel: { fields: ["id", "name", "domain_id"] },
             },
+            target_table: {
+              alias: "targetTable",
+              sel: { fields: ["domain_id", "table_name"] },
+            },
           },
         },
         where: dom && { _or: [{ kind: { eq: "lineage" } }, { target_product: dom }] },
@@ -227,7 +232,7 @@ interface TableRow extends Tagged {
   checked_by?: TableRow[] | null;
   source_relationships?:
     | {
-        id: number;
+        id: string; // the relationships table's TEXT key
         target_table?: {
           id: number;
           domain_id: string;
@@ -248,6 +253,8 @@ export interface EdgeRow {
   path_count: number;
   aliases: string | null;
   target_product?: { id: string; name: string; domain_id: string } | null;
+  // Set when a lineage relation is a registered table; null for one that is not (REQ-1626, REQ-2001).
+  target_table?: { domain_id: string; table_name: string } | null;
 }
 
 export interface ProductRow extends Tagged {
@@ -415,7 +422,15 @@ export function toGraphData(
         // Upstream ancestry stands in lanes by its distance; a consumer one lane downstream.
         const xid = `l:${e.target_relation}`;
         const lane = e.direction === "upstream" ? -e.hops : 1;
-        node({ id: xid, type: "relation", label: e.target_relation, lane });
+        // A registered table by its catalog name; a relation that is no registered table (REQ-1626,
+        // REQ-2001) by its relation name, which is its identity.
+        const label = e.target_table
+          ? catalogTableName({
+              domainId: e.target_table.domain_id,
+              tableName: e.target_table.table_name,
+            })
+          : e.target_relation;
+        node({ id: xid, type: "relation", label, lane });
         if (e.direction === "upstream") edge(xid, pid, "lineage");
         else edge(pid, xid, "lineage");
       }

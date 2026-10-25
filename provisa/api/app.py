@@ -2886,6 +2886,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # REQ-1921: out of service — offered in no schema, refused by name when named.
         draft_tables = await _fetch_tables(_pg, draft=True)
         _assert_domain_table_unique(tables)
+        # REQ-351: every relationship's effective names, in the naming convention now in force:
+        # a build follows each save, configuration load and change of convention.
+        from provisa.core.relationship_names import store_effective_names
+
+        await store_effective_names(_pg)
         relationships = await _fetch_relationships(_pg)
 
         # Apply schema visibility filters (schema.include_ops / schema.include_metrics)
@@ -4687,6 +4692,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_checks_router)
+    from provisa.api.admin.profiler_classifications_router import (  # REQ-2147
+        router as profiler_classifications_router,
+    )
+
+    app.include_router(profiler_classifications_router)
     from provisa.api.admin.synthetic_router import router as synthetic_router  # REQ-1939
 
     app.include_router(synthetic_router)
@@ -4862,6 +4872,11 @@ def create_app() -> FastAPI:
             response.status_code = 503
             return {"status": "warming"}
         return {"status": "ready"}
+
+    # REQ-2149: the leak test's view of this process, mounted only with PROVISA_LEAK_PROBE=1.
+    from provisa.api.leak_probe import mount as _mount_leak_probe
+
+    _mount_leak_probe(app)
 
     @app.api_route("/debug/logs", methods=["GET"])
     async def debug_logs(pattern: str | None = None, limit: int = 100):  # noqa: F841  # pyright: ignore[reportUnusedFunction]

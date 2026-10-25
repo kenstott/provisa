@@ -30,9 +30,9 @@ const PRODUCT = {
 } as unknown as DataProduct;
 
 const INPUT_PORTS = Array.from({ length: 12 }, (_, i) => ({
-  inputs: [`native:pet_store.pets.a_rather_long_column_name_${i}`],
-  transform: "cast(varchar) / rename",
-  output: `pet_store.pets.a_rather_long_column_name_${i}`,
+  id: `pet_store.a_rather_long_table_name_${i}`,
+  table: `pet-store.a_rather_long_table_name_${i}`,
+  columns: ["id", "name"],
 }));
 
 function panel() {
@@ -42,10 +42,11 @@ function panel() {
       core={{ product: PRODUCT, queries: { graphql: "query X { x }", sql: "", jsonapi: "" } }}
       coreError={null}
       reader={null}
-      sources={[]}
-      internalRelationships={[]}
       canEdit={false}
       canSeeLineage
+      lineageLoading={false}
+      lineageError=""
+      lineageGraph={null}
       inputPorts={INPUT_PORTS}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
@@ -65,7 +66,6 @@ describe("a data product's cards", () => {
       ["customProperties", "Custom Properties"],
       ["inputPorts", "Input Ports"],
       ["knowledgeGraph", "Knowledge graph"],
-      ["queries", "Queries"],
     ]) {
       expect(card(section).querySelector(".provisa-collapsible")).not.toBeNull();
       expect(
@@ -83,87 +83,35 @@ describe("a data product's cards", () => {
     first.unmount();
     panel();
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByTestId("data-product-card-queries-pet_health-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(
+      screen.getByTestId("data-product-card-knowledgeGraph-pet_health-toggle"),
+    ).toHaveAttribute("aria-expanded", "true");
   });
 
   it("keep their content inside them: what cannot wrap scrolls within the card", () => {
     panel();
-    const table = within(card("inputPorts")).getByTestId(
+    const ports = within(card("inputPorts")).getByTestId(
       "data-product-detail-input-ports-pet_health",
     );
-    let body = table.parentElement as HTMLElement;
+    let body = ports.parentElement as HTMLElement;
     while (body && body.style.overflowX !== "auto") body = body.parentElement as HTMLElement;
     expect(body).not.toBeNull();
     expect(card("inputPorts").contains(body)).toBe(true);
     expect(body.style.overflowWrap).toBe("anywhere");
   });
 
-  it("put the Knowledge graph below the columns, across the panel", () => {
+  it("have no Queries card: the panel's own read is not shown", () => {
+    panel();
+    expect(screen.queryByTestId("data-product-card-queries-pet_health")).toBeNull();
+    expect(screen.queryByText("query DataProductPanel", { exact: false })).toBeNull();
+  });
+
+  it("keep the Knowledge graph a card among them, and the lineage DAG below them, across the panel", () => {
     panel();
     const columns = card("details").parentElement as HTMLElement;
     expect(columns.style.columnWidth).toBe("320px");
-    expect(columns.contains(card("knowledgeGraph"))).toBe(false);
-    expect(columns.contains(card("queries"))).toBe(true);
-  });
-
-  it("name a source read in the lineage by the table it reads", () => {
-    const edge = (over: Record<string, unknown>) => ({
-      kind: "lineage",
-      direction: "upstream",
-      target_product_id: null,
-      target_table_id: null,
-      target_relation: null,
-      direct: true,
-      hops: 1,
-      path_count: 1,
-      aliases: null,
-      vias: null,
-      target_product: null,
-      target_table: null,
-      ...over,
-    });
-    render(
-      <DataProductDetailPanel
-        p={PRODUCT}
-        core={
-          {
-            product: PRODUCT,
-            queries: { graphql: "", sql: "", jsonapi: "" },
-            edges: [
-              edge({
-                target_table_id: 1,
-                target_table: { domain_id: "pet-store", table_name: "pets" },
-              }),
-              edge({
-                target_table_id: 2,
-                target_table: { domain_id: "pet-store", table_name: "vets" },
-              }),
-              edge({ direction: "downstream", target_relation: "pet_store.dim_pet" }),
-            ],
-          } as never
-        }
-        coreError={null}
-        reader={null}
-        sources={[]}
-        internalRelationships={[]}
-        canEdit={false}
-        canSeeLineage
-        inputPorts={[]}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-      />,
-    );
-    const items = (dir: string) =>
-      within(screen.getByTestId(`data-product-detail-lineage-${dir}-pet_health`))
-        .getAllByRole("listitem")
-        .map((li) => li.textContent);
-    expect(items("upstream")).toEqual([
-      expect.stringContaining("pet-store.pets"),
-      expect.stringContaining("pet-store.vets"),
-    ]);
-    expect(items("downstream")).toEqual([expect.stringContaining("pet_store.dim_pet")]);
+    expect(columns.contains(card("knowledgeGraph"))).toBe(true);
+    const lineage = screen.getByTestId("data-product-detail-lineage-toggle-pet_health");
+    expect(columns.contains(lineage)).toBe(false);
   });
 });

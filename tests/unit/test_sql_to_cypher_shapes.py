@@ -325,12 +325,11 @@ _META_COLUMNS = {
         ("to_term_id", "integer"),
         ("rel_type", "varchar"),
     ],
-    "glossary_term_table_refs": [
+    "registered_tables": [
         ("id", "integer"),
-        ("term_id", "integer"),
-        ("table_id", "integer"),
         ("table_name", "varchar"),
         ("domain_id", "varchar"),
+        ("class_term_id", "integer"),
     ],
 }
 
@@ -385,9 +384,11 @@ def meta():
             "via_type_column": vty,
             "via_type_value": value,
             "via_label_source": label_source,
+            "alias": alias,
         }
-        for (rid, _s, st, sc, tc, card, _t, tt, vt, vs, vtc, vty, value, label_source)
+        for (rid, _s, st, sc, tc, card, _t, tt, vt, vs, vtc, vty, value, label_source, alias)
         in META_JUNCTION_RELATIONSHIPS
+        if st in ids and tt in ids and vt in ids
     ]  # fmt: skip
     si = SchemaInput(
         tables=tables,
@@ -423,10 +424,10 @@ def meta():
         "(9,3,2,'KIND_OF'),(10,2,4,'KIND_OF'),(11,5,1,'ANTONYM_OF')"
     )
     c.execute(
-        "CREATE TABLE meta.glossary_term_table_refs (id INTEGER, term_id INTEGER, "
-        "table_id INTEGER, table_name VARCHAR, domain_id VARCHAR)"
+        "CREATE TABLE meta.registered_tables (id INTEGER, table_name VARCHAR, domain_id VARCHAR, "
+        "class_term_id INTEGER)"
     )
-    c.execute("INSERT INTO meta.glossary_term_table_refs VALUES (1, 1, 10, 'orders', 'sales')")
+    c.execute("INSERT INTO meta.registered_tables VALUES (10, 'orders', 'sales', 1)")
     # The Cypher read names the tables physically, in the admin store's own schema.
     c.execute("ATTACH ':memory:' AS provisa_admin")
     c.execute("CREATE SCHEMA provisa_admin.public")
@@ -446,7 +447,7 @@ _ONTOLOGY = (
     f"{{ edgesIn: {{ {_KEPT}, sourceTerm: {{ retired: {{ eq: false }} }} }} }}, "
     "{ tables: {} } ] }) { id name "
     f"edgesOut(where: {{ {_KEPT} }}) {{ id fromTermId toTermId relType targetTerm {{ id }} }} "
-    "tables { tableId tableName domainId } } }"
+    "tables { id tableName domainId } } }"
 )
 
 

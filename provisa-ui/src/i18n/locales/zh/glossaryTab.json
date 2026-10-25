@@ -160,6 +160,7 @@
     "moveOneUnnamed": "移动 {{column}}？",
     "moveManyUnnamed_one": "移动 {{count}} 列？",
     "moveManyUnnamed_other": "移动 {{count}} 列？",
-    "moveCarryUnnamed": "移动并为其新术语标记 {{tags}}"
+    "moveCarryUnnamed": "移动并为其新术语标记 {{tags}}",
+    "termGraphTitle": "术语图"
   }
 }

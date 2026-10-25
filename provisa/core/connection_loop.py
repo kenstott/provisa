@@ -94,6 +94,13 @@ class _InlineExecutor(concurrent.futures.ThreadPoolExecutor):
         del wait, cancel_futures  # nothing runs asynchronously, so there is nothing to wait for
 
 
+def live_loops() -> list[asyncio.AbstractEventLoop]:
+    """The process loop and every live connection loop (a leak probe counts their tasks)."""
+    with _REGISTRY_LOCK:
+        loops = list(_LIVE)
+    return ([_process_loop] if _process_loop is not None else []) + loops
+
+
 def is_connection_loop(loop: asyncio.AbstractEventLoop) -> bool:
     with _REGISTRY_LOCK:
         return loop in _LIVE

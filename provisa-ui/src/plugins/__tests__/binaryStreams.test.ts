@@ -11,7 +11,12 @@
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
-import { BINARY_STREAMS_MARKER, BINARY_STREAMS_PATH, inlineBinaryStreams } from "../binaryStreams";
+import {
+  BINARY_STREAMS_MARKER,
+  BINARY_STREAMS_PATH,
+  binaryStreamsFor,
+  inlineBinaryStreams,
+} from "../binaryStreams";
 
 const INDEX_HTML = path.resolve(__dirname, "../../../index.html");
 
@@ -25,6 +30,14 @@ describe("the splash's binary streams", () => {
     const at = page.indexOf(renderer);
     expect(at).toBeGreaterThan(0);
     expect(at).toBeLessThan(page.indexOf("window.provisaBinaryStreams(canvas"));
+  });
+
+  it("inlines into index.html only; the other HTML entries pass through unchanged", () => {
+    expect(binaryStreamsFor(html, "/index.html", () => renderer)).toContain(renderer);
+    for (const entry of ["/source-sign-in.html", "/auth-relay.html"]) {
+      const other = fs.readFileSync(path.resolve(__dirname, "../../..", entry.slice(1)), "utf-8");
+      expect(binaryStreamsFor(other, entry, () => renderer)).toBe(other);
+    }
   });
 
   it("draws glyphs from one sprite and gives reduced motion one static frame", () => {

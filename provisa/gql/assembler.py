@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy import select
 
@@ -128,9 +128,27 @@ def _assemble_row(row: dict, graph_vars: dict[str, GraphVarKind]) -> dict:
     return result
 
 
+def _json_maps(col: str, value: Any) -> Any:
+    """REQ-345: a map literal's answer, its values decoded from the JSON each was encoded to --
+    whether the engine hands the map back as a map (DuckDB, Trino) or as its JSON text
+    (Snowflake), alone or in a list."""
+    try:
+        if isinstance(value, str):
+            value = json.loads(value)
+        if isinstance(value, list):
+            return [None if v is None else _json_maps(col, v) for v in value]
+        if isinstance(value, dict):
+            return {k: json.loads(v) if isinstance(v, str) else v for k, v in value.items()}
+    except json.JSONDecodeError as exc:
+        raise CypherAssemblyError(f"Malformed JSON in map column {col!r}: {exc}") from exc
+    raise CypherAssemblyError(f"Unexpected map column value type for {col!r}: {type(value)}")
+
+
 def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
     if value is None:
         return None
+    if kind == GraphVarKind.JSON_MAP:
+        return _json_maps(col, value)
     if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
         # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
         # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.
@@ -154,11 +172,11 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
 
     if kind == GraphVarKind.NODE:
         if isinstance(data, list):
-            return [_parse_node(n) for n in data if isinstance(n, dict)]
+            return _present([_parse_node(n) for n in data if isinstance(n, dict)])
         return _parse_node(data)
     if kind == GraphVarKind.EDGE:
         if isinstance(data, list):
-            return [_parse_edge(e) for e in data if isinstance(e, dict)]
+            return _present([_parse_edge(e) for e in data if isinstance(e, dict)])
         return _parse_edge(data)
     if kind == GraphVarKind.PASSTHROUGH:
         # Auto-detect: edge JSON has 'type' + ('identity' or 'startNode'); node JSON has 'label'
@@ -167,10 +185,12 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         return _parse_node(data)
     if kind == GraphVarKind.PATH:
         if "nodes" in data and "edges" in data:
-            return Path(
-                nodes=[_parse_node(n) for n in data["nodes"]],
-                edges=[_parse_edge(e) for e in data["edges"]],
-            )
+            nodes = [_parse_node(n) for n in data["nodes"]]
+            edges = [_parse_edge(e) for e in data["edges"]]
+            # A path through a node or relationship that is null is no path: null.
+            if any(n is None for n in nodes) or any(e is None for e in edges):
+                return None
+            return Path(nodes=_present(nodes), edges=_present(edges))
         # Flat-JOIN path: {start, end, length} — build stub path
         start_id = str(data.get("start", ""))
         end_id = str(data.get("end", ""))
@@ -179,7 +199,19 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         return Path(nodes=[start_node, end_node], edges=[])
 
 
-def _parse_node(data: dict) -> Node:
+_T = TypeVar("_T")
+
+
+def _present(items: list[_T | None]) -> list[_T]:
+    """The items that are something: an OPTIONAL MATCH that matched nothing adds no element."""
+    return [i for i in items if i is not None]
+
+
+def _parse_node(data: dict) -> Node | None:
+    """A node, or None when its key is null: an OPTIONAL MATCH that matched nothing gives null, as
+    Neo4j does, never a node of nulls."""
+    if data.get("id") is None:
+        return None
     raw_props = (
         data["properties"]
         if "properties" in data and isinstance(data["properties"], dict)
@@ -193,30 +225,33 @@ def _parse_node(data: dict) -> Node:
     )
 
 
-def _parse_edge(data: dict) -> Edge:
+def _end_of(data: dict, keys: tuple[str, str], id_key: str | None) -> dict | None:
+    """One end of an edge as a node's JSON: its node object, or a stub of its id (an edge carrying
+    only ``start``/``end``, or a legacy edge naming its end by id). None when the end is null."""
+    raw = data.get(keys[0]) or data.get(keys[1])
+    if isinstance(raw, dict):
+        return raw
+    ident = data.get(id_key) if id_key is not None else raw
+    if ident is None:
+        return None
+    return {"id": str(ident), "label": "", "properties": {}}
+
+
+def _parse_edge(data: dict) -> Edge | None:
     # Support both Neo4j format (identity/start/end) and legacy format (id/startNode/endNode).
     has_neo4j = "identity" in data
-    if has_neo4j:
-        edge_id = str(data.get("identity", ""))
-        start_raw = data.get("startNode") or data.get("start_node") or {}
-        end_raw = data.get("endNode") or data.get("end_node") or {}
-        if not isinstance(start_raw, dict):
-            start_raw = {"id": str(data.get("start", "")), "label": "", "properties": {}}
-        if not isinstance(end_raw, dict):
-            end_raw = {"id": str(data.get("end", "")), "label": "", "properties": {}}
-    else:
-        edge_id = str(data.get("id", ""))
-        start_raw = data.get("startNode") or data.get("start_node") or {}
-        end_raw = data.get("endNode") or data.get("end_node") or {}
-        if not isinstance(start_raw, dict):
-            start_raw = {"id": str(start_raw), "label": "", "properties": {}}
-        if not isinstance(end_raw, dict):
-            end_raw = {"id": str(end_raw), "label": "", "properties": {}}
+    edge_id = str(data.get("identity", "")) if has_neo4j else str(data.get("id", ""))
+    start_raw = _end_of(data, ("startNode", "start_node"), "start" if has_neo4j else None)
+    end_raw = _end_of(data, ("endNode", "end_node"), "end" if has_neo4j else None)
+    start_node = _parse_node(start_raw) if start_raw is not None else None
+    end_node = _parse_node(end_raw) if end_raw is not None else None
+    if start_node is None or end_node is None:
+        return None  # a relationship with a null end is null (an OPTIONAL MATCH matched nothing)
     return Edge(
         id=edge_id,
         type=str(data.get("type", "")),
-        start_node=_parse_node(start_raw),
-        end_node=_parse_node(end_raw),
+        start_node=start_node,
+        end_node=end_node,
         properties=data["properties"]
         if "properties" in data and isinstance(data["properties"], dict)
         else {
@@ -292,12 +327,16 @@ def _assemble_with_paths(
 
                     # Extract nodes and edges arrays from path data
                     if "nodes" in data and "edges" in data:
-                        nodes.extend(_parse_node(n) for n in data["nodes"])
-                        edges.extend(_parse_edge(e) for e in data["edges"])
+                        found = [_parse_node(n) for n in data["nodes"]]
+                        found_edges = [_parse_edge(e) for e in data["edges"]]
                     elif "id" in data and "label" in data:
-                        nodes.append(_parse_node(data))
+                        found, found_edges = [_parse_node(data)], []
                     elif "id" in data and "type" in data:
-                        edges.append(_parse_edge(data))
+                        found, found_edges = [], [_parse_edge(data)]
+                    else:
+                        continue
+                    nodes.extend(_present(found))
+                    edges.extend(_present(found_edges))
 
             path_result[col] = Path(nodes=nodes, edges=edges)
 

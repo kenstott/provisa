@@ -28,9 +28,10 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 
 from provisa.api.rest.cypher_exec import _build_label_map, _resolve_role_id
+from provisa.api.rest.cypher_router import cypher_error
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
@@ -40,15 +41,15 @@ router = APIRouter()
 _SPARQL_QUERY = "application/sparql-query"
 
 
-def _refused(status: int, message: str) -> Response:
-    return JSONResponse(status_code=status, content={"error": message})
-
-
 async def _query_text(request: Request) -> str | Response:
     """The query the request carries, as the SPARQL 1.1 Protocol has it sent."""
     params = request.query_params
     if "default-graph-uri" in params or "named-graph-uri" in params:
-        return _refused(400, "default-graph-uri and named-graph-uri are not supported")
+        return cypher_error(
+            400,
+            "sparql.dataset_not_supported",
+            "default-graph-uri and named-graph-uri are not supported",
+        )
     if request.method == "GET":
         query = params.get("query")
     else:
@@ -58,17 +59,22 @@ async def _query_text(request: Request) -> str | Response:
         elif content_type == "application/x-www-form-urlencoded":
             form = await request.form()
             if "default-graph-uri" in form or "named-graph-uri" in form:
-                return _refused(400, "default-graph-uri and named-graph-uri are not supported")
+                return cypher_error(
+                    400,
+                    "sparql.dataset_not_supported",
+                    "default-graph-uri and named-graph-uri are not supported",
+                )
             value = form.get("query")
             query = value if isinstance(value, str) else None
         else:
-            return _refused(
+            return cypher_error(
                 415,
+                "sparql.unsupported_content_type",
                 "A SPARQL query is POSTed as application/sparql-query or as the query field of "
                 "an application/x-www-form-urlencoded form",
             )
     if not query:
-        return _refused(400, "The request carries no query")
+        return cypher_error(400, "sparql.no_query", "The request carries no query")
     return query
 
 
@@ -125,7 +131,9 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     role_id = _resolve_role_id(request, state)
     surface = role_surface(state, role_id)
     if surface is None:
-        return _refused(503, "Schema not loaded")
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
     ctx = surface.context
     label_map = _build_label_map(ctx, role_id, state)
     try:
@@ -133,9 +141,9 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         compiled = compile_sparql(query, vocab, label_map)
         media, fmt = negotiate(request.headers.get("accept"), compiled.form)
     except NotAcceptable as exc:
-        return _refused(406, str(exc))
+        return cypher_error(406, "sparql.not_acceptable", str(exc), reason=str(exc))
     except CypherTranslateError as exc:
-        return _refused(400, str(exc))
+        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
 
     rows: list[dict] = [compiled.empty_row] if compiled.empty_row is not None else []
     if not compiled.empty:
@@ -143,7 +151,7 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         try:
             sql_ast, ordered_params, graph_vars = cypher_to_sql(compiled.ast, label_map, {})
         except CypherTranslateError as exc:
-            return _refused(400, str(exc))
+            return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
         semantic_sql = make_semantic_sql(sql_ast.sql(dialect="postgres"), ctx)
         assert not ordered_params, "a SPARQL statement binds no parameters"
@@ -163,7 +171,7 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
         except PermissionError as exc:
-            return _refused(403, str(exc))
+            return cypher_error(403, "sparql.permission_denied", str(exc), reason=str(exc))
         if plan.span_attrs is not None:
             plan.span_attrs["provisa.query_text"] = query
         executed = await _run_plan(plan, state)
@@ -178,3 +186,37 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     else:
         body = write_select(compiled.variables, rows, vocab.base, fmt)
     return Response(content=body, media_type=media)
+
+
+@router.get("/data/sparql/vocabulary")
+async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
+    """The caller's role's vocabulary as IRIs, for a client to offer as a query is written: its
+    base and prefixes, classes, predicates, edge types and the live Concept terms
+    (provisa.sparql_query.vocabulary.vocabulary_document)."""
+    from fastapi.responses import JSONResponse
+
+    from provisa.api.app import state
+    from provisa.api.role_surface import role_surface
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.gql.translator_types import CypherTranslateError
+    from provisa.sparql_query.vocabulary import concepts_of, vocabulary_document
+
+    role_id = _resolve_role_id(request, state)
+    surface = role_surface(state, role_id)
+    if surface is None:
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
+    label_map = _build_label_map(surface.context, role_id, state)
+    try:
+        vocab = await vocabulary_for(state, role_id, surface.context, label_map)
+    except CypherTranslateError as exc:
+        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+    # The concepts the role may read: those scoped to a domain its label map holds, and the org's
+    # shared ones (glossary_repo.list_terms's readable_term rule).
+    domains = frozenset(nm.domain_id for nm in label_map.nodes.values() if nm.domain_id)
+    pool = state.model_db
+    assert pool is not None, "the control plane is opened before any request is served"
+    async with pool.acquire() as conn:
+        terms = await glossary_repo.list_terms(conn, include_deprecated=False, domains=domains)
+    return JSONResponse(vocabulary_document(vocab, concepts_of(vocab.base, terms)))

@@ -45,6 +45,7 @@ from provisa.security.rights import (
 from provisa.otel_compat import get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.security.sni import org_from_host
+from provisa.core.org_forget import on_forget
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267, REQ-2092
 
@@ -202,6 +203,13 @@ def _loaded_user_attributes(user_id: str) -> dict[str, str]:  # REQ-1382
 # REQ-1383: (org, environment, user) -> what this process last recorded of the user's provider
 # attributes there. A user's requests after the first cost a dictionary lookup.
 _recorded_idp: dict[tuple[str | None, str | None, str], dict[str, str]] = {}
+
+
+@on_forget(size=lambda: len(_recorded_idp))
+def _forget_recorded_idp(org_id: str) -> None:
+    """A deleted org's users' records go with it (REQ-2006: a sandbox mints one per visitor)."""
+    for key in [k for k in _recorded_idp if k[0] == org_id]:
+        _recorded_idp.pop(key, None)
 
 
 async def _record_idp_attributes(db_pool, identity: AuthIdentity) -> None:  # REQ-1383

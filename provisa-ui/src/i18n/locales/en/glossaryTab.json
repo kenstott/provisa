@@ -160,6 +160,7 @@
     "moveOneUnnamed": "Move {{column}}?",
     "moveManyUnnamed_one": "Move {{count}} column?",
     "moveManyUnnamed_other": "Move {{count}} columns?",
-    "moveCarryUnnamed": "Move and mark their new terms {{tags}}"
+    "moveCarryUnnamed": "Move and mark their new terms {{tags}}",
+    "termGraphTitle": "Term graph"
   }
 }

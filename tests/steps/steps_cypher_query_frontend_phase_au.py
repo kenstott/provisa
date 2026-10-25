@@ -104,6 +104,7 @@ from provisa.gql.label_map import (
     RelationshipMapping,
 )
 from provisa.gql.translator import cypher_to_sql
+from provisa.gql.expr_ast import PatternComprehension
 from provisa.gql.translator_types import GraphVarKind
 from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.assembler import (
@@ -1667,7 +1668,8 @@ def then_pattern_comprehension_array(shared_data: dict) -> None:
     assert ast.return_clause is not None
     item = ast.return_clause.items[0]
     assert item.alias == "companies"
-    assert "WORKS_AT" in item.expression
+    assert isinstance(item.expression, PatternComprehension)
+    assert [r.types for r in item.expression.pattern.rels] == [["WORKS_AT"]]
     upper = shared_data["sql"].upper()
     assert "ARRAY" in upper
     assert "COMPANIES" in upper
@@ -1939,11 +1941,20 @@ def when_graph_rewriter_projects_node(shared_data: dict) -> None:
 
 @then("the JSON_OBJECT contains only one 'id' key corresponding to the id_column")
 def then_single_id_key(shared_data: dict) -> None:
-    import re as _re
+    from sqlglot import exp, parse_one
 
     sql = shared_data["sql"]
-    id_key_count = len(_re.findall(r"'id'", sql))
-    assert id_key_count == 1, f"Duplicate 'id' JSON key: {sql}"
+    objects = [
+        [kv.this.name for kv in o.expressions]
+        for o in parse_one(sql, dialect="trino").find_all(exp.JSONObject)
+    ]
+    # No JSON object holds a key twice. The node's identity is its one 'id' key; its columns are
+    # under 'properties', each by its own name, the column named 'id' among them.
+    for keys in objects:
+        assert len(keys) == len(set(keys)), f"Duplicate JSON key in {keys}: {sql}"
+    node, properties = objects
+    assert node == ["id", "label", "tableLabel", "properties"], sql
+    assert properties.count("id") == 1 and "inquiry_id" in properties, sql
 
 
 # ---------------------------------------------------------------------------

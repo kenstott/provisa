@@ -486,6 +486,7 @@ async def _fetch_table_with_columns(
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
         draft=row["draft"],  # REQ-1921
+        row_materialize=row["row_materialize"],  # REQ-1865
         load_protected=row.get("load_protected"),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz"),  # REQ-1141

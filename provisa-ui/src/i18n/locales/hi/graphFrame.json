@@ -33,6 +33,7 @@
     "showPropertiesPanel": "गुण पैनल दिखाएँ",
     "copyErrorTitle": "त्रुटि कॉपी करें",
     "expandedDialogLabel": "विस्तृत ग्राफ़ व्यू",
-    "firstNodesShown": "पहले {{count}} नोड दिखाए जा रहे हैं; और भी हैं। साइड मेनू में सीमा बढ़ाएँ।"
+    "firstNodesShown": "पहले {{count}} नोड दिखाए जा रहे हैं; और भी हैं। साइड मेनू में सीमा बढ़ाएँ।",
+    "deleteFrame": "यह परिणाम हटाएँ"
   }
 }

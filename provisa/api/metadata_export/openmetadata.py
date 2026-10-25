@@ -199,6 +199,37 @@ def _schema_fqn(table: TableAsset) -> str:
     return f"{_database_fqn(source_id)}.{schema_name}"
 
 
+def _service_and_database(asset: AssetRef, source_id: str, description: str) -> list[Entity]:
+    """A source's database service and its one database."""
+    return [
+        Entity(
+            asset=asset,
+            path="/api/v1/services/databaseServices",
+            kind="service",
+            body={
+                "name": _service_fqn(source_id),
+                "serviceType": "CustomDatabase",
+                "description": description,
+                # The connection is Provisa's, not the catalog's: OpenMetadata must never
+                # be handed credentials to the underlying source, because Provisa is the
+                # only path on which governance is enforced.
+                "connection": {
+                    "config": {
+                        "type": "CustomDatabase",
+                        "sourcePythonClass": "provisa.metadata_export",
+                    }
+                },
+            },
+        ),
+        Entity(
+            asset=asset,
+            path="/api/v1/databases",
+            kind="database",
+            body={"name": _DEFAULT_DATABASE, "service": _service_fqn(source_id)},
+        ),
+    ]
+
+
 def _table_fqn(table: TableAsset) -> str:
     return f"{_schema_fqn(table)}.{table.ref.parts[-1]}"
 
@@ -414,42 +445,6 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
     return Entity(asset=table.ref, path="/api/v1/tables", kind="table", body=body)
 
 
-def _with_member_list_team(contract: dict[str, Any]) -> dict[str, Any]:
-    """The contract with its team as ODCS 3.0's list of members, the only form OpenMetadata's
-    import reads (its ODCSDataContract has no 3.1 Team object). Each role the Team names is a
-    member, the role's purpose (owner, team) its role."""
-    team = contract.get("team")
-    if team is None:
-        return contract
-    members = [
-        {"name": prop["value"], "role": prop["property"].removesuffix("Role")}
-        for prop in team["customProperties"]
-    ]
-    return {**contract, "team": members}
-
-
-# OpenMetadata's maxLatency unit (contractSLA in its dataContract.json): no seconds.
-_LATENCY_UNITS = (("day", 86400), ("hour", 3600), ("minute", 60))
-
-
-def _with_openmetadata_latency(contract: dict[str, Any]) -> dict[str, Any]:
-    """The contract with its latency in OpenMetadata's units: the largest unit the seconds fill
-    exactly, else whole minutes rounded up, which still bounds how far a read may trail."""
-    sla = contract.get("slaProperties")
-    if sla is None:
-        return contract
-    converted = []
-    for prop in sla:
-        if prop["property"] == "latency":
-            seconds = prop["value"]
-            unit, size = next(
-                ((u, n) for u, n in _LATENCY_UNITS if seconds % n == 0), _LATENCY_UNITS[-1]
-            )
-            prop = {**prop, "value": -(-seconds // size), "unit": unit}
-        converted.append(prop)
-    return {**contract, "slaProperties": converted}
-
-
 def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     """Each data product member's ODCS 3.1 contract, through OpenMetadata's ODCS import
     (REQ-2118): the same document Provisa serves at /data-products/{id}/contracts/."""
@@ -465,13 +460,40 @@ def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
                     asset=table.ref,
                     path="/api/v1/dataContracts/odcs",
                     kind="data_contract",
-                    body=_with_openmetadata_latency(
-                        _with_member_list_team(odcs_contract(snapshot, product, table))
-                    ),
+                    body=_for_openmetadata(odcs_contract(snapshot, product, table)),
                     for_table=_table_fqn(table),
                 )
             )
     return entities
+
+
+def _for_openmetadata(contract: dict[str, Any]) -> dict[str, Any]:
+    """The ODCS contract in the forms OpenMetadata's import reads.
+
+    ``team``: OpenMetadata reads a member array (ODCS 3.0's form, which 3.1 keeps deprecated) and
+    unwraps a 3.1 Team object only to its ``members``; Provisa's team names roles, not members, so
+    each role becomes one. ``latency``: OpenMetadata's units are minute, hour and day, so a latency
+    in seconds is stated in whole minutes, rounded up: still an upper bound on how far a read trails.
+    """
+    out = dict(contract)
+    if "team" in out:
+        out["team"] = [
+            {"name": prop["value"], "role": prop["property"]}
+            for prop in out["team"]["customProperties"]
+        ]
+    if "slaProperties" in out:
+        out["slaProperties"] = [_latency_in_minutes(p) for p in out["slaProperties"]]
+    return out
+
+
+def _latency_in_minutes(prop: dict[str, Any]) -> dict[str, Any]:
+    if prop["property"] != "latency":
+        return prop
+    minutes = -(-prop["value"] // 60)
+    for unit, size in (("day", 1440), ("hour", 60)):
+        if minutes % size == 0:
+            return {**prop, "value": minutes // size, "unit": unit}
+    return {**prop, "value": minutes, "unit": "minute"}
 
 
 def _data_product_entity(product: DataProductAsset) -> Entity:
@@ -704,35 +726,7 @@ def to_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     # A schema names its database and a database its service, so a view is seated in the derived
     # layer's service.
     for source in snapshot.container_sources():
-        entities.append(
-            Entity(
-                asset=source.ref,
-                path="/api/v1/services/databaseServices",
-                kind="service",
-                body={
-                    "name": _service_fqn(source.id),
-                    "serviceType": "CustomDatabase",
-                    "description": source.description,
-                    # The connection is Provisa's, not the catalog's: OpenMetadata must never
-                    # be handed credentials to the underlying source, because Provisa is the
-                    # only path on which governance is enforced.
-                    "connection": {
-                        "config": {
-                            "type": "CustomDatabase",
-                            "sourcePythonClass": "provisa.metadata_export",
-                        }
-                    },
-                },
-            )
-        )
-        entities.append(
-            Entity(
-                asset=source.ref,
-                path="/api/v1/databases",
-                kind="database",
-                body={"name": _DEFAULT_DATABASE, "service": _service_fqn(source.id)},
-            )
-        )
+        entities.extend(_service_and_database(source.ref, source.id, source.description))
 
     for schema_fqn, table in {_schema_fqn(t): t for t in snapshot.tables}.items():
         entities.append(

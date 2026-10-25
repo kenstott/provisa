@@ -624,7 +624,7 @@ async def queue_late_templates(pool) -> list[str]:
                 continue
             # A visitor's open builds a newer version itself (follow_latest), marked first.
             if template_builds.state_of(demo.name) != "unknown" or (
-                _templated(demo.name) == demo.directory.name
+                await _templated(pool, demo.name) == demo.directory.name
             ):
                 continue
             await _queue_template(pool, demo)
@@ -654,11 +654,12 @@ async def _queue_template(pool, demo: PublishedDemo) -> str:
     # A template another demo version or another Provisa release built is replaced, not loaded: its
     # schema is that release's (no migrations), and a column added since fails every read of it
     # (sources.download_from on the sandbox tier).
+    # Another demo version or release is the record's, on the control plane (readiness_version):
+    # never told by a node's own files, which a fresh disk does not have.
     stale = await _built_for(pool, demo) != readiness_version(demo)
-    if stale or (bundled_demos() and _templated(demo.name) != demo.directory.name):
+    if stale:
         await _retire_template(demo.name)
     build = await _template_row(pool, demo)
-    _mark_templated(demo)
     template_builds.add(demo, build=build)
     return "building" if build else "ready"
 
@@ -858,15 +859,24 @@ async def _built_for(pool, demo: PublishedDemo) -> str | None:
     return row[0] if row is not None else None
 
 
-def _templated(name: str) -> str | None:
-    """The version of bundled demo ``name`` its template was built from."""
-    path = bundles_root() / name / "templated"
-    return path.read_text().strip() if path.is_file() else None
+async def _templated(pool, name: str) -> str | None:
+    """The version of bundled demo ``name`` its template was recorded ready from, on the control
+    plane beside its ready record (readiness_version: ``<version>@<release>``); None when it was
+    never recorded ready. Never a node's own file: a fresh disk under a shared plane would read
+    no version and retire the template the other nodes serve."""
+    from sqlalchemy import select
 
+    from provisa.core.schema_admin import demo_template_readiness
 
-def _mark_templated(demo: PublishedDemo) -> None:
-    if bundled_demos():
-        (bundles_root() / demo.name / "templated").write_text(demo.directory.name + "\n")
+    async with pool.acquire() as conn:
+        version = (
+            await conn.execute_core(
+                select(demo_template_readiness.c.version).where(
+                    demo_template_readiness.c.template_org == template_org_id(name)
+                )
+            )
+        ).scalar_one_or_none()
+    return None if version is None else version.partition("@")[0]
 
 
 # The lock that keeps two openers of one demo from replacing its template at once, one a demo.
@@ -920,9 +930,19 @@ async def follow_latest(name: str) -> None:
     await asyncio.to_thread(hold, name)
     lock = _following.setdefault(name, CrossLoopLock())
     async with lock:
-        if _templated(name) == ready and template_builds.state_of(name) != "unknown":
-            return
         from provisa.api.admin.orgs_router import _admin_pool
+
+        # Being prepared here already: the open waits for that preparation
+        # (demo_sandbox._template_ready). Its ready record is written only when it finishes, so
+        # it read as built from another version, and queueing it again built it twice at once --
+        # one build's rollback dropping the schema the other was creating its tables in.
+        if template_builds.state_of(name) in ("queued", "building"):
+            return
+        if (
+            await _templated(_admin_pool(), name) == ready
+            and template_builds.state_of(name) != "unknown"
+        ):
+            return
 
         # _queue_template replaces a template built from another version.
         await _queue_template(_admin_pool(), published_demo(name))

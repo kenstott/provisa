@@ -61,14 +61,74 @@ def started():
             thing.shutdown()
 
 
-def _get(port: int, ticket: str = "t", **client_kwargs) -> dict:
+def _listeners(port: int) -> list[str]:
+    """Every socket listening on ``port`` and the process holding it, as Linux says (``/proc``):
+    under -n 4 a relay's port and its server's port have each been answered by a listener the
+    test did not open. Elsewhere it says that it cannot be read."""
+    import glob
+    import os
+
+    if not os.path.exists("/proc/net/tcp"):
+        return [f"(listeners on {port} cannot be read on this platform)"]
+    inodes: dict[str, str] = {}
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        with open(table) as fh:
+            for line in fh.readlines()[1:]:
+                fields = line.split()
+                local, state, inode = fields[1], fields[3], fields[9]
+                if state == "0A" and int(local.rsplit(":", 1)[1], 16) == port:
+                    inodes[inode] = f"{table.rsplit('/', 1)[1]} {local}"
+    found = []
+    for fd in glob.glob("/proc/[0-9]*/fd/*"):
+        try:
+            target = os.readlink(fd)
+        except OSError:
+            continue  # gone, or not this user's
+        inode = target[len("socket:[") : -1] if target.startswith("socket:[") else None
+        if inode in inodes:
+            pid = int(fd.split("/")[2])
+            whose = "this process" if pid == os.getpid() else f"pid {pid}"
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                    command = fh.read().replace(b"\0", b" ").decode(errors="replace")[:160]
+            except OSError:
+                command = "?"
+            found.append(
+                f"{inodes.pop(inode)} held by {whose} (fd {fd.rsplit('/', 1)[1]}): {command}"
+            )
+    found += [f"{where} held by no process this user can see" for where in inodes.values()]
+    return found or [f"nothing listens on {port}"]
+
+
+def _get(port: int, ticket: str = "t", *, upstream: int | None = None, **client_kwargs) -> dict:
+    """``ticket`` read through ``port``. A failure names who listens on ``port`` and, given the
+    relay's ``upstream``, on the server's port too."""
     scheme = "grpc+tls" if client_kwargs else "grpc"
     client = fl.connect(f"{scheme}://127.0.0.1:{port}", **client_kwargs)
     try:
         reader = client.do_get(fl.Ticket(ticket.encode()), fl.FlightCallOptions(timeout=20))
         return reader.read_all().to_pylist()[0]
+    except fl.FlightError as exc:
+        where = {f"relay port {port}": _listeners(port)}
+        if upstream is not None:
+            where[f"server port {upstream}"] = _listeners(upstream)
+        raise AssertionError({"error": str(exc).splitlines()[0][:300], **where}) from exc
     finally:
         client.close()
+
+
+def _server_listens(server) -> None:
+    """The server's own listener answers a direct connection, before the relay is asked: under
+    -n 4 a relay found this server's port refused, and only this says it was the server's."""
+    try:
+        socket.create_connection(("127.0.0.1", server.port), timeout=5).close()
+    except OSError as exc:
+        raise AssertionError(
+            {
+                "the Flight server's own listener refused a direct connection": str(exc),
+                f"server port {server.port}": _listeners(server.port),
+            }
+        ) from exc
 
 
 def test_a_call_on_the_advertised_port_reaches_the_workers_own_server(started):
@@ -89,13 +149,7 @@ def test_a_large_stream_arrives_whole_through_the_relay(started):
     # Under -n 4 this server's own listener once refused the relay's connection moments after it
     # was bound, and the client saw only the relay's reset ("recvmsg: Connection reset"). Asked
     # directly first, so such a failure says where it is.
-    try:
-        socket.create_connection(("127.0.0.1", server.port), timeout=5).close()
-    except OSError as exc:
-        raise AssertionError(
-            f"the Flight server's own listener (127.0.0.1:{server.port}) refused a direct "
-            f"connection before the relay was used: {exc}"
-        ) from exc
+    _server_listens(server)
     client = fl.connect(f"grpc://127.0.0.1:{port}")
     try:
         table = client.do_get(fl.Ticket(b"x"), fl.FlightCallOptions(timeout=60)).read_all()
@@ -211,7 +265,8 @@ def test_a_relay_closes_while_another_listener_shares_its_port(started):
         closing.join(timeout=10)
         assert not closing.is_alive(), "close() did not return while another listener held the port"
         assert not relay._acceptor.is_alive()  # noqa: SLF001 - the property under test
-    assert _get(port)["server"] == "w1"  # the listener that stayed still serves
+    _server_listens(server)
+    assert _get(port, upstream=server.port)["server"] == "w1"  # the listener that stayed serves
     del other
 
 
@@ -296,9 +351,11 @@ def _as_http2(raw: bytes) -> str:
 
 
 def _where(sock) -> tuple:
-    """A socket's descriptor and peer, as the operating system says them now."""
+    """A socket's descriptor and both its ends, as the operating system says them now. Both ends:
+    every relayed upstream socket has the one peer (the Flight server), so only its own end tells
+    one upstream connection from another."""
     try:
-        return (sock.fileno(), sock.getpeername())
+        return (sock.fileno(), sock.getsockname(), sock.getpeername())
     except OSError as exc:
         return (sock.fileno(), f"{type(exc).__name__}: {exc}")
 
@@ -353,6 +410,7 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
             "packer": zlib.compressobj(1),
             "packed": [],
             "source": _where(source),
+            "sink": _where(sink),
             "moved": [],
         }
         with copies_lock:
@@ -360,8 +418,11 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
         real_copy(_Watched(source, this_copy.record), sink)
 
     def _send_all(sink, data) -> None:
-        real_send_all(sink, data)
         record = this_copy.record
+        now = _where(sink)
+        if now != record["sink"]:
+            record["moved"].append({"sink_after_bytes": record["bytes"], "now": now})
+        real_send_all(sink, data)
         record["bytes"] += len(data)
         record["packed"].append(record["packer"].compress(data))  # sequential integers: small
 
@@ -412,7 +473,11 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
     ]
     # Whether a socket's descriptor or peer changed while it was read: a descriptor closed under
     # the relay and reused by another connection would splice that connection's bytes in.
-    moved = [{"source": c["source"], "moved": c["moved"][:5]} for c in copies if c["moved"]]
+    moved = [
+        {"source": c["source"], "sink": c["sink"], "moved": c["moved"][:5]}
+        for c in copies
+        if c["moved"]
+    ]
     assert failures == [], {
         "failures": failures,
         "carried": carried,

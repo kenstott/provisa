@@ -108,7 +108,16 @@ interface Text {
   strike: boolean;
 }
 
-export type Paint = Box | Text;
+/** A legend glyph clipped to an outline (data-glyph): its points in the element's own box. */
+interface Polygon {
+  kind: "polygon";
+  m: Matrix;
+  points: [number, number][];
+  fill: string;
+  opacity: number;
+}
+
+export type Paint = Box | Text | Polygon;
 
 const translate = (x: number, y: number): Matrix => [1, 0, 0, 1, x, y];
 const multiply = (p: Matrix, q: Matrix): Matrix => [
@@ -211,7 +220,15 @@ function overlayPaint(root: HTMLElement, origin: DOMRect, inherited = 1): Paint[
   const stroke = bw > 0 && !transparent(cs.borderTopColor) ? cs.borderTopColor : null;
   const rr = cs.borderTopLeftRadius;
   const radius = rr.endsWith("%") ? (Math.min(w, h) * parseFloat(rr)) / 100 : parseFloat(rr) || 0;
-  if ((fill || gradient || stroke) && w > 0 && h > 0)
+  const glyph = root.dataset.glyph;
+  if (glyph && fill && w > 0 && h > 0) {
+    // Clipped to its outline on screen (clip-path), painted as that polygon here.
+    const points = glyph.split(" ").map((xy) => {
+      const [x, y] = xy.split(",").map(Number);
+      return [x * w, y * h] as [number, number];
+    });
+    out.push({ kind: "polygon", m, points, fill, opacity });
+  } else if ((fill || gradient || stroke) && w > 0 && h > 0)
     out.push({ kind: "box", m, w, h, fill, gradient, stroke, strokeWidth: bw, radius, opacity });
   for (const child of root.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
@@ -274,6 +291,12 @@ export function paintCanvas(ctx: CanvasRenderingContext2D, paint: Paint[], scale
         ctx.lineWidth = p.strokeWidth;
         ctx.stroke();
       }
+    } else if (p.kind === "polygon") {
+      ctx.beginPath();
+      p.points.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+      ctx.closePath();
+      ctx.fillStyle = p.fill;
+      ctx.fill();
     } else {
       ctx.font = p.font;
       ctx.fillStyle = p.color;
@@ -323,6 +346,10 @@ export function svgOf(vector: VectorScene, paint: Paint[], background: string): 
         : "";
       parts.push(
         `<rect transform="${mat(p.m)}" width="${pt(p.w)}" height="${pt(p.h)}" rx="${pt(p.radius)}" fill="${fill}"${stroke} opacity="${pt(p.opacity)}"/>`,
+      );
+    } else if (p.kind === "polygon") {
+      parts.push(
+        `<polygon transform="${mat(p.m)}" points="${p.points.map(([x, y]) => `${pt(x)},${pt(y)}`).join(" ")}" fill="${esc(p.fill)}" opacity="${pt(p.opacity)}"/>`,
       );
     } else {
       parts.push(

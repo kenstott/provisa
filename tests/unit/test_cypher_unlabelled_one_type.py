@@ -31,9 +31,12 @@ def test_a_node_a_property_narrows_to_one_type_is_returned(rows):
     ((node,),) = rows("MATCH (n) WHERE n.city = 'oslo' RETURN n")
     node = _node(node)
     assert node["label"] == "Shop"
-    assert node["city"] == "oslo"
+    assert node["properties"]["city"] == "oslo"
 
 
 def test_its_property_beside_it_is_read_from_the_same_arm(rows):
     got = rows("MATCH (n) WHERE n.city IS NOT NULL RETURN n.city AS c, n")
-    assert [(c, _node(n)["city"]) for c, n in got] == [("oslo", "oslo"), ("rome", "rome")]
+    assert [(c, _node(n)["properties"]["city"]) for c, n in got] == [
+        ("oslo", "oslo"),
+        ("rome", "rome"),
+    ]

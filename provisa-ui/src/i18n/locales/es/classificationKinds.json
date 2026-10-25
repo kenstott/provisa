@@ -1,0 +1,61 @@
+{
+  "classificationKinds": {
+    "intro": "Cada ejecución del perfil comprueba una muestra de los valores de cada columna con estos tipos. Cuando pasan suficientes valores, la columna recibe una sugerencia que un steward de datos acepta o rechaza. Un tipo desactivado no se comprueba.",
+    "kindHeader": "Tipo",
+    "testHeader": "Prueba",
+    "thresholdHeader": "Proporción que debe pasar",
+    "maskHeader": "Máscara ofrecida",
+    "enabledHeader": "Activado",
+    "enabledAria": "Comprobar {{kind}}",
+    "sensitive": "Sensible",
+    "noMask": "Ninguna",
+    "kind": {
+      "us_ssn": "Número de la Seguridad Social de EE. UU.",
+      "payment_card": "Número de tarjeta de pago",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "Número de National Insurance del Reino Unido",
+      "ca_social_insurance_number": "Número de seguro social de Canadá",
+      "es_dni": "DNI o NIE español",
+      "nl_bsn": "Número de servicio al ciudadano neerlandés (BSN)",
+      "in_aadhaar": "Número Aadhaar de la India",
+      "us_passport": "Número de pasaporte de EE. UU.",
+      "country": "Nombre de país",
+      "country_code": "Código de país (ISO 3166)",
+      "currency_code": "Código de moneda (ISO 4217)",
+      "language_code": "Código de idioma (ISO 639)",
+      "city": "Ciudad del mundo"
+    },
+    "test": {
+      "us_ssn": "Nueve dígitos, escritos 123-45-6789 o seguidos: el área nunca es 000, 666 ni 900 a 999, el grupo nunca 00, el número de serie nunca 0000.",
+      "payment_card": "De 13 a 19 dígitos, con espacios o guiones entre grupos, que pasan la comprobación de Luhn.",
+      "iban": "Un código de país, dos dígitos de control y hasta 30 letras y dígitos con dígitos de control correctos (mód. 97).",
+      "uk_national_insurance_number": "Dos letras de prefijo del conjunto permitido, seis dígitos y una letra final de la A a la D.",
+      "ca_social_insurance_number": "Nueve dígitos, el primero distinto de 0 y 8, que pasan la comprobación de Luhn.",
+      "es_dni": "Ocho dígitos y su letra de control; el NIE de un extranjero empieza por X, Y o Z.",
+      "nl_bsn": "Nueve dígitos que pasan la prueba del once.",
+      "in_aadhaar": "Doce dígitos, el primero de 2 a 9, que pasan la comprobación de Verhoeff.",
+      "us_passport": "Una letra y ocho dígitos, el formato de los pasaportes de EE. UU. emitidos desde 2021.",
+      "country": "Un nombre de país de la lista de países incluida.",
+      "country_code": "Un código de país ISO 3166 de dos o tres letras.",
+      "currency_code": "Un código de moneda ISO 4217 de tres letras.",
+      "language_code": "Un código de idioma ISO 639 de dos o tres letras.",
+      "city": "El nombre de una ciudad de 15.000 habitantes o más, de la lista incluida."
+    },
+    "noun": {
+      "us_ssn": "un número de la Seguridad Social de EE. UU.",
+      "payment_card": "un número de tarjeta de pago",
+      "iban": "un IBAN",
+      "uk_national_insurance_number": "un número de National Insurance del Reino Unido",
+      "ca_social_insurance_number": "un número de seguro social de Canadá",
+      "es_dni": "un DNI o NIE español",
+      "nl_bsn": "un número de servicio al ciudadano neerlandés",
+      "in_aadhaar": "un número Aadhaar de la India",
+      "us_passport": "un número de pasaporte de EE. UU.",
+      "country": "un país",
+      "country_code": "un código de país ISO 3166",
+      "currency_code": "un código de moneda ISO 4217",
+      "language_code": "un código de idioma ISO 639",
+      "city": "una ciudad del mundo"
+    }
+  }
+}

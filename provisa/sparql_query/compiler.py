@@ -37,14 +37,17 @@ the keys. What the front end does not lower is refused by name.
 from __future__ import annotations
 
 import itertools
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from pyparsing import MatchFirst, Suppress
 from rdflib import BNode, Literal as RdfLiteral, URIRef, Variable as RdfVariable
 from rdflib.paths import AlternativePath, InvPath, MulPath, NegatedPath, Path, SequencePath
 from rdflib.plugins.sparql.algebra import translateQuery
+from rdflib.plugins.sparql import parser as _rdf_parser
 from rdflib.plugins.sparql.parser import parseQuery
-from rdflib.plugins.sparql.parserutils import CompValue
+from rdflib.plugins.sparql.parserutils import Comp, CompValue, Param
 
 from provisa.core import settings_registry
 from provisa.gql.expr_ast import (
@@ -192,13 +195,27 @@ def _aggregation(p: CompValue) -> tuple[CompValue, _Aggregation | None]:
     if p.name != "AggregateJoin":
         return top, None
     group = p.p
+    # GROUP BY an expression with no AS: rdflib binds it by an Extend with no variable under the
+    # Group and gives its key as None. Each is named and grouped by; nothing can project it, so
+    # which None names which expression does not matter.
+    unnamed: list[CompValue] = []
+    below = group.p
+    while below.name == "Extend" and below.var is None:
+        unnamed.append(below)
+        below = below.p
+    unnamed.reverse()
     keys = []
     for key in group.expr or []:
+        if key is None:
+            extend = unnamed.pop(0)
+            extend["var"] = RdfVariable(f"__group{len(keys)}__")
+            key = extend.var
         if not isinstance(key, RdfVariable):
             raise SparqlRefused("GROUP BY groups by variables; bind an expression to one first")
         keys.append(str(key))
+    grouped = group.p
     aggregates = {str(a.res): a for a in p.A}
-    return group.p, _Aggregation(keys, aggregates, list(reversed(rebinds)), having)
+    return grouped, _Aggregation(keys, aggregates, list(reversed(rebinds)), having)
 
 
 _AGGREGATE_NAMES = {
@@ -233,6 +250,28 @@ def _solution_modifiers(p: CompValue) -> tuple[CompValue, dict[str, Any]]:
 # --- paths -------------------------------------------------------------------------------------
 
 
+def _keep_negated_inverse_iris() -> None:
+    """rdflib's grammar (7.6) parses a negated set's inverse member, the ``^b`` of ``!(a|^b)``, as
+    an InversePath that keeps no IRI: its rule names no Param, so the IRI is dropped. Give the rule
+    the Param it lacks, so the member reaches the algebra as ``InversePath(part=b)``."""
+    one_of = _rdf_parser.PathOneInPropertySet
+    assert isinstance(one_of, MatchFirst)  # iri | A | '^' (iri | A)
+    inverse = next(e for e in one_of.exprs if isinstance(e, Comp) and e.name == "InversePath")
+    inverse.expr = Suppress("^") + Param("part", _rdf_parser.iri | _rdf_parser.A)
+
+
+_keep_negated_inverse_iris()
+
+
+def _negated_member(arg: Any) -> tuple[Any, bool]:
+    """A negated set's member: its IRI, and whether it is an inverse edge."""
+    if isinstance(arg, InvPath):
+        return arg.arg, True
+    if isinstance(arg, CompValue) and arg.name == "InversePath":
+        return arg.part, True
+    return arg, False
+
+
 def _path_expr(path: Any, vocab: Vocabulary) -> PathExpr:
     if isinstance(path, URIRef):
         return EdgeStep(_edge_type(str(path), vocab))
@@ -246,14 +285,15 @@ def _path_expr(path: Any, vocab: Vocabulary) -> PathExpr:
         lo, hi = {"*": (0, None), "+": (1, None), "?": (0, 1)}[path.mod]
         return RepeatPath(_path_expr(path.path, vocab), lo, hi)
     if isinstance(path, NegatedPath):
-        forward = [a for a in path.args if isinstance(a, URIRef)]
-        backward = [a.arg for a in path.args if isinstance(a, InvPath)]
-        if forward and backward:
-            raise SparqlRefused("A negated set of both forward and inverse edges is not supported")
-        names = tuple(
-            _edge_type(str(a), vocab) for a in (forward or backward) if str(a) in vocab.edges
-        )
-        return NegatedEdges(names, inverse=bool(backward))
+        members = [_negated_member(a) for a in path.args]
+        sets = []
+        for inverse in (False, True):
+            iris = [str(iri) for iri, inv in members if inv == inverse]
+            if iris:
+                names = tuple(_edge_type(iri, vocab) for iri in iris if iri in vocab.edges)
+                sets.append(NegatedEdges(names, inverse=inverse))
+        # !(a|^b) is either: an edge forward that is not a, or one backward that is not b.
+        return sets[0] if len(sets) == 1 else AltPath(tuple(sets))
     raise SparqlRefused(f"The property path {path} is not supported")
 
 
@@ -672,10 +712,8 @@ class _Lowering:
                 return Literal(True, "boolean")
             return IsNull(self.expr(e.arg, bindings, labels), negated=True)
         if name == "Builtin_REGEX":
-            if e.flags is not None:
-                raise SparqlRefused("REGEX flags are not supported")
-            text, pattern = args("text", "pattern")
-            return Binary("=~", text, pattern)
+            (text,) = args("text")
+            return Binary("=~", text, self._regex_search(e.pattern, e.flags, bindings, labels))
         if name == "Builtin_CONTAINS":
             return Binary("CONTAINS", *args("arg1", "arg2"))
         if name == "Builtin_STRSTARTS":
@@ -708,6 +746,39 @@ class _Lowering:
                     is_node = True
             return Literal(is_node == wants_node, "boolean")
         raise SparqlRefused(f"The SPARQL function {name.removeprefix('Builtin_')} is not supported")
+
+    def _regex_search(self, pattern: Any, flags: Any, bindings, labels) -> CypherExpr:
+        """REGEX's pattern as a match of the whole text, which ``=~`` is: found anywhere in it,
+        under its flags (XPath's: i, s and m inline; q the pattern taken as its text; x its
+        whitespace dropped)."""
+        if flags is not None and not (
+            isinstance(flags, RdfLiteral) and isinstance(flags.value, str)
+        ):
+            raise SparqlRefused("REGEX flags are given as a string literal")
+        given = str(flags) if flags is not None else ""
+        unknown = set(given) - set("ismqx")
+        if unknown:
+            raise SparqlRefused(
+                f"REGEX flags {''.join(sorted(unknown))} are not XPath's i, s, m, q, x"
+            )
+        inline = "".join(f for f in "ism" if f in given)
+        literal = isinstance(pattern, RdfLiteral) and isinstance(pattern.value, str)
+        if ("q" in given or "x" in given) and not literal:
+            raise SparqlRefused("REGEX flags q and x take a pattern written as a literal")
+        if literal:
+            text = str(pattern)
+            if "q" in given:
+                text = re.escape(text)
+            elif "x" in given:
+                text = re.sub(r"(\\.)|\s", lambda m: m.group(1) or "", text)
+            body: CypherExpr = Literal(text, "string")
+        else:
+            body = self.expr(pattern, bindings, labels)
+        opened = f"(?s:.*)(?{inline}:" if inline else "(?s:.*)(?:"
+        parts: list[CypherExpr] = [Literal(opened, "string"), body, Literal(")(?s:.*)", "string")]
+        if all(isinstance(x, Literal) for x in parts):
+            return Literal("".join(str(x.value) for x in parts if isinstance(x, Literal)), "string")
+        return FunctionCall("concat", parts)
 
     # -- the statement --------------------------------------------------------------------
 

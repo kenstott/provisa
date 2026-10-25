@@ -640,6 +640,7 @@ function App() {
                                             ["/admin/metadata-export", "org_settings"],
                                             ["/admin/import", "org_settings"], // REQ-1483
                                             ["/admin/tags", "org_settings"],
+                                            ["/admin/classification-kinds", "org_settings"], // REQ-2147
                                             ["/admin/reports", "observability"], // REQ-1386
                                             // REQ-1590: the glossary has its own read right. Reading a term
                                             // is not administering the org, so an analyst opens it; the

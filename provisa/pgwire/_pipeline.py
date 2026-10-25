@@ -160,6 +160,9 @@ class _Plan:
     # REQ-1949: the row limit that bounds this read, when a limit and not the statement's own
     # LIMIT is what bounds it (compiler/row_limit.RowLimit). None for every other statement.
     row_limit: Any = None
+    # REQ-005: the limit that bounds each list the read nests (compiler/list_cap), when it
+    # nests any; None otherwise.
+    list_limit: Any = None
     # REQ-1949: what the check of that limit found, for the statement's audit row: "cut" (more
     # rows matched than were returned) or "unchecked" (the check could not be made). None when
     # the answer was whole, or was not checked because it did not fill the limit.
@@ -745,23 +748,23 @@ async def _await_source_servers(decision: Any, sources: Any, state: Any) -> None
 
     if decision.route != Route.ENGINE:
         return
-    from provisa.federation.pgwire_replica import (
-        PGWIRE_REPLICA_TYPES,
-        STATEMENT_START_WAIT_SECONDS,
-        await_serving,
-    )
+    from provisa.federation.pgwire_replica import STATEMENT_START_WAIT_SECONDS, await_serving
+    from provisa.federation.strategy import read_through_its_server
 
     # REQ-2031: a source every table of which never expires and has landed is read from its
-    # replicas alone; nothing contacts it, so there is no server of it to wait for.
+    # replicas alone; nothing contacts it, so there is no server of it to wait for. A source the
+    # engine reads with a connector of its own (Splunk on Trino) is not read through its server
+    # either, though a discovery call may have started one.
+    engine = state.federation_engine.engine
     kept = state.replica_routes.kept_sources
     served = [
         (sid, state.source_types.get(sid, ""))
         for sid in sorted(sources)
-        if state.source_types.get(sid, "") in PGWIRE_REPLICA_TYPES and sid not in kept
+        if read_through_its_server(engine, state.source_types.get(sid, "")) and sid not in kept
     ]
     if not served:
         return
-    backend = state.federation_engine.engine.backend
+    backend = engine.backend
     # The attach is the engine's own (idempotent; a complete one is not walked again). An engine
     # that attaches nothing reads such a source from its replica, and has no server to wait for.
     attach = getattr(backend, "_attached_runtime", None)
@@ -1754,9 +1757,10 @@ async def govern_statement(
                 ) from exc
 
         if violations:
-            msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
+            from provisa.compiler.sql_validator import GovernanceRefused
+
             await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
-            raise PermissionError(msgs)
+            raise GovernanceRefused(violations)
 
         state.compiled_query_cache.put(_cq_key, CompiledOutcome())
 
@@ -1860,6 +1864,7 @@ async def _route_bounded(governed: "_Governed", **how: Any) -> _Plan:
     plan.scratch = tuple(scratch)
     if how.get("explain") is None:
         plan.row_limit = governed.gov_ctx.row_limit
+        plan.list_limit = governed.gov_ctx.list_limit
     plan.embedded = governed.memo.get("embed")  # REQ-2002
     plan.columns = governed.memo.get("columns")  # REQ-2131
     return plan
@@ -2107,9 +2112,14 @@ async def route_governed(
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
     # cache=true` / `cache_ttl=N` comment on the statement; without one no read and no write.
-    from provisa.compiler.directives import cache_hint_for
+    from provisa.compiler.directives import cache_hint_for, extract_directives_from_sql_comments
 
     _cache_hint = cache_hint_for("sql", sql)
+    # REQ-030: the statement's own `-- @provisa route=...` comment, read from the text its cache
+    # comment is read from; a caller's route_hint (a view's build asks for the engine) applies
+    # in its place.
+    if route_hint is None:
+        route_hint = extract_directives_from_sql_comments(sql).steward_hint
     # REQ-1910: resolved per EXECUTION, not only when the statement was governed — a prepared
     # statement is governed once and executed many times, across windows opening and closing.
     await resolve_trace_scope(state, role_id, hint=_cache_hint.debug_trace)
@@ -3228,7 +3238,19 @@ async def _warn_if_cut(plan: _Plan, result: QueryResult, state: Any) -> None:
     in the statement's warnings. An answer within the limit is whole and says nothing. A landed
     result (redirect, materialize, export) is counted by the rows its handle says were landed:
     the engine landed them, bounded at the same limit, and is asked for the row after it the
-    same way."""
+    same way.
+
+    REQ-005: a list the answer nests holding exactly its limit's entries may have more, and the
+    answer says so (compiler/list_cap). A landed result's lists are not read here."""
+    if plan.list_limit is not None and result.redirect is None:
+        from provisa.compiler.list_cap import at_ceiling, list_at_ceiling_warning
+        from provisa.core.statement_warnings import tell
+
+        if at_ceiling(result.rows, plan.list_limit.limit):
+            tell(
+                list_at_ceiling_warning(plan.list_limit.limit, plan.list_limit.kind),
+                plan.warnings,
+            )
     if plan.row_limit is None:
         return
     if result.cache_entry is not None:
@@ -4586,6 +4608,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         )
     plan.scratch = tuple(_scratch)
     plan.row_limit = gov_ctx.row_limit  # REQ-1949
+    plan.list_limit = gov_ctx.list_limit  # REQ-005
     return plan
 
 
@@ -4838,8 +4861,10 @@ async def _govern_compiled(
     if violations:
         from provisa.audit.pipeline import write_denial
 
+        from provisa.compiler.sql_validator import GovernanceRefused
+
         await write_denial(sql, role_id, _compiled_tree, gov_ctx, state)  # REQ-1386
-        raise PermissionError("; ".join(f"[{v.code}] {v.message}" for v in violations))
+        raise GovernanceRefused(violations)
 
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
 

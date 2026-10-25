@@ -98,6 +98,7 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                 GraphVarKind.PATH,
                 GraphVarKind.PASSTHROUGH,
                 GraphVarKind.MAP,
+                GraphVarKind.JSON_MAP,
                 GraphVarKind.TERM,
                 GraphVarKind.CUT,
             ):
@@ -156,18 +157,10 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
         this=exp.Identifier(this=nm.id_column, quoted=True),
         table=exp.Identifier(this=tbl),
     )
-    raw_id_col = exp.Column(
-        this=exp.Identifier(this=nm.id_column, quoted=True),
-        table=exp.Identifier(this=tbl),
-    )
-    # Compound id matches domain-union __id format: "Label|rawPk"
-    compound_id = exp.DPipe(
-        this=exp.DPipe(
-            this=exp.Literal.string(nm.label),
-            expression=exp.Literal.string("|"),
-        ),
-        expression=exp.Cast(this=raw_id_col, to=exp.DataType.build("VARCHAR")),
-    )
+    from provisa.gql.select_builder import node_identity
+
+    # "Label|key", as a domain union's __id is (a compound key's every column).
+    compound_id = node_identity(tbl, nm)
     kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exp.JSONKeyValue(this=exp.Literal.string("id"), expression=compound_id),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
@@ -175,15 +168,29 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
             this=exp.Literal.string("tableLabel"), expression=exp.Literal.string(nm.table_label)
         ),
     ]
-    reserved = {"id", "label"}
-    for prop_key, col_name in nm.properties.items():
-        if col_name in reserved:
-            continue
-        col_expr = exp.Column(
-            this=exp.Identifier(this=col_name, quoted=True),
-            table=exp.Identifier(this=tbl),
+    # Every column is a property under its own name -- ``id`` and ``label`` included -- held apart
+    # from the node's own keys, so the node's identity never shadows a column of the same name.
+    props: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        exp.JSONKeyValue(
+            this=exp.Literal.string(prop_key),
+            expression=exp.Column(
+                this=exp.Identifier(this=col_name, quoted=True),
+                table=exp.Identifier(this=tbl),
+            ),
         )
-        kv.append(exp.JSONKeyValue(this=exp.Literal.string(prop_key), expression=col_expr))
+        for prop_key, col_name in nm.properties.items()
+    ]
+    from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
+
+    # The node's key, a property every label has (``n._id``).
+    props.append(
+        exp.JSONKeyValue(this=exp.Literal.string(NODE_KEY_PROPERTY), expression=node_key(tbl, nm))
+    )
+    kv.append(
+        exp.JSONKeyValue(
+            this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)
+        )
+    )
     json_obj = exp.JSONObject(expressions=kv)
     return exp.Case(
         ifs=[exp.If(this=exp.Is(this=id_col_check, expression=exp.null()), true=exp.null())],
@@ -209,19 +216,22 @@ def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expressi
             ),
         ),
     ]
-    _reserved = {"id", "label"}
-    for prop in props or []:
-        if prop in _reserved:
-            continue
-        kv.append(
-            exp.JSONKeyValue(
-                this=exp.Literal.string(prop),
-                expression=exp.Column(
-                    this=exp.Identifier(this=prop, quoted=True),
-                    table=exp.Identifier(this=var),
-                ),
-            )
+    # Every column is a property under its own name, ``id`` included, apart from the node's keys.
+    held = [
+        exp.JSONKeyValue(
+            this=exp.Literal.string(prop),
+            expression=exp.Column(
+                this=exp.Identifier(this=prop, quoted=True),
+                table=exp.Identifier(this=var),
+            ),
         )
+        for prop in props or []
+    ]
+    kv.append(
+        exp.JSONKeyValue(
+            this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=held)
+        )
+    )
     return exp.JSONObject(expressions=kv)
 
 

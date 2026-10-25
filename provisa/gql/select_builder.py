@@ -65,6 +65,91 @@ def _shared_property_names(return_clause: "ReturnClause") -> frozenset[str]:
     return frozenset(name for name, count in names.items() if count > 1)
 
 
+#: The built-in property every node has (REQ-2136): its key. The one name a label need not publish.
+NODE_KEY_PROPERTY = "_id"
+
+
+def _key_column(alias: str | None, column: str) -> exp.Column:
+    return exp.Column(
+        this=exp.Identifier(this=column, quoted=True),
+        table=exp.Identifier(this=alias) if alias else None,
+    )
+
+
+def _escaped(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``value`` as text in which a ``|`` separates, and so is never one of its own characters:
+    a backslash and a ``|`` of the value each escaped by a backslash."""
+    text = exp.Cast(this=value, to=exp.DataType.build("VARCHAR"))
+    backslashes = _anon_fn("replace", text, exp.Literal.string("\\"), exp.Literal.string("\\\\"))
+    return _anon_fn("replace", backslashes, exp.Literal.string("|"), exp.Literal.string("\\|"))
+
+
+def _anon_fn(name: str, *args: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    return exp.Anonymous(this=name, expressions=list(args))
+
+
+def node_key_text(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The node's key as text: its key column's value, or each column of a compound key in key
+    order, escaped and separated by ``|`` -- two rows that share a column are two keys."""
+    if len(nm.key_columns) <= 1:
+        return exp.Cast(this=_key_column(alias, nm.id_column), to=exp.DataType.build("VARCHAR"))
+    parts = [_escaped(_key_column(alias, c)) for c in nm.key_columns]
+    text = parts[0]
+    for part in parts[1:]:
+        text = exp.DPipe(
+            this=exp.DPipe(this=text, expression=exp.Literal.string("|")), expression=part
+        )
+    return text
+
+
+def node_identity(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The node's identity in the graph: ``label|key`` (node_key_text)."""
+    return exp.DPipe(
+        this=exp.DPipe(this=exp.Literal.string(nm.label), expression=exp.Literal.string("|")),
+        expression=node_key_text(alias, nm),
+    )
+
+
+def node_key(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``alias``'s ``_id``: its key column, or for a compound key its identity."""
+    if len(nm.key_columns) <= 1:
+        return _key_column(alias, nm.id_column)
+    return node_identity(alias, nm)
+
+
+def node_properties_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The properties of the node ``alias`` reads, as a returned node carries them: each one the
+    label publishes, and its ``_id``."""
+    exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    for prop_name, col_name in nm.properties.items():
+        exprs.append(exp.Literal.string(prop_name))
+        exprs.append(
+            exp.Column(
+                this=exp.Identifier(this=col_name, quoted=True), table=exp.Identifier(this=alias)
+            )
+        )
+    exprs += [exp.Literal.string(NODE_KEY_PROPERTY), node_key(alias, nm)]
+    return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
+
+
+def node_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The node ``alias`` reads, as RETURN n and an edge's startNode and endNode are: its
+    identity (node_identity), labels and properties."""
+    return exp.Anonymous(
+        this="JSON_OBJECT",
+        expressions=[
+            exp.Literal.string("id"),
+            node_identity(alias, nm),
+            exp.Literal.string("label"),
+            exp.Literal.string(nm.label),
+            exp.Literal.string("tableLabel"),
+            exp.Literal.string(nm.table_label),
+            exp.Literal.string("properties"),
+            node_properties_json(alias, nm),
+        ],
+    )
+
+
 def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """An edge's type: its relationship's name, or for a single-hop alternation the type its row
     names (a CASE on the junction's type column)."""
@@ -134,12 +219,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         # identity: rel_type || ':' || CAST(canonical_src.id AS VARCHAR) || '-' || CAST(canonical_tgt.id AS VARCHAR)
         # When traversed backward, swap src/tgt so identity matches canonical (imputed) direction.
         # Include rel_type so edges of different types between same node pair get distinct identities.
-        identity_first = exp.Cast(
-            this=tgt_id_col if is_reversed else src_id_col, to=exp.DataType.build("VARCHAR")
-        )
-        identity_second = exp.Cast(
-            this=src_id_col if is_reversed else tgt_id_col, to=exp.DataType.build("VARCHAR")
-        )
+        # Each end's key text holds every column of a compound key (node_key_text).
+        src_key, tgt_key = node_key_text(src_alias, src_nm), node_key_text(tgt_alias, tgt_nm)
+        identity_first = tgt_key if is_reversed else src_key
+        identity_second = src_key if is_reversed else tgt_key
         identity = exp.DPipe(
             this=exp.DPipe(
                 this=exp.DPipe(
@@ -153,25 +236,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             ),
             expression=identity_second,
         )
-        empty_props = exp.Anonymous(this="JSON_OBJECT", expressions=[])
         # REQ-1586: a junction-backed edge's properties are its junction's columns, and the edge
         # names the table they were read from.
         edge_fields = junction_edge_fields(via)
-
-        def _node_props_expr(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            """Build JSON_OBJECT(...) for all node properties, or empty if none defined."""
-            if not nm.properties:
-                return empty_props
-            exprs = []
-            for prop_name, col_name in nm.properties.items():
-                exprs.append(exp.Literal.string(prop_name))
-                exprs.append(
-                    exp.Column(
-                        this=exp.Identifier(this=col_name, quoted=True),
-                        table=exp.Identifier(this=alias),
-                    )
-                )
-            return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
 
         # Canonical (src->tgt) display order: when is_reversed, the pattern's src/tgt aliases
         # are swapped relative to the canonical relationship, so start/end/startNode/endNode
@@ -180,48 +247,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         disp_tgt_alias, disp_tgt_nm = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
         disp_src_id_col = tgt_id_col if is_reversed else src_id_col
         disp_tgt_id_col = src_id_col if is_reversed else tgt_id_col
-
-        def _compound_id(alias: str, nm: NodeMapping) -> exp.Expression:
-            return exp.DPipe(
-                this=exp.DPipe(
-                    this=exp.Literal.string(nm.label),
-                    expression=exp.Literal.string("|"),
-                ),
-                expression=exp.Cast(
-                    this=exp.Column(
-                        this=exp.Identifier(this=nm.id_column, quoted=True),
-                        table=exp.Identifier(this=alias),
-                    ),
-                    to=exp.DataType.build("VARCHAR"),
-                ),
-            )
-
-        start_node = exp.Anonymous(
-            this="JSON_OBJECT",
-            expressions=[
-                exp.Literal.string("id"),
-                _compound_id(disp_src_alias, disp_src_nm),
-                exp.Literal.string("label"),
-                exp.Literal.string(disp_src_nm.label),
-                exp.Literal.string("tableLabel"),
-                exp.Literal.string(disp_src_nm.table_label),
-                exp.Literal.string("properties"),
-                _node_props_expr(disp_src_alias, disp_src_nm),
-            ],
-        )
-        end_node = exp.Anonymous(
-            this="JSON_OBJECT",
-            expressions=[
-                exp.Literal.string("id"),
-                _compound_id(disp_tgt_alias, disp_tgt_nm),
-                exp.Literal.string("label"),
-                exp.Literal.string(disp_tgt_nm.label),
-                exp.Literal.string("tableLabel"),
-                exp.Literal.string(disp_tgt_nm.table_label),
-                exp.Literal.string("properties"),
-                _node_props_expr(disp_tgt_alias, disp_tgt_nm),
-            ],
-        )
+        start_node = node_json(disp_src_alias, disp_src_nm)
+        end_node = node_json(disp_tgt_alias, disp_tgt_nm)
         return exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
@@ -334,28 +361,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         """Build JSON_OBJECT('nodes', JSON_ARRAY(...), 'edges', JSON_ARRAY(...)) for a flat-JOIN path."""
 
         def _node_obj(alias: str, nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            for prop_name, col_name in nm.properties.items():
-                props_exprs.append(exp.Literal.string(prop_name))
-                props_exprs.append(
-                    exp.Column(
-                        this=exp.Identifier(this=col_name, quoted=True),
-                        table=exp.Identifier(this=alias),
-                    )
-                )
-            props = exp.Anonymous(this="JSON_OBJECT", expressions=props_exprs)
-            id_col = exp.Column(
-                this=exp.Identifier(this=nm.id_column, quoted=True),
-                table=exp.Identifier(this=alias),
-            )
-            # Compound ID "Label|raw_id" so _walk_for_nodes can find and register it.
-            compound_id = exp.DPipe(
-                this=exp.DPipe(
-                    this=exp.Literal.string(nm.label),
-                    expression=exp.Literal.string("|"),
-                ),
-                expression=exp.Cast(this=id_col, to=exp.DataType.build("VARCHAR")),
-            )
+            props = node_properties_json(alias, nm)
+            # Its identity "Label|key" so _walk_for_nodes can find and register it.
+            compound_id = node_identity(alias, nm)
             return exp.Anonymous(
                 this="JSON_OBJECT",
                 expressions=[
@@ -379,16 +387,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             is_reversed: bool = False,
             via: "tuple[str, JunctionMapping] | None" = None,
         ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            src_id_col = exp.Column(
-                this=exp.Identifier(this=src_nm.id_column, quoted=True),
-                table=exp.Identifier(this=src_alias),
-            )
-            tgt_id_col = exp.Column(
-                this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
-                table=exp.Identifier(this=tgt_alias),
-            )
-            src_id_cast = exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR"))
-            tgt_id_cast = exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR"))
+            src_id_cast = node_key_text(src_alias, src_nm)
+            tgt_id_cast = node_key_text(tgt_alias, tgt_nm)
             # When the edge is traversed in reverse of its canonical direction,
             # use canonical order (canonical_src-canonical_tgt) for identity so it
             # matches the identity produced by show-children (which always uses canonical direction).
@@ -515,6 +515,17 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 is_reversed,
                 self._rel_var_via.get(expr_text),  # REQ-1586
             )
+            if expr_text in getattr(self, "_optional_rel_vars", set()):
+                # An OPTIONAL MATCH that matched no relationship binds none: null, not an edge
+                # of null ends.
+                far = exp.Column(
+                    this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+                    table=exp.Identifier(this=tgt_alias),
+                )
+                edge_expr = exp.Case(
+                    ifs=[exp.If(this=exp.Is(this=far, expression=exp.null()), true=exp.null())],
+                    default=edge_expr,
+                )
         else:
             edge_expr = exp.Null()
         return exp.alias_(edge_expr, alias or expr_text)
@@ -604,33 +615,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         return exp.alias_(exp.Null(), alias or expr_text)
 
     def _build_node_object_expr(self, alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        for prop_name, col_name in nm.properties.items():
-            props_exprs.append(exp.Literal.string(prop_name))
-            props_exprs.append(
-                exp.Column(
-                    this=exp.Identifier(this=col_name, quoted=True),
-                    table=exp.Identifier(this=alias),
-                )
-            )
-        props = exp.Anonymous(this="JSON_OBJECT", expressions=props_exprs)
-        id_col = exp.Column(
-            this=exp.Identifier(this=nm.id_column, quoted=True),
-            table=exp.Identifier(this=alias),
-        )
-        return exp.Anonymous(
-            this="JSON_OBJECT",
-            expressions=[
-                exp.Literal.string("id"),
-                exp.Cast(this=id_col, to=exp.DataType.build("VARCHAR")),
-                exp.Literal.string("label"),
-                exp.Literal.string(nm.label),
-                exp.Literal.string("tableLabel"),
-                exp.Literal.string(nm.table_label),
-                exp.Literal.string("properties"),
-                props,
-            ],
-        )
+        """A node graph functions return (startNode(r), nodes(p)), with the identity every node
+        object carries: the graph draws each node once."""
+        return node_json(alias, nm)
 
     def _build_select(self, return_clause: ReturnClause) -> list[exp.Expr]:
         from provisa.gql.translator_types import GraphVarKind  # avoid circular at module level

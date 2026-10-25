@@ -256,7 +256,12 @@
       "database_unavailable": "數據庫不可用",
       "query_engine_unavailable": "查詢引擎不可用",
       "role_header_required": "剖析檢視需要 X-Provisa-Role 標頭",
-      "table_not_found": "找不到資料表 {{table_id}}"
+      "table_not_found": "找不到資料表 {{table_id}}",
+      "column_not_found": "欄位 {{column}} 不是 org_admin 讀取的表中的欄位",
+      "classification_kind_unknown": "未知的分類類型 {{kind}}",
+      "classification_status_invalid": "分類決定只可以是已接受或已拒絕，而不是 {{status}}",
+      "classification_decision_not_found": "沒有關於 {{column}} 作為 {{kind}} 的決定",
+      "classification_pii_refused": "無法將該欄位標記為 PII"
     },
     "replication": {
       "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
@@ -336,6 +341,7 @@
       "change_signal_no_topic": "資料來源 '{{source}}' 的表 '{{table}}' 使用 kafka 變更訊號，但未在 live.kafka.topic 中指定 topic，因此不會有任何東西重新整理它。",
       "change_signal_no_receiver": "Provisa 不會從 {{type}} 類型的資料來源接收變更訊號 {{signal}}，因此資料來源 '{{source}}' 的資料表永遠不會因此重新整理。請使用 Debezium 擷取該資料來源，並使用 debezium。",
       "change_signal_not_honoured": "類型為 {{type}} 的數據來源尚不能檢查是否有變更，因此變更訊號 {{signal}} 永遠不會被詢問。請為數據來源「{{source}}」使用 ttl。",
+      "row_materialize_no_key_fetch": "{{table}} 無法按列複製：其遠端結構描述中沒有可按主索引鍵清單傳回其資料列的欄位。",
       "sentinel_path_not_applicable": "類型為 {{type}} 的數據來源不能有哨兵路徑：沒有您自己的生產方可以標記其數據的變更，或者該數據來源不被探測。請從數據來源「{{source}}」中移除哨兵路徑。",
       "source_cache_ttl_required": "數據來源「{{source}}」需要快取 TTL：它的每個表格都是複本，在 {{signal}} 變更訊號下按該時鐘重新整理。請在數據來源的「負載管理與時效性」中設定。",
       "landing_ttl_required": "表格「{{table}}」是按快取 TTL 重新整理的複本，但它和它的數據來源「{{source}}」都沒有設定。請在數據來源的「負載管理與時效性」中設定快取 TTL，或在表格註冊後在表格本身設定。",
@@ -528,7 +534,26 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}"
+      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}",
+      "access_violations": "此角色無權執行此查詢：",
+      "invalid_regex": "{{expression}} 中的模式 \"{{pattern}}\" 不是有效的正則表達式：{{reason}}。=~ 需要正則表達式，例如 \".*{{word}}.*\"，或使用 CONTAINS \"{{word}}\"。",
+      "unknown_label": "沒有標籤 :{{label}}。已登記的標籤：{{suggestions}}。",
+      "no_labels": "沒有標籤 :{{label}}：此角色無法讀取任何表。",
+      "unknown_relationship_type": "沒有關係類型 {{types}}。已登記的類型：{{suggestions}}。",
+      "no_relationship_types": "沒有關係類型 {{types}}：此角色無法遍歷任何關係。",
+      "type_mismatch": "在 {{expression}} 中，{{value}} 無法與類型為 {{property_type}} 的 {{property}} 比較。{{fix}}",
+      "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分組之前篩選行。請在 WITH 中聚合，之後再篩選。",
+      "nested_aggregate": "{{outer}} 對聚合 {{inner}} 再次聚合：不能對另一個聚合取聚合。請先在 WITH 中聚合。",
+      "undefined_variable": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。",
+      "invalid_limit": "LIMIT {{value}} 不是整數行數：LIMIT 需要 0 或以上的計數，例如 LIMIT 10。",
+      "invalid_skip": "SKIP {{value}} 不是整數行數：SKIP 需要 0 或以上的計數，例如 SKIP 10。",
+      "engine_refused": "引擎拒絕了查詢：{{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。",
+      "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
+      "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。",
+      "non_finite_number": "結果包含 JSON 無法表示的數字：{{column}} 為 {{value}}。",
+      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 和 toBoolean 時，此引擎需要 PostgreSQL 16 或以上版本。"
     },
     "requests": {
       "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",
@@ -542,6 +567,7 @@
     "statement": {
       "rows_cut": "結果在 {{limit}} 行處被截斷，這是適用於此次讀取的行數限制（{{kind}}）：符合的行多於傳回的行。",
       "rows_cut_unchecked": "結果有 {{limit}} 行，即適用於此次讀取的行數限制（{{kind}}）。無法檢查是否還有更多符合的行：{{reason}}",
+      "list_at_ceiling": "列表包含此次讀取的行數限制所允許的最多 {{limit}} 個條目（{{kind}}）；可能還有更多。",
       "approximate_index": "最相似的行是透過近似向量索引找到的：可能缺少一行比最後傳回的行稍微更相似的行。",
       "path_cut": "一條沒有上限的路徑在圖深度上限 {{limit}} 跳處被截斷：更長的路徑未包含在結果中。"
     },

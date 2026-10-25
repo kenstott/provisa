@@ -214,11 +214,13 @@ def entity_type_defs() -> list[dict[str, Any]]:  # REQ-1388
 
 
 def relationship_type_defs() -> list[dict[str, Any]]:  # REQ-1388
-    def _composition(name: str, container: str, contained: str, plural: str, singular: str):
+    def _composition(
+        name: str, container: str, contained: str, plural: str, singular: str, category: str
+    ):
         return {
             "name": name,
             "serviceType": "provisa",
-            "relationshipCategory": "COMPOSITION",
+            "relationshipCategory": category,
             "propagateTags": "NONE",
             "endDef1": {
                 "type": container,
@@ -259,11 +261,23 @@ def relationship_type_defs() -> list[dict[str, Any]]:  # REQ-1388
         }
 
     return [
+        # AGGREGATION, not COMPOSITION: Atlas makes a COMPOSITION's contained end mandatory, and a
+        # view is a provisa_table read from no source, so it has no source to name.
         _composition(
-            "provisa_source_tables", PROVISA_SOURCE_TYPE, PROVISA_TABLE_TYPE, "tables", "source"
+            "provisa_source_tables",
+            PROVISA_SOURCE_TYPE,
+            PROVISA_TABLE_TYPE,
+            "tables",
+            "source",
+            "AGGREGATION",
         ),
         _composition(
-            "provisa_table_columns", PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE, "columns", "table"
+            "provisa_table_columns",
+            PROVISA_TABLE_TYPE,
+            PROVISA_COLUMN_TYPE,
+            "columns",
+            "table",
+            "COMPOSITION",
         ),
         _aggregation(
             "provisa_data_product_members",

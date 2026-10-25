@@ -67,9 +67,8 @@ function reader(): MetaReader {
           refs: list("M__GlossaryTermRefs"),
           edgesOut: list("M__GlossaryTermEdges"),
           edgesIn: list("M__GlossaryTermEdges"),
-          tables: list("M__GlossaryTermTableRefs"),
+          tables: list("M__RegisteredTables"),
         }),
-        type("M__GlossaryTermTableRefs", { tableId: scalar, tableName: scalar, domainId: scalar }),
         type("M__GlossaryTermDomains", { domainId: scalar }),
         type("M__GlossaryTermRefs", {
           termId: scalar,
@@ -88,7 +87,7 @@ function reader(): MetaReader {
           tableColumns: list("M__TableColumns"),
           sourceRelationships: list("M__Relationships"),
         }),
-        type("M__Relationships", { id: scalar, alias: scalar, targetTableId: scalar }),
+        type("M__Relationships", { id: scalar, cypherType: scalar, targetTableId: scalar }),
         type("M__TableColumns", {
           columnName: scalar,
           columnKey: scalar,
@@ -207,7 +206,7 @@ describe("the Ontology View's query", () => {
     );
     expect(q).toContain('edges_out: edgesOut(where: { relType: { in: ["KIND_OF","PLACED_BY"] } })');
     expect(q).toContain(
-      'sourceRelationships(where: { _or: [{ alias: { in: ["KIND_OF","PLACED_BY"] } }, { _and: [{ alias: { is_null: true } }, { id: { in: ["KIND_OF","PLACED_BY"] } }] }] })',
+      'sourceRelationships(where: { cypherType: { in: ["KIND_OF","PLACED_BY"] } })',
     );
   });
 
@@ -247,7 +246,7 @@ describe("the Ontology View's query", () => {
   it("reads the tables a class term grounds with the ontology, in the domains kept", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"], { domains: ["sales"] })));
     expect(q).toContain(
-      'tables: tables(where: { domainId: { in: ["sales"] } }) { table_id: tableId table_name: tableName domain_id: domainId }',
+      'tables: tables(where: { domainId: { in: ["sales"] } }) { id: id table_name: tableName domain_id: domainId }',
     );
     expect(squash(ontologyQuery(reader(), scope(["domains"])))).not.toContain("tables:");
     // A class term is no orphan: its table is a relationship drawn.

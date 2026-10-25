@@ -119,6 +119,19 @@ def test_a_replica_name_stays_within_the_identifier_limit_and_stays_distinct():
     assert replica_table_name("s", "public", "t") == "s__public__t"
 
 
+def test_a_replica_name_is_lower_case_and_names_differing_in_case_stay_distinct():
+    """Trino folds every name to lower case: Oracle's schema ``SYSTEM`` named a store table Trino
+    could not reach ("Table '...replicas.ora__system__zoned_rep' does not exist")."""
+    oracle = replica_table_name("ora", "SYSTEM", "zoned_rep")
+    assert oracle == oracle.lower() and oracle.startswith("ora__system__zoned_rep__")
+    assert replica_table_name("pg", "public", "Orders") != replica_table_name(
+        "pg", "public", "orders"
+    )
+    assert replica_table_name("pg", "public", "orders") == "pg__public__orders"
+    long_upper = replica_table_name("ora", "SYSTEM", "A" * 70)
+    assert len(long_upper.encode()) <= 63 and long_upper == long_upper.lower()
+
+
 def test_an_export_view_is_outside_the_registered_address_and_both_read_schemas():
     """A store that publishes a view of each replica for its catalog export (Snowflake) puts it
     in a schema of its own: not the table's registered schema, not the replicas schema a read is

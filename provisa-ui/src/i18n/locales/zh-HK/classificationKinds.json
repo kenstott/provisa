@@ -1,0 +1,61 @@
+{
+  "classificationKinds": {
+    "intro": "每次剖析執行都會按這些類型檢驗每個欄位取值的樣本。足夠多的值通過時，該欄位會得到一項建議，由數據管家接受或拒絕。已停用的類型不會被檢驗。",
+    "kindHeader": "類型",
+    "testHeader": "檢驗",
+    "thresholdHeader": "必須通過的比例",
+    "maskHeader": "提供的遮罩",
+    "enabledHeader": "已啟用",
+    "enabledAria": "檢驗 {{kind}}",
+    "sensitive": "敏感",
+    "noMask": "無",
+    "kind": {
+      "us_ssn": "美國社會安全號碼",
+      "payment_card": "付款卡號碼",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "英國國民保險號碼",
+      "ca_social_insurance_number": "加拿大社會保險號碼",
+      "es_dni": "西班牙 DNI 或 NIE",
+      "nl_bsn": "荷蘭公民服務號碼 (BSN)",
+      "in_aadhaar": "印度 Aadhaar 號碼",
+      "us_passport": "美國護照號碼",
+      "country": "國家名稱",
+      "country_code": "國家代碼 (ISO 3166)",
+      "currency_code": "貨幣代碼 (ISO 4217)",
+      "language_code": "語言代碼 (ISO 639)",
+      "city": "世界城市"
+    },
+    "test": {
+      "us_ssn": "九位數字，寫作 123-45-6789 或連寫：區號不為 000、666 或 900 至 999，組號不為 00，序號不為 0000。",
+      "payment_card": "13 至 19 位數字，組間可有空格或連字號，並通過 Luhn 校驗。",
+      "iban": "國家代碼、兩位校驗位及最多 30 個字母和數字，校驗位正確 (mod 97)。",
+      "uk_national_insurance_number": "允許集合中的兩個前綴字母、六位數字及 A 至 D 的結尾字母。",
+      "ca_social_insurance_number": "九位數字，首位不為 0 或 8，並通過 Luhn 校驗。",
+      "es_dni": "八位數字及其校驗字母；外國人的 NIE 以 X、Y 或 Z 開頭。",
+      "nl_bsn": "通過十一檢驗的九位數字。",
+      "in_aadhaar": "十二位數字，首位為 2 至 9，並通過 Verhoeff 校驗。",
+      "us_passport": "一個字母加八位數字，即 2021 年起簽發的美國護照格式。",
+      "country": "隨附國家列表中的國家名稱。",
+      "country_code": "兩位或三位字母的 ISO 3166 國家代碼。",
+      "currency_code": "三位字母的 ISO 4217 貨幣代碼。",
+      "language_code": "兩位或三位字母的 ISO 639 語言代碼。",
+      "city": "隨附列表中人口 15,000 或以上城市的名稱。"
+    },
+    "noun": {
+      "us_ssn": "美國社會安全號碼",
+      "payment_card": "付款卡號碼",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "英國國民保險號碼",
+      "ca_social_insurance_number": "加拿大社會保險號碼",
+      "es_dni": "西班牙 DNI 或 NIE",
+      "nl_bsn": "荷蘭公民服務號碼",
+      "in_aadhaar": "印度 Aadhaar 號碼",
+      "us_passport": "美國護照號碼",
+      "country": "國家",
+      "country_code": "ISO 3166 國家代碼",
+      "currency_code": "ISO 4217 貨幣代碼",
+      "language_code": "ISO 639 語言代碼",
+      "city": "世界城市"
+    }
+  }
+}

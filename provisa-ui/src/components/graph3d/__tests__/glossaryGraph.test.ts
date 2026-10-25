@@ -92,8 +92,8 @@ const view = (layers: LayerId[], filters: GraphFilters = defaults) =>
 describe("the Ontology View's terms", () => {
   it("marks a class whose tables are not all declared one entity, naming its tables", () => {
     const tables = [
-      { table_id: 10, table_name: "customers", domain_id: "sales" },
-      { table_id: 11, table_name: "contacts", domain_id: "crm" },
+      { id: 10, table_name: "customers", domain_id: "sales" },
+      { id: 11, table_name: "contacts", domain_id: "crm" },
     ];
     const g = glossaryGraph(
       [
@@ -126,7 +126,7 @@ describe("the Ontology View's terms", () => {
     expect(node(G, "term:2")?.role).toBe("concept");
     expect(node(G, "term:1")?.role).toBe("property");
     const grounded = glossaryGraph(
-      [term(9, "Order", { tables: [{ table_id: 20, table_name: "orders", domain_id: "sales" }] })],
+      [term(9, "Order", { tables: [{ id: 20, table_name: "orders", domain_id: "sales" }] })],
       [],
     );
     expect(node(grounded, "term:9")?.role).toBe("class");
@@ -208,7 +208,7 @@ describe("the Ontology View's presets", () => {
 
   it("draws a class term's tables with the ontology: the term IS the table, a cylinder", () => {
     const grounded = glossaryGraph(
-      [term(7, "Order", { tables: [{ table_id: 20, table_name: "orders", domain_id: "sales" }] })],
+      [term(7, "Order", { tables: [{ id: 20, table_name: "orders", domain_id: "sales" }] })],
       [],
     );
     const on = (layers: LayerId[]) =>

@@ -44,6 +44,7 @@ from provisa.control_plane.entitlements import (
     min_tier,
 )
 from provisa.core.models import MetadataExportConfig
+from provisa.core.org_forget import on_forget
 
 router = APIRouter()
 
@@ -84,6 +85,11 @@ _EXPORT_FIELDS = ("enabled", "reconcile_cron")
 # just triggered so the tab can show the per-asset errors a partial publish returned, and an
 # empty entry after a restart means "this process has not published", which is what it says.
 _LAST_PUBLISH: dict[str, dict[str, Any]] = {}
+
+
+@on_forget(size=lambda: len(_LAST_PUBLISH))
+def _forget_last_publish(org_id: str) -> None:
+    _LAST_PUBLISH.pop(org_id, None)
 
 
 async def _require_entitled(org_id: str) -> None:

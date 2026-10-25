@@ -29,7 +29,7 @@ on:
         required: false
         default: ""
       lanes:
-        description: "Lanes: all, or comma-separated (core, app, hive_s3, kafka, neo4j, datastores, isolated, e2e, vector, cluster)"
+        description: "Lanes: all, or comma-separated (core, app, hive_s3, kafka, neo4j, datastores, isolated, e2e, vector, cluster, leak -- leak only when named)"
         required: false
         default: "all"
       tests:

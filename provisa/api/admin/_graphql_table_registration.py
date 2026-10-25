@@ -31,6 +31,7 @@ from sqlalchemy import select
 
 from provisa.compiler.naming import apply_sql_name
 from provisa.core.schema_org import registered_tables, sources, table_columns
+from provisa.graphql_remote.by_keys import BY_KEYS, TABLE_SPECS_KEY, key_fetches
 from provisa.graphql_remote.brands import (
     BRANDS,
     LiveSchema,
@@ -56,7 +57,6 @@ _PHYSICAL_TYPE = {
 
 # Where a plain source's row records how each of its registered tables is read
 # (``sources.mapping``, the per-type table mapping every non-relational source keeps there).
-TABLE_SPECS_KEY = "tables"
 # What of a mapped table says how it is read.
 SPEC_FIELDS = (
     "name",  # the table as the schema names it; the registered name is the row's own
@@ -66,6 +66,7 @@ SPEC_FIELDS = (
     "optional_args",
     "pagination",
     "rows_path",
+    BY_KEYS,  # REQ-1865: the columns its rows are fetched by, a list at a time
 )
 
 
@@ -234,6 +235,7 @@ async def columns_to_register(
         page_size,
         offer.too_complex_messages,
     )
+    fitted = {**fitted, BY_KEYS: key_fetches(offer.schema(), fitted)}
     offered = _column_models(fitted)
     by_choice = {c.name: c for c in chosen}
     columns = []
@@ -295,7 +297,13 @@ async def refreshed_registered_tables(state: Any, offer: SchemaOffer, reg: dict)
         mapped = map_table(offer, reg["namespace"], reg["source_id"], domain_id, name)
         columns = [c for c in mapped["columns"] if apply_sql_name(c["name"]) in column_names]
         tables.append(
-            {**mapped, "columns": columns, "sql_name": table_name, "registered_name": table_name}
+            {
+                **mapped,
+                "columns": columns,
+                "sql_name": table_name,
+                "registered_name": table_name,
+                BY_KEYS: key_fetches(offer.schema(), mapped),
+            }
         )
     return tables
 
@@ -324,6 +332,37 @@ async def remember_table(state: Any, reg: dict, table_name: str, fitted: dict) -
         await conn.execute_core(
             sources.update().where(sources.c.id == reg["source_id"]).values(mapping=mapping)
         )
+
+
+async def stored_key_fetches(state: Any, source_id: str, table_name: str) -> dict[str, dict]:
+    """The columns registered ``table_name`` fetches its rows by, a list at a time (REQ-1865,
+    graphql_remote.by_keys), as its registration holds them. A table registered before they were
+    kept has none held: they are read off the source's schema now and kept, in this process and
+    with the source's row."""
+    reg = state.graphql_remote_sources[source_id]
+    entry = next(t for t in reg["tables"] if t.get("sql_name") == table_name)
+    if BY_KEYS in entry:
+        return entry[BY_KEYS]
+    offered = await source_offer(state, source_id)
+    assert offered is not None  # the source is in graphql_remote_sources
+    offer, _ = offered
+    name = offered_name(offer, reg, table_name)
+    entry[BY_KEYS] = key_fetches(
+        offer.schema(), map_table(offer, reg["namespace"], source_id, "", name)
+    )
+    if not reg.get("brand"):
+        async with state.model_db.acquire() as conn:
+            row = (
+                await conn.execute_core(select(sources.c.mapping).where(sources.c.id == source_id))
+            ).fetchone()
+            mapping = dict(row.mapping or {})
+            specs = dict(mapping.get(TABLE_SPECS_KEY) or {})
+            specs[table_name] = {**(specs.get(table_name) or {}), BY_KEYS: entry[BY_KEYS]}
+            mapping[TABLE_SPECS_KEY] = specs
+            await conn.execute_core(
+                sources.update().where(sources.c.id == source_id).values(mapping=mapping)
+            )
+    return entry[BY_KEYS]
 
 
 async def sync_detected_relationships(state: Any, source_id: str) -> int:

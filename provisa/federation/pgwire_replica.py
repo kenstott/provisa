@@ -41,6 +41,7 @@ from pathlib import Path, PurePath
 from collections.abc import Hashable
 from typing import Any, Callable
 
+from provisa.core.held_sizes import held
 from provisa.core.secrets import resolve_secrets
 from provisa.federation.cloudops import cloudops_settings
 from provisa.federation.connector_config import MissingConnectorConfig
@@ -1484,6 +1485,8 @@ _ENDPOINT_ALLOCATOR = PortAllocator()
 _ENDPOINTS: dict[tuple[str, str], ConnectorReplica] = {}
 #: The orgs reading each shared server; it is stopped when the last of them goes.
 _ENDPOINT_USERS: dict[tuple[str, str], set[str]] = {}
+held(__name__, "_ENDPOINTS", _ENDPOINTS)
+held(__name__, "_ENDPOINT_USERS", _ENDPOINT_USERS)
 # One server per source id: an engine attach, a discovery call and a write can each be the first
 # to ask for a source's endpoint, from different threads.
 _ENDPOINTS_LOCK = threading.Lock()

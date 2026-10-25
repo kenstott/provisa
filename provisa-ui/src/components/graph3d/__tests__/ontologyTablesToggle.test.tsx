@@ -56,7 +56,13 @@ const ref = (table: number, column: string) => ({
     id: table,
     product: null,
     source_relationships:
-      table === 11 ? [{ id: "orders_customer", alias: "PLACED_BY", target_table_id: 10 }] : [],
+      table === 11
+        ? [
+            // One a steward named, one served under its derived type; neither shown by its id.
+            { id: "orders_customer", cypher_type: "PLACED_BY", target_table_id: 10 },
+            { id: "orders-to-customers", cypher_type: "BELONGS_TO_CUSTOMER", target_table_id: 10 },
+          ]
+        : [],
   },
 });
 const term = (id: number, name: string, refs: ReturnType<typeof ref>[]): TermRow => ({
@@ -124,7 +130,7 @@ describe("the Ontology View's Tables layer", () => {
     await waitFor(() => expect(tablesDrawn()).toEqual([]));
   });
 
-  it("lists the relationships by name among the edge types", async () => {
+  it("lists the relationships by their served Cypher types among the edge types", async () => {
     render(
       <GraphExplorer
         data={data}
@@ -138,7 +144,11 @@ describe("the Ontology View's Tables layer", () => {
     );
     fireEvent.click(screen.getByTestId("x-filter-edge-type"));
     expect(await screen.findByTestId("x-filter-edge-type-option-PLACED_BY")).toBeInTheDocument();
+    expect(screen.getByTestId("x-filter-edge-type-option-BELONGS_TO_CUSTOMER")).toBeInTheDocument();
     expect(screen.getByTestId("x-filter-edge-type-option-PART_OF")).toBeInTheDocument();
+    // A relationship's id is configuration, never an option.
+    expect(screen.queryByTestId("x-filter-edge-type-option-orders_customer")).toBeNull();
+    expect(screen.queryByTestId("x-filter-edge-type-option-orders-to-customers")).toBeNull();
   });
 
   it("is remembered with the graph's other settings", async () => {

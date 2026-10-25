@@ -52,7 +52,6 @@ import { ViewModal } from "./sql/ViewModal";
 import type { Registration } from "./tables/draftTable";
 import { domainToSqlName } from "../naming";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
-import { isInternalDomain } from "../lib/internalDomains";
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
@@ -376,9 +375,8 @@ export function SqlPage() {
   // panel while its facts, dimensions, and derived metrics keep showing in the other.
   const isDomainVisible = useCallback(
     (domainId: string) => {
-      return (
-        isInternalDomain(domainId) || checkedDomains.size === 0 || checkedDomains.has(domainId)
-      );
+      // meta and ops are listed in the Domains menu like any domain, so they filter like any domain.
+      return checkedDomains.size === 0 || checkedDomains.has(domainId);
     },
     [checkedDomains],
   );
