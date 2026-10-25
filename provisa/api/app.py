@@ -2654,9 +2654,9 @@ async def _build_org_runtime(
                     async with bound_to_request_org():
                         await rebuild_from_config(seed, conn, state.federation_engine)
                     if is_template_org(org_id):
-                        from provisa.api.demo_templates import write_declared_vector_models
+                        from provisa.api.demo_templates import write_declared_settings
 
-                        await write_declared_vector_models(state.model_db, seed)
+                        await write_declared_settings(state.model_db, seed)
                 async with bound_to_request_org():
                     org_config = await store_config(state.raw_config, conn)
                 unbound: set[str] = set()
@@ -4670,6 +4670,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(metadata_export_router)
+    from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
+
+    app.include_router(catalogs_router)
     from provisa.api.admin.data_product_documents_router import (  # REQ-2118
         router as data_product_documents_router,
     )

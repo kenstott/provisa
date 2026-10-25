@@ -67,6 +67,9 @@ from provisa.federation.replica_locks import BuildClaim, BuildLocks
 from provisa.federation.replica_state import ReplicaKey
 
 log = logging.getLogger(__name__)
+# Each build's start and end, at WARNING where the server log shows it: a build holds its node's
+# slot from one to the other, and what held it while others waited is named by these lines.
+_builds_log = logging.getLogger(f"{__name__}.builds")
 
 
 # How many of the oldest candidates one pass considers, per free slot it is filling.
@@ -557,6 +560,10 @@ class ReplicaRunner:
             async with self._db.acquire() as conn:
                 await build_state.record_progress(conn, key, rows_copied=rows_copied)
 
+        name = ", ".join(".".join(key) for key in keys)
+        _builds_log.warning("replica build of %s started (org %s)", name, self._org_id)
+        began = time.monotonic()
+        ended = "failed"
         shield = request_deadline.shielded()
         try:
             try:
@@ -603,10 +610,14 @@ class ReplicaRunner:
                         len(keys),
                     )
                 done = [o for o in outcomes.values() if not isinstance(o, BaseException)]
+                ended = f"built {len(done)} of {len(keys)} tables"
                 if len(done) == len(keys):
                     # One read, one source: its ``committed`` is the same on every outcome.
                     await self._committed(keys, done[0])
         finally:
+            _builds_log.warning(
+                "replica build of %s %s in %.1f s", name, ended, time.monotonic() - began
+            )
             with shield.lock:
                 shield.settle()
                 if job.permit is not None:
@@ -632,6 +643,10 @@ class ReplicaRunner:
             async with self._db.acquire() as conn:
                 await build_state.record_progress(conn, job.key, rows_copied=rows_copied)
 
+        name = ".".join(job.key)
+        _builds_log.warning("replica build of %s started (org %s)", name, self._org_id)
+        began = time.monotonic()
+        ended = "failed"
         shield = request_deadline.shielded()
         try:
             try:
@@ -677,8 +692,12 @@ class ReplicaRunner:
                     outcome.rows_copied,
                     outcome.method,
                 )
+                ended = f"built {outcome.rows_copied} rows"
                 await self._committed([job.key], outcome)
         finally:
+            _builds_log.warning(
+                "replica build of %s %s in %.1f s", name, ended, time.monotonic() - began
+            )
             with shield.lock:
                 shield.settle()
                 if job.permit is not None:

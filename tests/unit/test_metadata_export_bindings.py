@@ -504,14 +504,17 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
                 yield conn
 
     async def _export_config(org_id):
-        # REQ-2118: the bindings are kept per target, under the target's id.
+        # REQ-2118: the bindings are kept per target, under the target's id. REQ-2122: each
+        # target's catalog serves the snapshot's domains, so its tables are published to it.
+        domains = sorted({t.domain_id for t in snapshot.tables})
         return MetadataExportConfig(
-            enabled=True,
-            targets=[
-                {"id": target_id, "provider": "atlas", "endpoint": "https://catalog.example"}
-                for target_id in exporters
-            ],
-        )
+            enabled=True, targets=[{"catalog": target_id} for target_id in exporters]
+        ), [
+            MetadataExportTarget(
+                id=target_id, provider="atlas", endpoint="https://catalog.example", domains=domains
+            )
+            for target_id in exporters
+        ]
 
     async def _model(*args, **kwargs):
         # An empty config: the publish path reads the DQ outcomes off it (REQ-1443), and a

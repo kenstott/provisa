@@ -46,13 +46,14 @@ from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import metadata_export
+from provisa.api.metadata_export.scope import for_domains
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
     UnknownTierError,
     require_feature,
 )
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import CatalogsConfig, MetadataExportConfig, MetadataExportTarget
 from provisa.events import queue
 
 if TYPE_CHECKING:
@@ -127,8 +128,11 @@ async def notify_model_changed(org_id: str, *, reason: str) -> int | None:
         reset_current_org(token)
 
 
-async def _export_config(org_id: str) -> MetadataExportConfig:
-    """The org's export settings, refused unless it may publish.
+async def _export_config(
+    org_id: str,
+) -> tuple[MetadataExportConfig, list[MetadataExportTarget]]:
+    """The org's export settings and its targets, each built from the catalog it names
+    (REQ-2122), refused unless the org may publish.
 
     Entitlement is checked here rather than only at the admin endpoint (REQ-1073): a scheduled
     reconcile has no request behind it, so a config staged while the org was entitled would
@@ -151,7 +155,8 @@ async def _export_config(org_id: str) -> MetadataExportConfig:
     config = MetadataExportConfig(**dict(resolved.get("metadata_export") or {}))
     if not config.enabled:
         raise ExportNotAllowed(f"org {org_id!r} has metadata export disabled")
-    return config
+    catalogs = CatalogsConfig(catalogs=list(resolved.get("catalogs") or []))
+    return config, config.export_targets(catalogs)
 
 
 async def _model_for_export() -> "ProvisaConfig":
@@ -269,13 +274,15 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
 
     token = set_current_org(org_id)
     try:
-        config = await _export_config(org_id)
+        _, targets = await _export_config(org_id)
         snapshot = await org_snapshot(org_id)
         model_db = state.model_db
         assert model_db is not None  # _export_config refuses without one
         results: dict[str, PublishResult] = {}
-        for target in config.targets:
+        for target in targets:
             exporter = metadata_export(target)
+            # REQ-2122: a catalog is published its domains' tables and data products alone.
+            published = for_domains(snapshot, target.domains)
             async with model_db.acquire() as conn:
                 # REQ-1389: hand the provider the vendor ids captured by its earlier publishes,
                 # so a physically re-addressed asset rebinds the SAME catalog entity instead of
@@ -288,7 +295,7 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
 
                 exporter.export_views = await export_view_addresses(state)
             try:
-                result = await exporter.publish(snapshot)
+                result = await exporter.publish(published)
             except httpx.HTTPStatusError as exc:
                 # A refusal the adapter does not report per asset (its token, a listing) is the
                 # target's failure, named by the request and the catalog's answer, rather than
@@ -311,7 +318,7 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
                     # What this publish captured is current, though it may name no snapshot
                     # asset (a term relationship Purview lists with no author, REQ-1389).
                     await catalog_binding.remove_stale_bindings(
-                        conn, target.id, keep_uris=_snapshot_uris(snapshot) | set(result.bindings)
+                        conn, target.id, keep_uris=_snapshot_uris(published) | set(result.bindings)
                     )
             results[target.id] = result
         return results
@@ -431,7 +438,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
 
     token = set_current_org(org_id)
     try:
-        config = await _export_config(org_id)
+        config, targets = await _export_config(org_id)
     except ExportNotAllowed:
         for job_id in (drain_job_id(org_id), reconcile_job_id(org_id)):
             if scheduler.get_job(job_id) is not None:
@@ -470,7 +477,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
         org_id,
         DRAIN_SECONDS,
         config.reconcile_cron,
-        ", ".join(t.id for t in config.targets),
+        ", ".join(t.id for t in targets),
     )
 
 

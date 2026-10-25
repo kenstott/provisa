@@ -75,6 +75,7 @@
     "sandboxExitLogOut": "ログアウトのみ",
     "itemPython": "Python",
     "itemNotebook": "ノートブック",
-    "itemContainerRegistries": "コンテナレジストリ"
+    "itemContainerRegistries": "コンテナレジストリ",
+    "itemCatalogs": "カタログ"
   }
 }

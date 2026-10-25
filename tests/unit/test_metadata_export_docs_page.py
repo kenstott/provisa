@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 from provisa.api.metadata_export import registered_providers
-from provisa.core.models import MetadataExportConfig, MetadataExportTarget
+from provisa.core.models import CatalogConnection, CatalogExport, MetadataExportConfig
 
 _ROOT = Path(__file__).resolve().parents[2]
 DOC = _ROOT / "docs" / "metadata-export.md"
@@ -63,10 +63,9 @@ def test_the_page_is_navigable_under_security_and_governance() -> None:
     assert "metadata-export.md" not in excluded
 
 
-def test_the_page_states_publication_is_outbound_only(text: str) -> None:
+def test_the_page_states_governance_is_never_read_from_a_catalog(text: str) -> None:  # REQ-2122
     lowered = text.lower()
-    assert "outbound only" in lowered
-    assert "reads an external catalog back" in lowered
+    assert "governance (grants, row rules and masks) is never read from a catalog" in lowered
 
 
 def test_the_page_names_every_registered_provider(text: str) -> None:
@@ -75,8 +74,12 @@ def test_the_page_names_every_registered_provider(text: str) -> None:
 
 
 def test_the_page_documents_every_export_config_setting(text: str) -> None:
-    # REQ-2118: the export's own settings, and each target's.
-    for name in (*MetadataExportConfig.model_fields, *MetadataExportTarget.model_fields):
+    # REQ-2118, REQ-2122: the export's own settings, each target's, and each catalog's.
+    for name in (
+        *MetadataExportConfig.model_fields,
+        *CatalogExport.model_fields,
+        *CatalogConnection.model_fields,
+    ):
         assert f"`{name}`" in text, name
 
 

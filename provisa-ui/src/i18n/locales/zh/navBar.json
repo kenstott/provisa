@@ -75,6 +75,7 @@
     "sandboxExitLogOut": "仅退出登录",
     "itemPython": "Python",
     "itemNotebook": "笔记本",
-    "itemContainerRegistries": "容器注册表"
+    "itemContainerRegistries": "容器注册表",
+    "itemCatalogs": "目录"
   }
 }
