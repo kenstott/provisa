@@ -48,7 +48,14 @@ vi.mock("../../api/actions", () => ({
 }));
 vi.mock("../../api/lineage", () => ({
   fetchProductLineage: () =>
-    Promise.resolve({ nodes: [], edges: [], outputs: [], members: [], inputs: [] }),
+    Promise.resolve({
+      nodes: [],
+      edges: [],
+      outputs: [],
+      members: [],
+      inputs: [],
+      dq: { expectations: [], promises: [], related: [], unattached: [] },
+    }),
 }));
 vi.mock("../../api/glossary", () => ({
   fetchRelatedGlossaryTerms: () => Promise.resolve([]),

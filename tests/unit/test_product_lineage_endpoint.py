@@ -125,8 +125,16 @@ def wired(monkeypatch):
     """analyst reads orders.amount and mart.amount: not v_orders (B), not orders.cost, not
     mart.margin. owner reads it all."""
     contexts = {
-        "analyst": _context({1: ["amount"], 3: ["amount"]}),
-        "owner": _context({1: ["amount", "cost"], 2: ["amount", "cost"], 3: ["amount", "margin"]}),
+        "analyst": _context({1: ["amount"], 3: ["amount"], 6: ["ok"], 7: ["ok"]}),
+        "owner": _context(
+            {
+                1: ["amount", "cost"],
+                2: ["amount", "cost"],
+                3: ["amount", "margin"],
+                6: ["ok"],
+                7: ["ok"],
+            }
+        ),
     }
 
     async def tables(state):
@@ -144,12 +152,48 @@ def wired(monkeypatch):
     async def natives(state):
         return [_native()]
 
+    async def checkers(state):
+        return CHECKERS
+
     monkeypatch.setattr(lineage_router, "_fetch_tables", tables)
     monkeypatch.setattr(lineage_router, "_product_exists", exists)
     monkeypatch.setattr(lineage_router, "_fetch_view_rows", view_rows)
     monkeypatch.setattr(lineage_router, "_fetch_registry_columns", columns)
     monkeypatch.setattr(lineage_router, "_native_tables", natives)
+    monkeypatch.setattr(lineage_router, "_fetch_checkers", checkers)
     monkeypatch.setattr(app_module.state, "contexts", contexts, raising=False)
+
+
+# mart_dq (6, p1's) checks mart.amount, a member: p1's promise. orders_dq (7, nobody's) checks
+# orders.cost, an input: related, but only to a reader of orders.cost.
+CHECKERS = [
+    {
+        "id": 6,
+        "domain_id": "sales",
+        "table_name": "mart_dq",
+        "alias": None,
+        "description": "Amounts are present",
+        "product_id": "p1",
+        "checked_table_id": 3,
+        "checked_table": {"id": 3, "domain_id": "sales", "table_name": "mart", "alias": None},
+        "rule_columns": ["amount"],
+        "latest_outcome": "pass",
+        "latest_run_at": None,
+    },
+    {
+        "id": 7,
+        "domain_id": "sales",
+        "table_name": "orders_dq",
+        "alias": None,
+        "description": "Costs are positive",
+        "product_id": None,
+        "checked_table_id": 1,
+        "checked_table": {"id": 1, "domain_id": "sales", "table_name": "orders", "alias": None},
+        "rule_columns": ["cost"],
+        "latest_outcome": "fail",
+        "latest_run_at": None,
+    },
+]
 
 
 def _as(role: str, identity: Any = None) -> Any:
@@ -189,7 +233,8 @@ def test_a_source_field_shows_only_behind_a_column_the_caller_reads(wired) -> No
 
 def test_a_checker_is_no_part_of_the_products_lineage(wired) -> None:
     out = _lineage("owner")
-    assert "mart_dq" not in json.dumps(out)
+    # Its checks are the product's data quality (out["dq"]), never a node of its lineage.
+    assert "mart_dq" not in json.dumps({k: out[k] for k in ("nodes", "edges", "inputs")})
     assert out["members"] == ["sales.mart"]
 
 
@@ -250,3 +295,26 @@ def test_an_input_that_is_another_products_member_names_that_product(wired, monk
     monkeypatch.setattr(lineage_router, "_fetch_tables", other)
     (only,) = _lineage("analyst")["inputs"]
     assert (only["relation"], only["product_id"]) == ("sales.orders", "p0")
+
+
+def _dq(role: str) -> dict[str, list[int]]:
+    return {k: [e["checker_table_id"] for e in v] for k, v in _lineage(role)["dq"].items()}
+
+
+def test_the_products_data_quality_is_classified_on_its_readers_lineage(wired) -> None:
+    assert _dq("owner") == {"expectations": [], "promises": [6], "related": [7], "unattached": []}
+
+
+def test_a_check_on_a_column_the_reader_cannot_read_is_in_no_list(wired) -> None:
+    # The analyst reads orders.amount, not orders.cost: orders_dq is not theirs to see.
+    assert _dq("analyst") == {"expectations": [], "promises": [6], "related": [], "unattached": []}
+
+
+def test_a_role_without_a_request_reads_the_same_answer(wired) -> None:
+    from provisa.api.admin.lineage_router import product_lineage_for
+
+    out = asyncio.run(product_lineage_for(app_module.state, "p1", "analyst"))
+    assert out is not None
+    assert out["dq"] == _lineage("analyst")["dq"]
+    assert out["natives"] == {}
+    assert asyncio.run(product_lineage_for(app_module.state, "nope", "analyst")) is None

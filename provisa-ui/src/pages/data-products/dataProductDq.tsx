@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2132: a data product's quality claims, as the meta domain gives them (product_checks, each
-// checker table's description and latest run). Output Ports carry the product's Promises, Inputs
+// REQ-2132, REQ-2157: a data product's quality claims, as its lineage gives them (the product
+// lineage endpoint's dq: each checker table's description and latest run). Output Ports carry the product's Promises, Inputs
 // its Expectations: each a count, a summary status and a list one click away, every row opening the
 // checker's results. A dataset with checks shows a DQ icon coloured by their latest result; other
 // products' (or no product's) checks are listed as partner DQ, and the product's own checks that

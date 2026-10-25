@@ -99,10 +99,35 @@ export interface ProductInput {
   source_table: string | null;
 }
 
+/** REQ-2157: one checker table in one of a product's data-quality lists. */
+export interface ProductDqEntry {
+  checker_table_id: number;
+  domain_id: string;
+  table_name: string;
+  alias: string | null;
+  description: string | null;
+  owner_product_id: string | null; // the product owning the check; null for none
+  checked_table_id: number;
+  checked_table: { id: number; domain_id: string; table_name: string; alias: string | null };
+  latest_outcome: "pass" | "fail" | null; // null when it has never run
+  latest_run_at: string | null;
+}
+
+/** REQ-2157: a product's data quality. Expectations and promises are its own checks on its inputs
+ *  and on its members; related, other owners' (or no owner's) checks on either; unattached, its
+ *  own checks on neither -- a curation gap its owner sees. Each cut to the reader's rights. */
+export interface ProductDq {
+  expectations: ProductDqEntry[];
+  promises: ProductDqEntry[];
+  related: ProductDqEntry[];
+  unattached: ProductDqEntry[];
+}
+
 /** REQ-2156: a data product's lineage, cut to what its reader may read. */
 export interface ProductLineage extends LineageGraphData {
   members: string[]; // the member relations, a checker's left out
   inputs: ProductInput[];
+  dq: ProductDq;
 }
 
 /**

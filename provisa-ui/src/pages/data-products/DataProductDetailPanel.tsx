@@ -44,6 +44,7 @@ import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPane
 import { ClampedDetail } from "./ClampedDetail";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
+  checksOf,
   coreGraph,
   modelName,
   type CoreEdge,
@@ -295,6 +296,8 @@ export function DataProductDetailPanel({
   // REQ-2126: the tables with a direct declared relationship to a member, not themselves members;
   // the indirect relationship rows are the product graph's, not the panel's.
   const related = core.edges?.filter((e) => e.kind === "related");
+  // REQ-2157: the product's checks, from its lineage as its reader may read it (REQ-2156).
+  const checks = lineageGraph ? checksOf(lineageGraph.dq) : undefined;
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
 
   // Every value of the product, under the labels its form gives them.
@@ -476,10 +479,10 @@ export function DataProductDetailPanel({
             hint={t("dataProductsTab.detail.outputPortsHint")}
           >
             {/* REQ-2132: the product's promises, the checks it makes on its output ports. */}
-            {core.checks && (
+            {checks && (
               <ClaimsCallout
                 kind="promises"
-                checks={checksIn(core.checks, "promise")}
+                checks={checksIn(checks, "promise")}
                 testId={`data-product-detail-promises-${p.id}`}
               />
             )}
@@ -492,9 +495,9 @@ export function DataProductDetailPanel({
                     {outputTables.map((tb) => (
                       <List.Item key={tb.id} ff="monospace">
                         {modelName(tb)}
-                        {core.checks && (
+                        {checks && (
                           <DqIcon
-                            checks={checksIn(core.checks, "promise")}
+                            checks={checksIn(checks, "promise")}
                             tableId={tb.id}
                             testId={`data-product-detail-port-dq-${tb.id}`}
                           />
@@ -605,8 +608,8 @@ export function DataProductDetailPanel({
                 })}
               </List>
             )}
-            {core.checks && (
-              <PartnersAndOrphans checks={core.checks} testId={`data-product-detail-dq-${p.id}`} />
+            {checks && (
+              <PartnersAndOrphans checks={checks} testId={`data-product-detail-dq-${p.id}`} />
             )}
           </DetailCard>
         )}
@@ -786,16 +789,16 @@ export function DataProductDetailPanel({
             label={t("dataProductsTab.detail.field.inputPorts")}
             hint={t("dataProductCore.inputsHint")}
           >
-            {core.checks && (
+            {checks && (
               <ClaimsCallout
                 kind="expectations"
-                checks={checksIn(core.checks, "expectation")}
+                checks={checksIn(checks, "expectation")}
                 testId={`data-product-detail-expectations-${p.id}`}
               />
             )}
             <InputsList
               inputs={lineageGraph.inputs}
-              checks={core.checks ?? []}
+              checks={checks ?? []}
               testId={`data-product-detail-inputs-${p.id}`}
             />
           </DetailCard>

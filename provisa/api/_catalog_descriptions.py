@@ -61,9 +61,6 @@ _META: dict[str, str] = {
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
-    # REQ-1443
-    "product_checks": "How each data product shows each data-quality check that touches it — "
-    "a promise or expectation of its own, partner DQ from another owner, or an orphan",
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
@@ -199,17 +196,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "aliases": "The aliases of the relationships on those paths",
         "relationship_ids": "The relationships on those paths",
         "supporting_tables": "Tables in no product that a path runs through",
-    },
-    # REQ-1443
-    "product_checks": {
-        "id": "Product and checker table",
-        "product_id": "The data product the check is shown on",
-        "checker_table_id": "The checker table",
-        "checked_table_id": "The table its contract scans",
-        "assigned_product_id": "The product the checker table is assigned to, if any",
-        "state": "promise (assigned here, scans an output port), expectation (assigned here, "
-        "scans an input), partner_dq (scans an output port or input, assigned elsewhere or to "
-        "none) or orphan (assigned here, scans neither)",
     },
     "dq_rules": {
         "id": "Rule identifier: the table and the check's position in its contract",

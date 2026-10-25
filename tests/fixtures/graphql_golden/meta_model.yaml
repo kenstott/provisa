@@ -290,23 +290,6 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
-  table: product_checks
-  columns:
-  - name: assigned_product_id
-    data_type: text
-  - name: checked_table_id
-    data_type: integer
-  - name: checker_table_id
-    data_type: integer
-  - name: id
-    data_type: text
-  - name: product_id
-    data_type: text
-  - name: state
-    data_type: text
-- source_id: provisa-admin
-  domain_id: meta
-  schema: org_default
   table: registered_tables
   columns:
   - name: alias
@@ -843,22 +826,6 @@ relationships:
   needs_review: false
   source_table_id: data_products
   target_table_id: domains
-- id: meta:data_products:product_checks
-  source_column: id
-  target_column: product_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: CHECKS
-  graphql_alias: checks
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: data_products
-  target_table_id: product_checks
 - id: meta:data_products:registered_tables
   source_column: id
   target_column: product_id
@@ -1458,54 +1425,6 @@ relationships:
   source_table_id: glossary_terms
   target_table_id: glossary_terms
   via_table: glossary_term_edges
-- id: meta:product_checks:checked_table
-  source_column: checked_table_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: CHECKED_TABLE
-  graphql_alias: checkedTable
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: product_checks
-  target_table_id: registered_tables
-- id: meta:product_checks:checker
-  source_column: checker_table_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: CHECKER
-  graphql_alias: checker
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: product_checks
-  target_table_id: registered_tables
-- id: meta:product_checks:data_products
-  source_column: product_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: PRODUCT
-  graphql_alias: product
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: product_checks
-  target_table_id: data_products
 - id: meta:registered_tables:checked_by
   source_column: id
   target_column: checked_table_id

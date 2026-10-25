@@ -27,6 +27,7 @@ import {
   type ProductRow as GraphProductRow,
 } from "../../components/graph3d/productGraphData";
 import type { GraphData } from "../../components/graph3d/graphModel";
+import type { ProductDq } from "../../api/lineage";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataProduct } from "../../types/admin";
 
@@ -122,35 +123,6 @@ const PANEL: Selection = {
     },
     commands: { alias: "commands", sel: { fields: ["name", "description", "domain_id"] } },
     tags: { alias: "tags", sel: { fields: ["tag_id"] } },
-    // REQ-2132: every checker table touching the product, in its REQ-1443 state.
-    product_checks: {
-      alias: "checks",
-      sel: {
-        fields: ["id", "state", "checker_table_id", "checked_table_id", "assigned_product_id"],
-        rels: {
-          checker: {
-            alias: "checker",
-            sel: {
-              fields: [
-                "id",
-                "source_id",
-                "domain_id",
-                "table_name",
-                "alias",
-                "description",
-                "dq_contract",
-                "latest_outcome",
-                "latest_run_at",
-              ],
-            },
-          },
-          checked_table: {
-            alias: "checkedTable",
-            sel: { fields: ["id", "domain_id", "table_name", "alias"] },
-          },
-        },
-      },
-    },
     edges: {
       alias: "edges",
       sel: {
@@ -269,24 +241,48 @@ export interface CoreCheck {
   checker_table_id: number;
   checked_table_id: number;
   assigned_product_id: string | null;
-  checker?: {
+  checker: {
     id: number;
-    source_id: string;
     domain_id: string;
     table_name: string;
     alias: string | null;
     description: string | null;
-    dq_contract: string | null;
-    /** Absent when the role's schema does not say; null when the check has never run. */
+    /** null when the check has never run; absent when its run is not read. */
     latest_outcome?: "pass" | "fail" | null;
-    latest_run_at?: string | null;
-  } | null;
-  checked_table?: {
-    id: number;
-    domain_id: string;
-    table_name: string;
-    alias: string | null;
-  } | null;
+    latest_run_at: string | null;
+  };
+  checked_table: { id: number; domain_id: string; table_name: string; alias: string | null };
+}
+
+/** REQ-2157's lists as the panel's states, until its three rows read them directly. */
+const STATE_OF: Record<keyof ProductDq, CheckState> = {
+  expectations: "expectation",
+  promises: "promise",
+  related: "partner_dq",
+  unattached: "orphan",
+};
+
+/** The product's checks, from its lineage's data quality (the product lineage endpoint). */
+export function checksOf(dq: ProductDq): CoreCheck[] {
+  return (Object.keys(STATE_OF) as (keyof ProductDq)[]).flatMap((list) =>
+    dq[list].map((e) => ({
+      id: `${list}:${e.checker_table_id}`,
+      state: STATE_OF[list],
+      checker_table_id: e.checker_table_id,
+      checked_table_id: e.checked_table_id,
+      assigned_product_id: e.owner_product_id,
+      checker: {
+        id: e.checker_table_id,
+        domain_id: e.domain_id,
+        table_name: e.table_name,
+        alias: e.alias,
+        description: e.description,
+        latest_outcome: e.latest_outcome,
+        latest_run_at: e.latest_run_at,
+      },
+      checked_table: e.checked_table,
+    })),
+  );
 }
 
 /** A registered table as the model names it: its domain, then its alias where it has one. Every
@@ -305,7 +301,6 @@ interface PanelRow {
   commands?: { name: string; description: string | null; domain_id: string }[] | null;
   tags?: { tag_id: string }[] | null;
   edges?: CoreEdge[] | null;
-  product_checks?: CoreCheck[] | null;
 }
 
 /** What the panel shows of one product; a part the role cannot read is undefined. */
@@ -316,7 +311,6 @@ export interface ProductCore {
   tags?: string[];
   terms?: CoreTerm[];
   edges?: CoreEdge[];
-  checks?: CoreCheck[];
   queries: { graphql: string; sql: string; jsonapi: string };
 }
 
@@ -443,7 +437,6 @@ export async function loadProductCore(
       ? await termClosure(m, role, [...bound.values()])
       : undefined,
     edges: rowsOf(row.edges),
-    checks: rowsOf(row.product_checks),
     queries,
   };
 }

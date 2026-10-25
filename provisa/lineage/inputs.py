@@ -10,9 +10,9 @@
 
 """A table's nearest physical inputs (REQ-2126), for the server's own use.
 
-Read from the control plane's table_inputs view -- the one walk the meta domain's
-data_product_edges and product_checks read too -- so a refresh sees the inputs a product's
-detail shows.
+Read from the control plane's table_inputs view, for the server's own use: a refresh's hold on
+its inputs' failing checks. A product's detail finds its inputs on its reader's lineage instead,
+cut to that reader's rights (REQ-2156).
 """
 
 from __future__ import annotations

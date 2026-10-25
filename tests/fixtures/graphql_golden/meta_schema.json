@@ -173,21 +173,6 @@
        }
       },
       {
-       "name": "m__productChecks",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__ProductChecks"
-         }
-        }
-       }
-      },
-      {
        "name": "m__registeredTables",
        "type": {
         "kind": "LIST",
@@ -681,21 +666,6 @@
        "type": {
         "kind": "OBJECT",
         "name": "M__Domains"
-       }
-      },
-      {
-       "name": "checks",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__ProductChecks"
-         }
-        }
        }
       },
       {
@@ -3606,96 +3576,6 @@
     {
      "fields": [
       {
-       "name": "assignedProductId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "checkedTableId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "checkerTableId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "productId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "state",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "checkedTable",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      },
-      {
-       "name": "checker",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      },
-      {
-       "name": "product",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__DataProducts"
-       }
-      }
-     ],
-     "name": "M__ProductChecks"
-    },
-    {
-     "fields": [
-      {
        "name": "accessedDomainId",
        "type": {
         "kind": "SCALAR",
@@ -4021,11 +3901,6 @@
    "domain_id": "meta",
    "graphql_field": "m__glossaryTerms",
    "table_name": "glossary_terms"
-  },
-  {
-   "domain_id": "meta",
-   "graphql_field": "m__productChecks",
-   "table_name": "product_checks"
   },
   {
    "domain_id": "meta",

@@ -180,6 +180,13 @@ def meta(monkeypatch):
         return []
 
     monkeypatch.setattr(dq, "_read", read)
+    # Each product's data-quality lists, as the product's lineage read as the role gives them.
+    lists: dict[str, dict] = {}
+
+    async def product_dq(product_id, role):
+        return lists.get(product_id)
+
+    monkeypatch.setattr(dq, "_product_dq", product_dq)
     # The tables each role's surface does NOT serve (a domain it has no access to).
     beyond: dict[str, set[int]] = {}
     monkeypatch.setattr(
@@ -189,7 +196,7 @@ def meta(monkeypatch):
             None if int(row["id"]) in beyond.get(role, set()) else model[int(row["id"])]
         ),
     )
-    return SimpleNamespace(reads=reads, tables=tables, model=model, beyond=beyond)
+    return SimpleNamespace(reads=reads, tables=tables, model=model, beyond=beyond, lists=lists)
 
 
 def _checker(id_, name, *, ran=True, product=None):
@@ -213,7 +220,6 @@ async def test_a_dataset_answers_its_checkers_their_latest_runs_and_its_profiles
         ("WHERE domain_id = 'sales'", [
             {"id": 7, "domain_id": "sales", "schema_name": _PHYSICAL, "table_name": "orders", "alias": None}
         ]),
-        ("FROM meta.product_checks", [{"checker_table_id": 11, "state": "expectation"}]),
         ("checked_table_id = 7", [_checker(11, "orders_soda"), _checker(12, "orders_gx", ran=False)]),
         ('"dq"."orders_soda" WHERE outcome <> \'pass\'', [{"check_name": "row_count > 0", "outcome": "fail"}]),
         ("profiled_table_id = 7", [
@@ -221,6 +227,7 @@ async def test_a_dataset_answers_its_checkers_their_latest_runs_and_its_profiles
         ]),
         ('"p"."orders_7_profile_columns" WHERE run_time', [{"run_id": "r9", "column": "amount", "null_share": 0.0}]),
     ]  # fmt: skip
+    meta.lists["p1"] = {"expectations": [{"checker_table_id": 11, "checked_table_id": 7}]}
     found = await dq.dataset("sales.orders", "analyst", view_product="p1")
     assert found["dataset"] == "sales.orders" and found["dataset_id"] == 7
     soda, gx = found["checker_tables"]
@@ -235,7 +242,7 @@ async def test_a_dataset_answers_its_checkers_their_latest_runs_and_its_profiles
     assert soda["latest_run"]["failing_checks"] == [
         {"check_name": "row_count > 0", "outcome": "fail"}
     ]
-    assert soda["relation_to_view_product"] == "expectation"
+    assert soda["relation_to_view_product"] == "expectations"
     assert gx["latest_run"] is None and gx["relation_to_view_product"] is None
     (profile,) = found["profiles"]
     assert profile["profile_table"] == "p.orders_7_profile_columns"
@@ -271,16 +278,16 @@ async def test_a_product_answers_each_check_by_how_it_shows_it(meta):
     meta.model[12] = _model_table("dq", "stale_soda_dq", "stale_soda")
     meta.tables += [
         ("FROM meta.data_products", [{"id": "p1"}]),
-        ("FROM meta.product_checks", [
-            {"checker_table_id": 11, "state": "promise"},
-            {"checker_table_id": 12, "state": "orphan"},
-        ]),
         ("WHERE id IN (11, 12)", [_checker(11, "out_soda"), _checker(12, "stale_soda", ran=False)]),
     ]  # fmt: skip
+    meta.lists["p1"] = {
+        "promises": [{"checker_table_id": 11, "checked_table_id": 7}],
+        "unattached": [{"checker_table_id": 12, "checked_table_id": 9}],
+    }
     found = await dq.product("p1", "steward")
-    assert [c["checker_table"] for c in found["promise"]] == ["dq.out_soda"]
-    assert [c["checker_table"] for c in found["orphan"]] == ["dq.stale_soda"]
-    assert found["expectation"] == [] and found["partner_dq"] == []
+    assert [c["checker_table"] for c in found["promises"]] == ["dq.out_soda"]
+    assert [c["checker_table"] for c in found["unattached"]] == ["dq.stale_soda"]
+    assert found["expectations"] == [] and found["related"] == []
 
 
 @pytest.mark.asyncio

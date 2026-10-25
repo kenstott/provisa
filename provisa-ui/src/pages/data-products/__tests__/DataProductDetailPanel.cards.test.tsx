@@ -36,6 +36,7 @@ const LINEAGE: ProductLineage = {
   edges: [],
   outputs: [],
   members: [],
+  dq: { expectations: [], promises: [], related: [], unattached: [] },
   inputs: Array.from({ length: 12 }, (_, i) => ({
     relation: `pet_store.a_rather_long_table_name_${i}`,
     kind: "source_table" as const,

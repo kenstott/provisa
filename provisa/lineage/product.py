@@ -19,7 +19,7 @@ read straight from a source has that source as its input. A member is never an i
 product.
 """
 
-# Requirements: REQ-1640, REQ-2126
+# Requirements: REQ-1640, REQ-2126, REQ-2157, REQ-2152
 
 from __future__ import annotations
 
@@ -89,3 +89,67 @@ def nearest_inputs(graph: LineageGraph, members: set[str], *, base: set[str]) ->
                     stack.append(p)
     found.discard("")
     return sorted(found)
+
+
+#: REQ-2157: a product's data-quality lists, in the order the panel shows them.
+DQ_LISTS = ("expectations", "promises", "related", "unattached")
+
+
+def product_dq(
+    product_id: str,
+    checkers: list[dict],
+    *,
+    members: set[int],
+    inputs: set[int],
+    served: dict[int, set[str]],
+) -> dict[str, list[dict]]:
+    """A product's data quality (REQ-2157), each checker table in one list.
+
+    ``checkers``: every checker table -- its id, names, description, owning ``product_id``, the
+    ``checked_table_id`` its contract scans and that table's names (``checked_table``), the
+    ``rule_columns`` its checks name and its latest run. ``members`` and ``inputs`` are the product's member and nearest input table ids, as its
+    reader's lineage gives them; ``served`` what that reader is served (table id → physical
+    columns). A promise is the product's check on a member, an expectation its check on an
+    input; another owner's (or no owner's) check on either is related; the product's check on
+    neither is unattached, a curation gap for its owner. A check the reader cannot read -- its
+    checker table, or the checked columns its rules name (one column of the checked table when
+    they name none) -- is in no list (REQ-2152)."""
+    out: dict[str, list[dict]] = {name: [] for name in DQ_LISTS}
+    for c in sorted(checkers, key=lambda c: (c["table_name"], c["id"])):
+        if not _reads_check(c, served):
+            continue
+        checked = c["checked_table_id"]
+        owned = c["product_id"] == product_id
+        if owned and checked in members:
+            kind = "promises"
+        elif owned and checked in inputs:
+            kind = "expectations"
+        elif owned:
+            kind = "unattached"
+        elif checked in members or checked in inputs:
+            kind = "related"
+        else:
+            continue
+        out[kind].append(
+            {
+                "checker_table_id": c["id"],
+                "domain_id": c["domain_id"],
+                "table_name": c["table_name"],
+                "alias": c["alias"],
+                "description": c["description"],
+                "owner_product_id": c["product_id"],
+                "checked_table_id": checked,
+                "checked_table": c["checked_table"],
+                "latest_outcome": c["latest_outcome"],
+                "latest_run_at": c["latest_run_at"],
+            }
+        )
+    return out
+
+
+def _reads_check(checker: dict, served: dict[int, set[str]]) -> bool:
+    if not served.get(checker["id"]):
+        return False
+    readable = served.get(checker["checked_table_id"], set())
+    named = {c for c in checker["rule_columns"] if c}
+    return named <= readable if named else bool(readable)

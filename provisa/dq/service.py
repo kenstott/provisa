@@ -20,13 +20,14 @@ pipeline, so dq answers exactly what that role reads there, and nothing it does 
   contract, the product it is assigned to and its latest run (outcome, time, failing checks); and
   its profiles (REQ-1934), each profile result table with its latest run's rows, so a check can
   compare this load against the dataset's profiled history. Asked from the preflight of a view in
-  a product, each checker also says how it relates to that product: promise, expectation or
-  partner DQ.
-- A product's answer: its promises, expectations, partner DQ and orphans (REQ-1443, derived at
-  read time by ``meta.product_checks``), each checker with its latest run.
+  a product, each checker also says which of that product's lists it is in.
+- A product's answer: its expectations, promises, related and unattached checks (REQ-2157), as the
+  product's lineage read as the role classifies them (the lineage router's
+  ``product_lineage_for``, the one answer every reader of a product's data quality gets), each
+  checker with its latest run.
 """
 
-# Requirements: REQ-2133, REQ-1443, REQ-1934
+# Requirements: REQ-2133, REQ-1443, REQ-1934, REQ-2157
 
 from __future__ import annotations
 
@@ -42,8 +43,8 @@ def _lit(value: str) -> str:
     return sql_literal(value, "postgres")
 
 
-#: How a product shows a checker table (REQ-1443), in the order an answer lists them.
-STATES = ("promise", "expectation", "partner_dq", "orphan")
+#: A product's data-quality lists (REQ-2157), in the order an answer lists them.
+STATES = ("expectations", "promises", "related", "unattached")
 
 _CHECKER_COLUMNS = (
     "id, domain_id, schema_name, table_name, alias, description, dq_contract, product_id, "
@@ -226,14 +227,12 @@ async def dataset(name: str, role: str, view_product: str | None = None) -> dict
     )
     related: dict[int, str] = {}
     if view_product is not None:
+        lists = await _product_dq(view_product, role) or {}
         related = {
-            int(r["checker_table_id"]): r["state"]
-            for r in await _read(
-                "SELECT checker_table_id, state FROM meta.product_checks "
-                f"WHERE product_id = {_lit(view_product)} "
-                f"AND checked_table_id = {dataset_id}",
-                role,
-            )
+            int(e["checker_table_id"]): name
+            for name, entries in lists.items()
+            for e in entries
+            if int(e["checked_table_id"]) == dataset_id
         }
     checks = []
     for row in checkers:
@@ -249,20 +248,25 @@ async def dataset(name: str, role: str, view_product: str | None = None) -> dict
     }
 
 
+async def _product_dq(product_id: str, role: str) -> dict[str, list[dict]] | None:
+    """A product's data-quality lists as ``role`` reads them (REQ-2157); None for no product."""
+    from provisa.api.admin.lineage_router import product_lineage_for
+    from provisa.api.app import state
+
+    found = await product_lineage_for(state, product_id, role)
+    return None if found is None else found["dq"]
+
+
 async def product(product_id: str, role: str) -> dict | None:
-    """A data product's promises, expectations, partner DQ and orphans (REQ-1443) that ``role`` can
-    see, each checker with its latest run; None when it can see no such product."""
+    """A data product's expectations, promises, related and unattached checks (REQ-2157) that
+    ``role`` can see, each checker with its latest run; None when it can see no such product."""
     known = await _read(f"SELECT id FROM meta.data_products WHERE id = {_lit(product_id)}", role)
     if not known:
         return None
-    states = await _read(
-        "SELECT checker_table_id, state FROM meta.product_checks "
-        f"WHERE product_id = {_lit(product_id)}",
-        role,
-    )
-    by_state: dict[str, list[int]] = {state: [] for state in STATES}
-    for row in states:
-        by_state[row["state"]].append(int(row["checker_table_id"]))
+    lists = await _product_dq(product_id, role) or {}
+    by_state: dict[str, list[int]] = {
+        state: [int(e["checker_table_id"]) for e in lists.get(state, [])] for state in STATES
+    }
     ids = sorted({i for found in by_state.values() for i in found})
     rows: dict[int, dict] = {}
     if ids:

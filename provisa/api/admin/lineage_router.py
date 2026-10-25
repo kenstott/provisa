@@ -149,15 +149,27 @@ def caller_lineage(
     """``graph`` cut to what the caller reads: the registered columns the role the request acts
     as is served (its compiled context, the narrowing every schema surface reads), the native
     fields beneath them, and nothing else (REQ-1161). Every lineage read answers through this."""
-    registered, readable = _caller_reads(request, state, column_rows)
+    return role_lineage(state, getattr(request.state, "role", None), graph, column_rows)
+
+
+def role_lineage(
+    state, role_id: str | None, graph: LineageGraph, column_rows: list[dict]
+) -> LineageGraph:
+    """:func:`caller_lineage` for a named role, where there is no request (a preflight's build
+    role, a scheduled publish's target role)."""
+    registered, readable = _role_reads(state, role_id, column_rows)
     return readable_graph(graph, registered=registered, readable=readable)
 
 
 def _caller_reads(request: Request, state, column_rows: list[dict]) -> tuple[set[str], set[str]]:
     """(the registered relations, the node ids of their columns the caller is served)."""
-    from provisa.api.admin.served import served_columns
+    return _role_reads(state, getattr(request.state, "role", None), column_rows)
 
-    served = served_columns(request, state)
+
+def _role_reads(state, role_id: str | None, column_rows: list[dict]) -> tuple[set[str], set[str]]:
+    from provisa.api.admin.served import served_columns_for
+
+    served = served_columns_for(state, role_id)
     registered: set[str] = set()
     readable: set[str] = set()
     for row in column_rows:
@@ -542,21 +554,48 @@ def _model_graph(
 
 @router.get("/data-products/{product_id}/lineage")
 async def product_lineage(request: Request, product_id: str) -> dict:
-    """A data product's lineage (REQ-2156, REQ-1640): its member tables, everything they derive
-    from and what derives from them directly, every member column an output, cut to what the
-    caller reads (:func:`caller_lineage`), with the product's nearest physical inputs found on the
-    cut graph (REQ-2126). Any reader of the product reads it: it shows nothing its caller is not
-    served, so it carries the product's own gate and no governance one."""
+    """A data product's lineage (REQ-2156, REQ-1640) and data quality (REQ-2157), for the role the
+    request acts as (:func:`product_lineage_for`). Any reader of the product reads it: it shows
+    nothing its caller is not served, so it carries the product's own gate and no governance
+    one."""
     from provisa.api.app import state
     from provisa.api.errors import ApiError
-    from provisa.lineage.product import nearest_inputs, product_graph
 
     require_capability_request(request, "data_product_read")
-    tables = await _fetch_tables(state)
-    if not await _product_exists(state, product_id):
+    found = await _product_lineage(state, product_id, getattr(request.state, "role", None))
+    if found is None:
         raise ApiError(
             404, "data_products.not_found", f"data product {product_id!r} does not exist"
         )
+    out, graph, natives = found
+    out["natives"] = _natives_for(request, graph, natives)
+    return out
+
+
+async def product_lineage_for(state, product_id: str, role_id: str | None) -> dict | None:
+    """A data product's lineage and data quality as ``role_id`` reads them; None for no such
+    product. The one answer the endpoint, the dq service and a metadata export all read: its
+    members, everything they derive from and what derives from them directly, every member column
+    an output, cut to what the role is served (:func:`role_lineage`); the product's nearest
+    physical inputs found on the cut graph (REQ-2126); and its expectations, promises, related and
+    unattached checks (REQ-2157). The native boxes' source configuration is not in it."""
+    found = await _product_lineage(state, product_id, role_id)
+    if found is None:
+        return None
+    out, _graph, _natives = found
+    out["natives"] = {}
+    return out
+
+
+async def _product_lineage(
+    state, product_id: str, role_id: str | None
+) -> tuple[dict, LineageGraph, list[NativeTable]] | None:
+    from provisa.api.admin.served import served_columns_for
+    from provisa.lineage.product import nearest_inputs, product_dq, product_graph
+
+    if not await _product_exists(state, product_id):
+        return None
+    tables = await _fetch_tables(state)
     commands = {
         **(getattr(state, "tracked_functions", None) or {}),
         **(getattr(state, "column_transforms", None) or {}),
@@ -583,7 +622,7 @@ async def product_lineage(request: Request, product_id: str) -> dict:
             if t["dq_contract"] is not None
         },
     )
-    graph = caller_lineage(request, state, graph, column_rows)
+    graph = role_lineage(state, role_id, graph, column_rows)
     shown = {n.relation for n in graph.nodes.values()}
     by_relation = {_relation_of(t["domain_id"], t["table_name"]): t for t in tables}
     base = {rel for rel, t in by_relation.items() if t["source_id"] != DERIVED_SOURCE_ID}
@@ -591,13 +630,81 @@ async def product_lineage(request: Request, product_id: str) -> dict:
     out = MergedGraph(
         graph=graph, cycles=[c for c in merged.cycles if all(n in graph.nodes for n in c.nodes)]
     ).to_dict()
-    out["natives"] = _natives_for(request, graph, natives)
     out["members"] = sorted(member_relations & shown)
     out["inputs"] = [
         _input(relation, graph, by_relation, types)
         for relation in nearest_inputs(graph, member_relations, base=base)
     ]
-    return out
+    out["dq"] = product_dq(
+        product_id,
+        await _fetch_checkers(state),
+        members=member_ids,
+        inputs={i["table_id"] for i in out["inputs"] if i["kind"] != "source"},
+        served=served_columns_for(state, role_id),
+    )
+    return out, graph, natives
+
+
+async def _fetch_checkers(state) -> list[dict]:
+    """Every checker table that is not a draft (REQ-2157): its names, description, owning product,
+    the table its contract scans (checker_targets), the columns its checks name (dq_rules) and its
+    latest run."""
+    if getattr(state, "model_db", None) is None:
+        return []
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import checker_latest_runs as runs
+    from provisa.core.schema_org import checker_targets as targets
+    from provisa.core.schema_org import registered_tables as rt
+
+    checked = rt.alias("checked")
+
+    async with state.model_db.acquire() as conn:
+        res = await conn.execute_core(
+            select(
+                rt.c.id,
+                rt.c.domain_id,
+                rt.c.table_name,
+                rt.c.alias,
+                rt.c.description,
+                rt.c.product_id,
+                rt.c.dq_rules,
+                targets.c.checked_table_id,
+                checked.c.domain_id.label("checked_domain_id"),
+                checked.c.table_name.label("checked_table_name"),
+                checked.c.alias.label("checked_alias"),
+                runs.c.outcome,
+                runs.c.scan_time,
+            )
+            .select_from(
+                rt.join(targets, targets.c.table_id == rt.c.id)
+                .join(checked, checked.c.id == targets.c.checked_table_id)
+                .outerjoin(runs, runs.c.table_id == rt.c.id)
+            )
+            .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False))
+        )
+        rows = res.fetchall()
+    return [
+        {
+            "id": r.id,
+            "domain_id": r.domain_id,
+            "table_name": r.table_name,
+            "alias": r.alias,
+            "description": r.description,
+            "product_id": r.product_id,
+            "checked_table_id": r.checked_table_id,
+            "checked_table": {
+                "id": r.checked_table_id,
+                "domain_id": r.checked_domain_id,
+                "table_name": r.checked_table_name,
+                "alias": r.checked_alias,
+            },
+            "rule_columns": [rule.get("column_name") or "" for rule in r.dq_rules or []],
+            "latest_outcome": r.outcome,
+            "latest_run_at": r.scan_time.isoformat() if r.scan_time is not None else None,
+        }
+        for r in rows
+    ]
 
 
 def _input(relation: str, graph: LineageGraph, by_relation: dict, types: dict) -> dict:

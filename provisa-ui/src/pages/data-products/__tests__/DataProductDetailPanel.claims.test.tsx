@@ -17,7 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { dqStatus } from "../dataProductClaims";
-import type { ProductInput, ProductLineage } from "../../../api/lineage";
+import type { ProductDq, ProductInput, ProductLineage } from "../../../api/lineage";
 import type { CoreCheck, CoreEdge, CoreTable, ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
@@ -61,12 +61,10 @@ const check = (
   assigned_product_id: assigned,
   checker: {
     id: checker,
-    source_id: "soda",
     domain_id: "sales",
     table_name: `check_${checker}`,
     alias: null,
     description: `Claim ${checker}`,
-    dq_contract: "dataset: x/y/z",
     latest_outcome: "pass",
     latest_run_at: "2026-10-20T10:00:00Z",
     ...over,
@@ -101,13 +99,39 @@ const input = (id: number, relation: string): ProductInput => ({
   source_schema: null,
   source_table: null,
 });
-const LINEAGE: ProductLineage = {
+// REQ-2157: the product lineage endpoint's lists, from the panel's states.
+const LIST_OF = {
+  expectation: "expectations",
+  promise: "promises",
+  partner_dq: "related",
+  orphan: "unattached",
+} as const;
+const dqOf = (checks: CoreCheck[]): ProductDq => {
+  const dq: ProductDq = { expectations: [], promises: [], related: [], unattached: [] };
+  for (const c of checks)
+    dq[LIST_OF[c.state]].push({
+      checker_table_id: c.checker_table_id,
+      domain_id: c.checker.domain_id,
+      table_name: c.checker.table_name,
+      alias: c.checker.alias,
+      description: c.checker.description,
+      owner_product_id: c.assigned_product_id,
+      checked_table_id: c.checked_table_id,
+      checked_table: c.checked_table,
+      latest_outcome: c.checker.latest_outcome ?? null,
+      latest_run_at: c.checker.latest_run_at,
+    });
+  return dq;
+};
+const lineage = (checks: CoreCheck[]): ProductLineage => ({
   nodes: [],
   edges: [],
   outputs: [],
   members: [],
   inputs: [input(30, "raw.raw_orders"), input(31, "raw.raw_customers")],
-};
+  dq: dqOf(checks),
+});
+const LINEAGE = lineage(CHECKS);
 
 const CORE: ProductCore = {
   product: P,
@@ -119,7 +143,6 @@ const CORE: ProductCore = {
       description: "Customers are unique so counts reconcile",
     }),
   ],
-  checks: CHECKS,
   queries: { graphql: "", sql: "", jsonapi: "" },
 };
 
@@ -198,12 +221,12 @@ describe("a data product's quality claims (REQ-2132)", () => {
     render(
       <DataProductDetailPanel
         p={P}
-        core={{ ...CORE, checks: [...CHECKS, partner] }}
+        core={CORE}
         coreError={null}
         reader={null}
         lineageLoading={false}
         lineageError=""
-        lineageGraph={LINEAGE}
+        lineageGraph={lineage([...CHECKS, partner])}
         canEdit={false}
         onEdit={vi.fn()}
         onDelete={vi.fn()}

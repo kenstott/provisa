@@ -8,8 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2126 INPUTS AND RELATED, REQ-1443 PRODUCT ASSIGNMENT: a product's nearest physical
-inputs, the product it is built from, and how it shows each check that touches it.
+"""REQ-2126 INPUTS AND RELATED, REQ-2157: a product's nearest physical inputs, and how it shows
+each check that touches it -- expectation, promise, related or unattached.
 
 A source table S, a plain view PV over it, a materialized view M over PV in product Q, and a view
 RV over M in product R. Q's input is S (PV is expanded at query time, so it is no input); R's is
@@ -17,7 +17,7 @@ M (an MV's refresh is where its own inputs are read). Four checker tables scan M
 to Q, to R and to none. The lineage is the model build's own (its write step, here).
 """
 
-# Requirements: REQ-2126, REQ-1443
+# Requirements: REQ-2126, REQ-1443, REQ-2157
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ async def _build(conn) -> None:
     await write_checker_targets(
         conn, {K_PROMISE: M, K_EXPECTATION: S, K_ORPHAN: S, K_UNASSIGNED: S}
     )
-    for name in ("table_inputs", "data_product_edges", "product_checks"):
+    for name in ("table_inputs", "data_product_edges"):
         await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
 
 
@@ -127,32 +127,46 @@ async def test_inputs_stop_at_the_first_source_table_or_materialized_view(contro
 
 
 @pytest.mark.asyncio
-async def test_each_product_shows_each_check_in_the_state_its_assignment_gives_it(control_plane):
+async def test_each_product_shows_each_check_by_what_it_checks_and_who_owns_it(control_plane):
+    from provisa.api.admin.lineage_router import _fetch_checkers
+    from provisa.lineage.inputs import nearest_physical_inputs
+    from provisa.lineage.product import product_dq
+
     db = control_plane.org()
     try:
         async with db.acquire() as conn:
             await _seed(conn)
             await _build(conn)
-            rows = await _rows(
-                conn,
-                "SELECT product_id, checker_table_id, checked_table_id, assigned_product_id, "
-                "state FROM product_checks",
-            )
+            inputs = {
+                product: {i.table_id for i in await nearest_physical_inputs(conn, member)}
+                for product, member in (("q", M), ("r", RV))
+            }
+        checkers = await _fetch_checkers(SimpleNamespace(model_db=db))
     finally:
         await db.close()
 
-    assert sorted(
-        (r["product_id"], r["checker_table_id"], r["assigned_product_id"], r["state"]) for r in rows
-    ) == [
-        # Assigned to Q and scanning Q's output port M: Q's promise. M is R's input: partner DQ.
-        ("q", K_PROMISE, "q", "promise"),
-        # Assigned to Q and scanning Q's input S: Q's expectation.
-        ("q", K_EXPECTATION, "q", "expectation"),
-        # Assigned to R, scanning S, which is neither R's input nor its output: R's orphan; and
-        # S is Q's input, so Q sees it as partner DQ.
-        ("q", K_ORPHAN, "r", "partner_dq"),
-        # Assigned to none and scanning Q's input S: partner DQ for Q.
-        ("q", K_UNASSIGNED, None, "partner_dq"),
-        ("r", K_PROMISE, "q", "partner_dq"),
-        ("r", K_ORPHAN, "r", "orphan"),
-    ]
+    # A reader served every checker and every checked column.
+    served = {k: {"ok"} for k in (K_PROMISE, K_EXPECTATION, K_ORPHAN, K_UNASSIGNED)} | {
+        t: {"x"} for t in (S, PV, M, RV)
+    }
+
+    def lists(product: str, member: int) -> dict[str, list[int]]:
+        out = product_dq(product, checkers, members={member}, inputs=inputs[product], served=served)
+        return {name: [e["checker_table_id"] for e in entries] for name, entries in out.items()}
+
+    assert lists("q", M) == {
+        # Q's check on its member M, and its check on its input S.
+        "promises": [K_PROMISE],
+        "expectations": [K_EXPECTATION],
+        # R's check, and nobody's, on Q's input S.
+        "related": [K_ORPHAN, K_UNASSIGNED],
+        "unattached": [],
+    }
+    assert lists("r", RV) == {
+        "promises": [],
+        "expectations": [],
+        # Q's promise on M, which is R's input.
+        "related": [K_PROMISE],
+        # R's check on S, which is neither R's member nor its input: a curation gap for R.
+        "unattached": [K_ORPHAN],
+    }

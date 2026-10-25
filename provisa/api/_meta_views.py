@@ -380,7 +380,7 @@ def _data_product_edges_sql() -> str:
 
 def _table_inputs_sql() -> str:
     """REQ-2126: each registered table's nearest physical inputs -- an internal control-plane
-    view, read by data_product_edges, product_checks and provisa.lineage.inputs, so the walk is
+    view, read by provisa.lineage.inputs, so the walk is
     written once.
 
     From a table, its lineage (the lineage edge table, REQ-2129) is walked upstream through plain
@@ -419,68 +419,6 @@ def _table_inputs_sql() -> str:
         FROM walk w
         JOIN kinds k ON k.id = w.relation_id AND k.kind IN ('source_table', 'materialized_view')
     """.replace("{derived}", DERIVED_SOURCE_ID)
-
-
-def _product_checks_sql() -> str:
-    """REQ-1443 PRODUCT ASSIGNMENT: how each product shows each checker table that touches it,
-    derived at read time. A checker assigned to a product is a promise of it when it scans one of
-    its output ports (its members that are not checkers), an expectation when it scans one of its
-    inputs (REQ-2126), and an orphan when it scans neither. A checker that scans a product's output
-    port or input and is not assigned to that product is partner DQ for it. A check that is both a
-    promise and an expectation of one product is a promise."""
-    return """
-        CREATE OR REPLACE VIEW product_checks AS
-        WITH checks AS (
-            SELECT c.id AS checker_table_id, c.product_id AS assigned_product_id,
-                   ct.checked_table_id
-            FROM registered_tables c
-            JOIN checker_targets ct ON ct.table_id = c.id
-            WHERE NOT c.draft
-        ),
-        outputs AS (
-            SELECT product_id, id AS table_id
-            FROM registered_tables
-            WHERE product_id IS NOT NULL AND dq_contract IS NULL AND NOT draft
-        ),
-        inputs AS (
-            SELECT DISTINCT o.product_id, ti.input_table_id AS table_id
-            FROM outputs o
-            JOIN table_inputs ti ON ti.table_id = o.table_id
-        ),
-        touched AS (
-            SELECT product_id, table_id, 'output' AS side FROM outputs
-            UNION ALL
-            SELECT product_id, table_id, 'input' FROM inputs
-        ),
-        assigned AS (
-            SELECT k.assigned_product_id AS product_id, k.checker_table_id, k.checked_table_id,
-                   k.assigned_product_id,
-                   CASE WHEN EXISTS (SELECT 1 FROM touched t
-                                     WHERE t.product_id = k.assigned_product_id
-                                       AND t.table_id = k.checked_table_id
-                                       AND t.side = 'output') THEN 'promise'
-                        WHEN EXISTS (SELECT 1 FROM touched t
-                                     WHERE t.product_id = k.assigned_product_id
-                                       AND t.table_id = k.checked_table_id) THEN 'expectation'
-                        ELSE 'orphan' END AS state
-            FROM checks k
-            WHERE k.assigned_product_id IS NOT NULL
-        ),
-        partner AS (
-            SELECT DISTINCT t.product_id, k.checker_table_id, k.checked_table_id,
-                   k.assigned_product_id, 'partner_dq' AS state
-            FROM checks k
-            JOIN touched t ON t.table_id = k.checked_table_id
-            WHERE k.assigned_product_id IS NULL OR t.product_id <> k.assigned_product_id
-        )
-        SELECT product_id || ':' || CAST(checker_table_id AS TEXT) AS id,
-               product_id, checker_table_id, checked_table_id, assigned_product_id, state
-        FROM assigned
-        UNION ALL
-        SELECT product_id || ':' || CAST(checker_table_id AS TEXT),
-               product_id, checker_table_id, checked_table_id, assigned_product_id, state
-        FROM partner
-    """
 
 
 _META_TABLE_VIEWS: dict[str, str] = {
@@ -541,8 +479,6 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # provisa.lineage.inputs. Registered in no catalog.
     "table_inputs": _table_inputs_sql(),
     "data_product_edges": _data_product_edges_sql(),
-    # REQ-1443: how each product shows each checker table that touches it.
-    "product_checks": _product_checks_sql(),
     # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS

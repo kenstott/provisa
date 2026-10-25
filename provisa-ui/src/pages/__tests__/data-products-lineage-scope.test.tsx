@@ -73,6 +73,7 @@ const LINEAGE: ProductLineage = {
   outputs: ["pet_store.pets.id", "pet_store.pets.name"],
   members: ["pet_store.pets"],
   inputs: [],
+  dq: { expectations: [], promises: [], related: [], unattached: [] },
 };
 const asked: string[] = [];
 vi.mock("../../api/lineage", async (importOriginal) => ({
