@@ -29,7 +29,7 @@ def _table():
     return SimpleNamespace(
         schema_name="provisa_bench",
         table_name="order_docs",
-        columns=[SimpleNamespace(name=c, native_filter_type=None) for c, _ in COLUMNS],
+        columns=[SimpleNamespace(name=c, native_filter_type=None, path=None) for c, _ in COLUMNS],
         landing_filter=None,
         query_template=None,
     )

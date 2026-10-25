@@ -1476,6 +1476,16 @@ def _integer_runs(values: list[int]) -> tuple[list[tuple[int, int]], list[int]]:
     return runs, singles
 
 
+def _mongodb_columns(table: Any) -> list[tuple[str, str]]:
+    """The table's registered data columns as (name, document path): a column with no ``path``
+    is the document field of its own name."""
+    return [
+        (c.name, c.path or c.name)
+        for c in table.columns
+        if getattr(c, "native_filter_type", None) is None
+    ]
+
+
 def make_mongodb_loader() -> AdapterLoader:
     """Build the MongoDB row-fetch (REQ-1730): the table's registered data columns, projected from
     ``<database>.<collection>`` over pymongo and landed like any other fetched source. Wired only on
@@ -1498,10 +1508,10 @@ def make_mongodb_loader() -> AdapterLoader:
             return await asyncio.to_thread(
                 lambda: [r for b in whole_batches(conn, database, table, 1000) for r in b]
             )
-        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not names:
+        columns = _mongodb_columns(table)
+        if not columns:
             return []
-        return await asyncio.to_thread(fetch_rows, conn, database, table.table_name, names)
+        return await asyncio.to_thread(fetch_rows, conn, database, table.table_name, columns)
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         from provisa.federation.replica_source import BlockingCursorSource
@@ -1516,11 +1526,10 @@ def make_mongodb_loader() -> AdapterLoader:
             return BlockingCursorSource(
                 lambda batch_rows: whole_batches(conn, database, table, batch_rows), columns
             )
-        names = [name for name, _ in columns]
+        paths = dict(_mongodb_columns(table))
+        read = [(name, paths[name]) for name, _ in columns]
         return BlockingCursorSource(
-            lambda batch_rows: iter_row_batches(
-                conn, database, table.table_name, names, batch_rows
-            ),
+            lambda batch_rows: iter_row_batches(conn, database, table.table_name, read, batch_rows),
             columns,
         )
 
@@ -1540,11 +1549,11 @@ def make_mongodb_keyed_loader() -> AdapterKeyedLoader:
             return []
         conn = MongoConnection.from_source(source)
         database = getattr(source, "database", None) or table.schema_name
-        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not names:
+        columns = _mongodb_columns(table)
+        if not columns:
             return []
         return await asyncio.to_thread(
-            fetch_rows_by_keys, conn, database, table.table_name, names, pk_columns, keys
+            fetch_rows_by_keys, conn, database, table.table_name, columns, pk_columns, keys
         )
 
     return _load
