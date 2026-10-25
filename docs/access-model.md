@@ -86,7 +86,7 @@ Two things stand outside the rules, and neither is a person. Registration is whe
 
 On the Security page, every role's detail panel shows the composition in two tabs. **Capabilities** draws the role's lineage from the standard roles down to it, with each node listing what it adds. **Data access** lists every table the role reaches once scope is applied. Each table expands to its columns, showing scope, read or write, mask, row rule and the role whose grant gives the access. A derived role carries no capabilities, so its panel has the Data access tab only.
 
-The same question can be asked from the other side. On a table's panel, each column shows which roles can read it and the grant that gives each one.
+A table's panel answers the same question from the other side. Choose a column and it lists every role that reads it, writes it, sees it masked or has a row rule on it. Each role comes with the chain behind its access: the granting role, any ancestor it inherits through, the column's scope and the role's reach. Only columns you can read can be chosen.
 
 Both views are capped by your own read rights. They list only tables and columns you can read.
 
