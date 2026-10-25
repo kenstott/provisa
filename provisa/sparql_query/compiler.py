@@ -527,6 +527,7 @@ class _Lowering:
         edges: list[tuple[str, RelPattern, str]] = []
         triples: list[TriplePattern] = []
         nodes: list[str] = []
+        bound_before = set(bindings)
 
         def node(term: Any) -> str:
             var = self._subject_node(term, named, keys)
@@ -566,8 +567,7 @@ class _Lowering:
                     conditions.append(Binary("=", value, bindings[str(o)][0]))
                 else:
                     bindings[str(o)] = (value, cp.datatype)
-                    if not optional:
-                        conditions.append(IsNull(value, negated=True))
+                    conditions.append(IsNull(value, negated=True))
             else:
                 conditions.append(Binary("=", value, _literal(o)))
 
@@ -584,8 +584,18 @@ class _Lowering:
             for f in group.filters:
                 conditions.append(self.expr(f, bindings, labels))
 
+        placed_before = set(self._placed)
         matches = self._clauses(nodes, edges, labels, optional)
         matches.extend(MatchClause(t, None, optional=optional) for t in triples)
+        if optional:
+            conditions = self._optional_bindings(
+                [v for v in nodes if v not in placed_before],
+                matches,
+                conditions,
+                [v for v in bindings if v not in bound_before],
+                bindings,
+                labels,
+            )
         where = None
         if conditions:
             cond = conditions[0]
@@ -593,6 +603,38 @@ class _Lowering:
                 cond = Binary("AND", cond, c)
             where = WhereClause(cond)
         return MatchStep(matches, where)
+
+    def _optional_bindings(
+        self,
+        new_nodes: list[str],
+        matches: list[MatchClause],
+        conditions: list[CypherExpr],
+        bound: list[str],
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+        labels: dict[str, str],
+    ) -> list[CypherExpr]:
+        """An OPTIONAL binds its variables only where it matches as a whole: each it binds is
+        unbound where it does not. Where it reaches a node of its own, it matched where that node
+        joined (its conditions join it); where it reads only subjects already matched, it has no
+        join of its own, and matched where its conditions hold, which then filter no row. The
+        conditions left for its join."""
+        if new_nodes:
+            matched: CypherExpr = IsNull(self._key_of(new_nodes[0], labels), negated=True)
+        elif not matches:
+            if not conditions:
+                return conditions
+            matched = conditions[0]
+            for c in conditions[1:]:
+                matched = Binary("AND", matched, c)
+            conditions = []
+        else:
+            # An edge or a variable predicate between subjects already matched has no node of
+            # its own to tell its match by (#303).
+            return conditions
+        for var in bound:
+            value, datatype = bindings[var]
+            bindings[var] = (Case(None, [(matched, value)], None), datatype)
+        return conditions
 
     def _clauses(
         self,

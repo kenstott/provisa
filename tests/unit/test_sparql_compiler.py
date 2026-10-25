@@ -578,3 +578,29 @@ def test_a_bind_before_an_optional_is_read_inside_it(con):
         ("Cy", "Beta"),
         ("Di", None),
     ]
+
+
+def test_an_optional_on_a_matched_subject_keeps_the_rows_its_filter_refuses(con):
+    rows = _answer(
+        con, "SELECT ?n ?a WHERE { ?s p:name ?n OPTIONAL { ?s p:age ?a FILTER(?a > 30) } }"
+    )
+    want = _sql(con, "SELECT name, CASE WHEN age > 30 THEN age END FROM pg.public.persons")
+    assert sorted(((r["n"], r["a"]) for r in rows), key=str) == sorted(want, key=str)
+
+
+def test_an_optional_on_a_matched_subject_binds_nothing_where_one_of_its_triples_fails(con):
+    # Di has no age: the OPTIONAL as a whole does not match, so its ?m is unbound too.
+    rows = _answer(con, "SELECT ?n ?m WHERE { ?s p:name ?n OPTIONAL { ?s p:name ?m ; p:age ?a } }")
+    want = _sql(con, "SELECT name, CASE WHEN age IS NOT NULL THEN name END FROM pg.public.persons")
+    assert sorted(((r["n"], r["m"]) for r in rows), key=str) == sorted(want, key=str)
+
+
+def test_an_optional_reaching_a_new_node_binds_nothing_where_it_does_not_match(con):
+    # Only Cy works at Beta: Ann's and Bo's ?a, read off the matched subject, is unbound too.
+    rows = _answer(
+        con,
+        'SELECT ?n ?a WHERE { ?s p:name ?n OPTIONAL { ?s p:age ?a ; rel:WORKS_AT ?c . ?c c:name "Beta" } }',
+    )
+    assert sorted(((r["n"], r["a"]) for r in rows), key=str) == sorted(
+        [("Ann", None), ("Bo", None), ("Cy", 29), ("Di", None)], key=str
+    )
