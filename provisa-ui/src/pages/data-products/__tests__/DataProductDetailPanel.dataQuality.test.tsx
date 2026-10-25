@@ -27,8 +27,8 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 }));
 
 // The panel's 3D graph is its own component, held by its own tests.
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
 }));
 
 const t = i18n.getFixedT("en");

@@ -353,7 +353,6 @@ export function toGraphData(
       label: p.name,
       domains: [p.domain_id],
       tags: tagIds(p),
-      lane: 0,
     });
     node({ id: `d:${p.domain_id}`, type: "domain", label: p.domain_id });
     edge(pid, `d:${p.domain_id}`, "in_domain");

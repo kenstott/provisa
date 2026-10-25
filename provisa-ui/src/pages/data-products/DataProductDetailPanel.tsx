@@ -40,7 +40,7 @@ import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { ProductLineage } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
-import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
+import { GraphPanel } from "../../components/graph3d/GraphPanel";
 import { ClampedDetail } from "./ClampedDetail";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
@@ -291,7 +291,7 @@ export function DataProductDetailPanel({
   const outputTables = core.tables?.filter((tb) => tb.dq_contract == null);
   const dqTables = core.tables?.filter((tb) => tb.dq_contract != null);
   const profiled = outputTables?.filter((tb) => (tb.profile_results ?? []).length > 0);
-  // The knowledge graph card is drawn from this read, as every other card is.
+  // The graph card is drawn from this read, as every other card is.
   const graph = coreGraph(core);
   // REQ-2126: the tables with a direct declared relationship to a member, not themselves members;
   // the indirect relationship rows are the product graph's, not the panel's.
@@ -806,11 +806,11 @@ export function DataProductDetailPanel({
         {/* Compact: the product, its members, commands and bound terms; the full graph opens
             from its expand button. */}
         <DetailCard
-          section="knowledgeGraph"
-          testId={`data-product-card-knowledgeGraph-${p.id}`}
+          section="graph"
+          testId={`data-product-card-graph-${p.id}`}
           label={t("graph3d.panelTitle")}
         >
-          <KnowledgeGraphPanel productId={p.id} productName={product.name} graph={graph} />
+          <GraphPanel productId={p.id} productName={product.name} graph={graph} />
         </DetailCard>
       </div>
       {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws

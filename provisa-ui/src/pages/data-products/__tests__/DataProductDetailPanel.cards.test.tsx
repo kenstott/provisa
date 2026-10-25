@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // A data product's read view is cards, each the application's collapsible: one look, open or closed
-// as this viewer left it, its content kept inside it. The Knowledge graph spans the panel's width,
+// as this viewer left it, its content kept inside it. The Graph spans the panel's width,
 // below the cards.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -19,8 +19,8 @@ import type { ProductLineage } from "../../../api/lineage";
 import type { DataProduct } from "../../../types/admin";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => <div data-testid="kg-panel" />,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => <div data-testid="graph-panel" />,
 }));
 
 const PRODUCT = {
@@ -80,7 +80,7 @@ describe("a data product's cards", () => {
       ["details", "Details"],
       ["customProperties", "Custom Properties"],
       ["inputPorts", "Input Ports"],
-      ["knowledgeGraph", "Knowledge graph"],
+      ["graph", "Graph"],
     ]) {
       expect(card(section).querySelector(".provisa-collapsible")).not.toBeNull();
       expect(
@@ -99,7 +99,7 @@ describe("a data product's cards", () => {
     panel();
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
     expect(
-      screen.getByTestId("data-product-card-knowledgeGraph-pet_health-toggle"),
+      screen.getByTestId("data-product-card-graph-pet_health-toggle"),
     ).toHaveAttribute("aria-expanded", "true");
   });
 
@@ -119,11 +119,11 @@ describe("a data product's cards", () => {
     expect(screen.queryByText("query DataProductPanel", { exact: false })).toBeNull();
   });
 
-  it("keep the Knowledge graph a card among them, and the lineage DAG below them, across the panel", () => {
+  it("keep the Graph a card among them, and the lineage DAG below them, across the panel", () => {
     panel();
     const columns = card("details").parentElement as HTMLElement;
     expect(columns.style.columnWidth).toBe("320px");
-    expect(columns.contains(card("knowledgeGraph"))).toBe(true);
+    expect(columns.contains(card("graph"))).toBe(true);
     const lineage = screen.getByTestId("data-product-detail-lineage-toggle-pet_health");
     expect(columns.contains(lineage)).toBe(false);
   });

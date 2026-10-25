@@ -32,9 +32,9 @@ vi.mock("../data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../../components/graph3d/KnowledgeGraphPanel", () => ({
+vi.mock("../../components/graph3d/GraphPanel", () => ({
   ProductMapButton: () => null,
-  KnowledgeGraphPanel: () => null,
+  GraphPanel: () => null,
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ role: { id: "admin", capabilities: [] } }),

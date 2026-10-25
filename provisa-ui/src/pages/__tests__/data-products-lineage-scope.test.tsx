@@ -35,8 +35,8 @@ vi.mock("../../api/actions", () => ({
   fetchActions: () => Promise.resolve({ functions: [] }),
   saveFunction: vi.fn(),
 }));
-vi.mock("../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
   ProductMapButton: () => null,
 }));
 

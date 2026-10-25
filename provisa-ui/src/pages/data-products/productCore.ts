@@ -443,7 +443,7 @@ export async function loadProductCore(
 
 /** The product's graph as its core holds it -- the product, its member tables and checkers, their
  *  columns and the terms bound to them, its commands and its links -- built the way the product's
- *  graph query is (toGraphData), so the knowledge graph card is drawn from the panel's one read. */
+ *  graph query is (toGraphData), so the graph card is drawn from the panel's one read. */
 export function coreGraph(core: ProductCore): GraphData {
   const row: GraphProductRow = {
     id: core.product.id,

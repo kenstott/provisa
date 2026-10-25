@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "3D graph of data products and what they are made of",
-    "panelTitle": "Knowledge graph",
-    "expandTitle": "{{product}}: knowledge graph",
+    "panelTitle": "Graph",
+    "expandTitle": "{{product}}: graph",
     "productMap": "Product map",
     "preset": "Preset",
-    "preset_knowledge": "Knowledge graph",
+    "preset_all": "All",
     "preset_ontology": "Ontology",
-    "preset_productMap": "Product map",
-    "preset_lineage": "Lineage",
+    "preset_products": "Products",
     "layers": "Layers",
     "layer_products": "Products and domains",
     "layer_tables": "Member tables",

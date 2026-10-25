@@ -32,7 +32,7 @@ import { catalogTableName, lineageRelationLabel, relationName } from "../naming"
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
-import { ProductMapButton } from "../components/graph3d/KnowledgeGraphPanel";
+import { ProductMapButton } from "../components/graph3d/GraphPanel";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import {

@@ -21,8 +21,8 @@ import type { ProductDq, ProductInput, ProductLineage } from "../../../api/linea
 import type { CoreCheck, CoreEdge, CoreTable, ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
 }));
 
 const P = {

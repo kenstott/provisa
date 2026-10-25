@@ -19,8 +19,8 @@ import type { CoreEdge } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => <div data-testid="kg-panel" />,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => <div data-testid="graph-panel" />,
 }));
 
 const PRODUCT = {

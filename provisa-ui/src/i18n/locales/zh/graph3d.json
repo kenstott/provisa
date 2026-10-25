@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "数据产品及其组成部分的 3D 图",
-    "panelTitle": "知识图谱",
-    "expandTitle": "{{product}}：知识图谱",
+    "panelTitle": "图",
+    "expandTitle": "{{product}}：图",
     "productMap": "产品地图",
     "preset": "预设",
-    "preset_knowledge": "知识图谱",
+    "preset_all": "全部",
     "preset_ontology": "本体",
-    "preset_productMap": "产品地图",
-    "preset_lineage": "血缘",
+    "preset_products": "产品",
     "layers": "图层",
     "layer_products": "产品和域",
     "layer_tables": "成员表",
