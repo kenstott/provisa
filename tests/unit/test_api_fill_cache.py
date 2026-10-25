@@ -13,6 +13,7 @@ hands out (``executor.session.EngineSession``)."""
 from __future__ import annotations
 
 import time
+import zlib
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -95,6 +96,23 @@ def _endpoint(**kw) -> ApiEndpoint:
     )
     base.update(kw)
     return ApiEndpoint(**base)
+
+
+def _registered(endpoint: ApiEndpoint, cache_ttl: int | None = 300) -> dict:
+    """The endpoint's registered row: its parameters as parameter columns, and a TTL of its own
+    -- a parameterized endpoint keeps its answers only for one (REQ-1986)."""
+
+    def _column(c: ApiColumn) -> dict:
+        kind = getattr(c.param_type, "value", c.param_type)
+        return {"column_name": c.name, **({"native_filter_type": f"{kind}_param"} if kind else {})}
+
+    return {
+        "id": zlib.crc32(f"{endpoint.source_id}.{endpoint.table_name}".encode()),
+        "source_id": endpoint.source_id,
+        "table_name": endpoint.table_name,
+        "cache_ttl": cache_ttl,
+        "columns": [_column(c) for c in endpoint.columns],
+    }
 
 
 def _api_source(auth=None):
@@ -333,7 +351,7 @@ async def test_a_request_fetches_a_path_parameter_table_once_per_parent_key_with
     )
     state.api_endpoints = {(pets.source_id, "pets"): pets, (by_id.source_id, "pet_by_id"): by_id}
     state.api_sources = {"api": _api_source({"bearer": "t0ken"})}
-    state.tables = []
+    state.tables = [_registered(pets), _registered(by_id)]
     state.tenant_db = None
     join = SimpleNamespace(
         target=SimpleNamespace(table_name="pet_by_id"), target_column="petId", source_column="id"
@@ -402,7 +420,7 @@ async def test_an_api_that_answers_nothing_gives_no_rows_through_every_path_that
     )
     state.api_endpoints = {(pets.source_id, "pets"): pets, (by_id.source_id, "pet_by_id"): by_id}
     state.api_sources = {"api": _api_source()}
-    state.tables = []
+    state.tables = [_registered(pets), _registered(by_id)]
     state.tenant_db = None
     join = SimpleNamespace(
         target=SimpleNamespace(table_name="pet_by_id"), target_column="petId", source_column="id"
@@ -492,6 +510,7 @@ def api_step(store, monkeypatch):
             {},
             nf_args=args,
             ctx=ctx,
+            registration=_registered(endpoint),
         )
         loc, table = rewrites[endpoint.table_name]
         held = con.execute(
@@ -604,6 +623,7 @@ async def test_a_fill_is_read_back_by_the_arguments_it_was_fetched_for(api_step)
     state, read = api_step
     pets = _endpoint()
     state.api_endpoints = {("api", "pets"): pets}
+    state.tables = [_registered(pets)]
     for args in ({"status": "sold"}, {"status": "available"}, {"status": "sold", "owner": 9}):
         hydration._source_hydration_expiry.clear()
         await hydration._hydrate_api_tables_before_engine(
@@ -635,6 +655,7 @@ async def test_a_table_read_by_its_parents_keys_is_every_keys_fill_and_one_key_i
     state, read = api_step
     pets, by_id = _endpoint(columns=_endpoint().columns[:2]), _by_id()
     state.api_endpoints = {("api", "pets"): pets, ("api", "pet_by_id"): by_id}
+    state.tables = [_registered(pets), _registered(by_id)]
     ctx = _pets_feeding_by_id()
     await hydration._hydrate_api_tables_before_engine(
         SimpleNamespace(sources={"api"}, api_args={}), ctx, state

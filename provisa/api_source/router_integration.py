@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 import logging
 import secrets
 
-from provisa.api_source.cache import resolve_ttl
 from provisa.core.environments import active_org_schema
 from provisa.api_source.caller import AnswerCut, answer_cut_warning, answer_rows, call_api
 from provisa.core.statement_warnings import warn
@@ -78,15 +77,17 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
     params: dict,
     engine,
     source: ApiSource | None = None,
-    source_ttl: int | None = None,
-    global_ttl: int | None = None,
+    *,
+    ttl: int,
     loc: CacheLocation | None = None,
     org_id: str = "default",
 ) -> QueryResult:
-    """Execute an API query with the engine cache.
+    """Execute an API query with the engine cache, under the table's resolved ``ttl``
+    (``api.data.materialization.landing_ttl``, REQ-1986).
 
     1. Derive stable table name from source + path + native params
-    2. If table exists in the engine: return cache reference (phase 2 SQL applied by caller)
+    2. If table exists in the engine: return cache reference (phase 2 SQL applied by caller).
+       A TTL of 0 keeps nothing, so no cache is looked for.
     3. On miss: call API → flatten → return the rows; the caller stores them
     """
     # REQ-318: the endpoint's default parameters (the values that make its whole collection,
@@ -97,7 +98,6 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
         span.set_attribute("api_source.source_id", endpoint.source_id)
         span.set_attribute("api_source.table", endpoint.table_name)
 
-        ttl = resolve_ttl(endpoint.ttl, source_ttl, global_ttl)
         tbl = cache_table_name(endpoint.source_id, endpoint.table_name, params)
 
         if loc is None:
@@ -120,7 +120,7 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
                 source_catalog=_state.source_catalogs.get(endpoint.source_id),
             )
 
-        _hit = await table_exists(engine, loc, tbl, ttl=ttl)
+        _hit = ttl != 0 and await table_exists(engine, loc, tbl, ttl=ttl)
         if _hit:
             log.info("[API CACHE] hit — %s.%s.%s", loc.catalog, loc.schema, tbl)
             span.set_attribute("api_source.cache_hit", True)
