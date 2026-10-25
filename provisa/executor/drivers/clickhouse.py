@@ -32,7 +32,7 @@ session (no temporary table, no SET).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
 from provisa.core import request_deadline
@@ -143,9 +143,8 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         with self._require_pool().connection(is_broken=_is_broken) as client:
             with request_deadline.cancel_on_deadline(lambda: self._kill_query(query_id)):
                 res = client.query(exec_sql, parameters=ch_params, settings={"query_id": query_id})
-        return QueryResult(
-            rows=[tuple(r) for r in res.result_rows], column_names=list(res.column_names)
-        )
+                names = result_names(client, exec_sql, ch_params, res.column_names)
+        return QueryResult(rows=[tuple(r) for r in res.result_rows], column_names=names)
 
     # Async only for the awaitable call-site contract; executes synchronously in-thread.
     @property
@@ -220,6 +219,18 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         return self._pool is not None
 
 
+def result_names(
+    client: Any, sql: str, parameters: dict[str, Any] | None, answered: Sequence[str]
+) -> list[str]:
+    """The statement's result columns. ClickHouse can answer a query that matches no row with no
+    block at all, and clickhouse-connect then reports no column names; a SELECT with no rows still
+    has its columns, so they are read from ClickHouse's own ``DESCRIBE (query)``."""
+    if answered:
+        return list(answered)
+    described = client.query(f"DESCRIBE ({sql})", parameters=parameters)
+    return [row[0] for row in described.result_rows]
+
+
 class _BlockStreamCursor:
     """A ClickHouse row-block stream read as a DB-API cursor (REQ-1190): ``description`` names the
     columns, and ``fetchmany`` returns the next rows, taking the next block from the server only
@@ -238,7 +249,8 @@ class _BlockStreamCursor:
         )
         stream = self._context.__enter__()
         self._blocks = iter(stream)
-        self.description = [(name,) for name in stream.source.column_names]
+        names = result_names(self._client, sql, parameters, stream.source.column_names)
+        self.description = [(name,) for name in names]
 
     def fetchmany(self, size: int) -> list[tuple]:
         rows: list[tuple] = []
