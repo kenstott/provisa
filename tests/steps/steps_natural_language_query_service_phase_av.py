@@ -51,7 +51,8 @@ class _FakeAppState:
         from graphql import build_schema as _build_schema
 
         self.schemas = {"default": _build_schema(_SDL)}
-        self.contexts = {}
+        # One build installs a role's schema and its compilation context together (RoleSurface).
+        self.contexts = {"default": CompilationContext()}
         self.rls_contexts = {}
         self.masking_rules = {}
         self.engine_conn = None
