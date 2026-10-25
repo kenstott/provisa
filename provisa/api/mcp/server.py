@@ -1106,10 +1106,15 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
                 await _send_401(send, "bearer token required")
                 return
             # Loopback stdio-style: the pinned role applies, in the deployment's own org -- the
-            # unsecured HTTP path's org (REQ-1266).
+            # unsecured HTTP path's org (REQ-1266). REQ-074/REQ-1386: no principal, but a
+            # request: its statements are recorded as the anonymous user's, as every transport
+            # records an unauthenticated request. The role each call names is the audit row's.
+            from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
+
             loopback_token = set_current_org(state.org_id)
             try:
-                await app(scope, receive, send)
+                with audit_identity_scope(ANONYMOUS_USER, "mcp"):
+                    await app(scope, receive, send)
             finally:
                 reset_current_org(loopback_token)
             return
