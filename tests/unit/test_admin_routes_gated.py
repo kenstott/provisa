@@ -44,6 +44,7 @@ GATE_NAMES = frozenset(
         # provisa.api.admin.capabilities
         "require_capability",
         "require_capability_request",
+        "require_dq_read_request",  # REQ-2155
         "require_domain",
         "require_domain_request",
         # REQ-1944: a governance right paired with the domains of the roles carrying it

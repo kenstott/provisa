@@ -461,11 +461,36 @@ def _with_stores(node: Any, values: dict[str, str]) -> Any:
     return node
 
 
+def tour_standard_roles(directory: Path) -> list[str]:  # REQ-2155
+    """The standard roles the demo's tour acts as (its steps' ``role``), in tour order: a role is
+    acted as only when it is held, so a sandbox's person is granted them with the demo's own. One
+    the sandbox withholds (what org_admin holds and sandbox does not) refuses the demo by name."""
+    from provisa.core.db import SANDBOX_WITHHELD, STANDARD_ROLE_RIGHTS
+
+    tour = directory / "tour.yaml"
+    if not tour.is_file():
+        return []
+    named = [s["role"] for s in yaml.safe_load(tour.read_text())["steps"] if "role" in s]
+    out = []
+    for role_id in dict.fromkeys(named):
+        if role_id not in STANDARD_ROLE_RIGHTS:
+            continue
+        withheld = sorted(STANDARD_ROLE_RIGHTS[role_id] & SANDBOX_WITHHELD)
+        if withheld:
+            raise ValueError(
+                f"{directory.name}: its tour acts as {role_id!r}, which holds "
+                f"{', '.join(withheld)}, which a sandbox's person may not"
+            )
+        out.append(role_id)
+    return out
+
+
 def demo_roles(template_org: str) -> list[str]:
-    """The roles a demo's configuration defines for itself (its shop analyst, say), which a
-    sandbox's person also holds so the demo's tour can run as each. One that would carry a right the
-    sandbox role withholds (REQ-2155: what org_admin holds and sandbox does not), on its own or
-    through a standard role it inherits from, is refused by name rather than granted."""
+    """The roles a demo's configuration defines for itself (its shop analyst, say), and the standard
+    roles its tour acts as (:func:`tour_standard_roles`), which a sandbox's person also holds so the
+    demo's tour can run as each. One that would carry a right the sandbox role withholds (REQ-2155:
+    what org_admin holds and sandbox does not), on its own or through a standard role it inherits
+    from, is refused by name rather than granted."""
     from provisa.core.db import SANDBOX_WITHHELD, standard_role_dicts
     from provisa.security.inheritance import flatten_role_dicts
 
@@ -480,7 +505,7 @@ def demo_roles(template_org: str) -> list[str]:
                 "sandbox's person may not"
             )
         out.append(role["id"])
-    return out
+    return [*out, *tour_standard_roles(demo_of_template(template_org).directory)]
 
 
 def replicated_tables(config: Any) -> list[Any]:

@@ -37,9 +37,9 @@ developer:
   description: "Builds queries, views and relationships, writes data and works in the org's environments."
   parents: [analyst]
   domain_access: ["*"]
-  # REQ-1573 (amended by REQ-2155): a developer works in the environments that exist; creating or
-  # deleting one is org_admin's.
-  capabilities: [create_view, create_relationship, full_results, write, environment_switch]
+  # REQ-1573 (amended by REQ-2155): a developer works in the org's environments and manages the
+  # ones it owns; managing any environment is org_admin's.
+  capabilities: [create_view, create_relationship, full_results, write, environment_switch, environment_owned_management]
 
 modeler:
   description: "Works out the model: a developer that may join across relations no approved relationship covers yet. Every other rule still applies to it."

@@ -35,7 +35,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import require_capability_request, require_dq_read_request
 from provisa.api.admin.profiler_router import _db, _member
 from provisa.api.app import state
 from provisa.api.errors import ApiError
@@ -84,7 +84,7 @@ def _physical_names(table_id: int) -> dict[str, str]:
 
 @router.get("/tables/{table_id}/profile-constraints")
 async def list_constraints(request: Request, table_id: int) -> dict:
-    require_capability_request(request, "dq_read")
+    require_dq_read_request(request)
     from provisa.profiler import constraints, export
 
     async with _db().acquire() as conn:
@@ -213,7 +213,7 @@ def _published(table_id: int) -> tuple[str, list[str]] | None:
 
 @router.get("/tables/{table_id}/profile-checks")
 async def check_candidates(request: Request, table_id: int) -> dict:
-    require_capability_request(request, "dq_read")
+    require_dq_read_request(request)
     from provisa.core.schema_org import registered_tables as rt
     from provisa.profiler import export
 

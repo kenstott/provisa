@@ -85,6 +85,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # REQ-1573: be served by an environment other than prod — the right the org-routing middleware
     # checks when a request names one. Held by org_admin and developer; an analyst works in prod.
     ENVIRONMENT_SWITCH = "environment_switch"
+    # REQ-2155: manage the environments the caller owns (created_by) -- create one, becoming its
+    # owner, and delete one it owns; ENVIRONMENT_MANAGEMENT manages any.
+    ENVIRONMENT_OWNED_MANAGEMENT = "environment_owned_management"
     # REQ-1942: change an environment's data choices -- its data mode, its sources' bindings,
     # read-only or read-write, its synthetic settings -- including creating it reading real data.
     # Held by org_admin alone: a developer switching an environment to Test (fake) with no fakes

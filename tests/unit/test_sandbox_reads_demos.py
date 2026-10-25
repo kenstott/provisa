@@ -68,3 +68,22 @@ def test_no_grant_names_org_admin_for_a_reader(demo):
         if "org_admin" in (column.get("visible_to") or [])
     ]
     assert named == []
+
+
+def test_the_visitor_holds_the_standard_roles_its_tour_acts_as():
+    """REQ-2155: a tour step may act as a standard role (hasuramigration's analyst); the visitor is
+    granted it with the demo's own roles, since a role is acted as only when it is held."""
+    from provisa.api.demo_templates import tour_standard_roles
+
+    assert tour_standard_roles(_NAMED / "hasuramigration") == ["analyst"]
+    assert tour_standard_roles(_NAMED / "storefront") == []  # its tour acts as its own roles
+
+
+def test_a_tour_acting_as_a_withheld_standard_role_refuses_the_demo(tmp_path):
+    from provisa.api.demo_templates import tour_standard_roles
+
+    (tmp_path / "tour.yaml").write_text(
+        yaml.safe_dump({"steps": [{"key": "a", "route": "/sql", "role": "org_admin"}]})
+    )
+    with pytest.raises(ValueError, match="org_admin"):
+        tour_standard_roles(tmp_path)

@@ -34,7 +34,12 @@ def asked(monkeypatch):
         seen.append(capability)
         raise _Gated
 
+    def _read(_request):
+        seen.append("dq_read")
+        raise _Gated
+
     monkeypatch.setattr(router, "require_capability_request", _gate)
+    monkeypatch.setattr(router, "require_dq_read_request", _read)
     return seen
 
 
@@ -71,3 +76,70 @@ async def test_reading_needs_dq_read(asked, call):
 async def test_managing_checks_needs_dq_rw(asked, call):
     await _first_gate(call())
     assert asked == ["dq_rw"]
+
+
+# -- the read gate: dq_read, which dq_rw implies (REQ-2155) ------------------------------------
+
+
+def _caller(*caps: str):
+    from provisa.auth.models import AuthIdentity
+
+    identity = AuthIdentity(user_id="u", email=None, display_name=None, roles=["r"], raw_claims={})
+    identity.acting_roles = ["r"]
+    return SimpleNamespace(state=SimpleNamespace(identity=identity)), {
+        "r": {"capabilities": list(caps), "domain_access": ["*"]}
+    }
+
+
+@pytest.mark.parametrize("caps", [("dq_read",), ("dq_rw",), ("dq_read", "dq_rw")])
+def test_a_dq_reader_or_manager_passes_the_read_gate(monkeypatch, caps):
+    from provisa.api import app
+    from provisa.api.admin.capabilities import require_dq_read_request
+
+    request, roles = _caller(*caps)
+    monkeypatch.setattr(app.state, "roles", roles)
+    require_dq_read_request(request)
+
+
+def test_a_caller_with_neither_is_refused_naming_dq_read(monkeypatch):
+    from provisa.api import app
+    from provisa.api.admin.capabilities import require_dq_read_request
+    from provisa.api.errors import ApiError
+
+    request, roles = _caller("table_registration")
+    monkeypatch.setattr(app.state, "roles", roles)
+    with pytest.raises(ApiError, match="dq_read"):
+        require_dq_read_request(request)
+
+
+@pytest.fixture
+def read_asked(monkeypatch):
+    from provisa.api.admin import profiler_router
+
+    seen: list[str] = []
+
+    def _gate(_request):
+        seen.append("dq_read")
+        raise _Gated
+
+    def _other(_request, capability):
+        seen.append(capability)
+        raise _Gated
+
+    for module in (router, profiler_router):
+        monkeypatch.setattr(module, "require_dq_read_request", _gate)
+        monkeypatch.setattr(module, "require_capability_request", _other)
+    return seen, profiler_router
+
+
+async def test_reading_profile_runs_needs_dq_read_not_table_registration(read_asked):
+    seen, profiler = read_asked
+    for call in (
+        lambda: profiler.list_profilers(_REQUEST),
+        lambda: profiler.list_profile_runs(_REQUEST, 1),
+        lambda: profiler.get_profile_run(_REQUEST, 1, "r", None),
+        lambda: profiler.get_measure_history(_REQUEST, 1, "r", "rowCount", None),
+    ):
+        seen.clear()
+        await _first_gate(call())
+        assert seen == ["dq_read"]

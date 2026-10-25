@@ -286,6 +286,15 @@ def require_capability_request(request, capability: str) -> None:  # REQ-1531
         raise ApiError(403, "auth.missing_capability", f"Missing capability: {capability!r}")
 
 
+def require_dq_read_request(request) -> None:  # REQ-2155
+    """Reading data quality -- profile runs, check definitions and results -- needs dq_read, which
+    dq_rw implies: whoever manages checks reads what they are managed from. Refused naming
+    dq_read."""
+    if has_capability_request(request, "dq_rw"):
+        return
+    require_capability_request(request, "dq_read")
+
+
 def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
     """The domains a REST caller may act in, or ``None`` when domains gate nothing for it.
 

@@ -141,14 +141,14 @@ _DQ_RW = "Missing capability: 'dq_rw'"
 
 _REFUSALS = [
     ("find_table_id", {"domain": "sales", "table": "orders"}, _TABLE_RIGHT),
-    ("list_profilers", {}, _TABLE_RIGHT),
+    ("list_profilers", {}, _DQ_READ),
     ("set_table_profiler", {"table_id": 1, "profiler_source_id": "prof"}, _TABLE_RIGHT),
     ("run_profiler", {"source_id": "prof"}, "Missing capability: 'source_registration'"),
     ("run_table_profile", {"table_id": 1}, _TABLE_RIGHT),
-    ("list_profile_runs", {"table_id": 1}, _TABLE_RIGHT),
+    ("list_profile_runs", {"table_id": 1}, _DQ_READ),
     ("declare_table_profile", {"table_id": 1, "profile": {"rowCount": 1}}, _TABLE_RIGHT),
-    ("get_profile_run_as_declared", {"table_id": 1, "run_id": "r1"}, _TABLE_RIGHT),
-    ("get_table_profile", {"table_id": 1}, _TABLE_RIGHT),
+    ("get_profile_run_as_declared", {"table_id": 1, "run_id": "r1"}, _DQ_READ),
+    ("get_table_profile", {"table_id": 1}, _DQ_READ),
     ("list_profile_constraints", {"table_id": 1}, _DQ_READ),
     (
         "decide_profile_constraint",

@@ -37,6 +37,7 @@ const ALL_CAPABILITIES: Capability[] = [
   "dq_read",
   "dq_rw",
   "data_product_owned_rw",
+  "environment_owned_management",
 ];
 
 /**

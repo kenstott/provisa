@@ -143,16 +143,15 @@ def _check_env_policy(body: CreateInviteBody) -> None:
         raise ApiError(
             400, "invites.env_name_required", "A shared invite must name the environment it seats"
         )
-    # REQ-1597: the sandbox role is defined by a subtraction that happens when the ephemeral
-    # environment is created (``create_environment``'s ``define_role_from``). Conferred by any other
-    # policy there is no such environment and therefore no subtraction -- the invitation would seat
-    # someone under a name whose meaning was never applied.
+    # REQ-1595, REQ-2155: the sandbox role is designed for disposable demo environments, so it is
+    # conferred only by a per-visitor invitation, whose redemption mints the environment it is used
+    # in and which expires with it.
     if body.role_id == SANDBOX_ROLE and body.env_policy != ENV_POLICY_PER_VISITOR:
         raise ApiError(
             400,
             "invites.sandbox_role_needs_per_visitor",
             f"The '{SANDBOX_ROLE}' role is only conferrable by a {ENV_POLICY_PER_VISITOR} "
-            "invitation: it is defined inside the environment that redemption mints.",
+            "invitation: it is meant for the disposable environment that redemption mints.",
         )
     if body.max_uses is not None and body.max_uses < 1:
         raise ApiError(400, "invites.invalid_max_uses", "max_uses must be at least 1, or null")

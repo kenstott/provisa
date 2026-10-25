@@ -41,6 +41,9 @@ export type Capability =
   // reaching the environments admin surface; `environment_switch` is being served by one other than
   // prod. org_admin and developer carry both; analyst and modeler carry neither.
   | "environment_management"
+  // REQ-2155: manage the environments the caller owns (create one, becoming its owner; delete one
+  // it owns) -- a developer's; `environment_management` manages any.
+  | "environment_owned_management"
   | "environment_switch"
   // REQ-1942: changing an environment's data choices; org_admin alone.
   | "environment_data"
