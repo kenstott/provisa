@@ -93,6 +93,10 @@ class MetadataExport(ABC):  # REQ-1068
     # concrete provider and matched against ``metadata_export.provider`` in config; a
     # provider that leaves it unset is a wiring fault, caught by the registry.
     provider_name: str
+    # A provider that works but is not yet proven against a live instance of its catalog. The
+    # UI names it "<name> (beta)" wherever a user picks or sees it; set it back to False once
+    # an end-to-end run against a real instance passes.
+    beta = False
 
     def __init__(self, config: MetadataExportTarget) -> None:
         self._config = config

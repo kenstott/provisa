@@ -6,6 +6,7 @@
     "notEntitled": "Der Metadatenexport erfordert den {{tier}}-Plan. Führen Sie ein Upgrade durch, um Katalogziele zu konfigurieren.",
     "enabled": "Metadaten in externen Katalogen veröffentlichen",
     "provider": "Zielkatalog",
+    "betaProvider": "{{name}} (Beta)",
     "endpoint": "Endpunkt-URL",
     "authMode": "Authentifizierung",
     "apiKey": "API-Schlüssel",

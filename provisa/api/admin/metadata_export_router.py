@@ -36,7 +36,7 @@ from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
 from provisa.api.metadata_export import metadata_export
 from provisa.api.metadata_export.provider import PublishResult
-from provisa.api.metadata_export.registry import registered_providers
+from provisa.api.metadata_export.registry import beta_providers, registered_providers
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
@@ -204,6 +204,7 @@ async def get_metadata_export(request: Request) -> dict:  # REQ-1074
         "entitled": await _is_entitled(org_id),
         "required_tier": min_tier(Feature.METADATA_EXPORT).value,
         "providers": sorted(registered_providers()),
+        "beta_providers": beta_providers(),
         "config": {
             **{name: getattr(config, name) for name in _EXPORT_FIELDS},
             "targets": [_target_view(t) for t in config.targets],

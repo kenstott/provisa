@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Publiceren naar de tools van je organisatie",
-        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, Atlan en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Publicatie gaat alleen naar buiten: Provisa leest een doel nooit terug als bron van waarheid.</p>"
+        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Publicatie gaat alleen naar buiten: Provisa leest een doel nooit terug als bron van waarheid.</p>"
       },
       "stepRelsAgents": {
         "title": "Relaties en AI-agents",

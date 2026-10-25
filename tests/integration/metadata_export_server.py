@@ -65,6 +65,11 @@ ORDERS_AMOUNT_DESCRIPTION = "Order total in cents"
 MEMBER_TTL = 3600
 GLOSSARY_TERM = "customer"
 GLOSSARY_DEFINITION = "A person or company that has placed at least one order."
+# REQ-2141/REQ-1389: a Class term grounded in the orders table. Beside it, GLOSSARY_TERM is the
+# Property orders.customer_id derives; customers has no Class, so its key customers.id grounds
+# that Property too. Each catalog receives three assignments: orders, and the two columns.
+CLASS_TERM = "order"
+CLASS_DEFINITION = "A customer's request to buy, placed once."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.
 # The org's data roles: the model's, and the ones every org schema is seeded with. A column read
 # by the model's roles alone is visibility-restricted for the seeded ones.
@@ -187,12 +192,18 @@ def model_config(
                 "schema_name": SCHEMA,
                 "table_name": "orders",
                 "description": "Orders placed",
+                "class_term": CLASS_TERM,
                 # REQ-1907: a member the engine lands (Snowflake, BigQuery) is re-read on its own
                 # cache_ttl; it is also the member's freshness in its contract.
                 "cache_ttl": MEMBER_TTL,
                 "product_id": product,
                 "columns": [
-                    {"name": "id", "data_type": "integer", "visible_to": everyone},
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "visible_to": everyone,
+                        "is_primary_key": True,
+                    },
                     {"name": "customer_id", "data_type": "integer", "visible_to": everyone},
                     {
                         "name": "amount",
@@ -237,7 +248,8 @@ def model_config(
             },
         ],
         "glossary_terms": [
-            {"name": GLOSSARY_TERM, "definition": GLOSSARY_DEFINITION, "domains": [domain]}
+            {"name": GLOSSARY_TERM, "definition": GLOSSARY_DEFINITION, "domains": [domain]},
+            {"name": CLASS_TERM, "definition": CLASS_DEFINITION, "domains": [domain]},
         ],
         "relationships": [
             {
@@ -308,6 +320,11 @@ async def published_server(
         finally:
             server.stop_process()
             await drop_org_schema(org_id)
+
+
+def refused(outcome: dict[str, Any]) -> str:
+    """A publish outcome's errors, each in full: a non-string assertion message is shortened."""
+    return "\n".join(f"{e['asset']}: {e['message']}" for e in outcome["errors"])
 
 
 async def publish(client: httpx.AsyncClient, target: dict[str, Any]) -> dict[str, Any]:

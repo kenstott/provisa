@@ -28,6 +28,8 @@ import pytest
 
 from provisa.api.metadata_export.openmetadata import CLASSIFICATION
 from tests.integration.metadata_export_server import (
+    CLASS_TERM,
+    GLOSSARY_TERM,
     MASK_PATTERN,
     ORDERS_AMOUNT_DESCRIPTION,
     PRODUCT,
@@ -38,6 +40,7 @@ from tests.integration.metadata_export_server import (
     VIEW,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -98,7 +101,7 @@ async def published(token) -> dict:
                 "timeout_seconds": 60,
             },
         )
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     return {"result": result}
 
 
@@ -126,7 +129,11 @@ async def test_every_governed_table_and_column_lands_in_the_catalog(published, t
 
 async def test_governance_signals_arrive_as_classification_tags(published, token):
     table = await _get(token, f"/api/v1/tables/name/{ORDERS_FQN}", fields="columns,tags")
-    assert {t["tagFQN"] for t in table["tags"]} == {f"{CLASSIFICATION}.rls_restricted"}
+
+    def _classified(tags: list[dict]) -> set[str]:
+        return {t["tagFQN"] for t in tags if t["source"] == "Classification"}
+
+    assert _classified(table["tags"]) == {f"{CLASSIFICATION}.rls_restricted"}
     columns = {c["name"]: c for c in table["columns"]}
     assert {t["tagFQN"] for t in columns["ssn"]["tags"]} == {f"{CLASSIFICATION}.masked"}
     assert {t["tagFQN"] for t in columns["margin"]["tags"]} == {
@@ -221,3 +228,30 @@ async def test_each_member_carries_its_odcs_contract(published, token):
     assert set(columns) == {"id", "customer_id", "amount", "region", "ssn", "margin"}
     assert columns["amount"]["description"] == ORDERS_AMOUNT_DESCRIPTION
     assert MASK_PATTERN not in httpx.Response(200, json=odcs).text
+
+
+async def test_provisa_assigns_its_terms_as_automated_glossary_labels(published, token):
+    """REQ-1389 (amended): the Class term labels the table it grounds and the Property term its
+    column, each as an Automated label -- what OpenMetadata shows as a system assignment."""
+    table = await _get(token, f"/api/v1/tables/name/{ORDERS_FQN}", fields="columns,tags")
+    glossary = f"provisa_{ORG}"
+
+    def _assigned(tags: list[dict]) -> set[tuple[str, str]]:
+        return {(t["tagFQN"], t["labelType"]) for t in tags if t["source"] == "Glossary"}
+
+    assert _assigned(table["tags"]) == {(f"{glossary}.Classes.{CLASS_TERM}", "Automated")}
+    columns = {c["name"]: c for c in table["columns"]}
+    assert _assigned(columns["customer_id"].get("tags") or []) == {
+        (f"{glossary}.Properties.{GLOSSARY_TERM}", "Automated")
+    }
+
+
+async def test_each_term_sits_in_its_roles_group_and_carries_its_role(published, token):
+    """REQ-2141: the Class term beneath the Classes group term, with provisaRole set."""
+    term = await _get(
+        token,
+        f"/api/v1/glossaryTerms/name/provisa_{ORG}.Classes.{CLASS_TERM}",
+        fields="extension,parent",
+    )
+    assert term["parent"]["fullyQualifiedName"] == f"provisa_{ORG}.Classes"
+    assert term["extension"]["provisaRole"] == "class"

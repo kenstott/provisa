@@ -6,6 +6,7 @@
     "notEntitled": "A exportação de metadados requer o plano {{tier}}. Faça upgrade para configurar catálogos de destino.",
     "enabled": "Publicar metadados em catálogos externos",
     "provider": "Catálogo de destino",
+    "betaProvider": "{{name}} (beta)",
     "endpoint": "URL do endpoint",
     "authMode": "Autenticação",
     "apiKey": "Chave de API",

@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Публикация в инструменты вашей организации",
-        "description": "📤 <strong>Публикуйте там, куда ваша организация уже смотрит.</strong> Записи каталога (таблицы, столбцы, домены, распорядители, утверждённые связи), продукты данных и lineage на уровне столбцов уходят наружу, и каждая цель получает то, что поддерживает: <strong>DataHub, OpenMetadata, Collibra, Atlan и Apache Atlas</strong> — как каталоги, <strong>Snowflake Horizon</strong> и <strong>BigQuery Dataplex</strong> — как листинги продуктов данных, а lineage — через <strong>OpenLineage</strong>.<p>Публикация только исходящая: Provisa никогда не читает цель обратно как источник истины.</p>"
+        "description": "📤 <strong>Публикуйте там, куда ваша организация уже смотрит.</strong> Записи каталога (таблицы, столбцы, домены, распорядители, утверждённые связи), продукты данных и lineage на уровне столбцов уходят наружу, и каждая цель получает то, что поддерживает: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} и Apache Atlas</strong> — как каталоги, <strong>Snowflake Horizon</strong> и <strong>BigQuery Dataplex</strong> — как листинги продуктов данных, а lineage — через <strong>OpenLineage</strong>.<p>Публикация только исходящая: Provisa никогда не читает цель обратно как источник истины.</p>"
       },
       "stepRelsAgents": {
         "title": "Связи и ИИ-агенты",

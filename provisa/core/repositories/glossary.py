@@ -1521,12 +1521,20 @@ async def export_graph(conn: "Connection") -> dict:
     for term in terms:
         term["is_abstract"] = term["id"] not in rooted
         term["status"] = statuses[term["id"]]
+    # REQ-1591: each term's domains, by the one rule -- a catalog that files terms by domain
+    # (Purview's Unified Catalog) places them from these.
+    domains = [
+        {"term_id": term_id, "domain_id": domain_id}
+        for term_id, held in sorted((await term_domains(conn)).items())
+        for domain_id in sorted(held)
+    ]
     return {
         "terms": terms,
         "refs": refs,
         "table_refs": table_refs,
         "edges": edges,
         "experts": experts,
+        "domains": domains,
     }
 
 

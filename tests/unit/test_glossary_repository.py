@@ -435,6 +435,8 @@ async def test_export_graph_shape(control_plane):
         assert graph["experts"] == [
             {"term_id": customer["id"], "user_id": "alice", "kind": "expert"}
         ]
+        # REQ-1591: the derived domain of the rooted term; the unscoped abstract term has none.
+        assert graph["domains"] == [{"term_id": customer["id"], "domain_id": "d"}]
 
 
 def test_a_search_is_its_quoted_phrases_and_its_words():
