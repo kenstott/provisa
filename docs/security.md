@@ -4,6 +4,8 @@ Every query passes the same governance, whichever language it's written in (Grap
 
 The checks run in order. A request has to pass each one before the next is looked at.
 
+[Access Model](access-model.md) covers how scope, capabilities and grants combine into a role's rights.
+
 ## Layered Model
 
 ### Layer 0 — Introspection filtering
