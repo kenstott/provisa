@@ -273,13 +273,13 @@ def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTa
 
 
 def _sees_metric(info: StrawberryInfo, row: Any) -> bool:
-    """REQ-1958: a metric is listed to its administrator, and to a caller whose acting role it is
-    granted to."""
+    """REQ-1958: a metric is listed to a caller whose acting role it is granted to; administering
+    metrics does not widen it (REQ-2152)."""
     from provisa.api.app import state
     from provisa.security.meta_role import acting_roles
 
     scope = catalog_scope(info)
-    if scope.whole or has_capability(info, "table_registration"):
+    if scope.whole:
         return True
     granted = list(row["visible_to"])
     if "*" in granted:
@@ -476,9 +476,9 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def metrics(self, info: StrawberryInfo) -> list["MetricType"]:  # REQ-1317, REQ-1958
         """The governed metric definitions the caller may see — feeds the metric admin panel
-        (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Their administrator
-        (``table_registration``, the right that saves one) sees every metric; anyone else the
-        metrics its acting role is granted (``visible_to``; a meta-role by any member)."""
+        (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Every caller sees the
+        metrics its acting role is granted (``visible_to``; a meta-role by any member), the
+        right that saves one included (REQ-2152)."""
         from provisa.core.repositories import metric as metric_repo
 
         pool = await _get_pool()
