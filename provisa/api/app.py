@@ -3286,6 +3286,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         _metric_dicts = [m.model_dump() for m in _metric_models]
         expand_grants(_metric_dicts, role_chains_by_id)  # REQ-1677
         expand_grants(tracked_functions, role_chains_by_id)
+        # REQ-2131: a column transform is admitted like any command (action_exec.admit_command).
+        expand_grants(list(state.column_transforms.values()), role_chains_by_id)
         expand_grants(tracked_webhooks, role_chains_by_id)
 
         # REQ-1903: stable gRPC proto field numbers across schema regenerations — loaded from this
