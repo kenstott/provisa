@@ -207,3 +207,30 @@ async def test_snowflake_export_view_exists_where_the_export_addresses_it(runtim
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+@pytest.mark.asyncio
+async def test_whether_a_table_is_landed_is_read_from_the_landing_databases_catalog(runtime):
+    """REQ-318: absent is False, landed is True, and a catalog that cannot be read raises --
+    never read as a table that is not there."""
+    columns = [("id", "integer")]
+    # A replica's DDL is reconciled before it is landed, which overwrites its rows.
+    await runtime.reconcile_replica(schema=_SCHEMA, table="lte_landed", columns=columns)
+    await runtime.land_table(schema=_SCHEMA, table="lte_landed", columns=columns, rows=[{"id": 1}])
+    try:
+        assert await runtime.landed_table_exists(schema=_SCHEMA, table="lte_landed") is True
+        assert await runtime.landed_table_exists(schema=_SCHEMA, table="lte_never") is False
+    finally:
+        database = runtime.ensure_materialize_attached()
+        cur = runtime.connection.cursor()
+        try:
+            cur.execute(f'DROP TABLE IF EXISTS "{database}"."{_SCHEMA}"."lte_landed"')
+        finally:
+            cur.close()
+    acct, user, pw = (os.environ[v] for v in _ENV)
+    broken = SnowflakeFederationRuntime(
+        url=f"snowflake://{quote(user, safe='')}:{quote(pw, safe='')}@{acct}/{_CATALOG}/{_SCHEMA}"
+    )
+    broken.close()
+    with pytest.raises(Exception):  # noqa: B017 -- the driver's own error, whatever its class
+        await broken.landed_table_exists(schema=_SCHEMA, table="lte_landed")

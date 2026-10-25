@@ -303,6 +303,9 @@ class IsolatedServer:
             "PROVISA_PGWIRE_PORT": str(self.pgwire_port),
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
+            # Its own trace folder: every server compacts its folder every minute, and servers
+            # sharing one compacted each other's files.
+            "PROVISA_TELEMETRY_DIR": tempfile.mkdtemp(prefix="isolated-server-telemetry-"),
             # REQ-2075: the roles this server's MCP agent may act as (tests/integration/mcp_pin).
             "PROVISA_MCP_ROLE": pinned_roles_of(self._cfg_path),
             **self._extra_env,

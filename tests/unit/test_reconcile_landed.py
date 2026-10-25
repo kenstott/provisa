@@ -55,6 +55,7 @@ def _rtbl(sid, tname, cols):
         "replicate": None,
         "load_protected": None,
         "cache_ttl": None,
+        "row_materialize": False,
     }
 
 
@@ -403,3 +404,24 @@ async def test_a_replica_re_created_empty_is_recorded_unbuilt_and_built_again(mo
         ("unbuild", ("api", "default", "events")),
         ("request", ("api", "default", "events"), "model"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_row_level_tables_row_cache_is_not_reconciled_as_a_whole_replica(monkeypatch):
+    """REQ-1865: a table kept row by row (row_materialize, on an engine that cannot attach its
+    source) has no whole-table replica. Its row cache lives at the replica address with its own
+    bookkeeping columns (_row_cached_at, _row_expires_at); reconciled to the data columns alone it
+    was re-created there, and the rows a read had just fetched by key were dropped before the read
+    reached them."""
+    backend = DuckDBBackend(build_duckdb_engine())
+    rt = _FakeRuntime()
+    backend._runtime = rt
+    cfg = SimpleNamespace(sources=[_src("api", "openapi")], tables=[])
+    by_key = _rtbl("api", "albums", [_rcol("id", "bigint", pk=True), _rcol("title", "text")])
+    by_key["row_materialize"] = True
+    whole = _rtbl("api", "events", [_rcol("id", "bigint", pk=True)])
+
+    reconciled = await backend.reconcile_landed_tables(_state(cfg, [by_key, whole], monkeypatch))
+
+    assert reconciled == [("api", "events")]
+    assert [table for _, table, _, _ in rt.landed] == ["api__default__events"]

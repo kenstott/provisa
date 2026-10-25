@@ -225,6 +225,9 @@ class WorkerBoot:
             "PROVISA_REDIS_EMBEDDED": "1",
             "PROVISA_DATA_DIR": self.data_dir,
             "PROVISA_HOME": self.data_dir,
+            # The launch's trace folder, shared by its workers as a real host's are. Named, not
+            # left to PROVISA_HOME: an inherited PROVISA_TELEMETRY_DIR outranks it.
+            "PROVISA_TELEMETRY_DIR": os.path.join(self.data_dir, "telemetry"),
             # The launch's workers share ONE key store, as the workers of a real host do: the
             # file keystore under the launch's own data dir (REQ-1802). The test session's
             # keyring (tests/conftest.py) is a dict inside one process — inherited, it would give

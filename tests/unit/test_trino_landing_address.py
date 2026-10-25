@@ -63,6 +63,7 @@ def _rtbl(sid, schema, tname, cols):
         "replicate": None,
         "load_protected": None,
         "cache_ttl": None,
+        "row_materialize": False,
     }
 
 

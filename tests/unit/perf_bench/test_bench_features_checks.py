@@ -267,3 +267,31 @@ def test_rows_reads_the_mcp_tools_answer():
     client._rpc = lambda method, params: {"content": [{"text": json.dumps(answer)}]}
     columns, rows, hit = client.rows(QUERY, "org_admin")
     assert (columns, rows, hit) == (["order_id"], [{"order_id": 1}, {"order_id": 2}], None)
+
+
+def _grpc_row_class() -> Any:
+    """A proto3 row message as proto_gen emits one: a masked column is an ``optional`` scalar."""
+    from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
+
+    f = descriptor_pb2.FileDescriptorProto(name="row_test.proto", package="t", syntax="proto3")
+    m = f.message_type.add(name="Order")
+    m.field.add(name="order_id", number=1, type=3, label=1)
+    m.field.add(name="amount", number=2, type=1, label=1, proto3_optional=True, oneof_index=0)
+    m.oneof_decl.add(name="_amount")
+    pool = descriptor_pool.DescriptorPool()
+    pool.Add(f)
+    return message_factory.GetMessageClass(pool.FindMessageTypeByName("t.Order"))
+
+
+def test_rows_reads_a_grpc_rows_unset_optional_field_as_its_null():
+    """A masked column's null is an unset optional field; read off MessageToDict alone, the
+    column was missing from the row (masks-grpc: the columns lacked 'amount')."""
+    order = _grpc_row_class()
+    client = ol.GrpcClient.__new__(ol.GrpcClient)
+    client._send = lambda query, role: [order(order_id=1), order(order_id=2, amount=3.5)]
+    columns, rows, hit = client.rows(QUERY, "org_admin")
+    assert (columns, rows, hit) == (
+        ["order_id", "amount"],
+        [{"order_id": "1", "amount": None}, {"order_id": "2", "amount": 3.5}],
+        None,
+    )

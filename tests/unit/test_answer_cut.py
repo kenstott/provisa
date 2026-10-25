@@ -19,7 +19,7 @@ import json
 import struct
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -152,7 +152,7 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
     source = SimpleNamespace(base_url=BASE, auth=None, headers={})
     endpoint = _endpoint(_offset(max_pages=1))
     with (
-        patch.object(router_integration, "table_exists", lambda conn, loc, t, ttl=None: False),
+        patch.object(router_integration, "table_exists", AsyncMock(return_value=False)),
         patch.object(router_integration, "cache_table_name", cache_table_name),
         patch("provisa.api_source.engine_cache._scope", lambda: "scope"),
     ):

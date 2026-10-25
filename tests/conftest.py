@@ -61,6 +61,10 @@ os.environ["PROVISA_LICENSING_SANDBOX_DIR"] = os.path.join(
     os.environ["PROVISA_DATA_DIR"], "licensing"
 )
 os.makedirs(os.environ["PROVISA_LICENSING_SANDBOX_DIR"], exist_ok=True)
+# The telemetry folder, where a native engine lands its traces, defaults to ~/.provisa/telemetry
+# whatever PROVISA_HOME says when PROVISA_TELEMETRY_DIR is exported for local-dev in the calling
+# shell. Forced, for the same reasons as PROVISA_DATA_DIR; a server a test spawns names its own.
+os.environ["PROVISA_TELEMETRY_DIR"] = os.path.join(os.environ["PROVISA_DATA_DIR"], "telemetry")
 # The trial clock too: pinned to the session's start, so no test changes behaviour on the date
 # the developer's machine was first seen (provisa/licensing/anchors.py _pinned_first_seen). A
 # test that needs the post-trial notice pins an earlier date for its own server.
@@ -1622,6 +1626,8 @@ def provisa_server(_reserve_flight_port):
         "FLIGHT_PORT": str(_flight_port),
         "PROVISA_CONFIG": _live_cfg,
         "PROVISA_ENCRYPTION_KEY": _master_key_b64(None),
+        # Its own trace folder: it compacts the folder every minute, as every server does.
+        "PROVISA_TELEMETRY_DIR": __import__("tempfile").mkdtemp(prefix="live-server-telemetry-"),
         **_server_coverage_env(),
     }
     # Keep the subprocess's own output. It used to go to DEVNULL, which turned every startup

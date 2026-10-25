@@ -215,3 +215,28 @@ async def test_fabric_r2_external_link_autoprovisions_shortcut(runtime):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+@pytest.mark.asyncio
+async def test_whether_a_table_is_landed_is_read_from_the_databases_catalog(runtime):
+    """REQ-318: absent is False, landed is True, and a catalog that cannot be read raises --
+    never read as a table that is not there."""
+    await runtime.land_table(
+        schema=_SCH, table="lte_landed", columns=[("id", "bigint")], rows=[{"id": 1}]
+    )
+    try:
+        assert await runtime.landed_table_exists(schema=_SCH, table="lte_landed") is True
+        assert await runtime.landed_table_exists(schema=_SCH, table="lte_never") is False
+    finally:
+        cur = runtime.connection.cursor()
+        try:
+            cur.execute(f"DROP TABLE IF EXISTS [{_SCH}].[lte_landed]")
+            runtime.connection.commit()
+        finally:
+            cur.close()
+    broken = MssqlWarehouseRuntime(
+        server=os.environ["FABRIC_SQL_SERVER"], database=_DB, engine_name="fabric"
+    )
+    broken.close()
+    with pytest.raises(Exception):  # noqa: B017 -- the driver's own error, whatever its class
+        await broken.landed_table_exists(schema=_SCH, table="lte_landed")

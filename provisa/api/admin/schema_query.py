@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
@@ -2524,6 +2523,26 @@ async def resolve_available_columns_metadata(
     return columns
 
 
+async def _derived_view_columns(schema_name: str, table_name: str) -> list[AvailableColumnType]:
+    """A derived view's columns: those it is registered with. A derived view is no object in any
+    engine's catalog -- it is expanded into the statement that reads it -- and every column of
+    one is typed when it is registered (REQ-1426), so that record is its schema."""
+    from provisa.core.repositories.table import registered_columns
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        rows = await registered_columns(conn, DERIVED_SOURCE_ID, schema_name, table_name)
+    return [
+        AvailableColumnType(
+            name=row["column_name"],
+            data_type=row["data_type"],
+            comment=row["description"],
+            is_primary_key=bool(row["is_primary_key"]),
+        )
+        for row in rows
+    ]
+
+
 async def _introspect_available_columns(
     source_id: str, schema_name: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -2536,6 +2555,8 @@ async def _introspect_available_columns(
     """
     from provisa.api.app import state
 
+    if source_id == DERIVED_SOURCE_ID:
+        return await _derived_view_columns(schema_name, table_name)
     source_type = state.source_types.get(source_id, "")
     if source_type in ("graphql_remote", "grpc_remote"):
         return await _remote_source_columns(source_id, schema_name, table_name)
@@ -2755,11 +2776,9 @@ async def _introspect_available_columns(
         await _require_live_attach(source_id, "columns")
     elif await _unattached_source(source_id) is not None:
         return []
-    # A __derived__ virtual view has no registered source and thus no catalog_for() entry — it's
-    # physically materialized in the view catalog (same pattern as table_profile_router.py:88).
     # REQ-1673: on a native engine the source's catalog does not exist before a table is
     # registered; the introspection seam attaches the raw source and DESCRIBEs the table.
-    if source_id != DERIVED_SOURCE_ID and state.federation_engine.engine.native_store is not None:
+    if state.federation_engine.engine.native_store is not None:
         src = await _source_for_introspection(source_id)
         if src is not None:
             # REQ-1695: inside the org's vault — see available_schemas.
@@ -2772,8 +2791,7 @@ async def _introspect_available_columns(
                     AvailableColumnType(name=name, data_type=str(dtype).lower(), comment=None)
                     for name, dtype in described.items()
                 ]
-    view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
-    catalog = view_catalog if source_id == DERIVED_SOURCE_ID else state.catalog_for(source_id)
+    catalog = state.catalog_for(source_id)
     cols_meta: list[AvailableColumnType] = []
     # Two INDEPENDENT introspection reads, each with its own boundary. Constraint metadata is
     # optional — many engine connectors (Cassandra, Elasticsearch, Kafka, Druid, …) implement
