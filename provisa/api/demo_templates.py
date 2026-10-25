@@ -163,6 +163,21 @@ def published_demo(name: str) -> PublishedDemo:
     return demo
 
 
+def demo_visitor_attributes(directory: Path) -> dict[str, str]:
+    """The attributes demo ``directory``'s sandbox visitor carries (REQ-2151): demo.yaml's
+    ``visitor: attributes:``, each a name and its text value; none when it declares none. A
+    declaration that is not names to text refuses the demo by name."""
+    spec_file = directory / "demo.yaml"
+    declared = (yaml.safe_load(spec_file.read_text()).get("visitor") or {}).get("attributes")
+    if declared is None:
+        return {}
+    if not isinstance(declared, dict) or not all(
+        isinstance(name, str) and isinstance(value, str) for name, value in declared.items()
+    ):
+        raise ValueError(f"{spec_file}: visitor.attributes must map each name to a text value")
+    return dict(declared)
+
+
 def demo_profilers(directory: Path) -> list[str]:
     """The Data Profiler sources demo ``directory``'s setup.yaml profiles (REQ-2052): each
     ``profile`` step's profiler, in order; none when it has no setup.yaml."""
