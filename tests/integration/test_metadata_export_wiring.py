@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from tests.integration.metadata_export_server import published_server
+from tests.integration.metadata_export_server import published_server, save_targets
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -123,10 +123,7 @@ async def server():
 async def test_the_production_publish_reaches_the_target(server, receiver, provider):
     url, received = receiver
     target = {"id": provider, "provider": provider, "endpoint": url, **HTTP_TARGETS[provider]}
-    response = await server.put(
-        "/admin/metadata-export", json={"enabled": True, "targets": [target]}
-    )
-    assert response.status_code == 200, response.text
+    await save_targets(server, [target])
     # The publish's own verdict is the end-to-end test's concern: an echoing receiver is no
     # catalog. What it must show is that this target was called with the product's tables.
     await server.post("/admin/metadata-export/publish")
@@ -144,10 +141,7 @@ async def test_one_publish_reaches_every_target_two_of_one_provider_among_them(s
             {"id": "lineage-a", "provider": "openlineage", "endpoint": first},
             {"id": "lineage-b", "provider": "openlineage", "endpoint": second},
         ]
-        response = await server.put(
-            "/admin/metadata-export", json={"enabled": True, "targets": targets}
-        )
-        assert response.status_code == 200, response.text
+        await save_targets(server, targets)
         published = (await server.post("/admin/metadata-export/publish")).json()
         assert [t["id"] for t in published["targets"]] == ["lineage-a", "lineage-b"]
         for name, received in (("lineage-a", got_first), ("lineage-b", got_second)):
