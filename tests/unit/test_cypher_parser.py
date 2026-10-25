@@ -47,6 +47,14 @@ def test_optional_match_flag():
     assert ast.match_clauses[1].optional is True
 
 
+def test_comma_separated_patterns_are_clauses_of_one_match():
+    ast = parse_cypher("MATCH (a:A)-[:R]->(b:B), (b)-[:S]->(c:C) WHERE a.x = 1 RETURN a.x")
+    assert len(ast.pipeline[0].matches) == 2
+    assert [m.optional for m in ast.match_clauses] == [False, False]
+    assert ast.match_clauses[1].pattern.nodes[0].variable == "b"
+    assert _holds_number(ast.where.expression, 1)
+
+
 def test_where_clause_parsed():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 RETURN n.name")
     assert ast.where is not None
