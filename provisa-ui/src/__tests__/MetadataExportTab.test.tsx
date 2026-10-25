@@ -104,7 +104,7 @@ describe("MetadataExportTab", () => {
     mockHealth.mockReset();
     mockPublish.mockReset();
     mockCatalogs.mockReset();
-    mockCatalogs.mockResolvedValue({ providers: [], catalogs: CATALOGS });
+    mockCatalogs.mockResolvedValue({ providers: [], beta_providers: [], catalogs: CATALOGS });
   });
 
   it("renders each target by the catalog it names", async () => {
@@ -124,6 +124,7 @@ describe("MetadataExportTab", () => {
   it("names a provider not yet proven against a live catalog as beta", async () => {
     mockCatalogs.mockResolvedValue({
       providers: [],
+      beta_providers: [],
       catalogs: [catalog("atlan-prod", "atlan"), catalog("atlas-prod", "atlas")],
     });
     mockFetch.mockResolvedValue(
