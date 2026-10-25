@@ -88318,28 +88318,28 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: roles-and-capabilities-capabilities
   priority: MUST
   type: behavioral
-  description: >-
-    A capability assigned to a role never widens that role's read or write grants. A capability opens a
-    feature only; whatever the feature shows or changes stays within the role's grants. Reads include
+  description: 'A capability assigned to a role never widens that role''s read or write grants. A capability
+    opens a feature only; whatever the feature shows or changes stays within the role''s grants. Reads include
     field, table, column and check names, counts, error text and exports (lineage, source detail, column
-    dependents, profiling and data quality results, ontology bindings, the model download, metadata
-    export, audit views). Writes include model, glossary and settings edits, which are refused on a
-    table or column the role cannot write. Every surface applies the same shared read-rights filter
-    used by lineage. Two exceptions. The source registrant sees the raw source schema during
-    registration only; after registration the registrant's grants apply. Provisa's own service
-    identity (replica builds, fakes, checkers) is not capped, and never shows anything to a person.
-    Each metadata export target names a role, and every publish to it (manual, the scheduled drain
-    and the reconcile) carries exactly what that role can read; the role is a setting of the target
-    with its own UI. A model or glossary edit is permitted on a column the acting role can read (the
-    column_served rule); metadata edits are not data writes. Observability surfaces (materialized
-    views, cache, hot tables, replica builds) list only tables the caller can read at least one
-    column of. The registration-time raw schema is shown in the registration flow only; the table
-    edit page of a registered table is capped like every other surface. There is no special
-    capability for security administration: column_grant, masking_config and access_config are
-    capped like any other, so a role grants, masks or configures access only on columns it can read
-    itself, as a grant option works. Read rights flow only by delegation; the registrant sets the
-    first grants at registration, and holders then delegate what they hold. This applies wherever
-    grants and masks are written (the admin API, MCP tools and settings).
+    dependents, profiling and data quality results, ontology bindings, the model download, metadata export,
+    audit views). Writes include model, glossary and settings edits, which are refused on a table or column
+    the role cannot write. Every surface applies the same shared read-rights filter used by lineage. Two
+    exceptions. The source registrant sees the raw source schema during registration only; after registration
+    the registrant''s grants apply. Provisa''s own service identity (replica builds, fakes, checkers) is
+    not capped, and never shows anything to a person. Each metadata export target names a role, and every
+    publish to it (manual, the scheduled drain and the reconcile) carries exactly what that role can read;
+    the role is a setting of the target with its own UI. A model or glossary edit is permitted on a column
+    the acting role can read (the column_served rule); metadata edits are not data writes. Observability
+    surfaces (materialized views, cache, hot tables, replica builds) list only tables the caller can read
+    at least one column of. The registration-time raw schema is shown in the registration flow only; the
+    table edit page of a registered table is capped like every other surface. There is no special capability
+    for security administration: column_grant, masking_config and access_config are capped like any other,
+    so a role grants, masks or configures access only on columns it can read itself, as a grant option works.
+    Read rights flow only by delegation; the registrant sets the first grants at registration, and holders
+    then delegate what they hold. This applies wherever grants and masks are written (the admin API, MCP
+    tools and settings). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access
+    model''s requirements, not a feature: the earlier rules let a capability or a default reveal or reach
+    more than a role''s grants. It is resolved before the product is declared green.'
   scenario: |
     Given a role holding the view_governance capability that cannot read column ssn of table customers
     When a member of that role opens lineage, source detail, column dependents, profiling, data quality, ontology bindings, the model download, metadata export or an audit view
@@ -88365,15 +88365,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     it, roles that reach the domain read and write it per grants. listed: every role of the organisation
     sees the table''s name and the column''s name in the catalog and nothing more (no description, type,
     sample, value or count); reading or writing it still needs a role that reaches the domain and holds
-    a grant. listed is how a domain makes a table discoverable, so that someone in another domain (one
-    allowed to bypass the relationship guard, for example) can find its keys and ask its owners for a
-    grant. public: every role of the organisation sees the table''s and column''s names and descriptions,
-    and the column is served to roles of every domain per grants; masks, row rules and limits apply as
-    inside the domain (REQ-1959). Who reads or writes a column is decided only by its grants; scope decides
-    only where. A table appears outside its domain only through its listed or public columns. The restricted
-    scope and the ''*'' grant entry are removed: with an empty grant list meaning no role (REQ-2154) restricted
-    is the same as domain, and a grant to the standard Viewer role (REQ-2155) is how a column is granted
-    to every role.'
+    a grant. listed is how a domain makes a table discoverable, so that someone in another domain (one allowed
+    to bypass the relationship guard, for example) can find its keys and ask its owners for a grant. public:
+    every role of the organisation sees the table''s and column''s names and descriptions, and the column
+    is served to roles of every domain per grants; masks, row rules and limits apply as inside the domain
+    (REQ-1959). Who reads or writes a column is decided only by its grants; scope decides only where. A
+    table appears outside its domain only through its listed or public columns. The restricted scope and
+    the ''*'' grant entry are removed: with an empty grant list meaning no role (REQ-2154) restricted is
+    the same as domain, and a grant to the standard Viewer role (REQ-2155) is how a column is granted to
+    every role. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model''s
+    requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than
+    a role''s grants. It is resolved before the product is declared green.'
   scenario: 'Given finance.invoice_ledger with customer_id listed, amount domain and currency public
 
     When a sales role with no reach into finance opens the catalog
@@ -88389,15 +88391,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: roles-and-capabilities-domain-access
   priority: MUST
   type: behavioral
-  description: 'Registering a table grants read on every one of its columns to the role the registrant
-    is acting as and to the standard Viewer role (REQ-2155), written into each column''s grant list where
-    they can be seen and changed. Registration never grants write; write is an explicit grant (REQ-868).
-    An empty grant list means no role, in every domain. A column is made sensitive by removing Viewer
-    from its grant list. A role cannot remove its own read on a column; to keep a column''s values from
-    itself it adds a mask rule for itself, which keeps the column''s name so the role can still administer
-    it. The last role holding read on a column cannot lose it, so every column has a reader. If no role
-    can read a column, re-registering the table from its source recovers it: registration shows the raw
-    schema (REQ-2152) and sets new grants. Seeds and demo configurations state their grants explicitly.'
+  description: 'Registering a table grants read on every one of its columns to the role the registrant is
+    acting as and to the standard Viewer role (REQ-2155), written into each column''s grant list where they
+    can be seen and changed. Registration never grants write; write is an explicit grant (REQ-868). An empty
+    grant list means no role, in every domain. A column is made sensitive by removing Viewer from its grant
+    list. A role cannot remove its own read on a column; to keep a column''s values from itself it adds
+    a mask rule for itself, which keeps the column''s name so the role can still administer it. The last
+    role holding read on a column cannot lose it, so every column has a reader. If no role can read a column,
+    re-registering the table from its source recovers it: registration shows the raw schema (REQ-2152) and
+    sets new grants. Seeds and demo configurations state their grants explicitly. (Amended 2026-10-25, A
+    REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
+    earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
+    before the product is declared green.'
   scenario: 'Given a steward acting as data_steward registers table claims
 
     Then every column of claims grants read to data_steward and viewer and grants no write
@@ -88415,7 +88420,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-domain-access
-  priority: SHOULD
+  priority: MUST
   type: behavioral
   description: 'Provisa ships standard roles: named collections of capabilities, maintained by Provisa,
     that organisations extend with their own roles. A standard role carries capabilities only, never grants;
@@ -88462,7 +88467,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Org admin and Sandbox inherit it. Sandbox is the union of Developer, Data product owner, Data quality
     steward, Source admin, Security admin, Data steward and Org operator. Data steward''s parents are Security
     admin and Analyst, and it adds glossary editing, relationships, data product editing and full results.
-    Environment data stays Org admin''s alone (REQ-1942).'
+    Environment data stays Org admin''s alone (REQ-1942). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This
+    corrects a defect in the access model''s requirements, not a feature: the earlier rules let a capability
+    or a default reveal or reach more than a role''s grants. It is resolved before the product is declared
+    green.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -88478,19 +88486,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   type: behavioral
   description: 'Every lineage surface answers only what the caller can read, through one shared server-side
     filter: the admin Lineage page (the federation graph and statement lineage), the data product panel''s
-    Lineage and Inputs, the product Graph panel, and anything else that names a field from lineage. A
-    registered column is shown only if the acting role is served it. A native node (REQ-2116) is shown
-    only if the registered column it feeds is shown. A physical column nobody registered is never shown.
-    A view''s internal step (a CTE or a command call) is shown only if every field it feeds is shown.
-    Hidden steps collapse: A to B to C with B hidden is drawn A to C, with no transform; an edge into
-    a shown node that also had a hidden parent carries no transform text, since the expression would name
-    the hidden column. A statement''s own outputs are the caller''s. Nothing marks that anything was hidden.
-    The admin Lineage page keeps its view_governance gate and its roles lens, but the lens only narrows
-    within what the caller can read. A data product''s lineage comes from a product-scoped endpoint: the
-    product''s members, their filtered lineage and the product''s nearest physical inputs computed on
-    the filtered graph (REQ-2126). It needs no governance capability: any reader of the product sees its
-    lineage trimmed to their own rights. data_product_edges holds relationship rows only, so no unfiltered
-    second path to lineage exists.'
+    Lineage and Inputs, the product Graph panel, and anything else that names a field from lineage. A registered
+    column is shown only if the acting role is served it. A native node (REQ-2116) is shown only if the
+    registered column it feeds is shown. A physical column nobody registered is never shown. A view''s internal
+    step (a CTE or a command call) is shown only if every field it feeds is shown. Hidden steps collapse:
+    A to B to C with B hidden is drawn A to C, with no transform; an edge into a shown node that also had
+    a hidden parent carries no transform text, since the expression would name the hidden column. A statement''s
+    own outputs are the caller''s. Nothing marks that anything was hidden. The admin Lineage page keeps
+    its view_governance gate and its roles lens, but the lens only narrows within what the caller can read.
+    A data product''s lineage comes from a product-scoped endpoint: the product''s members, their filtered
+    lineage and the product''s nearest physical inputs computed on the filtered graph (REQ-2126). It needs
+    no governance capability: any reader of the product sees its lineage trimmed to their own rights. data_product_edges
+    holds relationship rows only, so no unfiltered second path to lineage exists. (Amended 2026-10-25, A
+    REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
+    earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
+    before the product is declared green.'
   scenario: 'Given view orders_v reads staging.orders_clean, which reads raw.orders
 
     And role sales can read orders_v and raw.orders but not staging.orders_clean
@@ -88572,7 +88582,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     rights follow unambiguously from that composition, for users, owners and auditors alike. It is held
     against user burden: common cases are covered by defaults and composition (standard roles, inheritance,
     the registrant''s and Viewer''s default grants, public scope), so that governing a model does not demand
-    a stream of manual grant entries.'
+    a stream of manual grant entries. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect
+    in the access model''s requirements, not a feature: the earlier rules let a capability or a default
+    reveal or reach more than a role''s grants. It is resolved before the product is declared green.'
 - id: REQ-2160
   status: proposed
   target: 2027-Q1
@@ -88603,7 +88615,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-domain-access
-  priority: SHOULD
+  priority: MUST
   type: ui
   description: 'The Security page''s role detail panel shows the role''s effective rights, as the composition
     of scope, capabilities and grants (REQ-2159): every capability the role holds with the role it comes
@@ -88629,7 +88641,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     SELECTOR:) The data access tab shows the role''s own reach, with the listed and public columns of other
     domains; domain-specific roles are how reach varies, so there is no selector. A standard role, which
     reaches no domain, shows the Capabilities tab only. The table list has the ordinary domain filter every
-    list page has.'
+    list page has. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model''s
+    requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than
+    a role''s grants. It is resolved before the product is declared green.'
   scenario: 'Given role dq_lead inheriting Data quality steward and Data product owner
 
     When a security admin opens dq_lead on the Security page
