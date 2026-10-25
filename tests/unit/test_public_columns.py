@@ -445,8 +445,6 @@ def test_the_admin_catalog_lists_a_published_table_across_domains_with_its_publi
     served = role_visibility(RoleState(contexts={role["id"]: ctx}), role["id"])
     scope = CatalogScope(
         whole=False,
-        admin=False,
-        admin_reach=frozenset(),
         reach=frozenset({SALES}),
         served=served,
         governance=False,

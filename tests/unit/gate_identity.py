@@ -41,3 +41,14 @@ def grant(monkeypatch, *capabilities: str, state=None):
     request = types.SimpleNamespace(state=types.SimpleNamespace(identity=identity))
     info = types.SimpleNamespace(context={"request": request})
     return info, request
+
+
+def serve_every_column(monkeypatch) -> None:
+    """Answer every caller the whole catalog (admin/catalog_scope.py), for a test of a table save
+    whose subject is not which columns its caller is served (REQ-2152 has its own tests)."""
+    from provisa.api.admin.catalog_scope import CatalogScope
+
+    monkeypatch.setattr(
+        "provisa.api.admin.catalog_scope.catalog_scope",
+        lambda info: CatalogScope(whole=True, reach=None, served={}, governance=True, role=None),
+    )

@@ -41,10 +41,17 @@ from tests.unit.test_data_steward_domain_scope import (  # the real-database har
     _stored,
     plane,  # noqa: F401  (fixture)
 )
+from tests.unit.gate_identity import serve_every_column
 
 pytestmark = pytest.mark.asyncio
 
 _VIEW = "view_governance"  # so the save is judged on its rights to hide, not on being shown
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 def _role(*capabilities: str) -> dict:

@@ -8,38 +8,34 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""What of the catalog an admin-API caller is answered (REQ-1958).
+"""What of the catalog an admin-API caller is answered (REQ-1958, REQ-2152).
 
 The admin GraphQL catalog reads (``tables``, ``relationships``, ``domains``, ``sources``,
 ``metrics``) used to answer every signed-in caller with the whole registered catalog. They answer
-by the caller's rights and reach instead:
+by the caller's grants instead:
 
-- A caller holding a catalog-administration right — ``table_registration``, or a right that
-  governs how columns are hidden (REQ-1944) — is answered the catalog of the domains its roles
-  reach.
-- Everyone else is answered what the role the request acts as is SERVED: the tables and columns
+- Every caller is answered what the role the request acts as is SERVED: the tables and columns
   of its compiled context, from the one narrowing the Flight and MCP catalogs use
   (``flight.catalog.role_visibility``). There is no second notion of what a role may see.
-- Grant lists and mask settings need ``view_governance`` (REQ-1134), for an administrator too.
+- A draft table is in no compiled context; its stored columns are tested by the rule the compile
+  applies (``security.visibility.visible_tables``, i.e. ``rights.column_served``).
+- No capability widens it (REQ-2152): ``table_registration`` or a right that governs how columns
+  are hidden (REQ-1944) opens a feature, never more of the catalog.
+- Grant lists and mask settings need ``view_governance`` (REQ-1134).
 
-All of it is decided by rights and domain reach, never by a role's id (REQ-1337). A role with no
+All of it is decided by grants and domain reach, never by a role's id (REQ-1337). A role with no
 data surface (a control-plane role, REQ-1327) is served nothing. A deployment with no auth
 provider enforces no right, as its other gates do, but answers the catalog of the roles the
 request names (X-Provisa-Role).
 """
 
-# Requirements: REQ-1958, REQ-1134, REQ-1944, REQ-1337, REQ-1327
+# Requirements: REQ-1958, REQ-1134, REQ-1944, REQ-1337, REQ-1327, REQ-2152
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-# The rights that administer the catalog: registering tables, or governing how a table's columns
-# are hidden (REQ-1944). Their holder reads the catalog of the domains it reaches.
-CATALOG_ADMIN_RIGHTS = frozenset(
-    {"table_registration", "masking_config", "column_grant", "access_config", "sensitive_data"}
-)
 VIEW_GOVERNANCE = "view_governance"
 
 
@@ -49,10 +45,6 @@ class CatalogScope:
 
     # Nothing is narrowed: a deployment that authenticates nobody.
     whole: bool
-    # The caller holds a catalog-administration right.
-    admin: bool
-    # The domains the roles CARRYING such a right reach; None = every domain.
-    admin_reach: frozenset[str] | None
     # The domains any of the caller's roles reaches; None = every domain.
     reach: frozenset[str] | None
     # table id → columns the acting role is served.
@@ -62,17 +54,12 @@ class CatalogScope:
     # The role the request acts as (a meta-role for a set), None when there is none.
     role: str | None
 
-    def lists_table(self, table_id: int, domain_id: str) -> bool:
-        if self.whole or table_id in self.served:
-            return True
-        return self._administers(domain_id)
+    def lists_table(self, table_id: int, domain_id: str) -> bool:  # noqa: ARG002
+        return self.whole or table_id in self.served
 
-    def _administers(self, domain_id: str) -> bool:
-        return self.admin and (self.admin_reach is None or domain_id in self.admin_reach)
-
-    def columns(self, table_id: int, domain_id: str) -> set[str] | None:
+    def columns(self, table_id: int, domain_id: str) -> set[str] | None:  # noqa: ARG002
         """The columns of a listed table the caller is answered; None = all of them."""
-        if self.whole or self._administers(domain_id):
+        if self.whole:
             return None
         return self.served.get(table_id, set())
 
@@ -107,8 +94,6 @@ def catalog_scope(info: Any) -> CatalogScope:
         # The process's own call (the boot's warmup queries): no request, nobody to narrow for.
         return CatalogScope(
             whole=True,
-            admin=True,
-            admin_reach=None,
             reach=None,
             served={},
             governance=True,
@@ -119,8 +104,6 @@ def catalog_scope(info: Any) -> CatalogScope:
         # A request the auth middleware resolved nobody for is answered nothing.
         return CatalogScope(
             whole=False,
-            admin=False,
-            admin_reach=frozenset(),
             reach=frozenset(),
             served={},
             governance=False,
@@ -135,13 +118,10 @@ def catalog_scope(info: Any) -> CatalogScope:
     else:
         caps = _resolved_capabilities(identity, state)
         reach = allowed_domains_request(request)
-    admin = bool(caps & CATALOG_ADMIN_RIGHTS)
     return CatalogScope(
         whole=False,
-        admin=admin,
-        admin_reach=_admin_reach(identity, state) if admin else frozenset(),
         reach=reach,
-        served=role_visibility(state, role) if role else {},
+        served={**_drafts_served(state, role), **role_visibility(state, role)} if role else {},
         governance=VIEW_GOVERNANCE in caps,
         role=role,
     )
@@ -159,12 +139,20 @@ def _acting_reach(identity: Any, state: Any) -> frozenset[str] | None:
     return domains_within(sorted(reached))
 
 
-def _admin_reach(identity: Any, state: Any) -> frozenset[str] | None:
-    """The domains the caller's roles carrying a catalog-administration right reach (the scope
-    REQ-1944 gives those rights); None when domains gate nothing for it."""
-    from provisa.api.admin.capabilities import _rights_scope
-    from provisa.core import domain_policy
+def _drafts_served(state: Any, role: str) -> dict[int, set[str]]:
+    """table id → the stored columns of each draft table ``role`` is served (REQ-2152). A draft is
+    in no compiled context, so its columns are tested by the rule the compile applies; a
+    meta-role is served what any of its members is."""
+    from provisa.security.meta_role import acting_roles
+    from provisa.security.visibility import visible_tables
 
-    if domain_policy.single_domain():
-        return None
-    return _rights_scope(identity, state, tuple(sorted(CATALOG_ADMIN_RIGHTS)))
+    drafts = state.role_build_inputs["draft_tables"]
+    served: dict[int, set[str]] = {}
+    for member in acting_roles(state, role):
+        definition = state.roles.get(member)
+        if definition is None:
+            continue  # a role with no definition has no data surface (REQ-1327)
+        subject = {"id": member, "domain_access": definition.get("domain_access") or []}
+        for table in visible_tables(drafts, subject):
+            served.setdefault(table["id"], set()).update(c["column_name"] for c in table["columns"])
+    return served

@@ -32,6 +32,7 @@ from tests.unit.test_landing_ttl_admin import (
     _table_input,
     _table_patches,
 )
+from tests.unit.gate_identity import serve_every_column
 
 
 async def _in_region_eu(db) -> None:
@@ -58,6 +59,12 @@ async def _in_region_eu(db) -> None:
         )
         await conn.execute_core(update(sources).values(region="eu"))
         await conn.execute_core(update(registered_tables).values(region="eu"))
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 async def _regions(db) -> tuple[str | None, str | None]:

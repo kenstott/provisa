@@ -35,8 +35,15 @@ from tests.unit.test_data_steward_domain_scope import (  # the real-database har
     _stored,
     plane,  # noqa: F401  (fixture)
 )
+from tests.unit.gate_identity import serve_every_column
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 @pytest.fixture
