@@ -45,3 +45,15 @@ def test_the_choice_is_read_from_the_demo_yaml(tmp_path):
     assert serves_on_regions_tier(tmp_path)
     (tmp_path / "demo.yaml").write_text(yaml.safe_dump({"published": True}))
     assert not serves_on_regions_tier(tmp_path)
+
+
+def test_the_regions_tier_names_its_demos_as_the_sandbox_tier_does():
+    """A node's naming block names every org it serves. The demos' example queries, tours and
+    Cypher labels are written against the sandbox tier's naming (config/provisa-install-base.yaml,
+    which the plain walk serves with); the regions tier serves the same demos, so it names them
+    the same way. Its domain_prefix: false answered retail's tour query for r__viewGroupCustomers
+    with "Cannot query field" (demo-bundles run 40188190466)."""
+    configs = _NAMED.parents[1] / "config"
+    sandbox = yaml.safe_load((configs / "provisa-install-base.yaml").read_text())["naming"]
+    regions = yaml.safe_load((configs / "provisa-sandbox-regions.yaml").read_text())["naming"]
+    assert regions == sandbox
