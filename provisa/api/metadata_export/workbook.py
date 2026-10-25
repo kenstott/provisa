@@ -251,7 +251,14 @@ def _relationships_rows(snapshot: "MetadataSnapshot", tags: _Tags) -> list[list[
     return rows
 
 
-def _views_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[Any]]:
+def _definition(org_id: str, table: "Table", withheld: frozenset[str]) -> str:
+    """A view's definition, or blank where it names what the reader is not served (REQ-2152)."""
+    return "" if table_uri(org_id, table) in withheld else _view_definition(table)
+
+
+def _views_rows(
+    org_id: str, tables: list["Table"], tags: _Tags, withheld: frozenset[str]
+) -> list[list[Any]]:
     return [
         [
             table_uri(org_id, table),
@@ -259,7 +266,7 @@ def _views_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[An
             table.domain_id,
             table.source_id,
             tags.asset(table_ref(table).parts),
-            _view_definition(table),
+            _definition(org_id, table, withheld),
             table.description,
         ]
         for table in tables
@@ -267,7 +274,9 @@ def _views_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[An
     ]
 
 
-def _materialized_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[Any]]:
+def _materialized_rows(
+    org_id: str, tables: list["Table"], tags: _Tags, withheld: frozenset[str]
+) -> list[list[Any]]:
     return [
         [
             table_uri(org_id, table),
@@ -278,7 +287,7 @@ def _materialized_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[
             table.mv_persist,
             table.mv_incremental,
             tags.asset(table_ref(table).parts),
-            _view_definition(table),
+            _definition(org_id, table, withheld),
         ]
         for table in tables
         if table.materialize and _is_view(table)
@@ -332,8 +341,12 @@ def sheet_rows(  # REQ-1592
     config: "ProvisaConfig",
     *,
     org_id: str,
+    withheld_definitions: frozenset[str],
 ) -> dict[str, list[list[Any]]]:
     """Every object sheet's rows, keyed by sheet name, from an ALREADY-NARROWED snapshot.
+
+    ``withheld_definitions``: the views (by table URI) whose definition names a column its reader
+    is not served, printed with a blank definition (REQ-2152).
 
     Narrowing (rights, domains) is the router's job and has happened before this is called; this
     function's only filtering is the snapshot-to-config alignment described in the module docstring.
@@ -352,9 +365,9 @@ def sheet_rows(  # REQ-1592
         TABLES: _tables_rows(snapshot, tags),
         COLUMNS: _columns_rows(snapshot, tags),
         RELATIONSHIPS: _relationships_rows(snapshot, tags),
-        VIEWS: _views_rows(org_id, tables, tags),
+        VIEWS: _views_rows(org_id, tables, tags, withheld_definitions),
         METRICS: _metrics_rows(org_id, config, metric_names),
-        MATERIALIZED_VIEWS: _materialized_rows(org_id, tables, tags),
+        MATERIALIZED_VIEWS: _materialized_rows(org_id, tables, tags, withheld_definitions),
         GLOSSARY: _glossary_rows(snapshot),
     }
 

@@ -4328,6 +4328,7 @@
   "zh-HK/serverErrors.json::serverErrors.schema.relationship_request_queued": "Queued as request #{{id}}. It needs approvals from {{required}} different users who may create relationships, at least one reaching each domain it touches.",
   "zh-HK/serverErrors.json::serverErrors.schema.relationship_saved": "Relationship '{{relationship}}' saved",
   "zh-HK/serverErrors.json::serverErrors.schema.relationship_unknown_junction": "Junction table '{{table}}' is not registered",
+  "zh-HK/serverErrors.json::serverErrors.schema.relationship_column_beyond_reads": "A relationship can join only on columns your role can read.",
   "zh-HK/serverErrors.json::serverErrors.schema.relationship_unknown_source": "Source table '{{table}}' is not registered",
   "zh-HK/serverErrors.json::serverErrors.schema.relationship_unknown_target": "Target table '{{table}}' is not registered",
   "zh-HK/serverErrors.json::serverErrors.schema.remigrated": "Re-migrated {{source}}.{{table}}",

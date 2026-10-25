@@ -31,11 +31,6 @@ vi.mock("../api/metadataExport", () => ({
 
 vi.mock("../api/catalogs", () => ({ fetchCatalogs: vi.fn() }));
 
-// REQ-2152: the roles a target may be published as.
-vi.mock("../hooks/useAdminQueries", () => ({
-  useRoles: () => ({ roles: [{ id: "steward" }, { id: "analyst" }], loading: false }),
-}));
-
 import {
   fetchMetadataExport,
   setMetadataExport,
@@ -95,6 +90,7 @@ function state(
     required_tier: "premium",
     providers: ["atlas", "openlineage", "openmetadata"],
     beta_providers: [],
+    publishable_roles: ["steward", "analyst"],
     config: { enabled: true, reconcile_cron: "0 * * * *", targets },
     last_publish: null,
     ...overrides,

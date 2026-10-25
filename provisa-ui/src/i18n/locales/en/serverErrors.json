@@ -433,6 +433,7 @@
       "relationship_unknown_source": "Source table '{{table}}' is not registered",
       "relationship_unknown_target": "Target table '{{table}}' is not registered",
       "relationship_unknown_junction": "Junction table '{{table}}' is not registered",
+      "relationship_column_beyond_reads": "A relationship can join only on columns your role can read.",
       "source_id_taken": "Source '{{source}}' already exists",
       "domain_id_taken": "Domain '{{domain}}' already exists",
       "role_id_taken": "Role '{{role}}' already exists",

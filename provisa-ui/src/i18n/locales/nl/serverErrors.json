@@ -433,6 +433,7 @@
       "relationship_unknown_source": "Brontabel '{{table}}' is niet geregistreerd",
       "relationship_unknown_target": "Doeltabel '{{table}}' is niet geregistreerd",
       "relationship_unknown_junction": "Koppeltabel '{{table}}' is niet geregistreerd",
+      "relationship_column_beyond_reads": "Een relatie kan alleen koppelen op kolommen die uw rol mag lezen.",
       "source_id_taken": "Bron '{{source}}' bestaat al",
       "domain_id_taken": "Domein '{{domain}}' bestaat al",
       "role_id_taken": "Rol '{{role}}' bestaat al",

@@ -316,3 +316,17 @@ async def serves_every_column(conn: "Connection", scope: Any, table_id: int) -> 
         select(table_columns.c.column_name).where(table_columns.c.table_id == table_id)
     )
     return all(r.column_name in served for r in stored.fetchall())
+
+
+def role_within(state: Any, scope: Any, role: str) -> bool:
+    """Whether every column ``role`` is served is served to the caller behind ``scope`` too: the
+    roles a caller may hand its reads to (REQ-2152, ruling Q8 -- what you cannot read, you cannot
+    give). A caller nothing narrows holds every role's reads."""
+    from provisa.api.flight.catalog import role_visibility
+
+    if scope.whole:
+        return True
+    return all(
+        columns <= scope.served.get(table_id, set())
+        for table_id, columns in role_visibility(state, role).items()
+    )

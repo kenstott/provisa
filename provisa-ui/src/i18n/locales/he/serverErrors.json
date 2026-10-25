@@ -433,6 +433,7 @@
       "relationship_unknown_source": "טבלת המקור '{{table}}' אינה רשומה",
       "relationship_unknown_target": "טבלת היעד '{{table}}' אינה רשומה",
       "relationship_unknown_junction": "טבלת הקישור '{{table}}' אינה רשומה",
+      "relationship_column_beyond_reads": "קשר יכול לחבר רק עמודות שהתפקיד שלך יכול לקרוא.",
       "source_id_taken": "המקור '{{source}}' כבר קיים",
       "domain_id_taken": "התחום '{{domain}}' כבר קיים",
       "role_id_taken": "התפקיד '{{role}}' כבר קיים",

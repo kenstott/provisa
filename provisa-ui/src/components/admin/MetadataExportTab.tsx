@@ -37,7 +37,6 @@ import {
   type MetadataExportTarget,
   type PublishOutcome,
 } from "../../api/metadataExport";
-import { useRoles } from "../../hooks/useAdminQueries";
 import { exportProviderName } from "../../lib/exportProviders";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
@@ -59,7 +58,6 @@ const blankTarget = (): MetadataExportTarget => ({
 
 export function MetadataExportTab() {
   const { t } = useTranslation();
-  const { roles } = useRoles();
   const [s, setS] = useState<MetadataExportState | null>(null);
   const [rows, setRows] = useState<MetadataExportTarget[]>([]);
   const [catalogs, setCatalogs] = useState<CatalogConnection[]>([]);
@@ -205,7 +203,9 @@ export function MetadataExportTab() {
             <Select
               label={t("metadataExportTab.role")}
               data-testid={tid("role")}
-              data={roles.map((r) => r.id)}
+              // REQ-2152: only roles whose reads the caller holds; a role saved by someone else
+              // stays shown so the field says what the target is published as.
+              data={[...new Set([...s.publishable_roles, ...(target.role ? [target.role] : [])])]}
               value={target.role}
               onChange={(v) => patchRow(i, { role: v })}
               required

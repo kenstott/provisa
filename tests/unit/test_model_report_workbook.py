@@ -86,14 +86,14 @@ def _config() -> ProvisaConfig:
     )
 
 
-def _rows() -> dict[str, list[list]]:
+def _rows(withheld: frozenset[str] = frozenset()) -> dict[str, list[list]]:
     config = _config()
     # REQ-1592: the report is a steward's view of the WHOLE registered model, so it projects with
     # the export filter off — exactly as provisa/api/admin/report_router.py does.
     snapshot = build_snapshot(
         config, org_id=ORG, dialect="postgres", contexts={}, data_products_only=False
     )
-    return wb.sheet_rows(snapshot, config, org_id=ORG)
+    return wb.sheet_rows(snapshot, config, org_id=ORG, withheld_definitions=withheld)
 
 
 def _header(**kwargs) -> wb.ReportHeader:
@@ -284,3 +284,59 @@ async def test_the_workbook_shows_only_what_its_caller_reads(monkeypatch):
     )
     assert [(t.name, [c.name for c in t.columns]) for t in narrowed.tables] == [("orders", ["id"])]
     assert [m.name for m in narrowed_config.metrics] == ["open"]
+
+
+def test_a_withheld_view_is_listed_with_a_blank_definition():
+    """REQ-2152 (Q7): a view's definition names the columns of the tables it reads; for a
+    reader not served all of them the view is listed, its definition blank."""
+    rows = _rows()
+    views = rows[wb.VIEWS]
+    assert views, "the fixture model has a view"
+    uri = views[0][0]
+    withheld = next(r for r in _rows(frozenset({uri}))[wb.VIEWS] if r[0] == uri)
+    assert withheld[5] == "" and views[0][5] != ""
+
+
+async def test_a_view_reading_a_table_its_caller_is_not_served_all_of_is_withheld(monkeypatch):
+    """REQ-2152 (Q7): the rule the audited text follows -- a definition is shown only to a
+    caller served every column of each table it reads."""
+    import types
+
+    import provisa.api.app as appmod
+    from provisa.api.admin import report_router
+    from provisa.api.admin.catalog_scope import CatalogScope
+    from provisa.api.metadata_export.refs import table_uri
+
+    open_view = _table("open_totals", view_sql="SELECT SUM(id) FROM orders")
+    held_view = _table("pay_totals", view_sql="SELECT SUM(salary) FROM payroll")
+    config = ProvisaConfig(sources=[], domains=[], tables=[open_view, held_view], roles=[])
+    scope = CatalogScope(
+        whole=False, reach=None, served={}, governance=False, role="r", compiled=frozenset()
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+    monkeypatch.setattr(
+        appmod.state,
+        "tables",
+        [{"id": 1, "table_name": "orders"}, {"id": 2, "table_name": "payroll"}],
+        raising=False,
+    )
+
+    class _Conn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+    monkeypatch.setattr(
+        appmod.state, "model_db", types.SimpleNamespace(acquire=lambda: _Conn()), raising=False
+    )
+
+    async def _all_of_orders(conn, scope, table_id):
+        return table_id == 1
+
+    monkeypatch.setattr("provisa.api.admin.read_rights.serves_every_column", _all_of_orders)
+    withheld = await report_router._withheld_definitions(
+        types.SimpleNamespace(state=types.SimpleNamespace()), config, ORG
+    )
+    assert withheld == frozenset({table_uri(ORG, held_view)})

@@ -433,6 +433,7 @@
       "relationship_unknown_source": "Die Quelltabelle '{{table}}' ist nicht registriert",
       "relationship_unknown_target": "Die Zieltabelle '{{table}}' ist nicht registriert",
       "relationship_unknown_junction": "Die Verknüpfungstabelle '{{table}}' ist nicht registriert",
+      "relationship_column_beyond_reads": "Eine Beziehung kann nur über Spalten verknüpfen, die Ihre Rolle lesen darf.",
       "source_id_taken": "Die Quelle '{{source}}' existiert bereits",
       "domain_id_taken": "Die Domäne '{{domain}}' existiert bereits",
       "role_id_taken": "Die Rolle '{{role}}' existiert bereits",

@@ -433,6 +433,7 @@
       "relationship_unknown_source": "Исходная таблица '{{table}}' не зарегистрирована",
       "relationship_unknown_target": "Целевая таблица '{{table}}' не зарегистрирована",
       "relationship_unknown_junction": "Связующая таблица '{{table}}' не зарегистрирована",
+      "relationship_column_beyond_reads": "Связь может соединять только столбцы, которые может читать ваша роль.",
       "source_id_taken": "Источник '{{source}}' уже существует",
       "domain_id_taken": "Домен '{{domain}}' уже существует",
       "role_id_taken": "Роль '{{role}}' уже существует",

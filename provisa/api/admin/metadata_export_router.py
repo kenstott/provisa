@@ -149,6 +149,22 @@ def _publish_payload(results: dict[str, PublishResult]) -> dict[str, Any]:
     }
 
 
+def _caller_scope(request: Request) -> Any:
+    import types
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+
+    return catalog_scope(types.SimpleNamespace(context={"request": request}))
+
+
+def _publishable_roles(request: Request) -> list[str]:
+    from provisa.api.admin.read_rights import role_within
+    from provisa.api.app import state
+
+    scope = _caller_scope(request)
+    return sorted(r for r in (getattr(state, "roles", None) or {}) if role_within(state, scope, r))
+
+
 @router.get("/admin/metadata-export")
 async def get_metadata_export(request: Request) -> dict:  # REQ-1074
     """The org's export settings, with credentials reported as set/not-set."""
@@ -161,6 +177,9 @@ async def get_metadata_export(request: Request) -> dict:  # REQ-1074
         "required_tier": min_tier(Feature.METADATA_EXPORT).value,
         "providers": sorted(registered_providers()),
         "beta_providers": beta_providers(),
+        # REQ-2152 (Q8): the roles a target may be published as -- those whose reads the caller
+        # holds too.
+        "publishable_roles": _publishable_roles(request),
         "config": {
             **{name: getattr(config, name) for name in _EXPORT_FIELDS},
             "targets": [
@@ -197,6 +216,21 @@ async def set_metadata_export(request: Request) -> dict:  # REQ-1074
             {name: t[name] for name in _TARGET_FIELDS if name in t} for t in body["targets"]
         ]
 
+    # REQ-2152 (Q8): a target is published only as a role whose reads the caller holds too --
+    # what you cannot read, you cannot give. Refused naming no column.
+    from provisa.api.admin.read_rights import role_within
+
+    scope = _caller_scope(request)
+    for target in updated.get("targets") or []:
+        role = target.get("role")
+        if role is not None and not role_within(state, scope, role):
+            raise ApiError(
+                403,
+                "metadata_export.role_beyond_reads",
+                f"A catalog can be published as role {role!r} only by someone who reads "
+                "everything that role reads",
+                role=role,
+            )
     # Validate before persisting: an enabled export with no target, or a target naming no catalog
     # of the org, is refused here, naming the setting, rather than at the next publish.
     config = _export_config(updated)

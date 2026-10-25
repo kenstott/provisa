@@ -57,6 +57,8 @@ export interface MetadataExportState {
   providers: string[];
   /** The providers not yet proven against a live instance, which are labelled "(beta)". */
   beta_providers: string[];
+  /** REQ-2152: the roles a target may be published as -- those whose reads the caller holds. */
+  publishable_roles: string[];
   config: MetadataExportConfig;
   last_publish: PublishOutcome | null;
 }

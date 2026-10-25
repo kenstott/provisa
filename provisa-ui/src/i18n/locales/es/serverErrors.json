@@ -433,6 +433,7 @@
       "relationship_unknown_source": "La tabla de origen '{{table}}' no está registrada",
       "relationship_unknown_target": "La tabla de destino '{{table}}' no está registrada",
       "relationship_unknown_junction": "La tabla de unión '{{table}}' no está registrada",
+      "relationship_column_beyond_reads": "Una relación solo puede unir columnas que su rol puede leer.",
       "source_id_taken": "El origen '{{source}}' ya existe",
       "domain_id_taken": "El dominio '{{domain}}' ya existe",
       "role_id_taken": "El rol '{{role}}' ya existe",

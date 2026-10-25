@@ -433,6 +433,7 @@
       "relationship_unknown_source": "ソーステーブル '{{table}}' は登録されていません",
       "relationship_unknown_target": "ターゲットテーブル '{{table}}' は登録されていません",
       "relationship_unknown_junction": "結合テーブル '{{table}}' は登録されていません",
+      "relationship_column_beyond_reads": "リレーションシップは、あなたのロールが読める列でのみ結合できます。",
       "source_id_taken": "ソース '{{source}}' はすでに存在します",
       "domain_id_taken": "ドメイン「{{domain}}」はすでに存在します",
       "role_id_taken": "ロール「{{role}}」はすでに存在します",
