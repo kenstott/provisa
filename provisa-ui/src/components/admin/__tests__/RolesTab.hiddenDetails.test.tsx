@@ -18,16 +18,17 @@ vi.mock("../../../api/admin", async (orig) => ({
 
 describe("normalizeRole", () => {
   it("marks a role arriving as an id alone as hidden", () => {
-    expect(normalizeRole({ id: "org_admin", description: "What org_admin is for." })).toMatchObject(
-      {
-        id: "org_admin",
-        detailsHidden: true,
-      },
-    );
+    expect(
+      normalizeRole({ id: "org_admin", description: "What org_admin is for.", standard: true }),
+    ).toMatchObject({
+      id: "org_admin",
+      detailsHidden: true,
+    });
     expect(
       normalizeRole({
         id: "x",
         description: "What x is for.",
+        standard: false,
         capabilities: null,
         domainAccess: null,
       }).detailsHidden,
@@ -38,6 +39,7 @@ describe("normalizeRole", () => {
     const role = normalizeRole({
       id: "a",
       description: "What a is for.",
+      standard: false,
       capabilities: ["usage"],
       domainAccess: ["sales"],
     });
@@ -51,12 +53,13 @@ describe("RolesTab", () => {
   it("shows a hidden role by id with a note and no controls", async () => {
     vi.mocked(api.fetchOrgRoles).mockResolvedValue([
       normalizeRole({
-        id: "analyst",
-        description: "What analyst is for.",
+        id: "shop_analyst",
+        description: "What shop_analyst is for.",
+        standard: false,
         capabilities: ["usage"],
         domain_access: ["sales"],
       }),
-      normalizeRole({ id: "org_admin", description: "What org_admin is for." }),
+      normalizeRole({ id: "org_admin", description: "What org_admin is for.", standard: true }),
     ]);
     render(<RolesTab orgId="acme" />);
 
@@ -68,26 +71,27 @@ describe("RolesTab", () => {
     expect(screen.queryByTestId("delete-role-org_admin")).toBeNull();
 
     expect(screen.getByText("usage")).toBeTruthy();
-    expect(screen.getByTestId("delete-role-analyst")).toBeTruthy();
+    expect(screen.getByTestId("delete-role-shop_analyst")).toBeTruthy();
   });
 
   it("asks before deleting a role, and deletes only on confirm", async () => {
     vi.mocked(api.fetchOrgRoles).mockResolvedValue([
       normalizeRole({
-        id: "analyst",
-        description: "What analyst is for.",
+        id: "shop_analyst",
+        description: "What shop_analyst is for.",
+        standard: false,
         capabilities: ["usage"],
         domain_access: ["sales"],
       }),
     ]);
     render(<RolesTab orgId="acme" />);
 
-    fireEvent.click(await screen.findByTestId("delete-role-analyst"));
+    fireEvent.click(await screen.findByTestId("delete-role-shop_analyst"));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText('Delete role "analyst"?')).toBeTruthy();
+    expect(within(dialog).getByText('Delete role "shop_analyst"?')).toBeTruthy();
     expect(api.deleteOrgRole).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
-    await waitFor(() => expect(api.deleteOrgRole).toHaveBeenCalledWith("acme", "analyst"));
+    await waitFor(() => expect(api.deleteOrgRole).toHaveBeenCalledWith("acme", "shop_analyst"));
   });
 });

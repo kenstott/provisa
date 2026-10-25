@@ -149,7 +149,7 @@ def test_a_column_grant_on_the_catalog_does_not_open_it_to_writes(server):
         write_grants_mutation(
             table_id,
             ["org_admin"],
-            ["id", "parent_role_id", "org_id", "capabilities", "tenant_id", "domain_id"],
+            ["id", "org_id", "capabilities", "tenant_id", "domain_id"],
         ),
     )
     status, body = _post(

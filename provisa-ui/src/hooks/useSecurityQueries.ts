@@ -118,7 +118,7 @@ export function useUpsertRole() {
           maxQueryComplexity: number | null;
           maxQueryTimeMs: number | null;
         } | null;
-        parentRoleId?: string | null; // REQ-1677
+        parents?: string[]; // REQ-2155: in declared order
         residencyValues?: string[]; // REQ-1921
         sessionVars?: { name: string; value: string }[]; // REQ-1682
         inactivityDays?: number | null; // REQ-2077: null = never

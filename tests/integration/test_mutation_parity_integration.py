@@ -378,7 +378,7 @@ class TestInheritedRoles:
             description="Test role.",
             capabilities=["custom_cap"],
             domain_access=["sales"],
-            parent_role_id="base",
+            parents=["base"],
         )
 
         flattened = flatten_roles([parent, child])
@@ -399,7 +399,7 @@ class TestInheritedRoles:
             description="Test role.",
             capabilities=[],
             domain_access=["sales"],
-            parent_role_id="base",
+            parents=["base"],
         )
 
         flattened = flatten_roles([parent, child])
@@ -423,7 +423,7 @@ class TestInheritedRoles:
             description="Test role.",
             capabilities=["custom_cap"],
             domain_access=["sales"],
-            parent_role_id="base",
+            parents=["base"],
         )
 
         flattened = flatten_roles([parent, child])
@@ -441,7 +441,7 @@ class TestInheritedRoles:
             description="Test role.",
             capabilities=[],
             domain_access=["sales"],
-            parent_role_id="base",
+            parents=["base"],
         )
 
         flattened = flatten_roles([parent, child])
@@ -460,7 +460,7 @@ class TestInheritedRoles:
                 description="Test role.",
                 capabilities=["cap2"],
                 domain_access=["d2"],
-                parent_role_id="r1",
+                parents=["r1"],
             ),
         ]
         flattened = flatten_roles(roles)

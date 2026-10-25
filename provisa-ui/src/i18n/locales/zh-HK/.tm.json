@@ -4282,7 +4282,7 @@
   "zh-HK/securityPage.json::securityPage.panelNewRule": "New RLS rule",
   "zh-HK/securityPage.json::securityPage.panelRule": "RLS rule {{id}}",
   "zh-HK/securityPage.json::securityPage.parentRole": "Inherits from",
-  "zh-HK/securityPage.json::securityPage.parentRoleHelp": "The role's grants, column visibility and RLS rules are inherited; this role's own RLS rule for a table replaces the parent's.",
+  "zh-HK/securityPage.json::securityPage.parentRoleHelp": "The role holds the capabilities and grants of every role it inherits from. Its own row rule for a table replaces theirs; without one, their rules are combined.",
   "zh-HK/securityPage.json::securityPage.parentRoleNone": "No parent",
   "zh-HK/securityPage.json::securityPage.purposeAdd": "Scope a rule to a single table, or to a whole domain so it covers every table in it; where both apply, the table rule wins for that table. A rule on a tag covers every table carrying the tag, now and later, and is added to the table's own rule: a tag can only narrow what a role reads. A rule is written against a role rather than a person, so what someone can see is changed by changing the role they hold.",
   "zh-HK/securityPage.json::securityPage.purposeAria": "About RLS rules",
@@ -8114,5 +8114,7 @@
   "zh-HK/serverErrors.json::serverErrors.profile.classification_kind_unknown": "Unknown classification kind {{kind}}",
   "zh-HK/serverErrors.json::serverErrors.profile.classification_pii_refused": "The column could not be marked PII",
   "zh-HK/serverErrors.json::serverErrors.profile.classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
-  "zh-HK/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads"
+  "zh-HK/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads",
+  "zh-HK/securityPage.json::securityPage.standardRole": "Standard role",
+  "zh-HK/securityPage.json::securityPage.standardRoleNote": "Provisa's own, kept up to date by Provisa. Extend it with a role of your own that inherits from it."
 }

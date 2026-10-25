@@ -163,6 +163,8 @@ def _domain_from_row(row, effective_steward: str | None) -> DomainType:
 
 def _role_from_row(row, *, detail: bool = True) -> RoleType:
     """``detail`` False returns the id alone: no capabilities, domain access, limits or parent."""
+    from provisa.core.db import STANDARD_ROLES
+
     if not detail:
         return RoleType(
             id=row["id"],
@@ -190,7 +192,8 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
         # REQ-1602: the rights this role is shown but does not hold.
         demonstrated=list(row["demonstrated"]),
         rate_limit=rate_limit,
-        parent_role_id=row.get("parent_role_id"),  # REQ-1677
+        parents=list(row["parents"]),  # REQ-2155
+        standard=row["id"] in STANDARD_ROLES,  # REQ-2155
         residency_values=list(row["residency_values"]),  # REQ-1921
         session_vars=[  # REQ-1682
             SessionVarType(name=name, value=value)

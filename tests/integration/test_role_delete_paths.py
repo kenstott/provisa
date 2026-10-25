@@ -80,7 +80,7 @@ def _role_ids(c: httpx.Client) -> set[str]:
 
 
 def _create_graphql(c: httpx.Client, role_id: str, parent: str | None = None) -> None:
-    parent_arg = f', parentRoleId: "{parent}"' if parent else ""
+    parent_arg = f', parents: ["{parent}"]' if parent else ""
     made = _gql(
         c,
         f"""mutation {{ createRole(input: {{ description: "Test role.",
@@ -98,7 +98,7 @@ def _create_rest(c: httpx.Client, role_id: str, parent: str | None = None) -> No
             "description": "Test role.",
             "capabilities": ["query_development"],
             "domain_access": ["*"],
-            "parent_role_id": parent,
+            "parents": [parent] if parent else [],
         },
     )
     assert resp.status_code == 200, resp.text
@@ -143,9 +143,7 @@ def test_a_parent_is_refused_on_both_entry_points_then_goes_after_its_heir(serve
         assert refusal["params"] == {
             "role": parent,
             "count": 1,
-            "dependents": [
-                {"kind": "role", "id": heir, "name": heir, "via": ["roles.parent_role_id"]}
-            ],
+            "dependents": [{"kind": "role", "id": heir, "name": heir, "via": ["roles.parents"]}],
         }, refusal
         assert {parent, heir} <= _role_ids(c)
 

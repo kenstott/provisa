@@ -100,23 +100,26 @@ export function RolesTab({ orgId }: RolesTabProps) {
                       {role.domain_access.join(", ") || t("rolesTab.noDomains")}
                     </Table.Td>
                     <Table.Td>
-                      <ConfirmDialog
-                        title={t("rolesTab.deleteRoleTitle", { roleId: role.id })}
-                        consequence={t("rolesTab.deleteRoleConsequence")}
-                        onConfirm={() => handleDeleteOrgRole(role.id)}
-                      >
-                        {(open) => (
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            aria-label={t("rolesTab.deleteRole", { roleId: role.id })}
-                            data-testid={`delete-role-${role.id}`}
-                            onClick={open}
-                          >
-                            <Trash2 size={14} />
-                          </ActionIcon>
-                        )}
-                      </ConfirmDialog>
+                      {/* REQ-2155: a standard role is Provisa's and locked; it is never deleted. */}
+                      {!role.standard && (
+                        <ConfirmDialog
+                          title={t("rolesTab.deleteRoleTitle", { roleId: role.id })}
+                          consequence={t("rolesTab.deleteRoleConsequence")}
+                          onConfirm={() => handleDeleteOrgRole(role.id)}
+                        >
+                          {(open) => (
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              aria-label={t("rolesTab.deleteRole", { roleId: role.id })}
+                              data-testid={`delete-role-${role.id}`}
+                              onClick={open}
+                            >
+                              <Trash2 size={14} />
+                            </ActionIcon>
+                          )}
+                        </ConfirmDialog>
+                      )}
                     </Table.Td>
                   </>
                 )}

@@ -42,9 +42,8 @@ import { setActingRoles } from "../lib/actingRole";
 // instead of removing a tab.
 export const DEFAULT_ADMIN_ROLE: Role = {
   id: "org_admin",
-  // The seed's own (SEEDED_ROLE_DESCRIPTIONS in provisa/core/db.py).
-  description:
-    "Administers the organization: its sources, model, governance, members and settings, in every domain.",
+  // The standard role's own (provisa/core/standard_roles.yaml).
+  description: "Administers the organization: its sources, model, governance, members and settings.",
   capabilities: [
     "source_registration",
     "table_registration",
@@ -72,6 +71,9 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "org_glossary_rw", // REQ-1592
     "data_product_read", // REQ-1634
     "data_product_rw", // REQ-1634
+    "data_product_owned_rw", // REQ-2155
+    "dq_read", // REQ-2155
+    "dq_rw", // REQ-2155
   ] as Capability[],
   // REQ-1602: org_admin holds every right it is offered, so it is shown nothing it cannot use.
   demonstrated: [],

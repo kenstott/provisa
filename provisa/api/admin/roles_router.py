@@ -21,7 +21,11 @@ from pydantic import BaseModel
 from sqlalchemy import insert, or_, select, update
 
 from provisa.api.admin._platform_guard import role_definition_problem
-from provisa.api.admin.capabilities import require_capability_request, role_definitions_visible
+from provisa.api.admin.capabilities import (
+    require_capability_request,
+    require_reach_of_added_domains_request,
+    role_definitions_visible,
+)
 from provisa.api.errors import ApiError
 from provisa.core.repositories import role as role_repo
 from provisa.core.schema_org import roles
@@ -43,7 +47,6 @@ router = APIRouter(prefix="/admin/roles", tags=["admin"])
 #: ``user_management`` itself. An org_admin who narrowed their own role would lock the environment
 #: out of being administered at all, with no second administrator to undo it -- so the lock-out is
 #: prevented by construction rather than by a check that counts who is left.
-_UNEDITABLE: frozenset[str] = frozenset({"org_admin", "platform_admin"})
 
 
 def _active_org(request: Request) -> str:
@@ -82,7 +85,7 @@ class CreateRoleBody(BaseModel):
     description: str  # REQ-2080
     capabilities: list[str]
     domain_access: list[str]
-    parent_role_id: str | None = None  # REQ-1677
+    parents: list[str] = []  # REQ-2155: the roles it inherits from, in order
     residency_values: list[str] = []  # REQ-1921: with data_residency, the values it covers
 
 
@@ -90,7 +93,7 @@ class UpdateRoleBody(BaseModel):
     description: str | None = None  # REQ-2080: None leaves it unchanged
     capabilities: list[str] | None = None
     domain_access: list[str] | None = None
-    parent_role_id: str | None = None  # REQ-1677: None leaves the parent unchanged
+    parents: list[str] | None = None  # REQ-2155: None leaves the parents unchanged
     residency_values: list[str] | None = None  # REQ-1921: None leaves them unchanged
 
 
@@ -110,7 +113,7 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
                 roles.c.domain_access,
                 roles.c.residency_values,  # REQ-1921
                 roles.c.org_id,
-                roles.c.parent_role_id,  # REQ-1677
+                roles.c.parents,  # REQ-2155
             )
             .where(or_(roles.c.org_id.is_(None), roles.c.org_id == org_id))
             .order_by(roles.c.id)
@@ -118,42 +121,26 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
         rows = result.fetchall()
     identity = getattr(request.state, "identity", None)
     full = role_definitions_visible(request, getattr(identity, "roles", []))
+    from provisa.core.db import STANDARD_ROLES
+
+    # REQ-2155: a standard role is Provisa's and locked; the client offers no edit for one.
     return [
-        dict(r._mapping) if full(r.id) else {"id": r.id, "description": r.description} for r in rows
+        {**dict(r._mapping), "standard": r.id in STANDARD_ROLES}
+        if full(r.id)
+        else {"id": r.id, "description": r.description, "standard": r.id in STANDARD_ROLES}
+        for r in rows
     ]
 
 
-async def _require_reach_of_added(
-    conn, request: Request, own_before, parent_before, own_after, parent_after
-) -> None:  # REQ-1531
-    """The caller reaches every domain this change adds to what the role reaches — the domains
-    it lists and the ones it inherits (REQ-1677). ``own_before`` is None for a new role."""
-    from provisa.api.admin.capabilities import require_reach_of_added_domains_request
-    from provisa.security.inheritance import effective_domain_access
-
-    rows = await role_repo.list_all(conn)
-
-    def _reach(own, parent_id):
-        inherited = effective_domain_access(parent_id, rows) if parent_id else []
-        return [*own, *inherited]
-
-    before = None if own_before is None else _reach(own_before, parent_before)
-    require_reach_of_added_domains_request(request, before, _reach(own_after, parent_after))
-
-
 async def _require_reach_of_existing(conn, request: Request, role_id: str) -> None:  # REQ-1531
-    """Changing or removing a role is an act in every domain it reaches now -- listed or
-    inherited -- so the caller's user_management must reach each. A role that does not exist is
-    the act's own not-found."""
+    """Changing or removing a role is an act in every domain it reaches now, so the caller's
+    user_management must reach each. A role's reach is its own (REQ-2155). A role that does not
+    exist is the act's own not-found."""
     from provisa.api.admin.capabilities import require_right_in_domains_request
-    from provisa.core.repositories import role as role_repo
-    from provisa.security.inheritance import effective_domain_access
 
-    rows = await role_repo.list_all(conn)
-    if any(r["id"] == role_id for r in rows):
-        require_right_in_domains_request(
-            request, "user_management", effective_domain_access(role_id, rows)
-        )
+    for r in await role_repo.list_all(conn):
+        if r["id"] == role_id:
+            require_right_in_domains_request(request, "user_management", r["domain_access"])
 
 
 @router.post("/")
@@ -164,14 +151,13 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     pool = _pool(request)
     description = _description(body.id, body.description)
     async with pool.acquire() as conn:
-        await _check_parent(conn, body.id, body.parent_role_id)  # REQ-1677
+        _refuse_standard(body.id)  # REQ-2155
+        await _check_parents(conn, body.id, body.parents)  # REQ-2155
         await _check_definition(
-            conn, request, body.id, body.capabilities, body.domain_access, body.parent_role_id
+            conn, request, body.id, body.capabilities, body.domain_access, body.parents
         )
-        # REQ-1531: a role hands out reach; its creator must hold what it lists and inherits.
-        await _require_reach_of_added(
-            conn, request, None, None, body.domain_access, body.parent_role_id
-        )
+        # REQ-1531: a role hands out reach; its creator must hold every domain it lists.
+        require_reach_of_added_domains_request(request, None, body.domain_access)
         await role_repo.require_residency_grant_saved(  # REQ-1921
             conn, body.id, body.capabilities, body.residency_values
         )
@@ -189,7 +175,7 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
                 domain_access=body.domain_access,
                 residency_values=body.residency_values,
                 org_id=org_id,
-                parent_role_id=body.parent_role_id,
+                parents=body.parents,
             )
         )
     from provisa.api.app import _rebuild_schemas
@@ -203,7 +189,7 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         "domain_access": body.domain_access,
         "residency_values": body.residency_values,
         "org_id": org_id,
-        "parent_role_id": body.parent_role_id,
+        "parents": body.parents,
     }
 
 
@@ -213,46 +199,45 @@ async def _check_definition(  # REQ-042, REQ-1337, REQ-1530
     role_id: str,
     capabilities: list[str],
     domain_access: list[str],
-    parent_id: str | None,
+    parents: list[str],
 ) -> None:
     """Refuse a definition that lists no domain, names an unknown capability, or carries a
-    platform right the caller may not define — its own values or the ones its parent chain hands
-    down (REQ-1677 folds a parent's rights and domains into the role). See
+    platform right the caller may not define -- its own values or the ones its ancestors hand down
+    (REQ-2155 folds every ancestor's capabilities into the role; its reach is its own). See
     ``role_definition_problem``."""
-    inherited: list[str] = []
-    inherited_domains: list[str] = []
-    if parent_id is not None:
-        from provisa.security.inheritance import effective_capabilities, effective_domain_access
+    from provisa.security.inheritance import effective_capabilities
 
-        result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.domain_access, roles.c.parent_role_id)
-        )
-        rows = [dict(r._mapping) for r in result.fetchall()]
-        inherited = effective_capabilities(parent_id, rows)
-        inherited_domains = effective_domain_access(parent_id, rows)
+    rows = await role_repo.list_all(conn)
+    inherited = sorted({c for p in parents for c in effective_capabilities(p, rows)})
     problem = role_definition_problem(
-        request,
-        capabilities,
-        inherited,
-        role_id=role_id,
-        domain_access=domain_access,
-        inherited_domain_access=inherited_domains,
+        request, capabilities, inherited, role_id=role_id, domain_access=domain_access
     )
     if problem is not None:
         raise problem
 
 
-async def _check_parent(conn, role_id: str, parent_id: str | None) -> None:  # REQ-1677
-    """Refuse a parent that is missing, the role itself, or would close a cycle."""
-    from provisa.security.inheritance import parent_map, parent_problem
+async def _check_parents(conn, role_id: str, parents: list[str]) -> None:  # REQ-2155
+    """Refuse parents that are missing, the role itself, named twice, or would close a cycle."""
+    from provisa.security.inheritance import parent_map, parents_problem
 
-    if parent_id is None:
-        return
-    result = await conn.execute_core(select(roles.c.id, roles.c.parent_role_id))
-    existing = [dict(r._mapping) for r in result.fetchall()]
-    problem = parent_problem(role_id, parent_id, parent_map(existing))
+    problem = parents_problem(role_id, parents, parent_map(await role_repo.list_all(conn)))
     if problem is not None:
         raise ApiError(400, "roles.parent_invalid", problem)
+
+
+def _refuse_standard(role_id: str) -> None:  # REQ-2155
+    """A standard role is Provisa's: an organisation extends it with a child role, never edits,
+    replaces or removes it."""
+    from provisa.core.db import STANDARD_ROLES
+
+    if role_id in STANDARD_ROLES:
+        raise ApiError(
+            400,
+            "roles.standard_locked",
+            f"Role {role_id!r} is a standard role. Extend it with a role of your own that "
+            "inherits from it.",
+            role=role_id,
+        )
 
 
 @router.put("/{role_id}")
@@ -270,17 +255,14 @@ async def update_role(
                 roles.c.domain_access,
                 roles.c.residency_values,
                 roles.c.org_id,
-                roles.c.parent_role_id,
+                roles.c.parents,
             ).where(roles.c.id == role_id)
         )
         existing = result.fetchone()
         if existing is None:
             raise ApiError(404, "roles.not_found", "Role not found")
         existing = dict(existing._mapping)
-        if role_id in _UNEDITABLE:
-            raise ApiError(
-                400, "roles.cannot_modify_administrative", "Cannot modify administrative roles"
-            )
+        _refuse_standard(role_id)  # REQ-2155
 
         new_description = (
             existing["description"]
@@ -292,9 +274,7 @@ async def update_role(
             body.domain_access if body.domain_access is not None else existing["domain_access"]
         )
 
-        new_parent = (
-            body.parent_role_id if body.parent_role_id is not None else existing["parent_role_id"]
-        )
+        new_parents = body.parents if body.parents is not None else existing["parents"]
         await _require_reach_of_existing(conn, request, role_id)  # REQ-1531
         new_values = (
             body.residency_values
@@ -302,16 +282,11 @@ async def update_role(
             else existing["residency_values"]
         )
         await role_repo.require_residency_grant_saved(conn, role_id, new_caps, new_values)
-        if new_parent != existing["parent_role_id"]:
-            await _check_parent(conn, role_id, new_parent)  # REQ-1677
-        await _check_definition(conn, request, role_id, new_caps, new_domains, new_parent)
-        await _require_reach_of_added(
-            conn,
-            request,
-            existing["domain_access"],
-            existing["parent_role_id"],
-            new_domains,
-            new_parent,
+        if new_parents != existing["parents"]:
+            await _check_parents(conn, role_id, new_parents)  # REQ-2155
+        await _check_definition(conn, request, role_id, new_caps, new_domains, new_parents)
+        require_reach_of_added_domains_request(  # REQ-1531
+            request, existing["domain_access"], new_domains
         )
         await conn.execute_core(
             update(roles)
@@ -321,7 +296,7 @@ async def update_role(
                 capabilities=new_caps,
                 domain_access=new_domains,
                 residency_values=new_values,
-                parent_role_id=new_parent,
+                parents=new_parents,
             )
         )
     from provisa.api.app import _rebuild_schemas
@@ -335,7 +310,7 @@ async def update_role(
         "domain_access": new_domains,
         "residency_values": new_values,
         "org_id": existing["org_id"],
-        "parent_role_id": new_parent,
+        "parents": new_parents,
     }
 
 
@@ -346,6 +321,7 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
 
     pool = _pool(request)
     async with pool.acquire() as conn:
+        _refuse_standard(role_id)  # REQ-2155
         await _require_reach_of_existing(conn, request, role_id)  # REQ-1531
         try:
             deleted = await role_repo.delete(conn, role_id)

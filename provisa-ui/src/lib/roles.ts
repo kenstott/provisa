@@ -22,7 +22,8 @@ export interface RawRole {
   domain_access?: string[] | null;
   domainAccess?: string[] | null;
   rateLimit?: Role["rateLimit"];
-  parentRoleId?: string | null;
+  parents?: string[] | null; // REQ-2155
+  standard: boolean; // REQ-2155: the server names it for every role
   residencyValues?: string[] | null; // REQ-1921
   sessionVars?: Role["sessionVars"] | null; // REQ-1682
   inactivityDays?: number | null; // REQ-2077
@@ -43,6 +44,7 @@ export function normalizeRole(raw: RawRole): Role {
       capabilities: [],
       demonstrated: [],
       domain_access: [],
+      standard: raw.standard,
       detailsHidden: true,
     };
   }
@@ -54,7 +56,8 @@ export function normalizeRole(raw: RawRole): Role {
     demonstrated: (raw.demonstrated ?? []) as Capability[],
     domain_access: domainAccess,
     rateLimit: raw.rateLimit,
-    parentRoleId: raw.parentRoleId,
+    parents: raw.parents ?? [],
+    standard: raw.standard,
     residencyValues: raw.residencyValues ?? [],
     sessionVars: raw.sessionVars ?? [],
     inactivityDays: raw.inactivityDays ?? null,

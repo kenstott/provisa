@@ -25,7 +25,7 @@ from provisa.api.data.action_governance import (
 )
 from provisa.api.errors import ApiError
 from provisa.compiler.rls import RLSContext
-from provisa.security.inheritance import materialize_rls, role_chains
+from provisa.security.inheritance import materialize_rls, parent_map
 from tests.role_state import RoleState
 
 
@@ -200,8 +200,8 @@ class TestGovern:
                 "filter_expr": "region = 'west'",
             }
         ]
-        chains = role_chains([{"id": "analyst"}, {"id": "junior", "parent_role_id": "analyst"}])
-        out = materialize_rls(rules, [], chains, [FN])
+        parents = parent_map([{"id": "analyst"}, {"id": "junior", "parents": ["analyst"]}])
+        out = materialize_rls(rules, [], parents, [FN])
         from provisa.compiler.rls import build_rls_context
 
         junior = build_rls_context(out, "junior")

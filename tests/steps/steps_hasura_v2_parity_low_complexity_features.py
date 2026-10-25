@@ -17,7 +17,7 @@ REQ-213 — ``distinct_on`` query argument deduplicates results via ``DISTINCT O
 REQ-214 — column presets auto-set audit columns on insert/update from session
           variables (headers) or built-in functions (``now``), removing those
           columns from user input before SQL generation.
-REQ-215 — inherited roles: a child role declares ``parent_role_id`` and inherits
+REQ-215 — inherited roles: a child role declares ``parents`` and inherits
           (merges up the chain) the parent's capabilities and domain_access. The
           hierarchy is flattened at startup into per-role dicts so authorization
           lookups remain O(1).
@@ -267,8 +267,7 @@ def _flatten_roles_from_dicts(role_definitions: list[dict]) -> dict[str, dict]:
         role = by_id[role_id]
         caps: set[str] = set(role.get("capabilities") or [])
         domains: set[str] = set(role.get("domain_access") or [])
-        parent_id = role.get("parent_role_id")
-        if parent_id:
+        for parent_id in role.get("parents") or []:
             parent_resolved = _resolve(parent_id, visiting)
             caps |= set(parent_resolved["capabilities"])
             domains |= set(parent_resolved["domain_access"])
@@ -299,7 +298,7 @@ def _role(
         description="Test role.",
         capabilities=caps,
         domain_access=domains,
-        parent_role_id=parent,
+        parents=[parent] if parent else [],
     )
 
 
@@ -537,21 +536,21 @@ def _given_roles_with_parent_role_id(shared_data: dict) -> None:
             "description": "Test role.",
             "capabilities": ["read"],
             "domain_access": ["public"],
-            "parent_role_id": None,
+            "parents": [],
         },
         {
             "id": "analyst",
             "description": "Test role.",
             "capabilities": ["aggregate"],
             "domain_access": ["analytics"],
-            "parent_role_id": "base_viewer",
+            "parents": ["base_viewer"],
         },
         {
             "id": "senior_analyst",
             "description": "Test role.",
             "capabilities": ["export"],
             "domain_access": ["finance"],
-            "parent_role_id": "analyst",
+            "parents": ["analyst"],
         },
     ]
 

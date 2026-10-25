@@ -56,7 +56,6 @@ from provisa.core.env_conflicts import Conflict
 from provisa.core.environments import org_schema
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import org_settings
-from provisa.core.schema_org import roles as org_roles
 from provisa.core.org_forget import on_forget, schema_of_org
 
 if TYPE_CHECKING:
@@ -261,60 +260,6 @@ async def copy_model(
             apply=True,
         )
     return report
-
-
-async def adopt_role_definition(
-    db: "Database",
-    org_id: str,
-    env: str | None,
-    *,
-    target: str,
-    source: str,
-) -> None:
-    """In ``env`` alone, ``target``'s capabilities and demonstrated list become ``source``'s.
-
-    REQ-1597 defines the sandbox visitor by subtraction from ``org_admin``, and the subtraction has
-    to happen against the NAME the model's grants carry, not against a name of its own. A column is
-    visible to a role when ``table_columns.visible_to`` NAMES that role
-    (``schema_gen._build_visible_tables``), and every grant in a copied model names the roles the
-    model was authored against. A role id no grant mentions therefore sees no column on any table,
-    and ``schema_gen`` then drops each table that has none -- leaving a visitor exactly the tables
-    whose API path/query parameters are exempt from the gate, and nothing else. The schema was not
-    incomplete; it was correctly empty for a name nobody had granted anything to.
-
-    So the visitor holds ``sandbox`` AND ``org_admin`` (``seat_redeemed_roles``), and the withholding
-    happens HERE, against ``org_admin``, in the visitor's own environment -- capabilities resolve as
-    the union over the holder's roles, so the union is the sandbox definition and no wider. The
-    definition is not restated: it is read from this environment's own ``sandbox`` row, so
-    REQ-1597's denylist and REQ-1602's demonstrated list keep exactly one author. Prod's
-    ``org_admin`` is untouched -- REQ-1539 makes ``roles`` the environment's own answer once it has
-    one, and this writes only the schema ``env`` names.
-    """
-    schema = org_schema(org_id, env)
-    scoped = _scoped(org_roles, schema)
-    async with db.acquire() as conn, conn.transaction():
-        row = (
-            await conn.execute_core(
-                select(scoped.c.capabilities, scoped.c.demonstrated).where(scoped.c.id == source)
-            )
-        ).fetchone()
-        if row is None:
-            raise ValueError(f"{schema} has no role {source!r} to define {target!r} from")
-        await conn.execute_core(
-            scoped.update()
-            .where(scoped.c.id == target)
-            .values(
-                capabilities=row._mapping["capabilities"],
-                demonstrated=row._mapping["demonstrated"],
-                # REQ-1624: and the derivation is RECORDED, not just applied. The tenancy seam
-                # (db.apply_tenancy_role_grants) re-asserts org_admin's own rights into every
-                # environment schema on every runtime build, so a subtraction applied once here was
-                # given back on the visitor's next request -- environment_management among them,
-                # which is how a sandbox visitor reached the org's environments surface. The column
-                # is what that seam re-reads the definition from, so the subtraction survives it.
-                defined_from=source,
-            )
-        )
 
 
 async def _copy(

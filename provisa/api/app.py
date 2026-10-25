@@ -3110,7 +3110,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                         _roles_t.c.capabilities,
                         _roles_t.c.domain_access,
                         _roles_t.c.rate_limit,
-                        _roles_t.c.parent_role_id,  # REQ-1677
+                        _roles_t.c.parents,  # REQ-2155
                         # REQ-1921: the data_residency grant's covered values. state.roles feeds
                         # residency_values_for_claims (the region-edit gate); without this column a
                         # role holding data_residency resolves to a dict with no residency_values
@@ -3133,16 +3133,19 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             expand_column_grants,
             expand_write_grants,
             flatten_role_dicts,
+            parent_map,
             role_chains,
         )
 
         role_chains_by_id = role_chains(roles)
+        # REQ-2155: each role's parents, which the row-rule and write-grant folds resolve over.
+        role_parents_by_id = parent_map(roles)
         # REQ-1363: then down the domain tree -- a role that lists a domain reaches every domain
         # under it. state.roles carries the flattened list, so every reader of a role's
         # domain_access (the data surfaces and the admin's domain gate) sees the subtree.
         roles = _domain_tree.flatten_role_domains(flatten_role_dicts(roles), _domain_parents)
         expand_column_grants(tables, role_chains_by_id)
-        expand_write_grants(tables, role_chains_by_id)  # REQ-2074
+        expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
 
         # Merge PG-stored allowed_domains into state; inject source naming into table dicts.
@@ -3238,12 +3241,12 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
             conn, raw_config, tables
         )
-        # REQ-1677: child-precedence RLS — the nearest role in the chain with a rule for a table
-        # (REQ-1679: or an action) supplies that predicate for the child.
+        # REQ-1677, REQ-2155: child-precedence RLS -- a role's own rule for a table (REQ-1679: or
+        # an action) stands, else its parents' rules ORed.
         from provisa.security.inheritance import expand_grants, materialize_rls
 
         rls_rules = materialize_rls(
-            rls_rules, tables, role_chains_by_id, [*tracked_functions, *tracked_webhooks]
+            rls_rules, tables, role_parents_by_id, [*tracked_functions, *tracked_webhooks]
         )
         # REQ-1384: one predicate per (role, table) — the table's own or its domain's rule,
         # AND-ed with every rule on a tag the table carries and (REQ-1363) with the rule on every

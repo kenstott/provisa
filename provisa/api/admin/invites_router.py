@@ -191,7 +191,7 @@ async def resolve_invite_role(
     assert rt.model_db is not None
     async with rt.model_db.acquire() as conn:
         result = await conn.execute_core(
-            select(org_roles.c.id, org_roles.c.capabilities, org_roles.c.parent_role_id)
+            select(org_roles.c.id, org_roles.c.capabilities, org_roles.c.parents)
         )
         role_rows = [dict(r._mapping) for r in result.fetchall()]
     if resolved not in {r["id"] for r in role_rows}:

@@ -63,7 +63,13 @@ export type Capability =
   // analyst, developer, and modeler all hold it. `data_product_rw` is create/delete, on the
   // same footing as `table_registration`: org_admin only.
   | "data_product_read"
-  | "data_product_rw";
+  | "data_product_rw"
+  // REQ-2155: edit a data product the caller's role owns (its owner_role, an ancestor included).
+  | "data_product_owned_rw"
+  // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
+  // checks, expectations and promises -- so managing checks needs no table registration.
+  | "dq_read"
+  | "dq_rw";
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;
@@ -92,7 +98,10 @@ export interface Role {
   demonstrated: Capability[];
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
-  parentRoleId?: string | null; // REQ-1677: the role this one inherits from
+  /** REQ-2155: the roles this one inherits from, in order; its capabilities are their union. */
+  parents?: string[];
+  /** REQ-2155: a standard role is Provisa's and locked -- extended with child roles, never edited. */
+  standard?: boolean;
   /** REQ-1921: with data_residency, the region values its grant covers (regions, "no_region"). */
   residencyValues?: string[];
   /** REQ-1682: the role's own constant session values, what its row rules read when the request

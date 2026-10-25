@@ -53,8 +53,8 @@ def _config() -> ProvisaConfig:
                 id="junior",
                 description="Test role.",
                 capabilities=[],
-                domain_access=[],
-                parent_role_id="analyst",
+                domain_access=["sales"],  # REQ-2155: reach is the role's own
+                parents=["analyst"],
             ),
             Role(id="people", description="Test role.", capabilities=[], domain_access=["hr"]),
         ],

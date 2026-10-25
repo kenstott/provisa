@@ -886,7 +886,9 @@ class RoleType:  # REQ-042
     domain_access: list[str] | None
     demonstrated: list[str] | None = strawberry.field(default_factory=list)  # REQ-1602
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
-    parent_role_id: str | None = None  # REQ-1677
+    parents: list[str] = strawberry.field(default_factory=list)  # REQ-2155
+    # REQ-2155: a standard role is Provisa's and locked: extended with child roles, never edited.
+    standard: bool = False
     # REQ-1921: with data_residency, the region values its grant covers; null as capabilities is.
     residency_values: list[str] | None = strawberry.field(default_factory=list)
     # REQ-1682: the role's own constant session values, by name; null as capabilities is.
@@ -1568,7 +1570,7 @@ class RoleInput:  # REQ-042
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimitInput | None = None  # REQ-1174
-    parent_role_id: str | None = None  # REQ-1677
+    parents: list[str] = strawberry.field(default_factory=list)  # REQ-2155: in declared order
     # REQ-1921: with data_residency, the region values its grant covers (regions, "no_region").
     residency_values: list[str] = strawberry.field(default_factory=list)
     # REQ-1682: the role's own constant session values; the whole set, as the form holds it.

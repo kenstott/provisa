@@ -463,7 +463,7 @@ roles = Table(
     metadata,
     Column("id", Text, primary_key=True),
     # REQ-2080: what the role is for, as an access review reads it. Required on every write
-    # (models.Role); the seeded roles' are written by schema.sql (SEEDED_ROLE_DESCRIPTIONS).
+    # (models.Role); a standard role's is written by db.assert_standard_roles (REQ-2155).
     Column("description", Text, nullable=False, server_default=""),
     Column("capabilities", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
@@ -479,13 +479,9 @@ roles = Table(
     # REQ-1174: per-role rate + query limits {requests_per_second, max_query_complexity,
     # max_query_time_ms, ...}. None/absent = unlimited.
     Column("rate_limit", JSON(none_as_null=True)),
-    Column("parent_role_id", Text, ForeignKey("roles.id")),
-    # REQ-1597/REQ-1624: this role's capabilities are DERIVED from the named role's, in this schema
-    # only -- the sandbox visitor's `org_admin` is `sandbox` (env_copy.adopt_role_definition). Held
-    # as a column rather than applied once at creation because the tenancy seam
-    # (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
-    # every runtime build, which silently handed the subtracted rights back.
-    Column("defined_from", Text),
+    # REQ-2155: the roles this one inherits from, in declared order; its capabilities are the
+    # union of its own and every ancestor's (security.inheritance).
+    Column("parents", JSON, nullable=False, default=list, server_default="[]"),
     Column("max_rows", Integer),  # REQ-005: the role's result-size ceiling; NULL = none of its own
     # A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
     Column("inactivity_days", Integer),

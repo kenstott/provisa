@@ -2105,19 +2105,20 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     await conn.execute_core(delete(scheduled_triggers))
     await conn.execute_core(delete(kafka_sources))
     await conn.execute_core(delete(naming_rules))
-    # Roles a child before its parent; the seeded ones and those who hold them stay.
+    # Roles a child before its parents; the seeded ones and those who hold them stay.
     remaining = {
-        r.id: r.parent_role_id
+        r.id: list(r.parents or [])
         for r in (
             await conn.execute_core(
-                select(roles.c.id, roles.c.parent_role_id).where(
+                select(roles.c.id, roles.c.parents).where(
                     roles.c.id.not_in(sorted(SEEDED_ROLE_IDS))
                 )
             )
         ).fetchall()
     }
     while remaining:
-        leaves = [r for r in remaining if r not in set(remaining.values())]
+        named = {p for ps in remaining.values() for p in ps}
+        leaves = [r for r in remaining if r not in named]
         for role_id in leaves:
             await role_repo.discard(conn, role_id)
             del remaining[role_id]

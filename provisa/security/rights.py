@@ -114,6 +114,14 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # is catalog curation, on the same footing as TABLE_REGISTRATION — org_admin only.
     DATA_PRODUCT_READ = "data_product_read"
     DATA_PRODUCT_RW = "data_product_rw"
+    # REQ-2155: edit a data product whose owner_role is a role the caller holds (an ancestor
+    # included) -- the data product owner's right; DATA_PRODUCT_RW edits any product.
+    DATA_PRODUCT_OWNED_RW = "data_product_owned_rw"
+    # REQ-2155: data quality's own rights, so managing checks no longer needs TABLE_REGISTRATION.
+    # DQ_READ reads check definitions and results; DQ_RW manages checks, expectations and
+    # promises (REQ-2157).
+    DQ_READ = "dq_read"
+    DQ_RW = "dq_rw"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
     # The right the wire surfaces read off a role's list by name. A member here so that the

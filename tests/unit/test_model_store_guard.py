@@ -341,7 +341,7 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
         id="junior",
         capabilities=[],
         domain_access=[],
-        parent_role_id="seller",
+        parents=["seller"],
     )
     assignment = await plane.add(
         "user_role_assignments", user_id="u1", role_id="seller", domain_id="*"
@@ -367,7 +367,7 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
 
     seller = ObjectRef("role", "seller")
     assert await plane.via(seller) == {
-        ObjectRef("role", "junior"): ("roles.parent_role_id",),
+        ObjectRef("role", "junior"): ("roles.parents",),
         ObjectRef("role_assignment", assignment): ("user_role_assignments.role_id",),
         ObjectRef("column", column): ("table_columns.visible_to",),
         ObjectRef("metric", "revenue"): ("metrics.visible_to",),
@@ -517,12 +517,10 @@ async def test_a_view_that_reads_itself_is_not_blocked_by_that(plane):
 
 async def test_a_role_parent_loop_is_named_as_a_circle(plane):
     await plane.add("roles", id="r1", capabilities=[], domain_access=["*"])
-    await plane.add("roles", id="r2", capabilities=[], domain_access=["*"], parent_role_id="r1")
+    await plane.add("roles", id="r2", capabilities=[], domain_access=["*"], parents=["r1"])
     async with plane.db.acquire() as conn:
         roles = metadata.tables["roles"]
-        await conn.execute_core(
-            roles.update().where(roles.c.id == "r1").values(parent_role_id="r2")
-        )
+        await conn.execute_core(roles.update().where(roles.c.id == "r1").values(parents=["r2"]))
     assert await plane.circle(ObjectRef("role", "r1")) == [ObjectRef("role", "r2")]
 
 

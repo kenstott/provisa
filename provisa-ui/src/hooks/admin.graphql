@@ -71,7 +71,8 @@ query RolesQuery {
     capabilities
     demonstrated
     domainAccess
-    parentRoleId
+    parents
+    standard
     residencyValues
     inactivityDays
     sessionVars {

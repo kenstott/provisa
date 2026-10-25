@@ -33,6 +33,10 @@ const ALL_CAPABILITIES: Capability[] = [
   // REQ-1590: granted and revoked here like any other right — read opens the glossary, rw curates it.
   "glossary_read",
   "glossary_rw",
+  // REQ-2155: data quality's own rights, and editing the data products the role owns.
+  "dq_read",
+  "dq_rw",
+  "data_product_owned_rw",
 ];
 
 /**

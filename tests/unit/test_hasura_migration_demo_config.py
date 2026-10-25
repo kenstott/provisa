@@ -119,7 +119,7 @@ def test_the_same_relationships_and_one_more(imported, demo):
 def test_the_same_roles(imported, demo):
     def roles(config):
         return {
-            r.id: (sorted(r.capabilities), r.domain_access, r.parent_role_id)
+            r.id: (sorted(r.capabilities), r.domain_access, r.parents)
             for r in config.roles
             if r.id not in DEMO_ONLY_ROLES
         }
