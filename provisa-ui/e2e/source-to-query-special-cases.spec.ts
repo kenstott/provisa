@@ -72,6 +72,7 @@ import {
   pickSchemaAndTable,
   registerOfferedTable,
   runSqlOnPage,
+  saveRegistration,
   setSourceCacheTtl,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
@@ -373,19 +374,7 @@ for (const c of [
       await page.getByTestId("register-table-dq-scan-interval").fill("3600");
       await page.getByTestId("register-table-submit").click();
       // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
-      // The badge's wait starts at the registration's answer, not the click: the registration
-      // rebuilds the schemas first, and on a busy runner that took the whole 20 s the list then
-      // had to load in (run 40177970935: 19.7 s).
-      const registered = page.waitForResponse(
-        (r) =>
-          r.url().includes("/admin/graphql") &&
-          (r.request().postData() ?? "").includes("RegisterTable"),
-        { timeout: 120000 },
-      );
-      await page.getByTestId("table-edit-save").click();
-      const registerBody = await (await registered).json();
-      expect(registerBody.errors, JSON.stringify(registerBody)).toBeUndefined();
-      expect(registerBody.data.registerTable.success, JSON.stringify(registerBody)).toBe(true);
+      await saveRegistration(page);
       // Registered under its result relation's name, <name>_<source>_dq (REQ-1443).
       const relation = `${resultsTable}_${sourceId.replaceAll("-", "_")}_dq`;
       // The list shows 50 rows a page and every spec before this one has added tables, so the new

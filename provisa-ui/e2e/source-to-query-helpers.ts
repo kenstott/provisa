@@ -324,6 +324,24 @@ export async function submitRegister(page: Page, cacheTtlSeconds = 300): Promise
   await page.getByTestId("table-edit-save").click();
 }
 
+/**
+ * Save the registration and wait for its answer, asserted whole. The registration rebuilds the
+ * schemas before it answers, so a wait for what it lands (a row, a badge) starts here, not at the
+ * click: on a busy runner the registration alone took 19.7 s of a 20 s wait (run 40177970935).
+ */
+export async function saveRegistration(page: Page): Promise<void> {
+  const registered = page.waitForResponse(
+    (r) =>
+      r.url().includes("/admin/graphql") &&
+      (r.request().postData() ?? "").includes("RegisterTable"),
+    { timeout: 120000 },
+  );
+  await page.getByTestId("table-edit-save").click();
+  const body = await (await registered).json();
+  expect(body.errors, JSON.stringify(body)).toBeUndefined();
+  expect(body.data.registerTable.success, JSON.stringify(body)).toBe(true);
+}
+
 /** The register step's Continue: the chosen table's settings follow in the editor's sections,
  * where Save registers it (REQ-2109). */
 async function continueRegister(page: Page, cacheTtlSeconds: number): Promise<void> {
