@@ -38,8 +38,16 @@ from provisa.core.database import Database
 from provisa.core.models import Role
 from provisa.core.repositories import role as role_repo
 from provisa.core.schema_org import roles
+from tests.unit.gate_identity import serve_every_column
 
 ORG = "acme"
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which dependents a caller may be told of is REQ-2152's own
+    tests (test_refusal_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 def _role(role_id: str, parent: str | None = None) -> Role:
@@ -245,9 +253,9 @@ async def test_rest_refuses_a_parent_naming_its_heirs(plane, rebuilds):
     with pytest.raises(ApiError) as err:
         await _rest("base")
     assert (err.value.status_code, err.value.code) == (409, "roles.has_dependents")
+    # REQ-2152: the dependents its caller may read, never how many there are.
     assert err.value.params == {
         "role": "base",
-        "count": 1,
         "dependents": [
             {"kind": "role", "id": "derived", "name": "derived", "via": ["roles.parents"]}
         ],

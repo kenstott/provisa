@@ -17,8 +17,9 @@ by the caller's grants instead:
 - Every caller is answered what the role the request acts as is SERVED: the tables and columns
   of its compiled context, from the one narrowing the Flight and MCP catalogs use
   (``flight.catalog.role_visibility``). There is no second notion of what a role may see.
-- A draft table is in no compiled context; its stored columns are tested by the rule the compile
-  applies (``security.visibility.visible_tables``, i.e. ``rights.column_served``).
+- A table in no compiled context -- a draft, or one saved since the last schema build -- has its
+  stored columns tested by the rule the compile applies (``security.visibility.visible_tables``,
+  i.e. ``rights.column_served``), so a table is answered from the moment it is saved.
 - No capability widens it (REQ-2152): ``table_registration`` or a right that governs how columns
   are hidden (REQ-1944) opens a feature, never more of the catalog.
 - Grant lists and mask settings need ``view_governance`` (REQ-1134).
@@ -33,6 +34,7 @@ request names (X-Provisa-Role).
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Any
 
@@ -53,6 +55,33 @@ class CatalogScope:
     governance: bool
     # The role the request acts as (a meta-role for a set), None when there is none.
     role: str | None
+    # The ids of the tables the last schema build compiled; any other is judged by its stored
+    # columns (:meth:`answered_columns`).
+    compiled: frozenset[int] = frozenset()
+    # The roles the request acts as, each as ``{"id", "domain_access"}`` (a meta-role's members).
+    subjects: tuple[dict, ...] = ()
+
+    def stored_columns(self, table: dict) -> set[str]:
+        """The stored columns of ``table`` (``id``, ``domain_id``, ``columns`` of
+        ``column_name``/``visible_to``/``scope``) the acting role is served, by the rule the
+        compile applies -- for a table no context compiled yet (REQ-2152)."""
+        from provisa.security.visibility import visible_tables
+
+        served: set[str] = set()
+        for subject in self.subjects:
+            for visible in visible_tables([table], subject):
+                served.update(c["column_name"] for c in visible["columns"])
+        return served
+
+    def answered_columns(self, table: dict) -> set[str] | None:
+        """The columns of ``table`` (as :meth:`stored_columns` takes it) the caller is answered;
+        None = all of them. A table the last build compiled is answered from the acting role's
+        context; one it did not -- a draft, or one saved since -- from its stored columns."""
+        if self.whole:
+            return None
+        if table["id"] in self.compiled:
+            return self.served.get(table["id"], set())
+        return self.stored_columns(table)
 
     def lists_table(self, table_id: int) -> bool:
         return self.whole or table_id in self.served
@@ -118,13 +147,23 @@ def catalog_scope(info: Any) -> CatalogScope:
     else:
         caps = _resolved_capabilities(identity, state)
         reach = allowed_domains_request(request)
-    return CatalogScope(
+    scope = CatalogScope(
         whole=False,
         reach=reach,
-        served={**_drafts_served(state, role), **role_visibility(state, role)} if role else {},
+        served=role_visibility(state, role) if role else {},
         governance=VIEW_GOVERNANCE in caps,
         role=role,
+        compiled=frozenset(t["id"] for t in state.tables),
+        subjects=_subjects(state, role) if role else (),
     )
+    if role is None:
+        return scope  # no acting role: served nothing, drafts included
+    drafts = {
+        table["id"]: served
+        for table in state.role_build_inputs["draft_tables"]
+        if (served := scope.stored_columns(table))
+    }
+    return dataclasses.replace(scope, served={**drafts, **scope.served})
 
 
 def _acting_reach(identity: Any, state: Any) -> frozenset[str] | None:
@@ -139,20 +178,13 @@ def _acting_reach(identity: Any, state: Any) -> frozenset[str] | None:
     return domains_within(sorted(reached))
 
 
-def _drafts_served(state: Any, role: str) -> dict[int, set[str]]:
-    """table id → the stored columns of each draft table ``role`` is served (REQ-2152). A draft is
-    in no compiled context, so its columns are tested by the rule the compile applies; a
-    meta-role is served what any of its members is."""
+def _subjects(state: Any, role: str) -> tuple[dict, ...]:
+    """The roles ``role`` acts as (a meta-role's members), as the column rule takes a role."""
     from provisa.security.meta_role import acting_roles
-    from provisa.security.visibility import visible_tables
 
-    drafts = state.role_build_inputs["draft_tables"]
-    served: dict[int, set[str]] = {}
-    for member in acting_roles(state, role):
-        definition = state.roles.get(member)
-        if definition is None:
-            continue  # a role with no definition has no data surface (REQ-1327)
-        subject = {"id": member, "domain_access": definition.get("domain_access") or []}
-        for table in visible_tables(drafts, subject):
-            served.setdefault(table["id"], set()).update(c["column_name"] for c in table["columns"])
-    return served
+    return tuple(
+        {"id": member, "domain_access": state.roles[member]["domain_access"]}
+        for member in acting_roles(state, role)
+        # A role with no definition has no data surface (REQ-1327).
+        if member in state.roles
+    )

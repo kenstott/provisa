@@ -334,14 +334,17 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
             deleted = await role_repo.delete(conn, role_id)
         except role_repo.RoleDeleteRefused as refused:
             if refused.reason == "dependents":
-                # REQ-1918: nothing is removed; every dependent is named.
+                from provisa.api.admin.read_rights import reader_for_request, refusal
+
+                # REQ-1918: nothing is removed; every dependent the caller may read is named,
+                # and never how many there are (REQ-2152).
+                said, named = await refusal(conn, reader_for_request(request), refused)
                 raise ApiError(
                     409,
                     "roles.has_dependents",
-                    str(refused),
+                    said,
                     role=role_id,
-                    count=len(refused.dependents),
-                    dependents=[d.as_dict() for d in refused.dependents],
+                    dependents=named,
                 ) from refused
             raise ApiError(
                 400, "roles.cannot_delete_system", "Cannot delete system roles"

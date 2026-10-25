@@ -61,6 +61,9 @@ _ROLES = {
     },
     "platform": {"capabilities": ["cross_org"], "domain_access": ["*"]},
 }
+# (table id, column) → the grant of a draft table's stored column, set by the draft tests.
+_DRAFT_GRANTS: dict[tuple[int, str], list[str]] = {}
+
 _METRICS = [
     {"name": "everyone", "visible_to": ["*"]},
     {"name": "analysts", "visible_to": ["analyst"]},
@@ -155,6 +158,7 @@ def _model(monkeypatch):
         ("roles", _ROLES),
         ("contexts", contexts),
         ("role_build_inputs", {"draft_tables": []}),
+        ("tables", _TABLES),  # what the last schema build compiled
     ):
         monkeypatch.setattr(appmod.state, name, value, raising=False)
     monkeypatch.setattr("provisa.core.domain_policy.single_domain", lambda: False)
@@ -175,7 +179,9 @@ def _model(monkeypatch):
             columns=[
                 types.SimpleNamespace(
                     column_name=c,
-                    visible_to=["analyst"],
+                    scope="domain",
+                    # A draft's columns carry their own grants (test_a_draft_*).
+                    visible_to=_DRAFT_GRANTS.get((row["id"], c), ["analyst"]),
                     masks=[
                         {"to": ["registrar"], "mask": None},
                         {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
@@ -299,6 +305,8 @@ async def test_a_draft_is_answered_by_the_grant_on_its_stored_columns(monkeypatc
     )
     monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": [draft]})
     monkeypatch.setattr(_Conn, "_extra", [draft], raising=False)
+    for column in draft["columns"]:
+        _DRAFT_GRANTS[(draft["id"], column["column_name"])] = column["visible_to"]
     _COLUMNS[4] = ["id", "score"]
     try:
         assert (await _tables(_caller("registrar")))["leads"] == ["id"]
@@ -306,6 +314,7 @@ async def test_a_draft_is_answered_by_the_grant_on_its_stored_columns(monkeypatc
         assert "leads" not in await _tables(_caller("masker"))  # hr only: sales out of reach
     finally:
         del _COLUMNS[4]
+        _DRAFT_GRANTS.clear()
 
 
 async def test_a_draft_whose_grants_exclude_the_registrants_role_is_not_answered(monkeypatch):
@@ -314,12 +323,31 @@ async def test_a_draft_whose_grants_exclude_the_registrants_role_is_not_answered
     draft = _draft([{"column_name": "id", "visible_to": ["auditor"], "scope": "domain"}])
     monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": [draft]})
     monkeypatch.setattr(_Conn, "_extra", [draft], raising=False)
+    for column in draft["columns"]:
+        _DRAFT_GRANTS[(draft["id"], column["column_name"])] = column["visible_to"]
     _COLUMNS[4] = ["id"]
     try:
         assert "leads" not in await _tables(_caller("registrar"))
         assert (await _tables(_caller("auditor")))["leads"] == ["id"]
     finally:
         del _COLUMNS[4]
+        _DRAFT_GRANTS.clear()
+
+
+async def test_a_table_saved_since_the_last_build_is_answered_by_its_stored_columns(monkeypatch):
+    """REQ-2152: a table the last schema build did not compile -- saved since, not a draft -- is
+    answered from the moment it is saved, by the rule the compile will apply to it."""
+    fresh = {"id": 5, "domain_id": "sales", "source_id": "pg", "table_name": "fresh"}
+    monkeypatch.setattr(_Conn, "_extra", [fresh], raising=False)
+    _COLUMNS[5] = ["id", "score"]
+    _DRAFT_GRANTS.update({(5, "id"): [], (5, "score"): ["auditor"]})
+    try:
+        assert (await _tables(_caller("registrar")))["fresh"] == ["id"]
+        assert (await _tables(_caller("auditor")))["fresh"] == ["id", "score"]
+        assert "fresh" not in await _tables(_caller("masker"))  # hr only
+    finally:
+        del _COLUMNS[5]
+        _DRAFT_GRANTS.clear()
 
 
 async def test_a_control_plane_role_is_answered_no_data_catalog():

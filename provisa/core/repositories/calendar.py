@@ -104,6 +104,9 @@ class CalendarDeleteRefused(Exception):
     def __init__(self, name: str, dependents: list[Dependent]) -> None:
         self.name = name
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Calendar {name!r} gives the snapshot schedule of"
         super().__init__(
             f"calendar {name!r} is in use by {len(dependents)} materialized view(s) — "
             "clear their snapshot schedule before deleting"

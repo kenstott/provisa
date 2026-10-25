@@ -20,7 +20,8 @@ from contextlib import asynccontextmanager
 import pytest
 from sqlalchemy import insert, select
 
-from provisa.api.admin.column_dependents import DependentsReader, _glossary_dependents
+from provisa.api.admin.column_dependents import _glossary_dependents
+from provisa.api.admin.read_rights import SERVICE_READER
 
 from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
@@ -347,16 +348,6 @@ async def test_abstract_term_is_offered_only_while_a_chain_reaches_a_physical_re
         assert await glossary_repo.search_terms(conn, "business date") == []
 
 
-# The warning's reader reads every term here; what it may not read is
-# test_column_dependents_read_rights (REQ-2152).
-_READS_EVERYTHING = DependentsReader(
-    column=lambda table_id, column: True,
-    metric=lambda row: True,
-    term=lambda domains: True,
-    command=lambda name: True,
-)
-
-
 @pytest.mark.asyncio
 async def test_column_removal_warning_states_each_terms_fate(control_plane):
     """The pre-save warning (REQ-1484) must say what removing the column does to each bound
@@ -373,7 +364,7 @@ async def test_column_removal_warning_states_each_terms_fate(control_plane):
         fates = {
             d.name: d.detail
             for col in ("cust_id", "order_dt")
-            for d in await _glossary_dependents(conn, table_id, col, _READS_EVERYTHING)
+            for d in await _glossary_dependents(conn, table_id, col, SERVICE_READER)
         }
         assert fates == {
             "customer": "bound term, derived and blank — deleted with the column",
@@ -382,7 +373,7 @@ async def test_column_removal_warning_states_each_terms_fate(control_plane):
 
         # A term bound to a second column loses nothing at all.
         await table_repo.upsert(conn, _tbl("invoices", ["cust_id"]))
-        again = await _glossary_dependents(conn, table_id, "cust_id", _READS_EVERYTHING)
+        again = await _glossary_dependents(conn, table_id, "cust_id", SERVICE_READER)
         assert [d.detail for d in again] == ["bound term, keeps its other columns"]
 
 

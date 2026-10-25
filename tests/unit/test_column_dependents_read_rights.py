@@ -30,7 +30,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import insert, select
 
-from provisa.api.admin.column_dependents import DependentsReader, dependents_for
+from provisa.api.admin.column_dependents import dependents_for
+from provisa.api.admin.read_rights import SERVICE_READER, DependentsReader
 from provisa.core.models import DERIVED_SOURCE_ID, Column, Table
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
@@ -141,15 +142,6 @@ def _reader(ids: dict[str, int]) -> DependentsReader:
     )
 
 
-def _everything() -> DependentsReader:
-    return DependentsReader(
-        column=lambda table_id, column: True,
-        metric=lambda row: True,
-        term=lambda term_domains: True,
-        command=lambda name: True,
-    )
-
-
 def _names(found) -> set[tuple[str, str]]:
     return {(d.kind, d.name) for deps in found.values() for d in deps}
 
@@ -172,7 +164,7 @@ async def test_the_unnarrowed_scan_answers_every_dependent(model):
     db, ids = model
     async with db.acquire() as conn:
         found = await dependents_for(
-            conn, ids["orders"], renamed=[], removed=["total"], reader=_everything()
+            conn, ids["orders"], renamed=[], removed=["total"], reader=SERVICE_READER
         )
     names = _names(found)
     for expected in (

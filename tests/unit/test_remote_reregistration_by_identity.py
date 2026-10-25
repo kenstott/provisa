@@ -27,6 +27,7 @@ import pytest
 from sqlalchemy import insert, select
 
 from provisa.api.admin.graphql_remote_router import _upsert_tables_to_semantic_layer
+from provisa.api.admin.read_rights import SERVICE_READER
 from provisa.core.database import Database
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
@@ -54,7 +55,7 @@ async def plane(control_plane) -> Database:
 async def _register(db: Database, *tables: str) -> list[dict]:
     """A refresh of the crm source whose schema now maps to ``tables``: what it keeps."""
     return await _upsert_tables_to_semantic_layer(
-        "crm", "sales", [_gql_table(t) for t in tables], db
+        "crm", "sales", [_gql_table(t) for t in tables], db, SERVICE_READER
     )
 
 
@@ -201,16 +202,22 @@ async def test_a_graphql_remote_reregistration_keeps_ids_and_reports_what_it_kep
             return {r[0]: r[1] for r in rows.fetchall()}
 
     both = [_gql_table("pets"), _gql_table("owners")]
-    assert await _upsert_tables_to_semantic_layer("shop", "sales", both, plane) == []
+    assert (
+        await _upsert_tables_to_semantic_layer("shop", "sales", both, plane, SERVICE_READER) == []
+    )
     first = await ids()
     assert set(first) == {"pets", "owners"}
     await _relate(plane, first, "pets", "owners")
 
-    assert await _upsert_tables_to_semantic_layer("shop", "sales", both, plane) == []
+    assert (
+        await _upsert_tables_to_semantic_layer("shop", "sales", both, plane, SERVICE_READER) == []
+    )
     assert await ids() == first
     assert await _relationship_ends(plane) == [(first["pets"], first["owners"])]
 
-    kept = await _upsert_tables_to_semantic_layer("shop", "sales", [_gql_table("pets")], plane)
+    kept = await _upsert_tables_to_semantic_layer(
+        "shop", "sales", [_gql_table("pets")], plane, SERVICE_READER
+    )
     assert [(k["name"], [d["kind"] for d in k["dependents"]]) for k in kept] == [
         ("owners", ["relationship"])
     ]

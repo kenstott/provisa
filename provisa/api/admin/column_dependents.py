@@ -24,8 +24,6 @@ the PHYSICAL ``column_name`` break only on removal.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from sqlalchemy import or_, select
@@ -44,25 +42,11 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from provisa.api.admin.read_rights import DependentsReader
 from provisa.lineage.dependents import Dependent, graph_dependents, relation_candidates
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
-
-
-@dataclass(frozen=True)
-class DependentsReader:  # REQ-2152
-    """What the caller of the scan may read: a dependent it cannot read is left out of the answer,
-    whatever right opened the scan.
-
-    ``column(table_id, column)``: the caller is served that column (``None``: any column of the
-    table); ``metric(row)``: the metric (its stored row) is granted to it; ``term(domains)``: a term
-    scoped to ``domains`` is readable to it; ``command(name)``: the command is assigned to it."""
-
-    column: Callable[[int, str | None], bool]
-    metric: Callable[[dict], bool]
-    term: Callable[[set[str]], bool]
-    command: Callable[[str], bool]
 
 
 def _mentions(sql_text: str | None, name: str) -> bool:

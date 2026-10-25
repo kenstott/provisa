@@ -625,13 +625,21 @@ async def register_table(
                         )
                     )
                 except table_repo.ColumnDropRefused as _drop:
-                    # REQ-1918: a column something still refers to is not dropped; each is named.
+                    # REQ-1918: a column something still refers to is not dropped; each is named,
+                    # with only the dependents the caller may read (REQ-2152).
+                    from provisa.api.admin.read_rights import (
+                        column_drop_text,
+                        reader_for,
+                        readable_columns_report,
+                    )
+
+                    _report = await readable_columns_report(_conn, reader_for(info), _drop.columns)
                     raise TableSaveRefused(
                         MutationResult(
                             success=False,
-                            message=str(_drop),
+                            message=column_drop_text(_drop.table_name, _report),
                             code="schema.column_has_dependents",
-                            params={"table": _drop.table_name, "columns": _drop.report()},
+                            params={"table": _drop.table_name, "columns": _report},
                         )
                     )
                 except SqlAddressTaken as _taken:

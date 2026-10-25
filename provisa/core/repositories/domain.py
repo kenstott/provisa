@@ -66,6 +66,9 @@ class DomainDeleteRefused(Exception):
         self.domain_id = domain_id
         self.reason = reason
         self.dependents = dependents or []
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Domain {domain_id!r} is still referred to by"
         if reason == "dependents":
             named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in self.dependents)
             message = f"Domain {domain_id!r} is still referred to by: {named}"

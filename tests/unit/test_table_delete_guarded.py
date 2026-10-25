@@ -44,6 +44,14 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from tests.unit.gate_identity import serve_every_column
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which dependents a caller may be told of is REQ-2152's own
+    tests (test_refusal_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 @pytest.fixture

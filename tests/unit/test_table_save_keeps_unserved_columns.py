@@ -33,7 +33,9 @@ from tests.unit.gate_identity import grant
 
 
 def _column(name: str, description: str | None = None):
-    return types.SimpleNamespace(name=name, description=description, visible_to=[], masks=[])
+    return types.SimpleNamespace(
+        name=name, description=description, visible_to=[], masks=[], scope="domain"
+    )
 
 
 def _stored_columns():
@@ -47,6 +49,7 @@ def _scope(served: dict[int, set[str]] | None) -> CatalogScope:
         served=served or {},
         governance=True,
         role="r",
+        compiled=frozenset(served or {}),
     )
 
 

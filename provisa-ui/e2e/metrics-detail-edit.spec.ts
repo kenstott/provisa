@@ -49,7 +49,9 @@ test.beforeAll(async () => {
         grain: ["species"],
         measures: [{ column: "price", agg: "sum" }],
         dimensions: [],
-        visibleTo: ["public"],
+        // REQ-2152: a capability never widens the role's grants, so the registering role
+        // (org_admin, the acting role with no auth provider) lists the fact only when granted it.
+        visibleTo: ["public", "org_admin"],
       },
     },
   );

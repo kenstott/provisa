@@ -277,6 +277,9 @@ class RelationshipDeleteRefused(Exception):
     def __init__(self, rel_id: str, dependents: list[Dependent]) -> None:
         self.rel_id = rel_id
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Relationship {rel_id!r} is still relied on by"
         named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
         super().__init__(f"Relationship {rel_id!r} is still relied on by: {named}")
 
