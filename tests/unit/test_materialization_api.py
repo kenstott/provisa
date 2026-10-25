@@ -1076,6 +1076,51 @@ class TestMatGqlRemoteTable:
                     "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(), 500, {}, {}
                 )
 
+    async def test_landing_failure_fails_the_read(self):
+        """A landing that fails is raised (REQ-1661), never logged and the statement rewritten to
+        the cache table it did not write: no rewrite, no inline rows, no drop scheduled."""
+        state = SimpleNamespace(
+            graphql_remote_sources={},
+            org_id="default",
+            federation_engine=SimpleNamespace(
+                materialize_store_dsn=lambda: "postgresql://x/y",
+                cache_catalog=lambda: "cat",
+                isolated_sync=_fake_isolated_sync,
+            ),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
+        )
+        cache_rewrites: dict = {}
+        values_cte_entries: dict = {}
+        drop = MagicMock()
+        with (
+            patch("provisa.api_source.engine_cache.ensure_cache_schema"),
+            patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
+            patch(
+                "provisa.graphql_remote.executor.execute_remote",
+                new=AsyncMock(return_value=RemoteAnswer([{"id": 1, "name": "Fido"}])),
+            ),
+            patch(
+                "provisa.api_source.engine_cache.land_api_cache",
+                new=AsyncMock(side_effect=OSError("store refused")),
+            ),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=drop),
+        ):
+            with pytest.raises(RuntimeError, match="GQL remote landing failed for 'pets'"):
+                await _mat_gql_remote_table(
+                    "pets",
+                    _gql_reg(),
+                    _gql_tbl(),
+                    state,
+                    _statement_hot(),
+                    500,
+                    cache_rewrites,
+                    values_cte_entries,
+                )
+        assert cache_rewrites == {} and values_cte_entries == {}
+        drop.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _materialize_api_to_engine_cache
@@ -1535,7 +1580,16 @@ async def test_a_first_read_of_a_table_with_a_parameter_column_is_stored_once_an
     def isolated_sync():
         yield EngineSession(con, dialect="duckdb", placeholder="?")
 
-    engine = SimpleNamespace(isolated_sync=isolated_sync)
+    async def landed_table_exists(*, schema: str, table: str) -> bool:
+        # The store is this DuckDB connection: its own catalog says what is landed.
+        return bool(
+            con.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE schema_name = ? AND table_name = ?",
+                [schema, table],
+            ).fetchall()
+        )
+
+    engine = SimpleNamespace(isolated_sync=isolated_sync, landed_table_exists=landed_table_exists)
     state = SimpleNamespace(
         api_sources={"src": ApiSource(id="src", type="openapi", base_url="https://pay.test")},
         org_id="default",

@@ -120,8 +120,7 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
                 source_catalog=_state.source_catalogs.get(endpoint.source_id),
             )
 
-        with engine.isolated_sync() as _c:
-            _hit = table_exists(_c, loc, tbl, ttl=ttl)
+        _hit = await table_exists(engine, loc, tbl, ttl=ttl)
         if _hit:
             log.info("[API CACHE] hit — %s.%s.%s", loc.catalog, loc.schema, tbl)
             span.set_attribute("api_source.cache_hit", True)

@@ -27,7 +27,7 @@ Execution model for OpenAPI/REST sources:
 
 # Requirements: REQ-280, REQ-309, REQ-318, REQ-327
 
-# complexity-gate: allow-ble=6 reason="API-response cache materialization is best-effort augmentation: any cache/store failure falls back to live execution, never failing the query"
+# complexity-gate: allow-ble=2 reason="two failures are logged, not raised: planner statistics (best-effort by REQ-275) and the TTL drop of an expired cache table (post-answer housekeeping on a background worker); every other cache failure fails the read"
 
 from __future__ import annotations
 
@@ -338,41 +338,34 @@ def table_known_live(loc: CacheLocation, table_name: str) -> bool:  # REQ-318, R
     return expiry is not None and time.monotonic() < expiry
 
 
-def table_exists(  # REQ-318, REQ-309, REQ-327
-    conn, loc: CacheLocation, table_name: str, ttl: int | None = None
+async def table_exists(  # REQ-318, REQ-309, REQ-327
+    engine, loc: CacheLocation, table_name: str, ttl: int | None = None
 ) -> bool:
+    """Whether the cache table is landed, asked of the catalog of the store it lands in
+    (``EngineRuntime.landed_table_exists``): absent is False, and a catalog that cannot be read
+    raises -- never read as a table that is not there, which would fetch and land it again over
+    a store that is failing."""
     key = (loc.catalog, loc.schema, table_name)
     expiry = _TABLE_EXISTS_CACHE.get(key)
     if expiry is not None and time.monotonic() < expiry:
         return True
 
-    sql = f"SELECT 1 FROM {_table_ref(loc, table_name, conn.dialect)} LIMIT 1"
-    try:
-        conn.execute(sql)
-        conn.fetchall()
-        # Cache the positive result; expire before the engine drops the table
-        from provisa.core.cache_ttl import NEVER_EXPIRES
-
-        if ttl == NEVER_EXPIRES:
-            _TABLE_EXISTS_CACHE[key] = math.inf  # REQ-2031: never dropped
-        elif ttl is not None and ttl > _TABLE_EXISTS_SAFETY_MARGIN:
-            _TABLE_EXISTS_CACHE[key] = time.monotonic() + ttl - _TABLE_EXISTS_SAFETY_MARGIN
-        elif ttl is not None:
-            _TABLE_EXISTS_CACHE[key] = time.monotonic() + max(ttl - 5, 1)
-        else:
-            # No TTL known — cache for 60s as a safe default
-            _TABLE_EXISTS_CACHE[key] = time.monotonic() + 60
-        return True
-    except Exception as exc:
+    if not await engine.landed_table_exists(schema=loc.schema, table=table_name):
         _TABLE_EXISTS_CACHE.pop(key, None)
-        log.debug(
-            "[API CACHE] table_exists=False: %s.%s.%r — %s",
-            loc.catalog,
-            loc.schema,
-            table_name,
-            exc,
-        )
         return False
+    # Cache the positive result; expire before the engine drops the table
+    from provisa.core.cache_ttl import NEVER_EXPIRES
+
+    if ttl == NEVER_EXPIRES:
+        _TABLE_EXISTS_CACHE[key] = math.inf  # REQ-2031: never dropped
+    elif ttl is not None and ttl > _TABLE_EXISTS_SAFETY_MARGIN:
+        _TABLE_EXISTS_CACHE[key] = time.monotonic() + ttl - _TABLE_EXISTS_SAFETY_MARGIN
+    elif ttl is not None:
+        _TABLE_EXISTS_CACHE[key] = time.monotonic() + max(ttl - 5, 1)
+    else:
+        # No TTL known — cache for 60s as a safe default
+        _TABLE_EXISTS_CACHE[key] = time.monotonic() + 60
+    return True
 
 
 _IR_TO_SQLALCHEMY: dict[str, Any] = {
@@ -615,33 +608,22 @@ def rewrite_from_cache(
     the table's registered semantic/display name) when it differs from the ref's current name —
     by this point an earlier semantic-to-physical rewrite has already swapped the FROM ref's own
     name, so falling back to the (now-physical) ``tbl.name`` would not match those qualifiers.
+
+    A statement SQLGlot cannot parse raises: it is never rewritten by pattern instead, which
+    could leave the read on the source's table or rewrite the wrong one.
     """
-    try:
-        tree = sqlglot.parse_one(sql, dialect="postgres")
-        for tbl in tree.find_all(exp.Table):
-            # Preserve the original table name as an alias when the ref is
-            # unaliased, so column qualifiers still resolve after the relation
-            # is renamed to the cache table (mirrors rewrite_all_from_cache).
-            if not tbl.alias:
-                tbl.set("alias", exp.TableAlias(this=exp.to_identifier(alias_name or tbl.name)))
-            tbl.set("catalog", exp.to_identifier(loc.catalog))
-            tbl.set("db", exp.to_identifier(loc.schema))
-            tbl.set("this", exp.to_identifier(table_name, quoted=True))
-            break
-        return tree.sql(dialect="postgres")
-    except Exception as exc:
-        log.warning("rewrite_from_cache SQLGlot failed: %s", exc)
-
-    import re
-
-    cache_ref = _table_ref(loc, table_name, "postgres")
-    return re.sub(
-        r'FROM\s+"[^"]*"\."[^"]*"(?:\."[^"]*")?',
-        lambda _m: f"FROM {cache_ref}",
-        sql,
-        count=1,
-        flags=re.IGNORECASE,
-    )
+    tree = sqlglot.parse_one(sql, dialect="postgres")
+    for tbl in tree.find_all(exp.Table):
+        # Preserve the original table name as an alias when the ref is
+        # unaliased, so column qualifiers still resolve after the relation
+        # is renamed to the cache table (mirrors rewrite_all_from_cache).
+        if not tbl.alias:
+            tbl.set("alias", exp.TableAlias(this=exp.to_identifier(alias_name or tbl.name)))
+        tbl.set("catalog", exp.to_identifier(loc.catalog))
+        tbl.set("db", exp.to_identifier(loc.schema))
+        tbl.set("this", exp.to_identifier(table_name, quoted=True))
+        break
+    return tree.sql(dialect="postgres")
 
 
 def rewrite_all_from_cache(  # REQ-318, REQ-309, REQ-327
@@ -652,39 +634,24 @@ def rewrite_all_from_cache(  # REQ-318, REQ-309, REQ-327
 
     cache_rewrites maps physical table name (tbl.name) → (CacheLocation, cache_table_name).
     All matching tables in FROM/JOIN clauses are rewritten; unmatched tables are left as-is.
+    A statement SQLGlot cannot parse raises, as in :func:`rewrite_from_cache`.
     """
     if not cache_rewrites:
         return sql
-    try:
-        tree = sqlglot.parse_one(sql, dialect="postgres")
-        for tbl in tree.find_all(exp.Table):
-            if tbl.name in cache_rewrites:
-                orig_name = tbl.name
-                loc, cache_tbl = cache_rewrites[orig_name]
-                # Preserve the original table name as an alias when the ref is
-                # unaliased, so column qualifiers (e.g. shelter__animalBreeds.name)
-                # still resolve after the relation is renamed to the cache table.
-                if not tbl.alias:
-                    tbl.set("alias", exp.TableAlias(this=exp.to_identifier(orig_name)))
-                tbl.set("catalog", exp.to_identifier(loc.catalog))
-                tbl.set("db", exp.to_identifier(loc.schema))
-                tbl.set("this", exp.to_identifier(cache_tbl, quoted=True))
-        return tree.sql(dialect="postgres")
-    except Exception as exc:
-        log.warning("rewrite_all_from_cache SQLGlot failed: %s", exc)
-
-    import re
-
-    result = sql
-    for orig_tbl, (loc, cache_tbl) in cache_rewrites.items():
-        cache_ref = _table_ref(loc, cache_tbl, "postgres")
-        result = re.sub(
-            rf'"[^"]*"\."[^"]*"\."{re.escape(orig_tbl)}"',
-            lambda _m, _ref=cache_ref: _ref,
-            result,
-            flags=re.IGNORECASE,
-        )
-    return result
+    tree = sqlglot.parse_one(sql, dialect="postgres")
+    for tbl in tree.find_all(exp.Table):
+        if tbl.name in cache_rewrites:
+            orig_name = tbl.name
+            loc, cache_tbl = cache_rewrites[orig_name]
+            # Preserve the original table name as an alias when the ref is
+            # unaliased, so column qualifiers (e.g. shelter__animalBreeds.name)
+            # still resolve after the relation is renamed to the cache table.
+            if not tbl.alias:
+                tbl.set("alias", exp.TableAlias(this=exp.to_identifier(orig_name)))
+            tbl.set("catalog", exp.to_identifier(loc.catalog))
+            tbl.set("db", exp.to_identifier(loc.schema))
+            tbl.set("this", exp.to_identifier(cache_tbl, quoted=True))
+    return tree.sql(dialect="postgres")
 
 
 def schedule_drop(  # REQ-318, REQ-309, REQ-327
@@ -725,6 +692,9 @@ async def drop_cache_table(  # REQ-318, REQ-309, REQ-327
             conn.fetchall()
         log.info("[API CACHE] dropped %s after TTL=%ds", table_name, ttl)
     except Exception as exc:
+        # Post-answer housekeeping on a background worker: the table's TTL has passed, no read
+        # waits on this drop, and its table_exists entry is already gone, so the next read probes
+        # the catalog for itself. A failed drop is logged; there is no caller to raise it to.
         log.warning("[API CACHE] drop failed for %s: %s", table_name, exc)
     if loc.backend == "iceberg" and redirect_config is not None:
         from provisa.executor.redirect import cleanup_s3_prefix

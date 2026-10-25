@@ -257,3 +257,38 @@ async def test_a_grpc_remote_tables_ttl_is_the_first_one_set(
     await mat._mat_grpc_remote_table("s__m", "grpc_src", reg, query, state, hot, 0, {}, {}, None)
     assert fetched["ttl"] == expected
     assert engine_cache["drops"] == [("grpc_tbl", expected)]
+
+
+@pytest.mark.asyncio
+async def test_a_grpc_remote_tables_failed_landing_fails_the_read(monkeypatch, engine_cache):
+    """A landing that fails is raised, never logged and the statement rewritten to the cache
+    table it did not write (REQ-1661): no rewrite, no inline rows, no drop scheduled."""
+    from provisa.api_source import engine_cache as ec
+    from provisa.source_adapters import grpc_remote_adapter
+
+    async def _fetch(**_kw):
+        return [{"id": i} for i in range(5)]
+
+    monkeypatch.setattr(grpc_remote_adapter, "fetch", _fetch)
+    monkeypatch.setattr(ec, "cache_table_name", lambda *_a: "grpc_tbl")
+    monkeypatch.setattr(ec, "land_api_cache", AsyncMock(side_effect=OSError("store refused")))
+    _threshold(monkeypatch, 1000)
+    query = SimpleNamespace(
+        columns=[],
+        full_method_path="/S/M",
+        input_message="I",
+        output_message="O",
+        server_streaming=False,
+    )
+    state = _state(source="grpc_src")
+    state.grpc_remote_sources = {}
+    hot = SimpleNamespace(hold=lambda *_a, **_k: "held")
+    rewrites: dict = {}
+    inline: dict = {}
+    with pytest.raises(RuntimeError, match="gRPC remote landing failed for 's__m'") as raised:
+        await mat._mat_grpc_remote_table(
+            "s__m", "grpc_src", {"pb2": None}, query, state, hot, 0, rewrites, inline, None
+        )
+    assert isinstance(raised.value.__cause__, OSError)
+    assert rewrites == {} and inline == {}
+    assert engine_cache["drops"] == []

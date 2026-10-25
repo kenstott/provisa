@@ -315,7 +315,7 @@ class TestOrgScopedCacheLocation:
 
         captured_loc = {}
 
-        def fake_table_exists(_conn, loc, _tbl, ttl=None):  # noqa: ARG001
+        async def fake_table_exists(_engine, loc, _tbl, ttl=None):  # noqa: ARG001
             captured_loc["loc"] = loc
             return True
 
