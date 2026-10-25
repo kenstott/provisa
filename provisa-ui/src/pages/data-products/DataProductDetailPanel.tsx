@@ -56,6 +56,7 @@ import { checksIn } from "./dataProductClaims";
 interface TableRef {
   domain_id: string;
   table_name: string;
+  alias: string | null;
 }
 
 const sqlRefOf = (tb: TableRef) =>
@@ -722,7 +723,9 @@ export function DataProductDetailPanel({
                 {related.map((e) => (
                   <List.Item key={e.id} ff="monospace">
                     {/* The whole entry at most three lines; its ellipsis opens it in place. */}
-                    <ClampedDetail testId={`data-product-detail-related-${e.id}`}>
+                    <ClampedDetail
+                      testId={`data-product-related-${p.id}-${e.target_product_id ?? e.target_table_id}`}
+                    >
                       {relatedLabel(e)}
                       {e.target_product && (
                         <Muted>

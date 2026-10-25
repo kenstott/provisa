@@ -97,6 +97,7 @@
         "relatedTables": "相關數據表",
         "relationships": "關係",
         "lineage": "血緣",
+        "inputPorts": "輸入埠",
         "dataQuality": "數據質素"
       },
       "dataQualityEmpty": "沒有質素掃描",
@@ -110,7 +111,6 @@
       "lineageEmpty": "沒有血緣",
       "lineageLoading": "正在載入血緣…",
       "lineageHint": "欄位血緣圖，以此產品的數據表作為發佈端點，並列出用於衍生它們的所有上游數據表。僅供參考，需要 view_governance 能力。",
-      "inputPortsHint": "此產品直接讀取的表（來自血緣）。展開表可查看其讀取的欄。需要 view_governance 能力。",
       "outputPortsHint": "此產品可查詢的範圍：其成員資料表和指令。每個的範例查詢見「存取模式」。",
       "customPropertiesEmpty": "沒有自訂屬性",
       "lineageLaneUpstream": "上游，第 {{n}} 跳",

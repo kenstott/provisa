@@ -31,7 +31,8 @@ const PRODUCT = {
 } as unknown as DataProduct;
 
 const EDGE: CoreEdge = {
-  kind: "relationship",
+  id: "pet_health:related:12",
+  kind: "related",
   direction: null,
   target_product_id: null,
   target_table_id: 12,
@@ -46,6 +47,7 @@ const EDGE: CoreEdge = {
     id: 12,
     domain_id: "pet-store",
     table_name: "owners",
+    alias: null,
     description: "Everyone who has adopted or fostered a pet, with how to reach them.",
   },
 };
@@ -73,7 +75,6 @@ function panel() {
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,

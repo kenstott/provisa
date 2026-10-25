@@ -15,6 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
+import type { CoreEdge } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
@@ -29,17 +30,32 @@ const PRODUCT = {
   customProperties: {},
 } as unknown as DataProduct;
 
-const INPUT_PORTS = Array.from({ length: 12 }, (_, i) => ({
-  id: `pet_store.a_rather_long_table_name_${i}`,
-  table: `pet-store.a_rather_long_table_name_${i}`,
-  columns: ["id", "name"],
+// REQ-2126: the product's nearest physical inputs, long names that cannot wrap.
+const INPUTS: CoreEdge[] = Array.from({ length: 12 }, (_, i) => ({
+  id: `pet_health:lineage:${i}`,
+  kind: "lineage",
+  direction: "upstream",
+  target_product_id: null,
+  target_table_id: null,
+  target_relation: `pet_store.a_rather_long_table_name_${i}`,
+  direct: true,
+  hops: 1,
+  path_count: 1,
+  aliases: null,
+  supporting_tables: null,
+  vias: null,
+  nearest_input: true,
 }));
 
 function panel() {
   return render(
     <DataProductDetailPanel
       p={PRODUCT}
-      core={{ product: PRODUCT, queries: { graphql: "query X { x }", sql: "", jsonapi: "" } }}
+      core={{
+        product: PRODUCT,
+        edges: INPUTS,
+        queries: { graphql: "query X { x }", sql: "", jsonapi: "" },
+      }}
       coreError={null}
       reader={null}
       canEdit={false}
@@ -47,7 +63,6 @@ function panel() {
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
-      inputPorts={INPUT_PORTS}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,
@@ -90,9 +105,7 @@ describe("a data product's cards", () => {
 
   it("keep their content inside them: what cannot wrap scrolls within the card", () => {
     panel();
-    const ports = within(card("inputPorts")).getByTestId(
-      "data-product-detail-input-ports-pet_health",
-    );
+    const ports = within(card("inputPorts")).getByTestId("data-product-detail-inputs-pet_health");
     let body = ports.parentElement as HTMLElement;
     while (body && body.style.overflowX !== "auto") body = body.parentElement as HTMLElement;
     expect(body).not.toBeNull();

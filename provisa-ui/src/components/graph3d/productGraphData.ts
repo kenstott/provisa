@@ -235,7 +235,8 @@ interface TableRow extends Tagged {
 }
 
 export interface EdgeRow {
-  kind: "relationship" | "lineage";
+  // data_product_edges' kinds (REQ-2126); the graph draws relationship and lineage rows.
+  kind: "relationship" | "related" | "lineage" | "derivation";
   direction: "upstream" | "downstream" | null;
   target_product_id: string | null;
   target_table_id: number | null;

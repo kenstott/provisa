@@ -95,6 +95,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     graphqlFieldName: null,
     dqDataset: null,
     qualityCheckers: [],
+    rowMaterialize: false,
     ...overrides,
   };
 }

@@ -97,6 +97,7 @@
         "relatedTables": "Tabelas relacionadas",
         "relationships": "Relacionamentos",
         "lineage": "Linhagem",
+        "inputPorts": "Portas de entrada",
         "dataQuality": "Qualidade de dados"
       },
       "dataQualityEmpty": "Nenhuma verificação de qualidade",
@@ -110,7 +111,6 @@
       "lineageEmpty": "Sem linhagem",
       "lineageLoading": "Carregando linhagem…",
       "lineageHint": "Grafo de linhagem de colunas mostrando as tabelas deste produto como o endpoint publicado, mais toda tabela upstream usada para derivá-las. Somente informativo — requer a capacidade view_governance.",
-      "inputPortsHint": "As tabelas que este produto lê diretamente, segundo a linhagem. Expanda uma tabela para ver as colunas que ele lê. Requer a capacidade view_governance.",
       "outputPortsHint": "A superfície consultável deste produto: suas tabelas membro e seus comandos. Consultas de exemplo para cada uma estão em Padrões de acesso.",
       "customPropertiesEmpty": "Nenhuma propriedade personalizada",
       "lineageLaneUpstream": "A montante, salto {{n}}",

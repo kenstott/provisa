@@ -186,7 +186,8 @@ async def test_every_table_a_row_names_is_named_as_the_model_names_it(control_pl
 
     (edge,) = [r for r in rows if r["kind"] == "relationship"]
     assert edge["supporting_tables"] == "sales-ops.c"
-    (lineage,) = [r for r in rows if r["kind"] == "lineage"]
+    # A, a member read from its source, has that source as its input too; that row names no relation.
+    (lineage,) = [r for r in rows if r["kind"] == "lineage" and r["target_relation"] is not None]
     assert (lineage["target_relation"], lineage["target_table_id"], lineage["vias"]) == (
         "sales_ops.d",
         D,

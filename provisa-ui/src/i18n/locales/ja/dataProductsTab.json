@@ -97,6 +97,7 @@
         "relatedTables": "関連テーブル",
         "relationships": "リレーションシップ",
         "lineage": "リネージ",
+        "inputPorts": "入力ポート",
         "dataQuality": "データ品質"
       },
       "dataQualityEmpty": "品質スキャンはありません",
@@ -110,7 +111,6 @@
       "lineageEmpty": "リネージはありません",
       "lineageLoading": "リネージを読み込んでいます…",
       "lineageHint": "このプロダクトのテーブルを公開エンドポイントとして示し、それらの導出に使われたすべての上流テーブルを含むカラムリネージグラフ。参考情報のみです。view_governance ケイパビリティが必要です。",
-      "inputPortsHint": "このプロダクトが直接読み取るテーブル（リネージより）。テーブルを展開すると読み取る列が表示されます。view_governance ケイパビリティが必要です。",
       "outputPortsHint": "このプロダクトのクエリ可能な範囲：メンバーテーブルとコマンド。それぞれのクエリ例は「アクセスパターン」にあります。",
       "customPropertiesEmpty": "カスタムプロパティはありません",
       "lineageLaneUpstream": "上流、{{n}} ホップ",

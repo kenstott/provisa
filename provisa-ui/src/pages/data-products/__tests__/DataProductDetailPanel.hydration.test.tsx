@@ -29,7 +29,7 @@ vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
 /** Each panel input, by where it comes from. */
 const META = ["p", "core", "coreError", "reader"]; // the meta domain: the product, its core, its schema
 const NOT_DATA = ["canEdit", "canSeeLineage", "onEdit", "onDelete"]; // capabilities and callbacks
-/** Decided: lineage and Input Ports read the lineage API, scoped to the product. */
+/** Decided: the lineage DAG reads the lineage API, scoped to the product. */
 const LINEAGE = [
   "lineageLoading",
   "lineageError",
@@ -37,7 +37,6 @@ const LINEAGE = [
   "lineageMembers",
   "describeColumn",
   "relationLabel",
-  "inputPorts",
 ];
 /** Read inside the panel's own parts, not through its inputs. */
 const INSIDE: Record<string, string> = {
@@ -65,6 +64,7 @@ const table = (id: number, name: string, over: Record<string, unknown> = {}) => 
   domain_id: "pet-store",
   schema_name: "pet_store",
   table_name: name,
+  alias: null,
   description: `The ${name} table`,
   dq_contract: null,
   table_columns: [],
@@ -77,7 +77,7 @@ const CORE: ProductCore = {
   product: PRODUCT,
   tables: [
     table(1, "pets", {
-      profile_results: [{ id: 9, domain_id: "pet-store", table_name: "pets_profile" }],
+      profile_results: [{ id: 9, domain_id: "pet-store", table_name: "pets_profile", alias: null }],
       // A relationship between two members, with its effective names as meta stores them.
       source_relationships: [
         {
@@ -96,7 +96,7 @@ const CORE: ProductCore = {
     table(2, "vets"),
     table(3, "pets_quality", {
       dq_contract: "name: pets_quality",
-      checks: { id: 1, domain_id: "pet-store", table_name: "pets" },
+      checks: { id: 1, domain_id: "pet-store", table_name: "pets", alias: null },
       dq_rules: [{ position: 1, column_name: "name", check_type: "missing", definition: "" }],
     }),
   ],
@@ -107,7 +107,8 @@ const CORE: ProductCore = {
   ] as never,
   edges: [
     {
-      kind: "relationship",
+      id: "pet_health:related:12",
+      kind: "related",
       direction: null,
       target_product_id: null,
       target_table_id: 12,
@@ -118,7 +119,13 @@ const CORE: ProductCore = {
       aliases: "HAS_OWNER",
       supporting_tables: null,
       vias: null,
-      target_table: { id: 12, domain_id: "pet-store", table_name: "owners", description: null },
+      target_table: {
+        id: 12,
+        domain_id: "pet-store",
+        table_name: "owners",
+        alias: null,
+        description: null,
+      },
     },
   ],
   queries: { graphql: "", sql: "", jsonapi: "" },
@@ -137,7 +144,6 @@ function panelFromMetaAlone() {
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,

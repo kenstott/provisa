@@ -97,6 +97,7 @@
         "relatedTables": "相关表",
         "relationships": "关系",
         "lineage": "血缘",
+        "inputPorts": "输入端口",
         "dataQuality": "数据质量"
       },
       "dataQualityEmpty": "没有质量扫描",
@@ -110,7 +111,6 @@
       "lineageEmpty": "没有血缘",
       "lineageLoading": "正在加载血缘…",
       "lineageHint": "列血缘图，以此产品的表作为发布终结点，并包含用于派生它们的所有上游表。仅供参考，需要 view_governance 能力。",
-      "inputPortsHint": "此产品直接读取的表（来自血缘）。展开表可查看其读取的列。需要 view_governance 能力。",
       "outputPortsHint": "此产品可查询的范围：其成员表和命令。每个的示例查询见“访问模式”。",
       "customPropertiesEmpty": "没有自定义属性",
       "lineageLaneUpstream": "上游，第 {{n}} 跳",

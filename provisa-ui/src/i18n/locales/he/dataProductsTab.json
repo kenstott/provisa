@@ -97,6 +97,7 @@
         "relatedTables": "טבלאות קשורות",
         "relationships": "קשרים",
         "lineage": "Data Lineage",
+        "inputPorts": "Input Ports",
         "dataQuality": "איכות נתונים"
       },
       "dataQualityEmpty": "אין סריקות איכות",
@@ -110,7 +111,6 @@
       "lineageEmpty": "אין Data Lineage",
       "lineageLoading": "טוען Data Lineage…",
       "lineageHint": "גרף Column-Level Lineage שמציג את טבלאות המוצר כנקודת הקצה המפורסמת, וכן כל טבלה במעלה הזרם ששימשה לגזירתן. לעיון בלבד — דורש את היכולת view_governance.",
-      "inputPortsHint": "הטבלאות שמוצר זה קורא ישירות, לפי Data Lineage. הרחיבו טבלה כדי לראות את העמודות שהוא קורא. דורש את היכולת view_governance.",
       "outputPortsHint": "המשטח הניתן לשאילתה של המוצר הזה: טבלאות החברות והפקודות שלו. שאילתות לדוגמה לכל אחת נמצאות תחת דפוסי גישה.",
       "customPropertiesEmpty": "אין מאפיינים מותאמים אישית",
       "lineageLaneUpstream": "במעלה הזרם, דילוג {{n}}",

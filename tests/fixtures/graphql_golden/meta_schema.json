@@ -188,6 +188,21 @@
        }
       },
       {
+       "name": "m__productChecks",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__ProductChecks"
+         }
+        }
+       }
+      },
+      {
        "name": "m__registeredTables",
        "type": {
         "kind": "LIST",
@@ -1289,6 +1304,21 @@
        }
       },
       {
+       "name": "checks",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__ProductChecks"
+         }
+        }
+       }
+      },
+      {
        "name": "memberTables",
        "type": {
         "kind": "LIST",
@@ -1381,6 +1411,13 @@
        }
       },
       {
+       "name": "nearestInput",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "pathCount",
        "type": {
         "kind": "SCALAR",
@@ -1409,6 +1446,13 @@
        }
       },
       {
+       "name": "targetAddress",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
        "name": "targetProductId",
        "type": {
         "kind": "SCALAR",
@@ -1417,6 +1461,20 @@
       },
       {
        "name": "targetRelation",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "targetSourceId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "targetSourceType",
        "type": {
         "kind": "SCALAR",
         "name": "String"
@@ -1573,6 +1631,20 @@
        "type": {
         "kind": "SCALAR",
         "name": "Int"
+       }
+      },
+      {
+       "name": "latestOutcome",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "latestRunAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
        }
       },
       {
@@ -3593,6 +3665,96 @@
     {
      "fields": [
       {
+       "name": "assignedProductId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "checkedTableId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "checkerTableId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "productId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "state",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "checkedTable",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__RegisteredTables"
+       }
+      },
+      {
+       "name": "checker",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__RegisteredTables"
+       }
+      },
+      {
+       "name": "product",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__DataProducts"
+       }
+      }
+     ],
+     "name": "M__ProductChecks"
+    },
+    {
+     "fields": [
+      {
        "name": "checkedAt",
        "type": {
         "kind": "SCALAR",
@@ -4090,6 +4252,11 @@
    "domain_id": "meta",
    "graphql_field": "m__glossaryTerms",
    "table_name": "glossary_terms"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__productChecks",
+   "table_name": "product_checks"
   },
   {
    "domain_id": "meta",

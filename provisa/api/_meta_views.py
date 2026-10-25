@@ -947,7 +947,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # it profiles: the
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
-    # replaced in place.
+    # replaced in place. REQ-2132: latest_outcome and latest_run_at are a checker's latest scan.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
@@ -967,7 +967,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS checked_table_id,
                -- The table's class term, NULL when none grounds it.
                rt.class_term_id,
-               -- REQ-2132: a checker table's latest scan. Last, like the columns above, so an
+               -- A checker table's latest scan. Last, like the columns above, so an
                -- existing view is replaced in place.
                (SELECT r.outcome FROM checker_latest_runs r WHERE r.table_id = rt.id)
                    AS latest_outcome,

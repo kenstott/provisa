@@ -1059,7 +1059,6 @@
   "fr/dataProductsTab.json::dataProductsTab.detail.field.relatedTables": "Related Tables",
   "fr/dataProductsTab.json::dataProductsTab.detail.field.relationships": "Relationships",
   "fr/dataProductsTab.json::dataProductsTab.detail.inputPortsEmpty": "No upstream inputs recorded",
-  "fr/dataProductsTab.json::dataProductsTab.detail.inputPortsHint": "The tables this product reads directly, from lineage. Expand a table for the columns it reads. Requires the view_governance capability.",
   "fr/dataProductsTab.json::dataProductsTab.detail.lineageEmpty": "No lineage",
   "fr/dataProductsTab.json::dataProductsTab.detail.lineageHint": "Column lineage graph showing this product's tables as the published endpoint, plus every upstream table used to derive them. Informational only — requires the view_governance capability.",
   "fr/dataProductsTab.json::dataProductsTab.detail.lineageLoading": "Loading lineage…",
