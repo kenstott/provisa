@@ -322,6 +322,36 @@ async def published_server(
             await drop_org_schema(org_id)
 
 
+# A target's settings that are the export's own; the rest are its catalog's (REQ-2122).
+EXPORT_SETTINGS = ("datazone_project_id", "delta_share")
+
+
+async def org_domains(client: httpx.AsyncClient) -> list[str]:
+    """Every domain of the org, as the admin API lists them."""
+    answer = await client.post("/admin/graphql", json={"query": "{ domains { id } }"})
+    assert answer.status_code == 200, answer.text
+    return [d["id"] for d in answer.json()["data"]["domains"]]
+
+
+async def save_targets(client: httpx.AsyncClient, targets: list[dict[str, Any]]) -> None:
+    """Connect each target's catalog for every domain of the org in the Catalogs panel, and export
+    to each, both as an admin does (REQ-2122). Each target is named by its ``id``."""
+    cleared = await client.put("/admin/metadata-export", json={"enabled": False, "targets": []})
+    assert cleared.status_code == 200, cleared.text
+    domains = await org_domains(client)
+    catalogs = [
+        {**{k: v for k, v in t.items() if k not in EXPORT_SETTINGS}, "domains": domains}
+        for t in targets
+    ]
+    connected = await client.put("/admin/catalogs", json={"catalogs": catalogs})
+    assert connected.status_code == 200, connected.text
+    exports = [
+        {"catalog": t["id"], **{k: t[k] for k in EXPORT_SETTINGS if k in t}} for t in targets
+    ]
+    saved = await client.put("/admin/metadata-export", json={"enabled": True, "targets": exports})
+    assert saved.status_code == 200, saved.text
+
+
 def refused(outcome: dict[str, Any]) -> str:
     """A publish outcome's errors, each in full: a non-string assertion message is shortened."""
     return "\n".join(f"{e['asset']}: {e['message']}" for e in outcome["errors"])
@@ -330,11 +360,7 @@ def refused(outcome: dict[str, Any]) -> str:
 async def publish(client: httpx.AsyncClient, target: dict[str, Any]) -> dict[str, Any]:
     """Save ``target`` as the org's one export target and publish now, both as an admin does;
     what the publish reports for that target. The target is named after its provider."""
-    saved = await client.put(
-        "/admin/metadata-export",
-        json={"enabled": True, "targets": [{"id": target["provider"], **target}]},
-    )
-    assert saved.status_code == 200, saved.text
+    await save_targets(client, [{"id": target["provider"], **target}])
     published = await client.post("/admin/metadata-export/publish")
     assert published.status_code == 200, published.text
     (outcome,) = published.json()["targets"]
