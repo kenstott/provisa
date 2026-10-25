@@ -422,7 +422,13 @@ def generate_proto(
                 continue
             proto_type = _physical_to_proto(meta.data_type)
             field_num = row_numbers[col["column_name"]]
-            lines.append(f"  {proto_type} {col['column_name']} = {field_num};")
+            # `optional`: a null is the field left unset, never its type's zero (a masked amount
+            # read as 0.0). Every scalar column, the NOT NULL ones too: a regex mask fails closed
+            # to NULL on any column that is not text (REQ-2142). A Timestamp is a message, which
+            # has presence already. The same for every role and the wire, so they read one byte
+            # stream alike.
+            presence = "" if proto_type == "google.protobuf.Timestamp" else "optional "
+            lines.append(f"  {presence}{proto_type} {col['column_name']} = {field_num};")
 
         for rel, target in rel_fields:
             field_num = row_numbers[target.field_name]
