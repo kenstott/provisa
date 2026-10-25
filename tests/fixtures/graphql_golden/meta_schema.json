@@ -1226,13 +1226,6 @@
        }
       },
       {
-       "name": "sla",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "status",
        "type": {
         "kind": "SCALAR",
@@ -1547,6 +1540,13 @@
        "type": {
         "kind": "SCALAR",
         "name": "DateTime"
+       }
+      },
+      {
+       "name": "contract",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
        }
       },
       {

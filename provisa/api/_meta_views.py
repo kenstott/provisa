@@ -758,7 +758,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # it profiles: the
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
-    # replaced in place.
+    # replaced in place. REQ-2158: contract, a product member's declared contract, is last too.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
@@ -779,7 +779,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                -- The table's class term, NULL when none grounds it. Last, like the two
                -- above, so an existing view is replaced in place.
                rt.class_term_id,
-               -- REQ-2158: a product member's contract, its output port; last, as above.
+               -- A product member's contract, its output port; last, as above.
                rt.contract
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog

@@ -43,7 +43,6 @@ PRODUCT_FIELDS = [
     "usage",
     "version",
     "status",
-    "sla",
     "support",
     "support_contact",
     "publish",

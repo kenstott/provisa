@@ -16,7 +16,6 @@ import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Button,
-  Group,
   MultiSelect,
   Select,
   Stack,
@@ -28,7 +27,7 @@ import { Plus, X } from "lucide-react";
 import type { ContractColumn, DataContract } from "../../types/admin";
 import { CONTRACT_STATUSES } from "./contractDraft";
 import type { DataContractInput } from "../../hooks/useDataProductMutations";
-import { FormField, FormLayout } from "../../components/form/FormLayout";
+import { FieldGroup, FormField, FormLayout } from "../../components/form/FormLayout";
 
 export interface MemberColumn {
   name: string;
@@ -149,57 +148,68 @@ export function ContractEditor({
             label={t("dataProductsTab.contract.requiredLabel")}
             value={draft.columns.filter((c) => c.required).map((c) => c.name)}
             onChange={(names) =>
-              set({ columns: draft.columns.map((c) => ({ ...c, required: names.includes(c.name) })) })
+              set({
+                columns: draft.columns.map((c) => ({ ...c, required: names.includes(c.name) })),
+              })
             }
             data={promised}
             data-testid={`data-contract-required-input-${id}`}
           />
         </FormField>
       </FormLayout>
-      <Stack gap={4}>
-        <Text size="sm" fw={500}>
-          {t("dataProductsTab.contract.slaLabel")}
-        </Text>
+      <FormLayout>
+        <FormField size="full">
+          <Text size="sm" fw={500}>
+            {t("dataProductsTab.contract.slaLabel")}
+          </Text>
+        </FormField>
         {draft.sla.map((s, i) => (
-          <Group key={i} gap="xs" wrap="nowrap" align="flex-end">
-            <TextInput
-              aria-label={t("dataProductsTab.contract.slaProperty")}
-              placeholder={t("dataProductsTab.contract.slaProperty")}
-              value={s.property}
-              onChange={(e) =>
-                set({
-                  sla: draft.sla.map((x, j) => (j === i ? { ...x, property: e.target.value } : x)),
-                })
-              }
-              data-testid={`data-contract-sla-property-${id}-${i}`}
-            />
-            <TextInput
-              aria-label={t("dataProductsTab.contract.slaValue")}
-              placeholder={t("dataProductsTab.contract.slaValue")}
-              value={s.value === null || s.value === undefined ? "" : String(s.value)}
-              onChange={(e) =>
-                set({
-                  sla: draft.sla.map((x, j) =>
-                    j === i ? { ...x, value: e.target.value === "" ? null : e.target.value } : x,
-                  ),
-                })
-              }
-              data-testid={`data-contract-sla-value-${id}-${i}`}
-            />
-            <TextInput
-              aria-label={t("dataProductsTab.contract.slaUnit")}
-              placeholder={t("dataProductsTab.contract.slaUnit")}
-              value={s.unit ?? ""}
-              onChange={(e) =>
-                set({
-                  sla: draft.sla.map((x, j) =>
-                    j === i ? { ...x, unit: e.target.value || null } : x,
-                  ),
-                })
-              }
-              w={90}
-              data-testid={`data-contract-sla-unit-${id}-${i}`}
-            />
+          <FieldGroup row key={i} className="form-field-group--bare">
+            <FormField size="medium">
+              <TextInput
+                aria-label={t("dataProductsTab.contract.slaProperty")}
+                placeholder={t("dataProductsTab.contract.slaProperty")}
+                value={s.property}
+                onChange={(e) =>
+                  set({
+                    sla: draft.sla.map((x, j) =>
+                      j === i ? { ...x, property: e.target.value } : x,
+                    ),
+                  })
+                }
+                data-testid={`data-contract-sla-property-${id}-${i}`}
+              />
+            </FormField>
+            <FormField size="short">
+              <TextInput
+                aria-label={t("dataProductsTab.contract.slaValue")}
+                placeholder={t("dataProductsTab.contract.slaValue")}
+                value={s.value === null || s.value === undefined ? "" : String(s.value)}
+                onChange={(e) =>
+                  set({
+                    sla: draft.sla.map((x, j) =>
+                      j === i ? { ...x, value: e.target.value === "" ? null : e.target.value } : x,
+                    ),
+                  })
+                }
+                data-testid={`data-contract-sla-value-${id}-${i}`}
+              />
+            </FormField>
+            <FormField size="short">
+              <TextInput
+                aria-label={t("dataProductsTab.contract.slaUnit")}
+                placeholder={t("dataProductsTab.contract.slaUnit")}
+                value={s.unit ?? ""}
+                onChange={(e) =>
+                  set({
+                    sla: draft.sla.map((x, j) =>
+                      j === i ? { ...x, unit: e.target.value || null } : x,
+                    ),
+                  })
+                }
+                data-testid={`data-contract-sla-unit-${id}-${i}`}
+              />
+            </FormField>
             <ActionIcon
               variant="subtle"
               color="gray"
@@ -209,9 +219,9 @@ export function ContractEditor({
             >
               <X size={14} />
             </ActionIcon>
-          </Group>
+          </FieldGroup>
         ))}
-        <Group>
+        <FormField size="full">
           <Button
             variant="subtle"
             size="xs"
@@ -225,8 +235,8 @@ export function ContractEditor({
           >
             {t("dataProductsTab.contract.slaAdd")}
           </Button>
-        </Group>
-      </Stack>
+        </FormField>
+      </FormLayout>
     </Stack>
   );
 }
