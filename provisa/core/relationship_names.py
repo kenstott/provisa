@@ -142,7 +142,9 @@ def effective_cypher_type(  # REQ-351, REQ-1586
 async def store_effective_names(conn: "Connection", ids: list[str] | None = None) -> None:
     """Derive and store the effective names of the relationships ``ids`` (every one when None),
     in the naming convention now in force. Called where a relationship is saved and by every schema
-    build, which follows each save, configuration load and change of naming convention."""
+    build, which follows each save, configuration load and change of naming convention. A row
+    whose stored names are already these is not written: a worker reloading another's change
+    builds outside any model change scope, where a model write is refused (REQ-1524)."""
     from provisa.compiler.naming import active_gql_convention
 
     from sqlalchemy import select, update
@@ -160,6 +162,8 @@ async def store_effective_names(conn: "Connection", ids: list[str] | None = None
         relationships.c.cardinality,
         relationships.c.via_label_source,
         relationships.c.via_type_value,
+        relationships.c.cypher_type,
+        relationships.c.graphql_field,
         target.c.table_name.label("target_table_name"),
         via.c.table_name.label("via_table_name"),
     ).select_from(
@@ -188,6 +192,9 @@ async def store_effective_names(conn: "Connection", ids: list[str] | None = None
             via_table_name=r["via_table_name"],
             cypher_alias=r["alias"],
         )
+        if (r["cypher_type"], r["graphql_field"]) == (cypher_type, graphql_field):
+            # A reload that finds them unstored retries until the writing worker has stored them.
+            continue
         await conn.execute_core(
             update(relationships)
             .where(relationships.c.id == r["id"])
