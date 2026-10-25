@@ -40,6 +40,14 @@ def _request(org_id: str = ORG_ID):
     )
 
 
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here; what a target may be published as is the role tests below."""
+    from tests.unit.gate_identity import serve_every_column
+
+    serve_every_column(monkeypatch)
+
+
 def _json_body(body: dict):
     async def _json():
         return body
@@ -419,3 +427,53 @@ async def test_a_target_naming_no_role_is_sent_nothing_and_says_why(surface, mon
             "message": "catalog 'mz' names no role to publish as: set the role whose reads it is sent",
         }
     ]
+
+
+# --- a target's role is within its saver's reads (REQ-2152, ruling Q8) ----------------------------
+
+
+def _narrowed(monkeypatch):
+    """A saver served orders.id alone; ``steward`` reads orders.id and orders.ssn, ``analyst``
+    orders.id."""
+    import provisa.api.app as appmod
+    from provisa.api.admin.catalog_scope import CatalogScope
+
+    scope = CatalogScope(
+        whole=False,
+        reach=None,
+        served={1: {"id"}},
+        governance=False,
+        role="saver",
+        compiled=frozenset({1}),
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+    reads = {"steward": {1: {"id", "ssn"}}, "analyst": {1: {"id"}}}
+    monkeypatch.setattr(
+        "provisa.api.flight.catalog.role_visibility", lambda state, role: reads.get(role, {})
+    )
+    monkeypatch.setattr(appmod.state, "roles", {"steward": {}, "analyst": {}}, raising=False)
+
+
+@pytest.mark.asyncio
+async def test_a_target_cannot_be_published_as_a_role_reading_more_than_its_saver(
+    surface, monkeypatch
+):
+    _narrowed(monkeypatch)
+    with pytest.raises(ApiError) as refused:
+        await _put({"enabled": True, "targets": [{"catalog": "mz", "role": "steward"}]})
+    assert (refused.value.status_code, refused.value.code) == (
+        403,
+        "metadata_export.role_beyond_reads",
+    )
+    assert "ssn" not in str(refused.value)
+    await _put({"enabled": True, "targets": [{"catalog": "mz", "role": "analyst"}]})
+    assert surface.written["metadata_export"]["targets"] == [{"catalog": "mz", "role": "analyst"}]
+
+
+@pytest.mark.asyncio
+async def test_the_role_picker_offers_only_roles_within_the_callers_reads(surface, monkeypatch):
+    from provisa.api.admin.metadata_export_router import get_metadata_export
+
+    _narrowed(monkeypatch)
+    surface.stored.update({"enabled": True, "targets": [{"catalog": "mz"}]})
+    assert (await get_metadata_export(_request()))["publishable_roles"] == ["analyst"]

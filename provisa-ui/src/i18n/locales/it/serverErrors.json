@@ -433,6 +433,7 @@
       "relationship_unknown_source": "La tabella sorgente '{{table}}' non è registrata",
       "relationship_unknown_target": "La tabella di destinazione '{{table}}' non è registrata",
       "relationship_unknown_junction": "La tabella di giunzione '{{table}}' non è registrata",
+      "relationship_column_beyond_reads": "Una relazione può unire solo colonne che il tuo ruolo può leggere.",
       "source_id_taken": "La sorgente '{{source}}' esiste già",
       "domain_id_taken": "Il dominio '{{domain}}' esiste già",
       "role_id_taken": "Il ruolo '{{role}}' esiste già",

@@ -196,6 +196,69 @@ def checker_mapping() -> dict[str, str]:
     }
 
 
+async def _table_unread(info: StrawberryInfo, table_id: int) -> MutationResult | None:
+    """A refusal for a table the caller is served no column of, answered as one that does not
+    exist (REQ-2152): the right that changes a table's settings does not reach a table its role
+    cannot read. None when the caller reads it."""
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import served_columns_of
+
+    scope = catalog_scope(info)
+    if scope.whole:
+        return None
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        served = await served_columns_of(cast("Connection", conn), scope, table_id)
+    if served != set():
+        return None
+    return MutationResult(
+        success=False,
+        message=f"Table {table_id} not found",
+        code="schema.table_not_found",
+        params={"table": table_id},
+    )
+
+
+async def _rule_beyond_reads(
+    info: StrawberryInfo, input: Any, targets: list[dict]
+) -> MutationResult | None:
+    """Why a row rule over ``targets`` is refused to a caller who does not read what it names
+    (REQ-2152), or None."""
+    import sqlglot
+    from sqlglot import exp
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import served_columns_of
+
+    scope = catalog_scope(info)
+    if scope.whole:
+        return None
+    named = {c.name for c in sqlglot.parse_one(input.filter_expr).find_all(exp.Column)}
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        for target in targets:
+            served = await served_columns_of(cast("Connection", conn), scope, target["id"])
+            if served is None:
+                continue
+            if not served and not input.domain_id:
+                return MutationResult(
+                    success=False,
+                    message=f"Table not registered: {input.table_id}",
+                    code="schema.table_not_found",
+                    params={"table": input.table_id},
+                )
+            stored = {c["column_name"] for c in target["columns"]}
+            if not (named & stored) <= served:
+                reason = "the filter names a column the acting role cannot read"
+                return MutationResult(
+                    success=False,
+                    message=reason,
+                    code="schema.rls_rule_invalid",
+                    params={"reason": reason},
+                )
+    return None
+
+
 async def _save_relationship_as_caller(
     info: StrawberryInfo, input: RelationshipInput, *, creating: bool
 ) -> MutationResult:  # REQ-019, REQ-020, REQ-366, REQ-434
@@ -229,6 +292,9 @@ async def _save_relationship_as_caller(
     if _refusal is not None:
         return _refusal
     assert _src_row is not None  # _relationship_tables refuses an unresolved source
+    _beyond = await _relationship_beyond_reads(info, input, _src_row, _tgt_row)  # REQ-2152
+    if _beyond is not None:
+        return _beyond
     try:
         require_domain(info, _src_row["domain_id"])
     except PermissionError:
@@ -243,6 +309,43 @@ async def _save_relationship_as_caller(
     return await save_relationship(
         input, owner=_owner, needs_review=_cross_domain, creating=creating
     )
+
+
+async def _relationship_beyond_reads(
+    info: StrawberryInfo, input: RelationshipInput, source: dict, target: dict | None
+) -> MutationResult | None:
+    """Why a relationship is refused to a caller who does not read what it joins (REQ-2152), or
+    None: an end table it is served no column of is answered as unregistered, and a join column
+    it is not served -- whether or not the table has it -- is refused naming none."""
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import served_columns_of
+
+    scope = catalog_scope(info)
+    if scope.whole:
+        return None
+    ends = [("source", input.source_table_id, source, input.source_column)]
+    if target is not None:
+        ends.append(("target", input.target_table_id, target, input.target_column or ""))
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        for end, name, row, columns in ends:
+            served = await served_columns_of(cast("Connection", conn), scope, row["id"])
+            if served is None:
+                continue
+            if not served:
+                return MutationResult(
+                    success=False,
+                    message=f"{end.capitalize()} table {name!r} is not registered",
+                    code=f"schema.relationship_unknown_{end}",
+                    params={"table": name},
+                )
+            if not set(key_list(columns)) <= served:
+                return MutationResult(
+                    success=False,
+                    message="a relationship joins only on columns the acting role can read",
+                    code="schema.relationship_column_beyond_reads",
+                )
+    return None
 
 
 async def _relationship_tables(
@@ -3987,6 +4090,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # REQ-1531: deleting a registration is a change to the domain that holds it, so it asks the
         # same question register/update ask. The id names the object, so the domain is looked up.
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         from provisa.api.admin.domain_guard import DomainLookupError, require_table_domain
         from provisa.core.repositories import table as table_repo
 
@@ -4222,7 +4328,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         async with pool.acquire() as conn:
             c = cast("Connection", conn)
             row = await table_repo.get(c, table_id)
-            if row is None:
+            # REQ-2152: a table the caller is served no column of is answered as missing.
+            if row is None or await _table_unread(info, table_id) is not None:
                 return MutationResult(
                     success=False,
                     message=f"Table {table_id} not found",
@@ -4230,6 +4337,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"id": table_id},
                 )
             require_right_in_domains(info, "masking_config", {row["domain_id"]})
+            # REQ-2152: a write grant names only columns the caller is served -- what it cannot
+            # read it cannot grant. Refused naming no column.
+            from provisa.api.admin._table_settings import write_grant_names
+            from provisa.api.admin.catalog_scope import catalog_scope
+            from provisa.api.admin.read_rights import served_columns_of
+
+            served = await served_columns_of(c, catalog_scope(info), table_id)
+            if served is not None and any(not write_grant_names(g) <= served for g in grants):
+                return write_grant_invalid(
+                    "a write grant names a column the acting role cannot read"
+                )
             refusal = await write_grant_roles_refusal(c, grants)
             if refusal is not None:
                 return refusal
@@ -4315,6 +4433,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             targets = [t for t in registry if t["domain_id"] == input.domain_id]
         else:
             targets = [t for t in registry if (t.get("alias") or t["table_name"]) == input.table_id]
+        # REQ-2152: a row rule is written only over what the caller reads -- a table it is served
+        # no column of is answered as unregistered, and a filter naming a column it is not served
+        # is refused naming none.
+        _unread = await _rule_beyond_reads(info, input, targets)
+        if _unread is not None:
+            return _unread
         problem = validate_rls_predicate(input.filter_expr, targets, registry)
         if problem is not None:
             return MutationResult(
@@ -4393,6 +4517,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 require_right_in_domains(
                     info, "masking_config", {await table_domain(cast("Connection", conn), table_id)}
                 )
+        # REQ-2152: a rule on a table the caller is served no column of is answered as missing.
+        if table_id is not None and await _table_unread(info, table_id) is not None:
+            return MutationResult(
+                success=False, message="RLS rule not found", code="schema.rls_rule_not_found"
+            )
+        async with pool.acquire() as conn:
             deleted = await rls_repo.delete(
                 cast("Connection", conn),
                 role_id,
@@ -4584,6 +4714,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
         pool = await _get_pool()
+        from provisa.api.admin.read_rights import reader_for, relationship_readable
+
+        # REQ-2152: a relationship joining a column the caller is not served is answered as
+        # missing.
+        async with pool.acquire() as conn:
+            _readable = await relationship_readable(cast("Connection", conn), reader_for(info), id)
+        if not _readable:
+            return MutationResult(
+                success=False,
+                message=f"Relationship {id!r} not found",
+                code="schema.relationship_not_found",
+                params={"relationship": id},
+            )
         async with pool.acquire() as conn:
             # REQ-1531: a relationship belongs to the domains of both tables it joins.
             domains = await relationship_domains(cast("Connection", conn), id)
@@ -4704,6 +4847,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:
         """Update cache TTL for a registered table."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         from provisa.core.cache_ttl import cache_ttl_refusal  # REQ-2031
 
         _ttl_err = cache_ttl_refusal(cache_ttl)
@@ -4792,6 +4938,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Full-replace a table's role -> TTL list. Every role must exist, appear once, and carry a
         non-negative TTL; any violation rejects the whole list."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         pool = await _get_pool()
         async with pool.acquire() as conn:
             refusal = await role_ttl_refusal(conn, role_ttl)
@@ -4826,6 +4975,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.app import state
 
         require_capability(info, "table_registration")
+
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+
+        if _unread is not None:
+            return _unread
         pool = await _get_pool()
         async with pool.acquire() as conn:
             return await save_table_paging(state, conn, table_id, paging)
@@ -4895,6 +5049,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Set when one table is served from its replica; None = inherit its source's value.
         -1 = never, N > 0 = once it passes N governed statements per interval, 0 = always."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         invalid = _invalid_replicate(replicate)
         if invalid is not None:
             return invalid
@@ -5031,6 +5188,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": table_id},
                 )
             require_capability(info, "table_registration", domain_id=row.domain_id)
+            _unread = await _table_unread(info, table_id)  # REQ-2152
+            if _unread is not None:
+                return _unread
             from provisa.core import model_change
 
             model_change.name("update", "table draft", row.table_name)  # REQ-1524
@@ -5184,6 +5344,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         When the EFFECTIVE load_protected is True, enforces the REQ-1141 ≥1-gate rule over the
         effective (table→source) window/cadence/probe."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
@@ -5391,6 +5554,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:
         """Update naming convention for a registered table."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         refusal = naming_refusal(gql_naming_convention)
         if refusal is not None:
             return refusal

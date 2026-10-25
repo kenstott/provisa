@@ -27,6 +27,7 @@ import pytest
 
 from provisa.api.admin import schema_mutation
 from provisa.api.admin.schema_mutation import Mutation
+from tests.unit.gate_identity import serve_every_column
 
 
 # The stored row the setters read before judging the save: a change-fed table of a source the
@@ -42,6 +43,13 @@ _STORED = SimpleNamespace(
     load_protected=False,
     freshness_gate=False,
 )
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which tables and columns a caller reads is REQ-2152's own
+    tests (test_model_edits_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 class _Pool:

@@ -433,6 +433,7 @@
       "relationship_unknown_source": "स्रोत तालिका '{{table}}' पंजीकृत नहीं है",
       "relationship_unknown_target": "लक्ष्य तालिका '{{table}}' पंजीकृत नहीं है",
       "relationship_unknown_junction": "जंक्शन तालिका '{{table}}' पंजीकृत नहीं है",
+      "relationship_column_beyond_reads": "संबंध केवल उन्हीं कॉलम पर जुड़ सकता है जिन्हें आपकी भूमिका पढ़ सकती है।",
       "source_id_taken": "स्रोत '{{source}}' पहले से मौजूद है",
       "domain_id_taken": "डोमेन '{{domain}}' पहले से मौजूद है",
       "role_id_taken": "भूमिका '{{role}}' पहले से मौजूद है",

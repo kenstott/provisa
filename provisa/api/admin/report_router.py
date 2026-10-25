@@ -189,6 +189,63 @@ async def _as_served(
     return narrowed, config.model_copy(update={"metrics": metrics})
 
 
+async def _withheld_definitions(
+    request: Request, config: "ProvisaConfig", org_id: str
+) -> frozenset[str]:
+    """The views (by table URI) whose definition the caller is not shown (REQ-2152, ruling Q7):
+    a definition names the columns of every table it reads, so it is shown only to a caller served
+    every column of each -- the rule the audited statement text follows. A definition whose tables
+    cannot be told is withheld."""
+    import types
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import serves_every_column
+    from provisa.api.app import state
+    from provisa.api.metadata_export.refs import table_uri
+    from provisa.compiler.metric_expand import metric_reference_tables
+    from provisa.core.repositories.integrity import names_in_sql
+
+    caller = catalog_scope(types.SimpleNamespace(context={"request": request}))
+    if caller.whole:
+        return frozenset()
+    ids: dict[str, list[int]] = {}
+    for t in state.tables:
+        ids.setdefault(t["table_name"], []).append(t["id"])
+        if t.get("alias"):
+            ids.setdefault(t["alias"], []).append(t["id"])
+    metrics = {m.name: m for m in config.metrics}
+    withheld: set[str] = set()
+    assert state.model_db is not None  # the org's model store is bound with its runtime
+    async with state.model_db.acquire() as conn:
+        for table in config.tables:
+            if table.view_sql is not None:
+                try:
+                    names = names_in_sql(table.view_sql)[0]
+                except ValueError:
+                    withheld.add(table_uri(org_id, table))
+                    continue
+            elif table.view_metrics is not None:
+                # A metric the caller is not granted is one whose tables cannot be told.
+                if any(metric not in metrics for metric in table.view_metrics.metrics):
+                    withheld.add(table_uri(org_id, table))
+                    continue
+                names = {
+                    name
+                    for metric in table.view_metrics.metrics
+                    if metric in metrics
+                    for name in metric_reference_tables(metric, metrics[metric].expression)
+                }
+            else:
+                continue
+            bare = [name.split(".")[-1] for name in names]
+            readable = all(name in ids for name in bare) and all(
+                [await serves_every_column(conn, caller, i) for name in bare for i in ids[name]]
+            )
+            if not readable:
+                withheld.add(table_uri(org_id, table))
+    return frozenset(withheld)
+
+
 @router.get("/admin/report.xlsx", tags=["admin"])
 async def model_report(
     request: Request,
@@ -203,7 +260,12 @@ async def model_report(
     scope = _view_scope(request, domains)
     snapshot, config = await _hydrate(org_id)
     snapshot, config = await _as_served(request, _narrow(snapshot, scope), config)
-    rows = wb.sheet_rows(snapshot, config, org_id=org_id)
+    rows = wb.sheet_rows(
+        snapshot,
+        config,
+        org_id=org_id,
+        withheld_definitions=await _withheld_definitions(request, config, org_id),
+    )
     header = wb.ReportHeader(
         org_id=org_id,
         environment=active_env(),
