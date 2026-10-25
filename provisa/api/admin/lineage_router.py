@@ -255,13 +255,13 @@ async def _view_rows(conn) -> list[dict]:
 
 
 async def _fetch_registry_columns(state) -> list[dict]:
-    """Every registered relation's columns with their per-role visibility (REQ-1625/REQ-1626).
+    """Every registered relation's columns (REQ-1625/REQ-1626).
 
-    One row per (relation, column): ``domain_id``, ``table_name``, ``column_name``, ``alias``,
-    ``visible_to``. A column's node is named by its SQL name (``sql_column_name``), the name a view
+    One row per (relation, column): ``domain_id``, ``table_name``, ``table_id``, ``column_name``,
+    ``alias``. A column's node is named by its SQL name (``sql_column_name``), the name a view
     reads it by, so the registry's column and a view's reference to it are one node.
     This is the registry's whole surface — base tables as well as views — so Complete Lineage can show
-    a registered table that nothing derives from, and can seed the role cut from what a role may query."""
+    a registered table that nothing derives from, and can seed the role cut from what a role is served."""
     if getattr(state, "model_db", None) is None:
         return []
     async with state.model_db.acquire() as conn:
@@ -281,7 +281,6 @@ async def _registry_columns(conn) -> list[dict]:
             registered_tables.c.table_name,
             table_columns.c.column_name,
             table_columns.c.alias,
-            table_columns.c.visible_to,
             table_columns.c.table_id,
         ).select_from(
             registered_tables.join(
@@ -354,29 +353,41 @@ def _relation_of(domain_id: str, table_name: str) -> str:
 
 
 def _role_seeds(
-    column_rows: list[dict], roles: set[str], domains: set[str]
+    column_rows: list[dict], lens: dict[int, set[str]] | None, domains: set[str]
 ) -> tuple[set[str], set[str]]:
     """(seed node ids, seed relations) for the role perspective (REQ-1625).
 
-    Complete Lineage is read FROM a role's vantage point: the seeds are the columns that role can
-    query, and the graph is everything they derive from. A governance analyst holding several roles
-    switches perspective by switching role, so the cut is analytical, not protective — nothing about an
-    ancestor is withheld once a seed reaches it. Role membership is exact (``role in visible_to``), the
-    same test the schema surfaces use (``provisa/security/visibility.py:54``); an empty ``roles`` is the
-    "All roles" selection and seeds every registered column. ``domains`` restricts which relations may
-    SEED — never which may be an ancestor, or a chain would break mid-way through another domain."""
+    Complete Lineage is read FROM a role's vantage point: the seeds are the columns the lens's roles
+    are served (``lens``: table id → physical columns, from :func:`_lens`), and the graph is what
+    they derive from, cut to what the caller reads (:func:`caller_lineage`). ``lens`` None is the
+    "All roles" selection and seeds every registered column. ``domains`` restricts which relations
+    may SEED — never which may be an ancestor, or a chain would break mid-way through another
+    domain."""
     seeds: set[str] = set()
     relations: set[str] = set()
     for row in column_rows:
         if domains and row["domain_id"] not in domains:
             continue
-        visible_to = row["visible_to"] or []
-        if roles and not roles.intersection(visible_to):
+        if lens is not None and row["column_name"] not in lens.get(row["table_id"], ()):
             continue
         relation = _relation_of(row["domain_id"], row["table_name"])
         relations.add(relation)
         seeds.add(f"{relation}.{sql_column_name(row)}")
     return seeds, relations
+
+
+def _lens(state, roles: set[str]) -> dict[int, set[str]] | None:
+    """The columns any of ``roles`` is served, by the one served-columns rule; None for no
+    selection (every role)."""
+    from provisa.api.admin.served import served_columns_for
+
+    if not roles:
+        return None
+    out: dict[int, set[str]] = {}
+    for role in roles:
+        for table_id, columns in served_columns_for(state, role).items():
+            out.setdefault(table_id, set()).update(columns)
+    return out
 
 
 def _view_relation(row: dict) -> str:
@@ -460,7 +471,7 @@ async def federation_graph(
     column_rows = await _fetch_registry_columns(state)
     domain_filter = {d for d in (domains or "").split(",") if d}
     role_filter = {r for r in (roles or "").split(",") if r}
-    seeds, seed_relations = _role_seeds(column_rows, role_filter, domain_filter)
+    seeds, seed_relations = _role_seeds(column_rows, _lens(state, role_filter), domain_filter)
     # Views are parsed WHOLE, unfiltered: the domain/role cut selects the seeds, and an upstream view in
     # a domain outside the filter is still a legitimate ancestor of one inside it. Filtering the parse
     # set instead would sever those chains and understate provenance.

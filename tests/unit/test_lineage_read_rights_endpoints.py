@@ -36,23 +36,22 @@ VIEWS = [
 ]
 
 
-def _column(table_id: int, table: str, column: str, visible_to: list[str]) -> dict:
+def _column(table_id: int, table: str, column: str) -> dict:
     return {
         "table_id": table_id,
         "domain_id": "sales",
         "table_name": table,
         "column_name": column,
         "alias": None,
-        "visible_to": visible_to,
     }
 
 
 COLUMNS = [
-    _column(1, "orders", "amount", ["analyst", "auditor"]),
-    _column(2, "v_orders", "amount", ["auditor"]),
-    _column(3, "mart", "amount", ["analyst", "auditor"]),
-    _column(4, "secret", "x", ["auditor"]),
-    _column(5, "leak", "x", ["auditor"]),
+    _column(1, "orders", "amount"),
+    _column(2, "v_orders", "amount"),
+    _column(3, "mart", "amount"),
+    _column(4, "secret", "x"),
+    _column(5, "leak", "x"),
 ]
 
 

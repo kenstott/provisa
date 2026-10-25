@@ -298,11 +298,11 @@ def test_a_statement_names_a_base_table_by_its_bare_name() -> None:
 def test_a_registered_column_is_named_as_a_view_reads_it() -> None:
     row = {
         "domain_id": "sales",
+        "table_id": 1,
         "table_name": "customers",
         "column_name": "postalCode",
         "alias": None,
-        "visible_to": [],
     }
-    seeds, _ = _role_seeds([row], set(), set())
+    seeds, _ = _role_seeds([row], None, set())
     assert seeds == {"sales.customers.postal_code"}
     assert sql_column_name({"column_name": "x", "alias": "y"}) == "y"
