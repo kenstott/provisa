@@ -8129,5 +8129,9 @@
   "zh-HK/serverErrors.json::serverErrors.profile.classification_kind_unknown": "Unknown classification kind {{kind}}",
   "zh-HK/serverErrors.json::serverErrors.profile.classification_pii_refused": "The column could not be marked PII",
   "zh-HK/serverErrors.json::serverErrors.profile.classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
-  "zh-HK/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads"
+  "zh-HK/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads",
+  "zh-HK/graphFrame.json::graphFrame.metaRows_one": "{{count}} row",
+  "zh-HK/graphFrame.json::graphFrame.metaRows_other": "{{count}} rows",
+  "zh-HK/graphFrame.json::graphFrame.metaRowsElapsed_one": "{{count}} row · {{elapsed}}ms",
+  "zh-HK/graphFrame.json::graphFrame.metaRowsElapsed_other": "{{count}} rows · {{elapsed}}ms"
 }

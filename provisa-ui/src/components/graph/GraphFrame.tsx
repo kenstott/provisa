@@ -48,6 +48,7 @@ import { TableView, JsonCopyButton } from "./TableView";
 import { useLocalStorage } from "./graph-persistence";
 import { useOverlayNavigation } from "./frame/use-overlay-navigation";
 import { useFrameDerivedData } from "./frame/use-frame-derived-data";
+import { frameMetaText } from "./frame/frame-meta";
 import { useAutoImpute } from "./frame/use-auto-impute";
 import {
   GraphViewIcon,
@@ -440,18 +441,7 @@ export function GraphFrame({
               <span className="gf-loading">{t("graphFrame.running")}</span>
             )}
             {frame.status === "done" && (
-              <span className="gf-meta-text">
-                {frame.elapsed !== undefined
-                  ? t("graphFrame.metaCountElapsed", {
-                      nodes: frame.nodes.size,
-                      edges: frame.edges.size,
-                      elapsed: frame.elapsed,
-                    })
-                  : t("graphFrame.metaCount", {
-                      nodes: frame.nodes.size,
-                      edges: frame.edges.size,
-                    })}
-              </span>
+              <span className="gf-meta-text">{frameMetaText(frame, t)}</span>
             )}
             {frame.status === "error" && (
               <span className="gf-meta-error">{t("graphFrame.error")}</span>
