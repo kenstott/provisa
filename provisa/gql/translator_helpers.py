@@ -563,10 +563,55 @@ _CYPHER_CAST_FNS: dict[str, tuple[str, bool]] = {
     "TOFLOATORNULL": ("DOUBLE", True),
     "TOBOOLEAN": ("BOOLEAN", True),
     "TOBOOLEANORNULL": ("BOOLEAN", True),
+    # SPARQL's xsd:decimal, xsd:date and xsd:dateTime casts (REQ-2135)
+    "TODECIMAL": ("DECIMAL", True),
+    "TODATE": ("DATE", True),
+    "TODATETIME": ("TIMESTAMP", True),
 }
+
+# SPARQL's date parts (REQ-2135): its function → the field extracted.
+_DATE_PARTS: dict[str, str] = {
+    "YEAR": "YEAR",
+    "MONTH": "MONTH",
+    "DAY": "DAY",
+    "HOURS": "HOUR",
+    "MINUTES": "MINUTE",
+    "SECONDS": "SECOND",
+}
+_SPARQL_SCALARS = frozenset({*_DATE_PARTS, "STRCONCAT", "STRBEFORE", "STRAFTER"})
 
 # SUBSTRING(str, start[, len]) needs at least the string + start-index args.
 _SUBSTRING_MIN_ARGS = 2
+
+
+def _str_before_after(
+    name: str,
+    text: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    sought: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """SPARQL's STRBEFORE / STRAFTER (REQ-2135): the text before (after) the first ``sought`` in
+    ``text``, the empty string where it is not found."""
+    # substr, 1-based: an exp.Substring is a Cypher substring, whose start this transform shifts.
+    at = exp.StrPosition(this=text.copy(), substr=sought.copy())
+    if name == "STRBEFORE":
+        part = exp.Anonymous(
+            this="substr",
+            expressions=[
+                text.copy(),
+                exp.Literal.number(1),
+                exp.Sub(this=at.copy(), expression=exp.Literal.number(1)),
+            ],
+        )
+    else:
+        part = exp.Anonymous(
+            this="substr",
+            expressions=[
+                text.copy(),
+                exp.Add(this=at.copy(), expression=exp.Length(this=sought.copy())),
+            ],
+        )
+    missing = exp.EQ(this=at, expression=exp.Literal.number(0))
+    return exp.Case(ifs=[exp.If(this=missing, true=exp.Literal.string(""))], default=part)
 
 
 def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -607,10 +652,14 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
     if isinstance(node, exp.Substring):
         start = node.args.get("start")
         if start is not None:
+            length = node.args.get("length")
             return exp.Substring(
-                this=node.this,
-                start=exp.Add(this=start, expression=exp.Literal.number(1)),
-                length=node.args.get("length"),
+                this=node.this.transform(_rewrite_cypher_fn_node),
+                start=exp.Add(
+                    this=start.transform(_rewrite_cypher_fn_node),
+                    expression=exp.Literal.number(1),
+                ),
+                length=length.transform(_rewrite_cypher_fn_node) if length is not None else None,
             )
         return node
 
@@ -650,10 +699,28 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
     if name in _CYPHER_FN_RENAMES:
         return exp.Anonymous(this=_CYPHER_FN_RENAMES[name], expressions=args)
 
+    if name in _SPARQL_SCALARS or name in _CYPHER_CAST_FNS:
+        # The transform does not descend into the node it is handed back: its arguments first
+        # (toInteger(substring(x, 1)) shifts the substring's start).
+        args = [a.transform(_rewrite_cypher_fn_node) for a in args]
+
     if name in _CYPHER_CAST_FNS and args:
         sql_type, use_try = _CYPHER_CAST_FNS[name]
         cls = exp.TryCast if use_try else exp.Cast
         return cls(this=args[0], to=exp.DataType.build(sql_type))
+
+    if name in _DATE_PARTS and len(args) == 1:
+        return exp.Extract(this=exp.var(_DATE_PARTS[name]), expression=args[0])
+
+    if name == "STRCONCAT" and args:
+        # SPARQL's CONCAT: unbound where any part is, as || is (an engine's concat() skips nulls).
+        out = args[0]
+        for arg in args[1:]:
+            out = exp.DPipe(this=out, expression=arg)
+        return out
+
+    if name in ("STRBEFORE", "STRAFTER") and len(args) == 2:
+        return _str_before_after(name, args[0], args[1])
 
     if name == "SUBSTRING" and len(args) >= _SUBSTRING_MIN_ARGS:
         # Fallback if sqlglot parsed as Anonymous instead of Substring
