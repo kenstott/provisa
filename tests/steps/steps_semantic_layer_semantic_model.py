@@ -29,11 +29,8 @@ import httpx
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from provisa.security.visibility import (
-    is_column_visible,
-    visible_column_names,
-    visible_tables,
-)
+from provisa.security.visibility import visible_tables
+from tests.served_columns import is_column_visible, visible_column_names
 
 # Bind every scenario in the generated feature file for this requirement.
 scenarios(str(Path(__file__).parent.parent / "features" / "REQ-363.feature"))

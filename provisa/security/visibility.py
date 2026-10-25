@@ -36,20 +36,3 @@ def visible_tables(tables: list[dict], role: dict) -> list[dict]:  # REQ-039, RE
             continue
         result.append({**table, "columns": visible_cols})
     return result
-
-
-def is_column_visible(  # REQ-039, REQ-263
-    table: dict,
-    column_name: str,
-    role_id: str,
-) -> bool:
-    """Whether a column's own grant names ``role_id`` (its ``visible_to``, literally)."""
-    for col in table.get("columns", []):
-        if col["column_name"] == column_name:
-            return role_id in col["visible_to"]
-    return False
-
-
-def visible_column_names(table: dict, role_id: str) -> set[str]:  # REQ-039, REQ-263
-    """The columns whose own grant names ``role_id`` (their ``visible_to``, literally)."""
-    return {col["column_name"] for col in table.get("columns", []) if role_id in col["visible_to"]}

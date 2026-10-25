@@ -355,3 +355,19 @@ def test_ungoverned_config_publishes_no_tags():
     assert (
         build_snapshot(config, org_id="acme", dialect="postgres", contexts={}).governance_tags == []
     )
+
+
+def test_visibility_tags_say_what_the_one_column_rule_serves():
+    """REQ-2152: the tag reads column_served -- an empty grant serves every role reaching the
+    table's domain, so only a role outside it is restricted (a literal reading of the empty list
+    used to restrict every role)."""
+    config = _config(
+        tables=[_table("customers", [Column(name="id", data_type="int", visible_to=[])])]
+    )
+    config.roles.append(
+        Role(id="hr_only", description="Test role.", capabilities=[], domain_access=["hr"])
+    )
+    tags = _tags(config, GovernanceSignal.VISIBILITY_RESTRICTED)
+    assert [t.asset.fqn() for t in tags] == ["wh.public.customers.id"]
+    assert tags[0].restricted_roles == ("hr_only",)
+    assert tags[0].exempt_roles == ("admin", "analyst")

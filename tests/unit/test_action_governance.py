@@ -74,16 +74,19 @@ def _state(rls_by_role: dict[str, RLSContext] | None = None, roles: dict | None 
         "analyst": {
             "id": "analyst",
             "capabilities": ["full_results"],
+            "domain_access": ["sales"],
             "session_vars": {"region": "east"},
         },
         "org_admin": {
             "id": "org_admin",
             "description": "Test role.",
             "capabilities": ["admin", "full_results"],
+            "domain_access": ["*"],
         },
         "junior": {
             "id": "junior",
             "capabilities": ["full_results"],
+            "domain_access": ["sales"],
             "session_vars": {"region": "east"},
         },
     }
@@ -169,6 +172,22 @@ class TestGovern:
         st = _state({"analyst": RLSContext(rules={}, domain_rules={"sales": "id > 2"})})
         rows, _ = await govern_action_rows(ROWS, FN, "analyst", st)
         assert [r["id"] for r in rows] == [3]
+
+    async def test_a_contract_column_is_served_by_the_one_column_rule(self):
+        """REQ-2152: a contract column goes through column_served in the action's domain: a
+        grant to analyst serves junior, who inherits it; a grant to org_admin alone does not."""
+        fn = {
+            **FN,
+            "output_columns": [
+                {"name": "id", "type": "integer"},
+                {"name": "bonus", "type": "double", "visible_to": ["analyst"]},
+                {"name": "audit", "type": "varchar", "visible_to": ["org_admin"]},
+            ],
+        }
+        rows = [{"id": 1, "bonus": 2.0, "audit": "x"}]
+        governed, enf = await govern_action_rows(rows, fn, "junior", _state())
+        assert governed == [{"id": 1, "bonus": 2.0}]
+        assert enf.columns_excluded == ["audit"]
 
     async def test_admin_sees_everything_unmasked(self):
         rows, enf = await govern_action_rows(ROWS, FN, "org_admin", _state())

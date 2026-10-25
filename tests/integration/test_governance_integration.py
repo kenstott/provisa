@@ -66,11 +66,8 @@ from provisa.security.rights import (
     has_capability,
     InsufficientRightsError,
 )
-from provisa.security.visibility import (
-    is_column_visible,
-    visible_column_names,
-    visible_tables,
-)
+from provisa.security.visibility import visible_tables
+from tests.served_columns import is_column_visible, visible_column_names
 from provisa.security.row_filters import resolve_table_rules
 from tests.helpers import ALL_DATA_CAPABILITIES, governed_for_role
 
