@@ -259,6 +259,8 @@ async def test_the_class_term_is_in_its_domain_and_related_to_its_tables_asset(p
     assert term is not None, "the Unified Catalog has no term for the class term"
     assert term["name"] == CLASS_TERM and term["status"] == "Published"
     assert result["published"]["glossary_term"] == 2
-    assert len(term_assets) == 1
+    assert len(term_assets) == 1, term_assets
     provisa = token_oid(_token(_credentials(), "https://purview.azure.net/.default"))
-    assert term_assets[0]["systemData"]["createdBy"] == provisa
+    # The relationship as the service lists it, whole, when it names no author.
+    assert "systemData" in term_assets[0], term_assets[0]
+    assert term_assets[0]["systemData"]["createdBy"] == provisa, term_assets[0]
