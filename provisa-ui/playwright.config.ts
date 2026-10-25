@@ -105,7 +105,9 @@ const backendPort = (worker: number) => E2E_API_PORT + worker * 10;
 // free and one of them lost it -- "pgwire server port 5433 still bound 30s after the launcher
 // exited" -- a spec that passes alone failing beside another worker's (file-connector beside
 // file-connector-multi-format). A block per worker, as the pytest harness leases its own.
-const PGWIRE_PORTS_BASE = Number(process.env.PROVISA_E2E_PGWIRE_PORTS_BASE ?? 25400);
+// Above tests/port_lease.py's range (21100-25599), from which a pytest session on the same machine
+// leases its ports: a block inside it could be handed to a test stack mid-run.
+const PGWIRE_PORTS_BASE = Number(process.env.PROVISA_E2E_PGWIRE_PORTS_BASE ?? 25600);
 const PGWIRE_PORTS_PER_WORKER = 40;
 const pgwirePorts = (worker: number) =>
   Array.from(

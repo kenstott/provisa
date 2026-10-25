@@ -320,3 +320,17 @@ def test_every_e2e_backend_names_pgwire_ports_of_its_own():
     assert "PROVISA_PGWIRE_PORTS: pgwirePorts(b.worker)," in playwright
     # The Trino backend's block is past every core worker's.
     assert "PROVISA_PGWIRE_PORTS: pgwirePorts(E2E_WORKERS)," in playwright
+
+
+def test_the_e2e_pgwire_ports_are_outside_the_pytest_lease_range():
+    """A pytest session on the same machine leases ports from tests/port_lease.py's range; an e2e
+    backend's pgwire block inside it could be handed to a test stack while the backend uses it."""
+    import re
+
+    from tests.port_lease import LEASE_LAST
+
+    playwright = _playwright_config()
+    base = int(re.search(r"PROVISA_E2E_PGWIRE_PORTS_BASE \?\? (\d+)\)", playwright).group(1))
+    # Every block the config hands out (core workers, then the Trino backend's) counts up from the
+    # base, so all of them are clear of the lease range when the base is past it.
+    assert base > LEASE_LAST
