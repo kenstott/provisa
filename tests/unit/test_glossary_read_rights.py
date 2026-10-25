@@ -121,3 +121,38 @@ async def test_a_table_the_caller_is_not_served_is_not_grounded(model):
         with pytest.raises(ApiError) as unserved:
             await glossary_router.ground_term_table(conn, ids["term"], ids["payroll"], _REQUEST)
     assert unserved.value.code == "glossary.table_not_found"
+
+
+async def test_a_glossary_refusal_names_only_the_tables_its_caller_reads(model):
+    from provisa.api.admin.read_rights import reader_for_request, told_glossary_refusal
+
+    db, ids = model
+    reader = reader_for_request(_REQUEST)
+    both = glossary_repo.TermIsClass("Key", ["pg.public.orders", "pg.public.payroll"])
+    hidden = glossary_repo.TermIsClass("Key", ["pg.public.payroll"])
+    async with db.acquire() as conn:
+        said, tables = await told_glossary_refusal(conn, reader, both)
+        assert tables == "pg.public.orders" and "payroll" not in said
+        said, tables = await told_glossary_refusal(conn, reader, hidden)
+    assert tables == "outside your grants" and "payroll" not in said
+    assert said.startswith("term 'Key' grounds tables"), "the refusal stands"
+
+
+async def test_a_retired_terms_history_names_only_what_its_caller_reads(model):
+    from provisa.core.env_files import table_path
+
+    _db, _ids = model
+    orders, payroll = table_path("sales", "orders"), table_path("hr", "payroll")
+    history = {
+        "retired_in": "b",
+        "as_of": "a",
+        "columns": [
+            {"table": orders, "column": "id"},
+            {"table": payroll, "column": "salary"},
+            {"table": table_path("sales", "gone"), "column": "x"},
+        ],
+        "tables": [orders, payroll],
+    }
+    told = await glossary_router._history_as_read(_REQUEST, history)
+    assert told["columns"] == [{"table": orders, "column": "id"}]
+    assert told["tables"] == [orders]

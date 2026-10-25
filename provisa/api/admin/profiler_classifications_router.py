@@ -181,8 +181,12 @@ async def decide_classification(
         except TermTagRefused as exc:
             raise ApiError(409, exc.code, str(exc), **exc.params) from exc
         except glossary_repo.TermIsClass as exc:
+            from provisa.api.admin.read_rights import reader_for_request, told_glossary_refusal
+
+            # REQ-2152: only the tables the caller reads are named.
+            said, tables = await told_glossary_refusal(conn, reader_for_request(request), exc)
             raise ApiError(
-                409, "glossary.term_is_class", str(exc), term=exc.term, tables=", ".join(exc.tables)
+                409, "glossary.term_is_class", said, term=exc.term, tables=tables
             ) from exc
         except classifications.PiiRefused as exc:
             raise ApiError(

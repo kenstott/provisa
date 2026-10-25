@@ -3903,13 +3903,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                             model = model.model_copy(update={"write_grants": _carried_grants})
                         table_id = await table_repo.upsert(_conn, model)
                     except glossary_repo.TermIsClass as _class:
-                        # REQ-2141: a column named for a class term is not claimed by it.
+                        # REQ-2141: a column named for a class term is not claimed by it; REQ-2152: only
+                        # the tables the caller reads are named.
+                        from provisa.api.admin.read_rights import reader_for, told_glossary_refusal
+
+                        _said, _tables = await told_glossary_refusal(
+                            _conn, reader_for(info), _class
+                        )
                         raise TableSaveRefused(
                             MutationResult(
                                 success=False,
-                                message=str(_class),
+                                message=_said,
                                 code="glossary.term_is_class",
-                                params={"term": _class.term, "tables": ", ".join(_class.tables)},
+                                params={"term": _class.term, "tables": _tables},
                             )
                         )
                     except table_repo.ViewLoopRefused as _loop:
