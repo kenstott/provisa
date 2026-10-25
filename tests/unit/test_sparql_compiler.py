@@ -604,3 +604,28 @@ def test_an_optional_reaching_a_new_node_binds_nothing_where_it_does_not_match(c
     assert sorted(((r["n"], r["a"]) for r in rows), key=str) == sorted(
         [("Ann", None), ("Bo", None), ("Cy", 29), ("Di", None)], key=str
     )
+
+
+def _rows(con, query: str) -> list[tuple]:
+    return sorted((tuple(r.values()) for r in _answer(con, query)), key=repr)
+
+
+def test_an_optional_nested_in_an_optional_extends_it(con):
+    # REQ-2135: each person's company's name, through the inner OPTIONAL; the inner OPTIONAL is
+    # lowered, never dropped.
+    rows = _rows(
+        con,
+        f"SELECT ?n ?cn WHERE {{ ?s a <{PERSON}> ; p:name ?n . OPTIONAL {{ ?s rel:WORKS_AT ?c . "
+        f"?c a <{COMPANY}> OPTIONAL {{ ?c c:name ?cn }} }} }}",
+    )
+    assert rows == [("Ann", "Acme"), ("Bo", "Acme"), ("Cy", "Beta"), ("Di", None)]
+
+
+def test_a_filter_naming_what_an_inner_optional_binds_is_refused():
+    # REQ-2135: an OPTIONAL's FILTER naming a variable only an OPTIONAL inside it binds.
+    with pytest.raises(SparqlRefused, match="an OPTIONAL inside it binds"):
+        _answer(
+            None,
+            f"SELECT ?n WHERE {{ ?s a <{PERSON}> ; p:name ?n . OPTIONAL {{ ?s rel:WORKS_AT ?c . "
+            f"?c a <{COMPANY}> OPTIONAL {{ ?c c:name ?cn }} FILTER(?cn = 'Acme') }} }}",
+        )
