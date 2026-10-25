@@ -155,6 +155,33 @@ async def stored_column_types(
     return {r.column_name: r.data_type for r in result.fetchall()}
 
 
+async def registered_columns(
+    conn: "Connection", source_id: str, schema_name: str, table_name: str
+) -> list[dict]:
+    """A registered table's columns in their stored order: each one's name, type, description and
+    whether it is a primary key; empty for a table not registered."""
+    result = await conn.execute_core(
+        select(
+            table_columns.c.column_name,
+            table_columns.c.data_type,
+            table_columns.c.description,
+            table_columns.c.is_primary_key,
+        )
+        .select_from(
+            table_columns.join(
+                registered_tables, table_columns.c.table_id == registered_tables.c.id
+            )
+        )
+        .where(
+            registered_tables.c.source_id == source_id,
+            registered_tables.c.schema_name == schema_name,
+            registered_tables.c.table_name == table_name,
+        )
+        .order_by(table_columns.c.id)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
 async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
     result = await conn.execute_core(
         select(*_COLUMN_PROJECTION)
