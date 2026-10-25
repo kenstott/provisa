@@ -88493,13 +88493,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   priority: MUST
   type: constraint
   description: 'The access model has no carve-outs: one composition rule (inheritance as a union, REQ-2155),
-    one access rule (a capability opens a feature and grants scope it, REQ-2152) and visible defaults
-    (REQ-2154). Removed: the admin capability override of domain access (REQ-1133); lockdown domains,
-    whose only purpose was an empty grant list meaning no role, now true everywhere (REQ-2154); and the
-    read_restricted capability, which nothing uses. Convenience comes from defaults and composition (standard
-    roles, Viewer''s default grant, public and listed scope, derived roles), never from a bypass. The
-    two things outside the rules are not people: registration, where data enters governance, and Provisa''s
-    service identity, which runs the rules and shows nothing to anyone (REQ-2152).'
+    one access rule (a capability opens a feature and grants scope it, REQ-2152) and visible defaults (REQ-2154).
+    Removed: the admin capability override of domain access (REQ-1133); lockdown domains, whose only purpose
+    was an empty grant list meaning no role, now true everywhere (REQ-2154); and the read_restricted capability,
+    which nothing uses. Convenience comes from defaults and composition (standard roles, Viewer''s default
+    grant, public and listed scope, derived roles), never from a bypass. The two things outside the rules
+    are not people: registration, where data enters governance, and Provisa''s service identity, which runs
+    the rules and shows nothing to anyone (REQ-2152). (Amended 2026-10-25, THE OBJECTIVE:) The security
+    model is described, documented and shown as one composition: scope (where a column reaches: domain,
+    listed, public, REQ-2153) + capabilities (which features a role may use, REQ-2155) + read/write grants
+    (which tables, columns and rows those features touch). Its objective is clarity: a person''s effective
+    rights follow unambiguously from that composition, for users, owners and auditors alike. It is held
+    against user burden: common cases are covered by defaults and composition (standard roles, inheritance,
+    the registrant''s and Viewer''s default grants, public scope), so that governing a model does not demand
+    a stream of manual grant entries.'
 - id: REQ-2160
   status: proposed
   target: 2027-Q1
