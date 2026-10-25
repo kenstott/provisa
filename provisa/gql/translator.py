@@ -341,6 +341,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
         self._optional_rel_vars: set[str] = set()
+        self._rel_var_matched: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        self._held_end_conditions: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's
         # attributes — in RETURN r, in r.attr expressions, and in a WHERE on r.attr.
@@ -385,8 +387,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
         ]
         stage_where = _steps_where(match_steps)
+        held: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
+            held = list(self._held_end_conditions)
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
             if unwinds:
                 _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
@@ -418,6 +422,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             )
         if where_expr:
             stage_query = stage_query.where(where_expr)
+        for cond in held:
+            stage_query = stage_query.where(cond)
         with_group_exprs = self._build_group_by_for_with(with_clause.items)
         if with_group_exprs:
             stage_query = stage_query.group_by(*with_group_exprs)
@@ -557,6 +563,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             query = query.where(where_expr)
         for lat_cond in self._lateral_conditions:
             query = query.where(lat_cond)
+        for held in self._held_end_conditions:
+            query = query.where(held)
         group_exprs = (
             self._build_group_by(self._ast.return_clause) if self._ast.return_clause else []
         )
