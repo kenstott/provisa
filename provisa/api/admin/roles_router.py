@@ -122,10 +122,17 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
     identity = getattr(request.state, "identity", None)
     full = role_definitions_visible(request, getattr(identity, "roles", []))
     from provisa.core.db import STANDARD_ROLES
+    from provisa.security.inheritance import effective_capabilities
 
-    # REQ-2155: a standard role is Provisa's and locked; the client offers no edit for one.
+    listed = [dict(r._mapping) for r in rows]
+    # REQ-2155: a standard role is Provisa's and locked; the client offers no edit for one. A shown
+    # role carries what it holds with its ancestors folded in (``effectiveCapabilities``).
     return [
-        {**dict(r._mapping), "standard": r.id in STANDARD_ROLES}
+        {
+            **dict(r._mapping),
+            "standard": r.id in STANDARD_ROLES,
+            "effectiveCapabilities": effective_capabilities(r.id, listed),
+        }
         if full(r.id)
         else {"id": r.id, "description": r.description, "standard": r.id in STANDARD_ROLES}
         for r in rows

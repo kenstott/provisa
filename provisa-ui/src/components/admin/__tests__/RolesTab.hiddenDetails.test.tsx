@@ -41,6 +41,7 @@ describe("normalizeRole", () => {
       description: "What a is for.",
       standard: false,
       capabilities: ["usage"],
+      effectiveCapabilities: ["usage"],
       domainAccess: ["sales"],
     });
     expect(role.detailsHidden).toBeUndefined();
@@ -57,6 +58,7 @@ describe("RolesTab", () => {
         description: "What shop_analyst is for.",
         standard: false,
         capabilities: ["usage"],
+        effectiveCapabilities: ["usage"],
         domain_access: ["sales"],
       }),
       normalizeRole({ id: "org_admin", description: "What org_admin is for.", standard: true }),
@@ -81,6 +83,7 @@ describe("RolesTab", () => {
         description: "What shop_analyst is for.",
         standard: false,
         capabilities: ["usage"],
+        effectiveCapabilities: ["usage"],
         domain_access: ["sales"],
       }),
     ]);

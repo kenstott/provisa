@@ -229,14 +229,14 @@ class TestRoleInheritance:  # REQ-1677
             """
             mutation {
                 createRole(input: {
-                    id: "analyst", description: "Test role.", capabilities: [], domainAccess: [], parentRoleId: "analyst"
+                    id: "loop_1677", description: "Test role.", capabilities: [], domainAccess: [], parents: ["loop_1677"]
                 }) { success message code }
             }
             """,
         )
         res = result["data"]["createRole"]
         assert res["success"] is False
-        assert res["message"] == "Role 'analyst' cannot inherit from itself"
+        assert res["message"] == "Role 'loop_1677' cannot inherit from itself"
 
 
 class TestRlsRule:

@@ -885,6 +885,9 @@ class RoleType:  # REQ-042
     capabilities: list[str] | None
     domain_access: list[str] | None
     demonstrated: list[str] | None = strawberry.field(default_factory=list)  # REQ-1602
+    # REQ-2155: what the role holds -- its own capabilities and every ancestor's; null as
+    # capabilities is. The client builds the caller's rights from it.
+    effective_capabilities: list[str] | None = None
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
     parents: list[str] = strawberry.field(default_factory=list)  # REQ-2155
     # REQ-2155: a standard role is Provisa's and locked: extended with child roles, never edited.

@@ -328,7 +328,10 @@ def _then_v2_config_complete(shared_data: dict) -> None:
     assert isinstance(config, ProvisaConfig)
     assert {t.table_name for t in config.tables} >= {"orders", "customers"}
     assert config.relationships, "relationships must be emitted"
-    assert {r.id for r in config.roles} >= {"analyst", "customer", "clerk", "manager"}
+    assert {r.id for r in config.roles} >= {"customer", "clerk", "manager"}
+    # REQ-2155: analyst is a standard role every org has; the config declares none of those, and
+    # the permissions name it as they stand.
+    assert "analyst" not in {r.id for r in config.roles}
     assert config.auth is not None
 
     # Round-trips through YAML and re-validates as a ProvisaConfig.

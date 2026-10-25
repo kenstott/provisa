@@ -45,6 +45,21 @@ export const DEFAULT_ADMIN_ROLE: Role = {
   // The standard role's own (provisa/core/standard_roles.yaml).
   description: "Administers the organization: its sources, model, governance, members and settings.",
   capabilities: [
+    "environment_management",
+    "environment_data",
+    "user_management",
+    "org_glossary_rw",
+  ] as Capability[],
+  parents: [
+    "developer",
+    "data_product_owner",
+    "data_steward",
+    "dq_steward",
+    "source_admin",
+    "org_operator",
+  ],
+  // REQ-2155: its own capabilities and every ancestor's.
+  effectiveCapabilities: [
     "source_registration",
     "table_registration",
     "create_relationship",
@@ -86,7 +101,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
 // control-plane authority, and REQ-1327 keeps a role holding it off the data plane entirely. This
 // mirrors is_control_plane_role() in provisa/security/rights.py.
 function isControlPlaneOnly(role: Role): boolean {
-  return role.capabilities.includes("cross_org" as Capability);
+  return role.effectiveCapabilities.includes("cross_org" as Capability);
 }
 
 // The acting role sent in X-Provisa-Role while "All roles" is selected is the first of this list, so
@@ -107,7 +122,7 @@ function orderByDataPlaneFirst(roles: Role[]): Role[] {
 function unionCapabilities(roles: Role[]): Capability[] {
   const set = new Set<Capability>();
   for (const r of roles) {
-    for (const c of r.capabilities) set.add(c);
+    for (const c of r.effectiveCapabilities) set.add(c);
   }
   return [...set];
 }

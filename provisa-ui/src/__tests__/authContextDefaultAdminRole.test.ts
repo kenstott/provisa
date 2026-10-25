@@ -52,21 +52,24 @@ function seededOrgAdminCapabilities(): string[] {
 
 describe("DEFAULT_ADMIN_ROLE", () => {
   it("is org_admin's standard definition, ancestors included", () => {
-    expect([...DEFAULT_ADMIN_ROLE.capabilities].sort()).toEqual(
+    const org_admin = standardRoles().org_admin;
+    expect([...DEFAULT_ADMIN_ROLE.capabilities].sort()).toEqual([...org_admin.capabilities].sort());
+    expect(DEFAULT_ADMIN_ROLE.parents).toEqual(org_admin.parents);
+    expect([...DEFAULT_ADMIN_ROLE.effectiveCapabilities].sort()).toEqual(
       [...seededOrgAdminCapabilities()].sort(),
     );
   });
 
   it("carries the REQ-1349 org-scoped rights the Admin group needs", () => {
-    expect(DEFAULT_ADMIN_ROLE.capabilities).toContain("org_settings");
-    expect(DEFAULT_ADMIN_ROLE.capabilities).toContain("observability");
+    expect(DEFAULT_ADMIN_ROLE.effectiveCapabilities).toContain("org_settings");
+    expect(DEFAULT_ADMIN_ROLE.effectiveCapabilities).toContain("observability");
   });
 
   it("carries no platform-bypass or cross-org right", () => {
     // REQ-1297/REQ-1337: those belong to platform_admin. `cross_org` is what marks a role
     // control-plane, and isControlPlaneOnly() would sort this role off the data plane entirely.
     for (const right of ["admin", "superadmin", "platform_settings", "cross_org"]) {
-      expect(DEFAULT_ADMIN_ROLE.capabilities).not.toContain(right);
+      expect(DEFAULT_ADMIN_ROLE.effectiveCapabilities).not.toContain(right);
     }
   });
 

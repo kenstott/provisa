@@ -176,7 +176,7 @@ export function OnboardGate({
   // is tested here.
   const assignedRoleIds = new Set(assignments.map((a) => a.role_id));
   const canActCrossOrg = availableRoles.some(
-    (r) => assignedRoleIds.has(r.id) && r.capabilities.includes("cross_org"),
+    (r) => assignedRoleIds.has(r.id) && r.effectiveCapabilities.includes("cross_org"),
   );
   if (
     authEnabled &&

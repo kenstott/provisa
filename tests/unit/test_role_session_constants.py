@@ -364,11 +364,15 @@ def test_the_role_type_carries_its_constants_as_name_value_pairs():
             "session_vars": {"zone": "a", "tier": "gold"},
             "inactivity_days": None,  # REQ-2077: a stored role always carries it
             "parents": [],  # REQ-2155: a stored role always carries it
-        }
+        },
+        detail=True,
+        effective=[],
     )
     assert [(p.name, p.value) for p in out.session_vars] == [("tier", "gold"), ("zone", "a")]
     assert (
-        _role_from_row({"id": "seller", "description": "Test role."}, detail=False).session_vars
+        _role_from_row(
+            {"id": "seller", "description": "Test role."}, detail=False, effective=[]
+        ).session_vars
         is None
     )
 

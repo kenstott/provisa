@@ -47,7 +47,8 @@ def server():
             # org_admin is the reserved administrative role (REQ-1349): not declared.
             "roles": [
                 {
-                    "id": "analyst",
+                    "id": "itest_analyst",
+                    "parents": ["analyst"],
                     "description": "Test role.",
                     "capabilities": ["query_development"],
                     "domain_access": ["*"],
@@ -98,9 +99,9 @@ def _store(boot, sql: str) -> list[tuple]:
 @pytest.mark.parametrize(
     "sql",
     [
-        "UPDATE meta.roles SET capabilities = '[\"cross_org\"]' WHERE id = 'analyst'",
+        "UPDATE meta.roles SET capabilities = '[\"cross_org\"]' WHERE id = 'itest_analyst'",
         "UPDATE meta.registered_tables SET description = 'changed' WHERE table_name = 'orders'",
-        "DELETE FROM meta.roles WHERE id = 'analyst'",
+        "DELETE FROM meta.roles WHERE id = 'itest_analyst'",
         "INSERT INTO meta.roles (id, capabilities) VALUES ('injected', '[]')",
     ],
 )
@@ -108,7 +109,7 @@ def test_sql_takes_no_write_on_the_catalog(server, sql):
     status, body = _post(server, "/data/sql", {"sql": sql})
     assert status == 400 and body.get("code") == "data.write_not_supported", (status, body)
     roles = dict(_store(server, "SELECT id, capabilities::text FROM {schema}.roles"))
-    assert "injected" not in roles and "cross_org" not in roles["analyst"], roles
+    assert "injected" not in roles and "cross_org" not in roles["itest_analyst"], roles
     described = _store(
         server, "SELECT description FROM {schema}.registered_tables WHERE table_name = 'orders'"
     )
@@ -155,14 +156,16 @@ def test_a_column_grant_on_the_catalog_does_not_open_it_to_writes(server):
     status, body = _post(
         server,
         "/data/sql",
-        {"sql": "UPDATE meta.roles SET capabilities = '[\"cross_org\"]' WHERE id = 'analyst'"},
+        {
+            "sql": "UPDATE meta.roles SET capabilities = '[\"cross_org\"]' WHERE id = 'itest_analyst'"
+        },
     )
     gql = _post(
         server,
         "/data/graphql",
         {
             "query": 'mutation { m__updateRoles(set: {capabilities: ["cross_org"]}, '
-            'where: {id: {eq: "analyst"}}) { affected_rows } }'
+            'where: {id: {eq: "itest_analyst"}}) { affected_rows } }'
         },
     )
     import psycopg
@@ -178,10 +181,10 @@ def test_a_column_grant_on_the_catalog_does_not_open_it_to_writes(server):
             connect_timeout=30,
         ) as conn:
             pg = conn.execute(
-                "UPDATE meta.roles SET capabilities = '[\"cross_org\"]' WHERE id = 'analyst'"
+                "UPDATE meta.roles SET capabilities = '[\"cross_org\"]' WHERE id = 'itest_analyst'"
             ).rowcount
     except psycopg.Error as exc:
         pg = str(exc)
     roles = dict(_store(server, "SELECT id, capabilities::text FROM {schema}.roles"))
-    assert "cross_org" not in roles["analyst"], (granted, status, body, gql, pg, roles)
+    assert "cross_org" not in roles["itest_analyst"], (granted, status, body, gql, pg, roles)
     assert status == 400 and body.get("code") == "data.write_not_supported", (gql, pg, status, body)

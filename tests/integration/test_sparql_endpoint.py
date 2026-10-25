@@ -162,12 +162,15 @@ def test_a_property_path(endpoint, placed_by):
 def test_a_governed_role_is_answered_only_what_it_may_read(endpoint):
     alice = f'?c <{CUSTOMER}#name> "Alice Johnson" . ?c ?p ?o'
     admin = {r["p"] for r in _select(endpoint, "org_admin", f"SELECT ?p ?o WHERE {{ {alice} }}")}
-    analyst = {r["p"] for r in _select(endpoint, "analyst", f"SELECT ?p ?o WHERE {{ {alice} }}")}
+    analyst = {
+        r["p"]
+        for r in _select(endpoint, "sales_analytics_analyst", f"SELECT ?p ?o WHERE {{ {alice} }}")
+    }
     assert f"{CUSTOMER}#email" in admin
     assert f"{CUSTOMER}#email" not in analyst and f"{CUSTOMER}#name" in analyst
     products = f"SELECT ?x WHERE {{ ?x a <{PRODUCT}> }} LIMIT 1"
     assert _select(endpoint, "org_admin", products)
-    assert _select(endpoint, "analyst", products) == []
+    assert _select(endpoint, "sales_analytics_analyst", products) == []
 
 
 def _curl(*args: str) -> subprocess.CompletedProcess:

@@ -92,6 +92,9 @@ export interface Role {
    *  definition is withheld: it explains, it grants nothing. */
   description: string;
   capabilities: Capability[];
+  /** REQ-2155: what the role holds -- its own capabilities and every ancestor's. A caller's rights
+   *  are the union of this over the roles it acts as. */
+  effectiveCapabilities: Capability[];
   /**
    * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
    * badged as belonging to the production system. A role defined by subtraction (the sandbox,

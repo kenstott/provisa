@@ -34,7 +34,7 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-_ROLES = ["org_admin", "analyst", "east_reader", "west_reader"]
+_ROLES = ["org_admin", "itest_analyst", "east_reader", "west_reader"]
 _ROWS = [(1, "east"), (2, "west"), (3, "north")]
 _ALL = [{"id": i, "region": r, "email": f"u{i}@x"} for i, r in _ROWS]
 
@@ -79,7 +79,7 @@ def server():
                 {
                     "description": "Test rule.",
                     "table_id": "orders",
-                    "role_id": "analyst",
+                    "role_id": "itest_analyst",
                     "filter": "region = 'east'",
                 },
                 {
@@ -152,7 +152,7 @@ def _graphql(boot, roles: str) -> list[dict]:
 
 def test_each_role_alone_reads_its_own_rows(server):
     assert _sql(server, "org_admin") == _ALL
-    assert _sql(server, "analyst") == [{"id": 1, "region": "east", "email": "***"}]
+    assert _sql(server, "itest_analyst") == [{"id": 1, "region": "east", "email": "***"}]
 
 
 @pytest.mark.parametrize("read", [_sql, _graphql])
