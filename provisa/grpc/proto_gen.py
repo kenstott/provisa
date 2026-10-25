@@ -205,8 +205,9 @@ def _emit_aggregate_messages(
         )
         for suffix in ("SumFields", "AvgFields", "StddevFields", "VarianceFields"):
             lines.append(f"message {t.type_name}{suffix} {{")
+            # `optional`: an aggregate over no rows is NULL, the field left unset -- never 0.
             for col_name in numeric_names:
-                lines.append(f"  double {col_name} = {numbers[col_name]};")
+                lines.append(f"  optional double {col_name} = {numbers[col_name]};")
             lines.append("}")
             lines.append("")
 
@@ -219,10 +220,10 @@ def _emit_aggregate_messages(
         for suffix in ("MinFields", "MaxFields"):
             lines.append(f"message {t.type_name}{suffix} {{")
             for col_name in comparable_names:
-                lines.append(
-                    f"  {_physical_to_proto(comparable_type[col_name])} {col_name} "
-                    f"= {numbers[col_name]};"
-                )
+                proto_type = _physical_to_proto(comparable_type[col_name])
+                # As the row's columns: a scalar is `optional`, a Timestamp has presence already.
+                presence = "" if proto_type == "google.protobuf.Timestamp" else "optional "
+                lines.append(f"  {presence}{proto_type} {col_name} = {numbers[col_name]};")
             lines.append("}")
             lines.append("")
 
