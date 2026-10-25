@@ -93,3 +93,49 @@ def test_the_process_wide_maps_are_registered_at_their_modules_import():
         "provisa.federation.pgwire_replica._ENDPOINT_USERS",
         "provisa.nl.schema_matcher._CACHE",
     } <= set(held_sizes.sizes())
+
+
+def test_it_answers_live_threads_by_name_without_a_workers_number(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setenv(leak_probe.ENV, "1")
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="probe-test") as pool:
+        started = threading.Barrier(3)
+        for _ in range(2):
+            pool.submit(started.wait)
+        started.wait()
+        answer = TestClient(_app()).get("/debug/leak-probe").json()
+    assert answer["thread_names"]["probe-test"] == 2
+    assert sum(answer["thread_names"].values()) == answer["threads"]
+
+
+def test_a_named_background_thread_keeps_its_name(monkeypatch):
+    import threading
+
+    monkeypatch.setenv(leak_probe.ENV, "1")
+    release = threading.Event()
+    named = threading.Thread(target=release.wait, name="provisa-bg:probe-test-task", daemon=True)
+    named.start()
+    try:
+        answer = TestClient(_app()).get("/debug/leak-probe").json()
+    finally:
+        release.set()
+        named.join()
+    assert answer["thread_names"]["provisa-bg:probe-test-task"] == 1
+
+
+def test_with_stacks_it_answers_what_each_thread_is_waiting_on(monkeypatch):
+    import threading
+
+    monkeypatch.setenv(leak_probe.ENV, "1")
+    release = threading.Event()
+    waiting = threading.Thread(target=release.wait, name="probe-stack-test", daemon=True)
+    waiting.start()
+    try:
+        answer = TestClient(_app()).get("/debug/leak-probe", params={"stacks": "true"}).json()
+    finally:
+        release.set()
+        waiting.join()
+    mine = [t for t in answer["stacks"] if t["name"] == "probe-stack-test"]
+    assert len(mine) == 1 and "wait" in mine[0]["stack"][-1]
