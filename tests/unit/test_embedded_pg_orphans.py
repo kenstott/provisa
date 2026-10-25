@@ -294,3 +294,14 @@ def test_a_pid_recorded_before_its_process_started_is_not_that_process(tmp_path)
     os.utime(record, (long_ago, long_ago))
     assert embedded_pg._running(os.getpid(), record.stat().st_mtime) is False
     assert embedded_pg._running(os.getpid(), time.time()) is True
+
+
+def test_a_key_written_sign_extended_is_read_as_the_key_the_system_lists(tmp_path):
+    # A postmaster prints its 32-bit key_t as an unsigned long: a key with its high bit set is
+    # written as 2**64 minus its magnitude, while ipcs lists its 32 bits (0x80...).
+    from provisa.core.pg_shared_memory import recorded_segment
+
+    (tmp_path / "postmaster.pid").write_text(
+        "123\n/data\n1\n5432\n/tmp\nlocalhost\n18446744071566854875    327694\nready\n"
+    )
+    assert recorded_segment(tmp_path) == (0x80490ADB, 327694)

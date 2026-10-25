@@ -79,7 +79,9 @@ def recorded_segment(datadir: str | Path) -> tuple[int, int] | None:
     fields = lines[_SHMEM_LINE].split()
     if len(fields) != 2:
         return None
-    return int(fields[0]), int(fields[1])
+    # The key is a 32-bit key_t the postmaster prints as an unsigned long, so a key with its high
+    # bit set is written sign-extended to 64 bits; the system lists it as its 32 bits.
+    return int(fields[0]) & 0xFFFFFFFF, int(fields[1])
 
 
 def _listed(key: int, shmid: int) -> bool:
