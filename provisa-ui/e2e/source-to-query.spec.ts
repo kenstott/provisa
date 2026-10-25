@@ -622,6 +622,9 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("csv");
     await page.getByLabel(/CSV File Path/).fill("./demo/files/customers.csv");
+    // The create form sets a single-file source's table up as a draft by default (REQ-2113);
+    // this test registers it through the Register Table form instead.
+    await page.getByTestId("source-draft-table").uncheck();
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -648,6 +651,9 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("parquet");
     await page.getByLabel(/Parquet File Path/).fill("./demo/files/products.parquet");
+    // The create form sets a single-file source's table up as a draft by default (REQ-2113);
+    // this test registers it through the Register Table form instead.
+    await page.getByTestId("source-draft-table").uncheck();
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
