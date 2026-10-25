@@ -214,7 +214,7 @@ async def test_each_member_contract_is_imported_onto_its_table(monkeypatch):
 
 def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
     """OpenMetadata reads ODCS's team only as 3.0's list of members, so the 3.1 Team's roles are
-    sent as members, each with its purpose as its role."""
+    sent as members, each with its Team property name as its role."""
     from provisa.api.metadata_export.openmetadata import _data_contract_entities
 
     config = _config()
@@ -222,8 +222,8 @@ def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     (contract,) = _data_contract_entities(snapshot)
     assert contract.body["team"] == [
-        {"name": "alice", "role": "owner"},
-        {"name": "analyst", "role": "team"},
+        {"name": "alice", "role": "ownerRole"},
+        {"name": "analyst", "role": "teamRole"},
     ]
 
 
