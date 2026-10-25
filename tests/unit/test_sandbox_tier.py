@@ -114,6 +114,27 @@ def test_a_regions_demo_and_its_sandboxes_reach_the_node_of_its_region(monkeypat
     assert route("data/sql", {"host": "sbx0123456789ab.provisa.dev"}) == tier
 
 
+def test_a_regions_route_with_no_node_is_refused_by_name(monkeypatch):
+    """REQ-2068: a regions sandbox whose region has no node, or a regions demo whose region has
+    none, is refused naming the region -- never served by the ordinary sandbox tier, which holds
+    neither."""
+    import provisa.ui_server as ui_server
+
+    monkeypatch.setattr(ui_server, "API_BASE_URL", "http://provisa:8000")
+    monkeypatch.setattr(ui_server, "SANDBOX_API_URL", "http://provisa-sandbox:8000")
+    monkeypatch.setattr(
+        ui_server, "SANDBOX_REGIONS_NODES", {"us": "http://provisa-sandbox-regions:8100"}
+    )
+    monkeypatch.setattr(
+        ui_server, "SANDBOX_REGIONS_DEMOS", {"retail": "us", "banking": "warehouse"}
+    )
+    route = ui_server.api_base_for
+    with pytest.raises(ui_server.RegionUnrouted, match="'warehouse'"):
+        route("data/sql", {"host": "sbxrwarehouse0123456789ab.provisa.dev"})
+    with pytest.raises(ui_server.RegionUnrouted, match="'warehouse'"):
+        route("public/demos/banking", {"host": "cloud.provisa.dev"})
+
+
 def test_a_regions_node_mints_sandbox_ids_naming_its_region_and_reaps_only_its_own(monkeypatch):
     from provisa.api import demo_region_seed
     from provisa.api.sandbox_tier import is_this_nodes_sandbox

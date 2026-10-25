@@ -114,6 +114,16 @@ async def _sandbox_starting(instance: str) -> Response:
     )
 
 
+class RegionUnrouted(Exception):  # REQ-2068
+    """A regions sandbox, or a regions demo, whose region no regions-tier node serves
+    (PROVISA_SANDBOX_REGIONS_NODES names none for it). Refused by name: the ordinary sandbox tier
+    holds neither."""
+
+    def __init__(self, region: str, what: str) -> None:
+        self.region = region
+        super().__init__(f"No regions-tier node serves region {region!r} ({what})")
+
+
 def api_base_for(full_path: str, headers: Mapping[str, str]) -> str:
     """The API process that serves this request: the sandbox tier for a sandbox-tier org (named by
     the Host subdomain, or by ``x-org-provisa`` on the control-plane host, as the API binds it --
@@ -135,17 +145,25 @@ def api_base_for(full_path: str, headers: Mapping[str, str]) -> str:
 def _regions_node(full_path: str, org: str | None) -> str | None:
     """The regions-tier node that serves this request, or None when the regions tier does not: one
     of its sandboxes, by the region its id names, or opening one of its demos
-    (``public/demos/<name>``, ``sandboxes/<name>``), by the demo's node."""
+    (``public/demos/<name>``, ``sandboxes/<name>``), by the demo's node. A demo
+    PROVISA_SANDBOX_REGIONS_DEMOS does not name is not the regions tier's. A region no node serves
+    is refused (:class:`RegionUnrouted`)."""
     from provisa.core.org_ids import regions_sandbox_region
 
     region = None if org is None else regions_sandbox_region(org)
-    if region is not None:
-        return SANDBOX_REGIONS_NODES.get(region)
-    for prefix in DEMO_OPEN_PREFIXES:
-        if full_path.startswith(prefix):
-            demo = full_path[len(prefix) :].split("/", 1)[0]
-            return SANDBOX_REGIONS_NODES.get(SANDBOX_REGIONS_DEMOS.get(demo, ""))
-    return None
+    what = f"sandbox {org}"
+    if region is None:
+        for prefix in DEMO_OPEN_PREFIXES:
+            if full_path.startswith(prefix):
+                demo = full_path[len(prefix) :].split("/", 1)[0]
+                if demo in SANDBOX_REGIONS_DEMOS:
+                    region, what = SANDBOX_REGIONS_DEMOS[demo], f"demo {demo}"
+                break
+    if region is None:
+        return None
+    if region not in SANDBOX_REGIONS_NODES:
+        raise RegionUnrouted(region, what)
+    return SANDBOX_REGIONS_NODES[region]
 
 
 # Upstream read budget for the proxy leg. A request that outlives it is reported as a 504
@@ -390,7 +408,18 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
         return FileResponse(index, headers={"Cache-Control": "no-store"})
 
     # ── API proxy — forward to the provisa API, surfacing its real status ─────
-    base = api_base_for(full_path, request.headers)
+    try:
+        base = api_base_for(full_path, request.headers)
+    except RegionUnrouted as exc:  # REQ-2068
+        _log.error("%s: %s %s", exc, request.method, full_path)
+        return JSONResponse(
+            {
+                "detail": str(exc),
+                "code": "sandbox.region_unrouted",
+                "params": {"region": exc.region},
+            },
+            status_code=502,
+        )
     target = f"{base}/{full_path}"
     if request.url.query:
         target = f"{target}?{request.url.query}"
