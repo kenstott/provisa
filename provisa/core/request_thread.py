@@ -66,6 +66,8 @@ T = TypeVar("T")
 
 # An idle request thread exits after this long with nothing to serve.
 _IDLE_TTL_S = 60.0
+# How long a request waits for a thread before the server log names what holds them all.
+_REPORT_AFTER_S = 5.0
 # A request body up to this size (declared by Content-Length) is read by the accepting loop and
 # handed over with the request; a larger or chunked one is relayed message by message.
 _PREREAD_MAX_BYTES = 1 << 20
@@ -197,11 +199,13 @@ class RequestThreadPool:
         max_threads: int | None = None,
         max_streams: int | None = None,
         wait_s: float | Callable[[], float] = _request_budget,
+        report_after_s: float = _REPORT_AFTER_S,
     ) -> None:
         limits = default_limits()
         self._max = limits["request_threads"] if max_threads is None else max_threads
         self._max_streams = limits["stream_threads"] if max_streams is None else max_streams
         self._wait = wait_s
+        self._report_after = report_after_s
         self._lock = threading.Lock()
         self._idle: list[_RequestThread] = []
         self._threads = 0  # threads under the request bound: serving a request, or idle
@@ -257,10 +261,23 @@ class RequestThreadPool:
         if waiter is None:
             return _RequestThread(self)
         budget = self._wait() if callable(self._wait) else self._wait
+        started = time.monotonic()
         try:
             # Async on the accepting loop by necessity: it keeps serving other connections while
             # this request waits its turn for a thread.
-            return await asyncio.wait_for(waiter, budget)
+            if budget > self._report_after:
+                try:
+                    return await asyncio.wait_for(asyncio.shield(waiter), self._report_after)
+                except TimeoutError:
+                    # A stall says what stalled it while it lasts, not only when a request is
+                    # finally refused. Server log only, as the refusal's: it names other
+                    # callers' requests.
+                    log.warning(
+                        "a request is still waiting for a thread after %.0fs: %s",
+                        self._report_after,
+                        self.occupancy(),
+                    )
+            return await asyncio.wait_for(waiter, budget - (time.monotonic() - started))
         except TimeoutError:
             raise RequestThreadsExhausted(
                 f"no request thread became free within {budget:g}s: all {self._max} request "
