@@ -88560,7 +88560,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     contract alone. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the data product
     requirements, not a feature: the earlier rules left expectations and promises undistinguished, contracts
     generated rather than declared, one view for owner and consumer, and two lineage views. It is resolved
-    before the product is declared green.'
+    before the product is declared green. (Amended 2026-10-25, ONE CONTRACT PER MEMBER:) An output port
+    is one member table, so a product has one contract per member table, as one ODCS contract describes
+    one dataset.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -88658,11 +88660,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     domain, which is what a child role reaching that domain gets. The selected domain decides which other
     domains'' columns appear as listed or public. [END SUPERSEDED BLOCK] (Amended 2026-10-25, NO DOMAIN
     SELECTOR:) The data access tab shows the role''s own reach, with the listed and public columns of other
-    domains; domain-specific roles are how reach varies, so there is no selector. A standard role, which
-    reaches no domain, shows the Capabilities tab only. The table list has the ordinary domain filter every
-    list page has. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model''s
-    requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than
-    a role''s grants. It is resolved before the product is declared green.'
+    domains; domain-specific roles are how reach varies, so there is no selector. [SUPERSEDED by REQ-2161,
+    2026-10-25 -- standard roles reach ALL (REQ-2155), so every role shows both tabs. Kept here for history;
+    do not implement against it.] A standard role, which reaches no domain, shows the Capabilities tab only.
+    [END SUPERSEDED BLOCK] The table list has the ordinary domain filter every list page has. (Amended 2026-10-25,
+    A REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
+    earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
+    before the product is declared green. (Amended 2026-10-25, EVERY ROLE HAS BOTH TABS:) Standard roles
+    reach ALL (REQ-2155), so every role, standard or not, shows both tabs; a derived role shows the Data
+    access tab only.'
   scenario: 'Given role dq_lead inheriting Data quality steward and Data product owner
 
     When a security admin opens dq_lead on the Security page
@@ -88670,3 +88676,25 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then the panel lists each capability with the standard role it comes from
 
     And each readable column with its scope and the grant that serves it to dq_lead'
+- id: REQ-2162
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: MUST
+  type: ui
+  description: 'A table''s detail panel answers who can read or write each of its columns: for a chosen
+    column, every role that reads it, writes it, sees it masked or has a row rule on it, each with the
+    chain that gives it (the granting role, the ancestor it is inherited through, the column''s scope
+    and the role''s reach). It is the inverse of the role panel''s data access tab (REQ-2161) and is resolved
+    by the same rule (column_served). It is capped by the viewer''s own read rights (REQ-2152): only columns
+    the viewer can read can be chosen. This corrects a defect in the access model''s requirements and
+    is resolved before the product is declared green.'
+  scenario: 'Given claims.diagnosis granted to data_steward and to clinical_reviewer, a child of analyst
+    reaching claims
+
+    When an auditor holding read on diagnosis opens claims and chooses diagnosis
+
+    Then the panel lists data_steward and clinical_reviewer with the grant, inheritance and reach behind
+    each'
