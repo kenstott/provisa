@@ -610,6 +610,8 @@ export default defineConfig({
                   PROVISA_BOLT_PORT: String(E2E_TRINO_BOLT_PORT),
                   PROVISA_MCP_PORT: String(E2E_TRINO_MCP_PORT),
                   PROVISA_PGWIRE_PORT: String(E2E_TRINO_PGWIRE_PORT),
+                  // The block after the core workers' last: its pgwire servers are its own too.
+                  PROVISA_PGWIRE_PORTS: pgwirePorts(E2E_WORKERS),
                   PROVISA_DATA_DIR: E2E_TRINO_DATA_DIR,
                   PROVISA_TELEMETRY_DIR: path.resolve(E2E_TRINO_DATA_DIR, "telemetry"),
                   PROVISA_CONFIG: E2E_TRINO_CONFIG_PATH,

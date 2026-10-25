@@ -308,3 +308,15 @@ def test_this_session_keeps_mcp_certificates_outside_the_real_home():
     folder = _cert_dir().resolve()
     real = (Path.home() / ".provisa").resolve()
     assert real not in (folder, *folder.parents)
+
+
+def test_every_e2e_backend_names_pgwire_ports_of_its_own():
+    """A source's pgwire server, left to scan up from 5433, reaches the ports another backend's
+    servers (and local-dev's) take: two backends starting one at once both found 5433 free. Each
+    backend names a block of its own (REQ-955)."""
+    playwright = _playwright_config()
+    servers = playwright.count("exec .venv/bin/uvicorn main:app")
+    assert playwright.count("PROVISA_PGWIRE_PORTS: pgwirePorts(") == servers
+    assert "PROVISA_PGWIRE_PORTS: pgwirePorts(b.worker)," in playwright
+    # The Trino backend's block is past every core worker's.
+    assert "PROVISA_PGWIRE_PORTS: pgwirePorts(E2E_WORKERS)," in playwright
