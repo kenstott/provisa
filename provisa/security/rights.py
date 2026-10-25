@@ -50,7 +50,6 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     APPROVE_VIEW = "approve_view"
     FULL_RESULTS = "full_results"  # bypass sampling mode
     USAGE = "usage"
-    READ_RESTRICTED = "read_restricted"
     APPROVE_RELATIONSHIP = "approve_relationship"
     CREATE_VIEW = "create_view"
     COLUMN_GRANT = "column_grant"
