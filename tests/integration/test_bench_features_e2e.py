@@ -974,7 +974,12 @@ def test_under_each_governance_knob_every_transport_answers_and_it_is_applied(
             attrs = [cm.derived_attribute(i) for i in (1, 2)]
             assert all(a in request_role for a in attrs), request_role
             evaluated = f"{row['role_id']} {' '.join(enforced.get('acting_roles', []))}"
-            assert all(a in evaluated for a in attrs), (transport, evaluated)
+            assert all(a in evaluated for a in attrs), (
+                transport,
+                evaluated,
+                request_role,
+                [(r["id"], r["role_id"], _enforced(r).get("acting_roles")) for r in rows],
+            )
 
 
 # --------------------------------------------------------------------------------------------
