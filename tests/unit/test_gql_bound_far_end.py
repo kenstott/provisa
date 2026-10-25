@@ -19,6 +19,7 @@ import dataclasses
 
 import duckdb
 import pytest
+import sqlglot.expressions as exp
 
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping
@@ -227,3 +228,82 @@ def test_an_optional_relationship_between_held_nodes_is_null_where_it_does_not_h
         "WHERE r IS NOT NULL RETURN s.name, c.name",
     )
     assert rows == _sql(con, PAIRS)
+
+
+# Two node or relationship variables compared (#305): by identity -- one table's keys, one
+# relationship's type and ends -- never by the rows' contents.
+
+
+def _compares_aliases(cypher: str) -> bool:
+    """Whether the statement compares two bare table aliases (rows, not elements): DuckDB reads
+    each as its row's contents, and Trino refuses it."""
+    sql, _, _ = cypher_to_sql(parse_cypher(cypher), _label_map(), {})
+    return any(
+        isinstance(side, exp.Column) and not side.table and side.name in ("a", "c", "r", "s", "x")
+        for node in sql.find_all(exp.EQ, exp.NEQ)
+        for side in (node.this, node.expression)
+    )
+
+
+def test_two_nodes_are_equal_where_they_are_one_row(con):
+    con.execute("INSERT INTO pg.public.persons VALUES (5, 'Ann', 41, 2, 1)")  # Ann's twin
+    query = "MATCH (a:Person) MATCH (c:Person) WHERE a = c RETURN a.name, c.name"
+    assert _rows(con, query) == _sql(con, "SELECT name, name FROM pg.public.persons")
+    assert not _compares_aliases(query)
+
+
+def test_two_nodes_differ_where_they_are_two_rows(con):
+    con.execute("INSERT INTO pg.public.persons VALUES (5, 'Ann', 41, 2, 1)")
+    query = "MATCH (a:Person) MATCH (c:Person) WHERE a <> c RETURN a.name, c.name"
+    assert not _compares_aliases(query)
+    assert _rows(con, query) == _sql(
+        con,
+        "SELECT a.name, c.name FROM pg.public.persons a JOIN pg.public.persons c ON a.id <> c.id",
+    )
+
+
+def test_nodes_of_two_tables_are_never_equal(con):
+    query = "MATCH (a:Person) MATCH (c:Company) RETURN a.name, c.name, a = c"
+    assert not _compares_aliases(query)
+    rows = _rows(con, query)
+    assert {r[2] for r in rows} == {False} and len(rows) == 12
+
+
+def test_an_unmatched_optional_node_compares_as_null(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person) OPTIONAL MATCH (a)-[:WORKS_AT]->(c:Company) MATCH (x:Company) "
+        "RETURN a.name, x.name, c = x",
+    )
+    assert rows == _sql(
+        con,
+        "SELECT p.name, x.name, x.id = p.company_id FROM pg.public.persons p "
+        "CROSS JOIN pg.public.companies x",
+    )
+
+
+def test_two_relationships_are_equal_where_they_are_one(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person)-[r:KNOWS]->(b:Person) MATCH (a)-[s:KNOWS]->(c:Person) "
+        "RETURN a.name, r = s, r <> s",
+    )
+    assert rows == _sql(
+        con, "SELECT name, true, false FROM pg.public.persons WHERE knows_id IS NOT NULL"
+    )
+
+
+def test_two_relationships_of_two_types_are_never_equal(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person)-[r:KNOWS]->(b:Person) MATCH (a)-[s:WORKS_AT]->(c:Company) "
+        "RETURN a.name, r = s",
+    )
+    assert {r[1] for r in rows} == {False} and rows
+
+
+def test_nodes_are_not_ordered(con):
+    from provisa.gql.translator_types import CypherTranslateError
+
+    with pytest.raises(CypherTranslateError, match="compared by = and <>"):
+        _rows(con, "MATCH (a:Person) MATCH (c:Person) WHERE a < c RETURN a.name")

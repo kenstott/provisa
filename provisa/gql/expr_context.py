@@ -478,6 +478,31 @@ class TranslatorExprContext:
             return node_json(alias, nm)
         return None
 
+    def resolve_graph_identity(
+        self, name: str
+    ) -> tuple[tuple[str, ...], list[exp.Expression]] | None:
+        t = self._t
+        endpoints = t._rel_var_endpoints.get(name)
+        if endpoints is not None and name in t._rel_var_types:
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
+            if is_reversed:
+                # Its ends as the relationship is registered: source first.
+                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+            if name in t._rel_var_type_exprs:
+                raise CypherTranslateError(
+                    f"{name} is one of several relationship types; compare it by type(...) and "
+                    "its ends"
+                )
+            kind = ("rel", t._rel_var_types[name], src_nm.table_name, tgt_nm.table_name)
+            return kind, [node_key(src_alias, src_nm), node_key(tgt_alias, tgt_nm)]
+        if name in t._rel_var_types:
+            return None
+        alias, nm = t._var_table.get(name, (name, None))
+        if nm is None:
+            return None
+        kind = ("node", nm.catalog_name, nm.schema_name, nm.table_name)
+        return kind, [node_key(alias, nm)]
+
     def resolve_graph_absent(self, name: str) -> exp.Expression | None:
         t = self._t
         if name in t._rel_var_types:
