@@ -243,7 +243,7 @@ async def test_the_product_is_in_its_governance_domain_with_its_owner(published)
     assert found["contacts"]["owner"][0]["id"] == oid
     assert PRODUCT_FIELDS["purpose"] in found["description"]
     assert found["businessUse"] == PRODUCT_FIELDS["usage"]
-    assert found["status"] == "PUBLISHED"
+    assert found["status"] == "Published"
 
 
 async def test_each_member_is_a_data_asset_over_its_data_map_entity(published):
@@ -257,7 +257,7 @@ async def test_the_class_term_is_in_its_domain_and_related_to_its_tables_asset(p
     own relationship."""
     result, term, term_assets = published[0], published[5], published[6]
     assert term is not None, "the Unified Catalog has no term for the class term"
-    assert term["name"] == CLASS_TERM and term["status"] == "PUBLISHED"
+    assert term["name"] == CLASS_TERM and term["status"] == "Published"
     assert result["published"]["glossary_term"] == 2
     assert len(term_assets) == 1
     provisa = token_oid(_token(_credentials(), "https://purview.azure.net/.default"))

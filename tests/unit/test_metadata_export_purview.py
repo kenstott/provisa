@@ -278,7 +278,7 @@ class _Purview:
             if method == "GET":
                 return httpx.Response(200, json={"value": [{"entityId": e} for e in related]})
             if method == "POST":
-                related.update(v["entityId"] for v in body.values())
+                related.add(body["entityId"])
                 return httpx.Response(200, json={})
             related.discard(url.params["entityId"])
             return httpx.Response(204)

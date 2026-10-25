@@ -383,7 +383,7 @@ class PurviewExport(AtlasExport):  # REQ-2118
             linked = await client.post(
                 f"{url}/relationships",
                 params={**params, "entityType": DATA_ASSET},
-                json={asset_id: {"entityId": asset_id, "relationshipType": "Related"}},
+                json={"entityId": asset_id, "relationshipType": "Related"},
                 headers=catalog,
             )
             linked.raise_for_status()
