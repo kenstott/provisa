@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import shlex
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -69,7 +71,9 @@ def test_the_lane_selectors_are_test_alls(lane):
 def test_the_base_exclusions_are_test_alls():
     test_all = (REPO / "scripts" / "test-all").read_text()
     run_lane = _runner()
-    assert f'_BASE="{run_lane._BASE}"' in test_all
+    assert f'_BASE_NO_BENCH="{run_lane._BASE_NO_BENCH}"' in test_all
+    assert '_BASE="$_BASE_NO_BENCH and not bench"' in test_all
+    assert run_lane._BASE == f"{run_lane._BASE_NO_BENCH} and not bench"
     assert f'_KAFKA="{run_lane._KAFKA}"' in test_all
     assert f'_DATASTORE="{run_lane._DATASTORE}"' in test_all
 
@@ -883,5 +887,11 @@ def test_the_leak_lane_runs_only_when_named(monkeypatch):
     assert "leak" not in lanes("all")
     assert lanes("leak") == ["leak"]
     assert "not leak" in run_lane._BASE
-    pyproject = (REPO / "pyproject.toml").read_text()
-    assert "and not leak'" in pyproject  # deselected by default
+    # deselected by default: a term of addopts' -m expression, wherever it stands in it
+    addopts = shlex.split(
+        tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"][
+            "addopts"
+        ]
+    )
+    marks = addopts[addopts.index("-m") + 1]
+    assert "not leak" in marks.split(" and "), marks

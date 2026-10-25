@@ -124,8 +124,12 @@ class Endpoints:
 # --------------------------------------------------------------------------------------------
 # One client per connection. ``call(query, role)`` sends the request ``query`` carries for this
 # transport as ``role`` and returns (rows, columns, cache_hit) — cache_hit is None when the
-# transport's response does not say.
+# transport's response does not say. ``rows(query, role)`` sends the same request and returns
+# what it answered: (column names, one dict per row, cache_hit); the load loop counts and never
+# builds rows, the features test (tests/integration/test_bench_features_e2e.py) checks them.
 # --------------------------------------------------------------------------------------------
+
+Answer = tuple[list[str], list[dict[str, Any]], "bool | None"]
 
 
 class _HttpClient:
@@ -151,7 +155,7 @@ class _HttpClient:
 
 
 class GraphqlClient(_HttpClient):
-    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+    def _send(self, query: Query, role: str) -> tuple[list[dict[str, Any]], Any]:
         resp = self._http.post(
             "/data/graphql", json={"query": query.graphql}, headers=self._headers(role)
         )
@@ -160,33 +164,60 @@ class GraphqlClient(_HttpClient):
         if body.get("errors"):
             raise RuntimeError(str(body["errors"])[:300])
         (rows,) = body["data"].values()
+        return rows, resp
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        rows, resp = self._send(query, role)
         return len(rows), len(rows[0]) if rows else 0, self._hit(resp)
+
+    def rows(self, query: Query, role: str) -> Answer:
+        rows, resp = self._send(query, role)
+        return (list(rows[0]) if rows else []), rows, self._hit(resp)
 
 
 class DataSqlClient(_HttpClient):
-    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+    def _send(self, query: Query, role: str) -> tuple[dict[str, Any], Any]:
         resp = self._http.post(
             "/data/sql", json={"sql": query.sql, "role": role}, headers=self._headers(role)
         )
         resp.raise_for_status()
-        body = resp.json()
+        return resp.json(), resp
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        body, resp = self._send(query, role)
         (rows,) = body["data"].values()
         return len(rows), len(body["columns"]), self._hit(resp)
 
+    def rows(self, query: Query, role: str) -> Answer:
+        body, resp = self._send(query, role)
+        (rows,) = body["data"].values()
+        return (
+            [c["name"] if isinstance(c, dict) else c for c in body["columns"]],
+            rows,
+            self._hit(resp),
+        )
+
 
 class CypherHttpClient(_HttpClient):
-    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+    def _send(self, query: Query, role: str) -> dict[str, Any]:
         resp = self._http.post(
             "/data/cypher",
             json={"query": query.cypher, "params": {}},
             headers=self._headers(role),
         )
         resp.raise_for_status()
-        body = resp.json()
+        return resp.json()
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        body = self._send(query, role)
         # /data/cypher answers ``X-Provisa-Cache: MISS`` on every response, served from the cache
         # or not (cypher_router builds the header from no cache result), so the header says
         # nothing here.
         return len(body["rows"]), len(body["columns"]), None
+
+    def rows(self, query: Query, role: str) -> Answer:
+        body = self._send(query, role)
+        return list(body["columns"]), body["rows"], None
 
 
 class McpClient:
@@ -241,7 +272,7 @@ class McpClient:
             raise RuntimeError(f"MCP {method}: {body['error']}")
         return body["result"]
 
-    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+    def _send(self, query: Query, role: str) -> dict[str, Any]:
         result = self._rpc(
             "tools/call", {"name": "run_sql", "arguments": {"sql": query.sql, "role": role}}
         )
@@ -250,27 +281,43 @@ class McpClient:
         # run_sql is declared ``-> dict``, which gives the tool no output schema: its answer is
         # the dict as JSON text, the call's one content item
         (item,) = result["content"]
-        out = json.loads(item["text"])
+        return json.loads(item["text"])
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        out = self._send(query, role)
         return len(out["rows"]), len(out["columns"]), None
+
+    def rows(self, query: Query, role: str) -> Answer:
+        out = self._send(query, role)
+        columns = [c["name"] if isinstance(c, dict) else c for c in out["columns"]]
+        rows = [r if isinstance(r, dict) else dict(zip(columns, r)) for r in out["rows"]]
+        return columns, rows, None
 
     def close(self) -> None:
         self._http.close()
 
 
 class RestClient(_HttpClient):
-    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+    def _send(self, query: Query, role: str) -> tuple[list[dict[str, Any]], Any]:
         spec = query.rest
         assert spec is not None  # the generator only sends REST a table REST exposes
         resp = self._http.get(
             spec["path"], params=spec["params"], headers=self._headers(role, spec["headers"])
         )
         resp.raise_for_status()
-        rows = resp.json()["data"]
+        return resp.json()["data"], resp
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        rows, resp = self._send(query, role)
         return len(rows), len(rows[0]) if rows else 0, self._hit(resp)
+
+    def rows(self, query: Query, role: str) -> Answer:
+        rows, resp = self._send(query, role)
+        return (list(rows[0]) if rows else []), rows, self._hit(resp)
 
 
 class JsonApiClient(_HttpClient):
-    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+    def _send(self, query: Query, role: str) -> tuple[list[dict[str, Any]], Any]:
         spec = query.jsonapi
         assert spec is not None  # the generator only sends JSON:API a table it exposes
         resp = self._http.get(
@@ -279,8 +326,17 @@ class JsonApiClient(_HttpClient):
             headers=self._headers(role, {"Accept": "application/vnd.api+json", **spec["headers"]}),
         )
         resp.raise_for_status()
-        rows = resp.json()["data"]
+        return resp.json()["data"], resp
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        rows, resp = self._send(query, role)
         return len(rows), len(rows[0]["attributes"]) if rows else 0, self._hit(resp)
+
+    def rows(self, query: Query, role: str) -> Answer:
+        rows, resp = self._send(query, role)
+        # a resource's attributes are its columns (its id is the key, carried apart)
+        attrs = [r["attributes"] for r in rows]
+        return (list(attrs[0]) if attrs else []), attrs, self._hit(resp)
 
 
 class PgwireClient:
@@ -317,6 +373,11 @@ class PgwireClient:
         rows = cur.fetchall()
         return len(rows), len(cur.description or ()), None
 
+    def rows(self, query: Query, role: str) -> Answer:
+        cur = self._conn(role).execute(query.sql)
+        columns = [d.name for d in cur.description or ()]
+        return columns, [dict(zip(columns, r)) for r in cur.fetchall()], None
+
     def close(self) -> None:
         for conn in self._conns.values():
             conn.close()
@@ -334,13 +395,20 @@ class _FlightClient:
         self._cred = ep.credential
         self._client = fl.FlightClient(f"grpc://{ep.flight_host}:{ep.flight_port}")
 
-    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+    def _send(self, query: Query, role: str) -> Any:
         # the server reads the credential from the ticket (flight/server.py do_get: request["token"])
         body: dict[str, Any] = {"query": self._statement(query), "role": role}
         if self._cred:
             body["token"] = self._cred.bearer()
-        table = self._client.do_get(self._fl.Ticket(json.dumps(body).encode())).read_all()
+        return self._client.do_get(self._fl.Ticket(json.dumps(body).encode())).read_all()
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        table = self._send(query, role)
         return table.num_rows, table.num_columns, None
+
+    def rows(self, query: Query, role: str) -> Answer:
+        table = self._send(query, role)
+        return list(table.column_names), table.to_pylist(), None
 
     def close(self) -> None:
         self._client.close()
@@ -382,6 +450,11 @@ class BoltClient:
     def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
         records = list(self._session(role).run(query.cypher))
         return len(records), len(records[0].keys()) if records else 0, None
+
+    def rows(self, query: Query, role: str) -> Answer:
+        result = self._session(role).run(query.cypher)
+        records = list(result)
+        return list(result.keys()), [r.data() for r in records], None
 
     def close(self) -> None:
         for driver, session in self._sessions.values():
@@ -435,6 +508,23 @@ class GrpcClient:
         return known
 
     def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        rows = self._send(query, role)
+        return len(rows), len(rows[0].ListFields()) if rows else 0, None
+
+    def rows(self, query: Query, role: str) -> Answer:
+        from google.protobuf.json_format import MessageToDict
+
+        messages = self._send(query, role)
+        # every field of the message, a null one included, by its proto name
+        rows = [
+            MessageToDict(
+                m, preserving_proto_field_name=True, always_print_fields_with_no_presence=True
+            )
+            for m in messages
+        ]
+        return (list(rows[0]) if rows else []), rows, None
+
+    def _send(self, query: Query, role: str) -> list[Any]:
         spec = query.grpc
         assert spec is not None
         request_cls, stream = self._stream_for(spec["type_name"])
@@ -467,8 +557,7 @@ class GrpcClient:
             if self._cred
             else base_metadata
         )
-        rows = list(stream(request, metadata=metadata))
-        return len(rows), len(rows[0].ListFields()) if rows else 0, None
+        return list(stream(request, metadata=metadata))
 
     def close(self) -> None:
         self._channel.close()
