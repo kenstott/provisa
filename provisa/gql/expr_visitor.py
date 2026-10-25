@@ -57,6 +57,7 @@ from provisa.gql.expr_ast import (
     Unary,
     Variable,
 )
+from provisa.gql.translator_helpers import _and_all
 from provisa.gql.translator_types import CypherTranslateError
 
 #: A regex's leading inline flags, which PostgreSQL takes only at the regex's start.
@@ -151,6 +152,14 @@ class ExprContext(Protocol):
 
     def resolve_subquery(self, node: SubqueryExpr) -> exp.Expression:
         """``EXISTS/COUNT/COLLECT { … }`` — builds the correlated subquery."""
+        ...
+
+    def resolve_graph_identity(
+        self, name: str
+    ) -> tuple[tuple[str, ...], list[exp.Expression]] | None:
+        """A bound node or relationship variable's identity (#305): what kind of element it is (a
+        node's table, a relationship's type and ends' tables) and its keys, in one order for
+        every element of that kind; None for any other name."""
         ...
 
     def resolve_graph_absent(self, name: str) -> exp.Expression | None:
@@ -267,6 +276,9 @@ class ExprLowering:
     def _lower_Binary(self, node: Binary) -> exp.Expression:
         op = node.op
         if op in _BINARY_CMP:
+            same = self._same_element(node)
+            if same is not None:
+                return same
             self._refuse_mismatched_comparison(node)
         left = self.lower(node.left)
         right = self.lower(node.right)
@@ -319,6 +331,36 @@ class ExprLowering:
                     raise invalid_regex(node.left, str(pattern.value), why)
             return _anon("regexp_like", left, _whole_match(right))
         raise NotImplementedError(f"binary operator {op!r}")
+
+    def _same_element(self, node: Binary) -> exp.Expression | None:
+        """Two node or relationship variables compared (#305): by identity, the keys of one
+        table or one relationship type's ends; never equal across tables or types, and null where
+        either is. None where either side is no graph element."""
+        if not (isinstance(node.left, Variable) and isinstance(node.right, Variable)):
+            return None
+        left = self._ctx.resolve_graph_identity(node.left.name)
+        right = self._ctx.resolve_graph_identity(node.right.name)
+        if left is None or right is None:
+            return None
+        if node.op not in ("=", "<>", "!="):
+            raise CypherTranslateError(
+                f"{node.left.name} and {node.right.name} are nodes or relationships, which are "
+                "compared by = and <> only"
+            )
+        (left_kind, left_keys), (right_kind, right_keys) = left, right
+        if left_kind == right_kind:
+            same = _and_all(
+                [exp.EQ(this=a, expression=b) for a, b in zip(left_keys, right_keys, strict=True)]
+            )
+        else:
+            # Unlike elements: never the same, and null where either is (as = of a null is).
+            left_null, right_null = (
+                exp.Is(this=keys[0].copy(), expression=exp.Null())
+                for keys in (left_keys, right_keys)
+            )
+            either_null = exp.Or(this=left_null, expression=right_null)
+            same = exp.Case(ifs=[exp.If(this=either_null, true=exp.Null())], default=exp.false())
+        return same if node.op == "=" else exp.Not(this=exp.Paren(this=same))
 
     def _lower_in(
         self, left: exp.Expression, raw_right: CypherExpr, right: exp.Expression
