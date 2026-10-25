@@ -30,7 +30,6 @@ import secrets
 import socket
 import ssl
 import tempfile
-import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -234,9 +233,7 @@ class RemoteWorker(Worker):
         self.exports = list(hello.get("exports") or [])
         #: REQ-2100: the code's name tables, as the image carries them (provisa/codesource/names.py).
         self.names = dict(hello.get("names") or {})
-        threading.Thread(
-            target=self._read, name=f"code-remote-{self.source_id}", daemon=True
-        ).start()
+        self._start_reader(f"code-remote-{self.source_id}")
 
     def _other_exports(self, hello: dict) -> str | None:
         if self._pinned_exports is None:
@@ -254,12 +251,7 @@ class RemoteWorker(Worker):
 
     def stop(self) -> None:
         self._end("the worker was stopped")
-        if self._conn is not None:
-            try:
-                self._conn.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass  # already closed by the host: nothing left to shut
-            self._conn.close()
+        self._close_conn()
 
     def _said(self) -> str:
         return f" (remote host {self.where})"
