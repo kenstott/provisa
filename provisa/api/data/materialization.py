@@ -205,12 +205,12 @@ _STATEMENT_SCRATCH: ContextVar[list | None] = ContextVar("statement_scratch", de
 def statement_scratch() -> Iterator[list]:
     """Collect the scratch tables landed while one statement is planned (see
     :data:`_STATEMENT_SCRATCH`), and the API fills it fetches (``fill_cache.statement_fills``,
-    REQ-1986). A nested statement's go to the one that holds it."""
+    REQ-1986). A nested statement's go to the one that holds it, which alone drops them when it
+    ends: the nested statement is given none to drop, since the outer one may still read them."""
     from provisa.api_source.fill_cache import statement_fills
 
-    held = _STATEMENT_SCRATCH.get()
-    if held is not None:
-        yield held
+    if _STATEMENT_SCRATCH.get() is not None:
+        yield []
         return
     scratch: list = []
     token = _STATEMENT_SCRATCH.set(scratch)
