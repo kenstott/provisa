@@ -181,3 +181,49 @@ def test_sparql_an_optional_edge_between_two_matched_subjects(con):
         "FROM pg.public.persons p CROSS JOIN pg.public.companies c",
     )
     assert sorted(((r["n"], r["cn"], r["a"]) for r in rows), key=str) == want
+
+
+# A node or relationship variable inside an expression (#304): null by its own row, not a column
+# of its name.
+
+
+def test_an_optional_relationship_is_null_where_it_matched_none(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person) OPTIONAL MATCH (a)-[r:KNOWS]->(b:Person) RETURN a.name, r IS NULL",
+    )
+    assert rows == _sql(con, "SELECT name, knows_id IS NULL FROM pg.public.persons")
+
+
+def test_an_optional_node_is_null_where_it_matched_none(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person) OPTIONAL MATCH (a)-[:WORKS_AT]->(c:Company) RETURN a.name, c IS NULL",
+    )
+    assert rows == _sql(con, "SELECT name, company_id IS NULL FROM pg.public.persons")
+
+
+def test_a_required_relationship_is_never_null(con):
+    rows = _rows(con, "MATCH (a:Person)-[r:KNOWS]->(b:Person) RETURN a.name, r IS NOT NULL")
+    assert rows == _sql(con, "SELECT name, true FROM pg.public.persons WHERE knows_id IS NOT NULL")
+
+
+def test_an_optional_junction_relationship_is_null_where_it_matched_none(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person) OPTIONAL MATCH (a)-[m:MEMBER_OF]->(k:Club) RETURN a.name, m IS NULL",
+    )
+    assert rows == _sql(
+        con,
+        "SELECT p.name, m.club_id IS NULL FROM pg.public.persons p "
+        "LEFT JOIN pg.public.members m ON m.person_id = p.id",
+    )
+
+
+def test_an_optional_relationship_between_held_nodes_is_null_where_it_does_not_hold(con):
+    rows = _rows(
+        con,
+        "MATCH (s:Person) MATCH (c:Company) OPTIONAL MATCH (s)-[r:WORKS_AT]->(c) "
+        "WHERE r IS NOT NULL RETURN s.name, c.name",
+    )
+    assert rows == _sql(con, PAIRS)
