@@ -88124,3 +88124,45 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     each way. Nodes are named by their catalog names only. It reads the same metadata query the view
     already reads, with no request of its own. It is compact by default, and an expand control shows
     it at full size.
+- id: REQ-2152
+  status: proposed
+  target: "2027-Q1"
+  group: 1. Access Governance & Security
+  category: Authorization
+  feature: roles-and-capabilities-capabilities
+  priority: MUST
+  type: behavioral
+  description: >-
+    A capability assigned to a role never widens that role's read or write grants. A capability opens a
+    feature only; whatever the feature shows or changes stays within the role's grants. Reads include
+    field, table, column and check names, counts, error text and exports (lineage, source detail, column
+    dependents, profiling and data quality results, ontology bindings, the model download, metadata
+    export, audit views). Writes include model, glossary and settings edits, which are refused on a
+    table or column the role cannot write. Every surface applies the same shared read-rights filter
+    used by lineage. Two exceptions. The source registrant sees the raw source schema during
+    registration only; after registration the registrant's grants apply. Provisa's own service
+    identity (replica builds, fakes, checkers) is not capped, and never shows anything to a person.
+    Each metadata export target names a role, and every publish to it (manual, the scheduled drain
+    and the reconcile) carries exactly what that role can read; the role is a setting of the target
+    with its own UI. A model or glossary edit is permitted on a column the acting role can read (the
+    column_served rule); metadata edits are not data writes. Observability surfaces (materialized
+    views, cache, hot tables, replica builds) list only tables the caller can read at least one
+    column of. The registration-time raw schema is shown in the registration flow only; the table
+    edit page of a registered table is capped like every other surface. There is no special
+    capability for security administration: column_grant, masking_config and access_config are
+    capped like any other, so a role grants, masks or configures access only on columns it can read
+    itself, as a grant option works. Read rights flow only by delegation; the registrant sets the
+    first grants at registration, and holders then delegate what they hold. This applies wherever
+    grants and masks are written (the admin API, MCP tools and settings).
+  scenario: |
+    Given a role holding the view_governance capability that cannot read column ssn of table customers
+    When a member of that role opens lineage, source detail, column dependents, profiling, data quality, ontology bindings, the model download, metadata export or an audit view
+    Then ssn appears in none of them, by name, count or error text
+    When the member edits the glossary or model entry for customers.ssn
+    Then the edit is refused, and the refusal does not name ssn
+    Given the same user registering a new source
+    When the registration form lists the source's raw schema
+    Then ssn is listed until registration completes, and after it the user's grants apply
+    Given a role holding column_grant and masking_config that is not served column ssn
+    When it grants ssn to another role or sets a mask on it
+    Then the change is refused, and the refusal names nothing the role cannot read
