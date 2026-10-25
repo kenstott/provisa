@@ -27,6 +27,7 @@ from provisa.api.admin.capabilities import has_capability_request, require_capab
 from provisa.lineage.graph import LineageGraph, build_column_graph
 from provisa.lineage.merge import MergedGraph
 from provisa.lineage.native import NativeTable, natives_payload, sql_column_name, with_native_hop
+from provisa.lineage.read_rights import readable_graph
 from provisa.core.models import DERIVED_SOURCE_ID
 
 router = APIRouter()
@@ -60,7 +61,31 @@ def lineage_graph_for(
     natives: list[NativeTable] | None = None,
     relations: list[str] | None = None,
 ) -> dict:
-    """Build the render-ready lineage graph JSON for ``sql`` (REQ-1160/REQ-1161). Pure core, testable
+    """The render-ready lineage graph JSON for ``sql``: :func:`statement_graph`'s graph with every
+    native box it draws."""
+    graph = statement_graph(
+        sql,
+        commands,
+        dialect,
+        views=views,
+        materialized=materialized,
+        natives=natives,
+        relations=relations,
+    )
+    return _payload(graph, natives_payload(graph, natives or []))
+
+
+def statement_graph(
+    sql: str,
+    commands: dict[str, dict] | None,
+    dialect: str = "postgres",
+    *,
+    views: list[tuple[str, str]] | None = None,
+    materialized: set[str] | None = None,
+    natives: list[NativeTable] | None = None,
+    relations: list[str] | None = None,
+) -> LineageGraph:
+    """Build the lineage graph for ``sql`` (REQ-1160/REQ-1161). Pure core, testable
     without the app: ``commands`` maps command name → its registry dict so inline command nodes splice
     their declared taint-closure. When ``sql`` references a registered view (``views`` = (relation,
     definition) pairs), that view's own definition is expanded and stitched in — so selecting from a
@@ -86,7 +111,8 @@ def lineage_graph_for(
     # node. Requalify those refs to the full relation first, so the stitch lands.
     requalify_relations(stmt, _bare_to_full([rel for rel, _ in closure], relations or []))
     if not closure:
-        return _with_natives(stmt, natives or [])
+        with_native_hop(stmt, natives or [])
+        return stmt
     # Expand each view to its own lineage (down to base sources), then stitch the statement on top: a
     # view's output node ``<schema>.<table>.<col>`` shares the id the statement (or a downstream view)
     # reads it by, so merge_graphs connects them. A ``SELECT *`` (empty statement graph) simply yields
@@ -97,15 +123,49 @@ def lineage_graph_for(
         materialized_relations=materialized or set(),
         extra_relations=relations or [],
     )
-    return _with_natives(merge_graphs([fed.graph, stmt]).graph, natives or [])
+    graph = merge_graphs([fed.graph, stmt]).graph
+    with_native_hop(graph, natives or [])
+    return graph
 
 
-def _with_natives(graph: LineageGraph, natives: list[NativeTable]) -> dict:
-    """``graph``'s payload with the native hop beneath its source columns (REQ-2116)."""
-    with_native_hop(graph, natives)
+def _payload(graph: LineageGraph, natives: dict[str, dict]) -> dict:
     out = graph.to_dict()
-    out["natives"] = natives_payload(graph, natives)
+    out["natives"] = natives
     return out
+
+
+def _natives_for(request: Request, graph: LineageGraph, natives: list[NativeTable]) -> dict:
+    """The native boxes ``graph`` draws, with their address and how each table is served: source
+    configuration, so answered only to a user with source registration (REQ-2116). The native
+    nodes themselves follow the read rights of the columns they feed (:func:`caller_lineage`)."""
+    if not has_capability_request(request, "source_registration"):
+        return {}
+    return natives_payload(graph, natives)
+
+
+def caller_lineage(
+    request: Request, state, graph: LineageGraph, column_rows: list[dict]
+) -> LineageGraph:
+    """``graph`` cut to what the caller reads: the registered columns the role the request acts
+    as is served (its compiled context, the narrowing every schema surface reads), the native
+    fields beneath them, and nothing else (REQ-1161). Every lineage read answers through this."""
+    registered, readable = _caller_reads(request, state, column_rows)
+    return readable_graph(graph, registered=registered, readable=readable)
+
+
+def _caller_reads(request: Request, state, column_rows: list[dict]) -> tuple[set[str], set[str]]:
+    """(the registered relations, the node ids of their columns the caller is served)."""
+    from provisa.api.admin.served import served_columns
+
+    served = served_columns(request, state)
+    registered: set[str] = set()
+    readable: set[str] = set()
+    for row in column_rows:
+        relation = _relation_of(row["domain_id"], row["table_name"])
+        registered.add(relation)
+        if row["column_name"] in served.get(row["table_id"], ()):
+            readable.add(f"{relation}.{sql_column_name(row)}")
+    return registered, readable
 
 
 def _referenced_view_closure(
@@ -143,15 +203,11 @@ async def lineage_graph(request: Request, body: LineageGraphRequest) -> dict:
     }
     view_rows = await _fetch_view_rows(state)
     views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
-    natives = await _native_tables(request, state)
-    relations = sorted(
-        {
-            _relation_of(r["domain_id"], r["table_name"])
-            for r in await _fetch_registry_columns(state)
-        }
-    )
+    natives = await _native_tables(state)
+    column_rows = await _fetch_registry_columns(state)
+    relations = sorted({_relation_of(r["domain_id"], r["table_name"]) for r in column_rows})
     try:
-        return lineage_graph_for(
+        graph = statement_graph(
             body.sql,
             commands,
             body.dialect,
@@ -162,6 +218,8 @@ async def lineage_graph(request: Request, body: LineageGraphRequest) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    graph = caller_lineage(request, state, graph, column_rows)
+    return _payload(graph, _natives_for(request, graph, natives))
 
 
 async def _fetch_view_rows(state) -> list[dict]:
@@ -374,10 +432,10 @@ async def federation_graph(
     NavBar domain filter the Views/Commands pages honour.
 
     ``roles`` (comma-separated, REQ-1625) is the perspective the lineage is read from: the graph becomes
-    everything the columns THOSE roles can query derive from. It is a lens, not a redaction — an ancestor
-    is returned in full whether or not the roles reach it — so an analyst holding several roles reads the
-    same federation from each one's vantage point. Empty = the "All roles" selection, every registered
-    column seeds. Registered relations that nothing derives from still appear, as isolated source columns
+    everything the columns THOSE roles can query derive from, so an analyst holding several roles reads
+    the same federation from each one's vantage point. The lens narrows only within what the caller
+    reads: every field the caller is not served is cut, whatever the lens (:func:`caller_lineage`).
+    Empty = the "All roles" selection, every registered column seeds. Registered relations that nothing derives from still appear, as isolated source columns
     (REQ-1626), so the graph is the whole reachable model rather than only what a transform touched.
 
     ``roles`` names ANY role in the org, not only ones the caller holds — that is the point of the lens.
@@ -429,20 +487,30 @@ async def federation_graph(
         for n in merged.graph.nodes.values()
         if n.relation is None or n.relation not in described
     }
+    # The lens narrows within what the caller reads, never past it: a registered seed the caller is
+    # not served is no seed.
+    registered, readable = _caller_reads(request, state, column_rows)
+    seeds = {
+        s
+        for s in seeds
+        if s in readable
+        or merged.graph.nodes.get(s) is None
+        or merged.graph.nodes[s].relation not in registered
+    }
     # REQ-2116: the native hop joins after the seeds are taken: it is what a seed derives from.
-    natives = await _native_tables(request, state)
+    natives = await _native_tables(state)
     with_native_hop(merged.graph, natives)
-    if seeds:
-        scoped_graph = ancestor_closure(merged.graph, seeds)
-        # A cycle survives only if the whole loop is inside the perspective — a partially-cut cycle is
-        # not a cycle in what is being shown, and reporting it would point at nodes that are not there.
-        merged = MergedGraph(
-            graph=scoped_graph,
-            cycles=[c for c in merged.cycles if all(n in scoped_graph.nodes for n in c.nodes)],
-        )
+    graph = ancestor_closure(merged.graph, seeds)
+    # The caller's read rights cap the lens: the graph is what the lens reaches, of what the caller
+    # reads. A cycle survives only if the whole loop is shown — a partially-cut cycle is not a cycle
+    # in what is being shown, and reporting it would point at nodes that are not there.
+    graph = caller_lineage(request, state, graph, column_rows)
+    merged = MergedGraph(
+        graph=graph, cycles=[c for c in merged.cycles if all(n in graph.nodes for n in c.nodes)]
+    )
     if focus is None:
         out = merged.to_dict()
-        out["natives"] = natives_payload(merged.graph, natives)
+        out["natives"] = _natives_for(request, merged.graph, natives)
         return out
     try:
         scoped = slice_graph(merged.graph, focus, direction=direction, depth=depth)
@@ -451,7 +519,7 @@ async def federation_graph(
     out = scoped.to_dict()
     kept = set(scoped.nodes)
     out["cycles"] = [c.to_dict() for c in merged.cycles if any(n in kept for n in c.nodes)]
-    out["natives"] = natives_payload(scoped, natives)
+    out["natives"] = _natives_for(request, scoped, natives)
     return out
 
 
@@ -491,12 +559,10 @@ def _with_registry_columns(
     return merged
 
 
-async def _native_tables(request: Request, state) -> list[NativeTable]:
+async def _native_tables(state) -> list[NativeTable]:
     """Every registered base table's native hop (REQ-2116): where its source reads it, the raw
-    field of each column and how the table is served. Shown only to a user who can see the
-    sources' configuration (source registration); anyone else gets none."""
-    if not has_capability_request(request, "source_registration"):
-        return []
+    field of each column and how the table is served. Which nodes a caller is shown is
+    :func:`caller_lineage`'s; the boxes' detail is :func:`_natives_for`'s."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import api_endpoints, kafka_topics

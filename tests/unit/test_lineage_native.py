@@ -10,14 +10,15 @@
 
 """REQ-2116: lineage reaches below the registered table to the source itself.
 
-Each source column gains one native node beneath it: the raw field as its source reads it, in a
-box for the address it is read from, with the renaming on the way. The hop is shown only to a user
-with source registration, and nothing secret is copied.
+Each source column gains one native node beneath it: the raw field as its source reads it, with
+the source and, where the source has them, the schema and table it is read from, and the renaming
+on the way. The node shows whenever its registered column does; the box's detail (address, how
+the table is served) is source configuration, shown only to a user with source registration.
+Nothing secret is copied.
 """
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -85,6 +86,68 @@ def test_an_openapi_table_is_read_from_its_operation_and_row_location() -> None:
     assert fields == {"id": ("id", None), "postalCode": ("postal_code", "naming")}
 
 
+def test_a_native_node_names_its_source_object() -> None:
+    pets = {
+        "source_id": "pg",
+        "schema_name": "public",
+        "table_name": "pets",
+        "columns": [{"column_name": "id", "alias": None, "path": None, "native_filter_type": None}],
+    }
+    address = native_address("postgresql", pets, _source("postgresql", id="pg"))
+    native = native_table(
+        "pet_store.pets",
+        _source("postgresql", id="pg"),
+        pets,
+        address,
+        served(False, None, None, None),
+    )
+    graph = LineageGraph()
+    graph.add_node(
+        Node(id="pet_store.pets.id", column="id", relation="pet_store.pets", kind="source")
+    )
+    with_native_hop(graph, [native])
+    node = next(n for n in graph.to_dict()["nodes"] if n["kind"] == "native")
+    assert (node["source_id"], node["source_schema"], node["source_table"], node["column"]) == (
+        "pg",
+        "public",
+        "pets",
+        "id",
+    )
+    # Every other node keeps the shape it had.
+    assert "source_id" not in next(n for n in graph.to_dict()["nodes"] if n["kind"] == "source")
+
+
+def test_a_source_without_a_schema_or_table_names_none() -> None:
+    graph = LineageGraph()
+    graph.add_node(
+        Node(
+            id="sales.customers.postal_code",
+            column="postal_code",
+            relation="sales.customers",
+            kind="source",
+        )
+    )
+    with_native_hop(graph, [_customers_native()])
+    node = next(n for n in graph.to_dict()["nodes"] if n["kind"] == "native")
+    assert (node["source_id"], node["source_schema"], node["source_table"]) == ("crm", None, None)
+
+
+@pytest.mark.parametrize(
+    ("stype", "table", "expected"),
+    [
+        ("mongodb", {"schema_name": "shop", "table_name": "orders"}, ("shop", "orders")),
+        ("elasticsearch", {"schema_name": "x", "table_name": "logs"}, (None, "logs")),
+        ("python", {"schema_name": "x", "table_name": "forecast"}, (None, None)),
+        ("snowflake", {"schema_name": "RAW", "table_name": "PETS"}, ("RAW", "PETS")),
+    ],
+)
+def test_each_kind_of_source_names_its_schema_and_table(stype, table, expected) -> None:
+    table = {**table, "columns": []}
+    address = native_address(stype, table, _source(stype))
+    native = native_table("d.t", _source(stype), table, address, served(False, None, None, None))
+    assert (native.source_schema, native.source_table) == expected
+
+
 def test_the_view_reading_postal_code_reaches_the_raw_field() -> None:
     sql = "SELECT postal_code FROM sales.report"
     views = [("sales.report", "SELECT c.postal_code FROM sales.customers c")]
@@ -110,9 +173,23 @@ def test_without_source_registration_the_graph_starts_at_the_table() -> None:
     assert out["natives"] == {}
 
 
-def test_the_hop_is_withheld_from_a_user_without_source_registration(monkeypatch) -> None:
+def test_the_box_detail_is_withheld_from_a_user_without_source_registration(monkeypatch) -> None:
     monkeypatch.setattr(lineage_router, "has_capability_request", lambda request, cap: False)
-    assert asyncio.run(lineage_router._native_tables(object(), SimpleNamespace())) == []
+    graph = LineageGraph()
+    graph.add_node(
+        Node(
+            id="sales.customers.postal_code",
+            column="postal_code",
+            relation="sales.customers",
+            kind="source",
+        )
+    )
+    with_native_hop(graph, [_customers_native()])
+    assert lineage_router._natives_for(object(), graph, [_customers_native()]) == {}
+    monkeypatch.setattr(lineage_router, "has_capability_request", lambda request, cap: True)
+    assert set(lineage_router._natives_for(object(), graph, [_customers_native()])) == {
+        "native:sales.customers"
+    }
 
 
 def test_credentials_and_secret_references_are_never_copied() -> None:
