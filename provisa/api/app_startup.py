@@ -635,6 +635,19 @@ def _start_scheduler(_log: logging.Logger) -> None:
                 max_instances=1,
                 coalesce=True,
             )
+            from provisa.scheduler.jobs import compact_otel_signals
+
+            # REQ-862: the tier lands its own traces, so it merges them as the deployment's API
+            # does; never merged, a first read of an ops view over them opened every batch file.
+            scheduler.add_job(
+                compact_otel_signals,
+                trigger=CronTrigger.from_crontab(state.otel_compact_cron),
+                id="otel_compact",
+                name="otel:compact_signals",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
             from provisa import sandbox_wake
 
             if sandbox_wake.SANDBOX_INSTANCE is not None:
