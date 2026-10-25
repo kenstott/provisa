@@ -131,6 +131,17 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
         `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
       );
       expect(rows).toEqual(WIDGET_ROWS);
+
+      // 4. The same table joined with another source's: a statement over two sources is the
+      // engine's, which reads Snowflake through its own attach (the read above went to the
+      // source's driver). The attach takes the ADBC driver Provisa ships (REQ-899).
+      const joined = await runSqlOnPage(
+        page,
+        `SELECT w.id, w.name, p.name FROM pet_store.${registered} AS w ` +
+          "JOIN pet_store.pets AS p ON p.id = w.id ORDER BY w.id",
+      );
+      expect(joined.map(([id, name]) => [id, name])).toEqual(WIDGET_ROWS);
+      expect(joined.every(([, , pet]) => pet !== "")).toBe(true);
     } finally {
       try {
         await removeSource(sourceId);
