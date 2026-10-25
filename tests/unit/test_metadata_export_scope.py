@@ -120,10 +120,16 @@ def _snapshot() -> MetadataSnapshot:
                 definition=None,
                 is_abstract=False,
                 deprecated=False,
+                status="live",
                 refs=(orders.columns[0].ref, ledger.columns[0].ref),
             ),
             GlossaryTermAsset(
-                term_id=2, name="revenue", definition="x", is_abstract=True, deprecated=False
+                term_id=2,
+                name="revenue",
+                definition="x",
+                is_abstract=True,
+                deprecated=False,
+                status="live",
             ),
         ],
         glossary_edges=[GlossaryTermEdge(from_term_id=2, to_term_id=1, rel_type="RELATED_TO")],
