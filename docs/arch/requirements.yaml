@@ -58303,49 +58303,54 @@
   feature: roles-and-capabilities-sandbox-role
   priority: MUST
   type: behavioral
-  description: 'THE SANDBOX ROLE IS org_admin MINUS A DENYLIST, AND THE SUBTRACTION IS THE DESIGN. ``sandbox``
-    is the sixth system template role and what a "Try it Out" invitation confers. A stranger holding that
-    link is meant to be able to do everything the product does -- register a source, model it, govern
-    it, query it, write to it -- inside an environment that expires. Defining the role by ENUMERATING
+  description: '[SUPERSEDED by REQ-2155, 2026-10-25 -- the sandbox role is composed from standard roles
+    by union, like every role; no subtraction. Kept here for history; do not implement against it.] THE
+    SANDBOX ROLE IS org_admin MINUS A DENYLIST, AND THE SUBTRACTION IS THE DESIGN. [END SUPERSEDED BLOCK]
+    ``sandbox`` is the sixth system template role and what a "Try it Out" invitation confers. A stranger
+    holding that link is meant to be able to do everything the product does -- register a source, model
+    it, govern it, query it, write to it -- inside an environment that expires. Defining the role by ENUMERATING
     what it may do would make every capability added later invisible to visitors until somebody remembered
     to edit this one row, so the demo would silently narrow with every release; subtracting is the direction
     that stays correct, and a new right reaches the sandbox with no second edit. WHAT IS WITHHELD: four
-    rights, each because it reaches something the environment does not contain or lets a visitor write
-    back into shared state. ``environment_switch``: the visitor would leave the sandbox, and REQ-1596''s
-    membership pin is pointless against a role that can name another environment. The two halves contain
-    a stranger only together. ``environment_management``: spends the org''s plan ceiling and drops other
-    environments'' schemas. ``user_management``: would let a visitor confer roles or admit more people,
-    and withholding it is also what closes the role-editing surface to them, so the denylist cannot be
-    edited away from inside the sandbox. ``org_glossary_rw``: the override over terms the org''s own
-    people authored. ``org_settings`` and ``observability`` are HELD, not withheld: REQ-1349 made ``org_settings``
-    the single capability nearly every org-scoped admin surface is gated on (cache, AI models, import, tags, secrets, scheduler, requests, org-engine, billing, domains; see adminNavCapabilities.test.ts),
-    so denying it wholesale took out most of the Admin tab rather than the few org-wide surfaces the original
-    denylist intended; a sandbox visitor is meant to see the product, including its settings and telemetry,
-    and only loses the right to write back into what it does not own. TWO PLANES, ONE DEFINITION: schema.sql
-    is PostgreSQL-only DDL and provisa/core/db.py is its portable mirror; a role seeded into one and not
-    the other exists on SaaS and not on a laptop, so the two are asserted equal. The re-assertion seams
-    that hand ``environment_management``/``environment_switch`` to pre-existing role rows name org_admin
-    and developer only: naming sandbox there would give back on the next init_schema exactly what the
-    denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE VISITOR ALSO HOLDS org_admin: a column is visible to a role when ``table_columns.visible_to`` NAMES that role, and every grant in an authored
-    model names the roles the model was authored against. ``sandbox`` is named by none of them, so a visitor
-    holding only that id is shown no column on any table, and schema_gen then drops every table left with none, leaving the tables whose API path/query parameters are exempt from the gate and nothing else.
-    That is not a narrower demo; it is an empty one, and it is not fixable by re-granting columns, because
-    the model belongs to the org and the visitor is a stranger to it. So redeeming a sandbox invitation
-    seats the redeemer under BOTH names: the role the invitation confers, and ``org_admin``, whose row
-    in the visitor''s own ephemeral environment is reduced at creation to the ``sandbox`` row''s own capabilities
-    and demonstrated list. Capabilities resolve as the UNION over the holder''s roles, so the union is
-    the sandbox definition exactly, the denylist keeps one author, and production''s org_admin is untouched
-    (REQ-1539 makes roles the environment''s own answer). AND THE ROLE IS CONFERRABLE NOWHERE ELSE: minting
-    an invitation that names ``sandbox`` under any policy but ``per_visitor`` is refused, because the
-    reduction is performed by the environment creation that only that policy triggers. Conferred anywhere else the name would carry org_admin''s full definition, unnarrowed. STILL TO SUBTRACT (open): the
-    settled target is most of org_admin, less the ability to WRITE BACK to the original sample data sources
-    -- a visitor''s hour is disposable but the demo sources it points at are shared and outlive it --
-    and less further destructive acts still to be enumerated. The four above are the rights withheld today;
-    the denylist is where those additions land, so the subtraction stays the one definition. (Amended 2026-10-15,
-    REQ-2053: environment_switch is no longer withheld. A demo sandbox is an org of its own, so its
-    environments are its visitor''s, who switches between those that exist; creating and deleting one stays
-    withheld with environment_management. A membership pinned to one environment (REQ-1596) is still
-    confined by the pin, which is checked before the right. Three rights are withheld.)'
+    rights, each because it reaches something the environment does not contain or lets a visitor write back
+    into shared state. ``environment_switch``: the visitor would leave the sandbox, and REQ-1596''s membership
+    pin is pointless against a role that can name another environment. The two halves contain a stranger
+    only together. ``environment_management``: spends the org''s plan ceiling and drops other environments''
+    schemas. ``user_management``: would let a visitor confer roles or admit more people, and withholding
+    it is also what closes the role-editing surface to them, so the denylist cannot be edited away from
+    inside the sandbox. ``org_glossary_rw``: the override over terms the org''s own people authored. ``org_settings``
+    and ``observability`` are HELD, not withheld: REQ-1349 made ``org_settings`` the single capability nearly
+    every org-scoped admin surface is gated on (cache, AI models, import, tags, secrets, scheduler, requests,
+    org-engine, billing, domains; see adminNavCapabilities.test.ts), so denying it wholesale took out most
+    of the Admin tab rather than the few org-wide surfaces the original denylist intended; a sandbox visitor
+    is meant to see the product, including its settings and telemetry, and only loses the right to write
+    back into what it does not own. TWO PLANES, ONE DEFINITION: schema.sql is PostgreSQL-only DDL and provisa/core/db.py
+    is its portable mirror; a role seeded into one and not the other exists on SaaS and not on a laptop,
+    so the two are asserted equal. The re-assertion seams that hand ``environment_management``/``environment_switch``
+    to pre-existing role rows name org_admin and developer only: naming sandbox there would give back on
+    the next init_schema exactly what the denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE
+    VISITOR ALSO HOLDS org_admin: a column is visible to a role when ``table_columns.visible_to`` NAMES
+    that role, and every grant in an authored model names the roles the model was authored against. ``sandbox``
+    is named by none of them, so a visitor holding only that id is shown no column on any table, and schema_gen
+    then drops every table left with none, leaving the tables whose API path/query parameters are exempt
+    from the gate and nothing else. That is not a narrower demo; it is an empty one, and it is not fixable
+    by re-granting columns, because the model belongs to the org and the visitor is a stranger to it. So
+    redeeming a sandbox invitation seats the redeemer under BOTH names: the role the invitation confers,
+    and ``org_admin``, whose row in the visitor''s own ephemeral environment is reduced at creation to the
+    ``sandbox`` row''s own capabilities and demonstrated list. Capabilities resolve as the UNION over the
+    holder''s roles, so the union is the sandbox definition exactly, the denylist keeps one author, and
+    production''s org_admin is untouched (REQ-1539 makes roles the environment''s own answer). AND THE ROLE
+    IS CONFERRABLE NOWHERE ELSE: minting an invitation that names ``sandbox`` under any policy but ``per_visitor``
+    is refused, because the reduction is performed by the environment creation that only that policy triggers.
+    Conferred anywhere else the name would carry org_admin''s full definition, unnarrowed. STILL TO SUBTRACT
+    (open): the settled target is most of org_admin, less the ability to WRITE BACK to the original sample
+    data sources -- a visitor''s hour is disposable but the demo sources it points at are shared and outlive
+    it -- and less further destructive acts still to be enumerated. The four above are the rights withheld
+    today; the denylist is where those additions land, so the subtraction stays the one definition. (Amended
+    2026-10-15, REQ-2053: environment_switch is no longer withheld. A demo sandbox is an org of its own,
+    so its environments are its visitor''s, who switches between those that exist; creating and deleting
+    one stays withheld with environment_management. A membership pinned to one environment (REQ-1596) is
+    still confined by the pin, which is checked before the right. Three rights are withheld.)'
   tests:
   - tests/unit/test_sandbox_role_seed.py
   - tests/unit/test_open_invite.py
@@ -88376,18 +88381,22 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   description: 'Provisa ships standard roles: named collections of capabilities, maintained by Provisa,
     that organisations extend with their own roles. A standard role carries capabilities only, never grants;
     what any role reads or writes comes from grants (REQ-2152). A role may inherit from several parents,
-    and its capabilities are the deduplicated union of its own and every ancestor''s; least privilege
-    is applied when roles are assigned, not when they are composed. The initial set: Viewer, the base
-    (reads the catalog, the glossary and data products); Analyst (Viewer, plus querying and query development);
-    Developer (Analyst, plus views, environments and write); Data product owner (Viewer, plus editing
-    the data products it owns); Data steward (Viewer, plus glossary editing and relationships); Data quality
+    and its capabilities are the deduplicated union of its own and every ancestor''s; least privilege is
+    applied when roles are assigned, not when they are composed. The initial set: Viewer, the base (reads
+    the catalog, the glossary and data products); Analyst (Viewer, plus querying and query development);
+    Developer (Analyst, plus views, environments and write); Data product owner (Viewer, plus editing the
+    data products it owns); Data steward (Viewer, plus glossary editing and relationships); Data quality
     steward (Data steward, plus managing checks, expectations and promises); Data quality reader (Viewer,
     plus reading check definitions and results); Source admin (Viewer, plus source and table registration);
     Security admin (Viewer, plus access configuration, column grants, masking and user management); Org
-    admin (all of the above, plus org settings and observability). Data quality gets its own read and
-    read/write capabilities, so managing checks no longer needs table registration, and editing a data
-    product can be limited to the products a role owns. The existing seeded roles (data_steward, REQ-1944,
-    and the system roles) are expressed in this set.'
+    admin (all of the above, plus org settings and observability). Data quality gets its own read and read/write
+    capabilities, so managing checks no longer needs table registration, and editing a data product can
+    be limited to the products a role owns. The existing seeded roles (data_steward, REQ-1944, and the system
+    roles) are expressed in this set. (Amended 2026-10-25, LOCKED; SANDBOX COMPOSED:) Standard roles are
+    locked: Provisa maintains them and an organisation cannot edit them; it extends them with its own child
+    roles, so a capability Provisa adds to a standard role reaches every role built on it. The sandbox role
+    a ''Try it Out'' visitor holds (REQ-1597) is composed from standard roles by union like any role, not
+    as org_admin minus a denylist.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -88459,12 +88468,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   type: behavioral
   description: 'A data product (ODPS) declares a data contract (ODCS) for each output port, stored with
     the product rather than generated at export: the port''s schema (its member''s columns), its promises
-    (REQ-2157), a structured SLA (freshness from the member''s declared freshness) and its terms. The
-    product''s prose SLA moves into its contracts. Input ports are the product''s expectations: each names
-    the upstream contract it consumes when the input is another product''s output port, and carries the
-    product''s own expectation checks on it. The ODPS export writes both port kinds and each output port''s
-    contract (REQ-2118), following Bitol ODPS, whose inputPorts are labelled Expectations and outputPorts
-    Promises.'
+    (REQ-2157), a structured SLA (freshness from the member''s declared freshness) and its terms. The product''s
+    prose SLA moves into its contracts. Input ports are the product''s expectations: each names the upstream
+    contract it consumes when the input is another product''s output port, and carries the product''s own
+    expectation checks on it. The ODPS export writes both port kinds and each output port''s contract (REQ-2118),
+    following Bitol ODPS, whose inputPorts are labelled Expectations and outputPorts Promises. (Amended
+    2026-10-25, A CONTRACT HAS ITS OWN VERSION:) Each output port''s contract carries its own version, as
+    ODPS versions each port by its contract: a breaking change to one port''s schema or promises bumps that
+    contract alone.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -88489,3 +88500,27 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     roles, Viewer''s default grant, public and listed scope, derived roles), never from a bypass. The
     two things outside the rules are not people: registration, where data enters governance, and Provisa''s
     service identity, which runs the rules and shows nothing to anyone (REQ-2152).'
+- id: REQ-2160
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-data-products
+  priority: SHOULD
+  type: behavioral
+  description: 'The data product panel shows the product''s owner a different subset from other readers.
+    A consumer sees the product''s promises (its contracts: schema, SLA, promise checks and their latest
+    results, REQ-2157, REQ-2158), how to access it, its support, and its lineage up to the product. The
+    owner, a holder of the product''s owner or team role (REQ-2125), also sees its expectations and their
+    failures, related checks, its input ports, its consumers one hop downstream, and edits its contracts.
+    Both views are capped by the reader''s read rights (REQ-2152): neither shows a column, check or table
+    the reader cannot read.'
+  scenario: 'Given product revenue owned by role revenue_team
+
+    When a member of revenue_team opens revenue
+
+    Then the panel shows Expectations, Promises, Related, input ports and downstream consumers
+
+    When an analyst outside revenue_team opens revenue
+
+    Then the panel shows Promises, access, support and lineage only'
