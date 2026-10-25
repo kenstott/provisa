@@ -300,18 +300,20 @@ def test_a_relay_closes_while_another_listener_shares_its_port(started):
 
 class _ShortOfBufferSpace:
     """A socket whose host refuses some sends for want of buffer space, and takes only part of
-    what it is given when it does accept."""
+    what it is given when it does accept. It records each send's size and flags."""
 
     def __init__(self, refusals: list[int], takes: int) -> None:
         self.refusals = refusals  # the send calls (by number) refused with ENOBUFS
         self.takes = takes
         self.calls = 0
+        self.sends: list[tuple[int, int]] = []
         self.received = bytearray()
 
-    def send(self, data) -> int:
+    def send(self, data, flags: int = 0) -> int:
         import errno
 
         self.calls += 1
+        self.sends.append((len(data), flags))
         if self.calls in self.refusals:
             raise OSError(errno.ENOBUFS, "No buffer space available")
         taken = bytes(data[: self.takes])
@@ -327,11 +329,63 @@ def test_a_host_short_of_buffer_space_is_waited_out_and_every_byte_arrives_once(
     from provisa.api.flight import relay
 
     monkeypatch.setattr(relay, "_NO_BUFFER_SPACE_WAIT", 0.0)
+    monkeypatch.setattr(relay, "_wait_writable", lambda _sock: None)
     payload = bytes(range(256)) * 40  # 10,240 bytes, every position distinguishable
     sink = _ShortOfBufferSpace(refusals=[1, 4, 5, 9], takes=1000)
     relay._send_all(sink, memoryview(payload))  # noqa: SLF001
     assert bytes(sink.received) == payload
     assert sink.calls == 11 + 4  # eleven partial sends, four refusals waited out
+
+
+def test_each_send_is_one_bounded_non_blocking_call_made_once_there_is_room_for_it(monkeypatch):
+    """On macOS a send that queues part of what it was given and then runs out of buffers
+    reports ENOBUFS and not what it queued (XNU sendit: only EINTR, ERESTART and EWOULDBLOCK keep
+    a partial count), so a sender that sends the rest again sends some bytes twice -- a relayed
+    stream then stops being HTTP/2 at the client. A send XNU builds as one chain (at most
+    sosendmaxchain, 64 KB) into room it already has is queued whole or not at all: the relay
+    waits for that much room, then sends at most that much without blocking."""
+    import socket as _socket
+
+    from provisa.api.flight import relay
+
+    events: list[str] = []
+    monkeypatch.setattr(relay, "_wait_writable", lambda _sock: events.append("wait"))
+    sink = _ShortOfBufferSpace(refusals=[], takes=1 << 30)
+    original_send = sink.send
+
+    def send(data, flags=0):
+        events.append("send")
+        return original_send(data, flags)
+
+    sink.send = send  # type: ignore[method-assign]
+    payload = bytes(range(256)) * 1000  # 256,000 bytes
+    relay._send_all(sink, memoryview(payload))  # noqa: SLF001
+    assert bytes(sink.received) == payload
+    assert all(size <= relay._SEND_CHUNK == 65536 for size, _ in sink.sends), sink.sends  # noqa: SLF001
+    assert all(flags & _socket.MSG_DONTWAIT for _, flags in sink.sends), sink.sends
+    assert events == ["wait", "send"] * len(sink.sends), events
+
+
+def test_a_relayed_socket_is_writable_only_with_room_for_a_whole_send():
+    """Where the kernel lets the low-water mark be set (macOS), a relayed connection's sockets
+    report writable only once a whole bounded send fits, so the send is one chain."""
+    import socket as _socket
+
+    from provisa.api.flight import relay
+
+    if not relay._SETS_SEND_LOW_WATER:  # noqa: SLF001
+        assert relay._SEND_CHUNK == 65536  # noqa: SLF001
+        return
+    # a loopback TCP connection, as the relay's are (a Unix socketpair's buffer is far smaller)
+    with _socket.create_server(("127.0.0.1", 0)) as listener:
+        a = _socket.create_connection(listener.getsockname())
+        b, _ = listener.accept()
+    try:
+        relay._bound_sends(a)  # noqa: SLF001
+        assert a.getsockopt(_socket.SOL_SOCKET, _socket.SO_SNDLOWAT) == relay._SEND_CHUNK  # noqa: SLF001
+    finally:
+        a.close()
+        b.close()
 
 
 def test_any_other_socket_error_still_ends_the_copy():
@@ -340,11 +394,23 @@ def test_any_other_socket_error_still_ends_the_copy():
     from provisa.api.flight import relay
 
     class _Reset:
-        def send(self, data) -> int:
+        def send(self, data, flags=0) -> int:
             raise ConnectionResetError(errno.ECONNRESET, "Connection reset by peer")
 
-    with pytest.raises(ConnectionResetError):
-        relay._send_all(_Reset(), memoryview(b"abc"))  # noqa: SLF001
+    import unittest.mock
+
+    with unittest.mock.patch.object(relay, "_wait_writable", lambda _sock: None):
+        with pytest.raises(ConnectionResetError):
+            relay._send_all(_Reset(), memoryview(b"abc"))  # noqa: SLF001
+
+
+# What a stream the Flight server sent twice in part looks like, and why (gRPC, not the relay).
+GRPC_ENOBUFS = (
+    'a stream the relay RECEIVED that stops being HTTP/2 part way ("not a frame at byte N") '
+    "holds bytes the Flight server sent twice: XNU's sendmsg reports ENOBUFS for a send that "
+    "queued part of its bytes and does not say how many (bsd/kern/uipc_syscalls.c sendit), and "
+    "gRPC's tcp_flush (src/core/lib/iomgr/tcp_posix.cc) then sends its whole batch again"
+)
 
 
 _H2_FRAMES = {0: "DATA", 1: "HEADERS", 2: "PRIORITY", 3: "RST_STREAM", 4: "SETTINGS", 5: "PUSH_PROMISE",
@@ -407,15 +473,15 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
     """Twelve 24 MB streams relayed at once, twice over. Each must arrive whole -- every row, in
     order -- and the relay must have carried the same number of bytes towards each client.
 
-    On macOS, while the whole machine was under load, relayed streams have failed at the client
-    with "frame of size N overflows local window of M". It has not been reproduced on a quiet
-    machine in any arrangement, and what the relay does to bytes has been verified separately,
-    so where the stream goes wrong is not yet known. This test runs on Linux in CI, where the
-    product runs; and when a stream fails it says what the relay carried to each client, read as
-    HTTP/2 frames, so the failure names the place. It also says whether a relayed socket's
-    descriptor or peer changed while it was read: the bytes a failed stream carried were out of
-    step as the relay received them, and a descriptor closed under the relay and reused by
-    another connection is one way that happens."""
+    On macOS, with the whole machine under load, relayed streams have failed at the client
+    ("frame of size N overflows local window of M", "Deadline Exceeded") and the relay has
+    received a stream that stops being HTTP/2 part way: bytes the Flight server sent twice. XNU
+    reports ENOBUFS for a send that queued part of its bytes and drops the count, and gRPC's
+    tcp_flush then sends its whole batch again (see GRPC_ENOBUFS below). The relay's own sends
+    are built so it cannot do the same (_send_all); the Flight server's are gRPC's. When a stream
+    fails this test says what the relay carried to each client, read as HTTP/2 frames, so the
+    failure names the place, and whether a relayed socket's descriptor or peer changed while it
+    was read."""
     import zlib
 
     import pyarrow.compute as pc
@@ -504,9 +570,14 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
         if c["moved"]
     ]
     assert failures == [], {
+        "a known cause, on macOS": GRPC_ENOBUFS,
         "failures": failures,
         "carried": carried,
         "streams that differ": odd,
         "sockets whose descriptor or peer changed mid-stream": moved,
     }
-    assert len(carried) == 24 and odd == [], {"carried": carried, "streams that differ": odd}
+    assert len(carried) == 24 and odd == [], {
+        "a known cause, on macOS": GRPC_ENOBUFS,
+        "carried": carried,
+        "streams that differ": odd,
+    }
