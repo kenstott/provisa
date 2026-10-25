@@ -742,36 +742,36 @@ class ProvisaFlightServer(
         try:
             from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
 
+            import contextlib
+
+            from provisa.auth.derived_roles import (
+                principal_scope,
+                session_vars_scope,
+                unsecured_principal,
+            )
+
             # The role is authorized with the org bound: a set of held roles is made into its
             # meta-role in the org's runtime, which is a tenant-data path like any other.
-            acting: str | None = None
+            # REQ-1682/REQ-1382: what a row filter reads for this caller, as on every transport.
+            principal: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
             if identity is not None:
                 acting = self._authorize_role(identity, request)
                 request["role"] = acting
+                principal = principal_scope(self._state, identity, acting)
             elif request.get("role"):
                 # REQ-1952: unsecured, a set of roles (or a declared derived role) acts as its
-                # meta-role, resolved as the HTTP middleware resolves X-Provisa-Role.
-                from provisa.auth.derived_roles import resolve_unsecured_role
-
+                # meta-role and binds a named derived role's attribute, as the HTTP middleware
+                # resolves and binds X-Provisa-Role.
                 try:
-                    request["role"] = resolve_unsecured_role(self._state, str(request["role"]))
+                    role, session_vars = unsecured_principal(self._state, str(request["role"]))
                 except PermissionError as exc:
                     raise flight.FlightUnauthorizedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                request["role"] = role
+                principal = session_vars_scope(session_vars)
 
             # REQ-074/REQ-1386: the validated principal, or — on a deployment that authenticates
             # nobody — the anonymous one: the request is audited either way.
             user_id = identity.user_id if identity is not None else ANONYMOUS_USER
-            import contextlib
-
-            from provisa.auth.derived_roles import principal_scope
-
-            # REQ-1682/REQ-1382: what a row filter reads for this caller, as on every transport;
-            # a deployment that authenticates nobody has no principal to bind.
-            principal = (
-                contextlib.nullcontext()
-                if identity is None
-                else principal_scope(self._state, identity, acting)
-            )
             with principal:
                 with audit_identity_scope(user_id, "flight"):
                     return self._do_get_inner(request, ticket)

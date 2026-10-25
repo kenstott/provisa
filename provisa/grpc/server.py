@@ -408,18 +408,24 @@ class ProvisaServicer:  # REQ-045, REQ-143
         """The role an RPC acts as, once its org is bound (REQ-1952). Secured, the interceptor
         resolved it from the identity. Unsecured, ``x-provisa-role`` naming a set of roles, or a
         declared derived role, acts as its meta-role, built in the bound org -- resolved as the
-        HTTP middleware resolves the header (``resolve_unsecured_role``)."""
+        HTTP middleware resolves the header (``unsecured_principal``), and its session variables
+        bound."""
         from provisa.grpc.auth import authorized_role
 
         if authorized_role() is not None:
             return role_id
-        from provisa.auth.derived_roles import resolve_unsecured_role
+        from provisa.auth.derived_roles import unsecured_principal
+        from provisa.core.request_context import set_session_vars
 
         try:
-            return resolve_unsecured_role(self._state, role_id)
+            role, session_vars = unsecured_principal(self._state, role_id)
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             raise  # abort ends the RPC by raising; never proceed as an unresolved role
+        # What a row filter reads for this call, as HTTP binds it (a named derived role's
+        # attribute); bound in the RPC's own context, as a secured RPC's principal is.
+        set_session_vars(session_vars)
+        return role
 
     async def _received(self, method: str, raw: bytes, context):
         """Bind the organisation of an RPC that arrived as bytes and decode its request with THAT

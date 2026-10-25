@@ -16,6 +16,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -467,7 +468,29 @@ class BoltSession:
         self.send_failure("Neo.ClientError.Security.Forbidden", role_probe.NOT_PERMITTED)
         self.state = State.DEFUNCT
 
-    def _resolve_db(self, db: Any) -> tuple[str, bool] | None:
+    def _derived_held(self, app_state: Any) -> Callable[[str], bool]:
+        """Whether a name is a derived role this session holds (REQ-2057), read in its bound org:
+        signed in, one the identity's attributes give it; unsecured, any the org declares, taken at
+        its word as X-Provisa-Role's are on HTTP (REQ-1952) -- what :meth:`_meta_role` resolves."""
+        from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._bound_org())
+        try:
+            identity = self._identity
+            if identity is None:
+                declared = declared_derived_roles(app_state)
+                return lambda name: bool(named_unsecured([name], declared)[1])
+            from provisa.auth.derived_roles import principal_of
+
+            held = principal_of(app_state, identity)[1]
+            return lambda name: name in held
+        finally:
+            reset_current_org(token)
+
+    def _resolve_db(
+        self, db: Any, derived_held: Callable[[str], bool] | None = None
+    ) -> tuple[str, bool] | None:
         """Map a Bolt `db` value to (role_id, include_ops), or None if unauthorized.
 
         The db name encodes two axes:
@@ -476,7 +499,8 @@ class BoltSession:
         Empty / "system" / "provisa" → default role, business view.
         ``<role>`` may be a comma-separated set of held roles, which acts as their meta-role
         (security/meta_role.py; resolved once the session's org is bound). Every role must be in
-        the user's set; anything else → None.
+        the user's set, or a derived role the session holds (``derived_held``, read once its org
+        is bound; None before then: no derived role is known held); anything else → None.
         """
         from provisa.security.meta_role import RoleNotHeld, is_meta_role_id
 
@@ -490,7 +514,11 @@ class BoltSession:
                 named = [r.strip() for r in db[len(prefix) :].split(",") if r.strip()]
                 if any(is_meta_role_id(r) for r in named):
                     return None  # a meta-role is never named; the roles it is made of are
-                unheld = [r for r in named if r not in self.roles]
+                unheld = [
+                    r
+                    for r in named
+                    if r not in self.roles and not (derived_held is not None and derived_held(r))
+                ]
                 if named and unheld:
                     # REQ-2076: a role named that the caller does not hold, not an unknown name.
                     raise RoleNotHeld(unheld[0], set(self.roles))
@@ -709,8 +737,18 @@ class BoltSession:
         from provisa.security import role_probe
         from provisa.security.meta_role import RoleNotHeld
 
+        derived_held: Callable[[str], bool] | None = None
+        if self.roles and self.state != State.FAILED:
+            # A derived role the session holds is known only in its org (REQ-2057, REQ-1952): the
+            # org is resolved before the database's roles are checked.
+            try:
+                await self._ensure_org(database_org)
+            except OrgResolutionError as exc:
+                self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
+                return
+            derived_held = self._derived_held(_app_state)
         try:
-            resolved = self._resolve_db(db) if self.roles else None
+            resolved = self._resolve_db(db, derived_held) if self.roles else None
         except RoleNotHeld as refused:
             await self._probed(refused, database_org)
             return
@@ -756,8 +794,9 @@ class BoltSession:
             self.state = State.DEFUNCT
             return
 
-        if "," in role_id:
-            # A set of held roles acts as their meta-role, built in this session's org.
+        if "," in role_id or role_id not in self.roles:
+            # A set of held roles, or a held derived role, acts as their meta-role, built in this
+            # session's org.
             try:
                 role_id = self._meta_role(_app_state, role_id)
             except RoleNotHeld as refused:

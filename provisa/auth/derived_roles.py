@@ -88,16 +88,19 @@ def unsecured_acting_role(state, roles: list[str], held: Mapping[str, str]) -> s
     return roles[0]
 
 
-def resolve_unsecured_role(state, requested: str) -> str:
+def unsecured_principal(state, requested: str) -> tuple[str, dict[str, str]]:
     """The role an unsecured call naming ``requested`` (one role, or a comma-separated set) acts
-    as -- what the HTTP middleware resolves ``X-Provisa-Role`` to, for a transport that reads its
-    own role (gRPC, Flight, Bolt; REQ-1952). A meta-role named directly is refused (MetaRoleNamed)."""
+    as, and the session variables it binds -- what the HTTP middleware resolves and binds for
+    ``X-Provisa-Role``, for a transport that reads its own role (gRPC, Flight; REQ-1952). A named
+    derived role binds its attribute (``region__eu``: region=eu), which a row filter reads. A
+    meta-role named directly is refused (MetaRoleNamed)."""
     from provisa.security.meta_role import refuse_named_meta_role
 
     names = [r.strip() for r in requested.split(",") if r.strip()]
     refuse_named_meta_role(names)
-    roles, held, _attributes = named_unsecured(names, declared_derived_roles(state))
-    return unsecured_acting_role(state, roles, held)
+    roles, held, attributes = named_unsecured(names, declared_derived_roles(state))
+    role = unsecured_acting_role(state, roles, held)
+    return role, principal_session_vars(None, attributes, role)
 
 
 def declared_derived_role_entries(state) -> list[DerivedRole]:  # REQ-2078
@@ -155,10 +158,17 @@ def principal_session_vars(
 def principal_scope(state: Any, identity: Any, role_id: str | None) -> Iterator[None]:
     """Bind ``identity``'s session variables, acting as ``role_id``, for one call of a transport
     that authenticates its own caller, as the HTTP middleware binds them for a request."""
+    attributes, _held = principal_of(state, identity)
+    with session_vars_scope(principal_session_vars(identity.user_id, attributes, role_id)):
+        yield
+
+
+@contextmanager
+def session_vars_scope(values: dict[str, str]) -> Iterator[None]:
+    """Bind ``values`` as the session variables for one call (REQ-1682)."""
     from provisa.core.request_context import reset_session_vars, set_session_vars
 
-    attributes, _held = principal_of(state, identity)
-    token = set_session_vars(principal_session_vars(identity.user_id, attributes, role_id))
+    token = set_session_vars(values)
     try:
         yield
     finally:

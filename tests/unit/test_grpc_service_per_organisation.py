@@ -50,7 +50,7 @@ class _Deployment:
     multitenancy = True
     security_high = False
     # Each organisation declares no derived role: an unsecured call's role resolves to itself
-    # (derived_roles.resolve_unsecured_role, REQ-1952).
+    # (derived_roles.unsecured_principal, REQ-1952).
     settings_overrides: dict = {"derived_roles": []}
 
     def __init__(self, protos: dict[str, str], roles: dict[str, dict[str, str]] | None = None):
