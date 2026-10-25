@@ -185,7 +185,6 @@ query DataProductsQuery {
     usage
     version
     status
-    sla
     support
     customProperties
   }
@@ -967,6 +966,12 @@ mutation CreateDataProduct($input: DataProductInput!) {
 
 mutation UpdateDataProduct($input: DataProductInput!) {
   updateDataProduct(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation SaveDataContract($tableId: Int!, $contract: DataContractInput!) {
+  saveDataContract(tableId: $tableId, contract: $contract) {
     ...MutationResult
   }
 }

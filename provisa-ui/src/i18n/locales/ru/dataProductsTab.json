@@ -23,8 +23,6 @@
     "versionPlaceholder": "напр. 1.2.0",
     "statusLabel": "Статус",
     "statusPlaceholder": "напр. proposed, active, deprecated, retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Обязательства по уровню обслуживания для этого продукта",
     "supportLabel": "Поддержка",
     "supportPlaceholder": "Как получить помощь по этому продукту",
     "customPropertiesLabel": "Пользовательские свойства",
@@ -120,6 +118,38 @@
     },
     "readOnly": "Только чтение",
     "readOnlyHint": "У вас только data_product_read — org_admin может выдать data_product_rw для изменения.",
-    "relatedTermsConcept": "понятие"
+    "relatedTermsConcept": "понятие",
+    "contract": {
+      "label": "Контракты данных",
+      "hint": "Контракт каждого выходного порта: что он обещает, в собственной версии",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Предложен",
+        "draft": "Черновик",
+        "active": "Активен",
+        "deprecated": "Устарел",
+        "retired": "Выведен из эксплуатации"
+      },
+      "usage": "Использование",
+      "limitations": "Ограничения",
+      "noticePeriod": "Срок уведомления",
+      "noticePeriodPlaceholder": "напр. P3M",
+      "column": "Столбец",
+      "type": "Тип",
+      "required": "Никогда не null",
+      "yes": "Да",
+      "versionLabel": "Версия контракта",
+      "statusLabel": "Статус контракта",
+      "descriptionLabel": "Для чего он",
+      "columnsLabel": "Обещанные столбцы",
+      "columnsHelp": "Чтобы перестать обещать столбец или изменить его тип, нужна новая версия.",
+      "requiredLabel": "Никогда не null",
+      "slaLabel": "Уровни обслуживания",
+      "slaProperty": "Свойство",
+      "slaValue": "Значение",
+      "slaUnit": "Единица",
+      "slaRemove": "Удалить уровень обслуживания",
+      "slaAdd": "Добавить уровень обслуживания"
+    }
   }
 }

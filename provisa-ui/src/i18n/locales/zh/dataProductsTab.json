@@ -23,8 +23,6 @@
     "versionPlaceholder": "例如 1.2.0",
     "statusLabel": "状态",
     "statusPlaceholder": "例如 proposed、active、deprecated、retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "此产品的服务级别承诺",
     "supportLabel": "支持",
     "supportPlaceholder": "如何获取此产品的帮助",
     "customPropertiesLabel": "自定义属性",
@@ -120,6 +118,38 @@
     },
     "readOnly": "只读",
     "readOnlyHint": "您仅拥有 data_product_read——org_admin 可授予 data_product_rw 以进行编辑。",
-    "relatedTermsConcept": "概念"
+    "relatedTermsConcept": "概念",
+    "contract": {
+      "label": "数据契约",
+      "hint": "每个输出端口的契约：以其自身版本承诺的内容",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "已提议",
+        "draft": "草稿",
+        "active": "生效",
+        "deprecated": "已弃用",
+        "retired": "已停用"
+      },
+      "usage": "用途",
+      "limitations": "限制",
+      "noticePeriod": "通知期",
+      "noticePeriodPlaceholder": "例如 P3M",
+      "column": "列",
+      "type": "类型",
+      "required": "从不为空",
+      "yes": "是",
+      "versionLabel": "契约版本",
+      "statusLabel": "契约状态",
+      "descriptionLabel": "用途说明",
+      "columnsLabel": "承诺的列",
+      "columnsHelp": "不再承诺某列或更改其类型，需要新版本。",
+      "requiredLabel": "从不为空",
+      "slaLabel": "服务级别",
+      "slaProperty": "属性",
+      "slaValue": "值",
+      "slaUnit": "单位",
+      "slaRemove": "移除服务级别",
+      "slaAdd": "添加服务级别"
+    }
   }
 }

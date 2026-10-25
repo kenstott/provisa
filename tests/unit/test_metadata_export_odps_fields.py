@@ -32,7 +32,6 @@ FIELDS = {
     "usage": "Join on customer_id",
     "version": "1.2.0",
     "status": "active",
-    "sla": "Refreshed hourly",
     "support": "The data team's channel",
     "supportContact": "data-team@example.com",
     "custom.cost_center": "CC-42",
@@ -53,7 +52,6 @@ def _product():
             usage=FIELDS["usage"],
             version=FIELDS["version"],
             status=FIELDS["status"],
-            sla=FIELDS["sla"],
             support=FIELDS["support"],
             support_contact=FIELDS["supportContact"],
             custom_properties={"cost_center": "CC-42"},
@@ -72,9 +70,9 @@ def test_the_product_carries_every_odps_field():
 def test_an_unset_field_is_left_out():
     _, product = _product()
     product.limitations = ""
-    product.sla = None
+    product.support = None
     assert "limitations" not in product.odps_fields()
-    assert "sla" not in product.odps_fields()
+    assert "support" not in product.odps_fields()
 
 
 def test_datahub_carries_them_as_custom_properties():
@@ -98,7 +96,6 @@ def test_a_target_with_only_a_description_reads_them_after_the_purpose():
     for line in (
         "- Owner role: data_owner",
         "- Limitations: No orders before 2020",
-        "- SLA: Refreshed hourly",
         "- Support contact: data-team@example.com",
         "- cost_center: CC-42",
     ):

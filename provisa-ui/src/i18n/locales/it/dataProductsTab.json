@@ -23,8 +23,6 @@
     "versionPlaceholder": "ad es. 1.2.0",
     "statusLabel": "Stato",
     "statusPlaceholder": "ad es. proposed, active, deprecated, retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Impegni di livello di servizio per questo prodotto",
     "supportLabel": "Supporto",
     "supportPlaceholder": "Come ottenere assistenza per questo prodotto",
     "customPropertiesLabel": "Proprietà personalizzate",
@@ -120,6 +118,38 @@
     },
     "readOnly": "Sola lettura",
     "readOnlyHint": "Hai solo data_product_read — un org_admin può concedere data_product_rw per modificare.",
-    "relatedTermsConcept": "concetto"
+    "relatedTermsConcept": "concetto",
+    "contract": {
+      "label": "Contratti dati",
+      "hint": "Il contratto di ogni porta di output: ciò che promette, con una versione propria",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Proposto",
+        "draft": "Bozza",
+        "active": "Attivo",
+        "deprecated": "Deprecato",
+        "retired": "Ritirato"
+      },
+      "usage": "Utilizzo",
+      "limitations": "Limitazioni",
+      "noticePeriod": "Periodo di preavviso",
+      "noticePeriodPlaceholder": "es. P3M",
+      "column": "Colonna",
+      "type": "Tipo",
+      "required": "Mai nullo",
+      "yes": "Sì",
+      "versionLabel": "Versione del contratto",
+      "statusLabel": "Stato del contratto",
+      "descriptionLabel": "A cosa serve",
+      "columnsLabel": "Colonne promesse",
+      "columnsHelp": "Smettere di promettere una colonna, o cambiarne il tipo, richiede una nuova versione.",
+      "requiredLabel": "Mai nullo",
+      "slaLabel": "Livelli di servizio",
+      "slaProperty": "Proprietà",
+      "slaValue": "Valore",
+      "slaUnit": "Unità",
+      "slaRemove": "Rimuovi livello di servizio",
+      "slaAdd": "Aggiungi livello di servizio"
+    }
   }
 }

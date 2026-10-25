@@ -16,15 +16,15 @@ product from these, with no adapter of its own. Both are built from the same sna
 target is published from, so they say what the catalogs are told:
 
 * the product's ODPS fields -- purpose, limitations and usage as its description, its status,
-  version, domain, team and support; its SLA stays prose (a product spans several members, so a
-  structured SLA could not say which one it describes) and rides as a custom property;
-* each member's contract -- its columns with their types and descriptions, the governance tags
-  on them (masked, hidden from some roles, row-filtered; never a rule body), its freshness (the
-  cache_ttl it is kept at) and the quality checks registered against it.
+  version, domain, team and support;
+* an output port per member, each its declared ODCS contract (REQ-2158): the columns it promises
+  with their types and descriptions, the governance tags on them (masked, hidden from some roles,
+  row-filtered; never a rule body), its terms, its declared service levels beside its freshness
+  (the cache_ttl it is kept at) and the quality checks registered against it.
 
-The contract's version is the product's: a member has no version of its own. A product with no
-version says so -- ``unversioned`` -- since ODCS requires the field and inventing a number would
-claim a release that never happened.
+A contract has its own version and status, as ODPS versions each port by its contract. The
+product's version is its own; a product with no version says so -- ``unversioned`` -- since ODPS
+requires the field and inventing a number would claim a release that never happened.
 """
 
 # Requirements: REQ-2118
@@ -136,8 +136,6 @@ def _description(product: "DataProductAsset") -> dict[str, str]:
 
 def _custom_properties(product: "DataProductAsset") -> list[dict[str, Any]]:
     props = [{"property": k, "value": v} for k, v in sorted(product.custom_properties.items())]
-    if product.sla:
-        props.append({"property": "sla", "value": product.sla})
     if product.documentation_url:
         props.append({"property": "documentation", "value": product.documentation_url})
     return props
@@ -146,6 +144,12 @@ def _custom_properties(product: "DataProductAsset") -> list[dict[str, Any]]:
 def _members(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> list["TableAsset"]:
     by_fqn = {table.ref.fqn(): table for table in snapshot.tables}
     return [by_fqn[member.fqn()] for member in product.members]
+
+
+def _ports(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> list["TableAsset"]:
+    """The product's output ports: each member with a contract (REQ-2158). A checker table the
+    product owns is no output of it, and has none."""
+    return [table for table in _members(snapshot, product) if table.contract is not None]
 
 
 def odps_document(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> dict[str, Any]:
@@ -163,12 +167,13 @@ def odps_document(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> 
         "outputPorts": [
             {
                 "name": table.name,
-                "version": version,
+                "version": table.contract.version,
                 "type": "view" if table.is_view else "table",
                 "contractId": contract_id(table),
                 **({"description": table.description} if table.description else {}),
             }
-            for table in _members(snapshot, product)
+            for table in _ports(snapshot, product)
+            if table.contract is not None
         ],
     }
     if description := _description(product):
@@ -180,6 +185,15 @@ def odps_document(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> 
     if custom := _custom_properties(product):
         document["customProperties"] = custom
     return document
+
+
+def _service_levels(table: "TableAsset") -> list[dict[str, Any]]:
+    """The member's freshness, then the service levels its contract declares (REQ-2158)."""
+    assert table.contract is not None  # only an output port has a contract document
+    declared = [
+        {k: v for k, v in sla.model_dump().items() if v is not None} for sla in table.contract.sla
+    ]
+    return _freshness(table) + declared
 
 
 def _freshness(table: "TableAsset") -> list[dict[str, Any]]:
@@ -234,19 +248,26 @@ def _column_tags(snapshot: "MetadataSnapshot") -> dict[str, list[str]]:
 def odcs_contract(
     snapshot: "MetadataSnapshot", product: "DataProductAsset", table: "TableAsset"
 ) -> dict[str, Any]:
-    """A member's ODCS 3.1 contract: its schema, governance tags, freshness and quality checks."""
+    """A member's ODCS 3.1 contract as it is declared (REQ-2158): the columns it promises, their
+    governance tags, its terms, its service levels and its quality checks."""
+    declared = table.contract
+    assert declared is not None  # only an output port has a contract document
     tags = _column_tags(snapshot)
+    by_name = {column.name: column for column in table.columns}
     properties = []
-    for column in table.columns:
-        prop: dict[str, Any] = {"name": column.name, "physicalType": column.data_type}
-        if logical := logical_type(column.data_type):
+    for promised in declared.columns:
+        column = by_name.get(promised.name)
+        prop: dict[str, Any] = {"name": promised.name, "physicalType": promised.type}
+        if logical := logical_type(promised.type):
             prop["logicalType"] = logical
-        if column.description:
-            prop["description"] = column.description
-        if column.name in table.primary_key:
+        if description := promised.description or (column.description if column else None):
+            prop["description"] = description
+        if promised.required:
+            prop["required"] = True
+        if promised.name in table.primary_key:
             prop["primaryKey"] = True
-            prop["primaryKeyPosition"] = table.primary_key.index(column.name) + 1
-        if column_tags := tags.get(column.ref.fqn()):
+            prop["primaryKeyPosition"] = table.primary_key.index(promised.name) + 1
+        if column is not None and (column_tags := tags.get(column.ref.fqn())):
             prop["tags"] = column_tags
         properties.append(prop)
     schema_object: dict[str, Any] = {
@@ -266,15 +287,29 @@ def odcs_contract(
         "kind": "DataContract",
         "id": contract_id(table),
         "name": table.name,
-        "version": product.version or UNVERSIONED,
-        "status": product_status(product),
+        "version": declared.version,
+        "status": declared.status,
         "domain": product.domain_id,
         "schema": [schema_object],
         "customProperties": [{"property": "dataProduct", "value": product.semantic_uri}],
     }
-    if description := _description(product):
+    terms = declared.terms
+    description = {
+        k: v
+        for k, v in (
+            ("purpose", declared.description),
+            ("usage", terms.usage),
+            ("limitations", terms.limitations),
+        )
+        if v
+    }
+    if description:
         contract["description"] = description
-    if sla := _freshness(table):
+    if terms.notice_period:
+        contract["customProperties"].append(
+            {"property": "noticePeriod", "value": terms.notice_period}
+        )
+    if sla := _service_levels(table):
         contract["slaProperties"] = sla
     if support := _support(product):
         contract["support"] = support
@@ -290,5 +325,5 @@ def product_documents(
     (source, schema, table): two members of one name in different sources stay apart."""
     return odps_document(snapshot, product), {
         table.ref.fqn(): odcs_contract(snapshot, product, table)
-        for table in _members(snapshot, product)
+        for table in _ports(snapshot, product)
     }

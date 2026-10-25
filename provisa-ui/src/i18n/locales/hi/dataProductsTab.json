@@ -23,8 +23,6 @@
     "versionPlaceholder": "जैसे 1.2.0",
     "statusLabel": "स्थिति",
     "statusPlaceholder": "जैसे proposed, active, deprecated, retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "इस प्रोडक्ट के सेवा-स्तर प्रतिबद्धताएँ",
     "supportLabel": "सहायता",
     "supportPlaceholder": "इस प्रोडक्ट के बारे में सहायता कैसे पाएँ",
     "customPropertiesLabel": "कस्टम प्रॉपर्टी",
@@ -120,6 +118,38 @@
     },
     "readOnly": "केवल-पठन",
     "readOnlyHint": "आपके पास केवल data_product_read है — संपादित करने के लिए org_admin data_product_rw दे सकता है।",
-    "relatedTermsConcept": "अवधारणा"
+    "relatedTermsConcept": "अवधारणा",
+    "contract": {
+      "label": "डेटा अनुबंध",
+      "hint": "हर आउटपुट पोर्ट का अनुबंध: वह अपने संस्करण पर क्या वादा करता है",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "प्रस्तावित",
+        "draft": "मसौदा",
+        "active": "सक्रिय",
+        "deprecated": "अप्रचलित",
+        "retired": "सेवानिवृत्त"
+      },
+      "usage": "उपयोग",
+      "limitations": "सीमाएँ",
+      "noticePeriod": "नोटिस अवधि",
+      "noticePeriodPlaceholder": "जैसे P3M",
+      "column": "कॉलम",
+      "type": "प्रकार",
+      "required": "कभी null नहीं",
+      "yes": "हाँ",
+      "versionLabel": "अनुबंध संस्करण",
+      "statusLabel": "अनुबंध स्थिति",
+      "descriptionLabel": "यह किसलिए है",
+      "columnsLabel": "वादा किए गए कॉलम",
+      "columnsHelp": "किसी कॉलम का वादा छोड़ने या उसका प्रकार बदलने के लिए नया संस्करण चाहिए।",
+      "requiredLabel": "कभी null नहीं",
+      "slaLabel": "सेवा स्तर",
+      "slaProperty": "गुण",
+      "slaValue": "मान",
+      "slaUnit": "इकाई",
+      "slaRemove": "सेवा स्तर हटाएँ",
+      "slaAdd": "सेवा स्तर जोड़ें"
+    }
   }
 }

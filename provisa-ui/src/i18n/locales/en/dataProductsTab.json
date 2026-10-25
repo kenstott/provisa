@@ -23,8 +23,6 @@
     "versionPlaceholder": "e.g. 1.2.0",
     "statusLabel": "Status",
     "statusPlaceholder": "e.g. proposed, active, deprecated, retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Service-level commitments for this product",
     "supportLabel": "Support",
     "supportPlaceholder": "How to get help with this product",
     "customPropertiesLabel": "Custom Properties",
@@ -120,6 +118,38 @@
     },
     "readOnly": "Read-only",
     "readOnlyHint": "You have data_product_read only — an org_admin can grant data_product_rw to edit.",
-    "relatedTermsConcept": "concept"
+    "relatedTermsConcept": "concept",
+    "contract": {
+      "label": "Contracts",
+      "hint": "Each output port's contract: what it promises, at its own version",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Proposed",
+        "draft": "Draft",
+        "active": "Active",
+        "deprecated": "Deprecated",
+        "retired": "Retired"
+      },
+      "usage": "Usage",
+      "limitations": "Limitations",
+      "noticePeriod": "Notice period",
+      "noticePeriodPlaceholder": "e.g. P3M",
+      "column": "Column",
+      "type": "Type",
+      "required": "Never null",
+      "yes": "Yes",
+      "versionLabel": "Contract version",
+      "statusLabel": "Contract status",
+      "descriptionLabel": "What it is for",
+      "columnsLabel": "Promised columns",
+      "columnsHelp": "No longer promising a column, or changing its type, needs a new version.",
+      "requiredLabel": "Never null",
+      "slaLabel": "Service levels",
+      "slaProperty": "Property",
+      "slaValue": "Value",
+      "slaUnit": "Unit",
+      "slaRemove": "Remove service level",
+      "slaAdd": "Add service level"
+    }
   }
 }

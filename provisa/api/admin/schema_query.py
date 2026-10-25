@@ -68,6 +68,10 @@ from provisa.api.admin.types import (
     CrawledFileType,
     CrawledTableType,
     CrawlResultType,
+    ContractColumnType,
+    ContractSlaPropertyType,
+    ContractTermsType,
+    DataContractType,
     DataProductType,
     ListedNamesType,
     DomainType,
@@ -473,6 +477,27 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     return [r for r in rows if visible(r)]
 
 
+def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
+    """A member's stored contract (data_product.member_contracts) as the admin API answers it."""
+    from provisa.core.data_contracts import contract_id
+    from provisa.core.models import DataContract
+
+    c = DataContract.model_validate(member["contract"])
+    return DataContractType(
+        table_id=member["id"],
+        source_id=member["source_id"],
+        schema_name=member["schema_name"],
+        table_name=member["table_name"],
+        contract_id=contract_id(member["product_id"], member["schema_name"], member["table_name"]),
+        version=c.version,
+        status=c.status,
+        description=c.description,
+        terms=ContractTermsType(**c.terms.model_dump()),
+        sla=[ContractSlaPropertyType(**s.model_dump()) for s in c.sla],
+        columns=[ContractColumnType(**col.model_dump()) for col in c.columns],
+    )
+
+
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
@@ -748,6 +773,10 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await data_product_repo.list_all(cast("Connection", conn))
+            members = await data_product_repo.member_contracts(cast("Connection", conn))
+        contracts: dict[str, list[DataContractType]] = {}
+        for m in members:  # REQ-2158
+            contracts.setdefault(m["product_id"], []).append(data_contract_type(m))
         return [
             DataProductType(
                 id=r["id"],
@@ -760,9 +789,9 @@ class Query:  # REQ-021, REQ-042
                 usage=r["usage"],
                 version=r["version"],
                 status=r["status"],
-                sla=r["sla"],
                 support=r["support"],
                 custom_properties=r["custom_properties"],
+                contracts=contracts.get(r["id"], []),
             )
             for r in rows
         ]

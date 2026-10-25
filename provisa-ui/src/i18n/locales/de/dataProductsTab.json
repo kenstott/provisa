@@ -23,8 +23,6 @@
     "versionPlaceholder": "z. B. 1.2.0",
     "statusLabel": "Status",
     "statusPlaceholder": "z. B. proposed, active, deprecated, retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Service-Level-Zusagen für dieses Produkt",
     "supportLabel": "Support",
     "supportPlaceholder": "Wie Sie Hilfe zu diesem Produkt erhalten",
     "customPropertiesLabel": "Benutzerdefinierte Eigenschaften",
@@ -120,6 +118,38 @@
     },
     "readOnly": "Schreibgeschützt",
     "readOnlyHint": "Sie haben nur data_product_read — ein org_admin kann data_product_rw zum Bearbeiten erteilen.",
-    "relatedTermsConcept": "Konzept"
+    "relatedTermsConcept": "Konzept",
+    "contract": {
+      "label": "Data Contracts",
+      "hint": "Der Contract jedes Output-Ports: was er zusichert, in eigener Version",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Vorgeschlagen",
+        "draft": "Entwurf",
+        "active": "Aktiv",
+        "deprecated": "Veraltet",
+        "retired": "Außer Betrieb"
+      },
+      "usage": "Verwendung",
+      "limitations": "Einschränkungen",
+      "noticePeriod": "Kündigungsfrist",
+      "noticePeriodPlaceholder": "z. B. P3M",
+      "column": "Spalte",
+      "type": "Typ",
+      "required": "Nie null",
+      "yes": "Ja",
+      "versionLabel": "Contract-Version",
+      "statusLabel": "Contract-Status",
+      "descriptionLabel": "Wofür er dient",
+      "columnsLabel": "Zugesicherte Spalten",
+      "columnsHelp": "Eine Spalte nicht mehr zuzusichern oder ihren Typ zu ändern erfordert eine neue Version.",
+      "requiredLabel": "Nie null",
+      "slaLabel": "Service-Level",
+      "slaProperty": "Eigenschaft",
+      "slaValue": "Wert",
+      "slaUnit": "Einheit",
+      "slaRemove": "Service-Level entfernen",
+      "slaAdd": "Service-Level hinzufügen"
+    }
   }
 }

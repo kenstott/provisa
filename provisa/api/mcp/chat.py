@@ -572,7 +572,6 @@ _TOOLS: list[Any] = [
                 "usage": {"type": "string"},
                 "version": {"type": "string"},
                 "status": {"type": "string"},
-                "sla": {"type": "string"},
                 "support": {"type": "string"},
             },
             "required": ["id", "domain_id", "name"],
@@ -1494,7 +1493,6 @@ async def _execute_tool(
                 usage=args.get("usage", ""),
                 version=args.get("version"),
                 status=args.get("status"),
-                sla=args.get("sla"),
                 support=args.get("support"),
             )
         if name == "delete_data_product":

@@ -455,6 +455,8 @@ def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     for product in snapshot.data_products:
         for member in product.members:
             table = by_fqn[member.fqn()]
+            if table.contract is None:
+                continue  # REQ-2158: a checker the product owns is no output port of it
             entities.append(
                 Entity(
                     asset=table.ref,

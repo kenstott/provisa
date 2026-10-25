@@ -23,8 +23,6 @@
     "versionPlaceholder": "bijv. 1.2.0",
     "statusLabel": "Status",
     "statusPlaceholder": "bijv. proposed, active, deprecated, retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Serviceniveauafspraken voor dit product",
     "supportLabel": "Ondersteuning",
     "supportPlaceholder": "Hoe hulp te krijgen bij dit product",
     "customPropertiesLabel": "Aangepaste eigenschappen",
@@ -120,6 +118,38 @@
     },
     "readOnly": "Alleen-lezen",
     "readOnlyHint": "Je hebt alleen data_product_read — een org_admin kan data_product_rw toekennen om te bewerken.",
-    "relatedTermsConcept": "concept"
+    "relatedTermsConcept": "concept",
+    "contract": {
+      "label": "Datacontracten",
+      "hint": "Het contract van elke outputpoort: wat het belooft, in een eigen versie",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Voorgesteld",
+        "draft": "Concept",
+        "active": "Actief",
+        "deprecated": "Verouderd",
+        "retired": "Buiten gebruik"
+      },
+      "usage": "Gebruik",
+      "limitations": "Beperkingen",
+      "noticePeriod": "Opzegtermijn",
+      "noticePeriodPlaceholder": "bijv. P3M",
+      "column": "Kolom",
+      "type": "Type",
+      "required": "Nooit null",
+      "yes": "Ja",
+      "versionLabel": "Contractversie",
+      "statusLabel": "Contractstatus",
+      "descriptionLabel": "Waarvoor het dient",
+      "columnsLabel": "Beloofde kolommen",
+      "columnsHelp": "Een kolom niet meer beloven, of het type ervan wijzigen, vraagt een nieuwe versie.",
+      "requiredLabel": "Nooit null",
+      "slaLabel": "Serviceniveaus",
+      "slaProperty": "Eigenschap",
+      "slaValue": "Waarde",
+      "slaUnit": "Eenheid",
+      "slaRemove": "Serviceniveau verwijderen",
+      "slaAdd": "Serviceniveau toevoegen"
+    }
   }
 }

@@ -92,7 +92,6 @@ const PRODUCT_ROW = {
   usage: "",
   version: "1",
   status: "published",
-  sla: null,
   support: null,
   support_contact: null,
   publish: null,
@@ -121,7 +120,7 @@ describe("the panel's meta reads", () => {
     expect(q?.graphql).not.toContain("tags");
     expect(q?.graphql).not.toContain("edges");
     expect(q?.sql).toBe(
-      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "sla", "support", "support_contact", "publish", "custom_properties" FROM "meta"."data_products" WHERE "id" = \'c360\'',
+      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "support", "support_contact", "publish", "custom_properties" FROM "meta"."data_products" WHERE "id" = \'c360\'',
     );
     expect(q?.jsonapi).toBe("/data/jsonapi/meta/data_products?filter[id]=c360");
   });

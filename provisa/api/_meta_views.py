@@ -778,7 +778,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS checked_table_id,
                -- The table's class term, NULL when none grounds it. Last, like the two
                -- above, so an existing view is replaced in place.
-               rt.class_term_id
+               rt.class_term_id,
+               -- REQ-2158: a product member's contract, its output port; last, as above.
+               rt.contract
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,
@@ -794,7 +796,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "data_products": """
         CREATE OR REPLACE VIEW data_products_meta AS
         SELECT id, domain_id, name, owner_role, team_role, purpose, limitations, usage,
-               version, status, sla, support, support_contact, publish, custom_properties
+               version, status, support, support_contact, publish, custom_properties
         FROM data_products
     """,
     "table_columns": """

@@ -23,8 +23,6 @@
     "versionPlaceholder": "例如 1.2.0",
     "statusLabel": "狀態",
     "statusPlaceholder": "例如 proposed、active、deprecated、retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "此產品的服務等級承諾",
     "supportLabel": "支援",
     "supportPlaceholder": "如何取得此產品的協助",
     "customPropertiesLabel": "自訂屬性",
@@ -120,6 +118,38 @@
     },
     "readOnly": "唯讀",
     "readOnlyHint": "你只有 data_product_read 權限 — org_admin 可授予 data_product_rw 以進行編輯。",
-    "relatedTermsConcept": "概念"
+    "relatedTermsConcept": "概念",
+    "contract": {
+      "label": "數據契約",
+      "hint": "每個輸出端口的契約：以其自身版本承諾的內容",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "已提議",
+        "draft": "草稿",
+        "active": "生效",
+        "deprecated": "已棄用",
+        "retired": "已停用"
+      },
+      "usage": "用途",
+      "limitations": "限制",
+      "noticePeriod": "通知期",
+      "noticePeriodPlaceholder": "例如 P3M",
+      "column": "欄",
+      "type": "類型",
+      "required": "從不為空",
+      "yes": "是",
+      "versionLabel": "契約版本",
+      "statusLabel": "契約狀態",
+      "descriptionLabel": "用途說明",
+      "columnsLabel": "承諾的欄",
+      "columnsHelp": "不再承諾某欄或更改其類型，需要新版本。",
+      "requiredLabel": "從不為空",
+      "slaLabel": "服務級別",
+      "slaProperty": "屬性",
+      "slaValue": "值",
+      "slaUnit": "單位",
+      "slaRemove": "移除服務級別",
+      "slaAdd": "新增服務級別"
+    }
   }
 }

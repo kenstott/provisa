@@ -183,6 +183,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         # REQ-2130
         "class_term_id": "The glossary term this table's rows are instances of; empty when no "
         "term grounds it",
+        # REQ-2158
+        "contract": "A data product member's contract: its version, status, terms, service "
+        "levels and the columns it promises; empty for a table in no product",
     },
     # REQ-2129
     "column_lineage_edges": {
@@ -248,7 +251,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "usage": "How to use the product",
         "version": "The product's version",
         "status": "The product's lifecycle status",
-        "sla": "The service level the product is held to",
         "support": "Where to get support for the product",
         "support_contact": "Who to contact for support",
         "publish": "True when the product is published; false while it is a draft",

@@ -159,7 +159,6 @@ def product_body(product: "DataProductAsset") -> dict[str, Any]:
     for heading, text in (
         ("Limitations", product.limitations),
         ("Usage", product.usage),
-        ("Service level", product.sla),
         ("Support", product.support),
         ("Support contact", product.support_contact),
         ("Documentation", product.documentation_url),

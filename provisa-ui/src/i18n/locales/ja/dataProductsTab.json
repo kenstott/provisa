@@ -23,8 +23,6 @@
     "versionPlaceholder": "例: 1.2.0",
     "statusLabel": "ステータス",
     "statusPlaceholder": "例: proposed、active、deprecated、retired",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "このプロダクトのサービスレベルの約束",
     "supportLabel": "サポート",
     "supportPlaceholder": "このプロダクトに関するサポートの受け方",
     "customPropertiesLabel": "カスタムプロパティ",
@@ -120,6 +118,38 @@
     },
     "readOnly": "読み取り専用",
     "readOnlyHint": "data_product_read のみを持っています。編集するには、org_admin が data_product_rw を付与できます。",
-    "relatedTermsConcept": "概念"
+    "relatedTermsConcept": "概念",
+    "contract": {
+      "label": "データコントラクト",
+      "hint": "各出力ポートのコントラクト：独自のバージョンで約束する内容",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "提案中",
+        "draft": "下書き",
+        "active": "有効",
+        "deprecated": "非推奨",
+        "retired": "廃止"
+      },
+      "usage": "用途",
+      "limitations": "制限事項",
+      "noticePeriod": "通知期間",
+      "noticePeriodPlaceholder": "例: P3M",
+      "column": "列",
+      "type": "型",
+      "required": "NULL なし",
+      "yes": "はい",
+      "versionLabel": "コントラクトのバージョン",
+      "statusLabel": "コントラクトのステータス",
+      "descriptionLabel": "目的",
+      "columnsLabel": "約束する列",
+      "columnsHelp": "列の約束をやめる、または型を変えるには新しいバージョンが必要です。",
+      "requiredLabel": "NULL なし",
+      "slaLabel": "サービスレベル",
+      "slaProperty": "プロパティ",
+      "slaValue": "値",
+      "slaUnit": "単位",
+      "slaRemove": "サービスレベルを削除",
+      "slaAdd": "サービスレベルを追加"
+    }
   }
 }

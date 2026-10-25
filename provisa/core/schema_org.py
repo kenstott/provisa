@@ -199,7 +199,6 @@ data_products = Table(  # REQ-1634, REQ-1660
     Column("usage", Text, nullable=False, server_default=""),
     Column("version", Text),
     Column("status", Text),
-    Column("sla", Text),
     Column("support", Text),
     Column("support_contact", Text),  # REQ-1635: Horizon Catalog listing manifest requirement
     Column(
@@ -264,6 +263,9 @@ registered_tables = Table(
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
+    # REQ-2158: a data product member's ODCS contract, its output port, declared and versioned on
+    # its own (provisa.core.models.DataContract); NULL for a table in no product.
+    Column("contract", JSON(none_as_null=True)),
     # REQ-2130: the glossary term this table's rows are instances of; one per table (schema.sql).
     Column("class_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
     # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).

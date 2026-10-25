@@ -42,11 +42,18 @@ import type { LineageGraphData } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
 import { InputPort, type InputPortRow } from "./InputPort";
+import { ContractView } from "./ContractView";
 import { ClampedDetail } from "./ClampedDetail";
 
 export type { InputPortRow };
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
-import { coreGraph, type CoreEdge, type CoreTable, type ProductCore } from "./productCore";
+import {
+  coreContracts,
+  coreGraph,
+  type CoreEdge,
+  type CoreTable,
+  type ProductCore,
+} from "./productCore";
 
 interface TableRef {
   domain_id: string;
@@ -295,6 +302,7 @@ export function DataProductDetailPanel({
   const graph = coreGraph(core);
   const related = core.edges?.filter((e) => e.kind === "relationship");
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
+  const contracts = coreContracts(core); // REQ-2158
 
   // Every value of the product, under the labels its form gives them.
   const fields: DetailField[] = [
@@ -322,7 +330,6 @@ export function DataProductDetailPanel({
       ) : null,
     },
     { label: t("dataProductsTab.supportLabel"), value: product.support },
-    { label: t("dataProductsTab.slaLabel"), value: product.sla },
     { label: t("dataProductsTab.purposeLabel"), value: product.purpose },
     { label: t("dataProductsTab.limitationsLabel"), value: product.limitations },
     { label: t("dataProductsTab.usageLabel"), value: product.usage },
@@ -465,6 +472,20 @@ export function DataProductDetailPanel({
                 ))}
               </List>
             )}
+          </DetailCard>
+        )}
+        {contracts.length > 0 && (
+          <DetailCard
+            section="contracts"
+            testId={`data-product-card-contracts-${p.id}`}
+            label={t("dataProductsTab.contract.label")}
+            hint={t("dataProductsTab.contract.hint")}
+          >
+            <Stack gap="md">
+              {contracts.map((c) => (
+                <ContractView key={c.tableId} contract={c} />
+              ))}
+            </Stack>
           </DetailCard>
         )}
         {(outputTables !== undefined || core.commands !== undefined) && (

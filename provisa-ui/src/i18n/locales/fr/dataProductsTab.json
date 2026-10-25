@@ -23,8 +23,6 @@
     "versionPlaceholder": "p. ex. 1.2.0",
     "statusLabel": "Statut",
     "statusPlaceholder": "p. ex. proposé, actif, obsolète, retiré",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Engagements de niveau de service pour ce produit",
     "supportLabel": "Support",
     "supportPlaceholder": "Comment obtenir de l'aide sur ce produit",
     "customPropertiesLabel": "Propriétés personnalisées",
@@ -120,6 +118,38 @@
     },
     "readOnly": "Lecture seule",
     "readOnlyHint": "Vous disposez uniquement de data_product_read ; un org_admin peut accorder data_product_rw pour modifier.",
-    "relatedTermsConcept": "concept"
+    "relatedTermsConcept": "concept",
+    "contract": {
+      "label": "Contrats de données",
+      "hint": "Le contrat de chaque port de sortie : ce qu'il promet, dans sa propre version",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Proposé",
+        "draft": "Brouillon",
+        "active": "Actif",
+        "deprecated": "Obsolète",
+        "retired": "Retiré"
+      },
+      "usage": "Utilisation",
+      "limitations": "Limites",
+      "noticePeriod": "Délai de préavis",
+      "noticePeriodPlaceholder": "p. ex. P3M",
+      "column": "Colonne",
+      "type": "Type",
+      "required": "Jamais nul",
+      "yes": "Oui",
+      "versionLabel": "Version du contrat",
+      "statusLabel": "Statut du contrat",
+      "descriptionLabel": "À quoi il sert",
+      "columnsLabel": "Colonnes promises",
+      "columnsHelp": "Ne plus promettre une colonne, ou changer son type, exige une nouvelle version.",
+      "requiredLabel": "Jamais nul",
+      "slaLabel": "Niveaux de service",
+      "slaProperty": "Propriété",
+      "slaValue": "Valeur",
+      "slaUnit": "Unité",
+      "slaRemove": "Retirer le niveau de service",
+      "slaAdd": "Ajouter un niveau de service"
+    }
   }
 }

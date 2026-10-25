@@ -962,7 +962,6 @@ def build_mcp_server(state: Any):
         usage: str = "",
         version: str | None = None,
         status: str | None = None,
-        sla: str | None = None,
         support: str | None = None,
         role: str | None = None,
     ) -> dict:
@@ -983,7 +982,6 @@ def build_mcp_server(state: Any):
             usage=usage,
             version=version,
             status=status,
-            sla=sla,
             support=support,
         )
 

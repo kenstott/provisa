@@ -22,7 +22,10 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import type { RegisteredTable } from "../../types/admin";
+import type { DataContract, RegisteredTable } from "../../types/admin";
+import type { DataContractInput } from "../../hooks/useDataProductMutations";
+import { ContractEditor } from "./ContractEditor";
+import { contractDraft } from "./contractDraft";
 import type { TrackedFunction } from "../../api/actions";
 import { CustomPropertiesEditor } from "./CustomPropertiesEditor";
 import type { DataProductForm } from "./types";
@@ -46,6 +49,10 @@ export interface DataProductFormCardProps {
   msg: string;
   onSave: () => void;
   onCancel: () => void;
+  // REQ-2158: the product's members' contracts and their edits, by table id.
+  contracts?: DataContract[];
+  contractDrafts?: Record<number, DataContractInput>;
+  setContractDrafts?: React.Dispatch<React.SetStateAction<Record<number, DataContractInput>>>;
 }
 
 // One titled panel. `errors` is how many of its fields currently show an error; the panel shows it
@@ -102,6 +109,9 @@ export function DataProductFormCard({
   msg,
   onSave,
   onCancel,
+  contracts = [],
+  contractDrafts = {},
+  setContractDrafts,
 }: DataProductFormCardProps) {
   const { t } = useTranslation();
   // Required fields are checked when Save is pressed, so the empty ones say so on the field instead
@@ -224,15 +234,6 @@ export function DataProductFormCard({
                 data-testid="data-product-support-input"
               />
             </FormField>
-            <FormField size="medium">
-              <TextInput
-                label={t("dataProductsTab.slaLabel")}
-                value={form.sla}
-                onChange={(e) => setForm((f) => ({ ...f, sla: e.target.value }))}
-                placeholder={t("dataProductsTab.slaPlaceholder")}
-                data-testid="data-product-sla-input"
-              />
-            </FormField>
           </FormLayout>
         </Panel>
         <Panel id="description" title={t("dataProductsTab.panelDescription")} errors={0}>
@@ -323,6 +324,23 @@ export function DataProductFormCard({
             </FormField>
           </FormLayout>
         </Panel>
+        {contracts.length > 0 && setContractDrafts && (
+          <Panel id="contracts" title={t("dataProductsTab.contract.label")} errors={0}>
+            <Stack gap="lg">
+              {contracts.map((c) => (
+                <ContractEditor
+                  key={c.tableId}
+                  contract={c}
+                  draft={contractDrafts[c.tableId] ?? contractDraft(c)}
+                  memberColumns={(tables.find((tb) => tb.id === c.tableId)?.columns ?? []).map(
+                    (col) => ({ name: col.columnName, dataType: col.dataType }),
+                  )}
+                  onChange={(draft) => setContractDrafts((d) => ({ ...d, [c.tableId]: draft }))}
+                />
+              ))}
+            </Stack>
+          </Panel>
+        )}
       </div>
       {/* Save and Cancel stay at the bottom of the viewport while the panels scroll under them. */}
       <Stack

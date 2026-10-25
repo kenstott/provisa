@@ -29,7 +29,7 @@ import {
 } from "../../components/graph3d/productGraphData";
 import type { GraphData } from "../../components/graph3d/graphModel";
 import { quoteIdent, tableSqlRef } from "../../naming";
-import type { DataProduct } from "../../types/admin";
+import type { DataContract, DataProduct } from "../../types/admin";
 
 /** The product row's own fields, as data_products_meta names them. */
 export const PRODUCT_FIELDS = [
@@ -43,7 +43,6 @@ export const PRODUCT_FIELDS = [
   "usage",
   "version",
   "status",
-  "sla",
   "support",
   "support_contact",
   "publish",
@@ -74,6 +73,7 @@ const PANEL: Selection = {
           "table_name",
           "description",
           "dq_contract",
+          "contract",
         ],
         rels: {
           checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name"] } },
@@ -184,6 +184,8 @@ export interface CoreTable {
   table_name: string;
   description: string | null;
   dq_contract: string | null;
+  // REQ-2158: a member's contract as stored (snake_case JSON); null for a checker table.
+  contract?: StoredContract | string | null;
   checks?: { id: number; domain_id: string; table_name: string } | null;
   checked_by?: CoreTable[] | null;
   dq_rules?: CoreDqRule[] | null;
@@ -196,6 +198,56 @@ export interface CoreTable {
     | null;
   profile_results?: { id: number; domain_id: string; table_name: string }[] | null;
   source_relationships?: CoreRelationship[] | null;
+}
+
+/** REQ-2158: a member's contract as registered_tables.contract stores it. */
+export interface StoredContract {
+  version: string;
+  status: string;
+  description?: string | null;
+  terms?: { usage?: string | null; limitations?: string | null; notice_period?: string | null };
+  sla?: { property: string; value?: unknown; unit?: string | null; description?: string | null }[];
+  columns?: { name: string; type: string; description?: string | null; required?: boolean }[];
+}
+
+/** REQ-2158: each output port's contract, in the order the members are read. */
+export function coreContracts(core: ProductCore): DataContract[] {
+  return (core.tables ?? []).flatMap((tb) => {
+    if (tb.contract === null || tb.contract === undefined) return [];
+    // The meta schema serves JSON as text where the engine answers it so.
+    const c = (
+      typeof tb.contract === "string" ? JSON.parse(tb.contract) : tb.contract
+    ) as StoredContract;
+    return [
+      {
+        tableId: tb.id,
+        sourceId: tb.source_id,
+        schemaName: tb.schema_name,
+        tableName: tb.table_name,
+        contractId: `${core.product.id}/${tb.schema_name}.${tb.table_name}`,
+        version: c.version,
+        status: c.status,
+        description: c.description ?? null,
+        terms: {
+          usage: c.terms?.usage ?? null,
+          limitations: c.terms?.limitations ?? null,
+          noticePeriod: c.terms?.notice_period ?? null,
+        },
+        sla: (c.sla ?? []).map((x) => ({
+          property: x.property,
+          value: x.value ?? null,
+          unit: x.unit ?? null,
+          description: x.description ?? null,
+        })),
+        columns: (c.columns ?? []).map((x) => ({
+          name: x.name,
+          type: x.type,
+          description: x.description ?? null,
+          required: x.required ?? false,
+        })),
+      },
+    ];
+  });
 }
 
 /** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */
@@ -282,7 +334,6 @@ export function asProduct(row: ProductRow): DataProduct {
     usage: String(row.usage ?? ""),
     version: text(row.version),
     status: text(row.status),
-    sla: text(row.sla),
     support: text(row.support),
     customProperties:
       typeof custom === "string"
