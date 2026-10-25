@@ -58,9 +58,13 @@ async def client():
 
     prior_env = os.environ.get("PROVISA_ENGINE")
     os.environ["PROVISA_ENGINE"] = "duckdb"
-    prior_engine = app_mod.state.federation_engine
-    app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
-    app_mod.state.federation_engine.bind_terminal()
+    from tests.conftest import as_deployment_org
+
+    # The engine is the deployment org's, set as its boot sets it (REQ-1266).
+    with as_deployment_org():
+        prior_engine = app_mod.state.federation_engine
+        app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
+        app_mod.state.federation_engine.bind_terminal()
     try:
         app = app_mod.create_app()
         async with app.router.lifespan_context(app):
@@ -68,7 +72,8 @@ async def client():
             async with AsyncClient(transport=transport, base_url="http://test", timeout=600) as c:
                 yield c
     finally:
-        app_mod.state.federation_engine = prior_engine
+        with as_deployment_org():
+            app_mod.state.federation_engine = prior_engine
         if prior_env is None:
             os.environ.pop("PROVISA_ENGINE", None)
         else:
