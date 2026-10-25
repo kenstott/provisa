@@ -307,3 +307,90 @@ def test_nodes_are_not_ordered(con):
 
     with pytest.raises(CypherTranslateError, match="compared by = and <>"):
         _rows(con, "MATCH (a:Person) MATCH (c:Person) WHERE a < c RETURN a.name")
+
+
+# A pattern of a later MATCH that starts at a node the statement does not hold yet (#306): its
+# first node's table is joined, not left out.
+
+PARENTS = (
+    "SELECT c.name, d.name FROM pg.public.companies c JOIN pg.public.companies d "
+    "ON c.parent_id = d.id"
+)
+
+
+def test_a_second_match_from_a_new_node(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person)-[:KNOWS]->(b:Person) MATCH (c:Company)-[:PARENT]->(d:Company) "
+        "RETURN a.name, c.name, d.name",
+    )
+    assert rows == _sql(
+        con,
+        f"SELECT p.name, x.* FROM pg.public.persons p, ({PARENTS}) x WHERE p.knows_id IS NOT NULL",
+    )
+
+
+def test_a_second_match_from_a_new_node_through_a_junction(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person)-[:KNOWS]->(b:Person) MATCH (k:Club)<-[:MEMBER_OF]-(p:Person) "
+        "RETURN a.name, k.name, p.name",
+    )
+    assert rows == _sql(
+        con,
+        "SELECT a.name, k.name, p.name FROM pg.public.persons a, pg.public.clubs k "
+        "JOIN pg.public.members m ON m.club_id = k.id JOIN pg.public.persons p "
+        "ON p.id = m.person_id WHERE a.knows_id IS NOT NULL",
+    )
+
+
+def test_a_second_match_of_two_hops_from_a_new_node(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person {name: 'Ann'}) "
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company)-[:PARENT]->(d:Company) "
+        "RETURN a.name, p.name, d.name",
+    )
+    assert rows == _sql(
+        con,
+        "SELECT 'Ann', p.name, d.name FROM pg.public.persons p JOIN pg.public.companies c "
+        "ON p.company_id = c.id JOIN pg.public.companies d ON c.parent_id = d.id",
+    )
+
+
+def test_an_optional_match_from_a_new_node_binds_each_match(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person) OPTIONAL MATCH (c:Company)-[:PARENT]->(d:Company) "
+        "RETURN a.name, c.name, d.name",
+    )
+    assert rows == _sql(con, f"SELECT p.name, x.* FROM pg.public.persons p, ({PARENTS}) x")
+
+
+def test_an_optional_match_from_a_new_node_that_matches_nothing_is_one_null_row(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person) OPTIONAL MATCH (c:Company {name: 'Corp'})-[:PARENT]->(d:Company) "
+        "RETURN a.name, c.name, d.name",
+    )
+    assert rows == _sql(con, "SELECT name, NULL, NULL FROM pg.public.persons")
+
+
+def test_a_match_after_a_with_from_a_new_node(con):
+    rows = _rows(
+        con,
+        "MATCH (a:Person) WITH a MATCH (c:Company)-[:PARENT]->(d:Company) "
+        "RETURN a.name, c.name, d.name",
+    )
+    assert rows == _sql(con, f"SELECT p.name, x.* FROM pg.public.persons p, ({PARENTS}) x")
+
+
+def test_an_optional_match_of_two_hops_from_a_new_node_is_refused_by_name(con):
+    from provisa.gql.translator_types import CypherTranslateError
+
+    with pytest.raises(CypherTranslateError, match="one relationship at a time"):
+        _rows(
+            con,
+            "MATCH (a:Person) OPTIONAL MATCH (p:Person)-[:WORKS_AT]->(c:Company)"
+            "-[:PARENT]->(d:Company) RETURN a.name",
+        )

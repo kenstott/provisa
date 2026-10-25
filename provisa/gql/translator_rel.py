@@ -583,11 +583,14 @@ class _RelJoinMixin:  # mixin for _Translator
         from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: "list[dict]",
         held_target: bool = False,
+        new_source: bool = False,
     ) -> "tuple[exp.Expression | None, list[dict], bool]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Process a single relationship → update joins/from_expr.
 
         ``held_target``: the relationship's far end is a node the statement already holds (#303),
         which it reads as a condition between the two rows, never as a second copy of its table.
+        ``new_source``: the relationship's near end is a node the statement does not hold yet,
+        though it has a FROM (a later MATCH's pattern, #306): its table is joined first.
 
         Returns (from_expr, joins, did_continue) where did_continue=True means
         caller should skip to the next rel iteration.
@@ -611,10 +614,13 @@ class _RelJoinMixin:  # mixin for _Translator
         if from_expr is None and src_nm is not None and not outer_row:
             from_expr = _node_table_expr(src_nm, self._node_alias(src_node, src_nm, as_source=True))
 
-        if held_target and (src_nm is None or tgt_nm is None or rel.variable_length):
+        if (held_target or new_source) and (
+            src_nm is None or tgt_nm is None or rel.variable_length
+        ):
             raise CypherTranslateError(
-                f"A relationship to {tgt_var}, a node the statement already holds, is read "
-                "through a relationship of a labelled type between labelled nodes"
+                "A relationship from a node a later MATCH starts at, or to a node the statement "
+                "already holds, is read through a relationship of a labelled type between "
+                "labelled nodes"
             )
         if src_nm is None or tgt_nm is None:
             if tgt_var and tgt_var in self._domain_nodes and rel_mapping is not None:
@@ -672,6 +678,13 @@ class _RelJoinMixin:  # mixin for _Translator
             from_expr,
             joins,
         )
+        if new_source:
+            if len(self._extra_path_branches) != branches_before:
+                raise CypherTranslateError(
+                    f"A later MATCH starting at {src_var or 'a new node'} is read through one "
+                    "relationship type"
+                )
+            self._join_new_source(src_node, src_nm, clause, joins, joins_before)
         if held_target:
             if len(self._extra_path_branches) != branches_before:
                 raise CypherTranslateError(
@@ -682,6 +695,31 @@ class _RelJoinMixin:  # mixin for _Translator
         if alternation or id(candidates[0][0]) in self._alternation_types:
             self._name_alternation_types(rel, candidates[0][0], tgt_alias)
         return from_expr, joins, False
+
+    def _join_new_source(
+        self,
+        src_node: "NodePattern",
+        src_nm: "NodeMapping",
+        clause: MatchClause,
+        joins: "list[dict]",
+        joins_before: int,
+    ) -> None:
+        """The near end of a later MATCH's first hop (#306), joined before the hop's own joins:
+        beside every row (a required MATCH), or, for an OPTIONAL one, only where the hop matches
+        from it -- so a node with no such hop binds nothing, and where none has one the row is
+        kept with both ends null."""
+        table = _node_table_expr(src_nm, self._node_alias(src_node, src_nm, as_source=True))
+        if not clause.optional:
+            joins.insert(joins_before, {"table": table, "on": None, "join_type": "CROSS"})
+            return
+        hop = joins[joins_before:]
+        body = exp.select(exp.Literal.number(1)).from_(hop[0]["table"].copy())
+        for j in hop[1:]:
+            body = body.join(j["table"].copy(), on=j["on"].copy(), join_type="INNER")
+        body = body.where(hop[0]["on"].copy())
+        joins.insert(
+            joins_before, {"table": table, "on": exp.Exists(this=body), "join_type": "LEFT"}
+        )
 
     def _held_far_end(
         self,
@@ -872,6 +910,14 @@ class _RelJoinMixin:  # mixin for _Translator
                 nodes = list(reversed(nodes))
                 flipped = {"right": "left", "left": "right"}.get(rels[0].direction, "none")
                 rels = [dataclasses.replace(rels[0], direction=flipped)]
+            # A later MATCH's pattern from a node the statement does not hold yet (#306).
+            first = nodes[0].variable if nodes else None
+            new_start = (
+                from_expr is not None
+                and bool(rels)
+                and first not in joined
+                and first not in self._lateral_bound
+            )
             # The nodes this pattern's hops have placed so far: a cycle returns to one.
             placed = set(joined)
             if nodes and nodes[0].variable:
@@ -922,8 +968,20 @@ class _RelJoinMixin:  # mixin for _Translator
                     joins.extend(pf_joins)
                     break
                 far_var = nodes[i + 1].variable
+                if new_start and clause.optional and len(rels) > 1:
+                    raise CypherTranslateError(
+                        "An OPTIONAL MATCH starting at a node the statement does not hold yet "
+                        "is read one relationship at a time; start it at a node already matched"
+                    )
                 from_expr, joins, did_continue = self._process_rel_step(
-                    rel, nodes, i, clause, from_expr, joins, held_target=far_var in placed
+                    rel,
+                    nodes,
+                    i,
+                    clause,
+                    from_expr,
+                    joins,
+                    held_target=far_var in placed,
+                    new_source=new_start and i == 0,
                 )
                 if far_var:
                     placed.add(far_var)
