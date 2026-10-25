@@ -88396,7 +88396,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     locked: Provisa maintains them and an organisation cannot edit them; it extends them with its own child
     roles, so a capability Provisa adds to a standard role reaches every role built on it. The sandbox role
     a ''Try it Out'' visitor holds (REQ-1597) is composed from standard roles by union like any role, not
-    as org_admin minus a denylist.'
+    as org_admin minus a denylist. (Amended 2026-10-25, DESIGN ANSWERS:) Environment management and user
+    management belong to Org admin alone: Developer switches environments and Security admin governs grants,
+    masks and sensitive data but manages no users, so the sandbox role is a pure union of Developer, Data
+    product owner, Data quality steward, Source admin and Security admin. Data steward keeps REQ-1944''s
+    meaning, a domain''s meaning and access: it inherits Security admin and adds glossary editing, relationships
+    and data product editing within its reach, so it can delegate read. Data quality steward inherits Viewer
+    and adds the data quality capabilities. A standard Modeler role is Developer plus the relationship-guard
+    bypass. Parents are a list. Capabilities, domain access, residency and grants are unions over the ancestors.
+    A row rule resolves as follows: a role''s own rule for a table stands; otherwise the rules found anywhere
+    among its ancestors are ORed, and a parent with no rule contributes nothing, so adding a parent never
+    lifts a row rule; a role with no rule anywhere among its ancestors is unrestricted, as before. Write-grant
+    row conditions resolve the same way. A property (rate limit, row limit, session variables) is the role''s
+    own, else the first ancestor''s that sets it, depth-first in declared parent order.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -88531,3 +88543,27 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When an analyst outside revenue_team opens revenue
 
     Then the panel shows Promises, access, support and lineage only'
+- id: REQ-2161
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: SHOULD
+  type: ui
+  description: 'The Security page''s role detail panel shows the role''s effective rights, as the composition
+    of scope, capabilities and grants (REQ-2159): every capability the role holds with the role it comes
+    from (its own or the ancestor that carries it), its domain reach, and per table and column the access
+    it has (read, write, masked, row rule) with the grant that gives it and the column''s scope. It is
+    shown for any role, including a meta-role, whose view is the union of its members''. A derived role
+    (REQ-2057) carries no capabilities and is never granted by hand: its panel shows only the grants that
+    name it, so it reads as what an attribute value unlocks. The view is itself capped by the viewer''s
+    read rights (REQ-2152): it lists only tables and columns the viewer can read, and nothing marks that
+    others exist.'
+  scenario: 'Given role dq_lead inheriting Data quality steward and Data product owner
+
+    When a security admin opens dq_lead on the Security page
+
+    Then the panel lists each capability with the standard role it comes from
+
+    And each readable column with its scope and the grant that serves it to dq_lead'
