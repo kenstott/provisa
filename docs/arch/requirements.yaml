@@ -87152,7 +87152,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     former Product map), all 3D. The Lineage preset is removed: the panel''s lineage diagram (REQ-1640)
     is the one lineage view, and lineage edges stay a layer of All. ''Knowledge graph'' is reserved for
     the instance level, data entities typed by ontology terms; this panel shows metadata. The Data Products
-    page''s entry point keeps its ''Product map'' label.'
+    page''s entry point keeps its ''Product map'' label. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This
+    corrects a defect in the data product requirements, not a feature: the earlier rules left expectations
+    and promises undistinguished, contracts generated rather than declared, one view for owner and consumer,
+    and two lineage views. It is resolved before the product is declared green.'
   use_case: >-
     A steward or consumer sees a data product whole, including structure, meaning, quality and
     provenance, in one graph. They narrow it to the question at hand by turning layers on and off or
@@ -88514,17 +88517,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   group: 10. UI & Admin Surfaces
   category: Data Products
   feature: catalog-and-discovery-data-products
-  priority: SHOULD
+  priority: MUST
   type: behavioral
   description: 'A data product''s data quality has three parts. Expectations are checks the product owns
     on its inputs; promises are checks it owns on its outputs, its member tables; related are checks on
-    those same tables that the product does not own, such as another product''s promises on one of its
-    inputs. Whether a check is an expectation or a promise follows from what it checks; whether it is
-    the product''s follows from ownership. A checker table may name one data product as its owner, because
-    several products'' checks can run over the same table; a checker table naming none is related for
-    every product whose tables it checks. The product panel''s data quality section is three expandable
-    rows: Expectations, Promises and Related. A check whose checked columns the reader cannot read is
-    absent from every row, with its name and its results (REQ-2152).'
+    those same tables that the product does not own, such as another product''s promises on one of its inputs.
+    Whether a check is an expectation or a promise follows from what it checks; whether it is the product''s
+    follows from ownership. A checker table may name one data product as its owner, because several products''
+    checks can run over the same table; a checker table naming none is related for every product whose tables
+    it checks. The product panel''s data quality section is three expandable rows: Expectations, Promises
+    and Related. A check whose checked columns the reader cannot read is absent from every row, with its
+    name and its results (REQ-2152). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect
+    in the data product requirements, not a feature: the earlier rules left expectations and promises undistinguished,
+    contracts generated rather than declared, one view for owner and consumer, and two lineage views. It
+    is resolved before the product is declared green.'
   scenario: 'Given product revenue owns a check on its input orders and a check on its member daily_revenue
 
     And product fulfilment owns a check on orders
@@ -88540,7 +88546,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   group: 1. Access Governance & Security
   category: Data Catalog Integration
   feature: catalog-and-discovery-warehouse-listings
-  priority: SHOULD
+  priority: MUST
   type: behavioral
   description: 'A data product (ODPS) declares a data contract (ODCS) for each output port, stored with
     the product rather than generated at export: the port''s schema (its member''s columns), its promises
@@ -88551,7 +88557,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     following Bitol ODPS, whose inputPorts are labelled Expectations and outputPorts Promises. (Amended
     2026-10-25, A CONTRACT HAS ITS OWN VERSION:) Each output port''s contract carries its own version, as
     ODPS versions each port by its contract: a breaking change to one port''s schema or promises bumps that
-    contract alone.'
+    contract alone. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the data product
+    requirements, not a feature: the earlier rules left expectations and promises undistinguished, contracts
+    generated rather than declared, one view for owner and consumer, and two lineage views. It is resolved
+    before the product is declared green.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -88591,7 +88600,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   group: 1. Access Governance & Security
   category: Data Catalog Integration
   feature: catalog-and-discovery-data-products
-  priority: SHOULD
+  priority: MUST
   type: behavioral
   description: 'The data product panel shows the product''s owner a different subset from other readers.
     A consumer sees the product''s promises (its contracts: schema, SLA, promise checks and their latest
@@ -88599,7 +88608,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     owner, a holder of the product''s owner or team role (REQ-2125), also sees its expectations and their
     failures, related checks, its input ports, its consumers one hop downstream, and edits its contracts.
     Both views are capped by the reader''s read rights (REQ-2152): neither shows a column, check or table
-    the reader cannot read.'
+    the reader cannot read. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the data
+    product requirements, not a feature: the earlier rules left expectations and promises undistinguished,
+    contracts generated rather than declared, one view for owner and consumer, and two lineage views. It
+    is resolved before the product is declared green.'
   scenario: 'Given product revenue owned by role revenue_team
 
     When a member of revenue_team opens revenue
