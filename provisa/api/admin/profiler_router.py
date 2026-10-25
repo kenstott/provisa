@@ -103,9 +103,19 @@ async def profiler_catalog(request: Request, source_id: str) -> list[dict]:
     from provisa.profiler.schema import RESULT_KINDS, kind_fields, result_table_name
     from provisa.profiler.source import members
 
+    import types
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import serves_every_column
+
+    # REQ-2152 (Q6a): the form registers result tables whose row rules name every column of the
+    # profiled table, so only a member the caller is served every column of is offered.
+    scope = catalog_scope(types.SimpleNamespace(context={"request": request}))
     out = []
     async with _db().acquire() as conn:
         for t in await members(conn, source_id):
+            if not await serves_every_column(conn, scope, t["id"]):
+                continue
             # The registration form's defaults, from the profiled table's rules as they are now.
             rules = await column_rules(conn, state, t["id"])
             entries = []

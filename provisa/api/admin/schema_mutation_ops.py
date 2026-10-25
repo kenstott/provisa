@@ -391,8 +391,22 @@ async def register_table(
                     if is_checker_source_type(_reg_state.source_types.get(input.source_id)):
                         require_scan_interval(model)  # REQ-1443: the interval it scans on
                     # REQ-1934: a profile result table's derivation, and a table's profiler membership.
-                    from provisa.profiler.registration import apply_registration
+                    from provisa.profiler.registration import (
+                        apply_registration,
+                        profile_reach_refusal,
+                    )
+                    from provisa.api.admin.catalog_scope import catalog_scope
+                    from provisa.api.admin.read_rights import serves_every_column
 
+                    _scope = catalog_scope(info)
+
+                    async def _serves_all(table_id: int) -> bool:
+                        return await serves_every_column(_conn, _scope, table_id)
+
+                    # REQ-2152 (Q6a): profiling a table takes reading all of it.
+                    _reach = await profile_reach_refusal(_conn, model, _serves_all)
+                    if _reach is not None:
+                        raise ValueError(_reach)
                     await apply_registration(_conn, model)
                 except ValueError as _dq_err:
                     raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))

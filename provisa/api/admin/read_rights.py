@@ -303,3 +303,16 @@ async def served_columns_request(
     return await served_columns_of(
         conn, catalog_scope(types.SimpleNamespace(context={"request": request})), table_id
     )
+
+
+async def serves_every_column(conn: "Connection", scope: Any, table_id: int) -> bool:
+    """Whether the caller behind ``scope`` is served every stored column of ``table_id``."""
+    from provisa.core.schema_org import table_columns
+
+    served = await served_columns_of(conn, scope, table_id)
+    if served is None:
+        return True
+    stored = await conn.execute_core(
+        select(table_columns.c.column_name).where(table_columns.c.table_id == table_id)
+    )
+    return all(r.column_name in served for r in stored.fetchall())
