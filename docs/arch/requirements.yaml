@@ -19808,8 +19808,10 @@
   feature: roles-and-capabilities-inheritance
   priority: SHOULD
   type: behavioral
-  description: 'Inherited roles: a role hierarchy where child role inherits capabilities and domain_access
-    from parent. Config: `parent_role_id` on role definition. Flattened at startup (merge capabilities/domain_access
+  description: 'Inherited roles: a role hierarchy where [SUPERSEDED by REQ-2155, 2026-10-25 -- a role inherits
+    capabilities; its domain reach is its own (ALL or a list), never inherited. Kept here for history; do
+    not implement against it.] child role inherits capabilities and domain_access from parent. [END SUPERSEDED
+    BLOCK] Config: `parent_role_id` on role definition. Flattened at startup (merge capabilities/domain_access
     up the chain). Lookups remain O(1).'
   use_case: 'Hasura v2 parity: inherited roles eliminate redundant permission duplication across similar role definitions.'
   code:
@@ -88409,9 +88411,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     lifts a row rule; a role with no rule anywhere among its ancestors is unrestricted, as before. Write-grant
     row conditions resolve the same way. A property (rate limit, row limit, session variables) is the role''s
     own, else the first ancestor''s that sets it, depth-first in declared parent order. (Amended 2026-10-25,
-    STANDARD ROLES REACH NO DOMAIN:) A standard role carries no domain reach: domain reach is a union over
-    ancestors, so a standard role reaching a domain would hand it to every role built on it. An organisation''s
-    own child roles carry the reach (a Finance steward is a child of Data steward reaching finance).'
+    STANDARD ROLES REACH NO DOMAIN:) [SUPERSEDED by REQ-2155, 2026-10-25 -- reach is not inherited; every
+    role, standard roles included, states its own. Kept here for history; do not implement against it.]
+    A standard role carries no domain reach: domain reach is a union over ancestors, so a standard role
+    reaching a domain would hand it to every role built on it. An organisation''s own child roles carry
+    the reach (a Finance steward is a child of Data steward reaching finance). [END SUPERSEDED BLOCK] (Amended
+    2026-10-25, REACH IS THE ROLE''S OWN; ORG OPERATOR:) Every role states its own domain reach, ALL or
+    a list of domains, and reach is not inherited: a role inherits its parents'' capabilities, and its own
+    reach says where they apply. Standard roles, Org admin and Sandbox reach ALL; a domain-specific role
+    (a Finance steward, child of Data steward) states its own list. Giving a role reach follows REQ-1531:
+    the caller must reach every domain it adds, so a security admin for a domain gives reach to that domain
+    only. A standard Org operator role holds org settings, observability and the approval of views and relationships;
+    Org admin and Sandbox inherit it. Sandbox is the union of Developer, Data product owner, Data quality
+    steward, Source admin, Security admin, Data steward and Org operator. Data steward''s parents are Security
+    admin and Analyst, and it adds glossary editing, relationships, data product editing and full results.
+    Environment data stays Org admin''s alone (REQ-1942).'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
