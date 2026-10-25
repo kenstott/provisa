@@ -67,6 +67,7 @@ class Renderer:
         # a request that joins is only expressible where the language can spell every step
         graphql_ok = all(j.forward and j.graphql_field for j in spec.joins)
         cypher_ok = all(j.forward and j.cypher_rel for j in spec.joins)
+        sparql_ok = all(j.forward and j.sparql_rel for j in spec.joins)
         return Query(
             id="optimistic",
             category="optimistic",
@@ -75,6 +76,12 @@ class Renderer:
             cypher=(
                 self._cypher(spec, table, cols, filters)
                 if table.has("cypher") and cypher_ok
+                else None
+            ),
+            # SPARQL has no route hint (a request carrying one is not sent there)
+            sparql=(
+                self._sparql(spec, table, cols, filters)
+                if table.has("sparql") and sparql_ok and spec.route is None
                 else None
             ),
             graphql=(
@@ -171,6 +178,34 @@ class Renderer:
                 base = child.column(child.base_column)
                 returns.append(f"{names[k]}.{base.names['cypher']} AS {child.name}_{base.name}")
         return f"{hint}MATCH {', '.join(patterns)} {where}RETURN {', '.join(returns)} LIMIT {spec.rows}"
+
+    def _sparql(
+        self, spec: RequestSpec, table: contract_model.Table, cols: list, filters: list
+    ) -> str:
+        """A SELECT of the request's columns over the table's class. Each column is bound in an
+        OPTIONAL, so a null keeps its row as the SQL does; a filtered column is a triple of its
+        own with its FILTER. A join is the edge predicate to the child's class. No subject IRI
+        is selected, so the answer needs no public address."""
+        lines = [f"?t0 a <{table.sparql_class}> ."]
+        selected: list[str] = []
+        for c in cols:
+            var = f"?{c.name}"
+            selected.append(var)
+            lines.append(f"OPTIONAL {{ ?t0 <{c.names['sparql']}> {var} }}")
+        for i, (c, v) in enumerate(filters):
+            lines.append(f"?t0 <{c.names['sparql']}> ?f{i} .")
+            lines.append(f"FILTER(?f{i} = {_quoted_literal(v)})")
+        members = self._members(spec, table)
+        for k, j in enumerate(spec.joins, 1):
+            child = members[k]
+            base = child.column(child.base_column)
+            var = f"?{child.name}_{base.name}"
+            selected.append(var)
+            lines.append(f"?t{j.parent} <{j.sparql_rel}> ?t{k} .")
+            lines.append(f"?t{k} a <{child.sparql_class}> .")
+            lines.append(f"OPTIONAL {{ ?t{k} <{base.names['sparql']}> {var} }}")
+        body = " ".join(lines)
+        return f"SELECT {' '.join(selected)} WHERE {{ {body} }} LIMIT {spec.rows}"
 
     def _graphql(
         self, spec: RequestSpec, table: contract_model.Table, cols: list, filters: list

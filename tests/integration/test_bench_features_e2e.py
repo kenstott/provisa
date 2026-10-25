@@ -74,7 +74,7 @@ import request_mix  # noqa: E402
 import request_render  # noqa: E402
 import setup_contract as sc  # noqa: E402
 
-TRANSPORTS = tuple(ol.TRANSPORTS)  # all ten: graphql ... mcp
+TRANSPORTS = tuple(ol.TRANSPORTS)  # all eleven: graphql ... sparql
 SOURCES = tuple(lp.SOURCES)
 LATENCY_OUT = REPO / "results" / "bench_features" / "latency.json"
 READER = "bench_feat_reader"  # the second contract role: a child of org_admin
@@ -411,7 +411,7 @@ def start_server(ports: dict[str, int], **env: str) -> Any:
         await_grpc=True,
         config=str(lp.PERF / "config.yaml"),
         env={
-            **lp._source_env(ports),  # noqa: SLF001
+            **lp._server_env(ports),  # noqa: SLF001
             "PROVISA_MCP_PORT": str(ports["mcp"]),
             # loopback: the harness's pinned roles apply to a call with no bearer (mcp_pin); off
             # loopback a bearer is required
@@ -664,7 +664,7 @@ def _audit_baseline(stack: Stack) -> int:
 
 # The surface each transport's statements are recorded under (query_audit_log.source).
 SURFACE = {
-    **{t: "http" for t in ("data_sql", "graphql", "rest", "jsonapi", "cypher_http")},
+    **{t: "http" for t in ("data_sql", "graphql", "rest", "jsonapi", "cypher_http", "sparql")},
     "pgwire": "pgwire",
     "flight_sql": "flight",
     "bolt": "bolt",
