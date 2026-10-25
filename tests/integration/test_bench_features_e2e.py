@@ -662,22 +662,39 @@ def _audit_baseline(stack: Stack) -> int:
         engine.dispose()
 
 
-def _audit_since(stack: Stack, baseline: int, at_least: int) -> list[dict[str, Any]]:
-    """The audit rows the server wrote after ``baseline`` (the statement's role, route, transport
+# The surface each transport's statements are recorded under (query_audit_log.source).
+SURFACE = {
+    **{t: "http" for t in ("data_sql", "graphql", "rest", "jsonapi", "cypher_http")},
+    "pgwire": "pgwire",
+    "flight_sql": "flight",
+    "bolt": "bolt",
+    "grpc": "grpc",
+    "mcp": "mcp",
+}
+
+
+def _audit_since(
+    stack: Stack, baseline: int, at_least: int, transport: str
+) -> list[dict[str, Any]]:
+    """The audit rows ``transport``'s surface wrote after ``baseline`` (the statement's role, route
     and what was enforced on it), waiting for the writer (it inserts in batches) until there are
-    ``at_least``."""
+    ``at_least``. Only that surface's: the harness's own lookups are audited too, and must not
+    stand in for the requests a test sent."""
     import sqlalchemy as sa
 
     engine = _audit_engine(stack)
     query = sa.text(
         f"SELECT id, role_id, route, source, status_code, enforced "
-        f"FROM org_{stack.server.org_id}.query_audit_log WHERE id > :b ORDER BY id"
+        f"FROM org_{stack.server.org_id}.query_audit_log WHERE id > :b AND source = :s ORDER BY id"
     )
     deadline = time.monotonic() + 60
     try:
         while True:
             with engine.connect() as conn:
-                rows = [dict(r._mapping) for r in conn.execute(query, {"b": baseline})]
+                rows = [
+                    dict(r._mapping)
+                    for r in conn.execute(query, {"b": baseline, "s": SURFACE[transport]})
+                ]
             if len(rows) >= at_least or time.monotonic() > deadline:
                 return rows
             time.sleep(0.5)
@@ -698,7 +715,9 @@ def test_a_route_hint_answers_the_same_rows_and_is_the_route_taken(stack, transp
     baseline = _audit_baseline(stack)
     sent = run_cell(stack, transport, f"route:{mode}", setup)
     assert sent > 0
-    routes = {r["route"] for r in _audit_since(stack, baseline, sent) if r["status_code"] < 400}
+    routes = {
+        r["route"] for r in _audit_since(stack, baseline, sent, transport) if r["status_code"] < 400
+    }
     assert routes == {"engine" if mode == "federated" else "direct"}, routes
 
 
@@ -816,7 +835,7 @@ def test_each_role_answers_and_the_audit_log_names_it(stack, reader, transport):
         check_single(transport, table_of(setup, spec), spec, columns, rows, stack.oracle)
         sent_roles.append(spec.role)
     assert set(sent_roles) == {"org_admin", reader}, sent_roles
-    recorded = {r["role_id"] for r in _audit_since(stack, baseline, len(sent_roles))}
+    recorded = {r["role_id"] for r in _audit_since(stack, baseline, len(sent_roles), transport)}
     assert {"org_admin", reader} <= recorded, recorded
 
 
@@ -937,7 +956,7 @@ def test_under_each_governance_knob_every_transport_answers_and_it_is_applied(
     baseline = _audit_baseline(stack)
     sent = run_cell(stack, transport, f"governance.{governed.knob}", setup, masked=masked)
     assert sent > 0
-    rows = [r for r in _audit_since(stack, baseline, sent) if r["status_code"] < 400]
+    rows = [r for r in _audit_since(stack, baseline, sent, transport) if r["status_code"] < 400]
     assert len(rows) >= sent, (sent, rows)
     orders = _table_ids(stack, setup)["orders"]
     for row in rows:
