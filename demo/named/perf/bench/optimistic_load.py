@@ -466,6 +466,21 @@ _grpc_lock = threading.Lock()
 _grpc_shared: Any = None  # one compiled descriptor pool per client PROCESS
 
 
+def grpc_row(message: Any) -> dict[str, Any]:
+    """Every field of a gRPC row message by its proto name, as the message descriptor lists them.
+    A column's null is an unset ``optional`` field (proto_gen), which MessageToDict leaves out
+    even printing fields with no presence: it is read as None."""
+    from google.protobuf.json_format import MessageToDict
+
+    given = MessageToDict(
+        message, preserving_proto_field_name=True, always_print_fields_with_no_presence=True
+    )
+    return {
+        f.name: None if f.has_presence and not message.HasField(f.name) else given[f.name]
+        for f in message.DESCRIPTOR.fields
+    }
+
+
 class GrpcClient:
     def __init__(self, ep: Endpoints) -> None:
         global _grpc_shared
@@ -512,16 +527,7 @@ class GrpcClient:
         return len(rows), len(rows[0].ListFields()) if rows else 0, None
 
     def rows(self, query: Query, role: str) -> Answer:
-        from google.protobuf.json_format import MessageToDict
-
-        messages = self._send(query, role)
-        # every field of the message, a null one included, by its proto name
-        rows = [
-            MessageToDict(
-                m, preserving_proto_field_name=True, always_print_fields_with_no_presence=True
-            )
-            for m in messages
-        ]
+        rows = [grpc_row(m) for m in self._send(query, role)]
         return (list(rows[0]) if rows else []), rows, None
 
     def _send(self, query: Query, role: str) -> list[Any]:
