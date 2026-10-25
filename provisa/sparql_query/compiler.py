@@ -89,9 +89,43 @@ from provisa.gql.ir import (
 )
 from provisa.gql.iri import parse_subject_iri
 from provisa.gql.translator_types import CypherTranslateError
-from provisa.sparql_query.vocabulary import RDF_TYPE, XSD, ColumnPredicate, Vocabulary
+from provisa.security import universal_regex
+from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
+from provisa.sparql_query.vocabulary import RDF, RDF_TYPE, XSD, ColumnPredicate, Vocabulary
 
 _ORDER_PREFIX = "__ord"
+RDF_NIL = URIRef(f"{RDF}nil")
+
+# The functions the back end lowers by the name given here, each of the arguments named.
+_SHARED_SCALARS = {
+    "Builtin_STRLEN": "char_length",
+    "Builtin_CEIL": "ceil",
+    "Builtin_FLOOR": "floor",
+    "Builtin_STRBEFORE": "strbefore",
+    "Builtin_STRAFTER": "strafter",
+    "Builtin_YEAR": "year",
+    "Builtin_MONTH": "month",
+    "Builtin_DAY": "day",
+    "Builtin_HOURS": "hours",
+    "Builtin_MINUTES": "minutes",
+    "Builtin_SECONDS": "seconds",
+    "Builtin_NOW": "now",
+}
+_SHARED_SCALAR_ARGS = {
+    "Builtin_STRBEFORE": ("arg1", "arg2"),
+    "Builtin_STRAFTER": ("arg1", "arg2"),
+    "Builtin_NOW": (),
+}
+_XSD_CAST_FNS = {
+    f"{XSD}integer": "toInteger",
+    f"{XSD}double": "toFloat",
+    f"{XSD}float": "toFloat",
+    f"{XSD}string": "toString",
+    f"{XSD}boolean": "toBoolean",
+    f"{XSD}decimal": "toDecimal",
+    f"{XSD}date": "toDate",
+    f"{XSD}dateTime": "toDateTime",
+}
 
 
 class SparqlRefused(CypherTranslateError):
@@ -745,7 +779,89 @@ class _Lowering:
                 if bound is not None and isinstance(bound[0], IriConst):
                     is_node = True
             return Literal(is_node == wants_node, "boolean")
+        scalar = self._scalar(e, bindings, labels)
+        if scalar is not None:
+            return scalar
         raise SparqlRefused(f"The SPARQL function {name.removeprefix('Builtin_')} is not supported")
+
+    def _scalar(self, e: Any, bindings, labels) -> CypherExpr | None:
+        """A string, numeric, date-part or cast function, or None where ``e`` is none of them."""
+        name = e.name
+        args = lambda *keys: [self.expr(getattr(e, k), bindings, labels) for k in keys]  # noqa: E731
+        if name in _SHARED_SCALARS:
+            return FunctionCall(
+                _SHARED_SCALARS[name], args(*_SHARED_SCALAR_ARGS.get(name, ("arg",)))
+            )
+        if name == "Builtin_CONCAT":
+            given = [] if e.arg == RDF_NIL else e.arg
+            parts = [self.expr(a, bindings, labels) for a in given]
+            return FunctionCall("strconcat", parts) if parts else Literal("", "string")
+        if name == "Builtin_SUBSTR":
+            # SPARQL counts from 1, the IR's substring from 0.
+            text, start = args("arg", "start")
+            rest = [self.expr(e.length, bindings, labels)] if e.length is not None else []
+            return FunctionCall(
+                "substring", [text, Binary("-", start, Literal(1, "number")), *rest]
+            )
+        if name == "Builtin_ROUND":
+            # SPARQL rounds a half up, toward positive infinity; SQL's round away from zero.
+            (x,) = args("arg")
+            return FunctionCall("floor", [Binary("+", x, Literal(0.5, "number"))])
+        if name == "Builtin_REPLACE":
+            return self._replace(e, bindings, labels)
+        if name == "Builtin_isNUMERIC":
+            return Literal(self._datatype_of(e.arg, bindings) in _NUMERIC, "boolean")
+        if name == "Function" and str(e.iri) in _XSD_CAST_FNS:
+            (x,) = [self.expr(a, bindings, labels) for a in e.expr]
+            return FunctionCall(_XSD_CAST_FNS[str(e.iri)], [x])
+        if name == "Function":
+            raise SparqlRefused(f"The function <{e.iri}> is not supported")
+        return None
+
+    def _datatype_of(self, arg: Any, bindings) -> str:
+        """The datatype ``arg`` is known by when the query is read: a literal's own, or the
+        column's of a variable bound to one."""
+        if isinstance(arg, RdfLiteral):
+            if arg.datatype is not None:
+                return str(arg.datatype)
+            return f"{XSD}string" if arg.language is None else f"{RDF}langString"
+        if isinstance(arg, RdfVariable) and str(arg) in bindings:
+            datatype = bindings[str(arg)][1]
+            if datatype is not None:
+                return datatype
+        raise SparqlRefused("isNUMERIC takes a literal or a variable bound to a column")
+
+    def _replace(self, e: Any, bindings, labels) -> CypherExpr:
+        """REPLACE as a replacement of every match in the universal regex dialect (REQ-2142),
+        written in each engine's flavour; its pattern and replacement are literals."""
+        if not (isinstance(e.pattern, RdfLiteral) and isinstance(e.replacement, RdfLiteral)):
+            raise SparqlRefused("REPLACE takes its pattern and replacement as literals")
+        if e.flags is not None and not (
+            isinstance(e.flags, RdfLiteral) and isinstance(e.flags.value, str)
+        ):
+            raise SparqlRefused("REPLACE flags are given as a string literal")
+        given = str(e.flags) if e.flags is not None else ""
+        if set(given) - set("qx"):
+            raise SparqlRefused(
+                f"REPLACE flags {''.join(sorted(set(given) - set('qx')))} are not supported; "
+                "q and x are"
+            )
+        pattern = str(e.pattern)
+        if "q" in given:
+            pattern = re.escape(pattern)
+        elif "x" in given:
+            pattern = re.sub(r"(\\.)|\s", lambda m: m.group(1) or "", pattern)
+        replacement = str(e.replacement)
+        try:
+            universal_regex.check(pattern, replacement)
+        except universal_regex.NotUniversal as exc:
+            raise SparqlRefused(f"REPLACE's {exc.field}: {exc}") from exc  # type: ignore[attr-defined]
+        text = self.expr(e.arg, bindings, labels)
+        # A text the pattern does not match is itself.
+        return FunctionCall(
+            UNIVERSAL_REGEX_REPLACE,
+            [text, Literal(pattern, "string"), Literal(replacement, "string"), text],
+        )
 
     def _regex_search(self, pattern: Any, flags: Any, bindings, labels) -> CypherExpr:
         """REGEX's pattern as a match of the whole text, which ``=~`` is: found anywhere in it,
