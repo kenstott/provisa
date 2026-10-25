@@ -378,7 +378,8 @@ export function tOfValue(c: TerrainColumn, v: number): number {
   return Math.min(1, Math.max(0, (v - c.lo) / (c.hi - c.lo)));
 }
 
-export type HeightMode = "peak" | "share";
+export const HEIGHT_MODES = ["peak", "share"] as const;
+export type HeightMode = (typeof HEIGHT_MODES)[number];
 
 /** A bin's height, 0..1: against the column's own peak, or as a share of rows against the largest
  * share any column reaches. */
@@ -400,7 +401,8 @@ export function maxShareOf(cols: TerrainColumn[]): number {
   return m || 1;
 }
 
-export type TerrainOrder = "schema" | "nulls" | "skew" | "distinct" | "drift";
+export const TERRAIN_ORDERS = ["schema", "nulls", "skew", "distinct", "drift"] as const;
+export type TerrainOrder = (typeof TERRAIN_ORDERS)[number];
 
 export function orderColumns(cols: TerrainColumn[], order: TerrainOrder): string[] {
   const key: Record<Exclude<TerrainOrder, "schema">, (c: TerrainColumn) => number> = {

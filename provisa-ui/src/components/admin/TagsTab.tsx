@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -43,6 +44,7 @@ import { SortGroupTable } from "../list/SortGroupTable";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
+import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
@@ -73,6 +75,17 @@ export function TagsTab() {
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // `?tag=<id>` (a graph's tag link, lib/entityHref): the list shows that tag, under a scope it
+  // applies to, its row marked.
+  const [searchParams] = useSearchParams();
+  const linkedTag = searchParams.get("tag");
+  const [seededTag, setSeededTag] = useState<string | null>(null);
+  const linked = tags.find((g) => g.id === linkedTag);
+  if (linked && linkedTag !== seededTag) {
+    setSeededTag(linkedTag);
+    if (linked.appliesTo.length > 0) setScope(linked.appliesTo[0]);
+    setSearch(linked.id);
+  }
   const [formId, setFormId] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formScopes, setFormScopes] = useState<string[]>([]);
@@ -103,10 +116,9 @@ export function TagsTab() {
     return counts;
   }, [tagAssignments]);
 
-  const q = search.toLowerCase();
   const filtered = tags
     .filter((tag) => tag.appliesTo.includes(scope))
-    .filter((tag) => tag.id.toLowerCase().includes(q) || tag.description.toLowerCase().includes(q))
+    .filter((tag) => matchesQuery([tag.id, tag.description], search))
     .sort((a, b) => (a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1));
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -357,7 +369,7 @@ export function TagsTab() {
         page={{ index: safePage - 1, size: PAGE_SIZE }}
         onGroupedChange={setGrouped}
         render={(tag) => [
-          <ListRow key={tag.id} testId={`tags-row-${tag.id}`}>
+          <ListRow key={tag.id} testId={`tags-row-${tag.id}`} selected={tag.id === linkedTag}>
             <Table.Td>
               {tag.id}
               {(tag.reasonPolicy !== "optional" || tag.expiresPolicy !== "optional") && (

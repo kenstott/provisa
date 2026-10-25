@@ -391,9 +391,16 @@ def _model_tags(
     published_columns: set[tuple[str, ...]],
     published_relationships: set[str],
     published_source_ids: set[str],
-) -> list[ModelTag]:  # REQ-1377, REQ-1378
-    """Registry tags on published assets. Tags on withheld assets are withheld with them."""
+    glossary: dict | None = None,
+) -> list[ModelTag]:  # REQ-1377, REQ-1378, REQ-2145
+    """Registry tags on published assets. Tags on withheld assets are withheld with them. A tag on
+    a glossary term is on every published column the term holds (REQ-2145), from ``glossary``
+    (export_graph's), each saying the term it comes through."""
     tags: list[ModelTag] = []
+    refs_by_term: dict[int, list[dict]] = {}
+    for ref in (glossary or {}).get("refs", []):
+        refs_by_term.setdefault(ref["term_id"], []).append(ref)
+    names = {t["id"]: t["name"] for t in (glossary or {}).get("terms", [])}
     for assignment in config.tag_assignments:
         common = {
             "tag_id": assignment.tag_id,
@@ -426,6 +433,28 @@ def _model_tags(
         elif assignment.object_type == "relationship":
             if assignment.relationship_id in published_relationships:
                 tags.append(ModelTag(relationship_id=assignment.relationship_id, **common))
+        elif assignment.object_type == "term" and assignment.term_id is not None:
+            for ref in refs_by_term.get(assignment.term_id, []):
+                target = _resolve_assignment_table(
+                    assignment.model_copy(
+                        update={
+                            "table_ref": f"{ref['source_id']}.{ref['schema_name']}."
+                            f"{ref['table_name']}"
+                        }
+                    ),
+                    index,
+                )
+                if target is None:
+                    continue
+                column = column_ref(target, ref["column_name"])
+                if column.parts in published_columns:
+                    tags.append(
+                        ModelTag(
+                            asset=column,
+                            term=names.get(assignment.term_id, assignment.term),
+                            **common,
+                        )
+                    )
     return tags
 
 
@@ -559,13 +588,28 @@ def _glossary_assets(
         if asset_ref.parts not in published_columns:
             continue
         refs_by_term.setdefault(ref["term_id"], []).append(asset_ref)
+    # REQ-1387 (GROUNDED TO A TABLE): a class term is rooted by a table it grounds, when that
+    # table publishes -- the same narrowing its column refs get.
+    tables_by_term: dict[int, list] = {}
+    for ref in glossary.get("table_refs", []):
+        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
+        if table is not None:
+            tables_by_term.setdefault(ref["term_id"], []).append(table_ref(table))
+    classes = set(tables_by_term)
+    # REQ-2141: the role follows the control plane's grounding, not what this export narrows
+    # to -- a Class whose tables are all withheld is still a Class.
+    grounds_tables = {ref["term_id"] for ref in glossary.get("table_refs", [])}
+    owns_columns = {ref["term_id"] for ref in glossary.get("refs", [])}
+    domains_by_term: dict[int, list[str]] = {}
+    for row in glossary.get("domains", []):
+        domains_by_term.setdefault(row["term_id"], []).append(row["domain_id"])
     experts_by_term: dict[int, list[str]] = {}
     for expert in glossary.get("experts", []):
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
     live = live_term_ids(
         glossary.get("terms", []),
         [(e["from_term_id"], e["to_term_id"]) for e in glossary.get("edges", [])],
-        set(refs_by_term),
+        set(refs_by_term) | classes,
     )
     terms = []
     for term in glossary.get("terms", []):
@@ -579,9 +623,21 @@ def _glossary_assets(
                 definition=term.get("definition"),
                 is_abstract=bool(term["is_abstract"]),
                 deprecated=bool(term["deprecated"]),
+                status="deprecated" if term["deprecation_asserted"] else "live",  # REQ-2144
+                status_reason=term["status_reason"],
+                retire_on=term["retire_on"].isoformat() if term["retire_on"] else None,
                 refs=tuple(refs),
+                tables=tuple(tables_by_term.get(term["id"], [])),
+                role=(
+                    "class"
+                    if term["id"] in grounds_tables
+                    else "property"
+                    if term["id"] in owns_columns
+                    else "concept"
+                ),
                 experts=tuple(experts_by_term.get(term["id"], [])),
                 semantic_uri=term_uri(org_id, term["name"]),
+                domains=tuple(sorted(domains_by_term.get(term["id"], []))),
             )
         )
     published_ids = {t.term_id for t in terms}
@@ -715,6 +771,7 @@ def build_snapshot(
                 published_columns,
                 {edge.id for edge in relationships},
                 published_source_ids,
+                glossary,
             ),
             # REQ-1443: computed tags publish alongside assigned ones. They are the only
             # signal telling a consumer that a published table holds check outcomes rather

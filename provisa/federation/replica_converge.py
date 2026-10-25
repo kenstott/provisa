@@ -384,6 +384,10 @@ async def drop_retired(state: Any, locks: Any, org_id: str) -> list[ReplicaKey]:
             if not claim.try_replica(org_id, key):
                 continue
             try:
+                async with state.tenant_db.acquire() as conn:
+                    # Declared again since it was found due: it keeps its table.
+                    if not await replica_state.unbuild_retired(conn, key):
+                        continue
                 await drop_replica_table(state, key)
                 async with state.tenant_db.acquire() as conn:
                     # Only a record still retired goes: one declared again meanwhile keeps its

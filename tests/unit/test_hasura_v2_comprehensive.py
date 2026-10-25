@@ -794,6 +794,15 @@ class TestMapSource:
         )
         assert src.pool_max == 20
 
+    def test_pool_min_extracted(self):  # REQ-623: both pool settings are preserved
+        src, _ = self._source(
+            {
+                "database_url": "postgres://user:pw@db:5432/app",
+                "pool_settings": {"min_connections": 3, "max_connections": 20},
+            }
+        )
+        assert (src.pool_min, src.pool_max) == (3, 20)
+
     def test_url_host_only_no_port(self):
         src, _ = self._source({"database_url": "postgres://user:pw@db.example.com/mydb"})
         assert (src.host, src.database) == ("db.example.com", "mydb")

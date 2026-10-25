@@ -10,6 +10,17 @@
     "apply": "Toepassen",
     "cancel": "Annuleren",
     "editAssignment": "Toewijzing bewerken",
-    "plannedRemoval": "Geplande verwijdering: {{date}}"
+    "plannedRemoval": "Geplande verwijdering: {{date}}",
+    "piiViaTerm": "Zelfde betekenis als {{term}}",
+    "piiSetHere": "Hier ingesteld: {{reason}}",
+    "piiAlsoTerm_one": "Ook de {{count}} andere kolom markeren die '{{term}}' betekent?",
+    "piiAlsoTerm_other": "Ook de {{count}} andere kolommen markeren die '{{term}}' betekenen?",
+    "piiAlsoTermNone": "'{{term}}' markeren, zodat elke kolom die dit betekent gedekt is, ook toekomstige?",
+    "piiYes": "Ja",
+    "piiJustThis": "Alleen deze",
+    "piiInherited": "Deze kolom is PII omdat ze {{term}} betekent.",
+    "piiUnmarkTerm": "{{term}} niet meer markeren",
+    "piiMoveColumn": "Kolom verplaatsen…",
+    "piiOpenTerm": "'{{term}}' openen"
   }
 }

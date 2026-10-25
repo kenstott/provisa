@@ -82,7 +82,6 @@
     "relatedTermsLabel": "संबंधित शब्द",
     "relatedTermsEmpty": "कोई संबंधित शब्द नहीं",
     "relatedTermsLoading": "संबंधित शब्द लोड हो रहे हैं…",
-    "relatedTermsAbstract": "अमूर्त",
     "graphqlQueriesLabel": "एक्सेस पैटर्न",
     "graphqlQueriesEmpty": "कोई क्वेरी योग्य टेबल या संबंध नहीं",
     "graphqlQueryAria": "{{table}} के लिए उदाहरण GraphQL क्वेरी चलाएँ",
@@ -93,6 +92,7 @@
     "openApiQueryAria": "{{table}} के लिए उदाहरण REST अनुरोध चलाएँ",
     "detail": {
       "field": {
+        "details": "विवरण",
         "customProperties": "कस्टम प्रॉपर्टी",
         "relatedTables": "संबंधित टेबल",
         "relationships": "संबंध",
@@ -110,10 +110,14 @@
       "lineageEmpty": "कोई लिनिएज नहीं",
       "lineageLoading": "लिनिएज लोड हो रहा है…",
       "lineageHint": "कॉलम लिनिएज ग्राफ़ जो इस प्रोडक्ट की टेबल को प्रकाशित एंडपॉइंट के रूप में दिखाता है, साथ ही उन्हें व्युत्पन्न करने में उपयोग हुई हर अपस्ट्रीम टेबल। केवल जानकारी के लिए — view_governance क्षमता आवश्यक है।",
-      "outputPortsHint": "इस प्रोडक्ट की क्वेरी योग्य सतह: इसकी सदस्य टेबल/कॉलम और कमांड, नीचे नमूना क्वेरी और कमांड के अंतर्गत उदाहरण क्वेरी के साथ।",
-      "customPropertiesEmpty": "कोई कस्टम प्रॉपर्टी नहीं"
+      "inputPortsHint": "वे तालिकाएँ जिन्हें यह उत्पाद सीधे पढ़ता है, लिनिएज से। पढ़े गए कॉलम देखने के लिए तालिका खोलें। view_governance क्षमता आवश्यक है।",
+      "outputPortsHint": "इस प्रोडक्ट की क्वेरी योग्य सतह: इसकी सदस्य तालिकाएँ और कमांड। हर एक के उदाहरण क्वेरी एक्सेस पैटर्न में हैं।",
+      "customPropertiesEmpty": "कोई कस्टम प्रॉपर्टी नहीं",
+      "lineageLaneUpstream": "अपस्ट्रीम, चरण {{n}}",
+      "lineageLaneDownstream": "डाउनस्ट्रीम, चरण {{n}}"
     },
     "readOnly": "केवल-पठन",
-    "readOnlyHint": "आपके पास केवल data_product_read है — संपादित करने के लिए org_admin data_product_rw दे सकता है।"
+    "readOnlyHint": "आपके पास केवल data_product_read है — संपादित करने के लिए org_admin data_product_rw दे सकता है।",
+    "relatedTermsConcept": "अवधारणा"
   }
 }

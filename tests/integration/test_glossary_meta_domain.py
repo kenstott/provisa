@@ -198,7 +198,11 @@ async def test_retired_and_export_excluded_terms_are_flagged_not_withheld(tenant
     async with tenant_db.acquire() as conn:
         await _setup(conn, {"orders": ["cust_id", "order_dt"]})
         terms = await _terms(conn)
-        await glossary_repo.set_retired(conn, terms["customer"]["id"], True)
+        # the customer column needs a successor to go to when its term retires
+        client = await glossary_repo.create_abstract_term(conn, "client", domains=set())
+        await glossary_repo.retire_term(
+            conn, terms["customer"]["id"], reason="Renamed.", successor=client, by=None
+        )
         await glossary_repo.set_export_excluded(conn, terms["order date"]["id"], True)
         rows = {
             r["name"]: r
@@ -206,8 +210,9 @@ async def test_retired_and_export_excluded_terms_are_flagged_not_withheld(tenant
                 "SELECT name, retired, export_excluded, live FROM glossary_terms_meta"
             )
         }
-    assert set(rows) == {"customer", "order date"}
+    assert set(rows) == {"customer", "order date", "client"}
     assert rows["customer"]["retired"] is True
+    assert rows["client"]["retired"] is False
     assert rows["customer"]["live"] is False  # out of service, so not admitted
     assert rows["order date"]["export_excluded"] is True
 

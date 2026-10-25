@@ -54,7 +54,7 @@ async def _seed(conn) -> None:
     )
     terms = [
         dict(id=ROOTED, name="Customer", definition="A buyer"),
-        dict(id=ABSTRACT, name="Party", definition="Anyone", is_abstract=True),
+        dict(id=ABSTRACT, name="Party", definition="Anyone"),  # a Concept: grounds nothing
         dict(id=BARE, name="Lead", definition="A prospect"),
         dict(id=UNDEFINED, name="Account", definition=""),
         dict(id=RETIRED, name="Client", definition="Old word", retired=True),
@@ -272,9 +272,11 @@ def test_the_scope_is_injected_for_a_narrowed_role_and_not_for_an_unlimited_one(
             "r", SimpleNamespace(rules={}), {}, ctx, [], role, relationships=[]
         ).rls_rules
 
+    ids = {view: i for i, view in enumerate(GLOSSARY_SCOPED_META_VIEWS, start=400)}
     narrowed = rules([META_DOMAIN_ID, "sales"])
-    assert set(narrowed) == {400, 401, 402, 403}
+    assert set(narrowed) == set(ids.values())
     assert "POSITION('|sales|' IN term_domains) > 0" in narrowed[400]
     assert "POSITION('|*|' IN term_domains) > 0" in narrowed[400]
-    assert "from_term_domains" in narrowed[402] and "to_term_domains" in narrowed[402]
+    edges = narrowed[ids["glossary_term_edges_meta"]]
+    assert "from_term_domains" in edges and "to_term_domains" in edges
     assert rules(["*"]) == {}

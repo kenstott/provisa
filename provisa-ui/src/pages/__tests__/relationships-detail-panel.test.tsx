@@ -13,9 +13,10 @@
 // a relationship's reverse open in the same panel, the reverse with a way back.
 
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { screen, fireEvent, within } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { render } from "../../test-utils/render";
 import { RelationshipsPage } from "../RelationshipsPage";
+import type { MutationResult } from "../../types/admin";
 
 const rel = (id: string, source: string, column: string, target: string) => ({
   id,
@@ -52,7 +53,11 @@ const RELS = {
 const TABLES: { tables: unknown[]; loading: boolean } = { tables: [], loading: false };
 const DOMAINS = { domains: [] };
 const UPSERT = { upsertRelationship: vi.fn(async () => ({ success: true, message: "" })) };
-const DELETE = { deleteRelationship: vi.fn() };
+const DELETE = {
+  deleteRelationship: vi.fn(
+    async (..._args: unknown[]): Promise<MutationResult> => ({ success: true, message: "" }),
+  ),
+};
 const AUTH = { capabilities: ["create_relationship"] };
 const FILTER: { domainsEnabled: boolean; domains: string[]; checkedDomains: Set<string> } = {
   domainsEnabled: false,
@@ -84,6 +89,18 @@ vi.mock("../../components/TagControl", () => ({ TagControl: () => null }));
 const rowOf = (text: string) =>
   within(screen.getByTestId("relationships-list")).getByText(text).closest("tr")!;
 const panel = () => screen.getByTestId("relationships-split-panel");
+
+describe("RelationshipsPage: the list's search", () => {
+  it("lists the relationships matching any word of the search", () => {
+    render(<RelationshipsPage />);
+    fireEvent.change(screen.getByTestId("filter-input"), {
+      target: { value: "customers payments" },
+    });
+    const list = within(screen.getByTestId("relationships-list"));
+    expect(list.getByText("orders.customer_id")).toBeInTheDocument();
+    expect(list.queryByText("orders.region_id")).toBeNull();
+  });
+});
 
 describe("RelationshipsPage: the right-hand detail panel", () => {
   it("has no panel until a row is chosen, then shows that relationship and marks its row", () => {
@@ -214,5 +231,46 @@ describe("RelationshipsPage: the domain filter", () => {
     // Their source, orders, is in sales: both kept.
     expect(both.getByText("orders.customer_id")).toBeTruthy();
     expect(both.getByText("orders.region_id")).toBeTruthy();
+  });
+});
+
+// A graph's relationship links here: the page opens with that relationship in its panel.
+describe("RelationshipsPage opened on a relationship", () => {
+  it("shows the linked relationship and marks its row", () => {
+    render(<RelationshipsPage />, {
+      initialEntries: ["/relationships?relationship=orders-to-regions"],
+    });
+    expect(screen.getByTestId("relationships-split-title")).toHaveTextContent("orders-to-regions");
+    expect(rowOf("orders.region_id").className).toContain("row-selected");
+  });
+});
+
+// REQ-2145: a delete that re-homes key refs off a tagged term asks first: what each column loses,
+// then the delete again with each lost tag confirmed.
+describe("RelationshipsPage: a delete that takes tags off columns", () => {
+  it("asks, then deletes with the lost tags confirmed", async () => {
+    DELETE.deleteRelationship
+      .mockResolvedValueOnce({
+        success: false,
+        message: "loses tags",
+        code: "tag.move_loses",
+        params: {
+          columns: [
+            { column: "customer_id", table: "pg.public.orders", loses: ["pii"], gains: [] },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({ success: true, message: "" });
+    render(<RelationshipsPage />);
+    fireEvent.click(rowOf("orders.customer_id"));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    expect(await screen.findByTestId("glossary-tag-loss")).toHaveTextContent("Loses: pii");
+    fireEvent.click(screen.getByTestId("glossary-tag-loss-move"));
+    await waitFor(() =>
+      expect(DELETE.deleteRelationship).toHaveBeenLastCalledWith("orders-to-customers", {
+        confirm_tag_loss: ["pii"],
+      }),
+    );
   });
 });

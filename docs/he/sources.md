@@ -245,6 +245,23 @@ Amazon Athena הוא שירות שאילתות ללא שרת על נתונים �
 
 חיפוש נקרא לכל הצהרה תחת הארגומנטים שלו, ושורותיו נשמרות תחת אותם ארגומנטים למשך ה-TTL של הטבלה. טבלת חיפוש היא לקריאה בלבד.
 
+**חיפוש שמוזן על-ידי join.** קשר יכול להזין את הארגומנטים של חיפוש מהעמודות של טבלה אחרת, כפי שהוא מזין את אלה של טבלת קוד: מפת ה-`parameters` שלו מציינת כל ארגומנט ואת עמודת המקור שממנה הוא מקבל ערך. משפט שמצרף את החיפוש לטבלה הזו מריץ אז שאילתת Qdrant אחת לכל קבוצה נבדלת של ערכי המקור, כפי שהתפקיד של המשפט קורא אותם, עם הארגומנטים של המשפט עצמו עבור אלה שהקשר אינו מזין. הנקודות של חיפוש אינן מחזיקות דבר מהשאילתה שמצאה אותן, ולכן הקשר מצרף לפי עמודת הפרמטר של השאילתה: כל נקודה נושאת בעמודה הזו את הערך שעבורו חיפשו אותה.
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+מחפשים את המילים של כל שורה, כשהנקודות של הסונטה שלה עצמה מוחרגות דרך מסנן `"@sonnet"` של החיפוש, וכל שורה מקבלת את שלוש הנקודות שנמצאו עבורה. משפט שנותן בעצמו אחד מהארגומנטים המוזנים, למשל `WHERE s._nf_query = 'the ravages of time'`, קורא את החיפוש לפי הארגומנטים שלו ואינו מוזן.
+
 ### סטרימינג {: #streaming }
 
 | סוג מקור | מנגנון | מוטציות |
@@ -1609,7 +1626,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 
 #### רישום מקובץ הגדרות ו-UI {: #config-file-and-ui-registration }
 
-ה-`host` של מקור `sparql` הוא כתובת ה-URL של נקודת הקצה SPARQL שלו (טופס המקורות שומר אותו באותה דרך). כל טבלה תחתיו נושאת `query_template`, שאילתת SELECT שמשתניה הם העמודות; כל כריכה (binding) היא `text`.
+ה-`host` של מקור `sparql` הוא כתובת ה-URL של נקודת הקצה SPARQL שלו (טופס המקורות שומר אותו באותה דרך). כל טבלה תחתיו נושאת `query_template`, שאילתת SELECT שמשתניה הם העמודות. התצוגה המקדימה מקלידה כל עמודה לפי סוג הנתונים XSD שהכריכות שלה חולקות: סוגי המספרים השלמים כ-`integer`, `xsd:decimal`, `xsd:double` ו-`xsd:float` כ-`double`, `xsd:boolean` כ-`boolean`, `xsd:date` כ-`date` ו-`xsd:dateTime` כ-`timestamp`. IRI, צומת ריק, מחרוזת פשוטה או מתויגת-שפה, או משתנה שהכריכות שלו שונות בסוגן, הם `text`.
 
 ```yaml
 sources:
@@ -1630,6 +1647,64 @@ tables:
 ```
 
 Register Table עובד באותה דרך כמו עבור Neo4j: בחר את המקור, הקלד שם טבלה ואת ה-SELECT, לחץ Preview (שאילתת ה-`sparqlPreview` מריצה אותה עם `LIMIT 5` וממלאת את רשימת העמודות), ואז רשום. הרישום שומר שורת `api_sources` ושורת `api_endpoints` (POST מקודד-טופס לנתיב נקודת הקצה, מנרמל `sparql_bindings`), אותן שורות שרישום מקובץ הגדרות כותב, והמנוע הילידי מנחית את השורות דרך אותה שרשרת שליפה כמו Neo4j.
+
+**Pushdown.** כשמשפט קורא טבלת SPARQL לבדה (בלי join), התנאים שלו על העמודות של הטבלה נכנסים לשאילתה שנשלחת לנקודת הקצה. ה-SELECT הרשום הופך לתת-שאילתה, `SELECT * WHERE { { <the SELECT> } FILTER(...) }`, ושורות ה-`PREFIX` וה-`BASE` שלו נשמרות לפניה.
+- נדחפים: שוויון ו-`IN` על עמודת `text` (משווים כ-`STR(?var)`, כך ש-IRI תואם לטקסט שלו); כל השוואה על עמודת `integer` או `double`; שוויון על `boolean`.
+- לא נדחפים: תנאים אחרים, כמו השוואת סדר על טקסט, תאריך, פונקציה של עמודה או פרמטר כרוך. הם מוחלים על השורות ש-Provisa מקבלת.
+- כל תנאי מוחל שוב על השורות, ולכן דחיפת תנאי רק מצמצמת את מה שנשלף.
+- ה-`LIMIT` של המשפט נדחף רק כשכל התנאים נדחפו והמשפט אינו מקבץ, אינו מצבר ואינו משתמש ב-`DISTINCT`, `ORDER BY` או `OFFSET`.
+- תשובה מצומצמת נשמרת במטמון תחת השאילתה שלה, בנפרד מזו של הטבלה כולה.
+
+#### מסיק (Reasoner) {: #reasoner }
+
+מקור `sparql` יכול לציין מסיק ומסמך אקסיומות OWL. טבלה שהשאילתה שלה היא IRI יחיד בסוגריים משולשים מגישה אז את המחלקה או התכונה הזו כפי שהאקסיומות מסיקות אותה:
+- מחלקה: עמודה אחת, החברים בה;
+- תכונת אובייקט או תכונת נתונים: שתי עמודות, כל נושא והערך שלו.
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+אפשר לכתוב את האקסיומות בכל תחביר שה-OWL API קורא: Turtle, ‏RDF/XML, התחביר הפונקציונלי של OWL או תחביר Manchester. HermiT הוא המסיק היחיד.
+
+כשקוראים טבלה מוסקת, המסיק:
+1. קורא את המחלקות והתכונות שהאקסיומות מציינות;
+2. שולח לנקודת הקצה `CONSTRUCT` עבור כל שלשה של התכונות האלה וכל שייכות למחלקות האלה, ומבקש N-Triples;
+3. מסווג את הפרוסה הזו לפי האקסיומות;
+4. מחזיר את העובדות הנובעות מכך.
+
+כל הטבלאות המוסקות של מקור חולקות סיווג אחד, והוא משמש שוב למשך ה-TTL של המטמון של הטבלה. לכן הצהרת הרעננות של המקור היא התדירות שבה הוא מסיק: `cache_ttl` לטבלה חיה, הרענון של הרפליקה לרפליקה, ופעם אחת ל-TTL של `-1`. מה שטבלה מוסקת מגישה מנוהל לכל קורא כמו כל טבלה אחרת.
+
+HermiT רץ כתוכנית נפרדת, לעולם לא בתוך השרת. הוא רץ על Eclipse Temurin JDK 21 מוצמד, עם HermiT, ה-OWL API והספריות שלהם ב-class path. כל רכיב מורד בשימוש הראשון, נבדק מול ה-SHA-256 ש-Provisa מצמידה ונשמר במטמון תחת שורש המטמון של תלויות זמן הריצה (`$PROVISA_RUNTIME_DEPS_CACHE`, ברירת מחדל `~/.cache/provisa/runtime_deps`). הורדה שנכשלת, או קובץ שהסכום שלו שונה מהמוצמד, מכשילים את הקריאה תוך ציון שמו.
 
 ## דוגמאות חיבור {: #connection-examples }
 

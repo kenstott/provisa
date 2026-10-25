@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+from collections.abc import Callable
 
 import jwt
 
@@ -45,6 +46,7 @@ from provisa.security.rights import (
 from provisa.otel_compat import get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.security.sni import org_from_host
+from provisa.core.org_forget import on_forget
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267, REQ-2092
 
@@ -183,6 +185,13 @@ def _loaded_roles() -> dict[str, dict]:  # REQ-1337
     return getattr(state, "roles", {})
 
 
+def _app_state():
+    """The runtime the request is served from (read at call time: the org runtime bound now)."""
+    from provisa.api.app import state
+
+    return state
+
+
 def _loaded_derived_roles() -> list[str]:  # REQ-2057
     """The attributes the bound org declares as derived roles."""
     from provisa.api.app import state
@@ -202,6 +211,13 @@ def _loaded_user_attributes(user_id: str) -> dict[str, str]:  # REQ-1382
 # REQ-1383: (org, environment, user) -> what this process last recorded of the user's provider
 # attributes there. A user's requests after the first cost a dictionary lookup.
 _recorded_idp: dict[tuple[str | None, str | None, str], dict[str, str]] = {}
+
+
+@on_forget(size=lambda: len(_recorded_idp))
+def _forget_recorded_idp(org_id: str) -> None:
+    """A deleted org's users' records go with it (REQ-2006: a sandbox mints one per visitor)."""
+    for key in [k for k in _recorded_idp if k[0] == org_id]:
+        _recorded_idp.pop(key, None)
 
 
 async def _record_idp_attributes(db_pool, identity: AuthIdentity) -> None:  # REQ-1383
@@ -487,6 +503,41 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             ]
         return []
 
+    async def _served_binding(
+        self, request: Request, org_id: str, identity: AuthIdentity | None
+    ) -> tuple[str, str] | JSONResponse | None:
+        """The runtime a request in ``org_id`` is served from, made ready: the environment the
+        request names (X-Provisa-Env), resolved as _OrgRoutingMiddleware resolves it and binds the
+        request to it. A role set's meta-role is built there, so it is known where the request
+        runs. None for the default org's prod: the runtime the process serves unbound, where a
+        meta-role built with no binding already is. A name the org has no environment by is
+        refused as the routing middleware refuses it; the right to be served by it is judged
+        there."""
+        from provisa.api.app import ensure_org_runtime
+        from provisa.api.env_routing import (
+            EnvironmentRightError,
+            EnvironmentSelectionError,
+            env_header_value,
+            resolve_selected_env,
+        )
+        from provisa.core.environments import PROD
+
+        requested = env_header_value(request.scope.get("headers") or [])
+        try:
+            env = await resolve_selected_env(self._admin_pool, org_id, identity, requested, None)
+        except EnvironmentSelectionError as exc:
+            return JSONResponse(
+                {"error": {"code": "env.unknown", "message": str(exc)}}, status_code=404
+            )
+        except EnvironmentRightError as exc:
+            return JSONResponse(
+                {"error": {"code": "env.switch_forbidden", "message": str(exc)}}, status_code=403
+            )
+        if org_id == self._default_org_id and env == PROD:
+            return None
+        await ensure_org_runtime(org_id, env)
+        return org_id, env
+
     @staticmethod
     def _meta_role(
         acting_set: list[str],
@@ -495,20 +546,26 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
     ) -> str:
         """The meta-role acting as ``acting_set`` qualified by the derived roles ``qualifiers``,
         built in the request's org runtime."""
-        from provisa.api.app import state as _app_state
+        from provisa.security.meta_role import ensure_meta_role
+
+        def build() -> str:
+            # A set naming no derived role is built as it always was, from its roles alone.
+            if qualifiers:
+                return ensure_meta_role(_app_state(), acting_set, qualifiers)
+            return ensure_meta_role(_app_state(), acting_set)
+
+        return AuthMiddleware._in_org(org_binding, build)
+
+    @staticmethod
+    def _in_org(org_binding: tuple[str, str | None] | None, build: Callable[[], str]) -> str:
+        """``build()`` run with the request's org (and environment) bound, where the role it
+        resolves is built."""
         from provisa.core.request_context import (
             reset_current_env,
             reset_current_org,
             set_current_env,
             set_current_org,
         )
-        from provisa.security.meta_role import ensure_meta_role
-
-        def build() -> str:
-            # A set naming no derived role is built as it always was, from its roles alone.
-            if qualifiers:
-                return ensure_meta_role(_app_state, acting_set, qualifiers)
-            return ensure_meta_role(_app_state, acting_set)
 
         if org_binding is None:
             return build()
@@ -624,16 +681,26 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 unsecured_roles, _loaded_derived_roles()
             )
             named_derived = tuple(held_derived)
-            if named_derived:
-                try:
-                    unsecured_role = self._meta_role(unsecured_roles, None, named_derived)
-                except PermissionError as refused:
-                    return _deny(request, 403, str(refused))
-            # Several roles: the request acts as their meta-role (security/meta_role.py).
-            elif len(set(unsecured_roles)) > 1:
-                unsecured_role = self._meta_role(unsecured_roles, None)
-            else:
-                unsecured_role = unsecured_roles[0]
+            served: tuple[str, str] | None = None
+            if (named_derived or len(set(unsecured_roles)) > 1) and self._default_org_id:
+                # The meta-role is built where the request will run: built unbound, it was made
+                # in prod's runtime, and a request naming another environment was refused there
+                # as "unknown role 'meta:...'".
+                bound = await self._served_binding(request, self._default_org_id, None)
+                if isinstance(bound, JSONResponse):
+                    return bound
+                served = bound
+            # One role is that role; several, or any named derived role, act as their meta-role
+            # (security/meta_role.py) -- the one resolver every unsecured transport uses (REQ-1952).
+            from provisa.auth.derived_roles import unsecured_acting_role
+
+            try:
+                unsecured_role = self._in_org(
+                    served,
+                    lambda: unsecured_acting_role(_app_state(), unsecured_roles, held_derived),
+                )
+            except PermissionError as refused:
+                return _deny(request, 403, str(refused))
             request.state.identity = AuthIdentity(
                 user_id="anonymous",
                 email=None,
@@ -1243,6 +1310,17 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     return JSONResponse(
                         status_code=403, content={"detail": role_probe.refusal(probe, said)}
                     )
+            if (
+                _org_binding is None
+                and active_org_id is not None
+                and (qualifiers or len(acting_set) > 1)
+            ):
+                # The default org's request: its meta-role is built in the environment it will be
+                # served from, as a tenant org's is above.
+                bound = await self._served_binding(request, active_org_id, identity)
+                if isinstance(bound, JSONResponse):
+                    return bound
+                _org_binding = bound
             if qualifiers:
                 # A set naming derived roles acts as its meta-role even with one data role. Named
                 # with no data role it reaches no data, and is refused as such.

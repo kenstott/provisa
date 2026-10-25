@@ -45,6 +45,7 @@ fragment ColumnFields on TableColumnType {
   fakeStableVersion
   syntheticRule
   isPii
+  piiTerm
 }
 
 fragment WriteGrantFields on WriteGrantType {
@@ -113,6 +114,7 @@ query SourcesQuery {
     federationHintsJson
     passwordRef
     changeSignal
+    rowFetchByKeys
     cdc {
       bootstrapServers
       topicPrefix
@@ -240,6 +242,7 @@ query TablesQuery {
     replicate
     region
     draft
+    rowMaterialize
     loadProtected
     offPeakWindow
     offPeakTz
@@ -592,6 +595,7 @@ query RelationshipsQuery {
     computedCypherAlias
     autoSuggested
     disableCypher
+    sameEntity
     viaTableId
     viaTableName
     viaSourceColumn
@@ -627,6 +631,7 @@ query AllRelationshipsQuery {
     computedCypherAlias
     autoSuggested
     disableCypher
+    sameEntity
     viaTableId
     viaTableName
     viaSourceColumn
@@ -1096,8 +1101,8 @@ mutation UpdateRelationship($input: RelationshipInput!) {
   }
 }
 
-mutation DeleteRelationship($id: String!) {
-  deleteRelationship(id: $id) {
+mutation DeleteRelationship($id: String!, $confirmTagLoss: [String!], $carryTags: Boolean! = false) {
+  deleteRelationship(id: $id, confirmTagLoss: $confirmTagLoss, carryTags: $carryTags) {
     ...MutationResult
   }
 }

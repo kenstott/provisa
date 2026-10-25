@@ -49,6 +49,10 @@ try {
 // cytoscape-types.ts exists to work around. Name it here rather than casting the instance away.
 type CyCore = ReturnType<typeof cytoscape> & { resize(): void };
 
+const FIT_PAD = 30;
+// A row's text (10px at zoom 1) is legible at no smaller a zoom.
+const READABLE_ZOOM = 1;
+
 interface LineageDagProps {
   graph: LineageGraphData;
   height?: number | string;
@@ -77,6 +81,11 @@ interface LineageDagProps {
   stats?: boolean;
   // A field's registered description, shown at the cursor while it hovers the row.
   describeColumn?: DescribeColumn;
+  // How a box names its registered relation (lineage-layout's relationLabel).
+  relationLabel?: (relation: string) => string;
+  // The first view is legible rather than whole: the graph fitted to the canvas's width, never
+  // below READABLE_ZOOM, and the canvas as tall as the graph then is, up to `height` (a number).
+  readable?: boolean;
   // REQ-2116: where each element is defined, as far as the user's rights open it; a click on a
   // field, a double click on a box or a click on a command's edge opens it.
   links?: LineageLinks;
@@ -98,6 +107,8 @@ export function LineageDag({
   legend = false,
   stats = false,
   describeColumn,
+  relationLabel,
+  readable = false,
   links,
   onOpenLink,
 }: LineageDagProps): React.ReactElement {
@@ -113,7 +124,9 @@ export function LineageDag({
     columns: string[];
   } | null>(null);
 
-  const fitToScreen = () => cyRef.current?.fit(undefined, 30);
+  // `readable`: the canvas's height once the graph is laid out, so it is no taller than the graph.
+  const [canvasHeight, setCanvasHeight] = useState<number | string>(height);
+  const fitToScreen = () => cyRef.current?.fit(undefined, FIT_PAD);
   const downloadPng = () => {
     const cy = cyRef.current;
     if (!cy) return;
@@ -144,6 +157,7 @@ export function LineageDag({
       resultLabel,
       allColumns,
       lanesAround: lanes?.members,
+      relationLabel,
     });
 
     // A relation is a compound node whose children are its rows (and the "+N unused" footer).
@@ -694,12 +708,31 @@ export function LineageDag({
       });
     };
 
+    // The whole graph fitted to the canvas, or, `readable`, fitted to its width at no less than
+    // READABLE_ZOOM and no more than 1.5, from its top, with the canvas grown to the graph.
+    const firstView = () => {
+      const el = containerRef.current;
+      if (!readable || !el || el.clientWidth === 0) {
+        cy.fit(undefined, FIT_PAD);
+        return;
+      }
+      const bb = cy.elements().boundingBox();
+      const zoom = Math.min(1.5, Math.max(READABLE_ZOOM, (el.clientWidth - 2 * FIT_PAD) / bb.w));
+      cy.zoom(zoom);
+      cy.pan({
+        x: Math.max(FIT_PAD, (el.clientWidth - bb.w * zoom) / 2) - bb.x1 * zoom,
+        y: FIT_PAD - bb.y1 * zoom,
+      });
+      if (typeof height === "number")
+        setCanvasHeight(Math.min(height, Math.ceil(bb.h * zoom + 2 * FIT_PAD)));
+    };
+
     const finish = () => {
       placeHeads();
       packIsolated();
       dressBoxes();
       drawLanes();
-      cy.fit(undefined, 30);
+      firstView();
     };
     if (connected.nonempty()) {
       const layout = cy.layout({
@@ -755,7 +788,7 @@ export function LineageDag({
       cy.resize();
       const el = containerRef.current;
       const hasArea = !!el && el.clientWidth > 0 && el.clientHeight > 0;
-      if (hasArea && !hadArea) cy.fit(undefined, 30);
+      if (hasArea && !hadArea) firstView();
       hadArea = hasArea;
     });
     observer.observe(containerRef.current);
@@ -765,15 +798,19 @@ export function LineageDag({
       cyRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToggleRelation is read through toggleRef; only its presence decides whether hints are wired
-  }, [graph, collapsedRelations, resultLabel, allColumns, lanes, describeColumn]);
+  }, [graph, collapsedRelations, resultLabel, allColumns, lanes, describeColumn, relationLabel]);
 
   return (
     <div
-      style={{ position: "relative", width: "100%", height }}
+      style={{ position: "relative", width: "100%", height: canvasHeight }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div ref={containerRef} style={{ width: "100%", height }} data-testid="lineage-dag" />
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: canvasHeight }}
+        data-testid="lineage-dag"
+      />
       {legend && (
         <div
           style={{ position: "absolute", insetInlineStart: 8, bottom: 8, pointerEvents: "none" }}
@@ -834,7 +871,7 @@ export function LineageDag({
         {onExpandAll && (
           <Tip text="Expand all datasets" named>
             <ActionIcon
-              variant="default"
+              variant="subtle"
               onClick={onExpandAll}
               aria-label="Expand all datasets"
               data-testid="lineage-expand-all"
@@ -846,7 +883,7 @@ export function LineageDag({
         {onCollapseAll && (
           <Tip text="Collapse all datasets" named>
             <ActionIcon
-              variant="default"
+              variant="subtle"
               onClick={onCollapseAll}
               aria-label="Collapse all datasets"
               data-testid="lineage-collapse-all"
@@ -858,7 +895,7 @@ export function LineageDag({
         {onOpenModal && (
           <Tip text="Open full view" named>
             <ActionIcon
-              variant="default"
+              variant="subtle"
               onClick={onOpenModal}
               aria-label="Open full view"
               data-testid="lineage-open-modal"
@@ -869,7 +906,7 @@ export function LineageDag({
         )}
         <Tip text="Fit to screen" named>
           <ActionIcon
-            variant="default"
+            variant="subtle"
             onClick={fitToScreen}
             aria-label="Fit to screen"
             data-testid="lineage-fit"
@@ -879,7 +916,7 @@ export function LineageDag({
         </Tip>
         <Tip text="Download PNG" named>
           <ActionIcon
-            variant="default"
+            variant="subtle"
             onClick={downloadPng}
             aria-label="Download PNG"
             data-testid="lineage-download"

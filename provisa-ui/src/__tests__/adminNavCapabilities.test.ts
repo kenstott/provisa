@@ -50,11 +50,12 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/metadata-export": "org_settings",
   "/admin/import": "org_settings", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "org_settings",
+  "/admin/classification-kinds": "org_settings", // REQ-2147: the kinds the org's profiler tests for
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
   // REQ-1590: the org's own business glossary, on its own read right. Looking a term up to
   // understand a column is not administering the org, so every seeded role reaches the surface;
   // curation inside it is gated on `glossary_rw`.
-  "/admin/glossary": "glossary_read", // REQ-1387
+  "/admin/ontology": "glossary_read", // REQ-1387
   "/admin/domains": "org_settings",
   // REQ-1487: the org's environments — its branches, the merges between them, and the repository
   // the model is projected into. All of it is the acting org's own model, so none of it is
@@ -149,7 +150,7 @@ describe("admin surface capabilities", () => {
     const nav = navBarAdminCapabilities();
     for (const [path, capability] of Object.entries(ORG_SCOPED)) {
       // The glossary's nav entry is the top-level NavBar link, asserted below.
-      if (path === "/admin/glossary") continue;
+      if (path === "/admin/ontology") continue;
       // REQ-1469: billing's nav entry is the account-menu item in NavBar.tsx, asserted below.
       if (path === "/admin/billing") continue;
       // The health table was merged into the dashboard, so /admin/system-health is a deep link to
@@ -161,9 +162,9 @@ describe("admin surface capabilities", () => {
 
   it("shows the glossary as a top-level nav entry gated on its route's right", () => {
     // REQ-1387: Glossary is a top-level menu item, not an Admin group item — but the gate
-    // must still match the /admin/glossary route or the link 403s (or hides the surface).
+    // must still match the /admin/ontology route or the link 403s (or hides the surface).
     const source = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
-    const linkAt = source.indexOf('to="/admin/glossary"');
+    const linkAt = source.indexOf('to="/admin/ontology"');
     expect(linkAt).toBeGreaterThan(-1);
     const gate = source.slice(Math.max(0, linkAt - 200), linkAt);
     expect(gate).toContain('capability="glossary_read"'); // REQ-1590

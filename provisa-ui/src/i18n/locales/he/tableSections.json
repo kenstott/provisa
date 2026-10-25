@@ -14,8 +14,8 @@
     "table": "טבלה",
     "domain": "תחום",
     "tags": "תגיות",
-    "glossaryTerms": "מונחי מילון מונחים",
-    "noTerms": "אף מונח במילון המונחים אינו נותן שם לעמודה בטבלה זו",
+    "glossaryTerms": "מונחים",
+    "noTerms": "אף מונח אינו נותן שם לעמודה בטבלה זו",
     "relationships": "קשרים",
     "noRelationships": "טבלה זו אינה משתתפת באף קשר",
     "fromSource": "{{value}} (מהמקור)",
@@ -31,6 +31,10 @@
       "fail": "נכשל",
       "error": "שגיאה",
       "skipped": "דולג"
-    }
+    },
+    "classTerm": "השורות הן מופעים של",
+    "classTermPlaceholder": "בחר מונח",
+    "noClassTerm": "אין מונח",
+    "classTermUnreadable": "לא ניתן היה לקרוא את המונח שלה: {{error}}"
   }
 }

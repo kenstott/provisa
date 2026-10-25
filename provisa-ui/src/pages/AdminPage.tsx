@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
 import {
@@ -60,6 +60,7 @@ import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesT
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
+import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
@@ -100,8 +101,9 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
+  "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
-  "/admin/glossary": "Glossary", // REQ-1387: business-glossary curation
+  "/admin/ontology": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
   // Legacy routes deep-link to the matching sub-tab.
   "/admin/security": "Security",
@@ -238,6 +240,25 @@ export function AdminPage() {
     },
   ];
   const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
+  // `?domain=<id>` (a graph's domain link, lib/entityHref): that domain's row is marked, on the
+  // page that holds it, and brought into view.
+  const [searchParams] = useSearchParams();
+  const linkedDomain = searchParams.get("domain");
+  const [seededDomain, setSeededDomain] = useState<string | null>(null);
+  if (linkedDomain !== seededDomain && userDomains.length > 0) {
+    setSeededDomain(linkedDomain);
+    const at = domainSortGroup.items.findIndex(
+      (item) => item.type === "row" && item.row.id === linkedDomain,
+    );
+    if (at >= 0 && domainSortGroup.groupBy.length === 0) setDomainPage(Math.floor(at / PAGE_SIZE));
+  }
+  useEffect(() => {
+    if (linkedDomain === null) return;
+    document
+      .querySelector(`[data-testid="domain-row-${CSS.escape(linkedDomain)}"]`)
+      ?.scrollIntoView({ block: "center" });
+    // Again once the rows are drawn: the list waits on the settings saying domains are on.
+  }, [linkedDomain, domainPage, activeTab, settings, userDomains]);
 
   const closeAddDomain = () => {
     setAddingDomain(false);
@@ -457,7 +478,7 @@ export function AdminPage() {
                           colSpan={6}
                           rowKey={(d) => d.id}
                           render={(d) => (
-                            <ListRow>
+                            <ListRow selected={d.id === linkedDomain} testId={`domain-row-${d.id}`}>
                               <Table.Td>{d.id}</Table.Td>
                               <Table.Td>{d.description || "—"}</Table.Td>
                               <Table.Td>
@@ -548,6 +569,7 @@ export function AdminPage() {
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
+        {activeTab === "Classification" && <ClassificationKindsTab />}
         {activeTab === "Reports" && <ReportsTab />}
         {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>

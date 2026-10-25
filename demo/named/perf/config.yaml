@@ -523,6 +523,9 @@ roles:
   domain_access:
   - '*'
 server:
+  # REQ-2134: this config registers python commands (demo/py_functions), host code.
+  commands:
+    allow_host_code: true
   limits:
     default_row_limit: 100
     request_timeout: 60
@@ -565,6 +568,7 @@ sources:
     correlation_max_columns: 20
     joint_max_distinct: 20
     category_max_columns: 10
+    classification_sample: 500
   type: data_profiler
 - description: Animal shelter GraphQL API — staff schedules, breed catalogue, and animal assignment records
     managed by shelter operations

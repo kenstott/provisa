@@ -618,7 +618,9 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             return "created"
         have_cols = self._existing_columns(cur, schema, table)
         have_pk = self._existing_pk(cur, schema, table)
-        if have_cols == want_cols and sorted(have_pk) == sorted(want_pk):
+        if have_cols == want_cols and sorted(have_pk) in (sorted(want_pk), []):
+            # A replica is built with no key and keyed once it has landed (REQ-2015): one with
+            # the columns and no key yet is a landed replica, never one to empty.
             return "kept"
         cur.execute(f'DROP TABLE "{schema}"."{table}"')
         cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
@@ -634,9 +636,14 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     ) -> None:
         """Create the replica table when nothing stands at its name; proceed only when what stands
         there is an ordinary table. A view or a foreign table raises ``ReplicaTargetError`` — every
-        write a caller issues after this would otherwise go through it into the source."""
+        write a caller issues after this would otherwise go through it into the source.
+
+        The schema is created with it, as the replica reconcile creates its own: the engine's store
+        holds an org's ``_mv_cache`` schema only once something writes there, and a store of the
+        engine's own (not the control plane's database) is given none at boot."""
         from provisa.federation.replica_guard import require_pg_replica_table
 
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
         if not require_pg_replica_table(cur, schema, table, action="write the replica"):
             cur.execute(self._create_table_ddl(schema, table, columns, pk_columns))
 

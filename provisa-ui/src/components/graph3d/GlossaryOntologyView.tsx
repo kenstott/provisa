@@ -13,45 +13,71 @@
 // 95% of the viewport by its expand button. Its data is read from the meta domain as the user
 // when the view is opened; three.js loads then too.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Loader } from "@mantine/core";
+import { ActionIcon, Alert, Loader } from "@mantine/core";
 import { Network } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { dataGraphql } from "../../api/metaGraph";
 import { GraphExplorer } from "./GraphExplorer";
-import { GLOSSARY_SCOPE, type GraphData } from "./graphModel";
+import { GLOSSARY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
 import {
+  flatTerms,
   glossaryGraph,
-  termEdgesQuery,
-  termsQuery,
-  type ProposalReason,
-  type TermEdgeRow,
-  type TermRow,
+  ontologyCountQuery,
+  ontologyQuery,
+  overviewGraph,
+  termEdges,
+  type CountRow,
+  type OntologyRows,
 } from "./glossaryGraphData";
+import { NODE_BUDGET } from "./neighbourhood";
 import { GraphModal } from "./KnowledgeGraphPanel";
+import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
+import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
 
-async function loadGlossaryGraph(
-  role: string,
-  say: (reason: ProposalReason) => string,
-): Promise<GraphData | null> {
+// Before the first scoped read: nothing drawn yet.
+const EMPTY: GraphData = { nodes: [], edges: [] };
+
+/** Every layer, no filter: what the view's controls choose from. */
+const EVERYTHING: QueryScope = {
+  layers: new Set(GLOSSARY_SCOPE.layerOrder as LayerId[]),
+  domains: [],
+  edgeTypes: [],
+  hiddenStatuses: [],
+  orphans: true,
+  tags: [],
+  sensitivities: [],
+  search: [],
+};
+
+/** What a read of the ontology came to: the graph and the query that read it, or -- past the
+ * budget -- how many terms it would have read, with each term's domains. */
+type Loaded =
+  | { data: GraphData; query: string; over?: undefined }
+  | { over: number; rows: CountRow[]; query: string };
+
+/** The ontology as ``scope`` reads it, in one query (REQ-2136): its terms counted first, and read
+ * only within the budget (REQ-2143); null when the role cannot read the glossary. */
+async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | null> {
   const m = await metaReader(role);
-  const tq = termsQuery(m);
-  if (tq === null) return null;
-  const eq = termEdgesQuery(m);
-  const [{ glossary_terms: terms }, edges] = await Promise.all([
-    dataGraphql<{ glossary_terms: TermRow[] }>(tq, {}, role),
-    eq === null
-      ? Promise.resolve([] as TermEdgeRow[])
-      : dataGraphql<{ glossary_term_edges: TermEdgeRow[] }>(eq, {}, role).then(
-          (r) => r.glossary_term_edges,
-        ),
-  ]);
-  return glossaryGraph(terms, edges, say);
+  const query = ontologyQuery(m, scope);
+  const count = ontologyCountQuery(m, scope);
+  if (query === null || count === null) return null;
+  const counted = (await dataGraphql<{ glossary_terms: CountRow[] }>(count, {}, role))
+    .glossary_terms;
+  if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
+  const rows = await dataGraphql<OntologyRows>(query, {}, role);
+  // A search's neighbourhood is read nested, a level to each hop: each term once, flat.
+  const terms = flatTerms(rows.glossary_terms);
+  return { data: glossaryGraph(terms, termEdges(terms), rows.data_products), query };
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */
+/** The org's one ontology graph, in place and expanded: one set of remembered settings. */
+const ONTOLOGY_SETTINGS: GraphKey = { kind: "ontology", subject: null };
+
 export function OntologyToggle({
   open,
   onChange,
@@ -60,39 +86,113 @@ export function OntologyToggle({
   onChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
+  // An icon in the page's toolbar, named by its tip and its label, filled while the view is on.
   return (
-    <Button
-      variant={open ? "filled" : "default"}
-      leftSection={<Network size={14} />}
-      onClick={() => onChange(!open)}
-      aria-pressed={open}
-      data-testid="glossary-ontology-toggle"
-    >
-      {t("graph3d.ontologyView")}
-    </Button>
+    <Tip text={t("graph3d.ontologyView")} named>
+      <ActionIcon
+        size="input-sm"
+        variant={open ? "light" : "subtle"}
+        onClick={() => onChange(!open)}
+        aria-label={t("graph3d.ontologyView")}
+        aria-pressed={open}
+        data-testid="glossary-ontology-toggle"
+      >
+        <Network size={16} aria-hidden />
+      </ActionIcon>
+    </Tip>
   );
 }
 
-export function GlossaryOntologyView() {
+/** ``search``: the Glossary page's search, which focuses the graph (searchItems' rule). */
+export function GlossaryOntologyView({ search }: { search: string }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
-  const [read, setRead] = useState<{ data: GraphData | null; error: string | null; done: boolean }>(
-    { data: null, error: null, done: false },
+  const said = useCallback(
+    (domain: string, count: number) =>
+      t("graph3d.domainCount", {
+        domain: domain === "*" ? t("glossaryTab.enterpriseDomainLabel") : domain,
+        count,
+      }),
+    [t],
   );
+  const [read, setRead] = useState<{ all: GraphData | null; error: string | null; done: boolean }>({
+    all: null,
+    error: null,
+    done: false,
+  });
+  // What the controls keep, read afresh whenever they change; the last read is drawn meanwhile.
+  const [scope, setScope] = useState<QueryScope | null>(null);
+  // The scoped read: what is drawn, and the query that read it (Open as query's).
+  const [scoped, setScoped] = useState<Loaded | null>(null);
   const [open, setOpen] = useState(false);
+  // Polly's glossary tools change the ontology server-side (ChatPanel's provisa:glossary-changed):
+  // the view reads it again, as the term list does.
+  const [changes, setChanges] = useState(0);
+  useEffect(() => {
+    const changed = () => setChanges((n) => n + 1);
+    window.addEventListener("provisa:glossary-changed", changed);
+    return () => window.removeEventListener("provisa:glossary-changed", changed);
+  }, []);
   useEffect(() => {
     if (actingRoles === null) return;
     let cancelled = false;
-    loadGlossaryGraph(actingRoles, (reason) => t(`graph3d.why_${reason}`)).then(
-      (data) => !cancelled && setRead({ data, error: null, done: true }),
+    loadOntology(actingRoles, EVERYTHING).then(
+      (all) =>
+        !cancelled &&
+        setRead({
+          // Past the budget the choices are the overview's: the domains.
+          all:
+            all === null ? null : all.over === undefined ? all.data : overviewGraph(all.rows, said),
+          error: null,
+          done: true,
+        }),
       (e: unknown) =>
         !cancelled &&
-        setRead({ data: null, error: e instanceof Error ? e.message : String(e), done: true }),
+        setRead({ all: null, error: e instanceof Error ? e.message : String(e), done: true }),
     );
     return () => {
       cancelled = true;
     };
-  }, [actingRoles, t]);
+  }, [actingRoles, said, changes]);
+  useEffect(() => {
+    if (actingRoles === null || scope === null) return;
+    let cancelled = false;
+    loadOntology(actingRoles, scope).then(
+      (d) => !cancelled && setScoped(d),
+      (e: unknown) =>
+        !cancelled && setRead((r) => ({ ...r, error: e instanceof Error ? e.message : String(e) })),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [actingRoles, scope, changes]);
+  const onScope = useCallback((s: QueryScope) => setScope(s), []);
+  // REQ-2143: past the budget, the whole ontology unsearched is its overview -- each domain with
+  // its count, picked to narrow to it -- and a search or a domain still past it is said.
+  const overview =
+    scoped?.over !== undefined &&
+    scope !== null &&
+    scope.search.length === 0 &&
+    scope.domains.length === 0;
+  const drawn: GraphData =
+    scoped === null
+      ? EMPTY
+      : scoped.over === undefined
+        ? scoped.data
+        : overview
+          ? overviewGraph(scoped.rows, said)
+          : EMPTY;
+  const notice =
+    scoped?.over !== undefined && !overview
+      ? t("graph3d.overBudget", { count: scoped.over })
+      : null;
+  const asQuery = (all: GraphData) => ({
+    all,
+    onScope,
+    text: scoped?.query ?? null,
+    notice,
+    overview,
+  });
 
   if (read.error) {
     return (
@@ -102,7 +202,7 @@ export function GlossaryOntologyView() {
     );
   }
   if (!read.done) return <Loader size="sm" data-testid="ontology-view-loading" />;
-  if (read.data === null) {
+  if (read.all === null) {
     return (
       <Alert color="yellow" data-testid="ontology-view-unreadable">
         {t("graph3d.glossaryUnreadable")}
@@ -110,24 +210,36 @@ export function GlossaryOntologyView() {
     );
   }
   return (
-    <div data-testid="ontology-view">
+    // In place of the term list it takes the list's space: the stage fills down to the page's foot.
+    <div
+      data-testid="ontology-view"
+      style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+    >
       <GraphExplorer
-        data={read.data}
+        data={drawn}
+        query={asQuery(read.all)}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         zero={[]}
+        search={search}
         onExpand={() => setOpen(true)}
+        settingsKey={ONTOLOGY_SETTINGS}
+        exportName="ontology"
         testId="ontology"
       />
       <GraphModal
         opened={open}
         onClose={() => setOpen(false)}
         title={t("graph3d.ontologyTitle")}
-        data={read.data}
+        data={drawn}
+        query={asQuery(read.all)}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         focus={null}
         zero={[]}
+        search={search}
+        settingsKey={ONTOLOGY_SETTINGS}
+        exportName="ontology"
       />
     </div>
   );

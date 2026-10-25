@@ -59,6 +59,8 @@ export interface Source {
   passwordRef?: string | null;
   changeSignal: string; // REQ-929: source default change signal, inherited by its tables
   cdc?: SourceCdcConfig | null;
+  // REQ-1865: its type fetches rows by key, so a table of it may be replicated row by row.
+  rowFetchByKeys: boolean;
 }
 
 // REQ-1143: server-derived plain-English summary of a table's effective refresh/serving policy.
@@ -158,13 +160,18 @@ export function tagParam(tagId: string): string | null {
 // REQ-1377: one tag on one object; exactly the fields implied by objectType are set.
 export interface TagAssignment {
   tagId: string;
-  objectType: TagObjectType;
+  // A glossary term's tags (REQ-2145) are assigned on its panel, not by TagControl.
+  objectType: TagObjectType | "term";
   sourceId?: string | null;
   tableId?: number | null;
   columnName?: string | null;
   relationshipId?: string | null;
   // Tracked function/webhook name (commands are named, not serial-keyed).
   commandName?: string | null;
+  // REQ-2145: the glossary term an objectType "term" assignment is on.
+  termId?: number | null;
+  // REQ-2145: on a column, put the tag on the column's term instead.
+  alsoTerm?: boolean;
   tableRef?: string | null;
   // Why this tag is on this object; required for 'deprecated'.
   reason?: string | null;
@@ -225,6 +232,9 @@ export interface TableColumn {
   syntheticRule?: string | null;
   // REQ-1494: the column is tagged pii (marked in test-data mode when it declares no fake).
   isPii?: boolean;
+  // REQ-2145: the glossary term the column is pii through; null when it is pii by its own mark
+  // or not at all.
+  piiTerm?: string | null;
 }
 
 // REQ-1360: metadata-only Kimball measure annotation for a table's implicit_measures.
@@ -347,6 +357,7 @@ export interface RegisteredTable {
   replicate: number | null; // REQ-826: null = inherit source
   region: string | null; // REQ-1921: where its data lives; null = no region
   draft: boolean; // REQ-1921: out of service until its domain's owners release it
+  rowMaterialize: boolean; // REQ-1865: replicated row by row, fetched by key
   loadProtected: boolean | null; // REQ-1141: null = inherit source
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override
   offPeakTz: string | null; // REQ-1141: window zone override
@@ -601,6 +612,8 @@ export interface Relationship {
   computedCypherAlias: string | null;
   autoSuggested: boolean;
   disableCypher: boolean;
+  /** REQ-2141: the rows it joins are the same entity (two tables one term grounds, keys 1:1). */
+  sameEntity: boolean;
   // REQ-1586: junction declaration. Present only on a junction-backed edge; viaLabelSource says
   // where the exposed Cypher type name comes from (column | table | fixed).
   // The ERD keys its nodes by registered-table id, so it needs the id as well as the name

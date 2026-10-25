@@ -20,7 +20,8 @@ from __future__ import annotations
 
 
 import logging
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, or_, select
 
@@ -259,32 +260,113 @@ def native_filter_required(
     return None
 
 
-async def _fetch_table_with_columns(
-    conn, row, all_tables: list | None = None, user_can_deploy: bool = True
-) -> RegisteredTableType:
-    _col_res = await conn.execute_core(
-        select(table_columns)
-        .where(table_columns.c.table_id == row["id"])
-        .order_by(table_columns.c.id)
-    )
-    col_rows = [dict(r._mapping) for r in _col_res.fetchall()]
-    from provisa.compiler.naming import apply_gql_name, apply_sql_name
-    from provisa.core.schema_org import tag_assignments as _ta
+@dataclass
+class TableListing:
+    """What the admin's view of a set of tables reads beside their own rows, read once for the
+    whole set: the Tables page lists every table, and reading these table by table -- several
+    control-plane queries each, and an OpenAPI source's whole spec parsed again for each of its
+    tables -- took the listing past 26s on ~70 tables."""
 
+    columns: dict[int, list[dict]]  # table id -> its columns, in order
+    # table id -> its columns tagged pii (REQ-1494), each with the term it carries pii through,
+    # None when the column is tagged itself (REQ-2145)
+    pii: dict[int, dict[str, str | None]]
+    sources: dict[str, tuple[str, str | None]]  # source id -> (type, path)
+    grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
+    endpoints: dict[str, tuple[str, dict[str, Any]]]  # OpenAPI source -> (base url, ops by id)
+
+
+#: Each OpenAPI source's operations, parsed once per spec it holds: (that spec, its queries).
+_parsed_specs: dict[str, tuple[dict, list]] = {}
+
+
+def _openapi_operations(source_id: str) -> tuple[str, dict[str, Any]] | None:
+    """The base url and the operations, by normalized operation id, of the OpenAPI source's
+    spec as this process holds it (_ensure_openapi_spec); None when it cannot be parsed."""
+    from provisa.api.app import state
+    from provisa.openapi.mapper import parse_spec
+
+    spec_info = state.openapi_specs.get(source_id, {})
+    spec = spec_info.get("spec", {})
+    cached = _parsed_specs.get(source_id)
+    if cached is None or cached[0] is not spec:
+        try:
+            queries, _ = parse_spec(spec)
+        except Exception as exc:  # allow-ble: a spec that does not parse names no endpoint for its tables, as before; logged with its cause
+            log.warning("openapi source %s: spec does not parse: %s", source_id, exc)
+            return None
+        cached = _parsed_specs[source_id] = (spec, queries)
+    operations: dict[str, Any] = {}
+    for q in cached[1]:
+        operations.setdefault(normalize_op_id(q.operation_id), q)
+    return spec_info.get("base_url", ""), operations
+
+
+async def table_listing(conn, rows: list[dict]) -> TableListing:
+    """What ``rows`` (registered tables) need beside themselves, one query per kind."""
+    from provisa.core.repositories import write_grant as write_grant_repo
+
+    ids = [r["id"] for r in rows]
+    columns: dict[int, list[dict]] = {}
+    for r in (
+        await conn.execute_core(
+            select(table_columns)
+            .where(table_columns.c.table_id.in_(ids))
+            .order_by(table_columns.c.table_id, table_columns.c.id)
+        )
+    ).fetchall():
+        columns.setdefault(r._mapping["table_id"], []).append(dict(r._mapping))
     # REQ-1494: the columns tagged pii -- marked in the editor's test-data mode when they declare
-    # no fake, since a test-data environment shows them as NULL.
-    _pii = {
-        r.column_name
-        for r in (
-            await conn.execute_core(
-                select(_ta.c.column_name).where(
-                    _ta.c.object_type == "column",
-                    _ta.c.table_id == row["id"],
-                    _ta.c.base_tag_id == "pii",
-                )
+    # no fake, since a test-data environment shows them as NULL. REQ-2145: a column carries pii
+    # through its term too, and says which.
+    from provisa.core.term_tags import effective_column_tags
+
+    pii: dict[int, dict[str, str | None]] = {}
+    for (table_id, column), tags in (await effective_column_tags(conn, set(ids))).items():
+        through = [t for t in tags if t["base_tag_id"] == "pii"]
+        if through:
+            pii.setdefault(table_id, {})[column] = next(
+                (t["term"] for t in through if t["via"] == "term"), None
             )
-        ).fetchall()
-    }
+    # REQ-1997: the source's path too -- where its file is decides whether it takes writes.
+    source_rows = (
+        await conn.execute_core(
+            select(sources.c.id, sources.c.type, sources.c.path).where(
+                sources.c.id.in_(sorted({r["source_id"] for r in rows}))
+            )
+        )
+    ).fetchall()
+    known = {r.id: (r.type, r.path) for r in source_rows}
+    endpoints: dict[str, tuple[str, dict[str, Any]]] = {}
+    for source_id, (source_type, path) in known.items():
+        if source_type == "openapi" and path and await _ensure_openapi_spec(source_id):
+            operations = _openapi_operations(source_id)
+            if operations is not None:
+                endpoints[source_id] = operations
+    return TableListing(
+        columns=columns,
+        pii=pii,
+        sources=known,
+        grants=await write_grant_repo.for_tables(conn, ids),
+        endpoints=endpoints,
+    )
+
+
+async def _fetch_table_with_columns(
+    conn,
+    row,
+    all_tables: list | None = None,
+    user_can_deploy: bool = True,
+    listing: TableListing | None = None,
+) -> RegisteredTableType:
+    """The admin's view of the registered table ``row``. ``listing``: what a listing of many
+    tables read for all of them at once (table_listing); one table alone reads its own."""
+    if listing is None:
+        listing = await table_listing(conn, [row])
+    col_rows = listing.columns.get(row["id"], [])
+    from provisa.compiler.naming import apply_gql_name, apply_sql_name
+
+    _pii = listing.pii.get(row["id"], {})
 
     # REQ-1360: metadata-only implicit measure/dimension annotations, gated by the
     # table's own enable_aggregates/enable_group_by flags.
@@ -296,12 +378,7 @@ async def _fetch_table_with_columns(
         )
     )
 
-    # REQ-1997: the source's path too -- where its file is decides whether it takes writes.
-    _source_type, _source_path = (
-        await conn.execute_core(
-            select(sources.c.type, sources.c.path).where(sources.c.id == row["source_id"])
-        )
-    ).one()
+    _source_type, _source_path = listing.sources[row["source_id"]]
 
     columns = [
         TableColumnType(
@@ -337,11 +414,10 @@ async def _fetch_table_with_columns(
             synthetic_rule=r.get("synthetic_rule"),
             fake_why=r.get("fake_why"),  # REQ-2094
             is_pii=r["column_name"] in _pii,
+            pii_term=_pii.get(r["column_name"]),  # REQ-2145
         )
         for r in col_rows
     ]
-    from provisa.core.repositories import write_grant as write_grant_repo
-
     write_grants = [
         WriteGrantType(
             role=g["role"],
@@ -357,7 +433,7 @@ async def _fetch_table_with_columns(
             ],
             why=g["why"],  # REQ-2094
         )
-        for g in await write_grant_repo.for_table(conn, row["id"])
+        for g in listing.grants.get(row["id"], [])
     ]  # REQ-2074
     unique_constraints = [
         UniqueConstraintType(name=u["name"], columns=list(u["columns"]))
@@ -365,29 +441,11 @@ async def _fetch_table_with_columns(
     ]  # REQ-1093
 
     api_endpoint = None
-    if await _ensure_openapi_spec(row["source_id"]):
-        try:
-            from provisa.api.app import state
-            from provisa.openapi.mapper import parse_spec
-
-            spec_info = state.openapi_specs.get(row["source_id"], {})
-            spec = spec_info.get("spec", {})
-            base_url = spec_info.get("base_url", "")
-            queries, _ = parse_spec(spec)
-
-            table_name = row["table_name"]
-            q = next(
-                (
-                    q
-                    for q in queries
-                    if normalize_op_id(q.operation_id) == normalize_op_id(table_name)
-                ),
-                None,
-            )
-            if q:
-                api_endpoint = f"[{q.method.upper()}] {base_url.rstrip('/')}{q.path}"
-        except Exception:
-            pass
+    if row["source_id"] in listing.endpoints:
+        base_url, operations = listing.endpoints[row["source_id"]]
+        q = operations.get(normalize_op_id(row["table_name"]))
+        if q:
+            api_endpoint = f"[{q.method.upper()}] {base_url.rstrip('/')}{q.path}"
 
     # REQ-318: what reads the table page by page, and its declared paging.
     from provisa.api.admin._table_paging import paging_type, table_paging_kind
@@ -428,6 +486,7 @@ async def _fetch_table_with_columns(
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
         draft=row["draft"],  # REQ-1921
+        row_materialize=row["row_materialize"],  # REQ-1865
         load_protected=row.get("load_protected"),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz"),  # REQ-1141

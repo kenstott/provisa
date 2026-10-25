@@ -95,35 +95,21 @@ domains:
   id: shelter
 federation_engine: duckdb
 functions:
+# REQ-2134: the petstore API's addPet operation (POST /pet), called as it is -- a write command
+# for pet_health with no host code.
 - arguments:
-  - name: name
-    type: String
-  - name: breed
-    type: String
-  - name: status
-    type: String
-  binding:
-    callable: demo.py_functions:add_pet
+  - name: body
+    type: json
   description: Add a new pet to inventory
   domain_id: pet-store
-  function_name: add_pet
-  impl_kind: python
+  function_name: addPet
+  impl_kind: source_operation
   kind: mutation
   name: add_pet
   product_id: pet_health
-  return_schema:
-    properties:
-      id:
-        type: integer
-      name:
-        type: string
-      breed:
-        type: string
-      status:
-        type: string
-    type: object
   returns: ''
-  source_id: ''
+  schema_name: openapi
+  source_id: petstore-api
   visible_to:
   - org_admin
 - arguments:
@@ -178,37 +164,6 @@ functions:
   impl_kind: grpc
   kind: query
   name: random_grpc_set
-  return_schema:
-    items:
-      properties:
-        active:
-          type: boolean
-        amount:
-          type: number
-        id:
-          type: integer
-        region:
-          type: string
-      type: object
-    type: array
-  returns: ''
-  source_id: ''
-  visible_to:
-  - org_admin
-- arguments:
-  - name: rows
-    type: Int
-  - name: seed
-    type: Int
-  binding:
-    callable: demo.py_functions:random_dataset
-  description: Demo Provisa-hosted Python command returning a random-valued dataset
-    (set-returning, REQ-885)
-  domain_id: pet-store
-  function_name: random_python_set
-  impl_kind: python
-  kind: query
-  name: random_python_set
   return_schema:
     items:
       properties:
@@ -483,6 +438,7 @@ sources:
     correlation_max_columns: 20
     joint_max_distinct: 20
     category_max_columns: 10
+    classification_sample: 500
   type: data_profiler
 - description: "Animal shelter GraphQL API \u2014 staff schedules, breed catalogue,\
     \ and animal assignment records managed by shelter operations"

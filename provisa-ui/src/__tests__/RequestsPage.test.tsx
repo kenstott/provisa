@@ -147,6 +147,18 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     await i18n.changeLanguage("en");
   });
 
+  it("finds the requests matching any word of the search", async () => {
+    serve(() => json({}));
+    page();
+    await row(1);
+    // "3" is request 3's id, "me" the requester of 2 (and 6): request 1 and 4 match neither.
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "3 me" } });
+    expect(screen.getByTestId("requests-waiting-2")).toBeInTheDocument();
+    expect(screen.getByTestId("requests-waiting-3")).toBeInTheDocument();
+    expect(screen.queryByTestId("requests-waiting-1")).toBeNull();
+    expect(screen.queryByTestId("requests-waiting-4")).toBeNull();
+  });
+
   it("shows which domains each request still waits on", async () => {
     serve(() => json(DECIDABLE));
     page();

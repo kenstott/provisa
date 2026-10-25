@@ -22,6 +22,8 @@
     "properties": "Eigenschaften",
     "copyValue": "Wert kopieren",
     "resizePanel": "Inspektor-Panel skalieren",
-    "junctionTable": "über {{table}}"
+    "junctionTable": "über {{table}}",
+    "openTable": "Tabelle öffnen",
+    "openRelationship": "Beziehung öffnen"
   }
 }

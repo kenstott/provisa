@@ -982,18 +982,18 @@ X-Provisa-Redirect-Threshold: 1000
 {
   "functions": [
     {
-      "name": "random_python_set",
-      "implKind": "python",
-      "binding": {"callable": "demo.py_functions:random_dataset"},
+      "name": "random_grpc_set",
+      "implKind": "grpc",
+      "binding": {"target": "localhost:50071", "method": "/provisa.demo.RandomData/GetRandomSet"},
       "returns": "",
       "returnSchema": {
         "type": "array",
         "items": {"type": "object", "properties": {"id": {"type": "integer"}, "region": {"type": "string"}}}
       },
-      "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
+      "arguments": [],
       "visibleTo": ["admin"],
       "domainId": "pet-store",
-      "description": "Demo Python command returning random rows",
+      "description": "Demo gRPC command returning random rows",
       "kind": "query"
     }
   ],
@@ -1033,12 +1033,14 @@ X-Provisa-Redirect-Threshold: 1000
 | `implKind` | מה רץ | שדות `binding` |
 | --- | --- | --- |
 | `source_procedure` | פרוצדורה מאוחסנת במקור רשום (ברירת מחדל) | `sourceId`, `schemaName`, `functionName` |
-| `script` | סקריפט צד-שרת | `script` |
+| `script` | סקריפט צד-שרת (קוד מארח) | `script` |
 | `http` | קריאת HTTP יוצאת | `url`, `method` |
 | `grpc` | קריאת gRPC יוצאת לשרת חיצוני | `target`, `method` |
-| `python` | Callable של Python המתארח על-ידי Provisa | `callable` (למשל `"demo.py_functions:random_dataset"`) |
+| `python` | Callable של Python המתארח על-ידי Provisa (קוד מארח) | `callable` (למשל `"demo.py_functions:random_dataset"`) |
 
-פקודות ההדגמה `random_python_set` (`implKind: python`) ו-`random_grpc_set` (`implKind: grpc`) מדגימות פקודות מחזירות-קבוצה עם `returnSchema` בפועל; שתיהן ב-`config/provisa-install.yaml`.
+`script` ו-`python` הם קוד מארח. כל עוד הגדרת הפריסה `commands.allow_host_code` כבויה, כפי שהיא כברירת מחדל, רישום, עדכון או קריאה של פקודה כזו נדחים עם HTTP 403 והקוד `functions.host_code_refused` (ראו [קוד מארח](commands.md#host-code)).
+
+פקודת ההדגמה `random_grpc_set` (`implKind: grpc`) מדגימה פקודה מחזירת-קבוצה עם `returnSchema`; היא נמצאת ב-`config/provisa-install.yaml`.
 
 #### `PUT /admin/actions/functions/{name}`
 
@@ -1339,7 +1341,7 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 4. הסרת **אסימון Proxy** נגרר (`identifier`, `code`, `index`, או `reference`). עמודה הנקראת לפי המפתח או הקוד שלה מצביעה על המושג הבסיסי דרך ערך תחליף, כך שהמונח צריך להיות המושג עצמו. האסימון האחרון הנותר לעולם אינו מוסר.
 5. הכשרת (Qualify) **ביטוי כללי מדי** בעזרת מושג הטבלה. כאשר הביטוי המנורמל המלא הוא מילת מאפיין חשופה (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, ודומיהם), המונח הופך ל-`<table concept> <phrase>`: `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. מונח `name` אחד משותף לטבלאות לא קשורות היה ממזג משמעויות נבדלות; ההכשרה מחברת כל עמודה למושג המכיל אותה במקום זאת. מושג הטבלה הוא השם העסקי של הטבלה, מנורמל עם שם עצם יחיד ראשי (`order_lines` → `order line`).
 
-עמודות פסאודו-Native-Filter (בקידומת `_nf_`, או כל עמודה הנושאת `native_filter_type`) הן מכניקת פרמטר-שאילתה, לא שדות עסקיים, ואינן גוזרות מונחים.
+עמודות פסאודו-Native-Filter (בקידומת `_nf_`, או כל עמודה הנושאת `native_filter_type`) הן מכניקת פרמטר-שאילתה ואינן גוזרות מונחים.
 
 מכיוון ש-`id`, `key`, `pk`, ו-`sk` כולם מתרחבים ל-`identifier` לפני בדיקת ה-Proxy, שלושה שמות עמודה שונים פיזית נוחתים על אותו מונח בדיוק:
 
@@ -1352,30 +1354,38 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 
 שלושת הראשונים מתכנסים למונח אחד. `transaction amount` שומר על שני האסימונים כי `amount` אינו ממלא מקום. עמודת `id` לבדה, בלי אסימונים לפניה, לא ניתנת לקיצור, ולכן היא מנורמלת ל-`identifier` והמונח לא נשאר ריק.
 
+עמודות מפתח אינן מקבלות מונח מנורמל. כל עמודה של מפתח ראשי שמה את ההפניה שלה על מונח המחלקה של הטבלה שלה, וכל עמודה של מפתח זר מוצהר שמה את ההפניה שלה על המחלקה של טבלת היעד, יהיה שמה אשר יהיה. טבלה עם מפתח ללא מחלקה מציעה מחלקה בטיוטה, הקרויה על שם המושג שלה. ראו [אונטולוגיה](ontology.md#classes-properties-and-concepts) לתפקידים ולאופן שבו ממוקמים מפתחות.
+
 ### מחזור חיים {: #lifecycle }
 
-מונחים **נגזרים מהשייכות לשכבה הסמנטית**; משתמשים לא יוצרים אותם לפי דרישה. מאגר הטבלאות הוא נתיב הכתיבה היחיד: `sync_table_refs` רץ בתוך כל upsert של קבוצת עמודות, ו-`sweep_refless_terms` רץ אחרי כל נתיב מחיקה.
+מונחים **נגזרים מהשייכות לשכבה הסמנטית**. מאגר הטבלאות הוא נתיב הכתיבה היחיד: הוא מיישב את עמודות הטבלה בכל שמירה, ומסדיר את המונחים שמחיקה משאירה בלי הפניות.
 
-**כאשר עמודה מתווספת:** Provisa מחפשת את המונח המנורמל לפי שם. אם הוא כבר קיים, העמודה מקבלת הפניה (Ref) אליו (ואם המונח היה מוצא משימוש (Deprecated), הוא מוחיה, ו-`deprecated` מוגדר בחזרה ל-`False`). אם לא קיים מונח עדיין, אחד נוצר.
+**כאשר עמודה מתווספת:** Provisa מחפשת את המונח שלה לפי שם. אם המונח קיים, העמודה מקבלת הפניה אליו, ומונח שהפך למיושן כי איבד את העמודה האחרונה שלו מוחיה. אם לא קיים מונח עדיין, נוצר מונח בטיוטה.
 
-**כשעמודה יוצאת** (שינוי סכמה או הסרת טבלה), ההפניה שלה נמחקת והמונח **מוסדר** לפי כלל של הסרה או הוצאה משימוש. מונח מושרש שלא נשארו לו הפניות מוסר מיד, יחד עם הקשתות והקצאות המומחים שלו, אלא אם הסרתו תשאיר מונח מופשט בלי נתיב בגרף המונחים לאף מונח מושרש. במקרה כזה המונח **מוצא משימוש** (מסומן `deprecated=True`) במקום להימחק, כדי שהמונח המופשט ישמור על העוגן שלו בגרף.
+**כשעמודה יוצאת** (שינוי סכמה או הסרת טבלה), ההפניה שלה נמחקת והמונח **מוסדר**. מונח שלא נאצר ושלא נשארו לו הפניות מוסר יחד עם הקשתות שלו. מונח שנאצר (בעל הגדרה, קשת, מומחה, תג או הוצאה משימוש) מסומן כמיושן ונשמר, וכך גם כל מונח שהסרתו תשאיר מושג בלי נתיב לנתונים.
 
-מונחים מופשטים לעולם אינם מוסרים אוטומטית; הם קיימים מחוץ למחזור החיים הפיזי ומוסרים רק במפורש דרך ה-API של המנהל.
-
-**החייאה:** אם השם המנורמל של מונח מוצא-משימוש מופיע שוב (עמודה נרשמת מחדש), המונח מבוטל ו-Refs שלו חוזרים להצטבר.
+לכל מונח סטטוס אחד: `draft`, `live`, `deprecated` או `retired`. הרשימה, הפרטים ותצוגת המטא נושאים אותו. אוצר משנה אותו רק דרך פעולות הסטטוס שלהלן; `PATCH` שקובע סטטוס נדחה. ראו [אונטולוגיה](ontology.md#status) למשמעות של כל סטטוס.
 
 ### נקודות קצה לאצירה (Curation) {: #curation-endpoints }
 
-כל נקודות הקצה תחת `/admin/glossary`. הן דורשות גישת `org_admin` וארגון מוגדר. כל מוטציה מפעילה פרסום מטא-דאטה.
+כל נקודות הקצה תחת `/admin/glossary` ודורשות ארגון מוגדר. קריאה דורשת את הזכות `glossary_read`, וכל שינוי דורש `glossary_rw`, בתוך הדומיינים שהקורא רשאי להגיע אליהם. כל שינוי מפעיל פרסום מטא-דאטה.
 
 | שיטה | נתיב | תיאור |
 | --- | --- | --- |
-| `GET` | `/admin/glossary/terms` | רשימת מונחים. פרמטרי שאילתה: `q` (חיפוש שם/הגדרה), `include_deprecated` (ברירת מחדל `true`) |
-| `GET` | `/admin/glossary/terms/{term_id}` | קבלת פרטי מונח: הגדרה, Refs פיזיים, קשתות מוקלדות, מומחים |
-| `POST` | `/admin/glossary/terms` | יצירת מונח מופשט — אוצר מילים משתמש ללא Refs פיזיים |
-| `PATCH` | `/admin/glossary/terms/{term_id}` | שינוי שם, הגדרת הגדרה, או החלפת החרגת ייצוא |
-| `DELETE` | `/admin/glossary/terms/{term_id}` | מחיקת מונח ללא Refs פיזיים |
-| `POST` | `/admin/glossary/refs/move` | העברת Ref פיזי אחד למונח אחר (איחוד) |
+| `GET` | `/admin/glossary/terms` | רשימת מונחים, כל אחד עם ה-`status` שלו ומספר ה-`findings`. פרמטרי שאילתה: `q` (חיפוש שם/הגדרה), `include_deprecated` (ברירת מחדל `true`) |
+| `GET` | `/admin/glossary/terms/{term_id}` | קבלת פרטי מונח: הגדרה, סטטוס, Refs פיזיים, קשתות מוקלדות, מומחים, תגים |
+| `POST` | `/admin/glossary/terms` | יצירת מושג, מונח ללא עמודות או טבלאות |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | שינוי שם, קביעת ההגדרה, קביעת הדומיינים של מושג, או החלפת החרגת ייצוא |
+| `DELETE` | `/admin/glossary/terms/{term_id}` | מחיקת מונח שאינו מחזיק עמודות |
+| `POST` | `/admin/glossary/refs/move` | העברת ההפניה של עמודה אחת למונח אחר |
+| `GET` | `/admin/glossary/terms/{term_id}/tables` | רשימת הטבלאות שבהן מעוגנת מחלקה |
+| `POST` | `/admin/glossary/terms/{term_id}/tables` | עיגון טבלה במונח, כך שהוא הופך למחלקה של הטבלה |
+| `DELETE` | `/admin/glossary/terms/{term_id}/tables/{table_id}` | ביטול עיגון של טבלה; המפתחות שלה חוזרים למחלקה המוצעת שלה |
+| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | סימון מונח פעיל כמיושן |
+| `POST` | `/admin/glossary/terms/{term_id}/retire` | הוצאת מונח משימוש, תוך העברת העמודות או הטבלאות שלו למחליף |
+| `POST` | `/admin/glossary/terms/{term_id}/restore` | ביטול הוצאה משימוש או סימון כמיושן שעשה אוצר |
+| `GET` | `/admin/glossary/terms/{term_id}/applied-history` | העמודות והטבלאות של מונח שהוצא משימוש, כפי שהיו ב-commit שלפני הוצאתו משימוש |
+| `GET` | `/admin/glossary/findings` | כל מונח עם ממצאים, והממצאים שלו |
 | `POST` | `/admin/glossary/terms/{term_id}/edges` | הוספת קשת קשר מוקלדת בין שני מונחים |
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | הסרת קשת (פרמטרי שאילתה: `to_term_id`, `rel_type`) |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | תיוג משתמש כמומחה או מחבר עבור מונח |
@@ -1383,6 +1393,8 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 | `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | ניסוח הגדרה עבור מונח אחד באמצעות מודל ה-AI של הארגון — מחזיר טקסט בלבד, דבר אינו נשמר עד לשמירה |
 | `POST` | `/admin/glossary/definitions/generate` | יצירה ושמירה של הגדרות עבור כל מונח ללא הגדרה — לעולם אינו דורס טקסט שנכתב על-ידי אדם |
 | `POST` | `/admin/glossary/relationships/generate` | הצעה ושמירה של קשתות מוקלדות על-פני כל המילון באמצעות מודל ה-AI של הארגון |
+
+התפקיד של מונח נגזר ממה שהוא מעגן, ולעולם אינו נקבע. `PATCH` או יצירה שקובעים `is_abstract` נדחים (`glossary.abstract_is_derived`).
 
 **גוף `POST /admin/glossary/terms`:**
 
@@ -1396,7 +1408,7 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 {"to_term_id": 42, "rel_type": "KIND_OF"}
 ```
 
-ערכי `rel_type` תקפים: `KIND_OF`, `RELATED_TO`, `PART_OF`, `SYNONYM_OF`.
+ערכי `rel_type` תקפים: `KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`.
 
 **גוף `POST /admin/glossary/terms/{term_id}/experts`:**
 
@@ -1412,9 +1424,56 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-העברת הפניה מסדירה את המונח שאיבד אותה לפי כלל ההסרה או ההוצאה משימוש. השתמשו בזה כדי לאחד שני מונחים שהנרמול השאיר נפרדים, למשל כשמקור משתמש בקיצור לא סטנדרטי שטבלת ההרחבה לא מכסה.
+העברת הפניה מסדירה את המונח שאיבד אותה. השתמשו בזה כדי לאחד שני מונחים שהנרמול השאיר נפרדים, למשל כשמקור משתמש בקיצור לא סטנדרטי שטבלת ההרחבה לא מכסה.
 
-מחיקת מונח מושרש (בעל Refs פיזיים) מחזירה `400 glossary.invalid`. הסירו או העבירו את כל ה-Refs תחילה.
+העברה למחלקה נדחית (`glossary.term_is_class`), וכך גם העברה של עמודת מפתח, יהיה היעד אשר יהיה (`glossary.key_column_derived`, עם שם העמודה, הטבלה שלה והמחלקה שלה).
+
+כשההעברה תסיר את `pii` מהעמודה, היא נדחית עם `409 tag.move_loses`, ומפרטת כל עמודה עם התגים שהיא מאבדת (`loses`) ומקבלת (`gains`). שלחו את ההעברה שוב עם `confirm_tag_loss` שמונה כל תג שאבד, או עם `carry_tags: true` כדי לשים את התגים שאבדו על המונח שאליו העמודה עוברת:
+
+```json
+{"table_id": 7, "column_name": "email", "to_term_id": 12, "confirm_tag_loss": ["pii"]}
+```
+
+הוצאה משימוש, ושמירה או מחיקה של קשר שמעבירות הפניות מפתח, מקבלות את אותם שני שדות.
+
+מחיקת מונח שעדיין מחזיק עמודות מחזירה `400 glossary.invalid`, עם שמות הטבלאות. הוציאו אותו משימוש, או העבירו את העמודות שלו, תחילה. מחיקת מחלקה מבטלת תחילה את עיגון הטבלאות שלה, כך שהמפתחות שלהן חוזרים למחלקות המוצעות שלהן.
+
+**גוף `POST /admin/glossary/terms/{term_id}/deprecate`:**
+
+```json
+{"reason": "Superseded by net revenue", "retire_on": "2026-12-31"}
+```
+
+`reason` חובה. `retire_on` אופציונלי ואינו יכול להיות בעבר; בתאריך הזה המתזמן של הארגון מוציא את המונח משימוש. רק מונח פעיל אפשר לסמן כמיושן.
+
+**גוף `POST /admin/glossary/terms/{term_id}/retire`:**
+
+```json
+{"reason": "Merged into customer", "successor": 12}
+```
+
+`successor` חובה כשהמונח מחזיק עמודות או טבלאות. המחליף של תכונה חייב להיות תכונה או מושג, והמחליף של מחלקה מחלקה או מושג. העמודות של המונח, או הטבלאות שלו עם המפתחות שלהן, עוברות למחליף, שמקבל קשת `REPLACES` אל המונח שהוצא משימוש. התגובה מפרטת את שינויי התגים של כל עמודה שהועברה. כל דחייה היא `400` שמציין את הכלל: `glossary.reason_required`, `glossary.successor_required`, `glossary.successor_is_self`, `glossary.successor_retired` או `glossary.successor_role`.
+
+**תגובת `GET /admin/glossary/findings`:**
+
+```json
+[
+  {
+    "term_id": 3,
+    "term": "customer",
+    "findings": [
+      {
+        "kind": "unlinked_tables",
+        "code": "glossary.finding.unlinked_tables",
+        "message": "the class is grounded in tables that same-entity relationships do not all join",
+        "params": {"tables": "pg.public.customers, crm.public.contacts"}
+      }
+    ]
+  }
+]
+```
+
+הסוגים הם `unlinked_tables`, `class_and_attribute`, `tag_wrong_kind`, `retirement_blocked` ו-`no_data`. מונח ללא ממצאים אינו נכלל, וטיוטה פשוטה אינה ממצא. נקודת הקצה מדווחת ואינה משנה דבר.
 
 **`PATCH /admin/glossary/terms/{term_id}` — שדה `export_excluded`:**
 
@@ -1422,11 +1481,11 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 {"export_excluded": true}
 ```
 
-הגדרת `export_excluded` ל-`true` שומרת את המונח בחוץ מכל תמונות מצב (Snapshots) של ייצוא מטא-דאטה, ללא תלות ב-Refs הפיזיים או במעמד המופשט שלו. הגדרתו בחזרה ל-`false` משיבה את המונח לתמונת המצב בפרסום הבא. נתוני אצירה (הגדרה, קשתות, מומחים) אינם מושפעים.
+הגדרת `export_excluded` ל-`true` שומרת את המונח בחוץ מכל תמונות מצב (Snapshots) של ייצוא מטא-דאטה, יהיו ההפניות או התפקיד שלו אשר יהיו. הגדרתו בחזרה ל-`false` משיבה את המונח לתמונת המצב בפרסום הבא. נתוני אצירה (הגדרה, קשתות, מומחים) אינם מושפעים.
 
 ### אצירה בסיוע AI {: #ai-assisted-curation }
 
-מודל ה-AI המוגדר של הארגון יכול לנסח הגדרות ולהציע קשתות קשר על-פני כל המילון בפעולה אחת. שתי הפעולות האגרגטיביות דורשות גישת `org_admin` וארגון מוגדר.
+מודל ה-AI המוגדר של הארגון יכול לנסח הגדרות ולהציע קשתות קשר על-פני כל המילון בפעולה אחת. שתי הפעולות האגרגטיביות דורשות את הזכות `glossary_rw` וארגון מוגדר.
 
 **`POST /admin/glossary/definitions/generate`**
 
@@ -1492,10 +1551,11 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 
 הייצוא מיישם את אותם מסננים כמו שאר תמונת המצב:
 
-- מונח המסומן `export_excluded` נשמר בחוץ לחלוטין, ללא תלות ב-Refs הפיזיים שלו, במעמד המופשט, או האם קטלוג הארגון מוגדר.
-- מונח מושרש מתפרסם רק כאשר לפחות אחד מה-Refs הפיזיים שלו שייך לעמודה שעוברת גם את מסנן **Data Product** (דגל `data_product` של הטבלה חייב להיות `true`) וגם את מסנן העמודה **הטכנית** (עמודות המתויגות `technical` נשמרות בחוץ).
-- מונח מושרש שכל ה-Refs שלו נשמרים בחוץ על-ידי מסננים אלה נשמר בחוץ יחד איתם.
-- מונחים מופשטים מתפרסמים ללא תנאי: הם אוצר מילים משתמש, לא מחוברים לעמודות פיזיות.
+- רק מונחים פעילים מתפרסמים: בשימוש, מוגדרים, ומחוברים למונח שהעמודה או הטבלה שלו מתפרסמת.
+- עמודה מתפרסמת כשהיא עוברת גם את מסנן **Data Product** (דגל `data_product` של הטבלה חייב להיות `true`) וגם את מסנן העמודה **הטכנית** (עמודות המתויגות `technical` נשמרות בחוץ). מונח שכל ההפניות שלו נשמרות בחוץ כך אינו מעוגן לצורך הייצוא.
+- מושג מתפרסם כשהוא מגיע למונח שמתפרסם דרך גרף הקשרים.
+- מונח המסומן `export_excluded` נשמר בחוץ לחלוטין.
+- מונח מיושן מתפרסם עם ה-`status`, ה-`status_reason` וה-`retire_on` שלו, כדי שכל קטלוג ימפה אותו לסימון ההתיישנות שלו.
 - קשת בין שני מונחים מתפרסמת רק כאשר שני מונחי הקצה מתפרסמים.
 
 כל מתאם ספק מפרסם את גרף המונחים באופן מקורי, למכל מילון ש-Provisa הוא הבעלים שלו ויוצר אותו באופן אידמפוטנטי, ולעולם לא למילון קטלוג קיים:
@@ -1508,7 +1568,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 | OpenMetadata | מילון Provisa דרך `/v1/glossaries` | PUT ממופתח-fqn, שינויי שם PATCH-מקושרים-מחדש לפי UUID שמור | KIND_OF → היררכיית הורה ילידית, SYNONYM_OF → `synonyms`, אחרים → `relatedTerms` | `entityStatus` |
 | Collibra | תחום מסוג-מילון "Provisa Glossary" | נכסי Business Term דרך Import API | סוגי יחס Business Term ילידיים | סטטוס נכס |
 
-מה שקובע הוא הקישור, לא השם. מזהה הספק של כל מונח שפורסם נשמר ב-`catalog_bindings` תחת ה-URN של המונח (`provisa://<org>/terms/<name>`), ו-Provisa משנה או מוחק פריט מילון בצד הספק רק כשהוא מחזיק בקישור הזה, או כשהפריט נמצא במכל ש-Provisa יצר. פריט מילון בלי קישור של Provisa הגיע מהמערכת החיצונית ולעולם לא נוגעים בו. עדכונים קוראים וממזגים, כך ששדות ש-Steward הוסיף למונחים של Provisa עצמו נשמרים, ושום דבר לא נמחק כשמונח יוצא מתמונת המצב. הקצאות של מונחים לנכסים שעשו Stewards נשארות בבעלות המערכת החיצונית: אף מתאם לא כותב אותן (פרסום הקצאות שנכתבו ב-Provisa הוא המשך נפרד). ב-Collibra במיוחד, ה-Import API מחליף את מה שהוא מקבל, והבטיחות נשענת על הכלה: המטען מציין רק נכסים בתוך תחום המילון של Provisa וקשרים רק בין מונחים של Provisa, כך שמילוני ה-Stewards והקשרים שלהם מחוץ להישג יד.
+מה שקובע הוא הקישור, לא השם. מזהה הספק של כל מונח שפורסם נשמר ב-`catalog_bindings` תחת ה-URN של המונח (`provisa://<org>/terms/<name>`), ו-Provisa משנה או מוחק פריט מילון בצד הספק רק כשהוא מחזיק בקישור הזה, או כשהפריט נמצא במכל ש-Provisa יצר. פריט מילון בלי קישור של Provisa הגיע מהמערכת החיצונית ולעולם לא נוגעים בו. עדכונים קוראים וממזגים, כך ששדות ש-Steward הוסיף למונחים של Provisa עצמו נשמרים, ושום דבר לא נמחק כשמונח יוצא מתמונת המצב. כל מונח נושא את התפקיד שלו (מחלקה, תכונה או מושג) כתכונה של המונח: `provisaRole` בתכונות המותאמות של DataHub, תכונה מותאמת ב-OpenMetadata, המאפיינים הנוספים של המונח ב-Atlas, ב-Purview וב-Atlan, והמאפיין `Provisa Role` ב-Collibra. ב-DataHub לצומת של Provisa בארגון יש צומת בן לכל תפקיד, בשמות Classes, Properties ו-Concepts. ל-OpenMetadata אין צומת מילון מלבד מונח, ולכן כל תפקיד הוא מונח קבוצה שמכיל את המונחים העליונים של התפקיד, ומונח עם הורה `KIND_OF` נשאר מתחת להורה הזה. Provisa גם מקצה כל מונח לנתונים שהוא מציין. מונח מחלקה מוקצה לטבלאות המפורסמות שהוא מעגן, מונח תכונה לעמודות המפורסמות שלו, ומושג לשום דבר. כל הקצאה נכתבת כהקצאה האוטומטית של הקטלוג עצמו ומיוחסת ל-Provisa: תווית `Automated` ב-OpenMetadata, שיוך מונח המיוחס לשחקן של Provisa ב-DataHub, הקצאה סמנטית שהמקור שלה הוא Provisa ב-Atlas וב-Atlan, וקשר שיצר המשתמש של Provisa ב-Collibra. Provisa מוסיף ומבטל רק אותן, כך שהקצאה שעשה Steward לעולם לא מוסרת ולא משוכפלת. הקצאה לא מבוטלת בגלל שבקשה נכשלה. ב-Collibra ההקצאות עוברות דרך ה-API של הקשרים ולא דרך ה-Import API, כי הייבוא היה מחליף את הקשרים מאותו סוג של Steward. ב-Collibra במיוחד, ה-Import API מחליף את מה שהוא מקבל, והבטיחות נשענת על הכלה: המטען מציין רק נכסים בתוך תחום המילון של Provisa וקשרים רק בין מונחים של Provisa, כך שמילוני ה-Stewards והקשרים שלהם מחוץ להישג יד.
 
 ---
 

@@ -22,6 +22,11 @@ import {
   type MetaReader,
   type Selection,
 } from "../../api/metaGraph";
+import {
+  toGraphData,
+  type ProductRow as GraphProductRow,
+} from "../../components/graph3d/productGraphData";
+import type { GraphData } from "../../components/graph3d/graphModel";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataProduct } from "../../types/admin";
 
@@ -48,6 +53,12 @@ type ProductRow = Record<(typeof PRODUCT_FIELDS)[number], unknown>;
 
 const TERM: Selection = { fields: ["id", "name", "definition", "is_abstract", "live"] };
 
+// REQ-1443 clause 10: a checker table's rules, parsed from its contract at registration.
+const DQ_RULES: NonNullable<Selection["rels"]>[string] = {
+  alias: "dqRules",
+  sel: { fields: ["position", "column_name", "check_type", "definition"] },
+};
+
 const PANEL: Selection = {
   fields: ["id"],
   rels: {
@@ -66,10 +77,11 @@ const PANEL: Selection = {
         ],
         rels: {
           checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name", "alias"] } },
+          dq_rules: DQ_RULES,
           table_columns: {
             to: "table_columns",
             sel: {
-              fields: ["column_name"],
+              fields: ["column_name", "column_key"],
               rels: {
                 glossary_ref: {
                   alias: "glossaryRef",
@@ -81,6 +93,29 @@ const PANEL: Selection = {
           profile_results: {
             alias: "profileResults",
             sel: { fields: ["id", "domain_id", "table_name", "alias"] },
+          },
+          // REQ-351: its relationships, under the effective names stored on each (the panel's
+          // Relationships card and its Cypher click-through between member tables).
+          source_relationships: {
+            alias: "sourceRelationships",
+            sel: {
+              fields: [
+                "id",
+                "alias",
+                "graphql_field",
+                "cypher_type",
+                "cardinality",
+                "source_column",
+                "target_column",
+                "disable_cypher",
+              ],
+              rels: {
+                target_table: {
+                  alias: "targetTable",
+                  sel: { fields: ["id", "domain_id", "table_name", "product_id"] },
+                },
+              },
+            },
           },
         },
       },
@@ -167,15 +202,46 @@ export interface CoreTable {
   description: string | null;
   dq_contract: string | null;
   checks?: { id: number; domain_id: string; table_name: string; alias: string | null } | null;
+  dq_rules?: CoreDqRule[] | null;
   table_columns?:
     | {
         column_name: string;
+        column_key: string;
         glossary_ref?: { term_id: number; term?: CoreTerm | null }[] | null;
       }[]
     | null;
   profile_results?:
     | { id: number; domain_id: string; table_name: string; alias: string | null }[]
     | null;
+  source_relationships?: CoreRelationship[] | null;
+}
+
+/** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */
+export interface CoreDqRule {
+  position: number;
+  column_name: string;
+  check_type: string;
+  definition: string;
+}
+
+/** A relationship of a member table, under its stored effective names (REQ-351). */
+export interface CoreRelationship {
+  id: string;
+  alias: string | null;
+  // NULL for a junction-backed edge, which is no GraphQL field (REQ-1586).
+  graphql_field: string | null;
+  // Every relationship has its served type stored (relationship_names.store_effective_names).
+  cypher_type: string;
+  cardinality: string;
+  source_column: string;
+  target_column: string | null;
+  disable_cypher: boolean;
+  target_table?: {
+    id: number;
+    domain_id: string;
+    table_name: string;
+    product_id?: string | null;
+  } | null;
 }
 
 export interface CoreEdge {
@@ -403,4 +469,20 @@ export async function loadProductCore(
     checks: rowsOf(row.product_checks),
     queries,
   };
+}
+
+/** The product's graph as its core holds it -- the product, its member tables and checkers, their
+ *  columns and the terms bound to them, its commands and its links -- built the way the product's
+ *  graph query is (toGraphData), so the knowledge graph card is drawn from the panel's one read. */
+export function coreGraph(core: ProductCore): GraphData {
+  const row: GraphProductRow = {
+    id: core.product.id,
+    name: core.product.name,
+    domain_id: core.product.domainId,
+    member_tables: core.tables ?? [],
+    commands: core.commands ?? [],
+    edges: core.edges ?? [],
+    tags: (core.tags ?? []).map((tag_id) => ({ tag_id })),
+  };
+  return toGraphData([row], null, null);
 }

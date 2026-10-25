@@ -193,7 +193,10 @@ export function TipSurface({
         },
         "aria-describedby": describedBy || undefined,
       })}
-      {(armed || opened) && (
+      {/* The Tooltip is placed at the target, which is attached only once it has mounted: a hint
+          held open from the first render (`opened`) waits for it, as Mantine refuses a Tooltip
+          with neither a target nor a child. */}
+      {(armed || opened) && target !== null && (
         <Tooltip
           target={target}
           opened={open || opened === true}

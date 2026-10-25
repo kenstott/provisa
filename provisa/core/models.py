@@ -214,7 +214,7 @@ class Cardinality(str, Enum):
     # never a list of lists (see schema_gen._add_standard_relationship_field) — so an M:N
     # relationship is represented as two of these binary hops through an associative/junction
     # table (RelationshipInput.via_table/via_source_column/via_target_column, REQ-1586; see
-    # provisa/cypher/label_map.py's junction handling), not as a third cardinality value. Any
+    # provisa/gql/label_map.py's junction handling), not as a third cardinality value. Any
     # report or introspection surface that wants to describe the pair as "many-to-many" to an
     # end user should synthesize that label at the reporting layer from the two hops — it is
     # not a value this enum, or any `cardinality ==` branch in the codebase, ever holds.
@@ -450,9 +450,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         # duplicate-key race when two concurrent queries register the same anonymous composite type.
         if st in _PG_WIRE_TYPES:
             return f"jdbc:postgresql://{h}:{po}/{self.database}?autosave=conservative"
-        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own.
+        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own. Neither
+        # names a database: Trino's MySQL and MariaDB connectors read each database as a schema and
+        # refuse a URL that names one ("Database (catalog) must not be specified in JDBC URL").
         if st in _MYSQL_WIRE_TYPES:
-            return f"jdbc:mysql://{h}:{po}/{self.database}"
+            return f"jdbc:mysql://{h}:{po}"
+        if st == "mariadb":
+            return f"jdbc:mariadb://{h}:{po}"
         # Druid is queried through its Avatica endpoint on the broker (Trino's druid connector wraps
         # the Avatica JDBC driver) — not a standard jdbc://host:port/db shape and no database segment.
         if st == "druid":
@@ -460,7 +464,6 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
-            "mariadb": "jdbc:mariadb",
             "redshift": "jdbc:redshift",
             "exasol": "jdbc:exa",
         }
@@ -575,24 +578,66 @@ class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
         return v
 
 
+class GlossaryTermDeprecation(BaseModel):  # REQ-2144
+    """A curator's deprecation of a live term: why, and when it is retired, if planned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    retire_on: date | None = None
+
+
+class GlossaryTermRetirement(BaseModel):  # REQ-2144
+    """A curator's retirement of a term: why, and the term that succeeds it, if any (a REPLACES
+    edge from it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    successor: str | None = None
+
+
 class GlossaryTermConfig(BaseModel):  # REQ-1641
     """A config-declared glossary term, upserted the same way an admin curates one by hand.
 
-    Config-declared terms are always abstract (``is_abstract``): they hold no column refs of
-    their own, so ``domains`` (required, non-empty) is the only thing that scopes them — see
-    ``create_abstract_term``'s docstring for why an unscoped term is a governance gap. An
-    abstract term is otherwise inert — the live/approved admission rule requires it be
-    *grounded*, reachable by an edge from a term that does hold a column ref — so ``edges``
-    is how config connects it to the concrete terms it actually means.
+    A config-declared term holds no column refs of its own, so ``domains`` (required,
+    non-empty) is the only thing that scopes it — see ``create_abstract_term``'s docstring for
+    why an unscoped term is a governance gap. Until it grounds something it is a Concept, and
+    otherwise inert — the live/approved admission rule requires it be *grounded*, reachable by
+    an edge from a term that does hold a column ref — so ``edges`` is how config connects it to
+    the concrete terms it actually means. Whether it is abstract is derived, never declared
+    (REQ-2141).
     """
 
     name: str
     definition: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
+    # REQ-2144: the asserted parts of its status, one at most; draft and live are computed.
+    deprecate: GlossaryTermDeprecation | None = None
+    retire: GlossaryTermRetirement | None = None
+    restore: bool = False
+
+    @model_validator(mode="after")
+    def _one_status_action(self) -> "GlossaryTermConfig":
+        if sum((self.deprecate is not None, self.retire is not None, self.restore)) > 1:
+            raise ValueError(
+                f"glossary term {self.name!r} states more than one of deprecate, retire and restore"
+            )
+        return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _abstract_is_derived(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "is_abstract" in data:
+            raise ValueError(
+                f"glossary term {data.get('name')!r}: abstract is derived from grounding, not "
+                "declared -- a term with no column refs and no grounded tables is a Concept"
+            )
+        return data
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product")
+TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product", "term")
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -712,8 +757,12 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="pii",
         description="Personally identifiable information",
-        applies_to=["column"],
+        # REQ-2145: pii is on columns, and on a Property term, whose every column -- those it
+        # holds now and those it comes to hold -- carries it. Never a source, table, Class or
+        # Concept: a column is what holds a person's data, and a Property is what a column means.
+        applies_to=["column", "term"],
         is_system=True,
+        reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
         sensitive=True,  # REQ-1943: set, and locked -- a system tag is never redefined
     ),
@@ -845,6 +894,11 @@ class TagAssignment(BaseModel):  # REQ-1377
     # the export builder (TableIndex resolves names, not DB serials). Filled from a DB join on
     # hydration; a YAML config may provide it instead of table_id and the loader resolves it.
     table_ref: str | None = None
+    # REQ-2145: a glossary term the tag is on (object_type "term"): its serial, and its name --
+    # the config-vocabulary identity, filled from a DB join on hydration and resolved by the
+    # loader as table_ref is.
+    term_id: int | None = None
+    term: str | None = None
 
     def base_tag_id(self) -> str:
         """The registry tag this assignment refers to, parameter stripped (REQ-1467)."""
@@ -864,6 +918,8 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"column:{self.table_id}:{self.column_name}"
         if self.object_type == "command":
             return f"command:{self.command_name}"
+        if self.object_type == "term":
+            return f"term:{self.term_id}"
         return f"relationship:{self.relationship_id}"
 
 
@@ -941,6 +997,16 @@ class Mask(BaseModel):  # REQ-038, REQ-040, REQ-2059
             )
         if self.type not in ("regex", "constant", "truncate"):
             raise ValueError(f"mask type {self.type!r} is not one of regex, constant, truncate")
+        if self.type == "regex" and self.pattern is not None and self.replace is not None:
+            # REQ-2142: a mask's regex is written in the universal dialect, checked here (the
+            # API's save and the config's load) and nowhere per engine.
+            from provisa.security.universal_regex import NotUniversal, check
+
+            try:
+                check(self.pattern, self.replace)
+            except NotUniversal as exc:
+                field = getattr(exc, "field")
+                raise ValueError(f"mask {field} is not universal: {exc}") from None
         return self
 
 
@@ -1448,6 +1514,9 @@ class Table(
     # observed target is DERIVED from this text rather than declared beside it (REQ-939); the
     # results columns are the shipped schema and are replaced at parse, not authored.
     dq_contract: str | None = None
+    # REQ-1443 clause 10: the contract's checks, parsed once at registration
+    # (provisa.dq.registration.derive_checker_table) and stored, so the meta domain serves them.
+    dq_rules: list[dict] | None = None
     # REQ-1934: the Data Profiler source this table is a member of. A table belongs to at most one
     # profiler; the profiler's schedule profiles it and its result relations carry its history.
     profiler_source_id: str | None = None
@@ -1555,6 +1624,10 @@ class Table(
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
     product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
+    # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
+    # configuration loads, after the terms it declares or derives exist; the table must have a
+    # primary key.
+    class_term: str | None = None
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
@@ -1785,17 +1858,23 @@ class Table(
 
     @model_validator(mode="after")
     def _validate_row_materialize(self) -> "Table":
+        if (problem := self.row_materialize_problem()) is not None:
+            raise ValueError(problem)
+        return self
+
+    def row_materialize_problem(self) -> str | None:
+        """Why this table may not be row-materialized by its own fields, or None (REQ-1865)."""
         # REQ-1865: row_materialize requires a declared, trusted primary key (constraint 5) — a
         # declared PK is never runtime-verified for uniqueness, same trust level as data_type.
         if not self.row_materialize:
-            return self
+            return None
         if not any(c.is_primary_key for c in self.columns):
-            raise ValueError(
+            return (
                 f"table {self.table_name!r}: row_materialize requires at least one "
                 "is_primary_key column"
             )
         if self.materialize:
-            raise ValueError(
+            return (
                 f"table {self.table_name!r}: row_materialize and materialize (view_sql CTAS) "
                 "are mutually exclusive — a table is either whole-table-materialized or "
                 "row-materialized, never both"
@@ -1805,7 +1884,7 @@ class Table(
         # registration already combines table.cache_ttl or source.cache_ttl:
         # provisa/core/config_loader.py's _validate_row_materialize, and
         # provisa/federation/residency.py's resolve_landing_args callers.
-        return self
+        return None
 
 
 class HotTablesConfig(BaseModel):  # REQ-544
@@ -1867,6 +1946,9 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
     )
     disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
     hide_target_meta: bool = False  # REQ-1132: when True, suppress the TARGET's metadata from DEFAULT-tier meta discovery
+    # REQ-2141: the rows this edge joins are the same entity -- two tables one class term grounds,
+    # joined one-to-one on a key of each (repositories/identity.py).
+    same_entity: bool = False
     # REQ-1586: junction-backed edge. When via_table is set the join traverses that associative
     # table (source_column = via.via_source_column, via.via_target_column = target_column) and the
     # junction's remaining columns become the relationship's attributes. via_type_column/value

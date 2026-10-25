@@ -21,7 +21,7 @@ import { Button, Drawer, Group, SegmentedControl, Checkbox, Text, Title } from "
 import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
-import { runSql, explainSql } from "../api/admin";
+import { explainSql, runSqlEach, splitSql } from "../api/admin";
 import type { ExplainResponse } from "../api/admin";
 import type { ResultRedirect } from "../types/resultRedirect";
 import {
@@ -41,22 +41,17 @@ import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./
 import { useScreenEditor } from "../mcp/screenState";
 import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
-import {
-  autoAliasConflicts,
-  parseSemanticMetricQuery,
-  wrapSampledSql,
-  resultIsPartial,
-} from "./sql/sqlHelpers";
+import { autoAliasConflicts, parseSemanticMetricQuery, wrapSampledSql } from "./sql/sqlHelpers";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
 import { JoinCanvas } from "./sql/JoinCanvas";
 import { SqlEditorPanel } from "./sql/SqlEditorPanel";
 import { ResultsPanel } from "./sql/ResultsPanel";
+import { joinStatements, toStatementResult, type StatementResult } from "./sql/statementResults";
 import { ViewModal } from "./sql/ViewModal";
 import type { Registration } from "./tables/draftTable";
 import { domainToSqlName } from "../naming";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
-import { isInternalDomain } from "../lib/internalDomains";
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
@@ -192,6 +187,9 @@ export function SqlPage() {
   const [resultError, setResultError] = useState(active0.resultError);
   // The last run's result landed in the results store (not kept with the tab: a run tells it).
   const [resultRedirect, setResultRedirect] = useState<ResultRedirect | null>(null);
+  // A batch's results, one per statement; the result* state above is the one shown.
+  const [statements, setStatements] = useState<StatementResult[]>(active0.statements ?? []);
+  const [statementIndex, setStatementIndex] = useState(active0.statementIndex ?? 0);
   const [execMs, setExecMs] = useState<number | null>(active0.execMs);
   const [statsEnabled, setStatsEnabled] = useState(() => getStored("sql:statsEnabled") === "true");
   const [queryStats, setQueryStats] = useState<unknown>(null);
@@ -235,6 +233,8 @@ export function SqlPage() {
                 resultRows: r.rows,
                 resultError: r.error,
                 resultPartial: r.partial ?? false,
+                statements: r.statements,
+                statementIndex: r.statementIndex,
               }
             : t;
         }),
@@ -245,6 +245,8 @@ export function SqlPage() {
         setResultRows(ar.rows);
         setResultPartial(ar.partial ?? false);
         setResultError(ar.error);
+        setStatements(ar.statements ?? []);
+        setStatementIndex(ar.statementIndex ?? 0);
       }
       resultsHydrated.current = true;
     });
@@ -373,9 +375,8 @@ export function SqlPage() {
   // panel while its facts, dimensions, and derived metrics keep showing in the other.
   const isDomainVisible = useCallback(
     (domainId: string) => {
-      return (
-        isInternalDomain(domainId) || checkedDomains.size === 0 || checkedDomains.has(domainId)
-      );
+      // meta and ops are listed in the Domains menu like any domain, so they filter like any domain.
+      return checkedDomains.size === 0 || checkedDomains.has(domainId);
     },
     [checkedDomains],
   );
@@ -456,7 +457,18 @@ export function SqlPage() {
     (): SqlTab[] =>
       tabs.map((t) =>
         t.id === activeTabId
-          ? { ...t, sqlText, nlText, resultColumns, resultRows, resultPartial, resultError, execMs }
+          ? {
+              ...t,
+              sqlText,
+              nlText,
+              resultColumns,
+              resultRows,
+              resultPartial,
+              resultError,
+              execMs,
+              statements,
+              statementIndex,
+            }
           : t,
       ),
     [
@@ -469,6 +481,8 @@ export function SqlPage() {
       resultPartial,
       resultError,
       execMs,
+      statements,
+      statementIndex,
     ],
   );
 
@@ -481,6 +495,8 @@ export function SqlPage() {
       setResultPartial(t.resultPartial ?? false);
       setResultError(t.resultError);
       setResultRedirect(null);
+      setStatements(t.statements ?? []);
+      setStatementIndex(t.statementIndex ?? 0);
       setExecMs(t.execMs);
       setQueryStats(null);
       setNlError("");
@@ -707,6 +723,30 @@ export function SqlPage() {
     setResultTab("analyze");
   }, [sqlText, role, timeTravel]);
 
+  // One statement's result, of the batch's, into the result shown (grid, profile, export).
+  const showStatement = useCallback(
+    (list: StatementResult[], index: number) => {
+      const r = list[index];
+      setStatementIndex(index);
+      setResultColumns(r.columns);
+      setResultColumnTypes(r.columnTypes);
+      setResultRows(r.rows);
+      setResultError(r.error);
+      setResultRedirect(r.redirect);
+      setResultPartial(r.partial);
+      resetGrid();
+      idbSet(tabResultsKey(activeTabId), {
+        columns: r.columns,
+        rows: r.rows,
+        error: r.error,
+        partial: r.partial,
+        statements: list,
+        statementIndex: index,
+      });
+    },
+    [activeTabId, resetGrid],
+  );
+
   const handleRun = useCallback(async () => {
     if (!sqlText.trim()) return;
     const aliased = autoAliasConflicts(sqlText);
@@ -715,58 +755,61 @@ export function SqlPage() {
     setResultError("");
     setResultRedirect(null);
     const t0 = performance.now();
-    const inner = aliased.trim().replace(/;+$/, "");
-    const sampledSql = wrapSampledSql(inner, sampleMode, sampleSize);
-    let result: Awaited<ReturnType<typeof runSql>>;
+    let run: Awaited<ReturnType<typeof runSqlEach>>;
     try {
-      // runSql answers a failure as the result's error.
-      result = await runSql(sampledSql, role, statsEnabled, timeTravel);
+      // Each statement is sampled on its own, so the batch is split as the server splits it; the
+      // server answers one result per statement (runSqlEach answers a failure as its error).
+      const sent = (await splitSql(aliased)).map((s) => wrapSampledSql(s, sampleMode, sampleSize));
+      run = await runSqlEach(joinStatements(sent), role, statsEnabled, timeTravel);
+    } catch (e) {
+      // The split refused: said as the run's error.
+      run = { answers: [], error: e instanceof Error ? e.message : String(e) };
     } finally {
       setRunning(false);
     }
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);
-    setQueryStats(result.provisa_stats ?? null);
-    setResultRedirect(result.redirect ?? null);
-    if (result.error) {
-      setResultError(result.error);
+    setQueryStats(run.provisa_stats ?? null);
+    const results = run.answers.map(toStatementResult);
+    setStatements(results);
+    if (results.length > 0) showStatement(results, 0);
+    else {
+      // Refused as a whole, or a batch of no statements (comments alone).
+      setStatementIndex(0);
+      setResultError(run.error ?? "");
       setResultColumns([]);
       setResultColumnTypes({});
       setResultRows([]);
       setResultPartial(false);
-      idbSet(tabResultsKey(activeTabId), { columns: [], rows: [], error: result.error });
-    } else {
-      setResultColumns(result.columns);
-      setResultColumnTypes(
-        Object.fromEntries(result.columns.map((c, i) => [c, result.column_types?.[i] ?? null])),
-      );
-      setResultRows(result.rows);
-      // The statement as SENT (the sampler's LIMIT included) and what the server said of it.
-      const partial = resultIsPartial(sampledSql, result.rows.length, result.warnings);
-      setResultPartial(partial);
-      idbSet(tabResultsKey(activeTabId), {
-        columns: result.columns,
-        rows: result.rows,
-        error: "",
-        partial,
-      });
+      resetGrid();
+      idbSet(tabResultsKey(activeTabId), { columns: [], rows: [], error: run.error ?? "" });
     }
-    resetGrid();
     setResultTab("results");
+    const failed = run.error ?? results.find((r) => r.error)?.error ?? "";
     const entry = {
       sql: aliased.trim(),
       role,
       executedAt: Date.now(),
       durationMs,
-      rowCount: result.error ? 0 : result.rows.length,
-      error: result.error ?? "",
+      rowCount: results.reduce((n, r) => n + r.rows.length, 0),
+      error: failed,
     };
     setHistory((prev) => {
       const next = [entry, ...prev.filter((h) => h.sql !== entry.sql || h.role !== entry.role)];
       saveHistory(next);
       return next;
     });
-  }, [sqlText, role, sampleMode, sampleSize, activeTabId, statsEnabled, resetGrid, timeTravel]);
+  }, [
+    sqlText,
+    role,
+    sampleMode,
+    sampleSize,
+    activeTabId,
+    statsEnabled,
+    resetGrid,
+    timeTravel,
+    showStatement,
+  ]);
 
   useEffect(() => {
     // The handed statement, once it is the editor's: on a page the hand-off opened, this runs in
@@ -1008,6 +1051,9 @@ export function SqlPage() {
               resultRows={resultRows}
               resultColumns={resultColumns}
               rowsPartial={resultPartial}
+              statements={statements}
+              statementIndex={statementIndex}
+              onStatement={(i) => showStatement(statements, i)}
               grid={grid}
               errors={errors}
               history={history}

@@ -240,17 +240,19 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | `grpc` | 对外部服务器的出站 gRPC 调用 | `target`、`method` |
 | `python` | 由 Provisa 托管的 Python 可调用对象 | `callable`（例如 `demo.py_functions:random_dataset`） |
 
-当命令声明 `return_schema`（`type: array, items: object` 的 JSON Schema）时，即为集合返回型，每个接口都会将其投影为类型化的行集。演示命令 `random_python_set`（impl_kind 为 `python`）及 `random_grpc_set`（impl_kind 为 `grpc`）分别演示了一个托管的可调用对象及一个返回随机值行的外部 gRPC 桥接；两者均已在 `config/provisa-install.yaml` 中注册。
+`script` 和 `python` 属于宿主代码，只有在运维方开启 `commands.allow_host_code` 时才允许（参见 [宿主代码](commands.md#host-code)）。
+
+当一个命令声明了 `return_schema`（带 `type: array, items: object` 的 JSON Schema）时，它是返回集合的命令，每个接口都会把它投影为类型化的行集。演示命令 `random_grpc_set`（impl_kind `grpc`）是一个返回随机值行的外部 gRPC 桥；它注册在 `config/provisa-install.yaml` 中。
 
 ### 协议对照表 {: #protocol-matrix }
 
 | 接口 | 语法 | 示例 |
 | --------- | -------- | --------- |
-| GraphQL | `kind=query` → Query 字段；`kind=mutation` → Mutation 字段；`domain_prefix: true` 时加上域前缀 | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
-| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` 或 `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
-| Cypher HTTP（`POST /data/cypher`） | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
-| Bolt（Neo4j Browser / 驱动程序） | `CALL fn(args)` —— 位置参数会对应到已声明的参数名称 | `CALL random_python_set(3, 7)` |
-| Provisa gRPC（端口 50051） | 一元 `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
+| GraphQL | `kind=query` → Query 字段；`kind=mutation` → Mutation 字段；`domain_prefix: true` 时加上域前缀 | `{ ps__random_grpc_set { id region amount } }` |
+| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` 或 `SELECT fn(args)` | `SELECT * FROM random_grpc_set()` |
+| Cypher HTTP（`POST /data/cypher`） | `CALL fn(args) YIELD cols` | `CALL random_grpc_set() YIELD id, region, amount` |
+| Bolt（Neo4j Browser / 驱动程序） | `CALL fn(args)` —— 位置参数会对应到已声明的参数名称 | `CALL random_grpc_set()` |
+| Provisa gRPC（端口 50051） | 一元 `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_grpc_set","args_json":"{}"}' ... ProvisaService/CallCommand` |
 
 `kind` 字段仅控制在 GraphQL 中的放置位置。SQL、Cypher、Bolt 及 gRPC 接口均同样接受 `query` 及 `mutation` 命令。
 

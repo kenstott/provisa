@@ -49,6 +49,7 @@ PROFILER_RUN_DEFAULTS: dict = {
     "correlation_max_columns": 20,
     "joint_max_distinct": 20,
     "category_max_columns": 10,
+    "classification_sample": 500,
 }
 
 
@@ -206,7 +207,7 @@ def build_through_a_stand_in_pipeline(monkeypatch, physical=None) -> list:
         built.append(mv)
         sql = physical(mv) if physical is not None else mv.sql
         assert sql is not None, f"{mv.id}: a stand-in plan needs the engine SQL it would run"
-        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None)
+        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None, columns=None)
 
     async def _resident(_state, _plan):
         return None

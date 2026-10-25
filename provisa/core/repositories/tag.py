@@ -38,6 +38,7 @@ from provisa.core.models import (
 )
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
+    glossary_terms,
     registered_tables,
     tag_assignments,
     tag_param_values,
@@ -181,6 +182,7 @@ async def assign(  # REQ-1377, REQ-1919
             "column_name": assignment.column_name,
             "relationship_id": assignment.relationship_id,
             "command_name": assignment.command_name,
+            "term_id": assignment.term_id,  # REQ-2145
             "object_key": assignment.object_key(),
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,
@@ -334,10 +336,11 @@ async def delete_param_value(conn: "Connection", tag_id: str, value: str) -> boo
 
 
 async def list_assignments(conn: "Connection") -> list[dict]:
-    """All assignments, with the qualified table address joined in for table/column targets.
+    """All assignments, with the qualified table address joined in for table/column targets and
+    the term's name for a term (REQ-2145).
 
-    ``table_ref`` ("source.schema.table") is the config-vocabulary identity the export
-    builder resolves through TableIndex; DB serials never leave the repository layer.
+    ``table_ref`` ("source.schema.table") and ``term`` are the config-vocabulary identities the
+    export builder resolves; DB serials never leave the repository layer.
     """
     result = await conn.execute_core(
         select(
@@ -345,12 +348,14 @@ async def list_assignments(conn: "Connection") -> list[dict]:
             registered_tables.c.source_id.label("ref_source_id"),
             registered_tables.c.schema_name.label("ref_schema_name"),
             registered_tables.c.table_name.label("ref_table_name"),
+            glossary_terms.c.name.label("term"),
         )
         .join(
             registered_tables,
             tag_assignments.c.table_id == registered_tables.c.id,
             isouter=True,
         )
+        .join(glossary_terms, tag_assignments.c.term_id == glossary_terms.c.id, isouter=True)
         .order_by(tag_assignments.c.tag_id, tag_assignments.c.object_key)
     )
     rows = []

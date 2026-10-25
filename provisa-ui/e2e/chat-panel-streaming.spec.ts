@@ -30,6 +30,10 @@ import { test, expect } from "./coverage";
  */
 
 test.describe("ChatPanel streaming does not freeze mid-reply", () => {
+  // A worker's first page pays the dev server's cold compile (run 39809397086: 33 s to load
+  // /sources, 43 s more before the chat toggle could be clicked), and a live turn is then given 120 s
+  // to finish: the 90 s default could not hold the waits written here.
+  test.describe.configure({ timeout: 300_000 });
   // A live model is the point of these tests, so a missing key fails them by name rather than
   // skipping them: a skip here hid that the CI lane never passed the key, and the spec never ran.
   test.beforeEach(() => {
@@ -84,7 +88,10 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
    * when the model calls a CLIENT tool (useMcpChat.ts's loop: streamOnce returns `awaiting`, the
    * tool runs in the browser, and the next round streams into a fresh beginAssistantTurn()
    * placeholder) — present_choice is the one that waits on the user, so the test answers it between
-   * the rounds. The regression was round two's text accumulating onto round one's bubble.
+   * the rounds. The regression was round two's text accumulating onto round one's bubble. Text the
+   * model writes beside a tool call is never shown (chat.py: a round's text is sent only when the
+   * round ends without a call), so round one shows only its question, and round two's text is the
+   * only round text on screen.
    */
   test("each round of a client-tool turn streams into its own message bubble", async ({ page }) => {
     await page.goto("/sources");
@@ -110,7 +117,11 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
     // The prompt bubble names both sentences; only the assistant's bubbles are rounds.
     const PROMPT = "Follow these steps exactly";
     const roundOne = messages.filter({ hasText: "ROUND-ONE" }).filter({ hasNotText: PROMPT });
-    await expect(roundOne).toHaveCount(1);
+    // Round one's sentence was written beside its present_choice call, so it is not shown; the
+    // question is.
+    await expect(roundOne).toHaveCount(0);
+    const question = messages.filter({ hasText: "Proceed?" }).filter({ hasNotText: PROMPT });
+    await expect(question).toHaveCount(1);
     const beforeAnswer = await messages.count();
 
     await choice.getByRole("button", { name: "Yes", exact: true }).click();
@@ -118,14 +129,55 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
 
     const roundTwo = messages.filter({ hasText: "ROUND-TWO" }).filter({ hasNotText: PROMPT });
     await expect(roundTwo).toHaveCount(1);
-    // Round two did not land on round one's bubble, and round one's bubble kept its own text.
-    await expect(roundOne).toHaveCount(1);
-    await expect(roundOne).not.toContainText("ROUND-TWO");
+    // Round two did not land on an earlier bubble: the question kept its own text, and round one's
+    // hidden sentence did not surface with it.
+    await expect(question).not.toContainText("ROUND-TWO");
+    await expect(roundTwo).not.toContainText("ROUND-ONE");
     // Round two's bubble came after the answer: a new message, not an earlier one rewritten.
     const texts = await messages.allTextContents();
-    const oneAt = texts.findIndex((t) => t.includes("ROUND-ONE") && !t.includes(PROMPT));
     const twoAt = texts.findIndex((t) => t.includes("ROUND-TWO") && !t.includes(PROMPT));
     expect(twoAt).toBeGreaterThanOrEqual(beforeAnswer);
-    expect(twoAt).toBeGreaterThan(oneAt);
+  });
+
+  /**
+   * The maintainer's 400 "messages.2: user messages must have non-empty content": Polly asked with
+   * present_choice, the user clicked off the choice without picking, and the NEXT typed message was
+   * refused, the closed choice having been recorded as an empty user message. Closing it is now an
+   * answer of its own, and the conversation goes on.
+   */
+  test("a choice closed without picking leaves the next message answerable", async ({ page }) => {
+    await page.goto("/sources");
+
+    await page.getByTestId("chat-panel-toggle").click();
+    const panel = page.getByTestId("chat-panel");
+    await expect(panel).toBeVisible({ timeout: 30000 });
+
+    const textarea = panel.getByPlaceholder("Ask me a question, or tell me what to do.");
+    await textarea.click();
+    await textarea.fill(
+      'Call the present_choice tool with mode yes_no and the question "Proceed?", and nothing ' +
+        "else. After my answer, reply in one short sentence.",
+    );
+    const sendBtn = page.getByTestId("chat-panel-send");
+    await sendBtn.click();
+
+    const choice = page.getByTestId("chat-panel-choice-modal");
+    await expect(choice).toBeVisible({ timeout: 120000 });
+    // Clicked off the widget, on the overlay itself.
+    await choice.click({ position: { x: 5, y: 5 } });
+    await expect(choice).toBeHidden();
+    await expect(panel.getByText("(closed without choosing)")).toBeVisible();
+    await expect(sendBtn).toHaveText("Send", { timeout: 120000 });
+
+    await textarea.fill('Reply with exactly the word "AFTER-CLOSE" and nothing else.');
+    await sendBtn.click();
+    await expect(sendBtn).toHaveText("Send", { timeout: 120000 });
+    await expect(panel.getByTestId("chat-panel-error")).toHaveCount(0);
+    await expect(
+      panel
+        .locator(".chat-message")
+        .filter({ hasText: "AFTER-CLOSE" })
+        .filter({ hasNotText: "Reply with" }),
+    ).toHaveCount(1);
   });
 });

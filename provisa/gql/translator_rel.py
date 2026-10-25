@@ -1,0 +1,1107 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0a04beb7-4b3d-4347-98b6-094b286da1bd
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Relationship-resolution and JOIN-building mixin for the Cypher→SQL translator.
+
+Methods operate on _Translator state via self; mixed into _Translator, never
+instantiated alone.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+from typing import TYPE_CHECKING, cast
+
+import sqlglot.expressions as exp
+
+from provisa.gql.ir import (
+    MatchClause,
+    NodePattern,
+    PathFunction,
+    PathPattern,
+    RelPattern,
+    TriplePattern,
+)
+from provisa.gql.label_map import NodeMapping, RelationshipMapping
+from provisa.gql.translator_helpers import (
+    _is_bwd_for_candidate,
+    _join_alias,
+    _make_rel_joins,
+    via_alias_for,
+    via_column,
+    _node_table_expr,
+    _src_col_expr_for_rm,
+    _tgt_col_expr_for_rm,
+)
+
+from provisa.gql.translator_types import CypherTranslateError
+
+
+def _alternation_refused(rel: "RelPattern") -> CypherTranslateError:
+    return CypherTranslateError(
+        f"Relationship type alternation :{'|'.join(rel.types)} on a single hop is supported only "
+        "for types that are rows of one junction table, told apart by its type column, between "
+        "the same two node labels; write one pattern per type instead"
+    )
+
+
+def _refuse_optional_branches(clause: MatchClause, candidates: list) -> None:
+    """An OPTIONAL hop that reaches several relationships has no form here: each is its own UNION
+    branch of LEFT JOINs, so a row with none of them would come back once per relationship, and a
+    row with one would come back with a null row from each other. A wrong row count is refused."""
+    if clause.optional and len(candidates) > 1:
+        names = sorted({rm.rel_type for rm, _ in candidates})
+        raise CypherTranslateError(
+            f"OPTIONAL MATCH over a hop that reaches several relationships ({', '.join(names)}) "
+            "is not supported: name the relationship type, or split the query into one "
+            "OPTIONAL MATCH per type"
+        )
+
+
+class _RelJoinMixin:  # mixin for _Translator
+    if TYPE_CHECKING:
+        # State and collaborating methods this mixin reads off ``self``. They belong to
+        # ``_Translator`` (its ``__init__`` and its other mixins), which is the only class this is
+        # ever mixed into; declaring them here tells the checker what the composed object provides.
+        # Guarded, because a stub method defined unconditionally would sit ahead of the real one in
+        # the MRO -- ``_RelJoinMixin`` precedes ``_UnionMixin`` -- and shadow it at runtime.
+        from provisa.gql.label_map import CypherLabelMap, JunctionMapping
+        from provisa.gql.ir import MatchClause as _MatchClause
+        from provisa.gql.ir import NodePattern as _NodePattern
+
+        _lm: CypherLabelMap
+        _var_table: dict[str, tuple[str, NodeMapping | None]]
+        _cte_sources: set[str]
+        _domain_nodes: dict[str, str]
+        _path_vars: dict[str, tuple[str, str, bool]]
+        _path_steps: dict[str, tuple[list, list]]
+        _lateral_bound: set[str]
+        _lateral_conditions: list[exp.Expression]
+        _rel_var_types: dict[str, str]
+        _rel_var_type_exprs: dict[str, exp.Expression]
+        _alternation_types: dict[int, dict[str, str]]
+        _rel_var_endpoints: dict[str, tuple[str, NodeMapping, str, NodeMapping, bool]]
+        _rel_var_via: dict[str, tuple[str, JunctionMapping]]
+        #: The relationship variables an OPTIONAL MATCH binds: null where it matched none.
+        _optional_rel_vars: set[str]
+        #: An OPTIONAL relationship between two nodes the statement holds: where it matched (#303).
+        _rel_var_matched: dict[str, exp.Expression]
+        #: The conditions of relationships between two nodes the statement holds, which join no
+        #: table (#303): the WHERE of the statement _build_from_joins builds the FROM of.
+        _held_end_conditions: list[exp.Expression]
+        _rel_step_endpoints: dict[int, tuple]
+        _anon_node_aliases: dict[tuple[int, str], str]
+        _passthrough_vars: set[str]
+        _all_rels_rel_vars: set[str]
+        _all_rels_node_vars: set[str]
+        _varlen_rel_vars: dict[str, str]
+
+        def _register_node(self, node: _NodePattern) -> None: ...
+
+        def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]: ...
+
+        def _build_first_node_from(self, first_node: _NodePattern) -> exp.Expression | None: ...
+
+        def _build_standalone_node_join(
+            self, fv: str | None, clause: _MatchClause
+        ) -> dict | None: ...
+
+        def _build_domain_union(self, var: str, domain_name: str) -> exp.Expression: ...
+
+        def _build_all_rels_union(
+            self,
+            src_var: str | None,
+            rel_var: str | None,
+            tgt_var: str | None,
+            src_domain: str | None = None,
+            tgt_domain: str | None = None,
+            *,
+            src_type: str | None = None,
+            tgt_type: str | None = None,
+        ) -> exp.Expression: ...
+
+        def _translate_path_function(
+            self, clause: _MatchClause
+        ) -> tuple[exp.Expression, list[dict]]: ...
+
+        def _translate_path_expr(
+            self, clause: _MatchClause, nodes: list, rel: RelPattern, joined: set[str]
+        ) -> list[dict]: ...
+
+        def _translate_triple(self, clause: _MatchClause, triple: TriplePattern) -> list[dict]: ...
+
+    def _node_alias(self, node, nm: "NodeMapping", *, as_source: bool) -> str:
+        """REQ-1586: the SQL alias for a pattern node, unique within the query.
+
+        A named node aliases to its variable. An anonymous one aliases to its table name, and
+        because a junction edge commonly joins one table to itself, a second anonymous node on the
+        same table takes a numbered alias rather than colliding with the first. A node entered as
+        one hop's target and re-entered as the next hop's source keeps the alias it was given, so
+        a chain of anonymous hops stays joined end to end.
+        """
+        if node.variable:
+            return node.variable
+        key = (id(node), nm.table_name)
+        cached = self._anon_node_aliases.get(key)
+        if cached is not None:
+            return cached
+        if as_source:
+            # The step resolved this node to a mapping it was not entered under; an earlier hop
+            # already put that table in the query, so reuse the alias it was given there.
+            for (_nid, table), alias in self._anon_node_aliases.items():
+                if table == nm.table_name:
+                    return alias
+        taken = set(self._anon_node_aliases.values()) | set(self._var_table)
+        alias = nm.table_name
+        n = 2
+        while alias in taken:
+            alias = f"{nm.table_name}__{n}"
+            n += 1
+        self._anon_node_aliases[key] = alias
+        return alias
+
+    def _register_rel_via(self, rel_var: "str | None", rm: "RelationshipMapping") -> None:
+        """REQ-1586: record the junction alias for a named junction-backed relationship."""
+        if rel_var and rm.via is not None:
+            self._rel_var_via[rel_var] = (via_alias_for(rm, rel_var), rm.via)
+
+    def _resolve_early_rel_mapping(self, rel: "RelPattern") -> "RelationshipMapping | None":
+        """Resolve early rel_mapping for domain-node path and anonymous node inference."""
+        if not rel.types:
+            return None
+        _rt_early = rel.types[0].upper()
+        _early_matches = self._lm.aliases.get(_rt_early, [])
+        if not _early_matches:
+            _rm_early = self._lm.relationships.get(_rt_early)
+            _early_matches = [_rm_early] if _rm_early else []
+        return _early_matches[0] if _early_matches else None
+
+    def _infer_src_from_rel(
+        self,
+        label: str,
+        src_var: "str | None",
+        current_from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> "tuple[NodeMapping | None, exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Infer src_nm as ``label``, the relationship's end it is; update from_expr if src was a
+        domain union."""
+        src_nm = self._lm.nodes.get(label)
+        if src_nm and src_var:
+            self._var_table[src_var] = (src_var, src_nm)
+            if src_var in self._domain_nodes:
+                self._domain_nodes.pop(src_var)
+                current_from_expr = _node_table_expr(src_nm, src_var)
+        return src_nm, current_from_expr
+
+    def _infer_tgt_from_rel(
+        self,
+        label: str,
+        tgt_var: "str | None",
+    ) -> "NodeMapping | None":
+        """Infer tgt_nm as ``label``, the relationship's end it is; update var_table/domain_nodes."""
+        tgt_nm = self._lm.nodes.get(label)
+        if tgt_nm and tgt_var:
+            self._var_table[tgt_var] = (tgt_var, tgt_nm)
+            self._domain_nodes.pop(tgt_var, None)
+        return tgt_nm
+
+    def _build_domain_target_join(
+        self,
+        tgt_var: str,
+        rel_mapping: "RelationshipMapping",
+        src_var: "str | None",
+        src_nm: "NodeMapping | None",
+        clause: MatchClause,
+    ) -> dict:
+        """Build a JOIN for a domain-only target node."""
+        join_type = "LEFT" if clause.optional else "INNER"
+        tgt_alias = tgt_var
+        join_table = self._build_domain_union(tgt_var, self._domain_nodes[tgt_var])
+        src_table_ref = (
+            self._var_table.get(src_var, (src_var, None))[0] if src_var else src_nm.table_name  # type: ignore[union-attr]
+        )
+        src_col_expr = _src_col_expr_for_rm(rel_mapping, src_table_ref, src_nm)
+        tgt_col_expr = _tgt_col_expr_for_rm(rel_mapping, tgt_alias)
+        on_cond = exp.EQ(this=src_col_expr, expression=tgt_col_expr)
+        return {"table": join_table, "on": on_cond, "join_type": join_type}
+
+    def _handle_unlabeled_rel_pattern(
+        self,
+        src_var: "str | None",
+        rel_var: "str | None",
+        tgt_var: "str | None",
+        *,
+        src_type: "str | None" = None,
+        tgt_type: "str | None" = None,
+    ) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Handle an untyped rel pattern: UNION ALL over the relationship types whose endpoints
+        are of the node types the pattern labels (``src_type`` / ``tgt_type``), every type where
+        it labels neither."""
+        src_domain = self._domain_nodes.get(src_var) if src_var else None
+        tgt_domain = self._domain_nodes.get(tgt_var) if tgt_var else None
+        from_expr = self._build_all_rels_union(
+            src_var, rel_var, tgt_var, src_domain, tgt_domain, src_type=src_type, tgt_type=tgt_type
+        )
+        if src_var:
+            self._domain_nodes.pop(src_var, None)
+            self._var_table[src_var] = (src_var, None)
+            self._passthrough_vars.add(src_var)
+            self._all_rels_node_vars.add(src_var)
+        if rel_var:
+            self._passthrough_vars.add(rel_var)
+            self._all_rels_rel_vars.add(rel_var)
+        if tgt_var:
+            self._domain_nodes.pop(tgt_var, None)
+            self._var_table[tgt_var] = (tgt_var, None)
+            self._passthrough_vars.add(tgt_var)
+            self._all_rels_node_vars.add(tgt_var)
+        return from_expr
+
+    def _resolve_typed_rel_candidates(
+        self,
+        rel: "RelPattern",
+        bidir: bool,
+        backward: bool,
+        src_nm: "NodeMapping | None",
+        tgt_nm: "NodeMapping | None",
+        src_nm_explicit: bool,
+        tgt_nm_explicit: bool,
+    ) -> "list[tuple]":
+        """Resolve relationship candidates for a typed relationship."""
+        rel_type = rel.types[0].upper()
+        alias_matches = self._lm.aliases.get(rel_type, [])
+        if not alias_matches:
+            rm = self._lm.relationships.get(rel_type)
+            alias_matches = [rm] if rm else []
+        # Filter to exact src/tgt match when multiple aliases share the same rel type
+        if src_nm is not None and src_nm_explicit and len(alias_matches) > 1:
+            fwd_exact = [
+                m
+                for m in alias_matches
+                if m.source_label == src_nm.type_name
+                and (tgt_nm is None or m.target_label == tgt_nm.type_name)
+            ]
+            bwd_exact = [
+                m
+                for m in alias_matches
+                if m.target_label == src_nm.type_name
+                and (tgt_nm is None or m.source_label == tgt_nm.type_name)
+            ]
+            if not backward and fwd_exact:
+                alias_matches = fwd_exact
+            elif bwd_exact:
+                alias_matches = bwd_exact
+            elif fwd_exact:
+                alias_matches = fwd_exact
+        if bidir:
+            # REQ-575: undirected pattern → UNION ALL of both traversal directions.
+            # For each matching mapping, include forward (False) and backward (True) variants
+            # so _build_candidate_joins emits both branches.
+            candidates: list[tuple] = []
+            for m in alias_matches:
+                fwd_ok = _is_bwd_for_candidate(m, False, False, src_nm, tgt_nm, tgt_nm_explicit)
+                bwd_ok = _is_bwd_for_candidate(m, False, True, src_nm, tgt_nm, tgt_nm_explicit)
+                if m.source_label != m.target_label:
+                    # Non-self-referential: forward and backward resolve to the same fixed
+                    # tables and collapse to an identical join (orientation is derived from
+                    # labels in _make_rel_join). Emit a single branch — emitting both would
+                    # duplicate every matched path in the UNION ALL.
+                    if fwd_ok is not None or bwd_ok is not None:
+                        candidates.append((m, False))
+                    continue
+                if fwd_ok is not None:
+                    candidates.append((m, False))
+                if bwd_ok is not None:
+                    candidates.append((m, True))
+            return candidates
+        return [
+            (m, bwd)
+            for m in alias_matches
+            if (bwd := _is_bwd_for_candidate(m, bidir, backward, src_nm, tgt_nm, tgt_nm_explicit))
+            is not None
+        ]
+
+    def _resolve_untyped_rel_candidates(
+        self,
+        bidir: bool,
+        backward: bool,
+        src_nm: "NodeMapping",
+        tgt_nm: "NodeMapping",
+    ) -> "list[tuple]":
+        """Resolve relationship candidates for an untyped relationship."""
+        if bidir:
+            fwd = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
+            bwd = self._lm.relationships_for(tgt_nm.type_name, src_nm.type_name)
+            return [(m, False) for m in fwd] + [(m, True) for m in bwd]
+        if backward:
+            fwd_cands = self._lm.relationships_for(tgt_nm.type_name, src_nm.type_name)
+            return [(m, True) for m in fwd_cands]
+        fwd_cands = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
+        return [(m, False) for m in fwd_cands]
+
+    def _resolve_rel_node_types(
+        self,
+        src_node: "NodePattern",
+        tgt_node: "NodePattern",
+        rel_mapping: "RelationshipMapping | None",
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        backward: bool,
+    ) -> "tuple[NodeMapping | None, NodeMapping | None, bool, bool, exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Resolve src_nm, tgt_nm, explicitness flags, and updated from_expr.
+
+        Returns (src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr).
+        """
+        src_var = src_node.variable
+        tgt_var = tgt_node.variable
+        src_nm = self._var_table.get(src_var, (None, None))[1] if src_var else None
+        tgt_nm = self._var_table.get(tgt_var, (None, None))[1] if tgt_var else None
+        src_nm_explicit = src_nm is not None
+        tgt_nm_explicit = tgt_nm is not None
+
+        if tgt_nm is None and tgt_node.labels:
+            type_label, _ = self._resolve_node_type(tgt_node.labels)
+            tgt_nm = self._lm.nodes.get(type_label) if type_label else None
+            if tgt_nm and tgt_var:
+                self._var_table[tgt_var] = (tgt_var, tgt_nm)
+            tgt_nm_explicit = tgt_nm is not None
+
+        if (src_nm is None or tgt_nm is None) and rel_mapping:
+            # The pattern's first node is the relationship's source, or its target where the
+            # pattern reads it backward ((m)<-[:T]-(a): m is T's target, #291).
+            first, last = (
+                (rel_mapping.target_label, rel_mapping.source_label)
+                if backward
+                else (rel_mapping.source_label, rel_mapping.target_label)
+            )
+            if src_nm is None:
+                src_nm, from_expr = self._infer_src_from_rel(first, src_var, from_expr)
+            if tgt_nm is None:
+                tgt_nm = self._infer_tgt_from_rel(last, tgt_var)
+
+        return src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr
+
+    def _apply_rel_join_candidates(
+        self,
+        rel: "RelPattern",
+        candidates: list,
+        src_var: "str | None",
+        src_nm: "NodeMapping",
+        tgt_nm: "NodeMapping",
+        clause: MatchClause,
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: "list[dict]",
+    ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Apply primary and extra JOIN candidates to joins/from_expr."""
+        _refuse_optional_branches(clause, candidates)
+        join_type = "LEFT" if clause.optional else "INNER"
+        tgt_alias = tgt_nm.table_name
+        if src_var and src_var in self._cte_sources:
+            src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
+        else:
+            src_table_ref = src_var or src_nm.table_name
+
+        primary_rm, primary_bwd = candidates[0]
+        # _make_rel_join derives orientation from labels for non-self-ref rels; mirror that
+        # here so the captured edge's start/end nodes match the emitted join (REQ-575).
+        _eff_bwd = (
+            (src_nm.type_name == primary_rm.target_label)
+            if primary_rm.source_label != primary_rm.target_label
+            else primary_bwd
+        )
+        if rel.variable:
+            self._rel_var_types[rel.variable] = primary_rm.rel_type
+            _src_alias = src_var or src_nm.table_name
+            if _src_alias and src_nm and tgt_nm:
+                self._rel_var_endpoints[rel.variable] = (
+                    _src_alias,
+                    src_nm,
+                    tgt_alias,
+                    tgt_nm,
+                    _eff_bwd,
+                )
+
+        primary_joins = _make_rel_joins(
+            primary_rm,
+            primary_bwd,
+            tgt_nm,
+            tgt_alias,
+            src_table_ref,
+            src_nm,
+            join_type,
+            rel.variable,
+        )
+        self._register_rel_via(rel.variable, primary_rm)
+        joins_before = list(joins)
+
+        # REQ-1586: a junction-backed edge emits [junction, target]; the lateral takes the first
+        # table as its FROM and its condition as the correlation, the rest stay ordinary joins.
+        if src_var and src_var in self._lateral_bound and from_expr is None:
+            from_expr = primary_joins[0]["table"]
+            self._lateral_conditions.append(primary_joins[0]["on"])
+            joins.extend(primary_joins[1:])
+        else:
+            joins.extend(primary_joins)
+
+        for extra_rm, extra_bwd in candidates[1:]:
+            extra_joins = _make_rel_joins(
+                extra_rm,
+                extra_bwd,
+                tgt_nm,
+                tgt_alias,
+                src_table_ref,
+                src_nm,
+                join_type,
+                rel.variable,
+            )
+            # The branch is of its own relationship type, which its type(r) names.
+            self._extra_path_branches.append(
+                (
+                    from_expr,
+                    joins_before + extra_joins,
+                    {},
+                    {rel.variable: extra_rm.rel_type} if rel.variable else {},
+                )
+            )
+
+        return from_expr, joins
+
+    def _build_candidate_joins(
+        self,
+        rel: "RelPattern",
+        candidates: list,
+        src_var: "str | None",
+        src_nm: "NodeMapping",
+        tgt_nm: "NodeMapping",
+        src_alias: str,
+        tgt_alias: str,
+        clause: MatchClause,
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: "list[dict]",
+    ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Build and register joins for a resolved set of rel candidates."""
+        _refuse_optional_branches(clause, candidates)
+        join_type = "LEFT" if clause.optional else "INNER"
+        if src_var and src_var in self._cte_sources:
+            src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
+        else:
+            src_table_ref = src_alias
+
+        primary_rm, primary_bwd = candidates[0]
+        _src_alias = src_alias
+        _tgt_alias = tgt_alias
+        # _make_rel_join derives orientation from labels for non-self-ref rels; mirror that
+        # here so the captured edge's start/end nodes match the emitted join.
+        _eff_bwd = (
+            (src_nm.type_name == primary_rm.target_label)
+            if primary_rm.source_label != primary_rm.target_label
+            else primary_bwd
+        )
+        if _src_alias and _tgt_alias:
+            self._rel_step_endpoints[id(rel)] = (
+                primary_rm.rel_type,
+                _src_alias,
+                src_nm,
+                _tgt_alias,
+                tgt_nm,
+                _eff_bwd,
+                # REQ-1586: the junction this hop traverses, under the same alias the joins use,
+                # so a path step's edge carries the junction's columns as its properties.
+                None
+                if primary_rm.via is None
+                else (via_alias_for(primary_rm, rel.variable or _tgt_alias), primary_rm.via),
+            )
+        if rel.variable:
+            self._rel_var_types[rel.variable] = primary_rm.rel_type
+            if clause.optional:
+                self._optional_rel_vars.add(rel.variable)
+            if _src_alias and _tgt_alias:
+                self._rel_var_endpoints[rel.variable] = (
+                    _src_alias,
+                    src_nm,
+                    _tgt_alias,
+                    tgt_nm,
+                    _eff_bwd,
+                )
+
+        primary_joins = _make_rel_joins(
+            primary_rm,
+            primary_bwd,
+            tgt_nm,
+            tgt_alias,
+            src_table_ref,
+            src_nm,
+            join_type,
+            rel.variable,
+        )
+        self._register_rel_via(rel.variable, primary_rm)
+        joins_before = list(joins)
+
+        # REQ-1586: a junction-backed edge emits [junction, target]; the lateral takes the first
+        # table as its FROM and its condition as the correlation, the rest stay ordinary joins.
+        if src_var and src_var in self._lateral_bound and from_expr is None:
+            from_expr = primary_joins[0]["table"]
+            self._lateral_conditions.append(primary_joins[0]["on"])
+            joins.extend(primary_joins[1:])
+        else:
+            joins.extend(primary_joins)
+
+        for extra_rm, extra_bwd in candidates[1:]:
+            extra_joins = _make_rel_joins(
+                extra_rm,
+                extra_bwd,
+                tgt_nm,
+                tgt_alias,
+                src_table_ref,
+                src_nm,
+                join_type,
+                rel.variable,
+            )
+            # The branch is of its own relationship type, which its type(r) names.
+            self._extra_path_branches.append(
+                (
+                    from_expr,
+                    joins_before + extra_joins,
+                    {},
+                    {rel.variable: extra_rm.rel_type} if rel.variable else {},
+                )
+            )
+
+        return from_expr, joins
+
+    def _process_rel_step(
+        self,
+        rel: "RelPattern",
+        nodes: list,
+        i: int,
+        clause: MatchClause,
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: "list[dict]",
+        held_target: bool = False,
+        new_source: bool = False,
+    ) -> "tuple[exp.Expression | None, list[dict], bool]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Process a single relationship → update joins/from_expr.
+
+        ``held_target``: the relationship's far end is a node the statement already holds (#303),
+        which it reads as a condition between the two rows, never as a second copy of its table.
+        ``new_source``: the relationship's near end is a node the statement does not hold yet,
+        though it has a FROM (a later MATCH's pattern, #306): its table is joined first.
+
+        Returns (from_expr, joins, did_continue) where did_continue=True means
+        caller should skip to the next rel iteration.
+        """
+        src_node = nodes[i]
+        tgt_node = nodes[i + 1]
+        src_var = src_node.variable
+        tgt_var = tgt_node.variable
+
+        # Variable-length hops take a different path (path_functions) and carry the full list.
+        alternation = len(rel.types) > 1 and not rel.variable_length
+
+        rel_mapping = self._resolve_early_rel_mapping(rel)
+        src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = self._resolve_rel_node_types(
+            src_node, tgt_node, rel_mapping, from_expr, backward=rel.direction == "left"
+        )
+
+        # A node the outer statement holds is the outer row (#160): this statement reads its hop's
+        # first table and is tied to that row by the hop's condition, never reads the node again.
+        outer_row = bool(src_var and src_var in self._lateral_bound)
+        if from_expr is None and src_nm is not None and not outer_row:
+            from_expr = _node_table_expr(src_nm, self._node_alias(src_node, src_nm, as_source=True))
+
+        if (held_target or new_source) and (
+            src_nm is None or tgt_nm is None or rel.variable_length
+        ):
+            raise CypherTranslateError(
+                "A relationship from a node a later MATCH starts at, or to a node the statement "
+                "already holds, is read through a relationship of a labelled type between "
+                "labelled nodes"
+            )
+        if src_nm is None or tgt_nm is None:
+            if tgt_var and tgt_var in self._domain_nodes and rel_mapping is not None:
+                j = self._build_domain_target_join(tgt_var, rel_mapping, src_var, src_nm, clause)
+                joins.append(j)
+            elif rel_mapping is None:
+                # An endpoint's own label holds: (n:Inquiries)-[r]->(m) reads only the
+                # relationships from Inquiries, never every relationship of the model.
+                from_expr = self._handle_unlabeled_rel_pattern(
+                    src_var,
+                    rel.variable,
+                    tgt_var,
+                    src_type=src_nm.type_name if src_nm is not None and src_nm_explicit else None,
+                    tgt_type=tgt_nm.type_name if tgt_nm is not None and tgt_nm_explicit else None,
+                )
+            return from_expr, joins, True
+
+        bidir = rel.direction == "none"
+        backward = rel.direction == "left"
+
+        if alternation:
+            candidates = self._alternation_candidates(
+                rel, bidir, backward, src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit
+            )
+        elif rel.types:
+            candidates = self._resolve_typed_rel_candidates(
+                rel, bidir, backward, src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit
+            )
+        else:
+            candidates = self._one_join_per_junction(
+                self._resolve_untyped_rel_candidates(bidir, backward, src_nm, tgt_nm)
+            )
+
+        if not candidates:
+            if tgt_var:
+                jt = _node_table_expr(tgt_nm, self._node_alias(tgt_node, tgt_nm, as_source=False))
+                no_rel_join_type = "LEFT" if clause.optional else "INNER"
+                joins.append({"table": jt, "on": exp.false(), "join_type": no_rel_join_type})
+            if rel.variable:
+                self._rel_var_types[rel.variable] = ""
+            return from_expr, joins, True
+
+        tgt_alias = self._node_alias(tgt_node, tgt_nm, as_source=False)
+        from_before, joins_before = from_expr, len(joins)
+        branches_before = len(self._extra_path_branches)
+        from_expr, joins = self._build_candidate_joins(
+            rel,
+            candidates,
+            src_var,
+            src_nm,
+            tgt_nm,
+            self._node_alias(src_node, src_nm, as_source=True),
+            tgt_alias,
+            clause,
+            from_expr,
+            joins,
+        )
+        if new_source:
+            if len(self._extra_path_branches) != branches_before:
+                raise CypherTranslateError(
+                    f"A later MATCH starting at {src_var or 'a new node'} is read through one "
+                    "relationship type"
+                )
+            self._join_new_source(src_node, src_nm, clause, joins, joins_before)
+        if held_target:
+            if len(self._extra_path_branches) != branches_before:
+                raise CypherTranslateError(
+                    f"A relationship to {tgt_var}, a node the statement already holds, is read "
+                    "through one relationship type"
+                )
+            from_expr = self._held_far_end(rel, from_before, from_expr, joins, joins_before)
+        if alternation or id(candidates[0][0]) in self._alternation_types:
+            self._name_alternation_types(rel, candidates[0][0], tgt_alias)
+        return from_expr, joins, False
+
+    def _join_new_source(
+        self,
+        src_node: "NodePattern",
+        src_nm: "NodeMapping",
+        clause: MatchClause,
+        joins: "list[dict]",
+        joins_before: int,
+    ) -> None:
+        """The near end of a later MATCH's first hop (#306), joined before the hop's own joins:
+        beside every row (a required MATCH), or, for an OPTIONAL one, only where the hop matches
+        from it -- so a node with no such hop binds nothing, and where none has one the row is
+        kept with both ends null."""
+        table = _node_table_expr(src_nm, self._node_alias(src_node, src_nm, as_source=True))
+        if not clause.optional:
+            joins.insert(joins_before, {"table": table, "on": None, "join_type": "CROSS"})
+            return
+        hop = joins[joins_before:]
+        body = exp.select(exp.Literal.number(1)).from_(hop[0]["table"].copy())
+        for j in hop[1:]:
+            body = body.join(j["table"].copy(), on=j["on"].copy(), join_type="INNER")
+        body = body.where(hop[0]["on"].copy())
+        joins.insert(
+            joins_before, {"table": table, "on": exp.Exists(this=body), "join_type": "LEFT"}
+        )
+
+    def _held_far_end(
+        self,
+        rel: "RelPattern",
+        from_before: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: "list[dict]",
+        joins_before: int,
+    ) -> "exp.Expression | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The hop just joined, whose far end the statement already holds (#303), with that end's
+        table taken back out: its condition goes on the junction the hop joined (a junction-backed
+        relationship), on the statement's WHERE (a required one), or names where an OPTIONAL one
+        matched. The FROM the hop leaves."""
+        if from_expr is not from_before:
+            # The near end is the outer statement's row: the hop's first table became the FROM,
+            # its condition the correlation. An FK hop's first table is the far end itself.
+            if len(joins) == joins_before:
+                return from_before
+            far = joins.pop()
+            self._lateral_conditions.append(far["on"])
+            return from_expr
+        far = joins.pop()
+        if len(joins) > joins_before:
+            junction = joins[-1]
+            junction["on"] = exp.And(this=junction["on"], expression=far["on"])
+            if far["join_type"] == "LEFT" and rel.variable:
+                self._rel_var_matched[rel.variable] = far["on"]
+        elif far["join_type"] == "LEFT":
+            if rel.variable:
+                self._rel_var_matched[rel.variable] = far["on"]
+        else:
+            self._held_end_conditions.append(far["on"])
+        return from_expr
+
+    def _one_join_per_junction(self, candidates: "list[tuple]") -> "list[tuple]":
+        """An untyped hop's candidates, the types that are rows of one junction (told apart by its
+        type column, between the same ends the same way round) made one join of every row of that
+        junction: an untyped relationship is any row, of a declared type or not."""
+        out: list[tuple] = []
+        at: dict[tuple, int] = {}
+        for rm, bwd in candidates:
+            via = rm.via
+            if via is None or not via.type_column or via.type_value is None:
+                out.append((rm, bwd))
+                continue
+            shape = (rm.source_label, rm.target_label, rm.join_source_column)
+            shape += (rm.join_target_column, via.catalog_name, via.schema_name, via.table_name)
+            shape += (via.source_columns, via.target_columns, via.type_column, bwd)
+            if shape in at:
+                combined = out[at[shape]][0]
+            else:
+                combined = dataclasses.replace(
+                    rm, via=dataclasses.replace(via, type_value=None, type_values=())
+                )
+                at[shape] = len(out)
+                out.append((combined, bwd))
+                # type(r) is the type its row's discriminator names (_name_alternation_types).
+                self._alternation_types[id(combined)] = {}
+            self._alternation_types[id(combined)][via.type_value] = rm.rel_type
+        return out
+
+    def _alternation_candidates(
+        self,
+        rel: "RelPattern",
+        bidir: bool,
+        backward: bool,
+        src_nm: "NodeMapping",
+        tgt_nm: "NodeMapping",
+        src_nm_explicit: bool,
+        tgt_nm_explicit: bool,
+    ) -> "list[tuple]":
+        """``[r:A|B]`` on one hop: types that are rows of one junction, told apart by its type
+        column, between the same two ends the same way round, are one join of that junction
+        whose type column holds any of their values. Other alternations are refused by name."""
+        found = []
+        for rel_type in rel.types:
+            one = self._resolve_typed_rel_candidates(
+                dataclasses.replace(rel, types=[rel_type]),
+                bidir,
+                backward,
+                src_nm,
+                tgt_nm,
+                src_nm_explicit,
+                tgt_nm_explicit,
+            )
+            if len(one) != 1:
+                raise _alternation_refused(rel)
+            found.append(one[0])
+        mappings = [rm for rm, _ in found]
+        shared = {
+            (
+                rm.source_label,
+                rm.target_label,
+                rm.join_source_column,
+                rm.join_target_column,
+                rm.via.catalog_name,
+                rm.via.schema_name,
+                rm.via.table_name,
+                rm.via.source_columns,
+                rm.via.target_columns,
+                rm.via.type_column,
+            )
+            if rm.via is not None and rm.via.type_column and rm.via.type_value
+            else None
+            for rm in mappings
+        }
+        if None in shared or len(shared) != 1 or len({bwd for _, bwd in found}) != 1:
+            raise _alternation_refused(rel)
+        primary = mappings[0]
+        assert primary.via is not None
+        values = tuple(rm.via.type_value for rm in mappings if rm.via is not None)
+        combined = dataclasses.replace(
+            primary, via=dataclasses.replace(primary.via, type_values=values)
+        )
+        self._alternation_types[id(combined)] = {
+            rm.via.type_value: rm.rel_type for rm in mappings if rm.via is not None
+        }
+        return [(combined, found[0][1])]
+
+    def _name_alternation_types(
+        self, rel: "RelPattern", combined: "RelationshipMapping", tgt_alias: str
+    ) -> None:
+        """An alternation's type(r) is the type its row's discriminator names. An untyped hop's
+        row of a type no relationship declares (its junction read whole) is named by its stored
+        value: it has no declared name."""
+        via = combined.via
+        assert via is not None and via.type_column is not None
+        column = via_column(via_alias_for(combined, rel.variable or tgt_alias), via.type_column)
+        whole = via.type_value is None and not via.type_values
+        named = exp.Case(
+            this=column,
+            ifs=[
+                exp.If(this=exp.Literal.string(value), true=exp.Literal.string(rel_type))
+                for value, rel_type in self._alternation_types[id(combined)].items()
+            ],
+            default=column.copy() if whole else None,
+        )
+        if rel.variable:
+            self._rel_var_type_exprs[rel.variable] = named
+        step = self._rel_step_endpoints.get(id(rel))
+        if step is not None:
+            self._rel_step_endpoints[id(rel)] = (named, *step[1:])
+
+    # complexity-gate: allow-cc=54 reason="relocated verbatim from translator.py; CC is the per-MATCH-clause FROM/JOIN assembly dispatch (first-node vs rel-step vs standalone vs domain-union across optional/varlen/lateral cases); decomposition is separately-tracked debt"
+    def _build_from_joins(
+        self, match_clauses: list[MatchClause]
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Process MATCH clauses → (from_expr, [join_dict])."""
+        from_expr: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict] = []
+        rel_mapping: RelationshipMapping | None = None
+        tgt_nm: NodeMapping | None = None
+        self._held_end_conditions = []
+
+        for clause in match_clauses:
+            if isinstance(clause.pattern, TriplePattern):
+                if from_expr is None:
+                    raise CypherTranslateError(
+                        "A variable predicate follows the node pattern that binds its subject"
+                    )
+                joins.extend(self._translate_triple(clause, clause.pattern))
+                continue
+            if isinstance(clause.pattern, PathFunction):
+                pf_from, pf_joins = self._translate_path_function(clause)
+                if from_expr is None:
+                    from_expr = pf_from
+                joins.extend(pf_joins)
+                continue
+
+            pattern = clause.pattern
+            nodes = pattern.nodes
+            rels = pattern.rels
+            if len(rels) == 1 and rels[0].variable_length and rels[0].direction == "left":
+                # (a)<-[*..n]-(b) is (b)-[*..n]->(a): lowered from the node the arrow leaves (#151).
+                nodes = list(reversed(nodes))
+                rels = [dataclasses.replace(rels[0], direction="right")]
+
+            joined = {v for v in (n.variable for n in nodes) if v and v in self._var_table}
+            if (
+                from_expr is not None
+                and len(rels) == 1
+                and not rels[0].variable_length
+                and rels[0].path is None
+                and nodes[0].variable not in joined
+                and nodes[-1].variable in joined
+            ):
+                # Written from its new end to a node the statement holds: read from the held one.
+                nodes = list(reversed(nodes))
+                flipped = {"right": "left", "left": "right"}.get(rels[0].direction, "none")
+                rels = [dataclasses.replace(rels[0], direction=flipped)]
+            # A later MATCH's pattern from a node the statement does not hold yet (#306).
+            first = nodes[0].variable if nodes else None
+            new_start = (
+                from_expr is not None
+                and bool(rels)
+                and first not in joined
+                and first not in self._lateral_bound
+            )
+            # The nodes this pattern's hops have placed so far: a cycle returns to one.
+            placed = set(joined)
+            if nodes and nodes[0].variable:
+                placed.add(nodes[0].variable)
+            for node in nodes:
+                self._register_node(node)
+
+            if from_expr is None and nodes:
+                new_from = self._build_first_node_from(nodes[0])
+                if new_from is not None:
+                    from_expr = new_from
+            elif from_expr is not None and nodes and not rels:
+                j = self._build_standalone_node_join(nodes[0].variable, clause)
+                if j is not None:
+                    joins.append(j)
+
+            for i, rel in enumerate(rels):
+                if i + 1 >= len(nodes):
+                    break
+                if rel.path is not None:
+                    if len(rels) > 1:
+                        raise CypherTranslateError(
+                            "A path expression is the one relationship of its pattern; join "
+                            "further patterns through their shared nodes"
+                        )
+                    joins.extend(self._translate_path_expr(clause, nodes, rel, joined))
+                    break
+                if rel.variable_length:
+                    if len(rels) > 1:
+                        raise CypherTranslateError(
+                            "Variable-length patterns (e.g. [*..5]) cannot be mixed with other "
+                            "relationships in the same MATCH. Use a separate MATCH clause or "
+                            "wrap the full pattern: MATCH p = allPaths((a)-[*..5]->(b)) RETURN p"
+                        )
+                    pf_clause = MatchClause(
+                        pattern=PathFunction(
+                            func_name="allpaths",
+                            pattern=PathPattern(nodes=nodes, rels=rels),
+                        ),
+                        variable=clause.variable,
+                        optional=clause.optional,
+                    )
+                    if rel.variable and clause.variable:
+                        self._varlen_rel_vars[rel.variable] = clause.variable
+                    pf_from, pf_joins = self._translate_path_function(pf_clause)
+                    if from_expr is None:
+                        from_expr = pf_from
+                    joins.extend(pf_joins)
+                    break
+                far_var = nodes[i + 1].variable
+                if new_start and clause.optional and len(rels) > 1:
+                    raise CypherTranslateError(
+                        "An OPTIONAL MATCH starting at a node the statement does not hold yet "
+                        "is read one relationship at a time; start it at a node already matched"
+                    )
+                from_expr, joins, did_continue = self._process_rel_step(
+                    rel,
+                    nodes,
+                    i,
+                    clause,
+                    from_expr,
+                    joins,
+                    held_target=far_var in placed,
+                    new_source=new_start and i == 0,
+                )
+                if far_var:
+                    placed.add(far_var)
+                if did_continue:
+                    continue
+                # Capture rel_mapping and tgt_nm for path var registration below
+                rel_mapping = self._resolve_early_rel_mapping(rel)
+                tgt_var = nodes[i + 1].variable
+                tgt_nm = self._var_table.get(tgt_var, (None, None))[1] if tgt_var else None
+
+            if clause.variable and nodes:
+                _first = nodes[0]
+                _last = nodes[-1]
+                if _first.variable:
+                    _path_src_alias = _first.variable
+                elif rels and rel_mapping is not None:
+                    _src_nm_for_path = self._lm.nodes.get(rel_mapping.source_label)
+                    _path_src_alias = (
+                        _src_nm_for_path.table_name
+                        if _src_nm_for_path
+                        else rel_mapping.source_label.lower()
+                    )
+                else:
+                    _path_src_alias = ""
+                if _last.variable:
+                    _path_tgt_alias = _last.variable
+                elif rels and tgt_nm is not None:
+                    _path_tgt_alias = tgt_nm.table_name
+                elif rels and rel_mapping is not None:
+                    _tgt_nm_for_path = self._lm.nodes.get(rel_mapping.target_label)
+                    _path_tgt_alias = (
+                        _tgt_nm_for_path.table_name
+                        if _tgt_nm_for_path
+                        else rel_mapping.target_label.lower()
+                    )
+                else:
+                    _path_tgt_alias = ""
+                self._path_vars[clause.variable] = (_path_src_alias, _path_tgt_alias, False)
+                if (
+                    rels
+                    and clause.variable not in self._path_steps
+                    and not any(r.variable_length for r in rels)
+                ):
+                    _step_nodes: list[tuple[str, NodeMapping]] = []
+                    _step_edges: list[tuple] = []
+                    _seen_aliases: set[str] = set()
+
+                    def _add_step_node(_alias: str, _nm: "NodeMapping | None") -> None:
+                        if _nm and _alias and _alias not in _seen_aliases:
+                            _seen_aliases.add(_alias)
+                            _step_nodes.append((_alias, _nm))
+
+                    for _node in nodes:
+                        if _node.variable:
+                            _node_info = self._var_table.get(_node.variable)
+                            if _node_info and _node_info[1]:
+                                _add_step_node(_node_info[0], _node_info[1])
+                    for _rel in rels:
+                        # Prefer captured per-step endpoints — covers anonymous nodes and
+                        # unnamed relationships that have no variable to look up.
+                        _ep = self._rel_step_endpoints.get(id(_rel))
+                        if _ep is not None:
+                            _rt, _sa, _snm, _ta, _tnm, _rev, _via = _ep
+                            _add_step_node(_sa, _snm)
+                            _add_step_node(_ta, _tnm)
+                            _step_edges.append(_ep)
+                        elif _rel.variable and _rel.variable in self._rel_var_endpoints:
+                            _vep = self._rel_var_endpoints[_rel.variable]
+                            _sa, _snm, _ta, _tnm, _rev = _vep
+                            _rt = self._rel_var_types.get(_rel.variable, "")
+                            _add_step_node(_sa, _snm)
+                            _add_step_node(_ta, _tnm)
+                            _step_edges.append(
+                                (
+                                    _rt,
+                                    _sa,
+                                    _snm,
+                                    _ta,
+                                    _tnm,
+                                    _rev,
+                                    self._rel_var_via.get(_rel.variable),  # REQ-1586
+                                )
+                            )
+                    if _step_nodes or _step_edges:
+                        self._path_steps[clause.variable] = (_step_nodes, _step_edges)
+
+        if from_expr is None and self._lateral_bound and not joins:
+            # Every node matched is the outer statement's row (#160): this statement reads that
+            # one row and no table of its own.
+            from_expr = cast(
+                "exp.Expression",
+                exp.alias_(
+                    exp.Subquery(this=exp.select(exp.alias_(exp.Literal.number(1), "one"))),
+                    alias="_outer_row",
+                ),
+            )
+        if from_expr is None:
+            raise CypherTranslateError("No MATCH clause produced a FROM table")
+
+        # Supplement each extra branch with primary joins it's missing.
+        # Extra branches are created with only joins_before+[extra_join], which
+        # excludes any joins added AFTER the branch point (e.g. a second OPTIONAL
+        # MATCH). Without this, the UNION ALL branch's SELECT can reference aliases
+        # that don't exist in that branch.
+        if self._extra_path_branches:
+            primary_aliases = {_join_alias(j["table"]): j for j in joins}
+            patched: list[tuple] = []
+            for (
+                extra_from,
+                extra_joins,
+                extra_path_steps_map,
+                rel_types,
+            ) in self._extra_path_branches:
+                branch_aliases = {_join_alias(j["table"]) for j in extra_joins}
+                supplement = [
+                    pj for alias, pj in primary_aliases.items() if alias not in branch_aliases
+                ]
+                patched.append(
+                    (extra_from, extra_joins + supplement, extra_path_steps_map, rel_types)
+                )
+            self._extra_path_branches = patched
+
+        return from_expr, joins

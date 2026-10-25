@@ -20,20 +20,32 @@ from __future__ import annotations
 
 import re
 import string
+from dataclasses import dataclass
+from typing import cast
 
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 from provisa.cypher.sql_to_cypher_helpers import (
+    UntranslatableSubquery,
     _resolve_label,
     _rel_type_from_on,
     _src_alias_from_on,
     _sql_to_cypher_expr,
+    outside_strings,
     rel_pattern,
 )
+from provisa.cypher.sql_to_cypher_junction import (
+    JunctionHop,
+    _cypher_in,
+    _junction_root_cypher,
+    junction_exists,
+    junction_fields,
+    junction_hop,
+    junction_selections,
+)
 from provisa.cypher.sql_to_cypher_agg import (
-    UntranslatableSubquery,
     _process_array_agg_subqueries,
     _process_count_subqueries,
     _process_json_subqueries,
@@ -45,6 +57,50 @@ from provisa.cypher.sql_to_cypher_agg import (
 # rel_pattern is the whole inter-node pattern including its arrows -- direction is part of the
 # resolved relationship, not something the emitter can assume from SQL join order.
 JoinSegment = tuple[bool, str, str, str, str, int | None, bool]
+
+
+@dataclass(frozen=True)
+class LateralPick:
+    """A to-many field's own pick of each parent's rows (a LATERAL's ORDER BY, OFFSET and LIMIT):
+    its order keys as (SQL column, descending), its offset and its limit."""
+
+    order: tuple[tuple[str, bool], ...]
+    offset: int | None
+    limit: int | None
+
+
+def _lateral_pick(inner: exp.Select, correlation_only: bool) -> LateralPick | None:
+    """``inner``'s pick of the parent's rows, or None when it picks none. Refused
+    (UntranslatableSubquery) where Cypher has no exact form: a condition beside the
+    correlation, DISTINCT (ON), an ordering by anything but a column, or nulls placed other than
+    Cypher places them (last ascending, first descending)."""
+    if not correlation_only:
+        raise UntranslatableSubquery("a to-many field's condition beside its relationship")
+    if inner.args.get("distinct"):
+        raise UntranslatableSubquery("a to-many field's distinct_on")
+    order: list[tuple[str, bool]] = []
+    for item in (inner.args.get("order") or exp.Order(expressions=[])).expressions:
+        key = item.this
+        if not isinstance(key, exp.Column):
+            raise UntranslatableSubquery(f"ordering a to-many field by {key.sql()}")
+        desc = bool(item.args.get("desc"))
+        if bool(item.args.get("nulls_first")) != desc:
+            raise UntranslatableSubquery("a to-many field ordered with its nulls placed otherwise")
+        order.append((key.name, desc))
+
+    def _number(arg: str) -> int | None:
+        node = inner.args.get(arg)
+        value = getattr(node, "expression", None) if node is not None else None
+        if value is None:
+            return None
+        if not isinstance(value, exp.Literal):
+            raise UntranslatableSubquery(f"a to-many field's {arg} {value.sql()}")
+        return int(value.this)
+
+    offset, limit = _number("offset"), _number("limit")
+    if not order and offset is None and limit is None:
+        return None
+    return LateralPick(order=tuple(order), offset=offset, limit=limit)
 
 
 def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
@@ -83,6 +139,14 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
     if not isinstance(tree, exp.Select):
         return None
 
+    if params:
+        # The Cypher stands on its own -- it is run as written, with no parameters of its own --
+        # so the values the SQL binds are written into it.
+        try:
+            tree = cast(exp.Select, tree.transform(lambda node: _bound_literal(node, params)))
+        except UntranslatableSubquery:
+            return None
+
     _normalize_json_builders(tree)
 
     domain_to_label = _build_domain_to_label(ctx, label_map, domain_to_sql_name)
@@ -99,22 +163,46 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
     base_label = _resolve_label(from_tbl, domain_to_label)
     if base_label is None:
-        return None
+        # A junction the relationships traverse is no node: its rows are those relationships.
+        return _junction_root_cypher(
+            tree, from_tbl, ctx, label_map, domain_to_sql_name, override_limit
+        )
 
     sql_base_alias = from_tbl.alias or from_tbl.name
 
+    # A to-many field over a junction is the relationships it holds beside the root's row.
+    fields = junction_fields(
+        tree,
+        lambda tbl, where: (
+            None  # a node's table is a node's rows
+            if _resolve_label(tbl, domain_to_label) is not None
+            else junction_hop(
+                tbl, where, sql_base_alias, base_label, ctx, label_map, domain_to_sql_name, params
+            )
+        ),
+    )
+    if fields is None:
+        return None
+    if fields and any(tree.args.get(k) for k in ("joins", "order", "offset")):
+        # Beside another join, or ordered or paged across its rows, it has no form here.
+        return None
+
     label_to_many, src_tgt_to_rel = _build_label_to_rel(label_map)
 
-    join_segments, skipped_aliases = _resolve_join_segments(
-        tree,
-        domain_to_label,
-        join_to_rel,
-        src_tgt_to_rel,
-        label_to_many,
-        sql_base_alias,
-        base_label,
-        params,
-    )
+    try:
+        join_segments, skipped_aliases, picks = _resolve_join_segments(
+            tree,
+            domain_to_label,
+            join_to_rel,
+            src_tgt_to_rel,
+            label_to_many,
+            sql_base_alias,
+            base_label,
+            params,
+        )
+    except UntranslatableSubquery:
+        # A to-many field's pick of its rows with no exact Cypher form: no export, never a near one.
+        return None
 
     # Build short alias map: verbose SQL alias → a, b, c, …
     _letters = list(string.ascii_lowercase)
@@ -143,11 +231,46 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
         sql_a: _prop_map_for_label(lbl) for sql_a, lbl in alias_label.items()
     }
 
+    def _key_prop_for_label(display_lbl: str) -> str:
+        """The property a node of ``display_lbl`` is told apart by: its key column's."""
+        nm = next(
+            (n for n in label_map.nodes.values() if label_map.display_label(n) == display_lbl),
+            None,
+        )
+        if nm is None:
+            raise UntranslatableSubquery(f"no node label {display_lbl!r}")
+        props = {sql_col: prop for prop, sql_col in nm.properties.items()}
+        return props.get(nm.id_column, nm.id_column)
+
     def _node(short: str, label: str) -> str:
         return f"({short}:{label})"
 
+    def _junction_of(
+        tbl: exp.Table,
+        where: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        scope: dict[str, tuple[str, str]],
+    ) -> tuple[JunctionHop, str] | None:
+        """``tbl`` as a junction beside one of ``scope``'s rows, with that row's SQL alias."""
+        refused: UntranslatableSubquery | None = None
+        for sql_a, (_var, lbl) in scope.items():
+            try:
+                hop = junction_hop(
+                    tbl, where, sql_a, lbl, ctx, label_map, domain_to_sql_name, params
+                )
+            except UntranslatableSubquery as exc:
+                refused = exc
+                continue
+            if hop is None:
+                return None
+            return hop, sql_a
+        raise refused or UntranslatableSubquery(f"junction {tbl.sql()} beside no row")
+
     def _remap(text: str) -> str:
-        """Replace verbose SQL aliases with short Cypher aliases and sql_col names with cypher prop names."""
+        """Replace verbose SQL aliases with short Cypher aliases and sql_col names with cypher prop
+        names, outside the text's string literals."""
+        return outside_strings(text, _remap_code)
+
+    def _remap_code(text: str) -> str:
         for sql_a in sorted(alias_map, key=len, reverse=True):
             text = re.sub(rf"\b{re.escape(sql_a)}\b", alias_map[sql_a], text)
         prop_lookup: dict[str, dict[str, str]] = {
@@ -169,11 +292,33 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
     cypher_lines = [f"MATCH {required_path}"]
 
+    junction_texts: dict[str, str] = {}
+    if fields:
+        mapped = junction_selections(
+            tree.expressions, fields, base_alias, lambda t: _resolve_label(t, domain_to_label)
+        )
+        if mapped is None:
+            return None
+        tree.set("expressions", mapped[0])
+        junction_texts = mapped[1]
+
     # --- Pre-scan SELECT to know which properties are needed per alias ---
     select_exprs = tree.args.get("expressions") or []
     alias_needed_props = _build_alias_needed_props(select_exprs, alias_map, alias_prop_map)
 
     collected_aliases: dict[str, dict[str, str]] = {}
+    if picks and node_only:
+        # A picked field's rows are returned from its CALL by value: no node of it to draw.
+        return None
+    # Each picked field's properties the statement reads, by its SQL alias.
+    call_props_needed: dict[str, set[str]] = {}
+    for _sel in select_exprs:
+        _col = _sel.this if isinstance(_sel, exp.Alias) else _sel
+        if isinstance(_col, exp.Column) and _col.table in picks:
+            call_props_needed.setdefault(_col.table, set()).add(
+                alias_prop_map.get(_col.table, {}).get(_col.name, _col.name)
+            )
+    call_vars: dict[str, dict[str, str]] = {}
     _emit_optional_matches(
         join_segments,
         alias_map,
@@ -186,9 +331,13 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
         flat,
         node_only,
         _node,
+        picks,
+        alias_prop_map,
+        call_props_needed,
+        call_vars,
     )
 
-    array_agg_return: dict[str, str | list[str]] = {}
+    array_agg_return: dict[str, str | list[str]] = {**junction_texts}
     _agg_alias_counter = len(alias_map)
     _agg_seen: dict[str, str] = {}
     _agg_seen_label: dict[str, str] = {}
@@ -247,20 +396,87 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
             _letters,
             _prop_map_for_label,
             _node,
+            join_to_rel,
+            _key_prop_for_label,
         )
     except UntranslatableSubquery:
         return None
 
     # --- WHERE ---
+    # The statement's own condition is on the rows of its MATCH, so it follows that MATCH, before
+    # any OPTIONAL MATCH a selection adds -- under one it would scope to the optional rows only.
+    # A relationship's condition (EXISTS over the related table) is that relationship's pattern.
     where_expr = tree.args.get("where")
     if where_expr:
-        where_sql = _remap(_sql_to_cypher_expr(where_expr.this.sql(dialect="postgres")))
-        cypher_lines.append(f"WHERE {where_sql}")
+        scope = {
+            sql_a: (alias_map[sql_a], alias_label[sql_a])
+            for sql_a in [sql_base_alias] + [seg[3] for seg in join_segments if not seg[0]]
+        }
+        patterns: dict[str, str] = {}
+
+        def _pattern_for(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if isinstance(node, exp.Exists):
+                key = f"__exists_{len(patterns)}"
+                patterns[key] = _exists_pattern(
+                    node,
+                    scope,
+                    domain_to_label,
+                    join_to_rel,
+                    src_tgt_to_rel,
+                    _prop_map_for_label,
+                    _junction_of,
+                )
+                return exp.column(key)
+            if isinstance(node, exp.In):
+                # SQL's IN (a, b) is Cypher's IN [a, b].
+                key = f"__in_{len(patterns)}"
+                patterns[key] = _remap(
+                    _cypher_in(
+                        node,
+                        lambda e: e.copy().transform(_qualified).sql(dialect="postgres"),
+                    )
+                )
+                return exp.column(key)
+            return _qualified(node)
+
+        def _qualified(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            # A column of the one table the root reads names no table in SQL; its Cypher names
+            # the root's variable.
+            if isinstance(node, exp.Column) and not node.table and not join_segments:
+                return exp.column(node.name, table=sql_base_alias)
+            return node
+
+        try:
+            condition = where_expr.this.copy().transform(_pattern_for)
+        except UntranslatableSubquery:
+            return None
+        where_sql = _remap(_sql_to_cypher_expr(condition.sql(dialect="postgres")))
+        for key, pattern in patterns.items():
+            where_sql = outside_strings(
+                where_sql, lambda t, k=key, p=pattern: re.sub(rf"\b{k}\b", lambda _m: p, t)
+            )
+        cypher_lines.insert(1, f"WHERE {where_sql}")
+
+    if fields:
+        # The root's rows are picked before its junction field's rows are set beside them, as the
+        # SQL limits the roots and not the rows each one has.
+        at = 2 if where_expr else 1
+        limit = override_limit
+        if limit is None and tree.args.get("limit") is not None:
+            limit_value = tree.args["limit"].expression
+            if not isinstance(limit_value, exp.Literal):
+                return None
+            limit = int(limit_value.this)
+        hops = [f"WITH {base_alias} LIMIT {limit}"] if limit is not None else []
+        for i, (_alias, hop) in enumerate(fields):
+            hops.append(f"OPTIONAL MATCH ({base_alias}){hop.arrow(f'jr{i}')}(j{i}:{hop.far_label})")
+        cypher_lines[at:at] = hops
 
     # --- RETURN ---
     default_sql_alias = sql_base_alias if not join_segments else None
     for _expr in select_exprs:
-        if isinstance(_expr, exp.Column) and _expr.table in skipped_aliases:
+        # A column of a join with no Cypher form would be returned unbound.
+        if any(c.table in skipped_aliases for c in _expr.find_all(exp.Column)):
             return None
 
     if node_only:
@@ -303,6 +519,10 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
             _remap,
         )
 
+    if call_vars:
+        _read_call_values(cypher_lines, call_vars)
+    if fields:
+        return "\n".join(cypher_lines)  # its LIMIT is the roots', above
     _append_skip_limit(
         tree,
         override_limit,
@@ -314,7 +534,152 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
     return "\n".join(cypher_lines)
 
 
+def _read_call_values(cypher_lines: list[str], call_vars: dict[str, dict[str, str]]) -> None:
+    """After the CALL blocks, a picked field's property is the value its CALL returned by name."""
+    last_call = max(i for i, line in enumerate(cypher_lines) if line.startswith("CALL {"))
+    for i in range(last_call + 1, len(cypher_lines)):
+        line = cypher_lines[i]
+        for short, named in call_vars.items():
+            for prop, var in named.items():
+                line = re.sub(rf"\b{re.escape(short)}\.{re.escape(prop)}\b", var, line)
+        cypher_lines[i] = line
+
+
 # --- Extracted helpers for semantic_sql_to_cypher ---
+
+
+def _conjuncts(node: exp.Expression) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if isinstance(node, exp.And):
+        return [*_conjuncts(node.this), *_conjuncts(node.expression)]
+    if isinstance(node, exp.Paren):
+        return _conjuncts(node.this)
+    return [node]
+
+
+def _exists_pattern(
+    node: exp.Exists,
+    scope: dict[str, tuple[str, str]],
+    domain_to_label: dict[tuple[str, str], str],
+    join_to_rel: dict[tuple[str, str, str], RelationshipMapping | None],
+    src_tgt_to_rel: dict[tuple[str, str], str | None],
+    prop_map_for_label,
+    junction_of=None,
+) -> str:
+    """A relationship's condition, ``EXISTS (SELECT 1 FROM target w WHERE w.fk = t.pk AND ...)``,
+    as the Cypher pattern predicate it states: ``EXISTS { MATCH (t)-[:REL]->(w:Target) WHERE
+    ... }`` (REQ-2136). ``scope`` names each SQL alias the subquery may correlate with, as its
+    Cypher variable and label; a nested relationship condition is translated the same way."""
+    sub = node.this
+    if isinstance(sub, exp.Subquery):
+        sub = sub.this
+    if not isinstance(sub, exp.Select):
+        raise UntranslatableSubquery(f"EXISTS over {node.sql()}")
+    from_node = sub.args.get("from_")
+    tbl = from_node.this if from_node is not None else None
+    if not isinstance(tbl, exp.Table) or sub.args.get("joins"):
+        raise UntranslatableSubquery(f"EXISTS over {sub.sql()}")
+    label = _resolve_label(tbl, domain_to_label)
+    if label is None:
+        # A junction is no node: its rows beside the row are the relationships it holds.
+        found = junction_of(tbl, sub.args.get("where"), scope) if junction_of else None
+        if found is None:
+            raise UntranslatableSubquery(f"unmapped EXISTS table: {tbl.sql()}")
+        hop, outer = found
+        return junction_exists(
+            tbl,
+            hop,
+            outer,
+            scope,
+            domain_to_label,
+            join_to_rel,
+            src_tgt_to_rel,
+            prop_map_for_label,
+            junction_of,
+            _exists_pattern,
+        )
+    inner = tbl.alias or tbl.name
+    where = sub.args.get("where")
+    conjuncts = _conjuncts(where.this) if where is not None else []
+    correlation = next(
+        (
+            c
+            for c in conjuncts
+            if isinstance(c, exp.EQ)
+            and isinstance(c.this, exp.Column)
+            and isinstance(c.expression, exp.Column)
+            and {c.this.table, c.expression.table} & {inner}
+            and ({c.this.table, c.expression.table} - {inner}) <= set(scope)
+            and len({c.this.table, c.expression.table}) == 2
+        ),
+        None,
+    )
+    if correlation is None:
+        raise UntranslatableSubquery(f"EXISTS with no relationship to its row: {sub.sql()}")
+    outer = next(t for t in (correlation.this.table, correlation.expression.table) if t != inner)
+    outer_var, outer_label = scope[outer]
+    var = f"x{len(scope)}"
+    rel = rel_pattern(
+        outer_label,
+        label,
+        src_tgt_to_rel,
+        rel_type=_rel_type_from_on(correlation, join_to_rel, label),
+    )
+    inner_scope = {**scope, inner: (var, label)}
+    rest = [c for c in conjuncts if c is not correlation]
+    nested: dict[str, str] = {}
+
+    def _cypher(n: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(n, exp.Exists):
+            key = f"__exists_{var}_{len(nested)}"
+            nested[key] = _exists_pattern(
+                n,
+                inner_scope,
+                domain_to_label,
+                join_to_rel,
+                src_tgt_to_rel,
+                prop_map_for_label,
+                junction_of,
+            )
+            return exp.column(key)
+        if isinstance(n, exp.In):
+            key = f"__in_{var}_{len(nested)}"
+            nested[key] = _cypher_in(
+                n, lambda e: e.copy().transform(_cypher).sql(dialect="postgres")
+            )
+            return exp.column(key)
+        if isinstance(n, exp.Column) and n.table in inner_scope:
+            v, lbl = inner_scope[n.table]
+            return exp.column(prop_map_for_label(lbl).get(n.name, n.name), table=v)
+        return n
+
+    conditions = []
+    for c in rest:
+        text = _sql_to_cypher_expr(c.copy().transform(_cypher).sql(dialect="postgres"))
+        if text.strip("() ").lower() != "true":
+            conditions.append(text)
+    body = f"MATCH ({outer_var}){rel}({var}:{label})"
+    if conditions:
+        body += " WHERE " + " AND ".join(conditions)
+    for key, pattern in nested.items():
+        body = re.sub(rf"\b{key}\b", lambda _m, p=pattern: p, body)
+    return "EXISTS { " + body + " }"
+
+
+def _bound_literal(node: exp.Expression, params: list) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A bound ``$N`` as the literal its value is."""
+    if not (isinstance(node, exp.Parameter) and isinstance(node.this, exp.Literal)):
+        return node
+    value = params[int(node.this.this) - 1]
+    if value is None:
+        return exp.Null()
+    if isinstance(value, bool):
+        return exp.Boolean(this=value)
+    if isinstance(value, (int, float)):
+        return exp.Literal.number(value)
+    if isinstance(value, str):
+        # Written as Cypher writes a string by _sql_to_cypher_expr, whatever its characters.
+        return exp.Literal.string(value)
+    raise UntranslatableSubquery(f"parameter value {value!r}")
 
 
 def _normalize_json_builders(tree: exp.Select) -> None:
@@ -325,6 +690,17 @@ def _normalize_json_builders(tree: exp.Select) -> None:
     same constructor over a binary representation, so the graph shape is identical; without this,
     NL-generated SQL using the jsonb spelling never reaches _process_json_subqueries.
     """
+    # A list field's empty-list default (sql_selection.EMPTY_JSON_LIST): COLLECT { } of no rows
+    # is [] already.
+    for node in list(tree.find_all(exp.Coalesce)):
+        default = node.expressions[0] if len(node.expressions or []) == 1 else None
+        if (
+            isinstance(node.this, exp.Subquery)
+            and isinstance(default, exp.Cast)
+            and isinstance(default.this, exp.Literal)
+            and default.this.this == "[]"
+        ):
+            node.replace(node.this)
     for node in list(tree.find_all(exp.Anonymous)):
         name = node.name.upper()
         if name in ("JSON_BUILD_OBJECT", "JSONB_BUILD_OBJECT"):
@@ -360,8 +736,11 @@ def _build_domain_to_label(
             else table_meta.field_name
         )
         lbl = label_map.display_label(nm)
-        domain_to_label[(sql_domain, field_key)] = lbl
-        domain_to_label[("", field_key)] = lbl
+        # Semantic SQL names a table by its field or by its own name before a physical alias (a
+        # meta view's *_meta).
+        for name in {field_key, table_meta.original_table_name or table_meta.table_name}:
+            domain_to_label[(sql_domain, name)] = lbl
+            domain_to_label[("", name)] = lbl
 
     for _tn, nm in label_map.nodes.items():  # pyright: ignore[reportUnusedVariable]
         lbl = label_map.display_label(nm)
@@ -426,23 +805,49 @@ def _unwrap_from_table(
     from_tbl: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     tree: exp.Select,
 ) -> exp.Table | None:
-    """Unwrap a FROM clause node into an exp.Table, handling limit-subquery wrappers."""
+    """The table a FROM reads, through sql_gen's limit wrapper: a subquery of one table's own
+    columns (or ``*``) whose WHERE, ORDER BY, SKIP and LIMIT become the statement's. None for any
+    other subquery, and for a wrapper whose modifiers could not move out without changing the
+    answer (a WHERE outside a LIMIT inside, two LIMITs)."""
     if isinstance(from_tbl, exp.Table):
         return from_tbl
-    if isinstance(from_tbl, exp.Subquery):
-        inner = from_tbl.this
-        inner_from = inner.args.get("from_") if isinstance(inner, exp.Select) else None
-        inner_exprs = inner.args.get("expressions") or [] if isinstance(inner, exp.Select) else []
-        is_star = len(inner_exprs) == 1 and isinstance(inner_exprs[0], exp.Star)
-        if inner_from and is_star and isinstance(inner_from.this, exp.Table):
-            inner_tbl = inner_from.this
-            if from_tbl.alias:
-                inner_tbl.set("alias", exp.TableAlias(this=exp.to_identifier(from_tbl.alias)))
-            inner_limit = inner.args.get("limit")
-            if inner_limit and not tree.args.get("limit"):
-                tree.set("limit", inner_limit)
-            return inner_tbl
-    return None
+    if not isinstance(from_tbl, exp.Subquery) or not isinstance(from_tbl.this, exp.Select):
+        return None
+    inner = from_tbl.this
+    inner_from = inner.args.get("from_")
+    if inner_from is None or not isinstance(inner_from.this, exp.Table):
+        return None
+    if any(inner.args.get(k) for k in ("joins", "laterals", "group", "having", "distinct")):
+        return None
+    inner_tbl = inner_from.this
+    inner_alias = inner_tbl.alias or inner_tbl.name
+    for e in inner.expressions:
+        if not (
+            isinstance(e, exp.Star) or (isinstance(e, exp.Column) and e.table in ("", inner_alias))
+        ):
+            return None
+    outer_alias = from_tbl.alias or inner_alias
+    picks = [k for k in ("order", "offset", "limit") if inner.args.get(k) is not None]
+    if picks and any(tree.args.get(k) is not None for k in ("where", "order", "offset", "limit")):
+        # The wrapper picks its rows before the statement filters or picks again.
+        return None
+
+    def _outer(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(node, exp.Column) and node.table in ("", inner_alias):
+            return exp.column(node.name, table=outer_alias, quoted=True)
+        return node
+
+    inner_where = inner.args.get("where")
+    if inner_where is not None:
+        condition = inner_where.this.transform(_outer)
+        outer_where = tree.args.get("where")
+        if outer_where is not None:
+            condition = exp.And(this=exp.Paren(this=condition), expression=outer_where.this)
+        tree.set("where", exp.Where(this=condition))
+    for key in picks:
+        tree.set(key, inner.args[key].transform(_outer))
+    inner_tbl.set("alias", exp.TableAlias(this=exp.to_identifier(outer_alias)))
+    return inner_tbl
 
 
 def _resolve_lateral_inner_lim(
@@ -471,11 +876,13 @@ def _resolve_join_segments(
     sql_base_alias: str,
     base_label: str,
     params: list | None,
-) -> tuple[list[JoinSegment], set[str]]:
-    """Resolve JOIN clauses into join_segments and collect skipped aliases."""
+) -> tuple[list[JoinSegment], set[str], dict[str, LateralPick]]:
+    """Resolve JOIN clauses into join_segments, collect skipped aliases, and each to-many field's
+    pick of its parent's rows (LateralPick), by its alias."""
     joins = tree.args.get("joins") or []
     join_segments: list[JoinSegment] = []
     skipped_aliases: set[str] = set()
+    picks: dict[str, LateralPick] = {}
     # The source side of a segment is a SQL alias; its label is the base table's, or that of an
     # earlier segment that introduced the alias. Tracked here because the relationship type is
     # resolved from the ORDERED (source, target) label pair.
@@ -494,6 +901,7 @@ def _resolve_join_segments(
                 params,
                 join_segments,
                 skipped_aliases,
+                picks,
             )
             continue
 
@@ -525,7 +933,7 @@ def _resolve_join_segments(
             )
         )
 
-    return join_segments, skipped_aliases
+    return join_segments, skipped_aliases, picks
 
 
 def _process_lateral_join(
@@ -538,6 +946,7 @@ def _process_lateral_join(
     params: list | None,
     join_segments: list[JoinSegment],
     skipped_aliases: set[str],
+    picks: dict[str, LateralPick],
 ) -> None:
     """Try to unwrap a LATERAL join and append a segment, or add to skipped_aliases."""
     lateral_alias = join_tbl.alias if hasattr(join_tbl, "alias") else None
@@ -562,6 +971,15 @@ def _process_lateral_join(
                 sql_base_alias,
                 also_target=inner_tbl.alias or inner_tbl.name,
             )
+            # The field's own pick of each parent's rows, kept exactly or refused.
+            conjuncts = (
+                (list(inner_where.this.flatten()) if isinstance(inner_where.this, exp.And) else [1])
+                if inner_where is not None
+                else []
+            )
+            pick = _lateral_pick(inner_select, len(conjuncts) == 1)
+            if pick is not None:
+                picks[lateral_alias] = pick
             # A LATERAL carries no ON clause, so the ordered label pair is the only evidence.
             pattern = rel_pattern(alias_to_label.get(lateral_src_alias), tgt_label, src_tgt_to_rel)
             alias_to_label[lateral_alias] = tgt_label
@@ -610,6 +1028,10 @@ def _emit_optional_matches(
     flat: bool,
     node_only: bool,
     node_fn,
+    picks: dict[str, LateralPick],
+    alias_prop_map: dict[str, dict[str, str]],
+    call_props_needed: dict[str, set[str]],
+    call_vars: dict[str, dict[str, str]],
 ) -> None:
     """Emit OPTIONAL MATCH or CALL {} blocks for optional join segments."""
     for is_optional, pattern, src_sql_a, tgt_sql_a, label, inner_lim, is_many in join_segments:
@@ -621,6 +1043,29 @@ def _emit_optional_matches(
         match_line = (
             f"OPTIONAL MATCH {node_fn(src_short, src_lbl)}{pattern}{node_fn(tgt_short, label)}"
         )
+        pick = picks.get(tgt_sql_a)
+        if pick is not None:
+            # Each parent's own rows, ordered and cut as the field asks: a row per child, as the
+            # SQL's LATERAL answers, a parent with none still one row of nulls. The rows' values
+            # are returned from the CALL by name, and the statement reads them by it.
+            props = alias_prop_map.get(tgt_sql_a, {})
+            needed = sorted({prop for prop in call_props_needed.get(tgt_sql_a, ())})
+            named = {prop: f"{tgt_short}_{prop}" for prop in needed}
+            call_vars[tgt_short] = named
+            returned = ", ".join(f"{tgt_short}.{prop} AS {var}" for prop, var in named.items())
+            body = [f"  WITH {src_short}", f"  {match_line}", f"  RETURN {returned or tgt_short}"]
+            if pick.order:
+                keys = ", ".join(
+                    f"{tgt_short}.{props.get(col, col)}{' DESC' if desc else ''}"
+                    for col, desc in pick.order
+                )
+                body.append(f"  ORDER BY {keys}")
+            if pick.offset is not None:
+                body.append(f"  SKIP {pick.offset}")
+            if pick.limit is not None:
+                body.append(f"  LIMIT {pick.limit}")
+            cypher_lines.append("CALL {\n" + "\n".join(body) + "\n}")
+            continue
         if not flat and not node_only and (inner_lim is not None or is_many):
             props = alias_needed_props.get(tgt_short, [])
             if props:
@@ -758,6 +1203,11 @@ def _build_return(
     def _prop(sql_tbl: str, sql_col: str) -> str:
         return apm.get(sql_tbl, {}).get(sql_col, sql_col)
 
+    def _aliased(text: str) -> str:
+        for sql_a in sorted(am, key=len, reverse=True):
+            text = re.sub(rf"\b{re.escape(sql_a)}\b", am[sql_a], text)
+        return text
+
     items: list[str] = []
     for expr in select_exprs:
         if isinstance(expr, exp.Star):
@@ -793,69 +1243,11 @@ def _build_return(
                 else:
                     items.append(f"{val} AS {expr.alias}")
             else:
-                raw = _sql_to_cypher_expr(expr.this.sql(dialect="postgres"))
-                for sql_a in sorted(am, key=len, reverse=True):
-                    raw = re.sub(rf"\b{re.escape(sql_a)}\b", am[sql_a], raw)
+                raw = outside_strings(
+                    _sql_to_cypher_expr(expr.this.sql(dialect="postgres")), _aliased
+                )
                 items.append(f"{raw} AS {expr.alias}")
         else:
-            raw = _sql_to_cypher_expr(expr.sql(dialect="postgres"))
-            for sql_a in sorted(am, key=len, reverse=True):
-                raw = re.sub(rf"\b{re.escape(sql_a)}\b", am[sql_a], raw)
+            raw = outside_strings(_sql_to_cypher_expr(expr.sql(dialect="postgres")), _aliased)
             items.append(raw)
     return items or ["*"]
-
-
-def _offset_aliases(cypher: str, offset: int) -> tuple[str, int]:
-    """Rename single-letter node aliases to start at the given letter offset.
-
-    Aliases are discovered from MATCH pattern definitions (e.g. ``(a:Label)``),
-    then every word-boundary occurrence is substituted.  Returns the rewritten
-    Cypher and the next available offset.
-    """
-    letters = list(string.ascii_lowercase)
-    defined = sorted(set(re.findall(r"\(([a-z])(?:[:\s)])", cypher)))
-    rename = {
-        old: letters[offset + i] if (offset + i) < len(letters) else f"n{offset + i}"
-        for i, old in enumerate(defined)
-    }
-    result = cypher
-    for old in sorted(rename, key=len, reverse=True):
-        result = re.sub(rf"\b{re.escape(old)}\b", rename[old], result)
-    return result, offset + len(defined)
-
-
-def combine_cypher_queries(cyphers: list[str]) -> str:  # REQ-571
-    """Combine independent per-root Cypher queries into a single CALL {} query.
-
-    Each query is wrapped in a CALL {} subquery; the outer RETURN collects all
-    projected items so callers get a single unified query.  Aliases are
-    offset per subquery so no two roots share the same alias letter.
-    """
-    if len(cyphers) == 1:
-        return cyphers[0]
-
-    wrapped: list[str] = []
-    all_return_items: list[str] = []
-    alias_offset = 0
-
-    for cypher in cyphers:
-        renamed, alias_offset = _offset_aliases(cypher, alias_offset)
-        lines = renamed.strip().splitlines()
-        # Extract RETURN items to re-expose them in the outer RETURN
-        for line in lines:
-            stripped = line.strip()
-            if re.match(r"RETURN\s+", stripped, re.IGNORECASE):
-                items_str = re.sub(r"^RETURN\s+", "", stripped, flags=re.IGNORECASE)
-                if items_str.strip() != "*":
-                    all_return_items.extend(item.strip() for item in items_str.split(","))
-                break
-        indented = "\n".join(f"  {line}" for line in lines)
-        wrapped.append(f"CALL {{\n{indented}\n}}")
-
-    combined = "\n".join(wrapped)
-    if all_return_items:
-        combined += f"\nRETURN {', '.join(all_return_items)}"
-    else:
-        combined += "\nRETURN *"
-
-    return combined

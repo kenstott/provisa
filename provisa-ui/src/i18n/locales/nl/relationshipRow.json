@@ -41,6 +41,9 @@
     "deleteConsequence": "De relatie wordt uit het model verwijderd. Query's kunnen er niet meer via joinen.",
     "parametersFed": "Gevoede parameters",
     "parametersFedHelp": "Een join over deze relatie geeft het doel deze waarden uit elke bronrij.",
-    "parameterNotFed": "Niet gevoed"
+    "parameterNotFed": "Niet gevoed",
+    "sameEntity": "Dezelfde entiteit",
+    "sameEntityHint": "De gekoppelde rijen zijn hetzelfde ding: één term verankert beide tabellen, 1:1 op sleutels",
+    "cardinalityOneToOne": "één-op-één"
   }
 }

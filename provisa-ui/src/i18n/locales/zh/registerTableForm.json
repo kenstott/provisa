@@ -23,7 +23,6 @@
     "descriptionLabel": "描述",
     "descriptionPlaceholder": "显示在 SDL 文档中",
     "dataProductLabel": "数据产品",
-    "dataProductHint": "（发布到数据目录 / 导出到 Atlas、Atlan 等）",
     "discoverLabel": "发现列",
     "discoverHint": "（注册时从实时数据源推断列——适用于无架构/NoSQL 数据源；无需手动选择列）",
     "watermarkLabel": "水位线列",

@@ -23,7 +23,6 @@
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "Apparaît dans la documentation SDL",
     "dataProductLabel": "Produit de données",
-    "dataProductHint": "(publier dans le catalogue / exporter vers Atlas, Atlan, etc.)",
     "discoverLabel": "Découvrir les colonnes",
     "discoverHint": "(déduit les colonnes depuis la source en direct lors de l'enregistrement — pour les sources sans schéma/NoSQL ; aucune sélection manuelle de colonnes requise)",
     "watermarkLabel": "Colonne de repère",

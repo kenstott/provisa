@@ -13,7 +13,6 @@
 // this tab carries the human curation — rename, definitions, ref moves,
 // experts, abstract terms and their typed edges.
 
-import { DetailFields } from "../detail/DetailFields";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -24,65 +23,61 @@ import {
   Checkbox,
   Group,
   Loader,
+  Menu,
   Modal,
   NavLink,
   MultiSelect,
-  Select,
   Stack,
-  Table,
   Text,
   TextInput,
   Textarea,
   Title,
 } from "@mantine/core";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
-import { Archive, ArchiveRestore, BookOpen, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  BookOpen,
+  Hourglass,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { GlossaryOntologyView, OntologyToggle } from "../graph3d/GlossaryOntologyView";
 import { FilterInput } from "./FilterInput";
-import { GlossaryRelationships } from "./GlossaryRelationships";
+import { TermEditForm } from "./TermEditForm";
+import { TermReadView } from "./TermReadView";
+import { TermListBadges } from "./TermRoleBadge";
+import { TermToReview, type FindingFix } from "./TermToReview";
+import { tableNames, toReview } from "./termFindings";
+import { RetireTermDialog } from "./RetireTermDialog";
+import { DeprecateTermDialog } from "./DeprecateTermDialog";
+import { useUnassignTag } from "../../hooks/useTagQueries";
+import { refusalError } from "../../i18n/serverMessage";
 import { HelpBubble } from "../HelpBubble";
 import {
   GLOSSARY_EXPERT_KINDS,
   GLOSSARY_REL_TYPES,
-  addGlossaryEdge,
-  addGlossaryExpert,
   createGlossaryTerm,
   deleteGlossaryTerm,
   fetchGlossaryTerm,
   generateAllGlossaryDefinitions,
-  generateGlossaryDefinition,
   generateGlossaryRelationships,
+  fetchGlossaryFindings,
   listGlossaryTerms,
-  moveGlossaryRef,
-  removeGlossaryEdge,
-  removeGlossaryExpert,
-  retypeGlossaryEdge,
-  updateGlossaryTerm,
+  restoreGlossaryTerm,
+  type GlossaryFinding,
 } from "../../api/glossary";
 import { fetchOrgMembers } from "../../api/admin";
 import type { OrgMember } from "../../api/admin";
-import { DescriptionField } from "../../pages/tables/DescriptionField";
 import { useAuth } from "../../context/AuthContext";
 import { ENTERPRISE_DOMAIN } from "../../api/glossary";
 import { useCapability } from "../../hooks/useCapability";
 import { useDomainFilter } from "../../context/DomainFilterContext";
-import type {
-  GlossaryExpertKind,
-  GlossaryRef,
-  GlossaryTermDetail,
-  GlossaryTermSummary,
-} from "../../api/glossary";
-import { ListRow } from "../list/ListTable";
-import { SortGroupTable } from "../list/SortGroupTable";
-import {
-  FieldGroup,
-  FormField,
-  FormFooter,
-  FormIdentifiers,
-  FormLayout,
-  LabelWithHelp,
-} from "../form/FormLayout";
+import type { GlossaryTermDetail, GlossaryTermSummary } from "../../api/glossary";
+import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { getStored, setStored } from "../../lib/browserStorage";
 import { assignableDomainIds } from "../../lib/internalDomains";
@@ -98,8 +93,20 @@ function readStoredBool(key: string, fallback: boolean): boolean {
 }
 
 function writeStoredBool(key: string, value: boolean): void {
+  writeStored(key, String(value));
+}
+
+function readStoredString(key: string): string | null {
   try {
-    setStored(key, String(value));
+    return getStored(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    setStored(key, value);
   } catch {
     // Private mode / storage disabled: the preference just doesn't persist this session.
   }
@@ -107,14 +114,26 @@ function writeStoredBool(key: string, value: boolean): void {
 
 export function GlossaryTab() {
   const { t } = useTranslation();
-  const yesNo = (v: boolean) => (v ? t("detailFields.yes") : t("detailFields.no"));
   // REQ-1590: `glossary_read` opened this page; curation is the second right. Without it the term
   // list, definitions, refs, relationships and experts all still render — a reader came here to
   // look a term up — but every control that writes is withheld rather than disabled, because the
   // endpoints behind them answer 403 and a greyed-out button says nothing about why.
   const canEdit = useCapability("glossary_rw");
-  // REQ-2130: the Ontology View, in place of the term list while it is open.
-  const [ontology, setOntology] = useState(false);
+  // REQ-1387: the selected term is mirrored to the ?term= query param, so a relationship link,
+  // a shared URL, or the back/forward buttons all resolve to the same term this state does.
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
+  // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
+  // them; only the reader's own changes are.
+  // REQ-2130: the Ontology View, in place of the term list while it is open. A ?term= link opens
+  // the term, so it opens the list.
+  const [ontology, setOntologyState] = useState(
+    () => !searchParams.has("term") && readStoredString("glossary.view") === "ontology",
+  );
+  const setOntology = (open: boolean) => {
+    setOntologyState(open);
+    writeStored("glossary.view", open ? "ontology" : "list");
+  };
   // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
@@ -129,29 +148,39 @@ export function GlossaryTab() {
       : null;
   const [terms, setTerms] = useState<GlossaryTermSummary[]>([]);
   const [listLoading, setListLoading] = useState(true);
-  const [query, setQuery] = useState("");
+  const [query, setQueryState] = useState(
+    () => searchParams.get("search") ?? readStoredString("glossary.search") ?? "",
+  );
+  const setQuery = (value: string) => {
+    setQueryState(value);
+    writeStored("glossary.search", value);
+  };
   // REQ-1387: checked = show that category; both default on so the list starts unfiltered. Choice
   // is a per-viewer UI preference, not server state, so it's remembered in localStorage.
   const [showDeprecated, setShowDeprecated] = useState(() =>
     readStoredBool("glossary.showDeprecated", true),
   );
-  // Proposed (not yet live/retired/deprecated) terms are the raw output of the semantic layer's
-  // derivation, not curated — unchecking this narrows the list to terms a curator has admitted.
-  const [showProposed, setShowProposed] = useState(() =>
-    readStoredBool("glossary.showProposed", true),
+  // Draft terms (not yet admitted) are the raw output of the semantic layer's derivation, not
+  // curated — unchecking this narrows the list to terms in service or past it.
+  const [showDraft, setShowDraft] = useState(() => readStoredBool("glossary.showDraft", true));
+  // REQ-2146: narrow the list to the terms with findings.
+  const [toReviewOnly, setToReviewOnlyState] = useState(() =>
+    readStoredBool("glossary.toReview", false),
   );
+  const setToReviewOnly = (on: boolean) => {
+    setToReviewOnlyState(on);
+    writeStoredBool("glossary.toReview", on);
+  };
 
   useEffect(() => {
     writeStoredBool("glossary.showDeprecated", showDeprecated);
   }, [showDeprecated]);
 
   useEffect(() => {
-    writeStoredBool("glossary.showProposed", showProposed);
-  }, [showProposed]);
+    writeStoredBool("glossary.showDraft", showDraft);
+  }, [showDraft]);
 
-  // REQ-1387: the selected term is mirrored to the ?term= query param, so a relationship link,
-  // a shared URL, or the back/forward buttons all resolve to the same term this state does.
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     const raw = searchParams.get("term");
     const parsed = raw ? Number(raw) : NaN;
@@ -161,33 +190,19 @@ export function GlossaryTab() {
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Editable copies of the selected term's name/definition.
-  const [name, setName] = useState("");
-  const [definition, setDefinition] = useState("");
-  const [exportExcluded, setExportExcluded] = useState(false);
-  const [generatingDefinition, setGeneratingDefinition] = useState(false);
   const [bulkGeneratingDefinitions, setBulkGeneratingDefinitions] = useState(false);
   const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
 
   const [actionError, setActionError] = useState("");
 
-  // Add-edge form
-  const [edgeTermId, setEdgeTermId] = useState<string | null>(null);
-  const [edgeRelType, setEdgeRelType] = useState<string | null>(null);
-  // Flip swaps which term is the "from" side of the edge being added, so the row can
-  // express either {current term} {rel} {picked term} or the reverse without two forms.
-  const [edgeFlipped, setEdgeFlipped] = useState(false);
-  // Relationships and experts open read-only: a reader sees the plain list, and only
-  // switches into the pickers/delete icons/add row by asking for edit mode explicitly.
-  const [relEditMode, setRelEditMode] = useState(false);
-  const [expertEditMode, setExpertEditMode] = useState(false);
+  // The term open as one form (TermEditForm), or read.
+  const [editing, setEditing] = useState(false);
 
-  // Add-expert form. REQ-1592: the user is PICKED from the org's members, not typed. Naming an
-  // author decides who may change the term from then on, so a typo would hand it to nobody.
-  const [expertUserId, setExpertUserId] = useState<string | null>(null);
-  const [expertKind, setExpertKind] = useState<string>("expert");
+  // REQ-1592: an expert is PICKED from the org's members, not typed. Naming an author decides who
+  // may change the term from then on, so a typo would hand it to nobody.
   const [members, setMembers] = useState<OrgMember[]>([]);
 
-  // New abstract term modal
+  // New concept modal
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addDefinition, setAddDefinition] = useState("");
@@ -213,21 +228,35 @@ export function GlossaryTab() {
     return () => window.clearTimeout(timer);
   }, [refreshList]);
 
-  const loadDetail = useCallback(async (termId: number) => {
-    setDetailLoading(true);
+  // ``quiet``: read again in place (after a Save), so an open form keeps what it holds.
+  // The open term's findings (REQ-2146), kept with the term they were read for.
+  const [found, setFound] = useState<{ termId: number; findings: GlossaryFinding[] } | null>(null);
+  const [retireOpen, setRetireOpen] = useState(false);
+  const [deprecateOpen, setDeprecateOpen] = useState(false);
+  const { unassignTag } = useUnassignTag();
+  useEffect(() => {
+    if (detail === null) return;
+    let live = true;
+    void fetchGlossaryFindings().then((rows) => {
+      if (!live) return;
+      // The findings list names only the terms that have any: a term it leaves out has none.
+      const row = rows.find((r) => r.term_id === detail.id);
+      setFound({ termId: detail.id, findings: row ? row.findings : [] });
+    });
+    return () => {
+      live = false;
+    };
+  }, [detail]);
+  const findings =
+    found !== null && detail !== null && found.termId === detail.id ? found.findings : [];
+
+  const loadDetail = useCallback(async (termId: number, quiet = false) => {
+    if (!quiet) setDetailLoading(true);
     setActionError("");
     try {
-      const term = await fetchGlossaryTerm(termId);
-      setDetail(term);
-      setName(term.name);
-      setDefinition(term.definition ?? "");
-      setExportExcluded(term.export_excluded);
-      setEdgeTermId(null);
-      setEdgeRelType(null);
-      setExpertUserId(null);
-      setExpertKind("expert");
+      setDetail(await fetchGlossaryTerm(termId));
     } finally {
-      setDetailLoading(false);
+      if (!quiet) setDetailLoading(false);
     }
   }, []);
 
@@ -250,14 +279,10 @@ export function GlossaryTab() {
     return () => window.clearTimeout(timer);
   }, [selectedId, loadDetail]);
 
-  // Each term opens with relationships/experts collapsed to their clean read view, not
-  // whatever edit mode the previous term was left in. Deferred for the same
+  // Each term opens read, not in the form the previous term was left in. Deferred for the same
   // set-state-in-effect rule as the list refresh above.
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setRelEditMode(false);
-      setExpertEditMode(false);
-    }, 0);
+    const timer = window.setTimeout(() => setEditing(false), 0);
     return () => window.clearTimeout(timer);
   }, [selectedId]);
 
@@ -326,22 +351,6 @@ export function GlossaryTab() {
     setAddDomainsRaw(next);
   };
 
-  // Drafts a definition with the org's AI model into the editor; nothing persists
-  // until the user saves it.
-  const handleGenerateDefinition = async () => {
-    if (detail === null) return;
-    setGeneratingDefinition(true);
-    setActionError("");
-    try {
-      const draft = await generateGlossaryDefinition(detail.id);
-      if (draft) setDefinition(draft);
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setGeneratingDefinition(false);
-    }
-  };
-
   // Runs a mutation, then refreshes the detail panel and the list (names,
   // ref counts and deprecation flags all change server-side).
   const act = async (fn: () => Promise<void>, successMessage?: string) => {
@@ -349,8 +358,8 @@ export function GlossaryTab() {
     try {
       await fn();
       if (successMessage) notifications.show({ color: "green", message: successMessage });
-      if (selectedId !== null) await loadDetail(selectedId);
-      await refreshList();
+      // The term and the list are read again together: neither waits on the other.
+      await Promise.all([selectedId !== null ? loadDetail(selectedId) : null, refreshList()]);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
     }
@@ -437,51 +446,47 @@ export function GlossaryTab() {
     }
   };
 
-  // Moving a term's last ref is the retire path: the server settles the losing term and
-  // usually deletes it. Clear the selection in that case instead of letting the shared
-  // post-mutation refresh re-read a term that no longer exists (a bare 404 in the panel).
-  const handleMoveRef = async (ref: GlossaryRef, toTermId: string | null) => {
-    if (toTermId === null) return;
-    setActionError("");
-    try {
-      const { source_term_removed } = await moveGlossaryRef({
-        table_id: ref.table_id,
-        column_name: ref.column_name,
-        to_term_id: Number(toTermId),
-      });
-      notifications.show({ color: "green", message: t("glossaryTab.moved") });
-      if (source_term_removed) {
-        setSelectedId(null);
-        setDetail(null);
-      } else if (selectedId !== null) {
-        await loadDetail(selectedId);
-      }
-      await refreshList();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e));
+  // After the form's Save. Moving a term's last column away is the retire path: the server settles
+  // the term and usually removes it, so the selection is cleared rather than re-read (a bare 404).
+  // A refused change leaves the form open, the term read again under it.
+  const handleSaved = async (done: boolean, removed: boolean) => {
+    if (removed) {
+      setSelectedId(null);
+      setDetail(null);
+      setEditing(false);
+    }
+    // The term (unless removed) and the list are read again together.
+    await Promise.all([
+      !removed && selectedId !== null ? loadDetail(selectedId, true) : null,
+      refreshList(),
+    ]);
+    if (done) {
+      setEditing(false);
+      notifications.show({ color: "green", message: t("glossaryTab.updated") });
     }
   };
 
-  const relTypeOptions = GLOSSARY_REL_TYPES.map((rt) => ({
-    value: rt,
-    label: t(`glossaryTab.rel_${rt}`),
-  }));
+  // Kept from render to render: the term graph (REQ-2150) is drawn again only when its words change.
+  const relTypeOptions = useMemo(
+    () => GLOSSARY_REL_TYPES.map((rt) => ({ value: rt, label: t(`glossaryTab.rel_${rt}`) })),
+    [t],
+  );
   const kindOptions = GLOSSARY_EXPERT_KINDS.map((k) => ({
     value: k,
     label: t(`glossaryTab.kind_${k}`),
   }));
   // REQ-1590: a reader sees the same sentence a curator does, without the picker that changes it.
-  const relLabel = (options: { value: string; label: string }[], relType: string) =>
-    options.find((o) => o.value === relType)?.label ?? relType;
+  const relLabel = useCallback(
+    (options: { value: string; label: string }[], relType: string) =>
+      options.find((o) => o.value === relType)?.label ?? relType,
+    [],
+  );
   const otherTermOptions = terms
     .filter((term) => term.id !== detail?.id)
     .map((term) => ({ value: String(term.id), label: term.name }));
-  // A term is "Proposed" (see the badge/alert below) exactly when it is none of live, retired or
-  // deprecated — mirrored here rather than added to the summary type, since the server already
-  // gives us the three booleans it derives that state from.
-  const displayedTerms = showProposed
-    ? terms
-    : terms.filter((term) => term.live || term.retired || term.deprecated);
+  const displayedTerms = (
+    showDraft ? terms : terms.filter((term) => term.status !== "draft")
+  ).filter((term) => !toReviewOnly || toReview(term));
 
   return (
     <Stack gap="md" style={{ height: "100%", minHeight: 420 }}>
@@ -503,8 +508,7 @@ export function GlossaryTab() {
           placeholder={t("glossaryTab.searchPlaceholder")}
           testId="glossary-search"
         />
-        <Group gap="xs">
-          <OntologyToggle open={ontology} onChange={setOntology} />
+        <Group gap="xs" data-toolbar>
           {canEdit && (
             <Button
               leftSection={<Plus size={14} />}
@@ -513,6 +517,48 @@ export function GlossaryTab() {
             >
               {t("glossaryTab.newTerm")}
             </Button>
+          )}
+          <OntologyToggle open={ontology} onChange={setOntology} />
+          {canEdit ? (
+            // The AI drafts, both behind one sparkle: relationships between the terms, and the
+            // definitions the terms lack.
+            <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+              <Menu.Target>
+                <Tip text={t("glossaryTab.generateMenu")} named>
+                  <ActionIcon
+                    size="input-sm"
+                    variant="subtle"
+                    loading={bulkGeneratingDefinitions || bulkGeneratingRelationships}
+                    aria-label={t("glossaryTab.generateMenu")}
+                    data-testid="glossary-generate-menu"
+                  >
+                    <Sparkles size={16} aria-hidden />
+                  </ActionIcon>
+                </Tip>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  onClick={() => void handleBulkGenerateRelationships()}
+                  data-testid="glossary-bulk-relationships-btn"
+                >
+                  {t("glossaryTab.bulkGenerateRelationships")}
+                </Menu.Item>
+                <Menu.Item
+                  onClick={() => void handleBulkGenerateDefinitions()}
+                  data-testid="glossary-bulk-definitions-btn"
+                >
+                  {t("glossaryTab.bulkGenerateDefinitions")}
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          ) : (
+            // REQ-1590: say which of the two rights the viewer holds, so a reader who expected to
+            // curate knows a right is missing rather than that the buttons failed to render.
+            <Tip text={t("glossaryTab.readOnlyHint")}>
+              <Badge variant="light" color="gray" data-testid="glossary-read-only">
+                {t("glossaryTab.readOnly")}
+              </Badge>
+            </Tip>
           )}
           {/* Most terms arrive derived, so the one thing a curator has to decide here is when
               adding a term by hand is warranted. The bubble states what the glossary is for
@@ -523,42 +569,12 @@ export function GlossaryTab() {
             ariaLabel={t("glossaryTab.purposeAria")}
             testId="glossary-purpose-help"
           />
-          {canEdit ? (
-            <>
-              <Button
-                variant="default"
-                leftSection={<Sparkles size={14} />}
-                loading={bulkGeneratingDefinitions}
-                onClick={() => void handleBulkGenerateDefinitions()}
-                data-testid="glossary-bulk-definitions-btn"
-              >
-                {t("glossaryTab.bulkGenerateDefinitions")}
-              </Button>
-              <Button
-                variant="default"
-                leftSection={<Sparkles size={14} />}
-                loading={bulkGeneratingRelationships}
-                onClick={() => void handleBulkGenerateRelationships()}
-                data-testid="glossary-bulk-relationships-btn"
-              >
-                {t("glossaryTab.bulkGenerateRelationships")}
-              </Button>
-            </>
-          ) : (
-            // REQ-1590: say which of the two rights the viewer holds, so a reader who expected to
-            // curate knows a right is missing rather than that the buttons failed to render.
-            <Tip text={t("glossaryTab.readOnlyHint")}>
-              <Badge variant="light" color="gray" data-testid="glossary-read-only">
-                {t("glossaryTab.readOnly")}
-              </Badge>
-            </Tip>
-          )}
         </Group>
       </Group>
 
       {/* REQ-2130: the Ontology View in place of the list, read and drawn once it is opened. */}
       {ontology ? (
-        <GlossaryOntologyView />
+        <GlossaryOntologyView search={query} />
       ) : (
         <div style={{ display: "flex", gap: "0.75rem", flex: 1, minHeight: 0 }}>
           <div
@@ -571,20 +587,31 @@ export function GlossaryTab() {
             }}
             data-testid="glossary-list"
           >
-            <Group gap="md" px="xs" pb={6} wrap="nowrap">
+            {/* Each filter's label on one line; the filters wrap where a language's labels are long. */}
+            <Group gap="sm" px="xs" pb={6} wrap="wrap">
               <Checkbox
                 size="xs"
                 label={t("glossaryTab.deprecated")}
                 checked={showDeprecated}
                 onChange={(e) => setShowDeprecated(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-show-deprecated"
               />
               <Checkbox
                 size="xs"
-                label={t("glossaryTab.proposed")}
-                checked={showProposed}
-                onChange={(e) => setShowProposed(e.currentTarget.checked)}
-                data-testid="glossary-show-proposed"
+                label={t("glossaryTab.status_draft")}
+                checked={showDraft}
+                onChange={(e) => setShowDraft(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
+                data-testid="glossary-show-draft"
+              />
+              <Checkbox
+                size="xs"
+                label={t("glossaryTab.toReview")}
+                checked={toReviewOnly}
+                onChange={(e) => setToReviewOnly(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
+                data-testid="glossary-to-review-only"
               />
             </Group>
             <div style={{ flex: 1, overflow: "auto" }}>
@@ -606,40 +633,7 @@ export function GlossaryTab() {
                     data-testid={`glossary-item-${term.id}`}
                     // REQ-2010: a demo's tour opens a term by its name.
                     data-glossary-term={term.name}
-                    rightSection={
-                      <Group gap={4} wrap="nowrap">
-                        {term.is_abstract && (
-                          <Badge
-                            size="xs"
-                            variant="light"
-                            color={term.grounded ? undefined : "red"}
-                            data-testid={term.grounded ? undefined : `glossary-dangling-${term.id}`}
-                          >
-                            {t("glossaryTab.abstract")}
-                          </Badge>
-                        )}
-                        {term.deprecated && (
-                          <Badge size="xs" color="gray" variant="light">
-                            {t("glossaryTab.deprecated")}
-                          </Badge>
-                        )}
-                        {term.retired && (
-                          <Badge size="xs" color="orange" variant="light">
-                            {t("glossaryTab.retired")}
-                          </Badge>
-                        )}
-                        {!term.live && !term.retired && !term.deprecated && (
-                          <Badge size="xs" color="yellow" variant="light">
-                            {t("glossaryTab.proposed")}
-                          </Badge>
-                        )}
-                        {!term.is_abstract && (
-                          <Badge size="xs" variant="default">
-                            {term.ref_count}
-                          </Badge>
-                        )}
-                      </Group>
-                    }
+                    rightSection={<TermListBadges term={term} />}
                   />
                 ))
               )}
@@ -666,374 +660,182 @@ export function GlossaryTab() {
                 {/* A term nothing consumes is the normal state of a freshly derived glossary, so
                     the panel says which of the two admission tests it still fails rather than
                     leaving the curator to infer it from a badge. */}
-                {!detail.live && !detail.retired && !detail.deprecated && (
-                  <Alert color="yellow" data-testid="glossary-proposed">
+                {detail.status === "draft" && (
+                  <Alert color="yellow" data-testid="glossary-draft">
                     {(detail.definition ?? "").trim()
-                      ? t("glossaryTab.proposedUngrounded")
-                      : t("glossaryTab.proposedUndefined")}
+                      ? t("glossaryTab.draftUngrounded")
+                      : t("glossaryTab.draftUndefined")}
                   </Alert>
                 )}
 
-                {/* What the term is, beside what is edited below: every value of it is shown. */}
-                <DetailFields
-                  testId="glossary-read-fields"
-                  fields={[
-                    {
-                      // REQ-1591: derived from the refs for a rooted term, declared for an abstract
-                      // one; none means unscoped, which the create form names as the enterprise.
-                      label: t("glossaryTab.domainsLabel"),
-                      value: detail.domains.length
-                        ? detail.domains.join(", ")
-                        : t("glossaryTab.enterpriseDomainLabel"),
-                    },
-                    { label: t("glossaryTab.abstract"), value: yesNo(detail.is_abstract) },
-                    { label: t("glossaryTab.proposed"), value: yesNo(!detail.live) },
-                    { label: t("glossaryTab.deprecated"), value: yesNo(detail.deprecated) },
-                    { label: t("glossaryTab.retired"), value: yesNo(detail.retired) },
-                  ]}
-                />
-                <Group align="flex-end" gap="sm">
-                  <TextInput
-                    label={t("glossaryTab.nameLabel")}
-                    value={name}
-                    onChange={(e) => setName(e.currentTarget.value)}
-                    style={{ flex: 1 }}
-                    readOnly={!canEdit}
-                    data-testid="glossary-name-input"
-                  />
-                  {canEdit && (
-                    <>
-                      <Button
-                        variant="default"
-                        disabled={!name.trim() || name.trim() === detail.name}
-                        onClick={() =>
-                          void act(
-                            () => updateGlossaryTerm(detail.id, { name: name.trim() }),
-                            t("glossaryTab.updated"),
-                          )
-                        }
-                        data-testid="glossary-rename-btn"
-                      >
-                        {t("glossaryTab.rename")}
-                      </Button>
-                      <Tip
-                        text={
-                          detail.retired
-                            ? t("glossaryTab.unretireHint")
-                            : t("glossaryTab.retireHint")
-                        }
-                      >
+                {canEdit && !editing && (
+                  // Edit opens the whole term as one form; Retire and Delete act at once.
+                  <Group gap="xs" data-toolbar>
+                    <Button
+                      variant="default"
+                      leftSection={<Pencil size={14} />}
+                      onClick={() => setEditing(true)}
+                      data-testid="glossary-edit-btn"
+                    >
+                      {t("glossaryTab.edit")}
+                    </Button>
+                    {/* REQ-2144: each status change is an action with a reason. A live term can be
+                        deprecated; any term in service retired; a deprecation or a retirement
+                        undone. */}
+                    {detail.status === "live" && (
+                      <Tip text={t("glossaryTab.deprecateHint")}>
                         <Button
                           variant="light"
-                          color={detail.retired ? "teal" : "orange"}
-                          leftSection={
-                            detail.retired ? <ArchiveRestore size={14} /> : <Archive size={14} />
-                          }
-                          onClick={() =>
-                            void act(
-                              () => updateGlossaryTerm(detail.id, { retired: !detail.retired }),
-                              detail.retired
-                                ? t("glossaryTab.unretireDone")
-                                : t("glossaryTab.retireDone"),
-                            )
-                          }
-                          data-testid="glossary-retire-btn"
+                          color="gray"
+                          leftSection={<Hourglass size={14} />}
+                          onClick={() => setDeprecateOpen(true)}
+                          data-testid="glossary-deprecate-btn"
                         >
-                          {detail.retired ? t("glossaryTab.unretire") : t("glossaryTab.retire")}
+                          {t("glossaryTab.deprecate")}
                         </Button>
                       </Tip>
-                      <Tip
-                        text={
-                          detail.refs.length === 0 &&
-                          detail.edges_out.length === 0 &&
-                          detail.edges_in.length === 0
-                            ? null
-                            : t("glossaryTab.deleteDisabledHint")
-                        }
-                      >
-                        <span>
-                          <Button
-                            color="red"
-                            variant="light"
-                            leftSection={<Trash2 size={14} />}
-                            disabled={
-                              detail.refs.length > 0 ||
-                              detail.edges_out.length > 0 ||
-                              detail.edges_in.length > 0
-                            }
-                            onClick={() => void handleDelete()}
-                            data-testid="glossary-delete-btn"
-                          >
-                            {t("glossaryTab.delete")}
-                          </Button>
-                        </span>
+                    )}
+                    {detail.status !== "retired" && (
+                      <Tip text={t("glossaryTab.retireHint")}>
+                        <Button
+                          variant="light"
+                          color="orange"
+                          leftSection={<Archive size={14} />}
+                          onClick={() => setRetireOpen(true)}
+                          data-testid="glossary-retire-btn"
+                        >
+                          {t("glossaryTab.retire")}
+                        </Button>
                       </Tip>
-                    </>
-                  )}
-                </Group>
-
-                <Checkbox
-                  // What the tick does is behind its (?), not a paragraph under it.
-                  label={
-                    <LabelWithHelp
-                      label={t("glossaryTab.excludeFromExportLabel")}
-                      help={t("glossaryTab.excludeFromExportHelp")}
-                    />
-                  }
-                  checked={exportExcluded}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    const next = e.currentTarget.checked;
-                    setExportExcluded(next);
-                    void act(() => updateGlossaryTerm(detail.id, { export_excluded: next }));
-                  }}
-                  data-testid="glossary-export-excluded-checkbox"
-                />
-
-                <Group align="flex-end" gap="sm">
-                  <Stack gap={2} style={{ flex: 1 }} data-testid="glossary-definition-input">
-                    <Text size="sm" fw={500}>
-                      {t("glossaryTab.definitionLabel")}
-                    </Text>
-                    {canEdit ? (
-                      <DescriptionField
-                        value={definition}
-                        onChange={setDefinition}
-                        placeholder={t("glossaryTab.definitionLabel")}
-                        rows={2}
-                        generating={generatingDefinition}
-                        onGenerate={() => void handleGenerateDefinition()}
-                      />
-                    ) : (
-                      // REQ-1590: the definition is what a reader came for, so it is shown as prose
-                      // rather than in a textarea nothing can save.
-                      <Text size="sm" c={definition ? undefined : "dimmed"}>
-                        {definition || t("glossaryTab.hoverNoDefinition")}
-                      </Text>
                     )}
-                  </Stack>
-                  {canEdit && (
-                    <Button
-                      // Saves this one field in place: compact, beside what it saves.
-                      size="compact-sm"
-                      variant="default"
-                      disabled={definition === (detail.definition ?? "")}
-                      onClick={() =>
-                        void act(
-                          () => updateGlossaryTerm(detail.id, { definition }),
-                          t("glossaryTab.updated"),
-                        )
+                    {(detail.status === "deprecated" || detail.status === "retired") && (
+                      <Tip text={t("glossaryTab.unretireHint")}>
+                        <Button
+                          variant="light"
+                          color="teal"
+                          leftSection={<ArchiveRestore size={14} />}
+                          onClick={() =>
+                            void act(
+                              () => restoreGlossaryTerm(detail.id),
+                              t("glossaryTab.unretireDone"),
+                            )
+                          }
+                          data-testid="glossary-restore-btn"
+                        >
+                          {t("glossaryTab.unretire")}
+                        </Button>
+                      </Tip>
+                    )}
+                    <Tip
+                      text={
+                        detail.refs.length === 0 &&
+                        detail.edges_out.length === 0 &&
+                        detail.edges_in.length === 0
+                          ? null
+                          : t("glossaryTab.deleteDisabledHint")
                       }
-                      data-testid="glossary-definition-save-btn"
                     >
-                      {t("glossaryTab.save")}
-                    </Button>
-                  )}
-                </Group>
+                      <span>
+                        <Button
+                          color="red"
+                          variant="light"
+                          leftSection={<Trash2 size={14} />}
+                          disabled={
+                            detail.refs.length > 0 ||
+                            detail.edges_out.length > 0 ||
+                            detail.edges_in.length > 0
+                          }
+                          onClick={() => void handleDelete()}
+                          data-testid="glossary-delete-btn"
+                        >
+                          {t("glossaryTab.delete")}
+                        </Button>
+                      </span>
+                    </Tip>
+                  </Group>
+                )}
 
-                <Title order={5}>{t("glossaryTab.refsTitle")}</Title>
-                {detail.refs.length === 0 ? (
-                  <Text size="xs" c="dimmed">
-                    {t("glossaryTab.noRefs")}
-                  </Text>
-                ) : (
-                  <SortGroupTable
-                    testPrefix="glossary-refs"
-                    minWidth={480}
-                    rows={detail.refs}
-                    columns={[
-                      {
-                        key: "column",
-                        label: t("glossaryTab.colColumn"),
-                        sortValue: (r) => r.column_name,
-                      },
-                      {
-                        key: "table",
-                        label: t("glossaryTab.colTable"),
-                        sortValue: (r) => r.alias || r.table_name,
-                      },
-                      {
-                        key: "source",
-                        label: t("glossaryTab.colSource"),
-                        sortValue: (r) => r.source_id,
-                        groupValue: (r) => r.source_id,
-                      },
-                      {
-                        key: "domain",
-                        label: t("glossaryTab.colDomain"),
-                        sortValue: (r) => r.domain_id,
-                        groupValue: (r) => r.domain_id,
-                      },
-                    ]}
-                    headers={[
-                      { col: "column" },
-                      { col: "table" },
-                      { col: "source" },
-                      { col: "domain" },
-                      ...(canEdit ? [t("glossaryTab.colMove")] : []),
-                    ]}
-                    colSpan={5}
-                    rowKey={(ref) => `${ref.table_id}:${ref.column_name}`}
-                    render={(ref) => (
-                      <ListRow
-                        key={`${ref.table_id}:${ref.column_name}`}
-                        testId={`glossary-ref-${ref.table_id}-${ref.column_name}`}
-                      >
-                        <Table.Td>{ref.column_name}</Table.Td>
-                        <Table.Td>{ref.alias || ref.table_name}</Table.Td>
-                        <Table.Td>{ref.source_id}</Table.Td>
-                        <Table.Td>{ref.domain_id}</Table.Td>
-                        {canEdit && (
-                          <Table.Td>
-                            <Select
-                              size="xs"
-                              data={otherTermOptions}
-                              value={null}
-                              placeholder={t("glossaryTab.moveToPlaceholder")}
-                              onChange={(v) => void handleMoveRef(ref, v)}
-                              searchable
-                              data-testid={`glossary-move-select-${ref.table_id}-${ref.column_name}`}
-                            />
-                          </Table.Td>
-                        )}
-                      </ListRow>
-                    )}
+                {!editing && (
+                  <TermToReview
+                    findings={findings}
+                    fixesOf={(f): FindingFix[] => {
+                      const edit: FindingFix = {
+                        label: t("glossaryTab.edit"),
+                        run: () => setEditing(true),
+                        testId: "glossary-finding-fix-edit",
+                      };
+                      switch (f.kind) {
+                        case "unlinked_tables":
+                          // Same-entity relationships are declared on the Relationships page,
+                          // found there by the tables' names.
+                          return [
+                            {
+                              label: t("glossaryTab.findingFix_unlinked_tables"),
+                              run: () =>
+                                navigate(
+                                  `/relationships?search=${encodeURIComponent(tableNames(f.params.tables))}`,
+                                ),
+                              testId: "glossary-finding-fix-same-entity",
+                            },
+                          ];
+                        case "tag_wrong_kind":
+                          return canEdit
+                            ? f.params.tags.split(", ").map((tag) => ({
+                                label: t("glossaryTab.findingUnmark", { tag }),
+                                run: () =>
+                                  void act(async () => {
+                                    const r = await unassignTag({
+                                      tagId: tag,
+                                      objectType: "term",
+                                      termId: detail.id,
+                                    });
+                                    if (!r.success) throw refusalError(r);
+                                  }),
+                                testId: `glossary-finding-fix-unmark-${tag}`,
+                              }))
+                            : [];
+                        case "retirement_blocked":
+                          return canEdit
+                            ? [
+                                {
+                                  label: t("glossaryTab.findingFix_retirement_blocked"),
+                                  run: () => setRetireOpen(true),
+                                  testId: "glossary-finding-fix-retire",
+                                },
+                              ]
+                            : [];
+                        case "class_and_attribute":
+                        case "no_data":
+                          return canEdit ? [edit] : [];
+                      }
+                    }}
                   />
                 )}
 
-                <Group gap="xs" align="center">
-                  <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>
-                  {canEdit && (
-                    <ActionIcon
-                      variant="subtle"
-                      size="sm"
-                      aria-label={
-                        relEditMode
-                          ? t("glossaryTab.doneEditingRelationships")
-                          : t("glossaryTab.editRelationships")
-                      }
-                      onClick={() => setRelEditMode((edit) => !edit)}
-                      data-testid="glossary-relationships-edit-toggle"
-                    >
-                      <Pencil size={13} />
-                    </ActionIcon>
-                  )}
-                </Group>
-                <GlossaryRelationships
-                  detail={detail}
-                  canEdit={canEdit}
-                  relEditMode={relEditMode}
-                  relTypeOptions={relTypeOptions}
-                  otherTermOptions={otherTermOptions}
-                  edgeTermId={edgeTermId}
-                  setEdgeTermId={setEdgeTermId}
-                  edgeRelType={edgeRelType}
-                  setEdgeRelType={setEdgeRelType}
-                  edgeFlipped={edgeFlipped}
-                  setEdgeFlipped={setEdgeFlipped}
-                  navigateToTerm={navigateToTerm}
-                  act={act}
-                  relLabel={relLabel}
-                  t={t}
-                  retypeGlossaryEdge={retypeGlossaryEdge}
-                  removeGlossaryEdge={removeGlossaryEdge}
-                  addGlossaryEdge={addGlossaryEdge}
-                />
-
-                <Group gap="xs" align="center">
-                  <Title order={5}>{t("glossaryTab.expertsTitle")}</Title>
-                  {canEdit && (
-                    <ActionIcon
-                      variant="subtle"
-                      size="sm"
-                      aria-label={
-                        expertEditMode
-                          ? t("glossaryTab.doneEditingExperts")
-                          : t("glossaryTab.editExperts")
-                      }
-                      onClick={() => setExpertEditMode((edit) => !edit)}
-                      data-testid="glossary-experts-edit-toggle"
-                    >
-                      <Pencil size={13} />
-                    </ActionIcon>
-                  )}
-                </Group>
-                <Stack gap={4}>
-                  {detail.experts.map((expert) => (
-                    <Group
-                      key={expert.user_id}
-                      gap="xs"
-                      data-testid={`glossary-expert-${expert.user_id}`}
-                    >
-                      <Text size="sm">{expert.user_id}</Text>
-                      <Badge size="sm" variant="light">
-                        {t(`glossaryTab.kind_${expert.kind}`)}
-                      </Badge>
-                      {canEdit && expertEditMode && (
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size="sm"
-                          aria-label={t("glossaryTab.removeExpert")}
-                          onClick={() =>
-                            void act(() => removeGlossaryExpert(detail.id, expert.user_id))
-                          }
-                        >
-                          <Trash2 size={13} />
-                        </ActionIcon>
-                      )}
-                    </Group>
-                  ))}
-                  {detail.experts.length === 0 && (
-                    <Text size="xs" c="dimmed">
-                      {t("glossaryTab.noExperts")}
-                    </Text>
-                  )}
-                </Stack>
-                {canEdit && expertEditMode && (
-                  <FormLayout>
-                    {/* Who, in what capacity, and the button that adds them: one row. */}
-                    <FieldGroup row>
-                      <FormField size="medium">
-                        <Select
-                          label={t("glossaryTab.expertUserLabel")}
-                          placeholder={t("glossaryTab.expertUserPlaceholder")}
-                          data={memberOptions}
-                          value={expertUserId}
-                          onChange={setExpertUserId}
-                          searchable
-                          data-testid="glossary-expert-user-input"
-                        />
-                      </FormField>
-                      <FormField size="short">
-                        <Select
-                          label={t("glossaryTab.expertKindLabel")}
-                          data={kindOptions}
-                          value={expertKind}
-                          onChange={(v) => v && setExpertKind(v)}
-                          allowDeselect={false}
-                          data-testid="glossary-expert-kind-select"
-                        />
-                      </FormField>
-                      <Button
-                        variant="default"
-                        disabled={!expertUserId}
-                        onClick={() =>
-                          void act(() =>
-                            addGlossaryExpert(
-                              detail.id,
-                              // The button is withheld until a person is picked, so the id is present.
-                              expertUserId as string,
-                              expertKind as GlossaryExpertKind,
-                            ),
-                          )
-                        }
-                        data-testid="glossary-expert-add-btn"
-                      >
-                        {t("glossaryTab.addExpert")}
-                      </Button>
-                    </FieldGroup>
-                  </FormLayout>
+                {editing ? (
+                  <TermEditForm
+                    term={detail}
+                    otherTermOptions={otherTermOptions}
+                    relTypeOptions={relTypeOptions}
+                    kindOptions={kindOptions}
+                    memberOptions={memberOptions}
+                    domainOptions={addDomainOptions.map((o) =>
+                      typeof o === "string" ? { value: o, label: o } : o,
+                    )}
+                    domainsEnabled={domainsEnabled}
+                    relLabel={relLabel}
+                    navigateToTerm={navigateToTerm}
+                    onSaved={handleSaved}
+                    onCancel={() => setEditing(false)}
+                  />
+                ) : (
+                  <TermReadView
+                    term={detail}
+                    relTypeOptions={relTypeOptions}
+                    otherTermOptions={otherTermOptions}
+                    relLabel={relLabel}
+                    navigateToTerm={navigateToTerm}
+                  />
                 )}
               </Stack>
             )}
@@ -1109,6 +911,30 @@ export function GlossaryTab() {
           />
         </FormLayout>
       </Modal>
+
+      {detail && deprecateOpen && (
+        <DeprecateTermDialog
+          term={detail}
+          onClose={() => setDeprecateOpen(false)}
+          onDeprecated={() => {
+            setDeprecateOpen(false);
+            // Deprecated already: the term and the list are read again, and the reader told.
+            void act(async () => undefined, t("glossaryTab.deprecateDone"));
+          }}
+        />
+      )}
+      {detail && retireOpen && (
+        <RetireTermDialog
+          term={detail}
+          terms={terms}
+          onClose={() => setRetireOpen(false)}
+          onRetired={() => {
+            setRetireOpen(false);
+            // Retired already: the term and the list are read again, and the reader told.
+            void act(async () => undefined, t("glossaryTab.retireDone"));
+          }}
+        />
+      )}
     </Stack>
   );
 }

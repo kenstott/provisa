@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from provisa.compiler.sql_literals import sql_literal
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
 
 # ---------------------------------------------------------------------------
@@ -224,10 +224,18 @@ def parse_cypher_write(query: str) -> WriteAST:
     Raises CypherWriteParseError for unrecognised syntax.
     """
     query = query.strip()
+    from provisa.cypher.parser import (
+        CypherParseError,
+        refuse_cypher_definition,
+        refuse_multiple_statements,
+    )
+
+    try:
+        refuse_multiple_statements(query)
+    except CypherParseError as exc:
+        raise CypherWriteParseError(str(exc)) from exc
     # An index or a constraint is a definition, not a write of rows: refused as one, in the
     # pipeline's own words, before any write pattern is tried.
-    from provisa.cypher.parser import refuse_cypher_definition
-
     refuse_cypher_definition(query)
 
     # REQ-665: relationships are derived from foreign-key joins, not stored edges,
@@ -343,6 +351,27 @@ def _q(name: str) -> str:
 _PROP_ACCESS_RE = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b")
 
 
+def _read_column(mapping: NodeMapping, prop: str) -> str:
+    """``prop`` of a node a write matches, as SQL: read as a read reads it (REQ-2136) -- its
+    ``_id`` the key, a property the label has not null, never a column by a name it does not give."""
+    from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
+
+    if prop == NODE_KEY_PROPERTY:
+        # The statement names the table's columns bare: no alias.
+        return node_key(None, mapping).sql(dialect="postgres")
+    col = mapping.properties.get(prop)
+    return _q(col) if col is not None else "NULL"
+
+
+def _written_column(mapping: NodeMapping, prop: str) -> str:
+    """The column a write sets ``prop`` in: one the label publishes for the role. A write is never
+    silent: any other name is refused by name, where a read of it is null."""
+    col = mapping.properties.get(prop)
+    if col is None:
+        raise CypherWriteParseError(f"{mapping.label} has no property {prop}")
+    return _q(col)
+
+
 def _rewrite_where(where_expr: str, variable: str, mapping: NodeMapping) -> str:
     """Rewrite Cypher property accesses to SQL column names in a WHERE expression.
 
@@ -354,8 +383,7 @@ def _rewrite_where(where_expr: str, variable: str, mapping: NodeMapping) -> str:
         prop = m.group(2)
         if var is None or prop is None or var.lower() != variable.lower():
             return m.group(0)
-        col: str = mapping.properties.get(prop) or prop
-        return _q(col)
+        return _read_column(mapping, prop)
 
     return _PROP_ACCESS_RE.sub(_replace, where_expr)
 
@@ -439,8 +467,7 @@ class WriteTranslator:
         cols: list[str] = []
         vals: list[str] = []
         for prop, val in ast.props.items():
-            col = mapping.properties.get(prop, prop)
-            cols.append(_q(col))
+            cols.append(_written_column(mapping, prop))
             vals.append(_write_value(val))
         if not cols:
             raise CypherWriteParseError("CREATE statement has no properties")
@@ -452,7 +479,7 @@ class WriteTranslator:
         """The rows a DELETE or UPDATE writes: each inline property as an equality, as a read
         matches it, and the WHERE condition."""
         conditions = [
-            f"{_q(mapping.properties.get(prop, prop))} = {_write_value(val)}"
+            f"{_read_column(mapping, prop)} = {_write_value(val)}"
             for prop, val in ast.match_props.items()
         ]
         if not ast.where_expr:
@@ -470,8 +497,7 @@ class WriteTranslator:
         table = self._qualified_table(mapping)
         set_parts: list[str] = []
         for prop, val in ast.set_assignments:
-            col = mapping.properties.get(prop, prop)
-            set_parts.append(f"{_q(col)} = {_write_value(val)}")
+            set_parts.append(f"{_written_column(mapping, prop)} = {_write_value(val)}")
         if not set_parts:
             raise CypherWriteParseError("UPDATE statement has no SET assignments")
         set_sql = ", ".join(set_parts)

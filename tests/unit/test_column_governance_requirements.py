@@ -221,49 +221,60 @@ def test_rls_rule_domain_id_defaults_none():
 # ---------------------------------------------------------------------------
 
 
-def test_rewrite_cypher_dquote_strings_converts_to_single_quotes():
+def _where_sql(where: str) -> str:
+    """The SQL WHERE a Cypher statement over a Person node (id, name, count) translates to."""
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping
+    from provisa.gql.translator import cypher_to_sql
+
+    person = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=["id"],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"id": "id", "name": "name", "count": "count"},
+    )
+    label_map = CypherLabelMap(nodes={"Person": person}, relationships={})
+    sql, _params, _vars = cypher_to_sql(
+        parse_cypher(f"MATCH (n:Person) WHERE {where} RETURN n.id"), label_map, {}
+    )
+    return sql.sql(dialect="trino").split(" WHERE ", 1)[1]
+
+
+def test_a_double_quoted_cypher_string_is_a_single_quoted_sql_string():
     # REQ-410: Double-quoted Cypher string literals must become single-quoted.
-    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
-
-    result = _rewrite_cypher_dquote_strings('WHERE n.id = "abc123"')
-    assert "'" in result
-    assert '"abc123"' not in result
+    result = _where_sql('n.id = "abc123"')
     assert "'abc123'" in result
+    assert '"abc123"' not in result
 
 
-def test_rewrite_cypher_dquote_strings_does_not_convert_property_identifiers():
-    # REQ-410: Double-quoted identifiers after `.` (property names) must NOT be converted.
-    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
-
-    expr = 'n."user_id" = 1'
-    result = _rewrite_cypher_dquote_strings(expr)
-    # The .identifier pattern is left unchanged
-    assert '"user_id"' in result
+def test_a_property_stays_an_identifier():
+    # REQ-410: a property is a column, quoted as an identifier, never turned into a string.
+    result = _where_sql("n.id = 1")
+    assert result == 'n."id" = 1'
 
 
-def test_rewrite_cypher_dquote_strings_handles_inner_single_quotes():
-    # REQ-410: Inner single quotes within the string literal must be escaped.
-    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
-
-    result = _rewrite_cypher_dquote_strings('WHERE n.name = "O\'Brien"')
-    assert "\\'Brien" in result or "O\\'Brien" in result
+def test_an_inner_single_quote_is_escaped():
+    # REQ-410: Inner single quotes within the string literal must be escaped (SQL doubles them).
+    result = _where_sql('n.name = "O\'Brien"')
+    assert result == "n.\"name\" = 'O''Brien'"
 
 
-def test_rewrite_cypher_dquote_strings_produces_valid_where_clause():
+def test_a_pk_exclusion_uses_single_quoted_strings():
     # REQ-410: The resulting WHERE clause uses single-quoted string for PK exclusion.
-    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
-
-    expr = 'WHERE NOT n.id IN ["pk-value-1", "pk-value-2"]'
-    result = _rewrite_cypher_dquote_strings(expr)
+    result = _where_sql('NOT n.id IN ["pk-value-1", "pk-value-2"]')
     assert "'pk-value-1'" in result
     assert "'pk-value-2'" in result
     assert '"pk-value-1"' not in result
 
 
-def test_rewrite_cypher_dquote_strings_leaves_non_string_parts_unchanged():
+def test_numbers_and_columns_are_untouched():
     # REQ-410: Numeric values and non-string parts of the expression are untouched.
-    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
-
-    expr = "WHERE n.count > 5"
-    result = _rewrite_cypher_dquote_strings(expr)
-    assert result == expr
+    assert _where_sql("n.count > 5") == 'n."count" > 5'

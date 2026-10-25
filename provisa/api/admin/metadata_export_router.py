@@ -36,7 +36,7 @@ from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
 from provisa.api.metadata_export import metadata_export
 from provisa.api.metadata_export.provider import PublishResult
-from provisa.api.metadata_export.registry import registered_providers
+from provisa.api.metadata_export.registry import beta_providers, registered_providers
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
@@ -44,6 +44,7 @@ from provisa.control_plane.entitlements import (
     min_tier,
 )
 from provisa.core.models import MetadataExportConfig
+from provisa.core.org_forget import on_forget
 
 router = APIRouter()
 
@@ -84,6 +85,11 @@ _EXPORT_FIELDS = ("enabled", "reconcile_cron")
 # just triggered so the tab can show the per-asset errors a partial publish returned, and an
 # empty entry after a restart means "this process has not published", which is what it says.
 _LAST_PUBLISH: dict[str, dict[str, Any]] = {}
+
+
+@on_forget(size=lambda: len(_LAST_PUBLISH))
+def _forget_last_publish(org_id: str) -> None:
+    _LAST_PUBLISH.pop(org_id, None)
 
 
 async def _require_entitled(org_id: str) -> None:
@@ -198,6 +204,7 @@ async def get_metadata_export(request: Request) -> dict:  # REQ-1074
         "entitled": await _is_entitled(org_id),
         "required_tier": min_tier(Feature.METADATA_EXPORT).value,
         "providers": sorted(registered_providers()),
+        "beta_providers": beta_providers(),
         "config": {
             **{name: getattr(config, name) for name in _EXPORT_FIELDS},
             "targets": [_target_view(t) for t in config.targets],

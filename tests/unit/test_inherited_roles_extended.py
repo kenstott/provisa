@@ -404,6 +404,6 @@ class TestMaskingInheritanceExtended:
             'SELECT "email" FROM "public"."customers"', ctx, "child-role", masking_rules=masking
         )
         assert result == (
-            "SELECT REGEXP_REPLACE(\"email\", '^(.{2}).*(@.*)$', '$1***$2', 'g') AS \"email\" "
+            "SELECT PROVISA_REGEX_REPLACE(\"email\", '^(.{2}).*(@.*)$', '$1***$2', '****') AS \"email\" "
             'FROM "public"."customers"'
         )

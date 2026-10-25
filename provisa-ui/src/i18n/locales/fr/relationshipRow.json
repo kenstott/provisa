@@ -41,6 +41,9 @@
     "deleteConsequence": "La relation est supprimée du modèle. Les requêtes ne peuvent plus joindre par elle.",
     "parametersFed": "Paramètres alimentés",
     "parametersFedHelp": "Une jointure sur cette relation donne à la cible ces valeurs de chaque ligne source.",
-    "parameterNotFed": "Non alimenté"
+    "parameterNotFed": "Non alimenté",
+    "sameEntity": "Même entité",
+    "sameEntityHint": "Les lignes jointes sont une même chose : un terme ancre les deux tables, jointes 1:1 sur des clés",
+    "cardinalityOneToOne": "un-à-un"
   }
 }

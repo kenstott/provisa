@@ -8,13 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/path_translator.py."""
+"""Unit tests for provisa/gql/path_translator.py."""
 
 import pytest
 
 from provisa.cypher.parser import CypherParseError, parse_cypher
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.path_translator import PathTranslateError, path_to_recursive_sql
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.path_translator import PathTranslateError, path_to_recursive_sql
 
 
 def _make_label_map() -> CypherLabelMap:
@@ -62,7 +62,7 @@ def _make_label_map() -> CypherLabelMap:
 
 def _extract_path_func(query: str):
     ast = parse_cypher(query)
-    from provisa.cypher.parser import PathFunction
+    from provisa.gql.ir import PathFunction
 
     for clause in ast.match_clauses:
         if isinstance(clause.pattern, PathFunction):

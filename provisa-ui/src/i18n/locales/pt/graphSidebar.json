@@ -29,6 +29,9 @@
     "resizeSidebar": "Redimensionar barra lateral",
     "tabSettings": "Configurações de exibição",
     "maxNodes": "Máx. de nós",
-    "maxNodesHint": "Máximo de nós que uma consulta desenha"
+    "maxNodesHint": "Máximo de nós que uma consulta desenha",
+    "notCounted": "Não contado: {{list}}",
+    "countsFailed": "Contagens indisponíveis: {{error}}",
+    "schemaFailed": "Esquema indisponível: {{error}}"
   }
 }

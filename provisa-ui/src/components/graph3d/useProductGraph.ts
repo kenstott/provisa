@@ -11,7 +11,7 @@
 // REQ-2128: the data product graph's data for one product, or every product, read from the meta
 // domain as the role the app acts as.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import {
   INTROSPECTION_QUERY,
@@ -21,17 +21,13 @@ import {
   type Introspection,
   type MetaReader,
 } from "../../api/metaGraph";
-import type { GraphData } from "./graphModel";
+import type { GraphData, QueryScope } from "./graphModel";
 import {
-  boundTermIds,
-  memberTableIds,
-  productsQuery,
-  sensitiveQuery,
-  termEdgesQueries,
-  toGraphData,
+  NO_PRODUCT_FILTERS,
+  productGraph,
+  productGraphQuery,
+  type ProductFilters,
   type ProductRow,
-  type SensitiveRow,
-  type TermEdgeRow,
 } from "./productGraphData";
 
 // One read of each role's schema for the page's life: it changes only with the model.
@@ -50,47 +46,43 @@ export function metaReader(role: string): Promise<MetaReader> {
   return r;
 }
 
-export async function loadProductGraph(role: string, product: string | null): Promise<GraphData> {
-  const m = await metaReader(role);
-  const query = productsQuery(m, product);
-  if (query === null) return { nodes: [], edges: [] };
-  const { data_products: products } = await dataGraphql<{
-    data_products: ProductRow[];
-  }>(query, {}, role);
-  const terms = boundTermIds(products);
-  const tables = memberTableIds(products);
-  const edgeQueries = terms.length > 0 ? termEdgesQueries(m, terms) : null;
-  const sensQuery = tables.length > 0 ? sensitiveQuery(m, tables) : null;
-  const [termEdges, sensitive] = await Promise.all([
-    edgeQueries === null
-      ? null
-      : Promise.all(
-          edgeQueries.map((q) =>
-            dataGraphql<{ glossary_term_edges: TermEdgeRow[] }>(q, {}, role).then(
-              (r) => r.glossary_term_edges,
-            ),
-          ),
-        ).then((both) => both.flat()),
-    sensQuery === null
-      ? null
-      : dataGraphql<{ sensitive_coverage: SensitiveRow[] }>(sensQuery, {}, role).then(
-          (r) => r.sensitive_coverage,
-        ),
-  ]);
-  return toGraphData(products, termEdges, sensitive);
+/** ``product``'s graph (every product's for null) as its one query keeps it by ``f``, with that
+ * query (REQ-2136); null when the role cannot read the products. */
+export async function loadProductGraph(
+  role: string,
+  product: string | null,
+  f: ProductFilters,
+): Promise<{ data: GraphData; query: string } | null> {
+  const query = productGraphQuery(await metaReader(role), product, f);
+  if (query === null) return null;
+  const { data_products: products } = await dataGraphql<{ data_products: ProductRow[] }>(
+    query,
+    {},
+    role,
+  );
+  return { data: productGraph(products), query };
 }
 
+const EMPTY: GraphData = { nodes: [], edges: [] };
+
+/**
+ * ``product``'s graph, read once ``enabled``: ``all`` with no filter (what a panel draws and what a
+ * view's controls choose from), and ``scoped`` as the view's controls keep it, read afresh on each
+ * ``onScope``, with the query that read it.
+ */
 export function useProductGraph(product: string | null, enabled: boolean) {
   const { actingRoles } = useAuth();
   const [state, setState] = useState<{ data: GraphData | null; error: string | null }>({
     data: null,
     error: null,
   });
+  const [filters, setFilters] = useState<ProductFilters | null>(null);
+  const [scoped, setScoped] = useState<{ data: GraphData; query: string } | null>(null);
   useEffect(() => {
     if (!enabled || actingRoles === null) return;
     let cancelled = false;
-    loadProductGraph(actingRoles, product).then(
-      (data) => !cancelled && setState({ data, error: null }),
+    loadProductGraph(actingRoles, product, NO_PRODUCT_FILTERS).then(
+      (read) => !cancelled && setState({ data: read?.data ?? EMPTY, error: null }),
       (e: unknown) =>
         !cancelled && setState({ data: null, error: e instanceof Error ? e.message : String(e) }),
     );
@@ -98,5 +90,31 @@ export function useProductGraph(product: string | null, enabled: boolean) {
       cancelled = true;
     };
   }, [actingRoles, product, enabled]);
-  return state;
+  useEffect(() => {
+    if (!enabled || actingRoles === null || filters === null) return;
+    let cancelled = false;
+    loadProductGraph(actingRoles, product, filters).then(
+      (read) => !cancelled && setScoped(read),
+      (e: unknown) =>
+        !cancelled &&
+        setState((st) => ({ ...st, error: e instanceof Error ? e.message : String(e) })),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [actingRoles, product, enabled, filters]);
+  const onScope = useCallback(
+    (sc: QueryScope) =>
+      setFilters((prev) => {
+        const next: ProductFilters = {
+          domains: sc.domains,
+          tags: sc.tags,
+          sensitivities: sc.sensitivities,
+          edgeTypes: sc.edgeTypes,
+        };
+        return prev !== null && JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      }),
+    [],
+  );
+  return { ...state, scoped, onScope };
 }

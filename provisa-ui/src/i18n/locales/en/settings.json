@@ -265,6 +265,10 @@
       "port": {
         "label": "HTTP API port",
         "help": "The port the HTTP API listens on. Restart required; guarded because the UI and every client must follow a change."
+      },
+      "public_url": {
+        "label": "Public address",
+        "help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused."
       }
     },
     "tls": {
@@ -861,6 +865,22 @@
       "leak_rate_threshold": {
         "label": "Fake leak-rate threshold",
         "help": "The share of a sensitive column's sampled values its fake may leave equal to the real value before the leak-rate check marks the fake inadequate. 0 fails a fake that leaves any value unchanged."
+      }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Allow host code commands",
+        "help": "On: python and script commands may be registered and called. Each runs with the server's own access to its memory, credentials, files and network, and its code does not travel with the model. Off by default; use a code resolver instead."
+      }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Deepest graph path",
+        "help": "The most hops a Cypher variable-length path or a SPARQL property path walks when the query sets no bound of its own. A result cut at this depth says it was cut."
+      },
+      "union_limit": {
+        "label": "Most predicates a variable predicate covers",
+        "help": "A SPARQL pattern whose predicate is a variable reads every mapped predicate it could match, one branch each. A query needing more branches than this is refused, naming the limit."
       }
     }
   }

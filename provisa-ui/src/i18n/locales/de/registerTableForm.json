@@ -23,7 +23,6 @@
     "descriptionLabel": "Beschreibung",
     "descriptionPlaceholder": "Erscheint in der SDL-Dokumentation",
     "dataProductLabel": "Datenprodukt",
-    "dataProductHint": "(im Katalog veröffentlichen / nach Atlas, Atlan usw. exportieren)",
     "discoverLabel": "Spalten erkennen",
     "discoverHint": "(Spalten bei der Registrierung aus der Live-Quelle ableiten — für schemalose/NoSQL-Quellen; keine manuelle Spaltenauswahl nötig)",
     "watermarkLabel": "Wasserzeichen-Spalte",

@@ -13,8 +13,8 @@
 from __future__ import annotations
 
 from provisa.compiler.sql_types import CompilationContext, TableMeta
-from provisa.cypher.label_map import CypherLabelMap
-from provisa.cypher.translator_helpers import _node_table_expr
+from provisa.gql.label_map import CypherLabelMap
+from provisa.gql.translator_helpers import _node_table_expr
 from provisa.security.rights import ALL_DOMAINS
 
 

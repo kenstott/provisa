@@ -57,6 +57,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -129,6 +130,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     computedCypherAlias: null,
     autoSuggested: false,
     disableCypher: false,
+    sameEntity: false,
     // REQ-1586: an FK/PK relationship declares no junction.
     viaTableId: null,
     viaTableName: null,
@@ -288,5 +290,56 @@ describe("buildSemanticMetricSql", () => {
     expect(buildSemanticMetricSql("m", ["a.b", "c.d"])).toBe(
       "SELECT a.b, c.d, value\nFROM metrics.m\nGROUP BY a.b, c.d",
     );
+  });
+});
+
+describe("JoinCanvas join removal", () => {
+  const ordersT = makeTable({
+    id: 1,
+    tableName: "orders",
+    columns: [makeCol({ id: 1, columnName: "customer_id", computedSqlAlias: "customer_id" })],
+  });
+  const customersT = makeTable({
+    id: 2,
+    tableName: "customers",
+    columns: [makeCol({ id: 2, columnName: "id", computedSqlAlias: "id" })],
+  });
+  // The same relationship registered in both directions: one canonical join, not two.
+  const forward = makeRel();
+  const reverse = makeRel({
+    id: 2,
+    sourceTableId: 2,
+    targetTableId: 1,
+    sourceTableName: "customers",
+    targetTableName: "orders",
+    sourceColumn: "id",
+    targetColumn: "customer_id",
+    cardinality: "one-to-many",
+  });
+
+  function dropTable(name: string, x: number) {
+    fireEvent.drop(screen.getByTestId("join-canvas"), {
+      dataTransfer: { getData: (key: string) => (key === "tableName" ? name : "") },
+      clientX: x,
+      clientY: 200,
+    });
+  }
+
+  it("draws one join for a relationship registered both ways, and removing it clears the diagram", () => {
+    render(
+      <JoinCanvas
+        tables={[ordersT, customersT]}
+        existingRels={[forward, reverse]}
+        metrics={[]}
+        onGenerateSql={vi.fn()}
+      />,
+    );
+    dropTable("customers", 100);
+    dropTable("orders", 500);
+    const id = "orders__customer_id__customers__id";
+    expect(screen.getAllByTestId(`canvas-join-line-${id}`)).toHaveLength(1);
+    fireEvent.click(screen.getByTestId(`canvas-join-remove-${id}`));
+    expect(screen.queryByTestId(`canvas-join-line-${id}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`canvas-join-remove-${id}`)).not.toBeInTheDocument();
   });
 });

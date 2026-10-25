@@ -9,5 +9,6 @@
 # permission from the copyright holder.
 
 """The Python source type (REQ-1993): a Python module whose functions, tagged ``@table``,
-``@command`` or ``@stream`` in their docstrings, are tables, commands and live tables, typed by
-their hints. No SDK: the code imports nothing of Provisa's. See docs/arch/code-sources.md."""
+``@command``, ``@stream`` or ``@columns`` in their docstrings, are tables, commands, live tables
+and batch column transforms (REQ-2131), typed by their hints. No SDK: the code imports nothing of
+Provisa's. See docs/arch/code-sources.md."""

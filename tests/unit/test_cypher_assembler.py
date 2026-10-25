@@ -8,13 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/assembler.py."""
+"""Unit tests for provisa/gql/assembler.py."""
 
 import json
 
 import pytest
 
-from provisa.cypher.assembler import (
+from provisa.gql.assembler import (
     CypherAssemblyError,
     Edge,
     Node,
@@ -22,7 +22,7 @@ from provisa.cypher.assembler import (
     assemble_rows,
     to_serializable,
 )
-from provisa.cypher.translator_types import GraphVarKind
+from provisa.gql.translator_types import GraphVarKind
 
 
 # ---------------------------------------------------------------------------

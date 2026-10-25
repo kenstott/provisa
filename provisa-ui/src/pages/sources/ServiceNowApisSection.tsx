@@ -31,6 +31,7 @@ import { FieldGroup, FormField, FormLayout } from "../../components/form/FormLay
 import { serverMessage } from "../../i18n/serverMessage";
 import { Tip } from "../../components/Tip";
 import { ServiceNowApiList, type InstanceApi } from "./ServiceNowApiList";
+import { matchesQuery } from "../../lib/searchItems";
 
 interface CompanionImportSet {
   staging: string;
@@ -61,11 +62,9 @@ export function ServiceNowApisSection({ sourceId }: { sourceId: string }) {
   );
 
   const byNamespace = useMemo(() => {
-    const wanted = filter.trim().toLowerCase();
     const groups = new Map<string, InstanceApi[]>();
     for (const api of data?.servicenowApis ?? []) {
-      const text = `${api.namespace} ${api.name} ${api.route}`.toLowerCase();
-      if (wanted && !text.includes(wanted)) continue;
+      if (!matchesQuery([api.namespace, api.name, api.route], filter)) continue;
       groups.set(api.namespace, [...(groups.get(api.namespace) ?? []), api]);
     }
     return [...groups];

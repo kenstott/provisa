@@ -265,6 +265,10 @@
       "port": {
         "label": "Puerto de la API HTTP",
         "help": "El puerto en el que escucha la API HTTP. Requiere reinicio; requiere confirmación al guardar porque la interfaz y todos los clientes deben seguir el cambio."
+      },
+      "public_url": {
+        "label": "Dirección pública",
+        "help": "La dirección por la que se conoce este despliegue, como https://data.example.com. La IRI de cada sujeto en SPARQL y en las exportaciones RDF empieza por ella, así que debe mantenerse igual mientras se usen esas IRI. Si no se define, se rechaza una consulta que devuelve la IRI de un sujeto."
       }
     },
     "tls": {
@@ -861,6 +865,22 @@
       "leak_rate_threshold": {
         "label": "Umbral de tasa de fuga de los valores ficticios",
         "help": "La proporción de los valores de muestra de una columna sensible que su valor ficticio puede dejar igual al valor real antes de que la comprobación de tasa de fuga lo marque como inadecuado. 0 hace fallar un valor ficticio que deja cualquier valor sin cambiar."
+      }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Permitir comandos de código del host",
+        "help": "Activado: se pueden registrar y llamar comandos python y script. Cada uno se ejecuta con el acceso completo del servidor a su memoria, credenciales, archivos y red, y su código no viaja con el modelo. Desactivado por defecto; use un resolutor de código en su lugar."
+      }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Ruta de grafo más profunda",
+        "help": "El máximo de saltos que recorre una ruta de longitud variable de Cypher o una ruta de propiedades de SPARQL cuando la consulta no fija su propio límite. Un resultado cortado a esta profundidad lo indica."
+      },
+      "union_limit": {
+        "label": "Máximo de predicados que cubre un predicado variable",
+        "help": "Un patrón SPARQL cuyo predicado es una variable lee cada predicado asignado que podría coincidir, una rama por cada uno. Una consulta que necesita más ramas se rechaza y se indica el límite."
       }
     }
   }

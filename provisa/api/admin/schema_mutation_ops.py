@@ -23,6 +23,7 @@ from sqlalchemy import delete, select, update
 
 from provisa.compiler.naming import SqlAddressTaken
 from provisa.core.models import DERIVED_SOURCE_ID
+from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import (
     file_source_mtimes,
     registered_tables,
@@ -232,6 +233,9 @@ async def register_table(
         input.source_id,
         input.domain_id,
     )
+    from provisa.api.admin._table_ops import land_transform_view
+
+    land_transform_view(input)  # REQ-2131
     from provisa.api.admin.capabilities import require_capability
 
     if input.view_sql or input.view_metrics is not None:
@@ -474,6 +478,17 @@ async def register_table(
                 )
                 if _ttl_refusal is not None:
                     raise TableSaveRefused(_ttl_refusal)
+                from provisa.api.admin._landing_ttl import row_materialize_save_refusal
+
+                _row_refusal = await row_materialize_save_refusal(  # REQ-1865
+                    _conn,
+                    model.source_id,
+                    model.table_name,
+                    model.row_materialize,
+                    [c.name for c in model.columns if c.is_primary_key],
+                )
+                if _row_refusal is not None:
+                    raise TableSaveRefused(_row_refusal)
                 from provisa.api.admin._change_feed import table_change_feed_refusal
 
                 _feed_refusal = await table_change_feed_refusal(  # REQ-1861
@@ -575,6 +590,16 @@ async def register_table(
                     if carried(input.write_grants):
                         model = model.model_copy(update={"write_grants": _carried_grants})
                     table_id = await table_repo.upsert(_conn, model)
+                except glossary_repo.TermIsClass as _class:
+                    # REQ-2141: a column named for a class term is not claimed by it.
+                    raise TableSaveRefused(
+                        MutationResult(
+                            success=False,
+                            message=str(_class),
+                            code="glossary.term_is_class",
+                            params={"term": _class.term, "tables": ", ".join(_class.tables)},
+                        )
+                    )
                 except table_repo.ViewLoopRefused as _loop:
                     # REQ-1918: a view that would read itself through other views is refused at save.
                     raise TableSaveRefused(

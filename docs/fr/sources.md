@@ -245,6 +245,23 @@ Tout le reste (un agrégat, un `GROUP BY`, une colonne calculée ou masquée, un
 
 Une recherche est lue par instruction sous ses arguments, ses lignes conservées sous ces arguments pendant le TTL de la table. Une table de recherche est en lecture seule.
 
+**Une recherche alimentée par une jointure.** Une relation peut alimenter les arguments d'une recherche à partir des colonnes d'une autre table, comme elle alimente ceux d'une table de code : sa table `parameters` nomme chaque argument et la colonne source qui lui est fournie. Une instruction qui joint la recherche à cette table exécute alors une requête Qdrant pour chaque ensemble distinct de valeurs de la source, telles que le rôle de l'instruction les lit, avec les propres arguments de l'instruction pour ceux que la relation n'alimente pas. Les points d'une recherche ne gardent rien de la requête qui les a trouvés, donc la relation joint sur la colonne de paramètre de la requête : chaque point porte, dans cette colonne, la valeur pour laquelle il a été recherché.
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+Les mots de chaque vers sont recherchés, les points de son propre sonnet étant exclus par le filtre `"@sonnet"` de la recherche, et chaque vers reçoit les trois points trouvés pour lui. Une instruction qui fournit elle-même l'un des arguments alimentés, comme `WHERE s._nf_query = 'the ravages of time'`, lit la recherche avec ses propres arguments et n'est pas alimentée.
+
 ### Flux (streaming) {: #streaming }
 
 | Type de source | Mécanisme | Mutations |
@@ -1612,7 +1629,7 @@ Les deux connecteurs utilisent le pipeline de cache des sources d'API. Les résu
 
 #### Enregistrement par fichier de configuration et par l'interface {: #config-file-and-ui-registration }
 
-Le `host` d'une source `sparql` est l'URL de son point de terminaison SPARQL (le formulaire Sources le stocke de la même manière). Chaque table sous elle porte `query_template`, un SELECT dont les variables sont les colonnes ; chaque liaison est `text`.
+Le `host` d'une source `sparql` est l'URL de son point de terminaison SPARQL (le formulaire Sources le stocke de la même manière). Chaque table sous elle porte `query_template`, un SELECT dont les variables sont les colonnes. L'aperçu type chaque colonne d'après le type de données XSD que partagent ses liaisons : les types entiers en `integer`, `xsd:decimal`, `xsd:double` et `xsd:float` en `double`, `xsd:boolean` en `boolean`, `xsd:date` en `date` et `xsd:dateTime` en `timestamp`. Une IRI, un nœud anonyme, une chaîne simple ou étiquetée par une langue, ou une variable dont les liaisons diffèrent de type, est `text`.
 
 ```yaml
 sources:
@@ -1633,6 +1650,64 @@ tables:
 ```
 
 Register Table fonctionne de la même manière que pour Neo4j : choisissez la source, saisissez un nom de table et le SELECT, appuyez sur Aperçu (la requête `sparqlPreview` l'exécute avec `LIMIT 5` et remplit la liste des colonnes), puis enregistrez. L'enregistrement persiste une ligne `api_sources` et une ligne `api_endpoints` (POST encodé en formulaire vers le chemin du point de terminaison, normaliseur `sparql_bindings`), les mêmes lignes qu'écrit un enregistrement par fichier de configuration, et le moteur natif atterrit les lignes via la même chaîne de récupération que Neo4j.
+
+**Pushdown.** Quand une instruction lit une table SPARQL seule (sans jointure), ses conditions sur les colonnes de la table passent dans la requête envoyée au point de terminaison. Le SELECT enregistré devient une sous-requête, `SELECT * WHERE { { <the SELECT> } FILTER(...) }`, ses lignes `PREFIX` et `BASE` restant devant.
+- Poussées : l'égalité et `IN` sur une colonne `text` (comparées comme `STR(?var)`, de sorte qu'une IRI correspond à son texte) ; toute comparaison sur une colonne `integer` ou `double` ; l'égalité sur un `boolean`.
+- Non poussées : les autres conditions, comme une comparaison d'ordre sur du texte, une date, une fonction d'une colonne ou un paramètre lié. Elles sont appliquées aux lignes que Provisa reçoit.
+- Chaque condition est appliquée de nouveau aux lignes, donc en pousser une ne fait que réduire ce qui est récupéré.
+- Le `LIMIT` de l'instruction n'est poussé que si toutes les conditions l'ont été et que l'instruction ne groupe pas, n'agrège pas et n'utilise ni `DISTINCT`, ni `ORDER BY`, ni `OFFSET`.
+- Une réponse réduite est mise en cache sous sa propre requête, séparément de celle de la table entière.
+
+#### Raisonneur {: #reasoner }
+
+Une source `sparql` peut nommer un raisonneur et un document d'axiomes OWL. Une table dont la requête est une seule IRI entre chevrons sert alors cette classe ou cette propriété telle que les axiomes l'infèrent :
+- une classe : une colonne, ses membres ;
+- une propriété d'objet ou de données : deux colonnes, chaque sujet et sa valeur.
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+Les axiomes peuvent être écrits dans toute syntaxe que lit l'OWL API : Turtle, RDF/XML, syntaxe fonctionnelle OWL ou syntaxe Manchester. HermiT est le seul raisonneur.
+
+Quand une table inférée est lue, le raisonneur :
+1. lit les classes et propriétés que nomment les axiomes ;
+2. envoie au point de terminaison un `CONSTRUCT` pour chaque triplet de ces propriétés et chaque appartenance à ces classes, en demandant du N-Triples ;
+3. classe cette tranche selon les axiomes ;
+4. renvoie les faits qui en découlent.
+
+Toutes les tables inférées d'une source partagent une classification, réutilisée pendant le TTL de cache de la table. La déclaration de fraîcheur de la source fixe donc la fréquence à laquelle elle raisonne : `cache_ttl` pour une table en direct, le rafraîchissement du réplica pour un réplica, et une seule fois pour un TTL de `-1`. Ce que sert une table inférée est gouverné pour chaque lecteur comme toute autre table.
+
+HermiT s'exécute comme un programme séparé, jamais dans le serveur. Il tourne sur un JDK 21 Eclipse Temurin figé, avec HermiT, l'OWL API et leurs bibliothèques dans son class path. Chaque élément est téléchargé à la première utilisation, vérifié contre le SHA-256 que fige Provisa et mis en cache sous la racine du cache des dépendances d'exécution (`$PROVISA_RUNTIME_DEPS_CACHE`, par défaut `~/.cache/provisa/runtime_deps`). Un téléchargement qui échoue, ou un fichier dont la somme diffère de celle figée, fait échouer la lecture en le nommant.
 
 ## Exemples de connexion {: #connection-examples }
 

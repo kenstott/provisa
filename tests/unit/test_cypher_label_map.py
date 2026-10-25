@@ -9,11 +9,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/label_map.py — focus on _resolve_id_column and cross-domain traversal."""
+"""Unit tests for provisa/gql/label_map.py — focus on _resolve_id_column and cross-domain traversal."""
 
 import pytest
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, _resolve_id_column
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, _resolve_id_column
 from provisa.compiler.introspect import ColumnMetadata
 
 
@@ -66,8 +66,10 @@ def test_first_column_fallback():
     assert _resolve_id_column("Thing", ["ref", "name", "code"], {}) == "ref"
 
 
-def test_empty_columns_returns_hard_fallback():
-    assert _resolve_id_column("Ghost", [], {}) == "id"
+def test_a_table_with_no_column_is_refused_naming_it():
+    # No identity is invented for a node with no column (no "id" it does not have).
+    with pytest.raises(ValueError, match="'Ghost' has no column to identify its rows by"):
+        _resolve_id_column("Ghost", [], {})
 
 
 def test_type_not_in_target_pk_uses_column_heuristic():
@@ -560,10 +562,10 @@ def _map_property_label_map() -> CypherLabelMap:
 def test_a_returned_map_property_is_a_map_whatever_form_the_engine_gives(cypher, column):
     """REQ-1991: a declared object column comes back as JSON text from one engine and decoded
     from another; either way the client receives a map. A text column is left as it is."""
-    from provisa.cypher.assembler import assemble_rows
+    from provisa.gql.assembler import assemble_rows
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
-    from provisa.cypher.translator_types import GraphVarKind
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.translator_types import GraphVarKind
 
     lm = _map_property_label_map()
     (node,) = lm.nodes.values()

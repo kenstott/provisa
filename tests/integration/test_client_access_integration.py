@@ -116,7 +116,12 @@ def _make_app_state_with_orders():
                     table_name="orders",
                     domain_id="default",
                 )
-            }
+            },
+            # The table's own columns and key, as the GraphQL type and the source's rows above
+            # have them: a graph node is built from these (label_map), and since REQ-471 its id
+            # column is reported by the property it is read by.
+            aggregate_columns={1: [("id", "integer"), ("region", "varchar"), ("amount", "double")]},
+            pk_columns={1: ["id"]},
         )
     except Exception:
         raise
@@ -646,6 +651,7 @@ class TestGraphSchemaEndpoint:
         from fastapi import FastAPI
         from provisa.api.rest.cypher_router import router as cypher_router
         from provisa.auth.middleware import AuthMiddleware
+        from provisa.security.rights import ORG_ADMIN_ROLE
 
         state = _make_app_state_with_orders()
 
@@ -657,11 +663,15 @@ class TestGraphSchemaEndpoint:
             app.include_router(cypher_router)
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                # No X-Provisa-Role header — the middleware settles platform_admin.
+                # No X-Provisa-Role header — the middleware settles org_admin (REQ-1327).
                 resp = await client.get("/data/graph-schema")
 
         assert resp.status_code == 503, resp.text
-        assert resp.json() == {"error": "Schema not loaded"}
+        assert resp.json() == {
+            "code": "data.no_schema_for_role",
+            "detail": f"No schema for role {ORG_ADMIN_ROLE!r}",
+            "params": {"role_id": ORG_ADMIN_ROLE},
+        }
 
 
 # ---------------------------------------------------------------------------

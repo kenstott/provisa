@@ -137,6 +137,10 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # refreshed and kept only by that region (``replica_converge.builds_here``); other regions
     # read that copy where it is kept. One naming none is built by every region into its own.
     region: str | None = None
+    # REQ-1918: the registered view (its table name) this is the build of, set where a view's
+    # build is registered; None for a materialized view declared on its own. A rebuild unregisters
+    # a build whose view is deleted or no longer materialized, by this and never by the id.
+    view_table: str | None = None
     # The registered tables (bare names) a SQL-defined view reads, from its SEMANTIC SQL — taken
     # before ``sql`` is lowered to physical. A write to any of them marks the view stale
     # (registry.mark_stale); ``source_tables`` stays what the event graph is built from.

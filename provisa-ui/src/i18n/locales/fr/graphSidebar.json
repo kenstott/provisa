@@ -29,6 +29,9 @@
     "resizeSidebar": "Redimensionner la barre latérale",
     "tabSettings": "Paramètres d'affichage",
     "maxNodes": "Nœuds max.",
-    "maxNodesHint": "Nombre maximal de nœuds dessinés par une requête"
+    "maxNodesHint": "Nombre maximal de nœuds dessinés par une requête",
+    "notCounted": "Non compté : {{list}}",
+    "countsFailed": "Comptages indisponibles : {{error}}",
+    "schemaFailed": "Schéma indisponible : {{error}}"
   }
 }

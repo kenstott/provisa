@@ -31,7 +31,7 @@ const PAGE_OF_KIND: Record<string, string> = {
   source: "/sources",
   remote_registration: "/sources",
   domain: "/admin",
-  glossary_term: "/admin/glossary",
+  glossary_term: "/admin/ontology",
   // What refers to an environment (REQ-1918): the people pinned to it are on the team page.
   membership: "/team",
 };

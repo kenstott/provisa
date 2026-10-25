@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "边的命名来源",
     "viaLabelSourceColumn": "区分值",
     "viaLabelSourceTable": "联接表名称",
-    "viaLabelSourceFixed": "Cypher 别名"
+    "viaLabelSourceFixed": "Cypher 别名",
+    "cardinalityOneToOne": "一对一"
   }
 }

@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "Kante benennen nach",
     "viaLabelSourceColumn": "Diskriminatorwert",
     "viaLabelSourceTable": "Name der Junction-Tabelle",
-    "viaLabelSourceFixed": "Cypher-Alias"
+    "viaLabelSourceFixed": "Cypher-Alias",
+    "cardinalityOneToOne": "1:1"
   }
 }

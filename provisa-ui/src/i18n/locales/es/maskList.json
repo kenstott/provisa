@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} → {{replace}}",
     "truncateLabel": "truncado a {{precision}}",
     "constantLabel": "constante {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "Máscaras comunes",
+    "presetsAria": "Máscaras comunes para la entrada {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "Funciona en todos los motores",
+    "universalHelp": "Los patrones usan un único dialecto de regex; Provisa lo traduce para cada motor. Los valores que no coinciden con el patrón se enmascaran por completo.",
+    "notUniversal": "No funciona en todos los motores: {{construct}} en el carácter {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, últimos 4",
+      "card_last4": "Número de tarjeta, últimos 4",
+      "phone_last4": "Teléfono, últimos 4",
+      "email_initial_domain": "Correo, primera letra y dominio",
+      "all_but_last4": "Todo menos los últimos 4 caracteres",
+      "digits_keep_separators": "Dígitos, separadores conservados",
+      "zip3": "ZIP de EE. UU., primeros 3",
+      "birth_year": "Fecha de nacimiento, solo el año",
+      "iban_last4": "IBAN, últimos 4",
+      "keep_first_last": "Conservar los primeros y últimos caracteres"
+    },
+    "presetParam": {
+      "first": "Primeros",
+      "last": "Últimos"
+    },
+    "construct": {
+      "lookahead": "una búsqueda anticipada (?=…)",
+      "lookbehind": "una búsqueda hacia atrás (?<=…)",
+      "backreference": "una referencia inversa \\1 en el patrón",
+      "lazy_quantifier": "un cuantificador perezoso (*?, +?)",
+      "possessive_quantifier": "un cuantificador posesivo (*+, ++)",
+      "named_group": "un grupo con nombre (?<name>…)",
+      "word_boundary": "un límite de palabra \\b",
+      "unicode_class": "una clase Unicode \\p{…}",
+      "posix_class": "una clase POSIX [[:…:]]",
+      "inline_flags": "indicadores en línea (?i)",
+      "unknown_escape": "un escape que no todos los motores conocen",
+      "open_bound": "un límite abierto {n,}",
+      "bound_too_large": "un número de repeticiones demasiado grande",
+      "unbalanced_paren": "un paréntesis sin cerrar",
+      "unbalanced_bracket": "un corchete sin cerrar",
+      "empty_class": "una clase vacía []",
+      "bad_range": "un rango cuyo inicio es posterior a su fin",
+      "nothing_to_repeat": "un cuantificador sin nada que repetir",
+      "replace_group_out_of_range": "un $n que nombra un grupo que el patrón no tiene",
+      "replace_named_ref": "una referencia con nombre en el reemplazo",
+      "replace_bad_escape": "un escape que el reemplazo no admite",
+      "alternation_prefix": "alternativas en las que una es prefijo de otra",
+      "alternation_overlap": "alternativas que pueden coincidir con el mismo texto",
+      "negated_class_escape_in_set": "un escape negado como \\D dentro de un conjunto [ ]"
+    }
   }
 }

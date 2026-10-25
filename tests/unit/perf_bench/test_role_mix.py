@@ -242,11 +242,12 @@ def wire(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
             return [1]
 
     class Grpc:
-        _channel = SimpleNamespace(
-            unary_stream=lambda path, **kw: (
-                lambda req, metadata: log["grpc"].append(list(metadata)) or [req]
+        def channel(self) -> Any:
+            return SimpleNamespace(
+                unary_stream=lambda path, **kw: (
+                    lambda req, metadata: log["grpc"].append(list(metadata)) or [req]
+                )
             )
-        )
 
         def _resolve_message_class(self, name: str) -> Any:
             return Msg

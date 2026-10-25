@@ -13,7 +13,7 @@
 import pytest
 
 from provisa.core.models import Relationship
-from provisa.cypher.label_map import (
+from provisa.gql.label_map import (
     CypherLabelMap,
     JunctionMapping,
     NodeMapping,
@@ -22,8 +22,8 @@ from provisa.cypher.label_map import (
     junction_rel_type,
 )
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
-from provisa.cypher.translator_types import CypherTranslateError
+from provisa.gql.translator import cypher_to_sql
+from provisa.gql.translator_types import CypherTranslateError
 
 
 def _term_node() -> NodeMapping:
@@ -39,7 +39,8 @@ def _term_node() -> NodeMapping:
         catalog_name="provisa_admin",
         schema_name="public",
         table_name="glossary_terms",
-        properties={"name": "name"},
+        # The key is a property, as every published column is (label_map.from_schema).
+        properties={"id": "id", "name": "name"},
     )
 
 
@@ -263,7 +264,7 @@ def test_a_declared_junction_is_not_a_node_label_in_the_graph_schema():
     registered table and is still queryable in SQL and GraphQL; only the graph schema drops it.
     """
 
-    from provisa.cypher.label_map import _drop_junction_nodes
+    from provisa.gql.label_map import _drop_junction_nodes
 
     edge_node = NodeMapping(
         label="Meta:GlossaryTermEdge",
@@ -301,7 +302,7 @@ def test_dropping_a_junction_node_leaves_no_empty_domain_or_table_bucket():
     """REQ-1586: a domain or table bucket that held only the junction goes with it, so no surface
     renders an empty group where the junction used to be."""
 
-    from provisa.cypher.label_map import _drop_junction_nodes
+    from provisa.gql.label_map import _drop_junction_nodes
 
     edge_node = NodeMapping(
         label="Meta:GlossaryTermEdge",
@@ -336,7 +337,7 @@ def test_the_junctions_own_fk_edges_go_with_the_node_they_terminate_on():
     replaces. Left behind, they name an endpoint label that no longer exists — and every consumer
     that resolves an endpoint (the graph-schema endpoint list, a label count) reads that key
     directly, so the stale edge is a KeyError, not a cosmetic duplicate."""
-    from provisa.cypher.label_map import _drop_junction_nodes
+    from provisa.gql.label_map import _drop_junction_nodes
 
     kind_of = _junction_edge()
     into = _fk_edge("GLOSSARY_TERM_EDGES", "GlossaryTerm", "GlossaryTermEdge")
@@ -422,8 +423,8 @@ def test_a_composite_junction_pairs_every_column_in_a_variable_length_path() -> 
 
 def test_the_recursive_path_builder_refuses_a_composite_junction() -> None:
     """path_to_recursive_sql carries one scalar end id per step, so composite has no pairing."""
-    from provisa.cypher.parser import PathFunction
-    from provisa.cypher.path_translator import PathTranslateError, path_to_recursive_sql
+    from provisa.gql.ir import PathFunction
+    from provisa.gql.path_translator import PathTranslateError, path_to_recursive_sql
 
     lm = _composite_label_map()
     ast = parse_cypher(
@@ -461,12 +462,12 @@ def test_type_alternation_parses_both_spellings(spelling: str) -> None:
     assert ast.match_clauses[0].pattern.rels[0].types == ["KIND_OF", "RELATED_TO"]
 
 
-def test_a_single_hop_refuses_type_alternation() -> None:
-    """REQ-1586: one hop resolves one relationship mapping, so an alternation has no answer.
+def test_a_single_hop_alternation_naming_an_undeclared_type_is_refused() -> None:
+    """REQ-1586: a single-hop alternation is one junction's rows of each type it names, so a type
+    the graph does not declare (RELATED_TO here) is refused, never dropped.
 
-    Silently taking the first type would draw KIND_OF edges and report them as though they were the
-    whole set — the exact failure a junction table makes easy, since one junction backs several
-    types between the same two tables. Say so instead; the caller writes one pattern per type.
+    Silently taking the declared types would draw KIND_OF edges and report them as though they were
+    the whole set. Say so instead; the caller writes one pattern per type.
     """
     lm = _label_map()
     ast = parse_cypher("MATCH (t:GlossaryTerm)-[r:KIND_OF|RELATED_TO]->(b:GlossaryTerm) RETURN r")

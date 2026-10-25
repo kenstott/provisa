@@ -349,6 +349,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         ],  # REQ-1093
         "view_sql": getattr(table, "view_sql", None),
         "dq_contract": getattr(table, "dq_contract", None),  # REQ-1443
+        "dq_rules": getattr(table, "dq_rules", None),  # REQ-1443 clause 10
         "profiler_source_id": getattr(table, "profiler_source_id", None),  # REQ-1934
         "view_metrics": (
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
@@ -423,6 +424,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "unique_constraints",  # REQ-1093
         "view_sql",
         "dq_contract",  # REQ-1443
+        "dq_rules",  # REQ-1443 clause 10
         "profiler_source_id",  # REQ-1934
         "view_metrics",  # REQ-1318
         "product_id",
@@ -865,11 +867,11 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
             raise TableDeleteRefused(table_id, row["table_name"], blocking)
         # REQ-1591: before the refs go. A term's domains are derived by joining its refs to this
         # very table, so the sweep that follows has nothing left to read them from.
-        domains_before = await glossary_repo.term_domains(conn)
+        refs_before = await glossary_repo.before_ref_removal(conn)
         await discard(conn, table_id)
         # REQ-1387: settle the terms that lost their last ref (remove, or deprecate when an
         # abstract term hangs on them).
-        await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+        await glossary_repo.sweep_refless_terms(conn, before=refs_before)
     return True
 
 

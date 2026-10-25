@@ -154,27 +154,31 @@ class TestGraphCounts:
         resp = await client.get("/data/graph-counts")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert "node_count" in data
-        assert "rel_count" in data
-        assert "label_counts" in data
+        assert set(data) == {"node_count", "rel_count", "label_counts", "rel_counts"}
         assert isinstance(data["label_counts"], dict)
-        assert isinstance(data["node_count"], int)
-        assert isinstance(data["rel_count"], int)
+        assert isinstance(data["rel_counts"], dict)
 
-    async def test_counts_label_counts_are_non_negative_ints(self, client):
+    async def test_counts_each_entry_is_a_count_or_its_reason(self, client):
         resp = await client.get("/data/graph-counts")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        for label, count in data["label_counts"].items():
-            assert isinstance(label, str)
-            assert isinstance(count, int)
-            assert count >= 0
+        for entries in (data["label_counts"], data["rel_counts"]):
+            for name, entry in entries.items():
+                assert isinstance(name, str)
+                if entry["count"] is None:
+                    assert isinstance(entry["error"], str) and entry["error"]
+                else:
+                    assert isinstance(entry["count"], int) and entry["count"] >= 0
 
-    async def test_counts_node_count_matches_sum_of_label_counts(self, client):
+    async def test_counts_total_is_the_sum_only_when_every_label_was_counted(self, client):
         resp = await client.get("/data/graph-counts")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["node_count"] == sum(data["label_counts"].values())
+        counts = [e["count"] for e in data["label_counts"].values()]
+        if None in counts:
+            assert data["node_count"] is None
+        else:
+            assert data["node_count"] == sum(counts)
 
     async def test_counts_domain_filter_sales_analytics_only(self, client):
         resp = await client.get("/data/graph-counts", params={"domains": "sales-analytics"})
@@ -323,12 +327,12 @@ class TestCypherErrorPaths:
     async def test_malformed_cypher_returns_400(self, client):
         resp = await _cypher(client, "MATCH (n RETURN n")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
     async def test_unbound_param_returns_400(self, client):
         resp = await _cypher(client, "MATCH (n) WHERE n.id = $missing_param RETURN n LIMIT 1")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
     async def test_unknown_label_returns_error_not_500(self, client):
         resp = await _cypher(client, "MATCH (n:TotallyUnknownLabel) RETURN n LIMIT 1")
@@ -349,9 +353,13 @@ class TestCypherErrorPaths:
             pytest.skip("Engine coerced the type mismatch instead of erroring")
         assert resp.status_code in (400, 500, 503)
         data = resp.json()
-        assert "error" in data
-        assert "trino" not in data["error"].lower()
-        assert "postgresql" not in data["error"].lower()
+        assert data["code"] in (
+            "cypher.type_mismatch",
+            "cypher.engine_refused",
+            "cypher.execution_failed",
+        ), data
+        assert "trino" not in data["detail"].lower()
+        assert "postgresql" not in data["detail"].lower()
 
     async def test_query_id_removed_endpoint_returns_410(self, client):
         resp = await client.post(
@@ -359,12 +367,12 @@ class TestCypherErrorPaths:
             json={"query": "MATCH (n) RETURN n LIMIT 1"},
         )
         assert resp.status_code == 410
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.query_id_removed"
 
     async def test_merge_write_rejected(self, client):
         resp = await _cypher(client, "MERGE (n:TestNode {id: 999})")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
 
 # --------------------------------------------------------------------------- #
@@ -403,8 +411,7 @@ class TestCypherResponseContract:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data.get("type") == "cypher"
-        if "error" in data:
-            assert data["error"] is None
+        assert "detail" not in data and "code" not in data
 
     async def test_stats_header_includes_provisa_stats(self, client):
         schema = await _schema(client)

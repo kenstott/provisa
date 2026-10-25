@@ -105,15 +105,23 @@ export class TerrainScene extends BaseScene<TerrainHover> {
     else for (const g of this.groups) g.quantiles.visible = options.quantiles;
   }
 
+  /** ``order`` is the columns drawn, in the order drawn: a reorder slides the ridges into place;
+   * a column taken out or put back rebuilds the rest side by side, the camera where it was. */
   setOrder(order: string[]) {
+    const same = order.length === this.order.length && order.every((n) => this.order.includes(n));
     this.order = order;
+    if (!same) {
+      this.rebuild();
+      return;
+    }
     for (const g of this.groups) g.targetX = this.xOf(g.column.name);
   }
 
   setSelected(name: string | null) {
     this.selected = name;
     for (const g of this.groups) g.label.classList.toggle("is-selected", g.column.name === name);
-    if (this.selRect) this.selRect.visible = name != null;
+    // A column left out of the terrain can still be the one inspected; it has no ridge to mark.
+    if (this.selRect) this.selRect.visible = name != null && this.order.includes(name);
   }
 
   setHover(h: TerrainHover | null) {
@@ -152,7 +160,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
   }
 
   resetView(instant = false) {
-    const X = this.columns.length * S;
+    const X = this.order.length * S;
     let dist = Math.max(X, D) * 1.25;
     if (this.aspect < 1.1) dist *= (1.55 / Math.max(this.aspect, 0.5)) * 0.75;
     const tgt = new THREE.Vector3(0, 0.9, 0.6);
@@ -331,8 +339,10 @@ export class TerrainScene extends BaseScene<TerrainHover> {
     const world = new THREE.Group();
     this.world = world;
     this.scene.add(world);
+    // Heights stay scaled to every column of the run, so leaving one out does not rescale the rest.
     this.maxShare = maxShareOf(this.columns);
-    const X = this.columns.length * S;
+    const drawn = this.columns.filter((c) => this.order.includes(c.name));
+    const X = drawn.length * S;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(X + 3, D + 5), this.mats.ground);
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(0, 0, 0.9);
@@ -348,7 +358,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
     this.selRect.rotation.x = -Math.PI / 2;
     this.selRect.position.set(0, 0.004, 0.75);
     world.add(this.selRect);
-    for (const c of this.columns) {
+    for (const c of drawn) {
       const built = this.buildColumn(c);
       const x = this.xOf(c.name);
       built.group.position.x = x;

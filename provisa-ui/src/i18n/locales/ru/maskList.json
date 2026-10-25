@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} → {{replace}}",
     "truncateLabel": "усечено до {{precision}}",
     "constantLabel": "константа {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "Типовые маски",
+    "presetsAria": "Типовые маски для записи {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "Работает на всех движках",
+    "universalHelp": "Шаблоны пишутся на одном диалекте regex; Provisa переводит его для каждого движка. Значения, не совпадающие с шаблоном, маскируются полностью.",
+    "notUniversal": "Не на всех движках: {{construct}} в символе {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, последние 4",
+      "card_last4": "Номер карты, последние 4",
+      "phone_last4": "Телефон, последние 4",
+      "email_initial_domain": "Email, первая буква и домен",
+      "all_but_last4": "Всё, кроме последних 4 символов",
+      "digits_keep_separators": "Цифры, разделители сохраняются",
+      "zip3": "ZIP США, первые 3",
+      "birth_year": "Дата рождения, только год",
+      "iban_last4": "IBAN, последние 4",
+      "keep_first_last": "Сохранить первые и последние символы"
+    },
+    "presetParam": {
+      "first": "Первые",
+      "last": "Последние"
+    },
+    "construct": {
+      "lookahead": "опережающая проверка (?=…)",
+      "lookbehind": "ретроспективная проверка (?<=…)",
+      "backreference": "обратная ссылка \\1 в шаблоне",
+      "lazy_quantifier": "ленивый квантификатор (*?, +?)",
+      "possessive_quantifier": "сверхжадный квантификатор (*+, ++)",
+      "named_group": "именованная группа (?<name>…)",
+      "word_boundary": "граница слова \\b",
+      "unicode_class": "класс Unicode \\p{…}",
+      "posix_class": "класс POSIX [[:…:]]",
+      "inline_flags": "встроенные флаги (?i)",
+      "unknown_escape": "экранирование, известное не всем движкам",
+      "open_bound": "открытая граница {n,}",
+      "bound_too_large": "слишком большое число повторений",
+      "unbalanced_paren": "незакрытая круглая скобка",
+      "unbalanced_bracket": "незакрытая квадратная скобка",
+      "empty_class": "пустой класс []",
+      "bad_range": "диапазон, начало которого после конца",
+      "nothing_to_repeat": "квантификатор без повторяемого элемента",
+      "replace_group_out_of_range": "$n, ссылающийся на группу, которой нет в шаблоне",
+      "replace_named_ref": "именованная ссылка в замене",
+      "replace_bad_escape": "экранирование, которое замена не принимает",
+      "alternation_prefix": "альтернативы, одна из которых — префикс другой",
+      "alternation_overlap": "альтернативы, совпадающие с одним и тем же текстом",
+      "negated_class_escape_in_set": "отрицательное экранирование вроде \\D внутри набора [ ]"
+    }
   }
 }

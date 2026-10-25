@@ -39,9 +39,11 @@
     "kind_joint_counts": "Joint counts",
     "kind_constraints": "Proposed constraints",
     "kind_constraint_checks": "Constraint checks",
+    "kind_classifications": "Classifications",
     "kind_terrain": "Terrain",
     "kind_relationsMap": "Relationships",
     "kind_jointCloud": "Joint cloud",
-    "kind_driftStrata": "Drift strata"
+    "kind_driftStrata": "Drift strata",
+    "resultsMenu": "Results"
   }
 }

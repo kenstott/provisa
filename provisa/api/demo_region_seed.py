@@ -383,24 +383,19 @@ async def landed_elsewhere(template_org: str, demo_directory: Path) -> bool:
     return True
 
 
-async def landed_here(template_org: str) -> int:
-    """How many of the template's replicas in this node's region are landed in its store:
-    recorded as built for it, and held there with the rows recorded (demo_replicas.landed_here)."""
-    from provisa.api.demo_replicas import store_identity
+async def landing_here(template_org: str) -> dict[str, str]:
+    """Each of the template's recorded replicas' landing in this node's region's store
+    (demo_replicas.landing)."""
+    from provisa.api.demo_replicas import landing, store_identity
     from provisa.federation.replica_address import replica_table_name
 
     [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
     rows, _views = await _records(state_db(template_org, store))
-    built = store_identity(template_org, store.replicas_url)
-    expected = {
-        replica_table_name(r["source_id"], r["schema_name"], r["table_name"]): r["completed_rows"]
-        for r in rows
-        if r["built_store"] == built
-    }
+    names = [replica_table_name(r["source_id"], r["schema_name"], r["table_name"]) for r in rows]
     held = await asyncio.to_thread(
-        held_rows, store.replicas_url, replicas_schema(template_org, store.region), list(expected)
+        held_rows, store.replicas_url, replicas_schema(template_org, store.region), names
     )
-    return sum(1 for name, count in expected.items() if held.get(name) == count)
+    return landing(rows, store_identity(template_org, store.replicas_url), held)
 
 
 async def copy_to_sandbox(template_org: str, org_id: str) -> None:
@@ -455,3 +450,16 @@ async def views_built_here(template_org: str) -> int:
     [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
     _replicas, builds = await _records(state_db(template_org, store))
     return sum(1 for b in builds if b["region"] == here() and b["last_refresh_at"] is not None)
+
+
+async def views_waiting_here(template_org: str) -> str:
+    """What the template's views not yet built in this node's region wait on: each one's build
+    record here (its status and error), or that it has none."""
+    [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
+    _replicas, builds = await _records(state_db(template_org, store))
+    recorded = [
+        f"{b['mv_id']}: {b['status']}" + (f" ({b['last_error']})" if b["last_error"] else "")
+        for b in builds
+        if b["region"] == here() and b["last_refresh_at"] is None
+    ]
+    return "; ".join(recorded) or "views with no build recorded"

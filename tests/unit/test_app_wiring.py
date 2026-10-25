@@ -396,37 +396,48 @@ async def test_never_raises_into_boot():
     assert n == 0
 
 
-@pytest.mark.asyncio
-async def test_a_view_whose_input_does_not_resolve_fails_wiring_naming_it(caplog):
-    """A view that reads a name the model does not hold was refused when it was declared;
-    meeting one at wiring is a defect — the wiring raises rather than wiring the view with a
-    missing edge, the error is logged naming the view and the reference, and the view is marked
-    failed with that reason, so the admin's view list says why it does not refresh."""
-    st = _state_with_mv(column_types=["date", "bigint"])
-    st.tables = []
+def _with_an_unresolved_view(st):
+    """``st``'s view ``daily`` beside a view ``stale`` that reads a table the model no longer
+    holds -- what a view left registered after its input was deleted looks like."""
+    (daily,) = st.mv_registry.get_enabled()
+    stale = SimpleNamespace(**{**vars(daily), "id": "stale", "target_table": "stale"})
+    stale.sql = "SELECT d FROM gone"
+    st.mv_registry = SimpleNamespace(get_enabled=lambda: [daily, stale], get=lambda _id: None)
     failed: dict[str, str] = {}
     st.mv_registry.mark_refresh_failed = failed.__setitem__
+    return failed
+
+
+@pytest.mark.asyncio
+async def test_a_view_whose_input_does_not_resolve_is_refused_by_name_and_the_rest_are_wired(
+    monkeypatch, caplog
+):
+    """A view whose input does not resolve is refused alone: it is marked failed with the reason
+    (the admin's view list and refresh status say why it does not refresh), the error names the
+    view and the reference, and every other view is wired -- one view never fails the org's
+    wiring."""
+    build_through_a_stand_in_pipeline(monkeypatch, lambda _mv: "SELECT d, n FROM governed")
+    st = _state_with_mv(column_types=["date", "bigint"])
+    failed = _with_an_unresolved_view(st)
     with caplog.at_level("ERROR"):
         n = await wire_event_loop(_Sched(), state=st, log=_LOG)
-    assert n == 0
-    said = "not wired into the event loop: materialized view 'daily' reads 'orders'"
-    assert failed["daily"].startswith(said)
+    assert n == 1  # daily's node
+    said = "not wired into the event loop: materialized view 'stale' reads 'gone'"
+    assert list(failed) == ["stale"]
+    assert failed["stale"].startswith(said)
     assert any(r.levelname == "ERROR" and said in r.getMessage() for r in caplog.records)
 
 
-def test_an_unresolved_input_is_not_taken_for_a_lineage_cycle():
-    """The poll-job wiring rejects a cycle with a warning; an input that does not resolve is
-    not a cycle — it raises out of the lineage step with the view marked failed."""
+def test_an_unresolved_input_leaves_only_its_own_view_out_of_the_lineage():
+    """The poll-job wiring rejects a cycle with a warning; an input that does not resolve is not
+    a cycle -- its view is marked failed and left out, and the lineage of the others stands."""
     from provisa.events.app_wiring import _lineage
-    from provisa.mv.view_inputs import InputUnresolved
 
     st = _state_with_mv(column_types=["date", "bigint"])
-    st.tables = []
-    failed: dict[str, str] = {}
-    st.mv_registry.mark_refresh_failed = failed.__setitem__
-    with pytest.raises(InputUnresolved):
-        _lineage(st.mv_registry.get_enabled(), st, _LOG)
-    assert list(failed) == ["daily"]
+    failed = _with_an_unresolved_view(st)
+    graph = _lineage(st.mv_registry.get_enabled(), st, _LOG)
+    assert graph == {"analytics.daily": {"pg/public.orders"}}
+    assert list(failed) == ["stale"]
 
 
 @pytest.mark.asyncio
@@ -688,3 +699,54 @@ async def test_a_view_over_a_replica_not_yet_landed_is_wired_and_built_once_it_l
 
     assert "analytics.mv_view_margins" in {p.node for p in state.event_loop_processors}
     assert (orders, "replace") in posted and (7, ["analytics.mv_view_margins"]) in posted
+
+
+@pytest.mark.asyncio
+async def test_two_inputs_landing_before_the_rewire_runs_each_give_their_views_a_first_build(
+    monkeypatch,
+):
+    """Two inputs land before the one rewire job (``events:wire-awaiting``) has run: the job
+    the second landing schedules replaces the first's, and must still give the first landing's
+    views their first build, not only the second's."""
+    from provisa.executor.result import QueryResult
+
+    build_through_a_stand_in_pipeline(monkeypatch, lambda mv: f"SELECT d, n FROM {mv.id}")
+    posted: list = []
+
+    async def _post_event(conn, *, source_table, event_type, payload):
+        posted.append((source_table, event_type))
+        return len(posted)
+
+    async def _fan_out(conn, event_id, dependents):
+        posted.append((event_id, list(dependents)))
+        return len(dependents)
+
+    monkeypatch.setattr("provisa.events.queue.post_event", _post_event)
+    monkeypatch.setattr("provisa.events.queue.fan_out", _fan_out)
+    landed: set[str] = set()
+    built: set[str] = set()
+    state, _margins = _state_with_a_view_over_a_view(built, [])
+
+    async def _execute_engine(sql, *a, **k):
+        if "orders" not in landed or ("close" in sql and "margins" not in built):
+            raise RuntimeError("an input has not landed yet")
+        return QueryResult(rows=[], column_names=["d", "n"], column_types=["date", "bigint"])
+
+    state.federation_engine.execute_engine = _execute_engine
+    sched = _RunnableSched()
+    await wire_event_loop(sched, state=state, log=_LOG)
+    orders = "pg/public.orders"
+    assert state.views_awaiting_input == {
+        "analytics.mv_view_margins": {orders},
+        "analytics.mv_view_close": {"analytics.mv_view_margins"},
+    }
+
+    landed.add("orders")
+    state.on_input_landed(orders)  # the replica lands: margins is to be wired and built
+    built.add("margins")
+    state.on_input_landed("analytics.mv_view_margins")  # ... and close, before that job ran
+    await sched.fns["events:wire-awaiting:org_default"]()
+
+    fanned = {node for entry in posted if isinstance(entry[1], list) for node in entry[1]}
+    assert "analytics.mv_view_margins" in {p.node for p in state.event_loop_processors}
+    assert "analytics.mv_view_margins" in fanned, posted  # wired, and given its first build

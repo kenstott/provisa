@@ -399,7 +399,7 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 | System design and component map | [docs/architecture.md](docs/architecture.md) |
 | Security model (RLS, masking, auth) | [docs/security.md](docs/security.md) |
 | Secret storage and `${secret:NAME}` references | [docs/secrets.md](docs/secrets.md) |
-| Business glossary and term curation | [docs/glossary.md](docs/glossary.md) |
+| Business glossary and term curation | [docs/ontology.md](docs/ontology.md) |
 | Environments (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Building test environments (profiling, fakes, synthetic data) | [docs/test-data.md](docs/test-data.md) |
 | Fake methods reference | [docs/fake-methods.md](docs/fake-methods.md) |

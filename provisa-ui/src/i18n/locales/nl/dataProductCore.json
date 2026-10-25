@@ -14,13 +14,9 @@
     "upstream": "Upstream",
     "downstream": "Downstream",
     "via": "via {{vias}}",
-    "metaQueries": "Query's",
-    "metaQueriesHint": "De leesacties die dit paneel namens u op het meta-domein uitvoert. Kopieer er een of open hem in zijn explorer: het antwoord is hetzelfde.",
-    "copy": "Kopiëren",
-    "copied": "Gekopieerd",
-    "copyQuery": "De {{surface}}-query kopiëren",
-    "openQuery": "De {{surface}}-query in zijn explorer openen",
     "unreadable": "Uw rol kan de dataproducten in het meta-domein niet lezen.",
+    "detailExpand": "Volledige vermelding tonen",
+    "detailCollapse": "Minder tonen",
     "inputs": "Invoer",
     "inputsHint": "De dichtstbijzijnde fysieke invoer van het product: de tabellen en bronnen waaruit de leden zijn opgebouwd.",
     "inputsEmpty": "Geen invoer vastgelegd.",
@@ -53,8 +49,6 @@
     "unassigned": "aan geen product toegewezen",
     "orphan": "Verweesde controle",
     "orphanWarning": "{{checker}} is aan dit product toegewezen maar controleert {{table}}, dat geen invoer en geen uitvoerpoort ervan is.",
-    "inProduct": "in {{product}}",
-    "detailExpand": "Volledige vermelding tonen",
-    "detailCollapse": "Minder tonen"
+    "inProduct": "in {{product}}"
   }
 }

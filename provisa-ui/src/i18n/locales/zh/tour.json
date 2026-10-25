@@ -180,7 +180,7 @@
       },
       "stepDomains": {
         "title": "域及其数据管理员",
-        "description": "🗂️ 域将表分组,其数据管理员负责治理模型的这一部分:谁能看到什么、掩码和行规则、敏感数据,以及它的术语表和数据产品。"
+        "description": "🗂️ 域将表分组,其数据管理员负责治理模型的这一部分:谁能看到什么、掩码和行规则、敏感数据,以及它的本体和数据产品。"
       },
       "stepTags": {
         "title": "标签承载含义",
@@ -287,12 +287,12 @@
         "description": "📦 填写所有者和团队、目的、用途、SLA 和支持,然后选择它包含的表和命令。这些就是会被发布的字段。只有当表与产品属于同一个域时,表才能加入该产品。"
       },
       "stepGlossary": {
-        "title": "一部鲜活的业务术语表",
-        "description": "📖 每个术语都会关联到携带它的列以及其他术语。手动维护名称、定义和类型化关系(是一种、是其一部分、同义词),或者让 AI 来补全空白:<strong>✨ 定义</strong>只为尚无定义的术语起草内容,<strong>✨ 关系</strong>在整个术语表范围内提出关联建议。将某个术语标记为<strong>从导出中排除</strong>,即可使其不出现在已发布的元数据中。"
+        "title": "一个鲜活的本体",
+        "description": "📖 每个术语都会关联到携带它的列以及其他术语。手动维护名称、定义和类型化关系(是一种、是其一部分、同义词),或者通过 <strong>✨</strong> 菜单让 AI 来补全空白:<strong>定义</strong>只为尚无定义的术语起草内容,<strong>关系</strong>在整个本体范围内提出关联建议。将某个术语标记为<strong>从导出中排除</strong>,即可使其不出现在已发布的元数据中。"
       },
       "stepDataProducts": {
         "title": "数据产品，发布在消费者已经在看的地方",
-        "description": "📦 这里的每个产品都遵循 <strong>ODPS</strong>（Open Data Product Standard）：所有者、团队、用途、限制、使用方式、SLA、支持和自定义属性。Provisa 会将其直接发布到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，使其在您的消费者已在使用的目录中显示为原生产品。<p>🔁 没有需要您记得去做的单独导出步骤：规范每次都<strong>由实时模型派生</strong>（表、血缘、标签、术语表条目），因此发布的内容不会像手工维护的 ODPS 文件那样过时。</p><p>✅ 发布还会发送一份<strong>本体摘录</strong>：术语表中与所发布内容相关的部分，即定义其列的术语、它们所连接的更宽泛和相关的术语，以及这些术语之间的类型化关系。扫描它的检查器给出的数据质量结果随之一并发送。产品的<strong>相关术语</strong>面板会列出它的术语。</p>"
+        "description": "📦 这里的每个产品都遵循 <strong>ODPS</strong>（Open Data Product Standard）：所有者、团队、用途、限制、使用方式、SLA、支持和自定义属性。Provisa 会将其直接发布到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，使其在您的消费者已在使用的目录中显示为原生产品。<p>🔁 没有需要您记得去做的单独导出步骤：规范每次都<strong>由实时模型派生</strong>（表、血缘、标签、本体术语），因此发布的内容不会像手工维护的 ODPS 文件那样过时。</p><p>✅ 发布还会发送一份<strong>本体摘录</strong>：本体中与所发布内容相关的部分，即定义其列的术语、它们所连接的更宽泛和相关的术语，以及这些术语之间的类型化关系。扫描它的检查器给出的数据质量结果随之一并发送。产品的<strong>相关术语</strong>面板会列出它的术语。</p>"
       },
       "stepGlossaryTerm": {
         "title": "添加术语",
@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "发布到你的组织所用的工具",
-        "description": "📤 <strong>发布到你的组织本来就在查看的地方。</strong>目录条目(表、列、域、数据管理员、已批准的关系)、数据产品和列级血缘会发送出去,每个目标接收其所支持的内容:<strong>DataHub、OpenMetadata、Collibra、Atlan 和 Apache Atlas</strong> 作为目录,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作为数据产品列表,血缘则通过 <strong>OpenLineage</strong> 发送。<p>发布仅为向外单向:Provisa 绝不会把目标读回来当作事实来源。</p>"
+        "description": "📤 <strong>发布到你的组织本来就在查看的地方。</strong>目录条目(表、列、域、数据管理员、已批准的关系)、数据产品和列级血缘会发送出去,每个目标接收其所支持的内容:<strong>DataHub、OpenMetadata、Collibra、{{atlan}} 和 Apache Atlas</strong> 作为目录,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作为数据产品列表,血缘则通过 <strong>OpenLineage</strong> 发送。<p>发布仅为向外单向:Provisa 绝不会把目标读回来当作事实来源。</p>"
       },
       "stepRelsAgents": {
         "title": "关系与 AI 智能体",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "什么是未结投诉",
-        "description": "术语表说明了什么是未结投诉：城市尚未结案的投诉。这样的术语说明了目录中数据的含义。"
+        "description": "本体说明了什么是未结投诉：城市尚未结案的投诉。这样的术语说明了目录中数据的含义。"
       },
       "filesAnswer": {
         "title": "答案",
@@ -492,7 +492,7 @@
       },
       "insuranceTerms": {
         "title": "用保险公司的术语",
-        "description": "术语表列出核保人关心的内容：总保险金额、累积、可能最大损失和预期年度损失。这里，累积指风险敞口集中在一次事件就可能波及许多保单的地方。"
+        "description": "本体列出核保人关心的内容：总保险金额、累积、可能最大损失和预期年度损失。这里，累积指风险敞口集中在一次事件就可能波及许多保单的地方。"
       },
       "insuranceByRating": {
         "title": "按风险等级，用 GraphQL",
@@ -632,7 +632,7 @@
       },
       "vulnerabilitiesTerms": {
         "title": "术语",
-        "description": "公司的术语表定义了已知被利用漏洞、CVE、CWE 和 CVSS，并把每个术语关联到它所描述的列。CVSS 分数说明漏洞有多严重，而是否有人正在利用它，只有目录才能告诉您。"
+        "description": "公司的本体定义了已知被利用漏洞、CVE、CWE 和 CVSS，并把每个术语关联到它所描述的列。CVSS 分数说明漏洞有多严重，而是否有人正在利用它，只有目录才能告诉您。"
       },
       "vulnerabilitiesAnswer": {
         "title": "SQL 中的答案",
@@ -717,7 +717,7 @@
       },
       "profilingTerms": {
         "title": "术语",
-        "description": "术语表定义了数据画像、合理类型、值的形态、重复行和占位值，并把每个术语关联到它所描述的度量。"
+        "description": "本体定义了数据画像、合理类型、值的形态、重复行和占位值，并把每个术语关联到它所描述的度量。"
       },
       "profilingAnswer": {
         "title": "每一列包含什么",
@@ -802,7 +802,7 @@
       },
       "opioidsTerms": {
         "title": "通俗地说",
-        "description": "术语表解释了议员或居民会遇到的术语：和解基金、减害、分配、支出、隐去的计数以及每 10 万人比率。这里，减害指和解协议要求这笔钱必须用于的用途。"
+        "description": "本体解释了议员或居民会遇到的术语：和解基金、减害、分配、支出、隐去的计数以及每 10 万人比率。这里，减害指和解协议要求这笔钱必须用于的用途。"
       },
       "opioidsAsPublic": {
         "title": "以公众身份运行",
@@ -910,7 +910,7 @@
       },
       "agricultureTerms": {
         "title": "用保险公司的术语",
-        "description": "术语表列出农作物保险核保人关心的内容：赔付率、损失原因、实际生产历史、保障水平、责任额和生长季。这里，赔付率就是赔款除以保费。大于 1，说明那一年亏了钱。"
+        "description": "本体列出农作物保险核保人关心的内容：赔付率、损失原因、实际生产历史、保障水平、责任额和生长季。这里，赔付率就是赔款除以保费。大于 1，说明那一年亏了钱。"
       },
       "agricultureAnswer": {
         "title": "用 SQL 得出答案",
@@ -1106,7 +1106,7 @@
       },
       "pharmaTerms": {
         "title": "用药房的术语",
-        "description": "术语表列出药房采购员关心的内容：NDC、处方集、药品短缺、召回等级和供应天数。这里，供应风险指短缺、产品制造商发起的召回，或手头库存天数太少。"
+        "description": "本体列出药房采购员关心的内容：NDC、处方集、药品短缺、召回等级和供应天数。这里，供应风险指短缺、产品制造商发起的召回，或手头库存天数太少。"
       },
       "pharmaAnswer": {
         "title": "SQL 中的答案",
@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "回到管理员身份",
         "description": "仪表板是运营人员看到的内容。导览的其余部分重新以管理员身份进行，之后的每条语句都会标明其执行所用的角色。"
+      },
+      "groupexposureScenario": {
+        "title": "这个演示讲什么",
+        "description": "一家布拉格银行向企业放贷，并按法人识别编码（LEI）记录每家企业的所有者。欧盟规定，银行对单一客户或同一所有者控制的企业集团的授信不得超过其一级资本（Tier 1）的 25%。问题是：银行对哪些集团超出了这一限额？银行的账簿记录了每个借款人的所有者，却不记录谁拥有这个所有者。银行、借款人及其贷款是虚构的，拥有它们的集团是真实的。"
+      },
+      "groupexposureJoin": {
+        "title": "按 LEI 关联",
+        "description": "银行的所有者表与 Wikidata 的表共享所有者的 LEI，这些关系把它们关联起来。银行的数据留在其数据库中，Wikidata 的数据留在其副本中；关联在查询中完成。"
+      },
+      "groupexposureAnswer": {
+        "title": "SQL 中的答案",
+        "description": "视图 group_exposure 通过所有者的 LEI 和 Wikidata，将每笔授信归入借款人所属集团。Veolia 和 Vinci 集团各自超过一级资本的 25%，Veolia 与 EPH 的合资企业在两个集团中都计入。无论银行账簿还是 Wikidata，单独都看不出这一点。借款人及其贷款是虚构的。"
+      },
+      "groupexposureExample": {
+        "title": "GraphQL 中的答案",
+        "description": "GraphQL 中的同一视图：银行放贷最多的集团、其借款人、承诺金额，以及各集团是否超限。"
+      },
+      "groupexposureRecap": {
+        "title": "您看到了什么",
+        "description": "一家虚构银行的贷款账簿与 Wikidata 的公共关联数据，按 LEI 在一个受治理的模型中关联。Wikidata 的所有权链把许多小额贷款变成少数几个大额集团敞口，答案通过 SQL、GraphQL 和 REST 提供。"
+      },
+      "groupexposureWikidata": {
+        "title": "谁拥有这些所有者：来自 Wikidata",
+        "description": "公共知识图谱 Wikidata 记录了每家企业的 LEI 及其母公司。此数据源通过 Wikidata 的 SPARQL 查询服务读取这些信息。其表在构建演示时只加载一次，因此您使用演示时它从不调用 Wikidata。"
+      },
+      "groupexposureFacilities": {
+        "title": "银行的授信",
+        "description": "银行发放的每笔定期贷款、循环信贷额度和保函，包括借款人、承诺金额和已提款金额。限额按承诺金额计算。"
+      },
+      "groupexposureGroups": {
+        "title": "每个所有者所属的集团",
+        "description": "对银行记录的每个所有者，取其在 Wikidata 上母公司链顶端的企业，只用一条 SPARQL 属性路径即可找到。即使银行账簿不知道，Wikidata 也知道某家捷克控股公司属于 Veolia 或 E.ON。"
+      },
+      "groupexposureTerms": {
+        "title": "通俗解释",
+        "description": "术语表解释风险人员使用的术语：大额风险暴露、一级资本、法人识别编码和母公司。关联客户集团是指因一家控制其他各家而构成同一风险的一组企业。"
+      },
+      "groupexposureAlone": {
+        "title": "只看账簿",
+        "description": "银行账簿所见的每个借款人自身的敞口。最大的也低于一级资本的 10%，没有任何借款人接近 25% 的限额。"
+      },
+      "groupexposureRest": {
+        "title": "通过 REST 获得同一答案",
+        "description": "该视图也是一个 REST 端点，这里按是否超限分组并在服务器端汇总，可直接用于风险报告或电子表格。"
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "不复制总账的日终报表",
         "summary": "一家银行的日终汇总，在每次日终时直接从从不复制到数据仓库的总账生成，可按当时报送的样子和之后更正的样子读取，通过 GraphQL、SQL 和智能体得到同样的答案。"
+      },
+      "groupexposure": {
+        "title": "通过 Wikidata 计算集团敞口",
+        "summary": "银行对哪些企业集团超出了大额风险暴露限额？银行的贷款账簿按每个借款人所有者的 LEI 通过 SPARQL 关联到 Wikidata 的母公司链，把每个借款人归入其集团。银行及其借款人是虚构的，集团是真实的。"
       }
     }
   }

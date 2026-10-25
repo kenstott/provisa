@@ -30,7 +30,6 @@ from provisa.compiler.directives import (
 )
 from provisa.executor.serialize import (
     serialize_rows,
-    shape_transform,
 )
 from provisa.executor import stats as _qs_mod
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
@@ -59,8 +58,7 @@ def _parse_accept(accept: str | None) -> str:
 def _format_response(rows, columns, root_field, output_format, result_limit: int | None = None):
     """Serialize query results in the requested output format."""
     if output_format == "json":
-        result = serialize_rows(rows, columns, root_field, result_limit=result_limit)
-        return shape_transform(result, columns)
+        return serialize_rows(rows, columns, root_field, result_limit=result_limit)
 
     if output_format == "ndjson":
         from provisa.executor.formats.ndjson import rows_to_ndjson

@@ -24,11 +24,13 @@ import {
   TextInput,
   useComputedColorScheme,
 } from "@mantine/core";
-import { Braces, Check, ChevronRight, Copy, X } from "lucide-react";
+import { Braces, Check, ChevronRight, Copy, ExternalLink, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { entityHref } from "../../lib/entityHref";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor } from "./graph-model";
-import { getStableNodeId } from "./stableNodeId";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
+import type { CanvasHighlight } from "./canvas/canvas-types";
 import { cypherRelType } from "../../naming";
 import CodeMirror from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
@@ -46,6 +48,9 @@ interface InspectorProps {
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
   graphStats?: GraphStats;
   overviewData?: OverviewData;
+  /** The Overview pill picked out in the frame's graph, and how a pill picks one (or clears it). */
+  highlight?: CanvasHighlight | null;
+  onHighlight?: (highlight: CanvasHighlight | null) => void;
   colorOverrides: Record<string, string>;
   onColorChange: (label: string, color: string) => void;
   onClose: () => void;
@@ -54,7 +59,8 @@ interface InspectorProps {
   relationships?: Relationship[];
   /** Save the edge's aliases; the server's refusal of them, or null when saved. */
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<string | null>;
-  pkMap: Record<string, string[]>;
+  /** Each node label's registered table, which a node links to. */
+  labelToTableId: Record<string, number>;
 }
 
 // The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
@@ -76,6 +82,8 @@ export function Inspector({
   selected,
   graphStats,
   overviewData,
+  highlight = null,
+  onHighlight,
   colorOverrides,
   onColorChange,
   onClose,
@@ -83,7 +91,7 @@ export function Inspector({
   onResizeStart,
   relationships,
   onSaveEdgeAlias,
-  pkMap,
+  labelToTableId,
 }: InspectorProps) {
   const { t } = useTranslation();
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
@@ -122,6 +130,17 @@ export function Inspector({
     setTimeout(() => setCopiedKey(null), 1200);
   }, []);
 
+  // An Overview pill picks out its label's nodes (or its type's edges) in the frame's graph; the
+  // same pill again clears it (GraphCanvas.highlight).
+  const isLit = (kind: CanvasHighlight["kind"], value: string) =>
+    highlight !== null && highlight.kind === kind && highlight.value === value;
+  const pill = (kind: CanvasHighlight["kind"], value: string) => ({
+    component: "button" as const,
+    type: "button" as const,
+    "aria-pressed": isLit(kind, value),
+    "data-testid": `overview-pill-${kind}-${value}`,
+    onClick: () => onHighlight?.(isLit(kind, value) ? null : { kind, value }),
+  });
   const isN = selected !== null && selected.kind === "node";
   const label = selected ? (isN ? selected.data.label : (selected.data as GEdge).type) : "";
   const color = colorOverrides[label] ?? labelColor(label);
@@ -131,23 +150,19 @@ export function Inspector({
   const typeName = colonIdx > 0 ? nodeLabel.slice(colonIdx + 1) : nodeLabel;
   const domainPrefix = colonIdx > 0 ? nodeLabel.slice(0, colonIdx) : null;
 
-  const stableId = selected && isN ? getStableNodeId(selected.data as GNode, pkMap) : null;
-  const pkCols = selected && isN ? (pkMap[(selected.data as GNode).label] ?? []) : [];
-  const idColName = pkCols[0] ?? null;
-
   const propRows: [string, unknown][] = useMemo(() => {
     if (!selected) return [];
     const props = selected.data.properties ?? {};
     if (isN) {
-      const idRow: [string, unknown][] = stableId ? [["<id>", stableId]] : [];
-      const pkEntry: Record<string, unknown> =
-        idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
+      // A node shows its own properties only: its key as the server gives it (`_id`) first, then
+      // its columns by name -- never the drawing's internal id, never a value made up for a column
+      // the row did not carry.
+      const keyRow: [string, unknown][] = "_id" in props ? [["_id", props._id]] : [];
       return [
-        ...idRow,
+        ...keyRow,
         ...Object.entries(props)
-          .filter(([k]) => !HIDDEN_PROPS.has(k))
+          .filter(([k]) => k !== "_id" && !HIDDEN_PROPS.has(k))
           .sort(([a], [b]) => a.localeCompare(b)),
-        ...Object.entries(pkEntry),
       ];
     }
     const e = selected.data as GEdge;
@@ -157,7 +172,7 @@ export function Inspector({
       ["end", e.end],
       ...Object.entries(props).sort(([a], [b]) => a.localeCompare(b)),
     ] as [string, unknown][];
-  }, [selected, isN, stableId, idColName]);
+  }, [selected, isN]);
 
   const handleCopyAll = useCallback(() => {
     const obj = Object.fromEntries(propRows);
@@ -209,8 +224,9 @@ export function Inspector({
                   key={lbl}
                   variant="filled"
                   radius="xl"
-                  className="gf-overview-chip"
+                  className={`gf-overview-chip${isLit("label", lbl) ? " gf-overview-chip--on" : ""}`}
                   style={{ background: colorOverrides[lbl] ?? labelColor(lbl) }}
+                  {...pill("label", lbl)}
                 >
                   {lbl} ({cnt.toLocaleString()})
                 </Badge>
@@ -230,7 +246,8 @@ export function Inspector({
                   key={type}
                   variant="filled"
                   radius="sm"
-                  className="gf-overview-chip gf-overview-chip--rel"
+                  className={`gf-overview-chip gf-overview-chip--rel${isLit("type", type) ? " gf-overview-chip--on" : ""}`}
+                  {...pill("type", type)}
                 >
                   {type} ({cnt.toLocaleString()})
                 </Badge>
@@ -254,6 +271,15 @@ export function Inspector({
     ? t("graphInspector.nodeProperties")
     : t("graphInspector.relationshipProperties");
   const chipLabel = isN ? typeName || label : label;
+  // The page of the item shown: a node's table, an edge's relationship. A node whose label reads
+  // no registered table, or an edge no declared relationship backs, has no page of its own.
+  const tableId = isN ? labelToTableId[label] : undefined;
+  const openHref =
+    tableId !== undefined
+      ? entityHref("table", tableId)
+      : matchedRel
+        ? entityHref("relationship", matchedRel.id)
+        : null;
 
   return (
     <div className="gf-inspector" style={{ width }}>
@@ -363,6 +389,25 @@ export function Inspector({
             ))}
           </Menu.Dropdown>
         </Menu>
+        {openHref && (
+          <Tip
+            text={isN ? t("graphInspector.openTable") : t("graphInspector.openRelationship")}
+            named
+          >
+            <ActionIcon
+              component={Link}
+              to={openHref}
+              variant="subtle"
+              size="sm"
+              aria-label={
+                isN ? t("graphInspector.openTable") : t("graphInspector.openRelationship")
+              }
+              data-testid="inspector-open"
+            >
+              <ExternalLink size={14} />
+            </ActionIcon>
+          </Tip>
+        )}
       </div>
 
       {!isN && (

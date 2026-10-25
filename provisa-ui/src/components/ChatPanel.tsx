@@ -80,6 +80,9 @@ const GLOSSARY_TOOL_NAMES = new Set([
   "delete_glossary_term",
   "add_glossary_term_edge",
   "remove_glossary_term_edge",
+  // REQ-2130: a term grounded in a table, or let go of it.
+  "ground_glossary_term_to_table",
+  "unground_glossary_term_from_table",
 ]);
 
 // REQ-1806: a brief, enumerated demo prompt list shown only before the first message — picked to
@@ -237,6 +240,7 @@ export function ChatPanel() {
   // REQ-1813: record what was picked as an ordinary chat message, so the choice has a visible,
   // scrollable trace in the conversation instead of vanishing once the widget closes.
   const describeChoice = (answer: ChoiceAnswer): string => {
+    if (answer === null) return t("chatPanel.choiceClosed");
     if (typeof answer === "boolean") return answer ? "Yes" : "No";
     if (Array.isArray(answer)) return answer.length > 0 ? answer.join(", ") : "(none selected)";
     return answer;
@@ -553,7 +557,7 @@ export function ChatPanel() {
         )}
 
         {error && (
-          <Alert color="red" mb="xs">
+          <Alert color="red" mb="xs" data-testid="chat-panel-error">
             {error.message}
             {error.action && (
               <Button
@@ -716,8 +720,8 @@ export function ChatPanel() {
               zIndex: 20,
             }}
             onClick={(e) => {
-              if (e.target === e.currentTarget)
-                resolveChoice(choiceState.mode === "multi" ? [] : "");
+              // Closed without choosing: an answer of its own, recorded and sent as such.
+              if (e.target === e.currentTarget) resolveChoice(null);
             }}
           >
             <Paper

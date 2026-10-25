@@ -180,7 +180,7 @@
       },
       "stepDomains": {
         "title": "Dominios y sus responsables de datos",
-        "description": "🗂️ Un dominio agrupa tablas, y su responsable de datos gobierna esa parte del modelo: quién ve qué, máscaras y reglas de fila, datos sensibles, y su glosario y sus productos de datos."
+        "description": "🗂️ Un dominio agrupa tablas, y su responsable de datos gobierna esa parte del modelo: quién ve qué, máscaras y reglas de fila, datos sensibles, y su ontología y sus productos de datos."
       },
       "stepTags": {
         "title": "Las etiquetas llevan significado",
@@ -287,12 +287,12 @@
         "description": "📦 Indique el propietario y el equipo, el propósito, el uso, el SLA y el soporte, y elija las tablas y los comandos que contiene. Son los campos que se publican. Una tabla se une a un producto solo si ambos comparten el mismo dominio."
       },
       "stepGlossary": {
-        "title": "Un glosario de negocio vivo",
-        "description": "📖 Cada término remite a las columnas que lo contienen y a otros términos. Cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos: <strong>✨ Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>✨ Relaciones</strong> propone enlaces en todo el glosario. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
+        "title": "Una ontología viva",
+        "description": "📖 Cada término remite a las columnas que lo contienen y a otros términos. Cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos desde el menú <strong>✨</strong>: <strong>Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>Relaciones</strong> propone enlaces en toda la ontología. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
       },
       "stepDataProducts": {
         "title": "Productos de datos, publicados donde los consumidores ya buscan",
-        "description": "📦 Cada producto aquí habla <strong>ODPS</strong> (el Open Data Product Standard): propietario, equipo, propósito, limitaciones, uso, SLA, soporte y propiedades personalizadas. Provisa lo publica directamente en <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong>, de modo que aparece como un producto nativo en el catálogo que sus consumidores ya usan.<p>🔁 No hay un paso de exportación aparte que olvidar: la especificación se <strong>deriva del modelo en vivo</strong> (tablas, linaje, etiquetas, términos del glosario) cada vez, así que lo publicado no puede quedar desactualizado como lo haría un archivo ODPS mantenido a mano.</p><p>✅ Publicar también envía un <strong>extracto de ontología</strong>: la parte de su glosario que afecta a lo publicado, es decir, los términos que definen sus columnas, los términos más amplios y relacionados con los que se conectan, y las relaciones tipadas entre ellos. Los resultados de calidad de datos de los verificadores que lo escanean van con él. El panel <strong>Términos relacionados</strong> de un producto lista sus términos.</p>"
+        "description": "📦 Cada producto aquí habla <strong>ODPS</strong> (el Open Data Product Standard): propietario, equipo, propósito, limitaciones, uso, SLA, soporte y propiedades personalizadas. Provisa lo publica directamente en <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong>, de modo que aparece como un producto nativo en el catálogo que sus consumidores ya usan.<p>🔁 No hay un paso de exportación aparte que olvidar: la especificación se <strong>deriva del modelo en vivo</strong> (tablas, linaje, etiquetas, términos de la ontología) cada vez, así que lo publicado no puede quedar desactualizado como lo haría un archivo ODPS mantenido a mano.</p><p>✅ Publicar también envía un <strong>extracto de ontología</strong>: la parte de su ontología que afecta a lo publicado, es decir, los términos que definen sus columnas, los términos más amplios y relacionados con los que se conectan, y las relaciones tipadas entre ellos. Los resultados de calidad de datos de los verificadores que lo escanean van con él. El panel <strong>Términos relacionados</strong> de un producto lista sus términos.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Añadir un término",
@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Publicar en las herramientas de su organización",
-        "description": "📤 <strong>Publíquelo donde su organización ya mira.</strong> Salen las entradas de catálogo (tablas, columnas, dominios, responsables, relaciones aprobadas), los productos de datos y el linaje a nivel de columna, y cada destino recibe lo que admite: <strong>DataHub, OpenMetadata, Collibra, Atlan y Apache Atlas</strong> como catálogos, <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong> como listados de productos de datos, y el linaje mediante <strong>OpenLineage</strong>.<p>La publicación es solo de salida: Provisa nunca vuelve a leer un destino como fuente de verdad.</p>"
+        "description": "📤 <strong>Publíquelo donde su organización ya mira.</strong> Salen las entradas de catálogo (tablas, columnas, dominios, responsables, relaciones aprobadas), los productos de datos y el linaje a nivel de columna, y cada destino recibe lo que admite: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} y Apache Atlas</strong> como catálogos, <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong> como listados de productos de datos, y el linaje mediante <strong>OpenLineage</strong>.<p>La publicación es solo de salida: Provisa nunca vuelve a leer un destino como fuente de verdad.</p>"
       },
       "stepRelsAgents": {
         "title": "Relaciones y agentes de IA",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "Qué es una queja abierta",
-        "description": "El glosario dice qué es una queja abierta: una que la ciudad aún no ha cerrado. Términos como este dicen qué significan los datos del catálogo."
+        "description": "La ontología dice qué es una queja abierta: una que la ciudad aún no ha cerrado. Términos como este dicen qué significan los datos del catálogo."
       },
       "filesAnswer": {
         "title": "La respuesta",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "Una carpeta se volvió un catálogo",
-        "description": "Una carpeta de archivos se volvió un catálogo gobernado: tablas, relaciones, un término del glosario y una vista almacenada, sin cargar nada. Un nuevo archivo mensual de quejas no necesita una tabla nueva: el patrón ya lo incluye."
+        "description": "Una carpeta de archivos se volvió un catálogo gobernado: tablas, relaciones, un término de la ontología y una vista almacenada, sin cargar nada. Un nuevo archivo mensual de quejas no necesita una tabla nueva: el patrón ya lo incluye."
       },
       "reviewsCatalog": {
         "title": "Qué es esta demo",
@@ -492,7 +492,7 @@
       },
       "insuranceTerms": {
         "title": "En los términos de la aseguradora",
-        "description": "El glosario nombra lo que pregunta un suscriptor: valor asegurado total, acumulación, pérdida máxima probable y pérdida anual esperada. Aquí, acumulación significa exposición concentrada donde un solo evento puede alcanzar muchas pólizas."
+        "description": "La ontología nombra lo que pregunta un suscriptor: valor asegurado total, acumulación, pérdida máxima probable y pérdida anual esperada. Aquí, acumulación significa exposición concentrada donde un solo evento puede alcanzar muchas pólizas."
       },
       "insuranceByRating": {
         "title": "Por calificación de riesgo, en GraphQL",
@@ -632,7 +632,7 @@
       },
       "vulnerabilitiesTerms": {
         "title": "El vocabulario",
-        "description": "El glosario de la empresa define vulnerabilidad explotada conocida, CVE, CWE y CVSS, y vincula cada término a las columnas que describe. Una puntuación CVSS dice lo grave que es una vulnerabilidad. Solo el catálogo dice si alguien la está explotando."
+        "description": "La ontología de la empresa define vulnerabilidad explotada conocida, CVE, CWE y CVSS, y vincula cada término a las columnas que describe. Una puntuación CVSS dice lo grave que es una vulnerabilidad. Solo el catálogo dice si alguien la está explotando."
       },
       "vulnerabilitiesAnswer": {
         "title": "La respuesta en SQL",
@@ -717,7 +717,7 @@
       },
       "profilingTerms": {
         "title": "El vocabulario",
-        "description": "El glosario define perfil de datos, tipo plausible, forma del valor, fila duplicada y valor de relleno, y vincula cada término a las medidas que describe."
+        "description": "La ontología define perfil de datos, tipo plausible, forma del valor, fila duplicada y valor de relleno, y vincula cada término a las medidas que describe."
       },
       "profilingAnswer": {
         "title": "Qué contiene cada columna",
@@ -802,7 +802,7 @@
       },
       "opioidsTerms": {
         "title": "En palabras sencillas",
-        "description": "El glosario explica los términos que encontrará un miembro del consejo o un vecino: fondo del acuerdo, mitigación, asignación, gasto, recuento suprimido y tasa por 100.000. Aquí, mitigación significa aquello en lo que los acuerdos exigen gastar el dinero."
+        "description": "La ontología explica los términos que encontrará un miembro del consejo o un vecino: fondo del acuerdo, mitigación, asignación, gasto, recuento suprimido y tasa por 100.000. Aquí, mitigación significa aquello en lo que los acuerdos exigen gastar el dinero."
       },
       "opioidsAsPublic": {
         "title": "Ejecutar como el público",
@@ -910,7 +910,7 @@
       },
       "agricultureTerms": {
         "title": "En los términos del asegurador",
-        "description": "El glosario nombra lo que pregunta un suscriptor de seguros agrícolas: siniestralidad, causa de pérdida, historial real de producción, nivel de cobertura, responsabilidad y temporada de cultivo. Aquí, la siniestralidad es la indemnización dividida por la prima. Por encima de 1, el año perdió dinero."
+        "description": "La ontología nombra lo que pregunta un suscriptor de seguros agrícolas: siniestralidad, causa de pérdida, historial real de producción, nivel de cobertura, responsabilidad y temporada de cultivo. Aquí, la siniestralidad es la indemnización dividida por la prima. Por encima de 1, el año perdió dinero."
       },
       "agricultureAnswer": {
         "title": "La respuesta en SQL",
@@ -1106,7 +1106,7 @@
       },
       "pharmaTerms": {
         "title": "En los términos de la farmacia",
-        "description": "El glosario nombra lo que pregunta un comprador de farmacia: NDC, formulario, desabastecimiento, clase de retirada y días de suministro. Aquí, riesgo de suministro significa un desabastecimiento, una retirada por parte del fabricante del producto o muy pocos días de existencias."
+        "description": "La ontología nombra lo que pregunta un comprador de farmacia: NDC, formulario, desabastecimiento, clase de retirada y días de suministro. Aquí, riesgo de suministro significa un desabastecimiento, una retirada por parte del fabricante del producto o muy pocos días de existencias."
       },
       "pharmaAnswer": {
         "title": "La respuesta en SQL",
@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "De nuevo como administrador",
         "description": "El panel es lo que ve operaciones. El resto del recorrido vuelve a ser como administrador, y cada sentencia que sigue indica el rol con el que se ejecuta."
+      },
+      "groupexposureScenario": {
+        "title": "De qué trata esta demo",
+        "description": "Un banco de Praga presta a empresas y registra la empresa propietaria de cada una por su Legal Entity Identifier (LEI). Las normas de la UE limitan lo que puede prestar a un cliente, o a un grupo de empresas controlado por un mismo propietario, al 25 % de su capital de nivel 1 (Tier 1). La pregunta: ¿ante qué grupos supera el banco ese límite? Sus libros nombran al propietario de cada prestatario, no quién es dueño del propietario. El banco, sus prestatarios y sus préstamos son ficticios; los grupos que los poseen son reales."
+      },
+      "groupexposureJoin": {
+        "title": "Unidos por el LEI",
+        "description": "La tabla de propietarios del banco y las tablas de Wikidata comparten el LEI del propietario, y estas relaciones las unen. Los datos del banco se quedan en su base de datos y los de Wikidata en su réplica; la unión se hace en la consulta."
+      },
+      "groupexposureAnswer": {
+        "title": "La respuesta en SQL",
+        "description": "La vista group_exposure agrupa cada facilidad en el grupo de su prestatario, a través del LEI del propietario y Wikidata. Los grupos Veolia y Vinci superan cada uno el 25 % del capital de nivel 1, y una empresa conjunta de Veolia y EPH cuenta en ambos. Ni los libros del banco ni Wikidata lo muestran por separado. Los prestatarios y sus préstamos son ficticios."
+      },
+      "groupexposureExample": {
+        "title": "La respuesta en GraphQL",
+        "description": "La misma vista en GraphQL: los grupos a los que más presta el banco, sus prestatarios, lo comprometido y si cada uno supera el límite."
+      },
+      "groupexposureRecap": {
+        "title": "Lo que ha visto",
+        "description": "La cartera de préstamos de un banco ficticio y datos enlazados públicos de Wikidata, unidos por LEI en un modelo gobernado. Las cadenas de propiedad de Wikidata convierten muchos préstamos pequeños en unas pocas grandes exposiciones de grupo, y la respuesta se sirve en SQL, GraphQL y REST."
+      },
+      "groupexposureWikidata": {
+        "title": "Quién es dueño de los propietarios, según Wikidata",
+        "description": "Wikidata, el grafo de conocimiento público, registra el LEI de cada empresa y su organización matriz. Esta fuente lo lee a través del servicio de consultas SPARQL de Wikidata. Sus tablas se cargaron una sola vez, al crear la demo, por lo que la demo nunca llama a Wikidata mientras la usa."
+      },
+      "groupexposureFacilities": {
+        "title": "Las facilidades del banco",
+        "description": "Cada préstamo a plazo, línea de crédito revolvente y garantía que el banco ha concedido, con el prestatario, lo comprometido y lo dispuesto. El límite cuenta lo comprometido."
+      },
+      "groupexposureGroups": {
+        "title": "El grupo de cada propietario",
+        "description": "Para cada propietario que registra el banco, la empresa en la cima de su cadena de organizaciones matrices en Wikidata, encontrada con una sola ruta de propiedades SPARQL. Wikidata sabe que una sociedad holding checa pertenece a Veolia o a E.ON, aunque los libros del banco no lo sepan."
+      },
+      "groupexposureTerms": {
+        "title": "En palabras sencillas",
+        "description": "El glosario explica los términos con los que trabaja un responsable de riesgos: gran exposición, capital de nivel 1, Legal Entity Identifier y organización matriz. Un grupo de clientes vinculados son empresas que forman un solo riesgo porque una controla a las demás."
+      },
+      "groupexposureAlone": {
+        "title": "Solo los libros",
+        "description": "La exposición propia de cada prestatario, tal como la ven los libros del banco. La mayor está por debajo del 10 % del capital de nivel 1, así que ningún prestatario se acerca al límite del 25 %."
+      },
+      "groupexposureRest": {
+        "title": "La misma respuesta por REST",
+        "description": "La vista también es un endpoint REST, aquí agrupado según si un grupo supera el límite y sumado en el servidor, listo para un informe de riesgos o una hoja de cálculo."
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "Informes de cierre sin copiar el libro mayor",
         "summary": "Los totales de cierre de un banco, generados en cada cierre directamente desde un libro mayor que nunca se copia al almacén de datos, leídos tal como se informaron y tal como se corrigieron después, con la misma respuesta por GraphQL, SQL y un agente."
+      },
+      "groupexposure": {
+        "title": "Exposición por grupo a través de Wikidata",
+        "summary": "¿Ante qué grupos empresariales supera un banco su límite de grandes exposiciones? Su cartera de préstamos, unida por el LEI del propietario de cada prestatario a las cadenas de organizaciones matrices de Wikidata mediante SPARQL, asigna cada prestatario a su grupo. El banco y sus prestatarios son ficticios; los grupos son reales."
       }
     }
   }

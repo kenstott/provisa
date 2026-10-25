@@ -52,11 +52,11 @@ def _run(shared_data, coro):
 
 
 def _publishes_ok(published: list[str]):
-    async def _publish(org_id: str) -> PublishResult:
+    async def _publish(org_id: str) -> dict[str, PublishResult]:  # REQ-2118: by target id
         published.append(org_id)
         result = PublishResult(provider_name="atlas")
         result.published["table"] = 3
-        return result
+        return {"atlas": result}
 
     return _publish
 
@@ -110,7 +110,7 @@ def _one_publish(shared_data):
     async def _drain() -> None:
         async with shared_data["dbs"][ORG].acquire() as conn:
             result = await publishing.drain(conn, ORG, now=_T0)
-            assert result is not None and result.ok
+            assert result is not None and all(r.ok for r in result.values())
             statuses = await conn.execute_core(select(event_status.c.claim_status))
             assert [row[0] for row in statuses.fetchall()] == ["completed", "completed"]
             # Nothing left to claim, so a second drain publishes nothing.
@@ -122,10 +122,10 @@ def _one_publish(shared_data):
 
 @then("a publish the catalog rejected stays claimable instead of being completed")
 def _rejected_stays_claimable(shared_data, monkeypatch):
-    async def _rejecting(org_id: str) -> PublishResult:
+    async def _rejecting(org_id: str) -> dict[str, PublishResult]:
         result = PublishResult(provider_name="atlas")
         result.errors.append(AssetError(asset=AssetRefStub("wh.public.orders"), message="HTTP 500"))
-        return result
+        return {"atlas": result}
 
     monkeypatch.setattr(publishing, "publish_snapshot", _rejecting)
 
@@ -133,7 +133,7 @@ def _rejected_stays_claimable(shared_data, monkeypatch):
         async with shared_data["dbs"][ORG].acquire() as conn:
             await publishing.notify_metadata_change(conn, table="wh.public.orders", reason="edit")
             result = await publishing.drain(conn, ORG, now=_T0)
-            assert result is not None and not result.ok
+            assert result is not None and not result["atlas"].ok
             statuses = await conn.execute_core(
                 select(event_status.c.claim_status).where(
                     event_status.c.claim_status != "completed"
@@ -162,7 +162,7 @@ def _reconcile_is_scheduled(shared_data):
 
     async def _reconcile() -> None:
         result = await publishing.reconcile_org(ORG)
-        assert result is not None and result.ok
+        assert result is not None and all(r.ok for r in result.values())
 
     _run(shared_data, _reconcile())
     assert shared_data["published"][-1] == ORG

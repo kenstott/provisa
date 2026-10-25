@@ -959,6 +959,7 @@ async def _sync_view_mv(
         target_schema=target_schema,
         target_catalog_qualified=state.federation_engine.engine.catalog_qualified,
         target_table=f"mv_{table_name}",
+        view_table=table_name,  # REQ-1918: the view it builds
         refresh_interval=refresh_interval,
         enabled=True,
         sql=view_sql,

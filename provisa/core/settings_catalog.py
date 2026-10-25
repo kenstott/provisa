@@ -91,6 +91,34 @@ DECLARED: list[Setting] = [
         unit="bytes",
     ),
     Setting(
+        key="graph.depth_limit",
+        card="limits",
+        type="int",
+        effect="live",  # read when a graph query is compiled
+        # REQ-2135: the most hops a variable-length path or property path walks when the query
+        # gives no bound of its own; a result cut at it says so. 10 was the bound before the setting.
+        req="REQ-2135",
+        env="PROVISA_GRAPH_DEPTH_LIMIT",
+        config_path=("server", "limits", "graph_depth_limit"),
+        default=10,
+        min=1,
+        unit="hops",
+    ),
+    Setting(
+        key="graph.union_limit",
+        card="limits",
+        type="int",
+        effect="live",  # read when a graph query is compiled
+        # REQ-2135: the most branches a variable predicate's union over the mapped predicates may
+        # have; a query needing more is refused, naming the limit.
+        req="REQ-2135",
+        env="PROVISA_GRAPH_UNION_LIMIT",
+        config_path=("server", "limits", "graph_union_limit"),
+        default=64,
+        min=1,
+        unit="branches",
+    ),
+    Setting(
         key="sources.max_upload_bytes",
         card="limits",
         type="int",
@@ -475,6 +503,19 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="commands.allow_host_code",
+        card="security",
+        type="bool",
+        effect="live",  # read when a command is registered, updated or called
+        # REQ-2134: python and script commands run code with the server's own access; off by
+        # default, so neither an organization nor a promoted model can run code on the host.
+        req="REQ-2134",
+        env="PROVISA_COMMANDS_ALLOW_HOST_CODE",
+        config_path=("server", "commands", "allow_host_code"),
+        default=False,
+        guard="confirm",
+    ),
+    Setting(
         key="bolt.allowed_origins",
         card="security",
         type="list",
@@ -658,6 +699,20 @@ DECLARED: list[Setting] = [
         env="PROVISA_HOSTNAME",
         config_path=("server", "hostname"),
         default="localhost",
+    ),
+    Setting(
+        key="server.public_url",
+        card="network",
+        type="str",
+        effect="live",  # read when a graph query names a subject by its IRI
+        # REQ-2135: the base of every subject IRI ({public URL}/id/{domain}/{table}/{key}); an IRI
+        # must not change with how a client reaches the server, so it is not derived from the
+        # hostname. Unset, a query whose answer holds a subject IRI is refused, naming it.
+        req="REQ-2135",
+        env="PROVISA_PUBLIC_URL",
+        config_path=("server", "public_url"),
+        default=None,
+        nullable=True,
     ),
     Setting(
         key="server.grpc_port",

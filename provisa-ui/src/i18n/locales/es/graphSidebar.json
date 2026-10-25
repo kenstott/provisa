@@ -29,6 +29,9 @@
     "resizeSidebar": "Redimensionar barra lateral",
     "tabSettings": "Ajustes de vista",
     "maxNodes": "Máx. de nodos",
-    "maxNodesHint": "Máximo de nodos que dibuja una consulta"
+    "maxNodesHint": "Máximo de nodos que dibuja una consulta",
+    "notCounted": "Sin contar: {{list}}",
+    "countsFailed": "Recuentos no disponibles: {{error}}",
+    "schemaFailed": "Esquema no disponible: {{error}}"
   }
 }

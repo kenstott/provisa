@@ -8,12 +8,14 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { columnLabel } from "../../lib/columnKeys";
 import type { TFunction } from "i18next";
 import { EMPTY_VALUE, NO_OPERAND, type ActiveFilter } from "./columnFilter";
 
 /** The words for a filter, as the chip above the grid reads it: "amount > 100". */
 export function describeFilter(t: TFunction, f: ActiveFilter): string {
-  const { col, spec } = f;
+  const { spec } = f;
+  const col = columnLabel(f.col);
   const op = t(`columnFilter.op.${spec.op}`);
   if (spec.op === "lastDays")
     return `${col} ${t("columnFilter.chipLastDays", { count: Number(spec.a) })}`;

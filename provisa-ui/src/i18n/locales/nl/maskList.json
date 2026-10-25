@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} → {{replace}}",
     "truncateLabel": "afgekapt op {{precision}}",
     "constantLabel": "constante {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "Veelgebruikte maskers",
+    "presetsAria": "Veelgebruikte maskers voor regel {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "Werkt op elke engine",
+    "universalHelp": "Patronen gebruiken één regex-dialect; Provisa vertaalt het voor elke engine. Waarden die niet bij het patroon passen, worden volledig gemaskeerd.",
+    "notUniversal": "Niet op elke engine: {{construct}} bij teken {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, laatste 4",
+      "card_last4": "Kaartnummer, laatste 4",
+      "phone_last4": "Telefoon, laatste 4",
+      "email_initial_domain": "E-mail, eerste letter en domein",
+      "all_but_last4": "Alles behalve de laatste 4 tekens",
+      "digits_keep_separators": "Cijfers, scheidingstekens behouden",
+      "zip3": "Amerikaanse ZIP, eerste 3",
+      "birth_year": "Geboortedatum, alleen jaar",
+      "iban_last4": "IBAN, laatste 4",
+      "keep_first_last": "Eerste en laatste tekens behouden"
+    },
+    "presetParam": {
+      "first": "Eerste",
+      "last": "Laatste"
+    },
+    "construct": {
+      "lookahead": "een lookahead (?=…)",
+      "lookbehind": "een lookbehind (?<=…)",
+      "backreference": "een terugverwijzing \\1 in het patroon",
+      "lazy_quantifier": "een luie kwantor (*?, +?)",
+      "possessive_quantifier": "een possessieve kwantor (*+, ++)",
+      "named_group": "een benoemde groep (?<name>…)",
+      "word_boundary": "een woordgrens \\b",
+      "unicode_class": "een Unicode-klasse \\p{…}",
+      "posix_class": "een POSIX-klasse [[:…:]]",
+      "inline_flags": "inline-vlaggen (?i)",
+      "unknown_escape": "een escape die niet elke engine kent",
+      "open_bound": "een open grens {n,}",
+      "bound_too_large": "een te groot herhalingsaantal",
+      "unbalanced_paren": "een niet-gesloten haakje",
+      "unbalanced_bracket": "een niet-gesloten blokhaak",
+      "empty_class": "een lege klasse []",
+      "bad_range": "een bereik waarvan het begin na het einde ligt",
+      "nothing_to_repeat": "een kwantor zonder iets om te herhalen",
+      "replace_group_out_of_range": "een $n die een groep noemt die het patroon niet heeft",
+      "replace_named_ref": "een benoemde verwijzing in de vervanging",
+      "replace_bad_escape": "een escape die de vervanging niet accepteert",
+      "alternation_prefix": "alternatieven waarvan er één een voorvoegsel van een andere is",
+      "alternation_overlap": "alternatieven die dezelfde tekst kunnen matchen",
+      "negated_class_escape_in_set": "een negatieve escape zoals \\D binnen een [ ]-verzameling"
+    }
   }
 }

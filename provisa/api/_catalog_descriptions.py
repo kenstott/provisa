@@ -51,6 +51,10 @@ _META: dict[str, str] = {
     "derived at query time — the governance review queue",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
+    # REQ-1443
+    "sources": "Every registered source -- its identifier and its type",
+    "dq_rules": "Each data-quality table's rules -- one row per check its contract declares, "
+    "in the order written",
     # REQ-2125
     "data_products": "Every data product — one row per product with its own fields; its domain, "
     "member tables, commands, tags, glossary terms and profiles are reached by relationship",
@@ -64,6 +68,9 @@ _META: dict[str, str] = {
     # REQ-2129
     "column_lineage_edges": "The model's column lineage — each column a view or command derives "
     "from another registered column, naming the view or command",
+    # REQ-2145
+    "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
+    "term it means, each saying where it comes from",
     # REQ-2091
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
@@ -174,6 +181,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "other table",
         "checked_table_id": "For a checker table, the table its data-quality contract scans; "
         "empty for any other table",
+        # REQ-2130
+        "class_term_id": "The glossary term this table's rows are instances of; empty when no "
+        "term grounds it",
         # REQ-2132
         "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
         "passed, fail otherwise; empty when it has never run",
@@ -231,6 +241,22 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "state": "promise (assigned here, scans an output port), expectation (assigned here, "
         "scans an input), partner_dq (scans an output port or input, assigned elsewhere or to "
         "none) or orphan (assigned here, scans neither)",
+    },
+    "dq_rules": {
+        "id": "Rule identifier: the table and the check's position in its contract",
+        "table_id": "Data-quality table whose contract declares the check",
+        "domain_id": "Domain of that table",
+        "checker": "Checker dialect the contract is written in: soda or great_expectations",
+        "position": "The check's position in its contract, from 1",
+        "column_name": "Column the check applies to; empty for a dataset-level check",
+        "check_type": "The kind of check",
+        "definition": "The check's arguments, as written in the contract",
+        "tenant_id": _TENANT,
+    },
+    # REQ-1443
+    "sources": {
+        "id": "Source identifier",
+        "type": "The source's type -- the connector it is reached through, or a checker's dialect",
     },
     # REQ-2125
     "data_products": {
@@ -299,8 +325,11 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "function_arg": "Argument passed to the resolving function",
         "alias": "Name the edge is exposed under, when it differs from the target name",
         "graphql_alias": "Name the edge is exposed under in GraphQL, when it differs",
+        "cypher_type": "Cypher relationship type the edge is served under",
+        "graphql_field": "GraphQL field the edge is served under, in the naming convention in force",
         "disable_cypher": "Whether the edge is hidden from Cypher traversal",
         "hide_target_meta": "Whether the target's metadata is withheld from consumers of the edge",
+        "same_entity": "Whether the rows the edge joins are the same entity, in two tables one term grounds",
         "source_json_key": "Key inside a JSON source column that carries the join value",
         "parameters": "Target parameters the edge feeds, each from a source column",
         "via_table_id": "Junction table the edge traverses through, for a junction-backed edge",
@@ -413,6 +442,21 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
         "product_id": "Tagged data product, when the object is a data product",  # REQ-2125
+        "term_id": "Tagged glossary term, when the object is a term",  # REQ-2145
+    },
+    # REQ-2145
+    "effective_column_tags": {
+        "id": "Identity of the row: the assignment, and for a term's tag the column it reaches",
+        "column_key": "Synthesized column identity (table_id:column_name) of the column",
+        "table_id": "Table the column belongs to",
+        "column_name": "The column carrying the tag",
+        "tag_id": "Tag carried, with its parameter when it has one",
+        "base_tag_id": "Tag carried, parameter stripped — the registry id",
+        "via": "column when the tag is on the column itself, term when it is on its glossary term",
+        "term_id": "The glossary term the column carries the tag through, when via is term",
+        "term": "That term's name",
+        "reason": "Justification recorded with the assignment",
+        "tenant_id": _TENANT,
     },
     "tag_expiry": {
         "id": "Assignment identifier",
@@ -473,19 +517,27 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "glossary_terms": {
         "id": "Term identifier",
         "name": "The term phrase, unique across the glossary",
-        "definition": "What the term means; a term without one is a proposal, never live",
-        "is_abstract": "True when the term names a concept with no column of its own",
+        "definition": "What the term means; a term without one is a draft, never live",
+        "is_abstract": "True when the term is a Concept: it grounds no column and no table "
+        "(derived from its grounding)",
         "deprecated": "True when the derivation lost its last column but the row was kept",
         "retired": "True when a curator took the term out of service",
         "export_excluded": "True when the term is withheld from consuming surfaces",
         "ref_count": "How many physical columns the term binds to",
-        "is_rooted": "True when the term holds at least one physical ref of its own",
+        "is_rooted": "True when the term holds at least one physical ref of its own, to a column "
+        "or a whole table",
         "live": "True when the term is in service, defined, and connected over in-service "
         "edges to a term holding a physical ref",
+        "status": "draft (not admitted), live (admitted), deprecated (its column went, or a "
+        "curator deprecated it; in service until retired) or retired (out of service)",
+        "status_reason": "Why a curator deprecated or retired the term",
+        "retire_on": "The date a deprecated term is retired on, when a curator planned one",
         "tenant_id": _TENANT,
         # REQ-1387
         "grounded": "True when the term is connected over in-service edges to a term holding a "
         "physical ref, defined or not",
+        "identity_gap": "True when the term grounds several tables that same-entity "
+        "relationships do not all join: a curation gap",
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },

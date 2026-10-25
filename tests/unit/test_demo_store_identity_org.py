@@ -43,3 +43,16 @@ def _as(org: str) -> str:
 
 def test_the_identity_is_the_template_orgs_whoever_reads_it(engines):
     assert _as("regions-tier") == _as("sbxtplretail")
+
+
+def test_a_build_into_the_embedded_file_is_not_one_into_the_regions_store(engines, tmp_path):
+    """A regions node's provisioning build runs the template on the embedded file before its
+    region lane is read from the model; keyed by the engine alone, the replicas it wrote there were
+    recorded as built in the region's store, which never held them."""
+    embedded = f"duckdb:///{tmp_path / 'materialize.duckdb'}"
+    token = set_current_org("sbxtplretail")
+    try:
+        assert store_identity("sbxtplretail", embedded) != store_identity("sbxtplretail", _STORE)
+        assert store_identity("sbxtplretail", _STORE) == store_identity("sbxtplretail", _STORE)
+    finally:
+        reset_current_org(token)

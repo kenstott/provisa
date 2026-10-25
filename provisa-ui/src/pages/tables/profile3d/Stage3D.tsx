@@ -15,6 +15,8 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Loader } from "@mantine/core";
 import type { StageRefs } from "./useLazyScene";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportableScene } from "./exportImage";
 
 /** A one-shot camera move; ``seq`` changes for every request. */
 export interface CameraCommand {
@@ -38,14 +40,23 @@ export function Stage3D({
   canvasLabel,
   tip,
   legend,
+  exportable,
+  exportName,
   testId,
+  bare = false,
 }: StageRefs & {
   ready: boolean;
   error: string | null;
   canvasLabel: string;
   tip: StageTip | null;
   legend: ReactNode;
+  /** The scene an export draws, once it is up. */
+  exportable: ExportableScene | null;
+  /** What the view's exports are named after (the graph and its view). */
+  exportName: string;
   testId: string;
+  /** A view that is a glance only (a card): the canvas and its legend, no export or hint. */
+  bare?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -72,7 +83,17 @@ export function Stage3D({
           {tip.body}
         </div>
       )}
-      <div className="p3d-hint">{t("profile3d.hint")}</div>
+      {!bare && (
+        <>
+          <ExportMenu
+            scene={ready ? exportable : null}
+            stage={wrapRef}
+            name={exportName}
+            testId={testId}
+          />
+          <div className="p3d-hint">{t("profile3d.hint")}</div>
+        </>
+      )}
       <div className="p3d-legend">{legend}</div>
     </div>
   );

@@ -180,7 +180,7 @@
       },
       "stepDomains": {
         "title": "Domaines et leurs responsables de données",
-        "description": "🗂️ Un domaine regroupe des tables, et son responsable de données gouverne cette partie du modèle : qui voit quoi, masques et règles de ligne, données sensibles, ainsi que son glossaire et ses produits de données."
+        "description": "🗂️ Un domaine regroupe des tables, et son responsable de données gouverne cette partie du modèle : qui voit quoi, masques et règles de ligne, données sensibles, ainsi que son ontologie et ses produits de données."
       },
       "stepTags": {
         "title": "Les étiquettes portent un sens",
@@ -287,12 +287,12 @@
         "description": "📦 Indiquez le propriétaire et l'équipe, l'objectif, l'usage, le SLA et le support, puis choisissez les tables et commandes qu'il contient. Ce sont les champs publiés. Une table rejoint un produit seulement si les deux partagent le même domaine."
       },
       "stepGlossary": {
-        "title": "Un glossaire métier vivant",
-        "description": "📖 Chaque terme est relié aux colonnes qui le portent et à d'autres termes. Gérez les noms, les définitions et les relations typées (type de, partie de, synonyme de) à la main, ou laissez l'IA combler les lacunes : <strong>✨ Définitions</strong> ne rédige que les termes qui n'en ont pas encore, et <strong>✨ Relations</strong> propose des liens sur l'ensemble du glossaire. Marquez un terme comme <strong>exclu de l'export</strong> pour le tenir hors des métadonnées publiées."
+        "title": "Une ontologie vivante",
+        "description": "📖 Chaque terme est relié aux colonnes qui le portent et à d'autres termes. Gérez les noms, les définitions et les relations typées (type de, partie de, synonyme de) à la main, ou laissez l'IA combler les lacunes depuis le menu <strong>✨</strong> : <strong>Définitions</strong> ne rédige que les termes qui n'en ont pas encore, et <strong>Relations</strong> propose des liens sur l'ensemble de l'ontologie. Marquez un terme comme <strong>exclu de l'export</strong> pour le tenir hors des métadonnées publiées."
       },
       "stepDataProducts": {
         "title": "Des produits de données publiés là où les consommateurs regardent déjà",
-        "description": "📦 Chaque produit ici parle <strong>ODPS</strong> (l'Open Data Product Standard) : propriétaire, équipe, objectif, limites, utilisation, SLA, support et propriétés personnalisées. Provisa le publie directement dans <strong>Snowflake Horizon</strong> et <strong>BigQuery Dataplex</strong>, où il apparaît comme un produit natif du catalogue que vos consommateurs utilisent déjà.<p>🔁 Aucune étape d'export distincte à oublier : la spécification est <strong>dérivée du modèle en direct</strong> (tables, traçabilité, étiquettes, termes du glossaire) à chaque fois ; ce qui est publié ne peut donc pas devenir obsolète comme le ferait un fichier ODPS tenu à la main.</p><p>✅ Publier envoie aussi un <strong>extrait d'ontologie</strong> : la partie de votre glossaire qui concerne ce qui est publié, à savoir les termes qui définissent ses colonnes, les termes plus larges et associés auxquels ils sont reliés, et les relations typées entre eux. Les résultats de qualité des données des vérificateurs qui l'analysent l'accompagnent. Le panneau <strong>Termes associés</strong> d'un produit liste ses termes.</p>"
+        "description": "📦 Chaque produit ici parle <strong>ODPS</strong> (l'Open Data Product Standard) : propriétaire, équipe, objectif, limites, utilisation, SLA, support et propriétés personnalisées. Provisa le publie directement dans <strong>Snowflake Horizon</strong> et <strong>BigQuery Dataplex</strong>, où il apparaît comme un produit natif du catalogue que vos consommateurs utilisent déjà.<p>🔁 Aucune étape d'export distincte à oublier : la spécification est <strong>dérivée du modèle en direct</strong> (tables, traçabilité, étiquettes, termes de l'ontologie) à chaque fois ; ce qui est publié ne peut donc pas devenir obsolète comme le ferait un fichier ODPS tenu à la main.</p><p>✅ Publier envoie aussi un <strong>extrait d'ontologie</strong> : la partie de votre ontologie qui concerne ce qui est publié, à savoir les termes qui définissent ses colonnes, les termes plus larges et associés auxquels ils sont reliés, et les relations typées entre eux. Les résultats de qualité des données des vérificateurs qui l'analysent l'accompagnent. Le panneau <strong>Termes associés</strong> d'un produit liste ses termes.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Ajouter un terme",
@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Publier vers les outils de votre organisation",
-        "description": "📤 <strong>Publiez-le là où votre organisation regarde déjà.</strong> Les entrées de catalogue (tables, colonnes, domaines, responsables, relations approuvées), les produits de données et le lignage au niveau des colonnes partent, et chaque cible reçoit ce qu'elle prend en charge : <strong>DataHub, OpenMetadata, Collibra, Atlan et Apache Atlas</strong> comme catalogues, <strong>Snowflake Horizon</strong> et <strong>BigQuery Dataplex</strong> comme listes de produits de données, et le lignage via <strong>OpenLineage</strong>.<p>La publication est sortante uniquement : Provisa ne relit jamais une cible comme source de vérité.</p>"
+        "description": "📤 <strong>Publiez-le là où votre organisation regarde déjà.</strong> Les entrées de catalogue (tables, colonnes, domaines, responsables, relations approuvées), les produits de données et le lignage au niveau des colonnes partent, et chaque cible reçoit ce qu'elle prend en charge : <strong>DataHub, OpenMetadata, Collibra, {{atlan}} et Apache Atlas</strong> comme catalogues, <strong>Snowflake Horizon</strong> et <strong>BigQuery Dataplex</strong> comme listes de produits de données, et le lignage via <strong>OpenLineage</strong>.<p>La publication est sortante uniquement : Provisa ne relit jamais une cible comme source de vérité.</p>"
       },
       "stepRelsAgents": {
         "title": "Relations et agents IA",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "Ce qu'est une plainte ouverte",
-        "description": "Le glossaire dit ce qu'est une plainte ouverte : une plainte que la ville n'a pas encore close. Des termes comme celui-ci disent ce que signifient les données du catalogue."
+        "description": "L'ontologie dit ce qu'est une plainte ouverte : une plainte que la ville n'a pas encore close. Des termes comme celui-ci disent ce que signifient les données du catalogue."
       },
       "filesAnswer": {
         "title": "La réponse",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "Un dossier devenu catalogue",
-        "description": "Un dossier de fichiers est devenu un catalogue gouverné : des tables, des relations, un terme du glossaire et une vue stockée, sans rien charger. Un nouveau fichier mensuel de plaintes n'a pas besoin d'une nouvelle table : le motif l'inclut déjà."
+        "description": "Un dossier de fichiers est devenu un catalogue gouverné : des tables, des relations, un terme de l'ontologie et une vue stockée, sans rien charger. Un nouveau fichier mensuel de plaintes n'a pas besoin d'une nouvelle table : le motif l'inclut déjà."
       },
       "reviewsCatalog": {
         "title": "Ce qu'est cette démo",
@@ -492,7 +492,7 @@
       },
       "insuranceTerms": {
         "title": "Dans les termes de l'assureur",
-        "description": "Le glossaire nomme ce que demande un souscripteur : valeur assurée totale, cumul, sinistre maximal probable et perte annuelle attendue. Ici, le cumul désigne une exposition concentrée là où un seul événement peut toucher de nombreuses polices."
+        "description": "L'ontologie nomme ce que demande un souscripteur : valeur assurée totale, cumul, sinistre maximal probable et perte annuelle attendue. Ici, le cumul désigne une exposition concentrée là où un seul événement peut toucher de nombreuses polices."
       },
       "insuranceByRating": {
         "title": "Par note de risque, en GraphQL",
@@ -632,7 +632,7 @@
       },
       "vulnerabilitiesTerms": {
         "title": "Le vocabulaire",
-        "description": "Le glossaire de l'entreprise définit vulnérabilité exploitée connue, CVE, CWE et CVSS, et relie chaque terme aux colonnes qu'il décrit. Un score CVSS dit à quel point une vulnérabilité est grave. Seul le catalogue dit si quelqu'un l'exploite."
+        "description": "L'ontologie de l'entreprise définit vulnérabilité exploitée connue, CVE, CWE et CVSS, et relie chaque terme aux colonnes qu'il décrit. Un score CVSS dit à quel point une vulnérabilité est grave. Seul le catalogue dit si quelqu'un l'exploite."
       },
       "vulnerabilitiesAnswer": {
         "title": "La réponse en SQL",
@@ -717,7 +717,7 @@
       },
       "profilingTerms": {
         "title": "Le vocabulaire",
-        "description": "Le glossaire définit profil de données, type plausible, forme de valeur, ligne en double et valeur de remplissage, et relie chaque terme aux mesures qu'il décrit."
+        "description": "L'ontologie définit profil de données, type plausible, forme de valeur, ligne en double et valeur de remplissage, et relie chaque terme aux mesures qu'il décrit."
       },
       "profilingAnswer": {
         "title": "Ce que contient chaque colonne",
@@ -802,7 +802,7 @@
       },
       "opioidsTerms": {
         "title": "En termes simples",
-        "description": "Le glossaire explique les termes qu'un élu ou un habitant rencontrera : fonds de règlement, réduction des méfaits, allocation, dépense, nombre masqué et taux pour 100 000. Ici, la réduction des méfaits désigne ce à quoi les règlements exigent que l'argent soit consacré."
+        "description": "L'ontologie explique les termes qu'un élu ou un habitant rencontrera : fonds de règlement, réduction des méfaits, allocation, dépense, nombre masqué et taux pour 100 000. Ici, la réduction des méfaits désigne ce à quoi les règlements exigent que l'argent soit consacré."
       },
       "opioidsAsPublic": {
         "title": "Exécuter en tant que public",
@@ -910,7 +910,7 @@
       },
       "agricultureTerms": {
         "title": "Dans les termes de l'assureur",
-        "description": "Le glossaire nomme ce que demande un souscripteur d'assurance récolte : ratio sinistres/primes, cause de sinistre, historique de production réel, niveau de couverture, responsabilité et saison de croissance. Ici, le ratio sinistres/primes est l'indemnisation divisée par la prime. Au-dessus de 1, l'année a perdu de l'argent."
+        "description": "L'ontologie nomme ce que demande un souscripteur d'assurance récolte : ratio sinistres/primes, cause de sinistre, historique de production réel, niveau de couverture, responsabilité et saison de croissance. Ici, le ratio sinistres/primes est l'indemnisation divisée par la prime. Au-dessus de 1, l'année a perdu de l'argent."
       },
       "agricultureAnswer": {
         "title": "La réponse en SQL",
@@ -1106,7 +1106,7 @@
       },
       "pharmaTerms": {
         "title": "Dans les termes de la pharmacie",
-        "description": "Le glossaire nomme ce que demande un acheteur de pharmacie : NDC, formulaire, pénurie, classe de rappel et jours d'approvisionnement. Ici, le risque d'approvisionnement désigne une pénurie, un rappel par le fabricant du produit, ou trop peu de jours de stock."
+        "description": "L'ontologie nomme ce que demande un acheteur de pharmacie : NDC, formulaire, pénurie, classe de rappel et jours d'approvisionnement. Ici, le risque d'approvisionnement désigne une pénurie, un rappel par le fabricant du produit, ou trop peu de jours de stock."
       },
       "pharmaAnswer": {
         "title": "La réponse en SQL",
@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "De retour en administrateur",
         "description": "Le tableau de bord est ce que voient les opérations. La suite de la visite se fait de nouveau en tant qu'administrateur, et chaque instruction qui suit indique le rôle sous lequel elle s'exécute."
+      },
+      "groupexposureScenario": {
+        "title": "De quoi parle cette démo",
+        "description": "Une banque pragoise prête à des entreprises et enregistre la société qui détient chacune par son Legal Entity Identifier (LEI). Les règles de l'UE plafonnent ce qu'elle peut prêter à un client, ou à un groupe d'entreprises contrôlé par un même propriétaire, à 25 % de ses fonds propres de base (Tier 1). La question : envers quels groupes la banque dépasse-t-elle ce plafond ? Ses livres nomment le propriétaire de chaque emprunteur, pas qui détient ce propriétaire. La banque, ses emprunteurs et ses prêts sont fictifs ; les groupes qui les détiennent sont réels."
+      },
+      "groupexposureJoin": {
+        "title": "Reliés par le LEI",
+        "description": "La table des propriétaires de la banque et les tables de Wikidata partagent le LEI du propriétaire, et ces relations les relient. Les données de la banque restent dans sa base, celles de Wikidata dans leur réplique ; la jointure se fait dans la requête."
+      },
+      "groupexposureAnswer": {
+        "title": "La réponse en SQL",
+        "description": "La vue group_exposure rattache chaque financement au groupe de son emprunteur, via le LEI du propriétaire et Wikidata. Les groupes Veolia et Vinci dépassent chacun 25 % des fonds propres de base, et une coentreprise de Veolia et d'EPH compte dans les deux. Ni les livres de la banque ni Wikidata ne le montrent seuls. Les emprunteurs et leurs prêts sont fictifs."
+      },
+      "groupexposureExample": {
+        "title": "La réponse en GraphQL",
+        "description": "La même vue en GraphQL : les groupes auxquels la banque prête le plus, leurs emprunteurs, le montant engagé et si chacun dépasse la limite."
+      },
+      "groupexposureRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Le portefeuille de prêts d'une banque fictive et des données liées publiques de Wikidata, reliés par LEI dans un modèle gouverné. Les chaînes de propriété de Wikidata transforment de nombreux petits prêts en quelques grandes expositions de groupe, et la réponse est servie en SQL, GraphQL et REST."
+      },
+      "groupexposureWikidata": {
+        "title": "Qui détient les propriétaires, selon Wikidata",
+        "description": "Wikidata, le graphe de connaissances public, enregistre le LEI de chaque entreprise et son organisation mère. Cette source le lit via le service de requêtes SPARQL de Wikidata. Ses tables ont été chargées une seule fois, à la construction de la démo, si bien que la démo n'appelle jamais Wikidata pendant que vous l'utilisez."
+      },
+      "groupexposureFacilities": {
+        "title": "Les financements de la banque",
+        "description": "Chaque prêt à terme, ligne de crédit renouvelable et garantie accordé par la banque, avec l'emprunteur, le montant engagé et le montant tiré. La limite compte le montant engagé."
+      },
+      "groupexposureGroups": {
+        "title": "Le groupe de chaque propriétaire",
+        "description": "Pour chaque propriétaire que la banque enregistre, l'entreprise au sommet de sa chaîne d'organisations mères sur Wikidata, trouvée avec un seul chemin de propriétés SPARQL. Wikidata sait qu'une holding tchèque appartient à Veolia ou à E.ON, même si les livres de la banque l'ignorent."
+      },
+      "groupexposureTerms": {
+        "title": "En termes simples",
+        "description": "Le glossaire explique les termes d'un responsable des risques : grand risque, fonds propres de base, Legal Entity Identifier et organisation mère. Un groupe de clients liés est un ensemble d'entreprises qui forment un seul risque parce que l'une contrôle les autres."
+      },
+      "groupexposureAlone": {
+        "title": "Les livres seuls",
+        "description": "L'exposition propre de chaque emprunteur, telle que les livres de la banque la voient. La plus grande est inférieure à 10 % des fonds propres de base : aucun emprunteur n'approche la limite de 25 %."
+      },
+      "groupexposureRest": {
+        "title": "La même réponse en REST",
+        "description": "La vue est aussi un point d'accès REST, ici groupé selon qu'un groupe dépasse la limite et totalisé sur le serveur, prêt pour un rapport de risques ou un tableur."
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "Reporting de clôture sans copier le grand livre",
         "summary": "Les totaux de fin de journée d'une banque, calculés à chaque clôture directement depuis un grand livre jamais copié dans l'entrepôt, lus tels que déclarés et tels que corrigés depuis, avec la même réponse en GraphQL, en SQL et par un agent."
+      },
+      "groupexposure": {
+        "title": "Exposition par groupe via Wikidata",
+        "summary": "Envers quels groupes une banque dépasse-t-elle sa limite de grands risques ? Son portefeuille de prêts, relié par le LEI du propriétaire de chaque emprunteur aux chaînes d'organisations mères de Wikidata via SPARQL, rattache chaque emprunteur à son groupe. La banque et ses emprunteurs sont fictifs ; les groupes sont réels."
       }
     }
   }

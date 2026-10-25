@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:provisioning/1-dataset-by-category.graphql",
+  "root_field": "p__viewOrderMarginsGroupBy"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:provisioning/2-pulls-by-team.graphql",
+  "root_field": "p__pullsGroupBy"
+ }
+]

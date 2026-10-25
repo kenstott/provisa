@@ -29,6 +29,8 @@
     "jointMaxDistinctDescription": "A text column with no more distinct values than this enters the correlations and joint counts as a category.",
     "categoryMaxLabel": "Most category columns",
     "categoryMaxDescription": "How many category columns enter the correlations and joint counts; those holding a value in the most rows are kept.",
+    "classificationSampleLabel": "Rows sampled for classification",
+    "classificationSampleDescription": "How many rows, drawn at random from the run's sample, have their values tested against the classification kinds. The values are tested and not stored.",
     "groupSchedule": "Schedule and sampling",
     "groupDrift": "Drift",
     "groupDependence": "Dependence between columns"

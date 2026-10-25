@@ -301,6 +301,14 @@ CREATE, SET and DELETE write to tables through the same write pipeline as SQL, s
 Graph analytics run over a query result in the Graph Explorer. A configurable size limit keeps them in bounds, and the community detection algorithm that cost the most is allowed only on small graphs.
 { #cypher-and-graph-analytics-analytics }
 
+### SPARQL
+
+SPARQL is a graph language beside Cypher, written in the same query editor and sent by standard RDF clients to a SPARQL 1.1 endpoint. A table is a class and its rows are its subjects, a column linked to a term is a predicate, and a relationship is an edge, so there is no triple store to load. Each query becomes one SQL statement, governed and routed like any other. Property paths stop at a depth limit the operator sets, and a result cut there says so.
+{ #sparql-query }
+
+SPARQL Update changes the ontology and the data through the same governed writes as every other surface, under the same rights. It never writes raw triples.
+{ #sparql-update }
+
 ### Natural-language query
 
 Ask a question in plain language and Provisa starts an asynchronous job. It generates the answer as SQL, GraphQL, Cypher, gRPC, JSON:API and OpenAPI requests in parallel, runs each one, and returns the results side by side. Seeing the same answer in every language makes it easy to check and reuse.

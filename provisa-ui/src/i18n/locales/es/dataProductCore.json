@@ -14,13 +14,9 @@
     "upstream": "Aguas arriba",
     "downstream": "Aguas abajo",
     "via": "mediante {{vias}}",
-    "metaQueries": "Consultas",
-    "metaQueriesHint": "Las lecturas que este panel ejecuta en el dominio meta, como usted. Copie una o ábrala en su explorador: la respuesta es la misma.",
-    "copy": "Copiar",
-    "copied": "Copiado",
-    "copyQuery": "Copiar la consulta {{surface}}",
-    "openQuery": "Abrir la consulta {{surface}} en su explorador",
     "unreadable": "Su rol no puede leer los productos de datos en el dominio meta.",
+    "detailExpand": "Mostrar la entrada completa",
+    "detailCollapse": "Mostrar menos",
     "inputs": "Entradas",
     "inputsHint": "Las entradas físicas más cercanas del producto: las tablas y fuentes de las que se construyen sus miembros.",
     "inputsEmpty": "No hay entradas registradas.",
@@ -53,8 +49,6 @@
     "unassigned": "asignada a ningún producto",
     "orphan": "Comprobación huérfana",
     "orphanWarning": "{{checker}} está asignada a este producto pero comprueba {{table}}, que no es ni una de sus entradas ni uno de sus puertos de salida.",
-    "inProduct": "en {{product}}",
-    "detailExpand": "Mostrar la entrada completa",
-    "detailCollapse": "Mostrar menos"
+    "inProduct": "en {{product}}"
   }
 }

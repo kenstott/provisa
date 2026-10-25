@@ -26,6 +26,7 @@ import logging
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import source_to_catalog
+from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
 from provisa.security.rights import Capability, reaches_all_domains
@@ -67,6 +68,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
     "data_products": "data_products_meta",  # REQ-2125
+    "sources": "sources_meta",  # REQ-1443: identity and type only
 }
 
 
@@ -388,7 +390,7 @@ async def _build_source_pools_and_enums(
     from provisa.api.app import state
     from provisa.api.data.pgwire_write import start_write_server
     from provisa.executor.drivers.registry import has_driver
-    from provisa.transpiler.router import CODE_DIRECT_SOURCES, VIRTUAL_SOURCES
+    from provisa.transpiler.router import VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
     from provisa.core.secrets_store import bound_to_request_org
 
@@ -418,9 +420,7 @@ async def _build_source_pools_and_enums(
             start_write_server(src)
             _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
             if has_driver(src.type.value) and (
-                src.type.value not in VIRTUAL_SOURCES
-                or _is_flat_file
-                or src.type.value in CODE_DIRECT_SOURCES  # REQ-2100
+                src.type.value not in VIRTUAL_SOURCES or _is_flat_file
             ):
                 resolved_pw = resolve_secrets(src.password)
                 resolved_host = (
@@ -432,10 +432,15 @@ async def _build_source_pools_and_enums(
                 state.source_dsns[src.id] = (
                     resolved_database
                     if _is_flat_file
-                    # REQ-2100: a code source is no database another source can share.
-                    else f"code:{src.id}"
-                    if src.type.value in CODE_DIRECT_SOURCES
-                    else f"{resolved_host}:{src.port}/{src.database}"
+                    # REQ-863: one database under one login, never two logins' grants as one.
+                    else colocation_key(
+                        resolved_host,
+                        src.port,
+                        src.database,
+                        src.username,
+                        resolved_pw,
+                        {k: resolve_secrets(v) for k, v in src.federation_hints.items()},
+                    )
                 )
                 # Best-effort: an unreachable/misconfigured source must not abort startup —
                 # the engine-routed path still works. See startup_resilience.
@@ -1564,6 +1569,16 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     undefined = await undefined_commands(conn)
     not_defined = [f for f in tracked_functions if f["name"] in undefined]
     tracked_functions = [f for f in tracked_functions if f["name"] not in undefined]
+    # REQ-2131: a column transform is applied in a projection, never called on its own: it is kept
+    # apart, so no surface offers it as a command.
+    from provisa.codesource.columns import COLUMN_TRANSFORM
+
+    state.column_transforms = {
+        f["name"]: {**f, "output_columns": _json_list(f["output_columns"])}
+        for f in tracked_functions
+        if f["impl_kind"] == COLUMN_TRANSFORM
+    }
+    tracked_functions = [f for f in tracked_functions if f["impl_kind"] != COLUMN_TRANSFORM]
     # REQ-2001: a statement command's contract, derived again at every build; one whose statement
     # no longer resolves against the model carries why (contract.broken), and a call is refused.
     from provisa.compiler.statement_contract import derive as _derive_contract
@@ -1934,12 +1949,15 @@ _META_TABLES = [
     "tag_expiry",  # REQ-1375: expiring/expired assignments report (view-only, like roles_domain_access)
     "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
     "sensitive_coverage",  # REQ-2091: sensitive columns' fake coverage; view-only
+    "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
     "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
     "glossary_term_edges",  # REQ-1584
     "glossary_term_experts",  # REQ-1584
     "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
+    "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
+    "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
     "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
     "product_checks",  # REQ-1443: each product's promises, expectations, partner DQ, orphans

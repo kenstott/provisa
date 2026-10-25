@@ -255,12 +255,19 @@ registered_tables = Table(
     Column("view_sql", Text),
     # REQ-1443: the data-quality contract a checker table's rows are the scan results of.
     Column("dq_contract", Text),
+    # REQ-1443 clause 10: the contract's checks, parsed at registration; none_as_null: a table
+    # with no contract stores SQL NULL, which the dq_rules view skips.
+    Column("dq_rules", JSON(none_as_null=True)),
     # REQ-1934: the Data Profiler source this table is a member of; NULL for none.
     Column("profiler_source_id", Text),
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
+    # REQ-2130: the glossary term this table's rows are instances of; one per table (schema.sql).
+    Column("class_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
+    # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
+    Column("class_term_derived", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("row_materialize", Boolean, nullable=False, server_default=false()),  # REQ-1865
     Column(
@@ -408,6 +415,8 @@ relationships = Table(
     Column("graphql_alias", Text),
     Column("disable_cypher", Boolean, nullable=False, server_default=false()),
     Column("hide_target_meta", Boolean, nullable=False, server_default=false()),  # REQ-1132
+    # REQ-2141: the rows this edge joins are the same entity (repositories/identity.py).
+    Column("same_entity", Boolean, nullable=False, server_default=false()),
     # REQ-1586: junction declaration — see schema.sql for the shape and the completeness checks.
     Column("via_table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
     Column("via_source_column", Text),
@@ -425,6 +434,9 @@ relationships = Table(
     Column("owner", Text),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("needs_review", Boolean, nullable=False, server_default=false()),
+    # REQ-351: the effective names, derived and stored once (core.relationship_names).
+    Column("cypher_type", Text),
+    Column("graphql_field", Text),
     Column("tenant_id", Uuid),
     UniqueConstraint("source_table_id", "alias", name="relationships_source_alias_unique"),
     CheckConstraint(
@@ -603,6 +615,8 @@ tag_assignments = Table(
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
     Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1660
+    # REQ-2145: the glossary term a tag is on (pii on a Property term).
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
@@ -619,7 +633,8 @@ tag_assignments = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
-        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product')",
+        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', "
+        "'term')",
         name="tag_assignments_object_type_check",
     ),
 )
@@ -653,11 +668,16 @@ glossary_terms = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", Text, nullable=False),
     Column("definition", Text),
-    Column("is_abstract", Boolean, nullable=False, server_default=false()),
     Column("deprecated", Boolean, nullable=False, server_default=false()),
     # Curator-set soft delete: bound but out of service. See schema.sql for the full rule.
     Column("retired", Boolean, nullable=False, server_default=false()),
     Column("export_excluded", Boolean, nullable=False, server_default=false()),
+    # REQ-2144: the asserted parts of a term's status (schema.sql).
+    Column("deprecation_asserted", Boolean, nullable=False, server_default=false()),
+    Column("status_reason", Text),
+    Column("retire_on", Date),
+    Column("status_by", Text),
+    Column("status_at", DateTime(timezone=True)),
     Column("tenant_id", Uuid),
     UniqueConstraint("name"),
 )
@@ -1305,6 +1325,25 @@ profiler_constraints = Table(
     Column("run_id", Text, nullable=False),  # the run that proposed it
     Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     UniqueConstraint("table_id", "signature"),
+)
+
+# REQ-2147: a steward's decision on a classification a profile suggested for a column -- accepted
+# (the column linked to the kind's Property term; for a sensitive kind marked pii), or rejected so
+# it is not suggested again for that column and kind.
+profiler_classifications = Table(
+    "profiler_classifications",
+    metadata,
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("physical_column", Text, nullable=False),  # the column's registered name
+    Column("kind", Text, nullable=False),  # a kind of provisa/profiler/classification_kinds.yaml
+    Column("status", Text, nullable=False),  # accepted | rejected
+    Column("evidence", Text, nullable=False),  # the suggestion's evidence when it was decided
+    Column("run_id", Text, nullable=False),  # the run that suggested it
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("table_id", "physical_column", "kind"),
 )
 
 # REQ-1939: how close a generated dataset came to the profiles it was drawn from.

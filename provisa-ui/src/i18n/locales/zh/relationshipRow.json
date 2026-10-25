@@ -41,6 +41,9 @@
     "deleteConsequence": "该关系将从模型中移除。查询将无法再通过它进行联接。",
     "parametersFed": "传入的参数",
     "parametersFedHelp": "通过此关系的联接会把每个源行中的这些值传给目标。",
-    "parameterNotFed": "不传入"
+    "parameterNotFed": "不传入",
+    "sameEntity": "同一实体",
+    "sameEntityHint": "它连接的行是同一事物：一个术语关联两张表，按键一对一连接",
+    "cardinalityOneToOne": "一对一"
   }
 }

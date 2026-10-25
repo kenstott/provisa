@@ -23,10 +23,14 @@ import type { GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
+// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
+vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
+  // A term with no findings: the findings list names none.
+  fetchGlossaryFindings: vi.fn(async () => []),
   createGlossaryTerm: vi.fn(),
 }));
 
@@ -65,6 +69,13 @@ const ORDER: GlossaryTermSummary = {
   is_abstract: false,
   deprecated: false,
   ref_count: 2,
+  table_count: 0,
+  identity_gap: false,
+  findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: true,
@@ -109,7 +120,7 @@ describe("glossary domain filter", () => {
     expect(mockList).toHaveBeenCalledWith("", true, null);
   });
 
-  it("declares an abstract term's domains, because it has no refs to derive them from", async () => {
+  it("declares a concept's domains, because it has no refs to derive them from", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-new-btn"));
 

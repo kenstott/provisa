@@ -12,79 +12,177 @@
 // data_products_meta and its relationships (REQ-2125), the glossary's term edges and the
 // sensitive columns — and turned into the graph's nodes and edges.
 
-import { rootQuery, rowsOf, type MetaReader, type Selection } from "../../api/metaGraph";
-import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
+import {
+  operation,
+  rootField,
+  rowsOf,
+  type MetaReader,
+  type Selection,
+  type Where,
+} from "../../api/metaGraph";
+import type { GraphData, GraphEdge, GraphNode, QueryScope } from "./graphModel";
+import { catalogTableName } from "../../naming";
 
-// Relationships by the GraphQL alias the meta domain declares for them (_meta_seed); the one
-// declared without an alias (a table's columns) by the view it reaches.
-const COLUMN: Selection = {
-  fields: ["column_name", "column_key"],
-  rels: {
-    glossary_ref: {
-      alias: "glossaryRef",
-      sel: {
-        fields: ["term_id"],
-        rels: { term: { alias: "term", sel: { fields: ["id", "name"] } } },
-      },
-    },
-    tags: { alias: "tags", sel: { fields: ["tag_id"] } },
-    // REQ-2129: the column-level edges deriving this column (view_governance only).
-    upstream: {
-      alias: "upstream",
-      sel: { fields: ["source_column_key", "source_relation", "source_column", "via"] },
-    },
-  },
+/** What the product graph's query keeps (REQ-2136): its domain, tag, sensitivity and term edge
+ * type filters, in its where. None of one is every one. A row the filters drop takes what hangs off
+ * it (a product its members, a table its columns, a column the terms it binds). */
+export type ProductFilters = Pick<QueryScope, "domains" | "tags" | "sensitivities" | "edgeTypes">;
+
+export const NO_PRODUCT_FILTERS: ProductFilters = {
+  domains: [],
+  tags: [],
+  sensitivities: [],
+  edgeTypes: [],
 };
 
-const TABLE: Selection = {
-  fields: ["id", "domain_id", "table_name", "dq_contract", "product_id"],
-  rels: {
-    table_columns: { to: "table_columns", sel: COLUMN },
-    tags: { alias: "tags", sel: { fields: ["tag_id"] } },
-    profile_results: { alias: "profileResults", sel: { fields: ["id", "table_name"] } },
-    checks: { alias: "checks", sel: { fields: ["id"] } },
-    source_relationships: {
-      alias: "sourceRelationships",
-      sel: {
-        fields: ["id"],
-        rels: {
-          target_table: {
-            alias: "targetTable",
-            sel: { fields: ["id", "domain_id", "table_name", "product_id"] },
+const all = (conds: (Where | undefined)[]): Where | undefined => {
+  const kept = conds.filter((c): c is Where => c !== undefined);
+  return kept.length === 0 ? undefined : kept.length === 1 ? kept[0] : { _and: kept };
+};
+
+/** A row in one of ``f``'s domains. */
+const inDomains = (f: ProductFilters): Where | undefined =>
+  f.domains.length === 0 ? undefined : { domain_id: { in: f.domains } };
+
+/** A row carrying one of ``f``'s tags (one the tag filter judges: it reads its tags). */
+const tagged = (f: ProductFilters): Where | undefined =>
+  f.tags.length === 0 ? undefined : { tags: { tag_id: { in: f.tags } } };
+
+/** The tags drawn: only those chosen. */
+const tagRel = (f: ProductFilters): Selection["rels"] => ({
+  tags: {
+    alias: "tags",
+    sel: { fields: ["tag_id"] },
+    ...(f.tags.length === 0 ? {} : { where: { tag_id: { in: f.tags } } }),
+  },
+});
+
+/** sensitive_coverage's tags, "a, b": one of ``x`` among them, exactly. */
+const sensitiveTo = (xs: string[]): Where => ({
+  _or: xs.flatMap((x) => [
+    { tags: { eq: x } },
+    { tags: { like: `${x}, %` } },
+    { tags: { like: `%, ${x}` } },
+    { tags: { like: `%, ${x}, %` } },
+  ]),
+});
+
+/** A column with one of ``f``'s sensitivities; every column when none is chosen. */
+const sensitiveColumn = (f: ProductFilters): Where | undefined =>
+  f.sensitivities.length === 0 ? undefined : { sensitivity: sensitiveTo(f.sensitivities) };
+
+function columnSel(f: ProductFilters): Selection {
+  return {
+    fields: ["column_name", "column_key"],
+    rels: {
+      glossary_ref: {
+        alias: "glossaryRef",
+        sel: {
+          fields: ["term_id"],
+          rels: {
+            term: {
+              alias: "term",
+              sel: {
+                // The bound term alone: a product's neighbourhood ends at the terms its columns
+                // are bound to (neighbourhood.ts), so their edges to other terms are not read.
+                fields: ["id", "name"],
+              },
+            },
           },
         },
       },
-    },
-  },
-};
-
-export const PRODUCT: Selection = {
-  fields: ["id", "name", "domain_id"],
-  rels: {
-    member_tables: { alias: "memberTables", sel: TABLE },
-    commands: { alias: "commands", sel: { fields: ["name", "domain_id"] } },
-    tags: { alias: "tags", sel: { fields: ["tag_id"] } },
-    // REQ-2126: the product's links to the rest of the model.
-    edges: {
-      alias: "edges",
-      sel: {
-        fields: [
-          "kind",
-          "direction",
-          "target_product_id",
-          "target_table_id",
-          "target_relation",
-          "hops",
-          "path_count",
-          "aliases",
-        ],
-        rels: {
-          target_product: { alias: "targetProduct", sel: { fields: ["id", "name", "domain_id"] } },
-        },
+      ...tagRel(f),
+      sensitivity: { alias: "sensitivity", sel: { fields: ["tags"] } },
+      // REQ-2129: the column-level edges deriving this column (view_governance only).
+      upstream: {
+        alias: "upstream",
+        sel: { fields: ["source_column_key", "source_relation", "source_column", "via"] },
       },
     },
-  },
-};
+  };
+}
+
+function tableSel(f: ProductFilters): Selection {
+  const dom = inDomains(f);
+  return {
+    fields: ["id", "domain_id", "table_name", "dq_contract", "product_id"],
+    rels: {
+      table_columns: {
+        to: "table_columns",
+        sel: columnSel(f),
+        where: all([tagged(f), sensitiveColumn(f)]),
+      },
+      ...tagRel(f),
+      profile_results: { alias: "profileResults", sel: { fields: ["id", "table_name"] } },
+      checks: { alias: "checks", sel: { fields: ["id"] } },
+      source_relationships: {
+        alias: "sourceRelationships",
+        sel: {
+          fields: ["id"],
+          rels: {
+            target_table: {
+              alias: "targetTable",
+              sel: { fields: ["id", "domain_id", "table_name", "product_id"] },
+            },
+          },
+        },
+        where: dom && { target_table: dom },
+      },
+    },
+  };
+}
+
+function productSel(f: ProductFilters): Selection {
+  const dom = inDomains(f);
+  return {
+    fields: ["id", "name", "domain_id"],
+    rels: {
+      member_tables: {
+        alias: "memberTables",
+        sel: tableSel(f),
+        // A judged table: in a domain kept, with a tag kept, with a column of a sensitivity kept.
+        where: all([
+          dom,
+          tagged(f),
+          f.sensitivities.length === 0
+            ? undefined
+            : { table_columns: { sensitivity: sensitiveTo(f.sensitivities) } },
+        ]),
+      },
+      commands: { alias: "commands", sel: { fields: ["name", "domain_id"] }, where: dom },
+      ...tagRel(f),
+      // REQ-2126: the product's links to the rest of the model. A linked product is a bare node:
+      // its own parts are its graph's, never read through this one (so a focus on this product,
+      // the view's own, prunes nothing the query reads).
+      edges: {
+        alias: "edges",
+        sel: {
+          fields: [
+            "kind",
+            "direction",
+            "target_product_id",
+            "target_table_id",
+            "target_relation",
+            "hops",
+            "path_count",
+            "aliases",
+          ],
+          rels: {
+            target_product: {
+              alias: "targetProduct",
+              sel: { fields: ["id", "name", "domain_id"] },
+            },
+            target_table: {
+              alias: "targetTable",
+              sel: { fields: ["domain_id", "table_name"] },
+            },
+          },
+        },
+        where: dom && { _or: [{ kind: { eq: "lineage" } }, { target_product: dom }] },
+      },
+    },
+  };
+}
 
 interface Tagged {
   tags?: { tag_id: string }[] | null;
@@ -101,7 +199,17 @@ interface ColumnRow extends Tagged {
         via: string;
       }[]
     | null;
-  glossary_ref?: { term_id: number; term?: { id: number; name: string } | null }[] | null;
+  glossary_ref?:
+    | {
+        term_id: number;
+        term?: {
+          id: number;
+          name: string;
+        } | null;
+      }[]
+    | null;
+  // Its row in sensitive_coverage when it is sensitive; undefined when the role cannot read it.
+  sensitivity?: { tags: string }[] | null;
 }
 
 interface TableRow extends Tagged {
@@ -115,7 +223,7 @@ interface TableRow extends Tagged {
   checks?: { id: number } | null;
   source_relationships?:
     | {
-        id: number;
+        id: string; // the relationships table's TEXT key
         target_table?: {
           id: number;
           domain_id: string;
@@ -136,6 +244,8 @@ export interface EdgeRow {
   path_count: number;
   aliases: string | null;
   target_product?: { id: string; name: string; domain_id: string } | null;
+  // Set when a lineage relation is a registered table; null for one that is not (REQ-1626, REQ-2001).
+  target_table?: { domain_id: string; table_name: string } | null;
 }
 
 export interface ProductRow extends Tagged {
@@ -162,34 +272,53 @@ export interface SensitiveRow {
   tags: string;
 }
 
-/** The product graph's queries: the products (one, or all) with their parts. */
-export function productsQuery(m: MetaReader, product: string | null): string | null {
-  return rootQuery(
+/** The product graph's one query (REQ-2136): the products (one, or all) with their parts, the
+ * terms their columns are with those terms' edges, and each column's sensitivity, kept by ``f``. */
+export function productGraphQuery(
+  m: MetaReader,
+  product: string | null,
+  f: ProductFilters,
+): string | null {
+  const field = rootField(
     m,
-    "DataProductGraph",
     "data_products",
-    PRODUCT,
-    product === null ? undefined : { id: { eq: product } },
+    productSel(f),
+    all([
+      product === null ? undefined : { id: { eq: product } },
+      inDomains(f),
+      tagged(f),
+      f.sensitivities.length === 0
+        ? undefined
+        : { member_tables: { table_columns: { sensitivity: sensitiveTo(f.sensitivities) } } },
+    ]),
   );
+  return field === null ? null : operation("DataProductGraph", [field]);
 }
 
-/** The term edges touching ``terms``, from either end; null when the role cannot read them. */
-export function termEdgesQueries(m: MetaReader, terms: number[]): string[] | null {
-  const sel = { fields: ["id", "from_term_id", "to_term_id", "rel_type", "from_term", "to_term"] };
-  const out = (["from_term_id", "to_term_id"] as const).map((end) =>
-    rootQuery(m, "TermEdges", "glossary_term_edges", sel, { [end]: { in: terms } }),
+/**
+ * The graph of the product graph's one query: its columns' sensitivity read off the columns, null
+ * when the role cannot read it (as toGraphData takes it). The bound terms are read without their
+ * edges to other terms, so the graph holds none.
+ */
+export function productGraph(products: ProductRow[]): GraphData {
+  const columns = products.flatMap((p) =>
+    (p.member_tables ?? []).flatMap((t) =>
+      (t.table_columns ?? []).map((c) => ({ table: t.id, c })),
+    ),
   );
-  return out.every((q): q is string => q !== null) ? out : null;
-}
-
-export function sensitiveQuery(m: MetaReader, tables: number[]): string | null {
-  return rootQuery(
-    m,
-    "SensitiveColumns",
-    "sensitive_coverage",
-    { fields: ["column_key", "table_id", "tags"] },
-    { table_id: { in: tables } },
-  );
+  const readable = (pick: (c: ColumnRow) => unknown) =>
+    columns.length === 0 || columns.every(({ c }) => pick(c) !== undefined);
+  const sensitive: SensitiveRow[] | null = readable((c) => c.sensitivity)
+    ? columns.flatMap(({ table, c }) =>
+        (c.sensitivity ?? []).map((x) => ({
+          column_key: c.column_key,
+          table_id: table,
+          tags: x.tags,
+        })),
+      )
+    : null;
+  // No term edges: the read stops at the bound terms.
+  return toGraphData(products, [], sensitive);
 }
 
 export const productNode = (id: string) => `p:${id}`;
@@ -271,7 +400,15 @@ export function toGraphData(
         // Upstream ancestry stands in lanes by its distance; a consumer one lane downstream.
         const xid = `l:${e.target_relation}`;
         const lane = e.direction === "upstream" ? -e.hops : 1;
-        node({ id: xid, type: "relation", label: e.target_relation, lane });
+        // A registered table by its catalog name; a relation that is no registered table (REQ-1626,
+        // REQ-2001) by its relation name, which is its identity.
+        const label = e.target_table
+          ? catalogTableName({
+              domainId: e.target_table.domain_id,
+              tableName: e.target_table.table_name,
+            })
+          : e.target_relation;
+        node({ id: xid, type: "relation", label, lane });
         if (e.direction === "upstream") edge(xid, pid, "lineage");
         else edge(pid, xid, "lineage");
       }
@@ -311,6 +448,8 @@ export function toGraphData(
           label: `${t.table_name}.${c.column_name}`,
           parent: tid,
           domains: [t.domain_id],
+          // A member's column: the product holds it.
+          inProduct: true,
           tags: tagIds(c),
           ...(sensitive === null ? {} : { sensitivities: sens.get(c.column_key) ?? [] }),
         });
@@ -319,7 +458,12 @@ export function toGraphData(
         for (const u of c.upstream ?? []) {
           const sid = `c:${u.source_column_key}`;
           // A column outside the product stands alone, named by its relation.
-          node({ id: sid, type: "column", label: `${u.source_relation}.${u.source_column}` });
+          node({
+            id: sid,
+            type: "column",
+            label: `${u.source_relation}.${u.source_column}`,
+            inProduct: false,
+          });
           const id = `column_lineage:${sid}>${cid}`;
           if (!edges.has(id))
             edges.set(id, { id, a: sid, b: cid, kind: "column_lineage", label: u.via });
@@ -331,7 +475,8 @@ export function toGraphData(
         }
       }
       for (const r of t.profile_results ?? []) {
-        node({ id: `r:${r.id}`, type: "profile", label: r.table_name });
+        // Its table is its parent: a profile is reached on its table's page.
+        node({ id: `r:${r.id}`, type: "profile", label: r.table_name, parent: tid });
         edge(`r:${r.id}`, tid, "profiled");
       }
       for (const rel of t.source_relationships ?? []) {

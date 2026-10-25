@@ -20,7 +20,7 @@ export function ColorSchemeToggle() {
   const isDark = colorScheme === "dark";
   return (
     <ActionIcon
-      variant="default"
+      variant="subtle"
       size="lg"
       aria-label={t("theme.toggle")}
       data-testid="color-scheme-toggle"

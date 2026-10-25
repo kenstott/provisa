@@ -55,6 +55,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # REQ-1949: the ceiling that bounds the statement last governed with this context, when a
     # ceiling and not the statement's own LIMIT is what bounds it (compiler/row_limit.RowLimit).
     row_limit: Any = None
+    # REQ-005: the ceiling that bounds each list the statement last governed with this context
+    # nests (compiler/list_cap), when it nests any; None otherwise.
+    list_limit: Any = None
     sample_size: int | None = None
     # The role this context was built for, and what it may write (compiler/write_admission.py):
     # whether it holds the ``write`` right (REQ-868), and per table its write grant for each
@@ -1422,14 +1425,27 @@ def apply_governance(
 
     tree = _govern_selects(tree, gov_ctx, answers=not writes)
 
-    governed = tree.sql(dialect="postgres")
-
     # Apply LIMIT ceiling (REQ-005): most restrictive of the role-level ceiling and
     # any per-table ceiling on a table referenced by the query.
     # A ceiling bounds the rows a READ returns; a write returns none, and what it may write
     # is its admission's to decide.
     bound = None if writes else _effective_ceiling(tree, gov_ctx)
     gov_ctx.row_limit = None
+    gov_ctx.list_limit = None
+    if bound is not None:
+        from provisa.compiler.list_cap import cap_lists
+
+        def columns_of(table: exp.Table) -> list[str] | None:
+            tid = _table_id_for_node(table, gov_ctx)
+            if tid is None or tid not in gov_ctx.all_columns:
+                return None
+            return [name for name, _type in gov_ctx.all_columns[tid]]
+
+        # REQ-005 (amended 2026-10-24): and each list the read nests, at the same ceiling.
+        if cap_lists(tree, bound.limit, columns_of):
+            gov_ctx.list_limit = bound
+
+    governed = tree.sql(dialect="postgres")
     if bound is not None:
         from provisa.compiler.row_limit import binds
 

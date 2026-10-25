@@ -51,6 +51,7 @@ import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./security/DerivedRoles";
 import { useDerivedRoles, type DerivedPick } from "../hooks/useDerivedRoles";
+import { matchesQuery } from "../lib/searchItems";
 
 /** A role may be saved once it lists a domain — its own, or one a parent role hands down. */
 function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): boolean {
@@ -235,12 +236,7 @@ export function SecurityRolesPage() {
   ];
 
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredRoles = roles.filter(
-    (r) =>
-      !roleSearch.trim() ||
-      r.id.toLowerCase().includes(roleSearch.toLowerCase()) ||
-      r.description.toLowerCase().includes(roleSearch.toLowerCase()),
-  );
+  const filteredRoles = roles.filter((r) => matchesQuery([r.id, r.description], roleSearch));
   const roleColumns: ListColumn<Role>[] = [
     { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
     {

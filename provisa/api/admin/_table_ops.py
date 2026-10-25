@@ -462,6 +462,18 @@ async def column_field_refusal(pool, input, columns: list) -> "MutationResult | 
     return None
 
 
+def land_transform_view(input) -> None:  # REQ-2131
+    """A view that applies a column transform is landed, declared or not: its outputs are computed
+    by Provisa when the view is built, through the build every materialized view has (read its
+    inputs, call the function in batches, store the result), refreshed as its freshness declares,
+    and read by the engine as a stored table. ``input`` is a registration or an edit."""
+    from provisa.api.app import state
+    from provisa.codesource.columns_fold import called
+
+    if input.view_sql and called(input.view_sql, getattr(state, "column_transforms", None) or {}):
+        input.materialize = True
+
+
 async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult | None]":
     """Resolve the effective column list for a table registration or update.
 

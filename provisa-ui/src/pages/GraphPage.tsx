@@ -30,6 +30,7 @@ import {
 } from "../hooks/useAdminQueries";
 import { tableRef } from "../components/relationships/relationship-types";
 import { useAuth } from "../context/AuthContext";
+import { uuid } from "../lib/uuid";
 import "./GraphPage.css";
 import { useLocalStorage, graphState, saveGraphState } from "../components/graph/graph-persistence";
 import type { Favorite } from "../components/graph/graph-persistence";
@@ -37,6 +38,7 @@ import type {
   SchemaNodeLabel,
   SchemaRel,
   CypherSchema,
+  GraphCounts,
 } from "../components/graph/graph-schema-types";
 import { Sidebar } from "../components/graph/GraphSidebar";
 import { QueryBar } from "../components/graph/QueryBar";
@@ -44,10 +46,34 @@ import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { Neo4jExportModal } from "../components/graph/Neo4jExportModal";
 import { buildDropExpansion, withExpansion } from "./graph-drop";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
-import { toResultRedirect } from "../api/admin";
-import { drawnElements, useMaxNodes } from "../components/graph/graph-drawing";
+import { useMaxNodes } from "../components/graph/graph-drawing";
+import {
+  cypherError,
+  frameStatement,
+  showing,
+  type CypherAnswer,
+} from "../components/graph/frameStatements";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+/** A refused request's error: its body's ``detail`` or ``error`` when it is JSON that has one, else
+ *  the body as sent. */
+function refusalText(body: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return body;
+  }
+  if (parsed !== null && typeof parsed === "object") {
+    const said =
+      (parsed as { detail?: unknown; error?: unknown }).detail ??
+      (parsed as { error?: unknown }).error;
+    if (typeof said === "string") return said;
+    if (said !== undefined) return JSON.stringify(said);
+  }
+  return body;
+}
+
 export function GraphPage() {
   const { t } = useTranslation();
   const { role, selectedRoles, loading: authLoading } = useAuth();
@@ -103,9 +129,12 @@ export function GraphPage() {
   // The viewer's max-nodes setting: the most distinct nodes a frame draws.
   const [maxNodes, setMaxNodes] = useMaxNodes();
   const [schemaLoading, setSchemaLoading] = useState(true);
-  const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null);
-  const [totalRelCount, setTotalRelCount] = useState<number | null>(null);
-  const [labelCounts, setLabelCounts] = useState<Record<string, number>>({});
+  // Why /data/graph-schema gave no schema (a refused request, or none reached); null when it did.
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+  // What /data/graph-counts last said for this role and domain selection; null until it has.
+  const [counts, setCounts] = useState<GraphCounts | null>(null);
+  // Why /data/graph-counts gave no counts (a refused request, or none reached); null when it did.
+  const [countsError, setCountsError] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     "provisa.graph.sidebarWidth",
     240,
@@ -212,7 +241,11 @@ export function GraphPage() {
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     fetch("/data/graph-schema", { headers })
-      .then((r) => r.json())
+      .then(async (r) => {
+        // A refused request's body is its error, never a schema.
+        if (!r.ok) throw new Error(refusalText(await r.text()));
+        return r.json();
+      })
       .then((data) => {
         const nodeLabels: SchemaNodeLabel[] = (data.node_labels ?? []).map(
           (n: {
@@ -220,6 +253,7 @@ export function GraphPage() {
             domain_label: string | null;
             domain_id: string | null;
             table_label: string;
+            table_id: number;
             properties: string[];
             pk_columns: string[];
             id_column?: string;
@@ -232,6 +266,7 @@ export function GraphPage() {
             domainLabel: n.domain_label ?? null,
             domainId: n.domain_id ?? null,
             tableLabel: n.table_label,
+            tableId: n.table_id,
             properties: n.properties ?? [],
             pkColumns: n.pk_columns ?? [],
             idColumn: n.id_column ?? null,
@@ -275,8 +310,13 @@ export function GraphPage() {
         clusterMapRef.current = newClusterMap;
         setSchemaNodeLabels(uniqueNodeLabels);
         setSchemaRels(rels.sort((a, b) => a.type.localeCompare(b.type)));
+        setSchemaError(null);
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        setSchemaNodeLabels([]);
+        setSchemaRels([]);
+        setSchemaError(e instanceof Error ? e.message : String(e));
+      })
       .finally(() => setSchemaLoading(false));
   }, [roleHeaderValue]);
 
@@ -285,50 +325,124 @@ export function GraphPage() {
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     const domainsKey = [...checkedDomains].sort().join(",");
-    const countsKey = `provisa.graph.counts.${role?.id ?? "default"}.${domainsKey}`;
+    // v3: only counts are stored (a v2 entry could hold a refused request's error body).
+    const countsKey = `provisa.graph.counts.v3.${role?.id ?? "default"}.${domainsKey}`;
     try {
       const cached = getStored(countsKey);
-      if (cached) {
-        const c = JSON.parse(cached) as {
-          node_count: number;
-          rel_count: number;
-          label_counts: Record<string, number>;
-        };
-        setTotalNodeCount(c.node_count);
-        setTotalRelCount(c.rel_count);
-        setLabelCounts(c.label_counts);
-      } else {
-        setTotalNodeCount(null);
-        setTotalRelCount(null);
-      }
+      setCounts(cached ? (JSON.parse(cached) as GraphCounts) : null);
     } catch {
-      setTotalNodeCount(null);
-      setTotalRelCount(null);
+      setCounts(null);
     }
     const domainsParam = checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
     fetch(`/data/graph-counts${domainsParam}`, { headers })
-      .then((r) => r.json())
+      .then(async (r) => {
+        // A refused request's body is its error, never counts: shown, and not stored.
+        if (!r.ok) throw new Error(refusalText(await r.text()));
+        return (await r.json()) as GraphCounts;
+      })
       .then((data) => {
-        const node_count = data.node_count ?? 0;
-        const rel_count = data.rel_count ?? 0;
-        const label_counts = data.label_counts ?? {};
-        setTotalNodeCount(node_count);
-        setTotalRelCount(rel_count);
-        setLabelCounts(label_counts);
+        setCounts(data);
+        setCountsError(null);
         try {
-          setStored(countsKey, JSON.stringify({ node_count, rel_count, label_counts }));
+          setStored(countsKey, JSON.stringify(data));
         } catch {
           /* quota */
         }
       })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        setCounts(null);
+        setCountsError(e instanceof Error ? e.message : String(e));
+      });
     /* eslint-disable-next-line react-hooks/exhaustive-deps -- refetch counts only on the listed schema/role/domain inputs; other referenced setters are stable */
   }, [schemaNodeLabels, schemaRels, role?.id, checkedDomains]);
+
+  // Run ``query`` and put what it answered in frame ``id``: one result per statement it holds.
+  const answer = useCallback(
+    async (id: string, query: string, start: number) => {
+      try {
+        const hdrs: Record<string, string> = { "Content-Type": "application/json" };
+        if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
+        hdrs["X-Provisa-Stats"] = "true";
+        // The box may hold several statements, as Neo4j Browser's editor does: the server splits
+        // them and answers each on its own, in order; the frame shows one at a time.
+        const res = await fetch("/data/cypher", {
+          method: "POST",
+          headers: hdrs,
+          body: JSON.stringify({ query, params: {}, results: "each" }),
+        });
+        const elapsed = Date.now() - start;
+        if (!res.ok) {
+          const text = await res.text();
+          let refused: { error: string; violations?: string[] };
+          try {
+            refused = cypherError(JSON.parse(text), res.status);
+          } catch {
+            refused = { error: text }; // no JSON body (a proxy's page): the response as it came
+          }
+          setFrames((f) => {
+            const next = f.map((fr) =>
+              fr.id === id
+                ? { ...fr, status: "error" as const, violations: undefined, ...refused }
+                : fr,
+            );
+            graphState.frames = next;
+            saveGraphState(graphState);
+            return next;
+          });
+          return;
+        }
+        const { results } = (await res.json()) as { results: CypherAnswer[] };
+        const statements = results.map((r) => frameStatement(r, maxNodes, clusterMapRef.current));
+        setFrames((f) => {
+          const next = f.map((fr) =>
+            fr.id === id
+              ? statements.length === 0
+                ? { ...fr, status: "done" as const, elapsed }
+                : {
+                    ...fr,
+                    ...showing(statements[0]),
+                    elapsed,
+                    statements: statements.length > 1 ? statements : undefined,
+                    statementIndex: 0,
+                  }
+              : fr,
+          );
+          graphState.frames = next;
+          saveGraphState(graphState);
+          return next;
+        });
+      } catch (err) {
+        setFrames((f) => {
+          const next = f.map((fr) =>
+            fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr,
+          );
+          graphState.frames = next;
+          saveGraphState(graphState);
+          return next;
+        });
+      }
+    },
+    [roleHeaderValue, maxNodes],
+  );
+
+  // One statement's result, of the frame's, shown: its drawing, rows and error.
+  const showStatement = useCallback((id: string, index: number) => {
+    setFrames((f) => {
+      const next = f.map((fr) =>
+        fr.id === id && fr.statements
+          ? { ...fr, ...showing(fr.statements[index]), statementIndex: index }
+          : fr,
+      );
+      graphState.frames = next;
+      saveGraphState(graphState);
+      return next;
+    });
+  }, []);
 
   const runQuery = useCallback(
     async (query: string, view?: FrameView, frameId?: string) => {
       if (!query) return;
-      const id = frameId ?? crypto.randomUUID();
+      const id = frameId ?? uuid();
       if (view) setFrameViews((views) => ({ ...views, [id]: view }));
       const start = Date.now();
       setFrames((f) => {
@@ -354,86 +468,9 @@ export function GraphPage() {
         saveGraphState(graphState);
         return next;
       });
-      try {
-        const hdrs: Record<string, string> = { "Content-Type": "application/json" };
-        if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
-        hdrs["X-Provisa-Stats"] = "true";
-        const res = await fetch("/data/cypher", {
-          method: "POST",
-          headers: hdrs,
-          body: JSON.stringify({ query, params: {} }),
-        });
-        const elapsed = Date.now() - start;
-        if (!res.ok) {
-          const text = await res.text();
-          let msg: string;
-          try {
-            msg = (JSON.parse(text) as { error?: string }).error ?? text;
-          } catch {
-            msg = text;
-          }
-          setFrames((f) => {
-            const next = f.map((fr) =>
-              fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr,
-            );
-            graphState.frames = next;
-            saveGraphState(graphState);
-            return next;
-          });
-          return;
-        }
-        const data = await res.json();
-        const rows: Record<string, unknown>[] = data.rows ?? [];
-        const columns: string[] = data.columns ?? [];
-        const queryStats: unknown = data.provisa_stats ?? undefined;
-        // REQ-1224: a result over the large-result threshold comes back as a handle to the file
-        // it was delivered to, with no rows; the frame says so rather than drawing nothing.
-        const redirect = data.redirect ? toResultRedirect(data.redirect) : undefined;
-        // A result that returns nodes, relationships or paths is drawn, up to max nodes; one that
-        // returns rows only is a table (the server says which, from the translation).
-        const { nodes, edges, truncated } = drawnElements(data, maxNodes);
-        nodes.forEach((node) => {
-          const clusters = clusterMapRef.current[node.label];
-          if (clusters)
-            Object.assign(node.properties, {
-              scl1: clusters.scl1,
-              scl2: clusters.scl2,
-              scl3: clusters.scl3,
-            });
-        });
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id
-              ? {
-                  ...fr,
-                  status: "done" as const,
-                  nodes,
-                  edges,
-                  rows,
-                  columns,
-                  redirect,
-                  truncated,
-                  elapsed,
-                  queryStats,
-                }
-              : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-      } catch (err) {
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-      }
+      await answer(id, query, start);
     },
-    [roleHeaderValue, maxNodes],
+    [answer],
   );
 
   // Auto-execute a query forwarded from another page (e.g. NL "Open in Cypher", or the Cypher panel).
@@ -446,7 +483,7 @@ export function GraphPage() {
     ranSeqRef.current = forwarded.seq;
     removeStored("provisa.graph.pending_query");
     setHistoryQuery(forwarded.query);
-    const frameId = crypto.randomUUID();
+    const frameId = uuid();
     setHandoffFrameId(frameId);
     runQuery(forwarded.query, forwarded.view, frameId);
   }, [runQuery, authLoading, forwarded]);
@@ -470,9 +507,10 @@ export function GraphPage() {
   }, []);
 
   // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
-  const { pkMap, labelToTableLabel } = useMemo(() => {
+  const { pkMap, labelToTableLabel, labelToTableId } = useMemo(() => {
     const pk: Record<string, string[]> = {};
     const l2t: Record<string, string> = {};
+    const l2id: Record<string, number> = {};
     for (const node of schemaNodeLabels) {
       const compoundLabel = node.domainLabel
         ? `${node.domainLabel}:${node.tableLabel}`
@@ -480,8 +518,9 @@ export function GraphPage() {
       pk[compoundLabel] =
         node.pkColumns.length > 0 ? node.pkColumns : node.idColumn ? [node.idColumn] : [];
       l2t[compoundLabel] = node.tableLabel;
+      l2id[compoundLabel] = node.tableId;
     }
-    return { pkMap: pk, labelToTableLabel: l2t };
+    return { pkMap: pk, labelToTableLabel: l2t, labelToTableId: l2id };
   }, [schemaNodeLabels]);
 
   const rerunFrame = useCallback(
@@ -503,6 +542,8 @@ export function GraphPage() {
                 error: undefined,
                 redirect: undefined,
                 truncated: undefined,
+                statements: undefined,
+                statementIndex: undefined,
               }
             : fr,
         );
@@ -510,86 +551,9 @@ export function GraphPage() {
         saveGraphState(graphState);
         return next;
       });
-      try {
-        const hdrs2: Record<string, string> = { "Content-Type": "application/json" };
-        if (roleHeaderValue) hdrs2["X-Provisa-Role"] = roleHeaderValue;
-        hdrs2["X-Provisa-Stats"] = "true";
-        const res = await fetch("/data/cypher", {
-          method: "POST",
-          headers: hdrs2,
-          body: JSON.stringify({ query, params: {} }),
-        });
-        const elapsed = Date.now() - start;
-        if (!res.ok) {
-          const text = await res.text();
-          let msg: string;
-          try {
-            msg = (JSON.parse(text) as { error?: string }).error ?? text;
-          } catch {
-            msg = text;
-          }
-          setFrames((f) => {
-            const next = f.map((fr) =>
-              fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr,
-            );
-            graphState.frames = next;
-            saveGraphState(graphState);
-            return next;
-          });
-          return;
-        }
-        const data = await res.json();
-        const rows: Record<string, unknown>[] = data.rows ?? [];
-        const columns: string[] = data.columns ?? [];
-        const queryStats: unknown = data.provisa_stats ?? undefined;
-        // REQ-1224: a result over the large-result threshold comes back as a handle to the file
-        // it was delivered to, with no rows; the frame says so rather than drawing nothing.
-        const redirect = data.redirect ? toResultRedirect(data.redirect) : undefined;
-        // A result that returns nodes, relationships or paths is drawn, up to max nodes; one that
-        // returns rows only is a table (the server says which, from the translation).
-        const { nodes, edges, truncated } = drawnElements(data, maxNodes);
-        nodes.forEach((node) => {
-          const clusters = clusterMapRef.current[node.label];
-          if (clusters)
-            Object.assign(node.properties, {
-              scl1: clusters.scl1,
-              scl2: clusters.scl2,
-              scl3: clusters.scl3,
-            });
-        });
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id
-              ? {
-                  ...fr,
-                  status: "done" as const,
-                  nodes,
-                  edges,
-                  rows,
-                  columns,
-                  redirect,
-                  truncated,
-                  elapsed,
-                  queryStats,
-                }
-              : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-      } catch (err) {
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-      }
+      await answer(id, query, start);
     },
-    [roleHeaderValue, maxNodes],
+    [answer],
   );
 
   const framesRef = useRef(frames);
@@ -906,6 +870,7 @@ export function GraphPage() {
         schemaNodeLabels={visibleNodeLabels}
         schemaRels={visibleSchemaRels}
         schemaLoading={schemaLoading}
+        schemaError={schemaError}
         history={history}
         colorOverrides={colorOverrides}
         sizeOverrides={sizeOverrides}
@@ -940,9 +905,8 @@ export function GraphPage() {
         highlightedLabel={activeLabel}
         propertyKeys={cypherSchema.propertyKeys}
         onPropertyKeyClick={handlePropertyKeyClick}
-        totalNodeCount={totalNodeCount}
-        totalRelCount={totalRelCount}
-        labelCounts={labelCounts}
+        counts={counts}
+        countsError={countsError}
         maxNodes={maxNodes}
         onMaxNodesChange={setMaxNodes}
       />
@@ -998,6 +962,7 @@ export function GraphPage() {
                 onColorChange={handleColorChange}
                 pkMap={pkMap}
                 labelToTableLabel={labelToTableLabel}
+                labelToTableId={labelToTableId}
                 relationships={adminRels}
                 graphRelationships={graphRels}
                 autoImpute={autoImpute}
@@ -1007,6 +972,7 @@ export function GraphPage() {
                 onAddFavorite={handleAddFavorite}
                 isFavorited={isFavorited}
                 onPin={handlePin}
+                onStatement={showStatement}
               />
             ))}
         </div>

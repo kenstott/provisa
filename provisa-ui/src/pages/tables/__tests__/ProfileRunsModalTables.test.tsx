@@ -91,10 +91,16 @@ const rowWith = (scope: HTMLElement, text: string) =>
   within(scope).getByText(text).closest("tr") as HTMLTableRowElement;
 
 describe("the profile runs modal", () => {
-  it("reads its result tabs down the side", async () => {
+  it("reads its results down the side, in the app's one vertical menu", async () => {
     open();
     await screen.findByTestId("profile-rows-columns");
-    expect(screen.getByRole("tablist").getAttribute("aria-orientation")).toBe("vertical");
+    const menu = screen.getByRole("navigation", { name: "Results" });
+    expect(menu).toHaveClass("vertical-nav");
+    expect(screen.getByTestId("profile-tab-columns")).toHaveAttribute("aria-current", "true");
+    fireEvent.click(screen.getByTestId("profile-tab-quantiles"));
+    expect(screen.getByTestId("profile-tab-quantiles")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("profile-tab-columns")).not.toHaveAttribute("aria-current");
+    expect(screen.getByTestId("profile-panel-quantiles")).toBeInTheDocument();
   });
 
   it("filters a result table by column", async () => {

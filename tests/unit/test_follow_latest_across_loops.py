@@ -51,7 +51,11 @@ def test_two_openers_on_their_own_loops_replace_the_template_once(monkeypatch):
     monkeypatch.setattr(demo_templates, "latest_published", lambda _name: "v2")
     monkeypatch.setattr("provisa.core.demo_bundles.ready_version", lambda _name: "v2")
     monkeypatch.setattr("provisa.core.demo_bundles.request", lambda _name: None)
-    monkeypatch.setattr(demo_templates, "_templated", lambda name: templated[name])
+
+    async def _templated(_pool, name):
+        return templated[name]
+
+    monkeypatch.setattr(demo_templates, "_templated", _templated)
     monkeypatch.setattr(demo_templates, "published_demo", lambda name: SimpleNamespace(name=name))
     monkeypatch.setattr(demo_templates, "_queue_template", _queue_template)
     monkeypatch.setattr(demo_templates, "_start_builds", lambda: None)

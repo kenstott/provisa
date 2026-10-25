@@ -2,6 +2,8 @@
 
 命令是一个已注册、受治理的函数，它把外部计算纳入 Provisa 的治理、审计与血缘之中。联邦引擎原生处理 SQL。命令涵盖 SQL 无法表达的计算，例如数据增强微服务、Python 模型、shell 脚本或数据库原生存储过程。你只需注册一次，每个客户端接口（GraphQL、pgwire SQL、REST、Arrow Flight、gRPC、Bolt/Cypher）都能在完全相同的治理下调用它。
 
+命令是在 Provisa 中编写业务逻辑的方式之一。见 [Provisa 中的业务逻辑](business-logic.md)。
+
 命令是一次**受治理的 RPC**。它的输入和输出都经过声明、定型、校验、追踪，并接入血缘。临时拼凑的 ETL 步骤、不受治理的 curl 调用或子进程，这些都不具备。
 
 ## 实现种类 {: #implementation-kinds }
@@ -16,6 +18,8 @@
 | `http` | HTTP/S 终结点；JSON 请求体，JSON 响应 |
 | `grpc` | gRPC 一元调用；无 proto 的 JSON 桥接 |
 | `python` | 进程内的 Python 可调用对象（`module:attr`） |
+
+`script` 和 `python` 属于宿主代码：它们运行在服务器自身的主机上，只有当部署的运维方开启宿主代码时才允许（参见 [宿主代码](#host-code)）。
 
 寻址（目录中的 `name` 与 `function_name`）与 `binding`（传输方式与位置）是解耦的。换掉 binding，命令的治理、血缘和调用方契约都保持不变。
 
@@ -58,6 +62,8 @@
 ## 编写命令 {: #authoring-a-command }
 
 ### 配置文件 {: #config-file }
+
+这个示例是一个 `python` 命令，所以只有在允许宿主代码的地方才会加载（参见 [宿主代码](#host-code)）。
 
 ```yaml
 functions:
@@ -258,6 +264,31 @@ command 'create_issue' writes to its source and is called on its own: it cannot 
 ## 出口允许列表 {: #egress-allowlist }
 
 `http` 和 `grpc` 命令会调用外部端点。每个目标主机都必须出现在部署的 `udf_egress_allowlist` 中。回环地址（`localhost`、`127.0.0.1`、`::1`）始终允许。没有允许列表时，所有外部出站都会以 HTTP 403 拒绝，不存在静默的默认值。
+
+## 宿主代码 {: #host-code }
+
+`python` 命令在服务器进程内调用一个 `module:attr`，`script` 命令在服务器主机上运行一个子进程。两者运行时都能触及服务器能触及的一切：它的内存、凭据、文件和网络。恶意、有缺陷或贪婪的代码可以读取其中任何东西，耗尽服务器资源，或让它宕机。命令的模型条目只保存对代码的引用（`module:attr` 或脚本路径），因此当模型被提升到另一个环境时，代码本身不会随模型一起迁移。
+
+部署设置 `commands.allow_host_code` 同时管控这两种类型。它默认关闭。在关闭期间：
+
+- 注册任一类型的命令都会被拒绝，无论来自管理 API 还是配置文件；
+- 把命令更新为任一类型都会被拒绝；
+- 调用任一类型的现有命令都会被拒绝，返回 HTTP 403 和代码
+  `functions.host_code_refused`。
+
+该设置属于运维方，绝不属于某个组织。它位于“部署设置”页面的“安全”下，也可以在配置文件或环境中设置：
+
+```yaml
+server:
+  commands:
+    allow_host_code: true
+```
+
+```bash
+PROVISA_COMMANDS_ALLOW_HOST_CODE=true
+```
+
+[代码数据源](code-sources.md) 是受治理的替代方案：它们的代码在沙箱中运行，固定在某个版本上，并随模型一起提升。
 
 ## 调用追踪 {: #invocation-tracing }
 

@@ -12,6 +12,7 @@ import { Box, Select } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { DataProduct, RegisteredTable, Relationship } from "../../types/admin";
 import { FormField, FormLayout } from "../../components/form/FormLayout";
+import { exportProviderName } from "../../lib/exportProviders";
 import { TableAssociations } from "./TableAssociations";
 
 /** The Associations section of a table's form: its data product and its relationships. */
@@ -31,7 +32,12 @@ export function TableAssociationsSection({
     <>
       <FormLayout className="form-card" data-testid="table-section-associations-panel">
         {/* REQ-1443 PRODUCT ASSIGNMENT: a checker table is assigned as any member is. */}
-        <FormField size="medium" hint={t("tableEditForm.dataProductDesc")}>
+        <FormField
+          size="medium"
+          hint={t("tableEditForm.dataProductDesc", {
+            atlan: exportProviderName("atlan", "Atlan", t),
+          })}
+        >
           <Select
             label={t("tableEditForm.dataProductLabel")}
             placeholder={t("tableEditForm.dataProductNone")}

@@ -12,11 +12,15 @@
 // beside the selected column's flat histogram. The expand button opens the same view at 95%.
 
 import { useMemo, useState } from "react";
+import { ResetSettingsButton } from "../ResetSettingsButton";
+import { useGraphSettings } from "../graphSettings";
 import { useTranslation } from "react-i18next";
 import { Button, Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
 import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
 import {
+  HEIGHT_MODES,
+  TERRAIN_ORDERS,
   buildTerrain,
   orderColumns,
   type HeightMode,
@@ -32,6 +36,8 @@ import "../profile3d.css";
 const ORDERS: TerrainOrder[] = ["schema", "nulls", "skew", "distinct", "drift"];
 
 interface SharedState {
+  /** What the view's exports are named after. */
+  exportName: string;
   columns: TerrainColumn[];
   order: string[];
   options: TerrainOptions;
@@ -40,8 +46,13 @@ interface SharedState {
   setOrderBy: (o: TerrainOrder) => void;
   rotate: boolean;
   setRotate: (on: boolean) => void;
+  resetSettings: () => void;
   selected: string | null;
   setSelected: (c: string) => void;
+  excluded: ReadonlySet<string>;
+  /** ``order`` without the excluded columns: what the terrain draws, side by side. */
+  drawn: string[];
+  include: (names: string[], included: boolean) => void;
   hover: TerrainHover | null;
   setHover: (h: TerrainHover | null) => void;
 }
@@ -114,12 +125,13 @@ function TerrainView({
         >
           {t("profile3d.resetView")}
         </Button>
+        <ResetSettingsButton onReset={s.resetSettings} testId="terrain" />
         {onExpand && <ExpandButton onClick={onExpand} testId="terrain-expand" />}
       </Group>
       <div className="p3d-body">
         <TerrainStage
           columns={s.columns}
-          order={s.order}
+          order={s.drawn}
           options={s.options}
           rotate={s.rotate}
           selected={s.selected}
@@ -128,6 +140,7 @@ function TerrainView({
           onHover={s.setHover}
           onSelect={s.setSelected}
           onUserMove={() => s.setRotate(false)}
+          exportName={s.exportName}
         />
         <TerrainDetail
           columns={s.columns}
@@ -140,6 +153,8 @@ function TerrainView({
             s.setRotate(false);
             move("focus", c);
           }}
+          excluded={s.excluded}
+          onInclude={s.include}
         />
       </div>
     </div>
@@ -148,23 +163,65 @@ function TerrainView({
 
 export function ProfileTerrain({
   results,
+  tableId,
   tableName,
 }: {
   results: ProfileRunResults;
+  tableId: number;
   tableName: string;
 }) {
   const { t } = useTranslation();
   const columns = useMemo(() => buildTerrain(results), [results]);
-  const [options, setOptions] = useState<TerrainOptions>({
-    mode: "peak",
-    log: false,
-    quantiles: true,
-  });
-  const [orderBy, setOrderBy] = useState<TerrainOrder>("schema");
-  const [rotate, setRotate] = useState(true);
+  // Remembered for this table's terrain (graphSettings.ts): the height mode, log height, quantiles,
+  // the column order, rotation and the columns left out. A left-out column the profile no longer
+  // has is dropped.
+  const [saved, save, resetSettings] = useGraphSettings(
+    { kind: "profile-terrain", subject: tableId },
+    {
+      mode: "peak",
+      log: false as boolean,
+      quantiles: true as boolean,
+      orderBy: "schema",
+      rotate: true as boolean,
+      excluded: [] as string[],
+    },
+  );
+  const options: TerrainOptions = useMemo(
+    () => ({
+      mode: (HEIGHT_MODES.includes(saved.mode as HeightMode) ? saved.mode : "peak") as HeightMode,
+      log: saved.log as boolean,
+      quantiles: saved.quantiles as boolean,
+    }),
+    [saved.mode, saved.log, saved.quantiles],
+  );
+  const setOptions = (o: TerrainOptions) => {
+    if (o.mode !== options.mode) save("mode", o.mode);
+    if (o.log !== options.log) save("log", o.log);
+    if (o.quantiles !== options.quantiles) save("quantiles", o.quantiles);
+  };
+  const orderBy = (
+    TERRAIN_ORDERS.includes(saved.orderBy as TerrainOrder) ? saved.orderBy : "schema"
+  ) as TerrainOrder;
+  const setOrderBy = (o: TerrainOrder) => save("orderBy", o);
+  const rotate = saved.rotate as boolean;
+  const setRotate = (on: boolean) => save("rotate", on);
   const [picked, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<TerrainHover | null>(null);
+  const savedExcluded = saved.excluded as string[];
+  const excluded: ReadonlySet<string> = useMemo(
+    () => new Set(savedExcluded.filter((n) => columns.some((c) => c.name === n))),
+    [savedExcluded, columns],
+  );
+  const include = (names: string[], included: boolean) => {
+    const next = new Set(excluded);
+    for (const n of names) {
+      if (included) next.delete(n);
+      else next.add(n);
+    }
+    save("excluded", [...next]);
+  };
   const order = useMemo(() => orderColumns(columns, orderBy), [columns, orderBy]);
+  const drawn = useMemo(() => order.filter((n) => !excluded.has(n)), [order, excluded]);
   // A pick from an earlier run that this run did not profile falls back to the first column.
   const selected = columns.some((c) => c.name === picked) ? picked : (columns[0]?.name ?? null);
 
@@ -176,6 +233,7 @@ export function ProfileTerrain({
     );
   }
   const s: SharedState = {
+    exportName: `${tableName}-terrain`,
     columns,
     order,
     options,
@@ -186,8 +244,12 @@ export function ProfileTerrain({
     setRotate,
     selected,
     setSelected,
+    excluded,
+    drawn,
+    include,
     hover,
     setHover,
+    resetSettings,
   };
   return (
     <Expandable3D

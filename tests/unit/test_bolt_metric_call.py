@@ -197,7 +197,7 @@ async def test_non_metric_call_falls_through():
 
 
 def _label_map_with_roles():
-    from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
     def _nm(type_name: str, table_label: str, table_id: int, role: str | None) -> NodeMapping:
         return NodeMapping(

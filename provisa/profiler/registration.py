@@ -112,11 +112,10 @@ def validate_config(config: Any) -> None:
 async def apply_registration(conn: Any, model: Any) -> None:
     """The admin half: derive a result table registered on a profiler, and check membership."""
     from sqlalchemy import select
-    from sqlalchemy.schema import CreateTable
 
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import sources
-    from provisa.profiler.schema import result_sa_table
+    from provisa.profiler.schema import ensure_result_table
     from provisa.profiler.source import check_membership
 
     row = (
@@ -144,9 +143,7 @@ async def apply_registration(conn: Any, model: Any) -> None:
             )
         # The relation exists, empty, before the member's first run, so the registered table
         # compiles and reads as an empty history.
-        await conn.execute_core(
-            CreateTable(result_sa_table(member, member_id, kind), if_not_exists=True)
-        )
+        await ensure_result_table(conn, member, member_id, kind)
         # The run writes the relation into the org's control-plane schema (provisa.profiler.run),
         # the location the compiler reaches a profiler's tables through, as for ingest (REQ-1771).
         model.schema_name = active_org_schema(state.org_id, "")

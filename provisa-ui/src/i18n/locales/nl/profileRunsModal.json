@@ -39,9 +39,11 @@
     "kind_joint_counts": "Gezamenlijke aantallen",
     "kind_constraints": "Voorgestelde constraints",
     "kind_constraint_checks": "Constraintcontroles",
+    "kind_classifications": "Classificaties",
     "kind_terrain": "Terrein",
     "kind_relationsMap": "Verbanden",
     "kind_jointCloud": "Gezamenlijke wolk",
-    "kind_driftStrata": "Driftlagen"
+    "kind_driftStrata": "Driftlagen",
+    "resultsMenu": "Resultaten"
   }
 }

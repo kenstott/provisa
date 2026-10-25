@@ -82,6 +82,7 @@ def test_every_pinned_runtime_names_an_archive_for_each_platform_provisa_runs_on
         "uv",
         "pyarrow",
         "apache-arrow",
+        "temurin",
     }
     for name, pin in code_runtimes.RUNTIMES.items():
         # REQ-2098: what goes into an image is pinned for 64-bit ARM Linux too; uv installs on

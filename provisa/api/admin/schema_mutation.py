@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 from provisa.compiler.sql_types import key_list
 from provisa.core.paging import stored_paging
 from provisa.security.sensitive import SENSITIVE_DATA
-from provisa.core.repositories import rls as rls_repo
+from provisa.core.repositories import glossary as glossary_repo, rls as rls_repo
 from provisa.api.admin.capabilities import require_capability, require_right_in_domains
 from provisa.security.rights import ALL_DOMAINS
 from provisa.api.admin.types import (
@@ -103,6 +103,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     TableTtl,
     landing_ttl_refusal,
     replicate_contradiction_refusal,
+    row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
@@ -309,6 +310,30 @@ async def _relationship_id_refusal(
             params={"relationship": input.id},
         )
     return None
+
+
+async def _same_entity_refusal(
+    conn: "Connection", input: RelationshipInput, source: dict, target: dict | None
+) -> "MutationResult | None":
+    """REQ-2141: a relationship marked same entity, refused by name when it does not join two
+    tables one class term grounds, one-to-one on a key of each (repositories/identity.py)."""
+    from provisa.core.repositories.identity import same_entity_refusal
+
+    refused = await same_entity_refusal(
+        conn,
+        relationship=input.id,
+        source_table_id=source["id"],
+        target_table_id=None if target is None else target["id"],
+        source_column=input.source_column,
+        target_column=input.target_column or "",
+        cardinality=input.cardinality,
+        junction=bool(input.via_table) or bool(input.target_function_name),
+    )
+    if refused is None:
+        return None
+    return MutationResult(
+        success=False, message=refused.message, code=refused.code, params=refused.params
+    )
 
 
 async def _relationship_alias_refusal(
@@ -836,6 +861,12 @@ async def save_relationship(
     exists, changed."""
     from provisa.core.models import Relationship as RelModel, Cardinality
     from provisa.core.repositories import relationship as rel_repo
+    from provisa.core.term_tags import (
+        TagLossRefused,
+        TermTagRefused,
+        inherited_snapshot,
+        tag_changes_of_moves,
+    )
 
     _invalid = _cardinality_problem(input)
     if _invalid is not None:
@@ -874,6 +905,7 @@ async def save_relationship(
         alias=input.alias or None,
         graphql_alias=getattr(input, "graphql_alias", None) or None,
         disable_cypher=getattr(input, "disable_cypher", False),
+        same_entity=input.same_entity,  # REQ-2141
         # REQ-1586: the junction declaration travels with the edge on save.
         via_table=input.via_table,
         via_source_column=input.via_source_column,
@@ -895,16 +927,29 @@ async def save_relationship(
         if _refusal is None:
             assert _src_row is not None  # _relationship_tables refuses an unresolved source
             _refusal = await _relationship_alias_refusal(_conn, input, _src_row["id"])
+        if _refusal is None and input.same_entity:
+            assert _src_row is not None
+            _refusal = await _same_entity_refusal(_conn, input, _src_row, _tgt_row)
         if _refusal is not None:
             return _refusal
         try:
             async with _conn.transaction():
+                tags_before = await inherited_snapshot(_conn)  # REQ-2145
                 await rel_repo.upsert(_conn, model)
                 # REQ-1494: the edge's two columns, both faked, must declare one fake; the save
                 # is undone when they do not.
                 await relationship_fake_refusal(_conn, input.id)
+                # REQ-2145: key refs it re-homed off a tagged term; undone when unconfirmed.
+                await tag_changes_of_moves(
+                    _conn,
+                    tags_before,
+                    confirm_tag_loss=input.confirm_tag_loss,
+                    carry_tags=input.carry_tags,
+                )
         except _FakeRefusedSave as refused:
             return refused.result
+        except (TagLossRefused, TermTagRefused) as refused:
+            return _tag_move_refusal(refused)
         if needs_review:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
@@ -1147,6 +1192,7 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
         "column": model.table_id is not None and model.column_name,
         "relationship": model.relationship_id,
         "command": model.command_name,
+        "term": model.term_id,  # REQ-2145
     }
     if model.object_type not in TAG_OBJECT_TYPES:
         return MutationResult(
@@ -1192,9 +1238,21 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     tag_row: dict,
     object_type: str,
     table_id: int | None,
+    term_id: int | None = None,
 ) -> None:
     """A sensitive tag on a column decides how its values are hidden: sensitive_data in the
-    domain of the column's table (REQ-1944). Any other assignment is a table editor's act."""
+    domain of the column's table (REQ-1944), and on a term in the domains of the columns it holds
+    (REQ-2145). Any other assignment is a table editor's act."""
+    if object_type == "term":  # REQ-2145: what the term's columns are hidden by
+        from provisa.core.repositories import glossary as glossary_repo
+
+        assert term_id is not None  # _assignment_target_problem: a term assignment names it
+        if tag_row["sensitive"]:
+            domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
+            require_right_in_domains(info, SENSITIVE_DATA, domains)
+        else:
+            require_capability(info, "table_registration")
+        return
     if not (tag_row["sensitive"] and object_type == "column"):
         require_capability(info, "table_registration")
         return
@@ -1202,6 +1260,108 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
 
     assert table_id is not None  # _assignment_target_problem: a column names its table
     require_right_in_domains(info, SENSITIVE_DATA, {await table_domain(conn, table_id)})
+
+
+async def _on_columns_term(  # REQ-2145
+    conn: "Connection", model: Any
+) -> "tuple[Any, MutationResult | None]":
+    """A column assignment made ``also_term``, as the assignment of its tag on the column's term
+    instead -- or why it may not be: the column is a key (its ref follows its table's Class), or
+    it has no term."""
+    from provisa.core.repositories import glossary as glossary_repo
+
+    column = f"{model.table_id}.{model.column_name}"
+    if await glossary_repo.is_key_column(conn, model.table_id, model.column_name):
+        return model, MutationResult(
+            success=False,
+            message=(
+                f"Column {column} is a key: its meaning is its table's class, so a tag for every "
+                "column it means goes on no term. Tag the column itself."
+            ),
+            code="tag.key_column",
+            params={"tag": model.tag_id, "column": model.column_name},
+        )
+    term = await glossary_repo.get_term_by_ref(conn, model.table_id, model.column_name)
+    if term is None:
+        return model, MutationResult(
+            success=False,
+            message=f"Column {column} has no glossary term to tag",
+            code="tag.column_has_no_term",
+            params={"tag": model.tag_id, "column": model.column_name},
+        )
+    return (
+        model.model_copy(
+            update={
+                "object_type": "term",
+                "term_id": term["id"],
+                "table_id": None,
+                "column_name": None,
+            }
+        ),
+        None,
+    )
+
+
+async def _require_term_tagger(  # REQ-2145
+    info: StrawberryInfo, conn: "Connection", term_id: int
+) -> None:
+    """A tag on a term is curation of the term: the glossary's curation rights, as the glossary's
+    own surface asks them."""
+    from provisa.api.admin.glossary_router import _require_glossary_rw, _require_term_curatable
+
+    request = info.context["request"]
+    _require_glossary_rw(request)
+    await _require_term_curatable(conn, term_id, request)
+
+
+async def _term_tag_refused(  # REQ-2145
+    conn: "Connection", model: Any
+) -> "MutationResult | None":
+    """Why a term may not take the tag (provisa.core.term_tags.refuse_term_tag), or None."""
+    from provisa.core.term_tags import TermTagRefused, refuse_term_tag
+
+    try:
+        await refuse_term_tag(conn, model.term_id, model.tag_id)
+    except TermTagRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    return None
+
+
+def _tag_move_refusal(refused: Exception) -> "MutationResult":  # REQ-2145
+    """A move refused over the tags its columns would lose (tag.move_loses, with each column's
+    change), or because a lost tag could not be carried to the term a column moved to."""
+    from provisa.core.term_tags import TagLossRefused
+
+    if isinstance(refused, TagLossRefused):
+        return MutationResult(
+            success=False,
+            message=str(refused),
+            code=refused.code,
+            params={"columns": refused.columns},
+        )
+    return MutationResult(
+        success=False,
+        message=str(refused),
+        code=getattr(refused, "code"),
+        params=getattr(refused, "params"),
+    )
+
+
+async def _covers(conn: "Connection", model: Any) -> int | None:  # REQ-2145
+    """For a column, how many other columns its term holds -- those a tag on the term would
+    also cover; for a term, how many columns it holds."""
+    from provisa.core.repositories import glossary as glossary_repo
+
+    if model.object_type == "term":
+        return await glossary_repo.term_column_count(conn, model.term_id)
+    if model.object_type != "column":
+        return None
+    term = await glossary_repo.get_term_by_ref(conn, model.table_id, model.column_name)
+    if term is None:
+        return 0
+    return await glossary_repo.term_column_count(conn, term["id"]) - 1
 
 
 async def store_tag_assignment(  # REQ-1375, REQ-1377, REQ-1443, REQ-1467
@@ -1332,6 +1492,8 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             relationship_id=r["relationship_id"],
             command_name=r["command_name"],
             table_ref=r["table_ref"],
+            term_id=r["term_id"],  # REQ-2145
+            term=r["term"],
             reason=r["reason"],
             expires_on=r["expires_on"],
         )
@@ -2935,6 +3097,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             column_name=input.column_name,
             relationship_id=input.relationship_id,
             command_name=input.command_name,
+            term_id=input.term_id,  # REQ-2145
             reason=(input.reason or "").strip() or None,
             expires_on=(input.expires_on or "").strip() or None,
             why=input.why,  # REQ-2094
@@ -2954,6 +3117,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_bad_expires_on",
                     params={"expiresOn": model.expires_on},
                 )
+        if input.also_term and model.object_type != "column":
+            return MutationResult(
+                success=False,
+                message="alsoTerm puts a column's tag on the column's term; it takes a column",
+                code="tag.also_term_needs_column",
+                params={"tag": input.tag_id, "objectType": model.object_type},
+            )
         pool = await _get_pool()
         async with pool.acquire() as conn:
             refused = await _require_tag_target_domains(info, cast("Connection", conn), model)
@@ -2967,6 +3137,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_not_found",
                     params={"tag": input.tag_id},
                 )
+            if input.also_term:  # REQ-2145
+                model, refused = await _on_columns_term(cast("Connection", conn), model)
+                if refused is not None:
+                    return refused
+            if model.object_type == "term":  # REQ-2145
+                assert model.term_id is not None
+                await _require_term_tagger(info, cast("Connection", conn), model.term_id)
+                refused = await _term_tag_refused(cast("Connection", conn), model)
+                if refused is not None:
+                    return refused
             if model.object_type == "table" and model.table_id is not None:  # REQ-1384
                 misfit = await _tag_filter_problem(
                     cast("Connection", conn), model.tag_id, model.table_id
@@ -2979,11 +3159,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         params={"tag": input.tag_id, "reason": misfit},
                     )
             await _require_tag_assignment_right(
-                info, cast("Connection", conn), tag_row, input.object_type, input.table_id
+                info,
+                cast("Connection", conn),
+                tag_row,
+                model.object_type,
+                model.table_id,
+                model.term_id,
             )
             refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
             if refused is not None:
                 return refused
+            covers = await _covers(cast("Connection", conn), model)  # REQ-2145
         await _refresh_config_tags()
         if model.object_type == "table":
             await _rebuild_if_tag_filtered(model.tag_id)
@@ -2991,7 +3177,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             success=True,
             message=f"Tag {input.tag_id!r} assigned",
             code="schema.tag_assigned",
-            params={"tag": input.tag_id, "objectKey": model.object_key()},
+            params={"tag": input.tag_id, "objectKey": model.object_key(), "covers": covers},
         )
 
     @strawberry.mutation
@@ -3010,6 +3196,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             column_name=input.column_name,
             relationship_id=input.relationship_id,
             command_name=input.command_name,
+            term_id=input.term_id,  # REQ-2145
         )
         problem = _assignment_target_problem(model)
         if problem is not None:
@@ -3020,13 +3207,45 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if refused is not None:
                 return refused
             tag_row = await tag_repo.get(cast("Connection", conn), input.tag_id)
+            if model.object_type == "term":  # REQ-2145
+                assert model.term_id is not None
+                await _require_term_tagger(info, cast("Connection", conn), model.term_id)
             if tag_row is None:
                 require_capability(info, "table_registration")
             else:
                 # REQ-1943: removing a sensitive tag from a column stops it being sensitive.
                 await _require_tag_assignment_right(
-                    info, cast("Connection", conn), tag_row, input.object_type, input.table_id
+                    info,
+                    cast("Connection", conn),
+                    tag_row,
+                    input.object_type,
+                    input.table_id,
+                    input.term_id,
                 )
+            if model.object_type == "column":  # REQ-2145
+                from provisa.core.term_tags import inherited_from
+
+                assert model.table_id is not None and model.column_name is not None
+                through = await inherited_from(
+                    cast("Connection", conn),
+                    model.table_id,
+                    model.column_name,
+                    model.base_tag_id(),
+                )
+                if through is not None:
+                    return MutationResult(
+                        success=False,
+                        message=(
+                            f"This column is PII because it means {through['term']}. Unmark "
+                            "that meaning, or move the column if it means something else."
+                        ),
+                        code="tag.inherited_from_term",
+                        params={
+                            "tag": input.tag_id,
+                            "column": model.column_name,
+                            "term": through["term"],
+                        },
+                    )
             removed = await tag_repo.unassign(
                 cast("Connection", conn), input.tag_id, model.object_key()
             )
@@ -3300,6 +3519,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
         _editor, input = await require_table_save(info, input)  # REQ-1944
+        from provisa.api.admin._table_ops import land_transform_view
+
+        land_transform_view(input)  # REQ-2131: a view applying a column transform is landed
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
@@ -3444,6 +3666,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
                     if _ttl_refusal is not None:
                         raise TableSaveRefused(_ttl_refusal)
+                    _row_refusal = await row_materialize_save_refusal(  # REQ-1865
+                        _conn,
+                        model.source_id,
+                        model.table_name,
+                        model.row_materialize,
+                        [c.name for c in model.columns if c.is_primary_key],
+                    )
+                    if _row_refusal is not None:
+                        raise TableSaveRefused(_row_refusal)
                     from provisa.api.admin._change_feed import table_change_feed_refusal
 
                     _feed_refusal = await table_change_feed_refusal(  # REQ-1861
@@ -3522,6 +3753,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         if carried(input.write_grants):
                             model = model.model_copy(update={"write_grants": _carried_grants})
                         table_id = await table_repo.upsert(_conn, model)
+                    except glossary_repo.TermIsClass as _class:
+                        # REQ-2141: a column named for a class term is not claimed by it.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_class),
+                                code="glossary.term_is_class",
+                                params={"term": _class.term, "tables": ", ".join(_class.tables)},
+                            )
+                        )
                     except table_repo.ViewLoopRefused as _loop:
                         # REQ-1918: a view that would read itself through other views is refused at save.
                         raise TableSaveRefused(
@@ -4257,10 +4498,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await _save_relationship_as_caller(info, input, creating=False)
 
     @strawberry.mutation
-    async def delete_relationship(self, info: StrawberryInfo, id: str) -> MutationResult:
+    async def delete_relationship(
+        self,
+        info: StrawberryInfo,
+        id: str,
+        # REQ-2145: as on a save -- each tag a re-homed key ref loses, confirmed or carried.
+        confirm_tag_loss: list[str] | None = None,
+        carry_tags: bool = False,
+    ) -> MutationResult:
         require_capability(info, "create_relationship")
         from provisa.api.admin.domain_guard import relationship_domains, require_domains
         from provisa.core.repositories import relationship as rel_repo
+        from provisa.core.term_tags import (
+            TagLossRefused,
+            TermTagRefused,
+            inherited_snapshot,
+            tag_changes_of_moves,
+        )
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -4268,8 +4522,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             domains = await relationship_domains(cast("Connection", conn), id)
             if domains is not None:
                 require_domains(info, domains)
+            _conn = cast("Connection", conn)
             try:
-                deleted = await rel_repo.delete(cast("Connection", conn), id)
+                async with _conn.transaction():
+                    tags_before = await inherited_snapshot(_conn)
+                    deleted = await rel_repo.delete(_conn, id)
+                    await tag_changes_of_moves(
+                        _conn,
+                        tags_before,
+                        confirm_tag_loss=confirm_tag_loss or (),
+                        carry_tags=carry_tags,
+                    )
+            except (TagLossRefused, TermTagRefused) as refused:
+                return _tag_move_refusal(refused)
             except rel_repo.RelationshipDeleteRefused as refused:
                 # REQ-1918: a published view relies on it; nothing is removed, each is named.
                 return MutationResult(

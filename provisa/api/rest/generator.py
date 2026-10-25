@@ -48,7 +48,7 @@ from provisa.api._query_helpers import (
 from provisa.api.generated_plan import compile_generated_graphql
 from provisa.compiler.naming import apply_gql_name
 from provisa.compiler.parser import GraphQLValidationError
-from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
@@ -711,18 +711,6 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             )
             result = await _execute_plan(plan, state)
 
-            nodes_result = None
-            if compiled.nodes_sql is not None:
-                nodes_plan = await _govern_and_route_compiled(
-                    compiled.nodes_sql,
-                    role_id,
-                    exec_params=compiled.nodes_params or None,
-                    state=state,
-                    cache_hint=cache_hint,
-                    serve_cached=True,
-                    sdl_joins=True,
-                )
-                nodes_result = await _execute_plan(nodes_plan, state)
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:
@@ -757,34 +745,21 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         # REQ-1359: aggregate/group-by results aren't resource rows — reuse the same
         # serializers the GraphQL/data pipeline uses for _aggregate/_group_by fields, but
-        # flatten to REST's existing flat {"data": ...} shape. REQ-1401: nodes included
-        # when ?includeNodes=true triggered a nodes_sql query above.
+        # flatten to REST's existing flat {"data": ...} shape. REQ-1401: a group's nodes, when
+        # ?includeNodes=true selected them, are a column of its own row.
         if is_group_by:
-            gb_response = serialize_group_by(
-                result.rows,
-                compiled.columns,
-                nodes_result.rows if nodes_result is not None else None,
-                compiled.nodes_columns if nodes_result is not None else None,
-                compiled.root_field,
-            )
+            gb_response = serialize_rows(result.rows, compiled.columns, compiled.root_field)
             return OrjsonResponse(
                 content={"data": gb_response["data"][compiled.root_field]}, headers=cache_headers
             )
         if is_aggregate:
             agg_response = serialize_aggregate(
-                result.rows,
-                compiled.columns,
-                None,
-                None,
-                compiled.root_field,
-                agg_alias=compiled.agg_alias,
+                result.rows, compiled.columns, compiled.root_field, agg_alias=compiled.agg_alias
             )
             agg_obj = agg_response["data"][compiled.root_field][compiled.agg_alias]
             return OrjsonResponse(content={"data": agg_obj}, headers=cache_headers)
 
         # Serialize
-        from provisa.executor.serialize import serialize_rows
-
         response_data = serialize_rows(result.rows, compiled.columns, table)
         rows = response_data.get("data", {}).get(table, [])
         col_names = list(compiled.columns or [])

@@ -450,7 +450,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_grpc("QueryPetsAggregate", "admin", app_state, None)
@@ -475,7 +475,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_grpc(
@@ -524,7 +524,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_jsonapi(
@@ -551,7 +551,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_jsonapi(
@@ -565,7 +565,7 @@ class TestExecutorRouting:
             app_state.contexts["admin"], "Pets", ["species"], None, False, []
         )
         fake_exec.assert_awaited_once()
-        # serialize_group_by → [{"groupKey": {"species": "dog"}, "aggregate": {"count": 3}}]
+        # serialize_rows → [{"groupKey": {"species": "dog"}, "aggregate": {"count": 3}}]
         # jsonapi wraps each row as typed-resourceless JSON:API object.
         assert result == {
             "data": [
@@ -588,11 +588,19 @@ class TestExecutorRouting:
 
         app_state = RoleState(contexts={"admin": _ctx()})
         cq = _group_by_compiled()
-        nodes_columns = [
-            ColumnRef(alias=None, column="species", field_name="species", nested_in="__join_key__"),
-            ColumnRef(alias=None, column="name", field_name="name", nested_in=None),
+        # A group's nodes are a column of its own row (aggregates._nodes_column).
+        cq.columns = [
+            *cq.columns,
+            ColumnRef(
+                alias=None,
+                column="nodes",
+                field_name="nodes",
+                nested_in=None,
+                cardinality="one-to-many",
+                is_agg=True,
+            ),
         ]
-        cq.nodes_columns = nodes_columns
+        cq.has_nodes = True
         with (
             patch.object(
                 executor,
@@ -602,9 +610,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(
-                    return_value=[(cq, _FakeResult([("dog", 3)]), _FakeResult([("dog", "Rex")]))]
-                ),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3, '[{"name": "Rex"}]')]))]),
             ),
         ):
             result = await executor._execute_jsonapi(
@@ -635,11 +641,19 @@ class TestExecutorRouting:
 
         app_state = RoleState(contexts={"admin": _ctx()})
         cq = _group_by_compiled()
-        nodes_columns = [
-            ColumnRef(alias=None, column="species", field_name="species", nested_in="__join_key__"),
-            ColumnRef(alias=None, column="name", field_name="name", nested_in=None),
+        # A group's nodes are a column of its own row (aggregates._nodes_column).
+        cq.columns = [
+            *cq.columns,
+            ColumnRef(
+                alias=None,
+                column="nodes",
+                field_name="nodes",
+                nested_in=None,
+                cardinality="one-to-many",
+                is_agg=True,
+            ),
         ]
-        cq.nodes_columns = nodes_columns
+        cq.has_nodes = True
         with (
             patch.object(
                 executor,
@@ -649,9 +663,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(
-                    return_value=[(cq, _FakeResult([("dog", 3)]), _FakeResult([("dog", "Rex")]))]
-                ),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3, '[{"name": "Rex"}]')]))]),
             ),
         ):
             result = await executor._execute_openapi(
@@ -701,7 +713,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_openapi(
@@ -727,7 +739,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_openapi(

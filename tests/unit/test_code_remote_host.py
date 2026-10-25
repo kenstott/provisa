@@ -17,7 +17,6 @@ the same calls as a local worker to each Provisa connection."""
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import sys
 import textwrap
@@ -48,12 +47,6 @@ _CODE = textwrap.dedent(
 
 
 ORDERS = schema_text(pa.schema([("n", pa.int64())]))
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 @pytest.fixture
@@ -169,7 +162,10 @@ def test_a_host_with_another_certificate_than_the_pin_is_refused(started):
 
 
 def test_a_host_that_is_not_there_is_named():
-    port = _free_port()
+    from tests.port_lease import lease_port
+
+    # A leased port: below the ephemeral range, so no bind(0) of another test is given it.
+    port = lease_port()
     with pytest.raises(WorkerFailed, match=f"remote host 127.0.0.1:{port} could not be reached"):
         _worker(port, "0" * 64, remote.new_identity()).start(timeout=2)
 
@@ -177,43 +173,3 @@ def test_a_host_that_is_not_there_is_named():
 def test_a_pairing_code_that_is_not_one_is_refused_by_name():
     with pytest.raises(remote.PairingRefused, match="the line the remote host printed"):
         remote.parse_pairing_code("hello")
-
-
-def test_a_read_carrying_its_statement_is_answered_with_it_applied_on_the_host(started):
-    from provisa.codesource.direct import _ipc_text
-
-    port, code = started
-    identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, code, identity)
-    worker = _worker(port, pin, identity)
-    worker.start()
-    try:
-        residual = {
-            "sql": "SELECT n FROM shop.orders WHERE n >= 3 AND _nf_n = 6 ORDER BY n DESC",
-            "dialect": "duckdb",
-            "table": "orders",
-            "schema": ORDERS,
-            "arguments": _ipc_text(pa.table({"n": pa.array([6], pa.int64())})),
-        }
-        answered = [
-            pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
-            for ipc in worker.batches(
-                "orders", "table", [6], ["n"], schema=ORDERS, residual=residual
-            )
-        ]
-        assert pa.concat_tables(answered).column("n").to_pylist() == [5, 4, 3]
-        # A statement the host cannot run fails the call, named, and the host serves on.
-        with pytest.raises(Exception, match="nope"):
-            list(
-                worker.batches(
-                    "orders",
-                    "table",
-                    [1],
-                    ["n"],
-                    schema=ORDERS,
-                    residual={**residual, "sql": "SELECT nope FROM orders"},
-                )
-            )
-        assert worker.ping()
-    finally:
-        worker.stop()

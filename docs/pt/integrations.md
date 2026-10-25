@@ -240,17 +240,19 @@ Um **comando** é uma função rastreada registrada ou webhook: um chamável reg
 | `grpc` | Chamada gRPC de saída para um servidor externo | `target`, `method` |
 | `python` | Chamável Python hospedado pelo Provisa | `callable` (ex.: `demo.py_functions:random_dataset`) |
 
-Quando um comando declara um `return_schema` (JSON Schema com `type: array, items: object`), ele retorna conjunto, e toda superfície o projeta como um conjunto de linhas tipado. Os comandos de demonstração `random_python_set` (impl_kind `python`) e `random_grpc_set` (impl_kind `grpc`) ilustram tanto um chamável hospedado quanto uma ponte gRPC externa retornando linhas com valores aleatórios; ambos são registrados em `config/provisa-install.yaml`.
+`script` e `python` são código de host, permitidos só onde o operador liga `commands.allow_host_code` (veja [Código de host](commands.md#host-code)).
+
+Quando um comando declara um `return_schema` (JSON Schema com `type: array, items: object`), ele é set-returning, e cada superfície o projeta como um conjunto de linhas tipado. O comando de demonstração `random_grpc_set` (impl_kind `grpc`) é uma ponte gRPC externa que devolve linhas com valores aleatórios; ele está registrado em `config/provisa-install.yaml`.
 
 ### Matriz de protocolo {: #protocol-matrix }
 
 | Superfície | Sintaxe | Exemplo |
 | --------- | -------- | --------- |
-| GraphQL | `kind=query` → campo Query; `kind=mutation` → campo Mutation; prefixado por domínio quando `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
-| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` ou `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
-| Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
-| Bolt (Neo4j Browser / driver) | `CALL fn(args)` — argumentos posicionais mapeiam para nomes de argumento declarados | `CALL random_python_set(3, 7)` |
-| Provisa gRPC (porta 50051) | Unário `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
+| GraphQL | `kind=query` → campo Query; `kind=mutation` → campo Mutation; prefixado por domínio quando `domain_prefix: true` | `{ ps__random_grpc_set { id region amount } }` |
+| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` ou `SELECT fn(args)` | `SELECT * FROM random_grpc_set()` |
+| Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_grpc_set() YIELD id, region, amount` |
+| Bolt (Neo4j Browser / driver) | `CALL fn(args)` — argumentos posicionais mapeiam para nomes de argumento declarados | `CALL random_grpc_set()` |
+| Provisa gRPC (porta 50051) | Unário `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_grpc_set","args_json":"{}"}' ... ProvisaService/CallCommand` |
 
 O campo `kind` controla apenas o posicionamento no GraphQL. As superfícies SQL, Cypher, Bolt e gRPC aceitam comandos `query` e `mutation` de forma idêntica.
 

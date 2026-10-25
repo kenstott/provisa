@@ -152,7 +152,7 @@ def mcp_roles(role: str) -> str:
             *(contract_model.chain_role(role, level) for level in range(deepest + 1)),
             *(
                 f"{contract_model.derived_attribute(i)}__{contract_model.DERIVED_VALUE}"
-                for i in range(derived)
+                for i in range(1, derived + 1)
             ),
         ]
     )

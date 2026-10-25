@@ -207,10 +207,12 @@ def test_a_newer_version_is_asked_for_served_once_ready_and_an_open_sandbox_keep
         second = _publish(registry, work / "named2", work / "out2", "b" * 40, ["asp", "auk", "ant"])
         assert second != first
 
-        meanwhile = _open(tier)  # asks for the new version, and is served the ready one
+        meanwhile = _open(tier)  # asks for the demo, and is served the ready version
         assert _names(tier, meanwhile) == ["ant", "ape"]
         bundles = work / "data" / "demo-bundles"
-        assert (bundles / "alpha" / "wanted").read_text().strip() == second
+        # The tier asks only; the node's sync pulls the latest published (f87058c07).
+        assert (bundles / "alpha" / "requested").read_text().strip() == "requested"
+        assert not (bundles / "alpha" / "wanted").exists()
         assert (bundles / ".wanted").exists()  # what the node's path unit watches
 
         assert _synced(work, registry) == second

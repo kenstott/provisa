@@ -301,3 +301,36 @@ def test_a_templates_jobs_wait_while_its_demos_stores_are_taken_down(bundles):
 def test_another_orgs_jobs_run_whatever_a_demos_stores_are(bundles):
     for job_id in ("events:tick:org_default", "events:tick:org_sbx1a2b3c", "otel_compact"):
         assert _submit(None, job_id)[0] == [job_id]
+
+
+def test_a_tier_that_serves_sandboxes_schedules_the_trace_compaction(monkeypatch):
+    """REQ-862/REQ-2006: the sandbox tier lands its own traces, so it merges them as the
+    deployment's API does: the same otel_compact job, under the tier's own holder. A tier that
+    never compacted kept one file per export batch, and a sandbox's first read of an ops view
+    over the traces opened every one of them (34,149 on cloud.provisa.dev)."""
+    import logging
+
+    from provisa import sandbox_wake
+    from provisa.api import app_startup, sandbox_tier
+    from provisa.api.app import state
+    from provisa.scheduler import jobs
+
+    added: dict[str, object] = {}
+
+    class _Scheduler:
+        def add_job(self, func, *, id, **kwargs):  # noqa: A002 - APScheduler's keyword
+            added[id] = func
+
+        def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(sandbox_tier, "serves_sandboxes", lambda: True)
+    monkeypatch.setattr(sandbox_wake, "SANDBOX_INSTANCE", None)
+    monkeypatch.setattr(app_startup, "_scheduler_holders", lambda _state: None)
+    monkeypatch.setattr(jobs, "new_scheduler", lambda _holders: _Scheduler())
+    monkeypatch.setattr(state, "_scheduler", None, raising=False)
+
+    app_startup._start_scheduler(logging.getLogger("test"))
+
+    assert added["otel_compact"] is jobs.compact_otel_signals
+    assert {"sandbox_reap", "sandbox_late_templates"} <= set(added)

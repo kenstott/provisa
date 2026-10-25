@@ -896,6 +896,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     _FILE_ATTACH_TYPES = frozenset({"sqlite", "duckdb"})  # ATTACH a file path, not a URL
     _NO_EXTENSION_TYPES = frozenset({"duckdb"})  # core store type: no INSTALL/LOAD needed
 
+    def _see_store_writes(self) -> None:
+        """Make what the server store's own connection just wrote readable here. This connection
+        reads the store through its ATTACH, which caches the store's catalog: a schema created
+        since is missing from it, and a read of a table in it fails "schema ... does not exist"
+        (a view's first build, staged into an org schema the store did not hold yet). A Postgres
+        store's cache is cleared; an attached SQLite file has none."""
+        if self._ATTACH_TYPE_BY_SCHEME[self._store_scheme()] == "postgres":
+            self._con.cursor().execute("CALL pg_clear_cache()")
+
     def mv_store_schema(self, org_id: str) -> str:
         """The schema materialized views are written to: one that holds nothing else (REQ-1912).
         Replicas have their own (``replica_address.replica_schema``)."""
@@ -1071,13 +1080,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
         # REQ-424: this engine reads a server store through its connector, so an embedding is
         # held there as its text (as the build writes it, ``PostgresStoreTarget``).
-        return await store_writer.reconcile_table(
+        written = await store_writer.reconcile_table(
             self._store_dsn(),
             schema=schema,
             table=table,
             columns=text_vectors(columns),
             pk_columns=pk_columns,
+            key_after_landing=True,
         )
+        self._see_store_writes()
+        return written
 
     async def land_table(
         self,
@@ -1110,7 +1122,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                     watermark_column,
                 ),
             )
-        return await store_writer.land(
+        written = await store_writer.land(
             self._store_dsn(),
             schema=schema,
             table=table,
@@ -1122,6 +1134,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             match_floor=match_floor,
             shape=shape,
         )
+        self._see_store_writes()
+        return written
 
     async def apply_change_group(self, group: list[Any]) -> None:
         """Apply a group of changes (``federation.change_group``) in one transaction: of the
@@ -1150,6 +1164,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                             table.delete().where(and_(*[table.c[k] == v for k, v in match.items()]))
                         )
                     await apply_cdc(conn, table, changes.pk_columns, changes.events)
+        self._see_store_writes()
 
     async def apply_cdc_events(
         self,
@@ -1178,7 +1193,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         async with store_connection(self._store_dsn()) as conn:
             if schema and conn.capabilities.schemas:
                 await conn.execute_core(CreateSchema(schema, if_not_exists=True))
-            return await apply_cdc(conn, tbl, pk_columns, events, report_unchanged=True)
+            applied = await apply_cdc(conn, tbl, pk_columns, events, report_unchanged=True)
+        self._see_store_writes()
+        return applied
 
     async def reconcile_mv_table(
         self,
@@ -1194,9 +1211,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self.ensure_materialize_attached()
         if self._store_is_duckdb():
             return self._store_broker.reconcile(schema, table, columns)
-        return await store_writer.reconcile_table(
+        written = await store_writer.reconcile_table(
             self._store_dsn(), schema=schema, table=table, columns=columns, pk_columns=pk_columns
         )
+        self._see_store_writes()
+        return written
 
     async def persist_mv_table(
         self,
@@ -1216,7 +1235,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self.ensure_materialize_attached()
         if self._store_is_duckdb():
             return self._store_broker.persist(schema, table, columns, rows, persist, pk_columns)
-        return await store_writer.persist_land(
+        written = await store_writer.persist_land(
             self._store_dsn(),
             schema=schema,
             table=table,
@@ -1226,6 +1245,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             pk_columns=pk_columns,
             match_floor=match_floor,
         )
+        self._see_store_writes()
+        return written
 
     def mv_store_broker(self) -> Any:
         """The broker MV refresh must write through, or ``None`` when the store is attached on this

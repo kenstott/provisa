@@ -24,7 +24,7 @@ from typing import Any, cast
 
 import pyparsing as pp
 
-from provisa.cypher.expr_ast import (
+from provisa.gql.expr_ast import (
     Binary,
     Case,
     CypherExpr,
@@ -47,6 +47,7 @@ from provisa.cypher.expr_ast import (
     SubqueryExpr,
     Unary,
     Variable,
+    walk,
 )
 
 pp.ParserElement.enable_packrat()
@@ -127,7 +128,8 @@ _true = pp.CaselessKeyword("TRUE").set_parse_action(lambda: Literal(True, "boole
 _false = pp.CaselessKeyword("FALSE").set_parse_action(lambda: Literal(False, "boolean"))
 _null = pp.CaselessKeyword("NULL").set_parse_action(lambda: Literal(None, "null"))
 _param = pp.Combine(
-    pp.Suppress("$") + pp.Word(pp.alphas + "_", pp.alphanums + "_")
+    # A parameter's name may be a number ($0, $1) as well as a name.
+    pp.Suppress("$") + pp.Word(pp.alphanums + "_")
 ).set_parse_action(lambda t: Parameter(str(t[0])))
 _variable = _ident.copy().set_parse_action(lambda t: Variable(str(t[0])))
 
@@ -246,7 +248,8 @@ def _build_grammar() -> pp.ParserElement:
     def _mk_subq(t):
         raw = t["body"].strip()
         inner = raw[1:-1].strip() if raw.startswith("{") else raw  # drop the outer braces
-        return SubqueryExpr(kind=t["kind"].upper(), body=inner)
+        kind = t["kind"].upper()
+        return SubqueryExpr(kind=kind, body=cast(Any, _BodyText(inner)))
 
     subq.set_parse_action(_mk_subq)
 
@@ -287,8 +290,10 @@ def _build_grammar() -> pp.ParserElement:
     )
 
     def _mk_pattern_comp(t):
+        from provisa.cypher.parser import parse_pattern
+
         return PatternComprehension(
-            pattern=t["pattern"].strip(),
+            pattern=parse_pattern(t["pattern"].strip()),
             path_var=str(_val(t["pathvar"])) if "pathvar" in t else None,
             predicate=t["pred"] if "pred" in t else None,
             projection=t["proj"],
@@ -460,6 +465,10 @@ def _mk_map_projection(node: CypherExpr, suf) -> MapProjection:
 _GRAMMAR = _build_grammar()
 
 
+class _BodyText(str):
+    """A subquery's body as written, parsed once the expression holding it is (_parse_cached)."""
+
+
 # The grammar is a pure function of the fragment's text and costs about a millisecond per call
 # (pyparsing, pure Python); a request parses half a dozen fragments, the same ones on every request
 # of the same statement shape. Bounded, so a client generating unbounded distinct text cannot grow
@@ -473,7 +482,15 @@ def _parse_cached(text: str) -> CypherExpr:
         result = _GRAMMAR.parse_string(text, parse_all=True)
     except pp.ParseBaseException as exc:  # noqa: BLE001 — normalize to our error type
         raise CypherExprParseError(f"cannot parse Cypher expression {text!r}: {exc}") from exc
-    return _e(result[0])
+    from provisa.cypher.parser import subquery_statement
+
+    expr = _e(result[0])
+    # A subquery's body is parsed after the expression around it, not inside that parse: inside
+    # it, each nesting level's grammar frames would stack on the level's around it.
+    for node in walk(expr):
+        if isinstance(node, SubqueryExpr) and isinstance(node.body, _BodyText):
+            node.body = subquery_statement(node.kind, node.body)
+    return expr
 
 
 def parse_expression(text: str) -> CypherExpr:

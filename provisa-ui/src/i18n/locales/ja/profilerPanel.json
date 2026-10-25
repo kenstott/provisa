@@ -13,6 +13,7 @@
     "runNow": "今すぐプロファイル",
     "viewRuns": "プロファイル実行を表示",
     "runDone": "{{rows}} 行をプロファイルしました。",
-    "constraints": "制約"
+    "constraints": "制約",
+    "classifications": "分類"
   }
 }

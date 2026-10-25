@@ -50,6 +50,19 @@ def embedded_postgres():
 
 
 @pytest.fixture(scope="session")
+def embedded_postgres_fdw():
+    """A Postgres of this session's own with the product's FDW set (postgres_fdw and the rest of
+    the provisa-pg-ext bundle): the same server run from a private copy of pgserver's install with
+    that bundle staged into it (tests/embedded_pg.py private_pginstall). No container: the copy
+    is built once per machine from the installed wheels."""
+    from tests.embedded_pg import start_local_postgres
+
+    pg = start_local_postgres(fdws=True)
+    yield pg
+    pg.stop()
+
+
+@pytest.fixture(scope="session")
 def control_plane_template(embedded_postgres):
     """The worker's control-plane template database (tests/pg_control_plane.py), built once."""
     from tests.pg_control_plane import build_template
@@ -96,6 +109,16 @@ def _no_otel_log_pipeline_outlives_its_test():
     otel = sys.modules.get("provisa.api.otel_setup")
     if otel is not None and otel._log_provider is not None:
         otel.shutdown_otel()
+
+
+@pytest.fixture(autouse=True)
+def _no_runner_freezes_the_test_process(monkeypatch: pytest.MonkeyPatch):
+    """A replica runner's first idle pass freezes the heap once per process (REQ-1911). In a test
+    worker that would change process-wide GC state for every later test, so the freeze counts as
+    done here; the test of the freeze itself clears the flag and records the call instead."""
+    from provisa.federation import replica_runner
+
+    monkeypatch.setattr(replica_runner, "_boot_builds_frozen", True)
 
 
 @pytest.fixture(autouse=True)

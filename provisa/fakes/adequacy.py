@@ -315,10 +315,19 @@ async def sensitive_columns_declared(conn: Any) -> list[dict]:
     """Every sensitive column of the org with its table and what it declares."""
     from sqlalchemy import select
 
-    from provisa.core.schema_org import registered_tables, table_columns, tag_assignments, tags
+    from provisa.core.schema_org import (
+        glossary_term_refs,
+        glossary_terms,
+        registered_tables,
+        table_columns,
+        tag_assignments,
+        tags,
+    )
     from provisa.security.sensitive import sensitive_assignments
 
-    sens = sensitive_assignments(tag_assignments, registered_tables, tags).subquery()
+    sens = sensitive_assignments(
+        tag_assignments, registered_tables, tags, glossary_term_refs, glossary_terms
+    ).subquery()
     tc = table_columns
     rows = await conn.execute_core(
         select(

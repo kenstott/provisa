@@ -8,14 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/graph_rewriter.py."""
+"""Unit tests for provisa/gql/graph_rewriter.py."""
 
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.cypher.graph_rewriter import apply_graph_rewrites
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
-from provisa.cypher.translator_types import GraphVarKind
+from provisa.gql.graph_rewriter import apply_graph_rewrites
+from provisa.gql.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.translator_types import GraphVarKind
 
 
 def _make_domain_label_map() -> CypherLabelMap:
@@ -129,7 +129,9 @@ def test_no_graph_vars_no_change():
 
 
 def test_no_duplicate_id_key_when_column_named_id():
-    """id_column != 'id' but table has a column named 'id' — must not emit duplicate 'id' JSON key."""
+    """id_column != 'id' but table has a column named 'id': the node's own 'id' key appears once,
+    and the column is a property under its own name, in the node's properties -- never dropped,
+    never shadowed by the node's identity."""
     inquiry_meta = NodeMapping(
         label="PetStore:Inquiries",
         type_name="PetStore_Inquiries",
@@ -158,14 +160,16 @@ def test_no_duplicate_id_key_when_column_named_id():
     # Count occurrences of 'id' as a JSON key — should appear exactly once
     import re
 
-    id_key_count = len(re.findall(r"'id'", result_sql))
-    assert id_key_count == 1, f"Duplicate 'id' JSON key found in: {result_sql}"
+    node_keys, properties = result_sql.split("'properties':", 1)
+    assert len(re.findall(r"'id'", node_keys)) == 1, f"Duplicate 'id' JSON key in: {result_sql}"
+    assert "'id': n.\"id\"" in properties, result_sql
+    assert "'inquiry_id': n.\"inquiry_id\"" in properties, result_sql
 
 
 def test_domain_node_props_in_json():
     """Domain-only MATCH (n:PetStore) RETURN n must include domain props in JSON output."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     lm = _make_domain_label_map()
     ast = parse_cypher("MATCH (n:PetStore) RETURN n LIMIT 5")
@@ -176,3 +180,65 @@ def test_domain_node_props_in_json():
     # Should contain property keys beyond just 'id' and 'label'
     assert "'name'" in result_sql, f"Missing 'name' property in domain JSON: {result_sql}"
     assert "JSON_OBJECT" in result_sql.upper(), f"Expected JSON_OBJECT in: {result_sql}"
+
+
+def _many_labels(n: int) -> CypherLabelMap:
+    nodes = {
+        f"T{i}": NodeMapping(
+            label=f"T{i}",
+            type_name=f"T{i}",
+            domain_label=None,
+            table_label=f"T{i}",
+            table_id=i,
+            source_id="pg",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="pg",
+            schema_name="public",
+            table_name=f"t{i}",
+            properties={"id": "id", f"c{i}": f"c{i}"},
+        )
+        for i in range(n)
+    }
+    return CypherLabelMap(
+        nodes=nodes,
+        relationships={},
+        nodes_by_table={f"T{i}": [f"T{i}"] for i in range(n)},
+    )
+
+
+def test_an_unlabelled_match_is_rewritten_in_place_each_arm_once(monkeypatch):
+    """REQ-349: MATCH (n) is a UNION ALL arm per label. Its rewrite works on the statement as it
+    is: copying the union at each level copied every arm below it again, quadratic in the labels
+    (a 71-table model's MATCH (n) spent seconds here), and each nested query was rewritten again
+    by every query above it."""
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql import graph_rewriter
+    from provisa.gql.translator import cypher_to_sql
+
+    lm = _many_labels(30)
+    sql_ast, _, graph_vars = cypher_to_sql(parse_cypher("MATCH (n) RETURN n LIMIT 1"), lm, {})
+    arms = len([s for s in sql_ast.find_all(exp.Select) if s.args.get("from_") is not None])
+
+    copied: list[str] = []
+    original_copy = exp.Expression.copy
+
+    def _copy(self):
+        copied.append(type(self).__name__)
+        return original_copy(self)
+
+    rewritten: list[int] = []
+    original_extract = graph_rewriter._extract_alias_mappings
+
+    def _extract(select, label_map):
+        rewritten.append(id(select))
+        return original_extract(select, label_map)
+
+    monkeypatch.setattr(exp.Expression, "copy", _copy)
+    monkeypatch.setattr(graph_rewriter, "_extract_alias_mappings", _extract)
+    result = apply_graph_rewrites(sql_ast, graph_vars, lm)
+
+    assert result is sql_ast
+    assert not {"Union", "Select", "Subquery"} & set(copied)
+    assert len(rewritten) == len(set(rewritten)) == arms
+    assert "JSON_OBJECT" in result.sql(dialect="postgres")

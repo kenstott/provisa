@@ -21,10 +21,12 @@ import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from provisa.api_source import caller
 from provisa.api_source.caller import (
+    ApiAnswerNotJson,
     ApiCallError,
     ApiNotFoundError,
     _apply_auth,
@@ -48,6 +50,16 @@ from provisa.core.auth_models import (
     ApiKeyLocation,
 )
 from provisa.core.paging import PaginationConfig, PaginationType
+
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A call resolves its secret references, which asks whether the deployment holds many
+    organisations; the API layer says so at its import, which these tests do not make. A
+    deployment of one, as each test here sets its own references."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
 
 
 def _col(
@@ -543,6 +555,29 @@ class TestPaginate:
         # decode and accumulated far fewer than 20 ticks by the time _paginate returned.
         assert ticks >= 15
 
+    @pytest.mark.asyncio
+    async def test_an_answer_that_is_not_json_says_what_it_is(self):
+        """A SPARQL endpoint asked for no format answers XML (Wikidata): the error names the
+        call, its status, the answer's content type and its start, not a decoder's position."""
+        endpoint = _endpoint(pagination=None)
+        client = MagicMock()
+        client.request = AsyncMock(
+            return_value=httpx.Response(
+                200,
+                content=b"<?xml version='1.0'?><sparql/>",
+                headers={"content-type": "application/sparql-results+xml"},
+                request=httpx.Request("POST", "https://query.example/sparql"),
+            )
+        )
+        with pytest.raises(ApiAnswerNotJson) as failed:
+            await _paginate(client, endpoint, "/sparql", {}, {}, None, 30.0)
+        message = str(failed.value)
+        assert message.startswith(
+            "POST https://query.example/sparql answered 200 application/sparql-results+xml, "
+            "not JSON ("
+        )
+        assert message.endswith("\"<?xml version='1.0'?><sparql/>\"")
+
 
 # ---------------------------------------------------------------------------
 # _apply_auth
@@ -818,6 +853,20 @@ class TestCallApi:
             await call_api(endpoint, {"limit": 5}, base_url="http://api.test")
         call_kwargs = mock_client.request.await_args.kwargs
         assert call_kwargs["data"] == {"query": "SELECT * WHERE { ?s ?p ?o }", "limit": 5}
+
+    @pytest.mark.asyncio
+    async def test_a_narrowed_sparql_query_is_sent_in_place_of_the_registered_one(self):
+        """REQ-2138: a statement's pushed conditions come as the argument ``query``."""
+        endpoint = _endpoint(body_encoding="form", query_template="SELECT * WHERE { ?s ?p ?o }")
+        mock_client = MagicMock()
+        mock_client.request = AsyncMock(return_value=_resp(200, {}))
+        mock_ctx = MagicMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+        narrowed = "SELECT * WHERE { { SELECT * WHERE { ?s ?p ?o } } } LIMIT 1"
+        with patch("provisa.api_source.caller.httpx.AsyncClient", return_value=mock_ctx):
+            await call_api(endpoint, {"query": narrowed}, base_url="http://api.test")
+        assert mock_client.request.await_args.kwargs["data"] == {"query": narrowed}
 
     @pytest.mark.asyncio
     async def test_default_body_encoding_uses_json_body(self):

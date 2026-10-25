@@ -2,6 +2,8 @@
 
 Un comando es una función registrada y gobernada que pone el cómputo externo bajo la gobernanza, la auditoría y el linaje de Provisa. El motor de federación maneja SQL de forma nativa. Un comando cubre el cómputo que SQL no puede expresar, como un microservicio de enriquecimiento, un modelo de Python, un script de shell o un procedimiento almacenado nativo de la base de datos. Lo registra una vez, y cada superficie de cliente (GraphQL, SQL por pgwire, REST, Arrow Flight, gRPC, Bolt/Cypher) puede invocarlo con idéntica gobernanza.
 
+Los comandos son una de las formas de escribir lógica de negocio en Provisa. Vea [La lógica de negocio en Provisa](business-logic.md).
+
 Un comando es un **RPC gobernado**. Sus entradas y salidas están declaradas, tipadas, validadas, trazadas y conectadas al linaje. Un paso de ETL improvisado, una llamada curl sin gobierno o un subproceso no tienen nada de eso.
 
 ## Tipos de implementación {: #implementation-kinds }
@@ -16,6 +18,8 @@ Se admiten seis valores de `impl_kind`:
 | `http` | Endpoint HTTP/S; cuerpo de solicitud JSON, respuesta JSON |
 | `grpc` | gRPC unario; puente JSON sin proto |
 | `python` | Invocable Python en proceso (`module:attr`) |
+
+`script` y `python` son código de host: se ejecutan en el propio host del servidor, y un despliegue solo los permite cuando su operador activa el código de host (consulte [Código de host](#host-code)).
 
 El direccionamiento (el `name` del catálogo y `function_name`) está desacoplado del `binding`
 (transporte y ubicación). Cambie el binding y el gobierno, el linaje y los contratos del llamador
@@ -70,6 +74,8 @@ Los alias comunes se resuelven automáticamente (`varchar` → `text`, `int4` �
 ## Cómo crear un comando {: #authoring-a-command }
 
 ### Archivo de configuración {: #config-file }
+
+Este ejemplo es un comando `python`, así que solo se carga donde el código de host está permitido (consulte [Código de host](#host-code)).
 
 ```yaml
 functions:
@@ -284,6 +290,31 @@ interpretarlos.
 ## Lista de permitidos de salida (egress) {: #egress-allowlist }
 
 Los comandos `http` y `grpc` llaman a endpoints externos. Cada host de destino debe figurar en la `udf_egress_allowlist` del despliegue. El loopback (`localhost`, `127.0.0.1`, `::1`) siempre está permitido. Sin lista de permitidos, toda salida externa se deniega con HTTP 403, y no hay ningún valor por defecto silencioso.
+
+## Código de host {: #host-code }
+
+Un comando `python` llama a un `module:attr` dentro del proceso del servidor, y un comando `script` ejecuta un subproceso en el host del servidor. Cualquiera de los dos se ejecuta con todo lo que el servidor puede alcanzar: su memoria, sus credenciales, sus archivos y su red. Un código malicioso, defectuoso o voraz puede leer cualquiera de ellos, dejar sin recursos al servidor o tumbarlo. La entrada del comando en el modelo solo contiene una referencia al código (`module:attr`, o la ruta del script), así que el código en sí no viaja con el modelo cuando el modelo se promueve a otro entorno.
+
+El ajuste de despliegue `commands.allow_host_code` rige ambos tipos. Está desactivado por defecto. Mientras está desactivado:
+
+- registrar un comando de cualquiera de los dos tipos se rechaza, ya sea desde la API de administración o desde un archivo de configuración;
+- actualizar un comando a cualquiera de los dos tipos se rechaza;
+- llamar a un comando existente de cualquiera de los dos tipos se rechaza, con HTTP 403 y el código
+  `functions.host_code_refused`.
+
+El ajuste pertenece al operador, nunca a una organización. Está en la página de ajustes de despliegue, en Seguridad, y también se puede establecer en el archivo de configuración o en el entorno:
+
+```yaml
+server:
+  commands:
+    allow_host_code: true
+```
+
+```bash
+PROVISA_COMMANDS_ALLOW_HOST_CODE=true
+```
+
+Los [orígenes de código](code-sources.md) son la alternativa gobernada: su código se ejecuta en un sandbox, está fijado a una versión y se promueve con el modelo.
 
 ## Trazado de invocaciones {: #invocation-tracing }
 

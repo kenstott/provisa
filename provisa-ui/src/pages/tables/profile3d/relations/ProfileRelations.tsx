@@ -13,9 +13,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
+import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
+import { Link } from "react-router-dom";
+import { entityHref } from "../../../../lib/entityHref";
 import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
+import { AttractionSlider } from "../Attraction";
+import { ATTRACTION_MAX, ATTRACTION_MIN } from "../attractionState";
+import { GridToggle } from "../GridToggle";
+import { ResetSettingsButton } from "../ResetSettingsButton";
+import { useGraphSettings } from "../graphSettings";
 import { Stage3D, type CameraCommand } from "../Stage3D";
 import { useLazyScene } from "../useLazyScene";
 import {
@@ -32,19 +39,30 @@ import "../profile3d.css";
 const STRENGTHS = ["0.1", "0.3", "0.5", "0.7"];
 
 interface Shared {
+  /** What the view's exports are named after. */
+  exportName: string;
+  /** The table whose columns the view relates; each column links to its row there. */
+  tableId: number;
   model: RelationsModel;
   edges: RelEdge[];
+  attraction: number;
+  setAttraction: (v: number) => void;
   min: string;
   setMin: (v: string) => void;
   kinds: Set<EdgeKind>;
   toggleKind: (k: "correlation" | "dependence", on: boolean) => void;
   rotate: boolean;
   setRotate: (on: boolean) => void;
+  grid: boolean;
+  setGrid: (shown: boolean) => void;
   selected: string | null;
   setSelected: (id: string) => void;
   hover: RelHover | null;
   setHover: (h: RelHover | null) => void;
+  resetSettings: () => void;
 }
+
+const KINDS: readonly EdgeKind[] = ["spearman", "correlation_ratio", "dependence"];
 
 const edgeValue = (e: RelEdge) => e.value.toFixed(2);
 
@@ -73,10 +91,21 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
           },
           theme,
         );
+        sc.setGrid(latest.current.grid);
         sc.setData(latest.current.model, latest.current.edges, true);
         return sc;
       }),
   );
+  // A new layout (the attraction moved) is drawn where the camera already is.
+  const laid = useRef<RelationsModel | null>(null);
+  useEffect(() => {
+    if (!scene) return;
+    if (laid.current === null) laid.current = latest.current.model;
+    else if (laid.current !== s.model) {
+      laid.current = s.model;
+      scene.setData(s.model, latest.current.edges, false);
+    }
+  }, [scene, s.model]);
   const shown = useRef<RelEdge[] | null>(null);
   useEffect(() => {
     if (!scene) return;
@@ -89,6 +118,7 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
+  useEffect(() => scene?.setGrid(s.grid), [scene, s.grid]);
   useEffect(() => {
     if (!scene || command == null) return;
     if (command.kind === "reset") scene.resetView();
@@ -131,6 +161,8 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
       error={error}
       canvasLabel={t("profileRelations.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={s.exportName}
       testId="relations-stage"
       legend={
         <>
@@ -172,7 +204,15 @@ function RelationsDetail({ s, onFocus }: { s: Shared; onFocus: (id: string) => v
       {node && (
         <section data-testid="relations-detail" aria-live="polite">
           <div className="p3d-col-head">
-            <h4>{node.id}</h4>
+            <h4>
+              <Anchor
+                component={Link}
+                to={entityHref("column", node.id, s.tableId)}
+                data-testid="relations-title-link"
+              >
+                {node.id}
+              </Anchor>
+            </h4>
             <span className="p3d-kind">{t(`profileRelations.family_${node.family}`)}</span>
           </div>
           {links.length === 0 ? (
@@ -183,11 +223,10 @@ function RelationsDetail({ s, onFocus }: { s: Shared; onFocus: (id: string) => v
                 const other = e.a === node.id ? e.b : e.a;
                 const arrow = e.kind !== "dependence" ? "↔" : e.b === node.id ? "←" : "→";
                 return (
-                  <button
-                    type="button"
+                  <Link
                     key={e.id}
+                    to={entityHref("column", other, s.tableId)}
                     className="p3d-row p3d-row-link"
-                    onClick={() => s.setSelected(other)}
                     onMouseEnter={() => s.setHover({ kind: "edge", id: e.id })}
                     onMouseLeave={() => s.setHover(null)}
                     data-testid={`relations-link-${e.id}`}
@@ -203,7 +242,7 @@ function RelationsDetail({ s, onFocus }: { s: Shared; onFocus: (id: string) => v
                       />
                     </span>
                     <span className="p3d-num">{edgeValue(e)}</span>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -294,9 +333,11 @@ function RelationsView({
         >
           {t("profileRelations.showDependence")}
         </Chip>
+        <AttractionSlider value={s.attraction} onChange={s.setAttraction} testId="relations" />
         <Chip size="xs" checked={s.rotate} onChange={s.setRotate} data-testid="relations-rotate">
           {t("profile3d.rotate")}
         </Chip>
+        <GridToggle value={s.grid} onChange={s.setGrid} testId="relations" />
         <Button
           size="xs"
           variant="default"
@@ -305,6 +346,7 @@ function RelationsView({
         >
           {t("profile3d.resetView")}
         </Button>
+        <ResetSettingsButton onReset={s.resetSettings} testId="relations" />
         {onExpand && <ExpandButton onClick={onExpand} testId="relations-expand" />}
       </Group>
       <div className="p3d-body">
@@ -323,18 +365,39 @@ function RelationsView({
 
 export function ProfileRelations({
   results,
+  tableId,
   tableName,
 }: {
   results: ProfileRunResults;
+  tableId: number;
   tableName: string;
 }) {
   const { t } = useTranslation();
-  const model = useMemo(() => buildRelations(results), [results]);
-  const [min, setMin] = useState("0.3");
-  const [kinds, setKinds] = useState<Set<EdgeKind>>(
-    new Set(["spearman", "correlation_ratio", "dependence"]),
+  // Remembered for this table's relationship graph (graphSettings.ts).
+  const [saved, save, resetSettings] = useGraphSettings(
+    { kind: "profile-relations", subject: tableId },
+    {
+      attraction: 1 as number,
+      min: "0.3",
+      kinds: [...KINDS] as string[],
+      rotate: true as boolean,
+      grid: true as boolean,
+    },
   );
-  const [rotate, setRotate] = useState(true);
+  const attraction = Math.min(ATTRACTION_MAX, Math.max(ATTRACTION_MIN, saved.attraction as number));
+  const setAttraction = (v: number) => save("attraction", v);
+  const model = useMemo(() => buildRelations(results, attraction), [results, attraction]);
+  const min = STRENGTHS.includes(saved.min as string) ? (saved.min as string) : "0.3";
+  const setMin = (v: string) => save("min", v);
+  const savedKinds = saved.kinds as string[];
+  const kinds = useMemo(
+    () => new Set(savedKinds.filter((k): k is EdgeKind => KINDS.includes(k as EdgeKind))),
+    [savedKinds],
+  );
+  const rotate = saved.rotate as boolean;
+  const setRotate = (on: boolean) => save("rotate", on);
+  const grid = saved.grid as boolean;
+  const setGrid = (on: boolean) => save("grid", on);
   const [picked, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<RelHover | null>(null);
   const edges = useMemo(() => visibleEdges(model, Number(min), kinds), [model, min, kinds]);
@@ -352,24 +415,30 @@ export function ProfileRelations({
   )[0];
   const selected = model.nodes.some((n) => n.id === picked) ? picked : busiest.id;
   const s: Shared = {
+    exportName: `${tableName}-relations`,
+    tableId,
     model,
     edges,
+    attraction,
+    setAttraction,
     min,
     setMin,
     kinds,
-    toggleKind: (k, on) =>
-      setKinds((prev) => {
-        const next = new Set(prev);
-        const members: EdgeKind[] =
-          k === "correlation" ? ["spearman", "correlation_ratio"] : ["dependence"];
-        for (const m of members) {
-          if (on) next.add(m);
-          else next.delete(m);
-        }
-        return next;
-      }),
+    toggleKind: (k, on) => {
+      const next = new Set(kinds);
+      const members: EdgeKind[] =
+        k === "correlation" ? ["spearman", "correlation_ratio"] : ["dependence"];
+      for (const m of members) {
+        if (on) next.add(m);
+        else next.delete(m);
+      }
+      save("kinds", [...next]);
+    },
     rotate,
     setRotate,
+    grid,
+    setGrid,
+    resetSettings,
     selected,
     setSelected,
     hover,

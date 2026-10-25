@@ -26,6 +26,8 @@ from provisa.api import demo_warmup
 
 DEMOS = Path(__file__).resolve().parents[2] / "demo" / "named"
 ALL = "sandbox,analyst"  # the visitor's "Role: All"
+#: What a stub answers every request with: a statement's answer, as /data/sql gives it.
+_ANSWER = json.dumps({"data": {"sql": []}}).encode()
 
 
 def test_every_step_that_runs_something_is_sent_in_tour_order_then_the_explorers():
@@ -93,7 +95,7 @@ def test_the_warmup_sends_each_request_as_the_visitor_and_carries_on_past_a_refu
         )
         status = 500 if len(seen) == 1 else 200
         await send({"type": "http.response.start", "status": status, "headers": []})
-        await send({"type": "http.response.body", "body": b"{}"})
+        await send({"type": "http.response.body", "body": _ANSWER})
 
     with caplog.at_level(logging.WARNING, logger="provisa.api.demo_warmup"):
         asyncio.run(
@@ -101,7 +103,7 @@ def test_the_warmup_sends_each_request_as_the_visitor_and_carries_on_past_a_refu
         )
     expected = demo_warmup.tour_requests(DEMOS / "weblogs", ALL)
     assert [(m, p, r) for m, p, _, _, r, _ in seen] == [
-        (m, p.split("?")[0], r) for _, m, p, _, r in expected
+        (m, p.split("?")[0], r) for _, m, p, _, _, r in expected
     ]
     assert {(a, o) for _, _, a, o, _, _ in seen} == {("Bearer t", "sbxabc")}
     assert json.loads(seen[0][5]) == expected[0][3]
@@ -119,7 +121,7 @@ def test_the_warmup_s_requests_are_marked_as_its_own_and_no_one_else_s():
         await receive()
         marked.append(demo_warmup.WARMING.get())
         await send({"type": "http.response.start", "status": 200, "headers": []})
-        await send({"type": "http.response.body", "body": b"{}"})
+        await send({"type": "http.response.body", "body": _ANSWER})
 
     asyncio.run(
         demo_warmup._warm(app, "sbxabc", {"Authorization": "Bearer t"}, DEMOS / "weblogs", ALL)
@@ -192,3 +194,73 @@ def test_the_page_opens_as_role_all_and_an_explorer_role_reaches_only_statements
         "/data/jsonapi/openapi.json": "ana",
         "/data/graphql": "ana",
     }
+
+
+def test_each_statement_carries_the_time_travel_the_tour_has_set_by_then():
+    """The reproduce tour reads its report as of 30 September, then as recorded when it was first
+    filed (the first refresh's time, read from the refreshes step's answer), then its audit log.
+    Sent with no time travel, the warm-up and the walk read the report as it stands now, and the
+    audit step's ``as_of`` rows were never written."""
+    sent = {
+        what: travel
+        for what, _m, _p, _b, travel, _r in demo_warmup.tour_requests(DEMOS / "reproduce", ALL)
+    }
+    assert sent["reproduceNow"] == {}
+    assert sent["reproduceAsOfNow"] == {"as_of": "2026-09-30T12:00:00"}
+    filed = {
+        "as_of": "2026-09-30T12:00:00",
+        "as_recorded_from": {"step": "reproduceRefreshes", "row": 0, "column": "refreshed_at"},
+    }
+    assert sent["reproduceFiled"] == filed
+    assert sent["reproduceAudit"] == filed
+    answers = {"reproduceRefreshes": [{"refreshed_at": "2026-10-01T09:00:00"}]}
+    assert demo_warmup.travel_headers(filed, answers) == {
+        "X-Provisa-As-Of": "2026-09-30T12:00:00",
+        "X-Provisa-As-Recorded": "2026-10-01T09:00:00",
+    }
+    assert demo_warmup.travel_headers({}, answers) == {}
+
+
+def test_a_later_recorded_time_replaces_the_one_before(tmp_path):
+    (tmp_path / "tour.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "steps": [
+                    {"key": "from", "as_recorded_from": {"step": "a", "row": 0, "column": "t"}},
+                    {"key": "a", "sql": "SELECT 1"},
+                    {"key": "at", "as_recorded": "2026-10-12T17:00:00"},
+                    {"key": "b", "sql": "SELECT 2"},
+                ]
+            }
+        )
+    )
+    sent = {
+        what: travel for what, _m, _p, _b, travel, _r in demo_warmup.tour_requests(tmp_path, ALL)
+    }
+    assert sent["b"] == {"as_recorded": "2026-10-12T17:00:00"}
+
+
+def test_the_warmup_sends_a_statement_as_recorded_at_an_earlier_statements_answer():
+    seen: dict[str, dict[bytes, bytes]] = {}
+
+    async def app(scope, receive, send):
+        body = b""
+        while True:
+            message = await receive()
+            body += message.get("body", b"")
+            if not message.get("more_body"):
+                break
+        sql = json.loads(body)["sql"] if body and scope["path"] == "/data/sql" else ""
+        seen[sql] = dict(scope["headers"])
+        rows = [{"refreshed_at": "2026-10-01T09:00:00"}] if "mv_refresh_lineage" in sql else []
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send(
+            {"type": "http.response.body", "body": json.dumps({"data": {"sql": rows}}).encode()}
+        )
+
+    asyncio.run(
+        demo_warmup._warm(app, "sbxabc", {"Authorization": "Bearer t"}, DEMOS / "reproduce", ALL)
+    )
+    [audit] = [h for sql, h in seen.items() if "query_audit_log" in sql]
+    assert audit[b"x-provisa-as-of"] == b"2026-09-30T12:00:00"
+    assert audit[b"x-provisa-as-recorded"] == b"2026-10-01T09:00:00"

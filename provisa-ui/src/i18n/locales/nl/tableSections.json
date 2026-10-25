@@ -14,8 +14,8 @@
     "table": "Tabel",
     "domain": "Domein",
     "tags": "Tags",
-    "glossaryTerms": "Woordenlijsttermen",
-    "noTerms": "Geen woordenlijstterm benoemt een kolom van deze tabel",
+    "glossaryTerms": "Termen",
+    "noTerms": "Geen term benoemt een kolom van deze tabel",
     "relationships": "Relaties",
     "noRelationships": "Deze tabel neemt aan geen relatie deel",
     "fromSource": "{{value}} (van de bron)",
@@ -31,6 +31,10 @@
       "fail": "Mislukt",
       "error": "Fout",
       "skipped": "Overgeslagen"
-    }
+    },
+    "classTerm": "Rijen zijn instanties van",
+    "classTermPlaceholder": "Kies een term",
+    "noClassTerm": "Geen term",
+    "classTermUnreadable": "De term kon niet worden gelezen: {{error}}"
   }
 }

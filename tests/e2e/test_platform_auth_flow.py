@@ -94,6 +94,15 @@ def _in_org(username: str, org_id: str) -> dict[str, str]:
     return {**_basic(username), "X-Org-Provisa": org_id}
 
 
+def _as_scheduler() -> dict[str, str]:
+    """alice's request acting as ``scheduler``, the role that carries org_settings and
+    table_registration (TestScheduledTriggerRunsAsAHeldRole). Rights come from the roles a
+    request acts as, the default role when it names none (REQ-2060), so a request using
+    scheduler's rights names it. Every role alice holds still counts as held: a trigger or test
+    call may run as analyst."""
+    return {**_in_org("alice", _ctx["org1"]), "X-Provisa-Role": "scheduler"}
+
+
 def _pg_conn():
     """Connect to the SAME Postgres the app's control planes use.
 
@@ -402,7 +411,7 @@ class TestScheduledTriggerRunsAsAHeldRole:
         return await client.post(
             "/admin/graphql",
             json={"query": query, "variables": {"id": task_id, "sql": self._SQL, "role": role}},
-            headers=_in_org("alice", _ctx["org1"]),
+            headers=_as_scheduler(),
         )
 
     async def _task_ids(self, client) -> set[str]:
@@ -444,9 +453,7 @@ class TestScheduledTriggerRunsAsAHeldRole:
             'cron: "0 2 * * *", kind: "webhook", webhookName: "no-such-webhook") '
             "{ success code } }"
         )
-        resp = await client.post(
-            "/admin/graphql", json={"query": query}, headers=_in_org("alice", _ctx["org1"])
-        )
+        resp = await client.post("/admin/graphql", json={"query": query}, headers=_as_scheduler())
         assert resp.status_code == 200, resp.text
         assert not resp.json().get("errors"), resp.text
         assert resp.json()["data"]["createScheduledTask"]["code"] == "schema.webhook_not_found"
@@ -482,9 +489,7 @@ class TestActionTestCallIsGoverned:
     async def _test(self, client, monkeypatch, role_id):
         monkeypatch.setenv("PROVISA_ENABLE_TEST_ENDPOINTS", "true")
         body = {"actionType": "function", "name": "enrich_orders", "role_id": role_id}
-        return await client.post(
-            "/admin/actions/test", json=body, headers=_in_org("alice", _ctx["org1"])
-        )
+        return await client.post("/admin/actions/test", json=body, headers=_as_scheduler())
 
     async def test_a_test_call_names_its_role(self, client, monkeypatch):
         resp = await self._test(client, monkeypatch, None)

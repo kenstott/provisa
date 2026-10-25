@@ -826,6 +826,8 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             if window is not None:
                 raise SealedBuildNotDone(mv.id, window, "unchanged")
             return
+        # The build's SELECT, built once: the size guard probes it and the build reads it (a
+        # column transform's rows are computed for it, REQ-2131 -- once a refresh, not twice).
         select_sql = (
             inherited.select_sql
             if inherited is not None and inherited.select_sql is not None

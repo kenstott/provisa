@@ -14,13 +14,9 @@
     "upstream": "A monte",
     "downstream": "A valle",
     "via": "tramite {{vias}}",
-    "metaQueries": "Query",
-    "metaQueriesHint": "Le letture che questo pannello esegue sul dominio meta, a tuo nome. Copiane una o aprila nel suo explorer: la risposta è la stessa.",
-    "copy": "Copia",
-    "copied": "Copiato",
-    "copyQuery": "Copia la query {{surface}}",
-    "openQuery": "Apri la query {{surface}} nel suo explorer",
     "unreadable": "Il tuo ruolo non può leggere i prodotti dati nel dominio meta.",
+    "detailExpand": "Mostra la voce completa",
+    "detailCollapse": "Mostra meno",
     "inputs": "Input",
     "inputsHint": "Gli input fisici più vicini del prodotto: le tabelle e le sorgenti da cui sono costruiti i suoi membri.",
     "inputsEmpty": "Nessun input registrato.",
@@ -53,8 +49,6 @@
     "unassigned": "assegnato a nessun prodotto",
     "orphan": "Controllo orfano",
     "orphanWarning": "{{checker}} è assegnato a questo prodotto ma controlla {{table}}, che non è né uno dei suoi input né una delle sue porte di output.",
-    "inProduct": "in {{product}}",
-    "detailExpand": "Mostra la voce completa",
-    "detailCollapse": "Mostra meno"
+    "inProduct": "in {{product}}"
   }
 }

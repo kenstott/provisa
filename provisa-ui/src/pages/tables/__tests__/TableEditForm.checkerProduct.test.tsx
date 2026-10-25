@@ -14,6 +14,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "../../../test-utils/render";
 
+// The table's class term reads the meta domain as the user: its own tests (termGrounding) hold it.
+vi.mock("../TableClassTerm", () => ({ TableClassTerm: () => <span>class term</span> }));
 vi.mock("../../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/admin")>()),
 }));
@@ -46,6 +48,7 @@ import { TableEditForm } from "../TableEditForm";
 import { buildTableUpdateInput } from "../helpers";
 import type { DataProduct, RegisteredTable, Source } from "../../../types/admin";
 import i18n from "../../../i18n";
+import { exportProviderName } from "../../../lib/exportProviders";
 
 const t = i18n.getFixedT("en");
 
@@ -68,6 +71,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -158,7 +162,11 @@ describe("TableEditForm — checker table product assignment (REQ-1443 PRODUCT A
     const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
     expect(control).not.toBeDisabled();
     expect(control.value).toBe("Orders");
-    expect(screen.getByText(t("tableEditForm.dataProductDesc"))).toBeTruthy();
+    expect(
+      screen.getByText(
+        t("tableEditForm.dataProductDesc", { atlan: exportProviderName("atlan", "Atlan", t) }),
+      ),
+    ).toBeTruthy();
   });
 
   it("shows no product on a checker table assigned to none", () => {
@@ -172,6 +180,11 @@ describe("TableEditForm — checker table product assignment (REQ-1443 PRODUCT A
     renderForm(makeTable({ sourceId: "wh", dqContract: null, productId: null }), [PLAIN_SOURCE]);
     const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
     expect(control).not.toBeDisabled();
+    expect(
+      screen.getByText(
+        t("tableEditForm.dataProductDesc", { atlan: exportProviderName("atlan", "Atlan", t) }),
+      ),
+    ).toBeTruthy();
   });
 
   it("sends a checker table's chosen productId", () => {

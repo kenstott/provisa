@@ -39,9 +39,11 @@
     "kind_joint_counts": "Conteggi congiunti",
     "kind_constraints": "Vincoli proposti",
     "kind_constraint_checks": "Controlli dei vincoli",
+    "kind_classifications": "Classificazioni",
     "kind_terrain": "Terreno",
     "kind_relationsMap": "Relazioni",
     "kind_jointCloud": "Nuvola congiunta",
-    "kind_driftStrata": "Strati di deriva"
+    "kind_driftStrata": "Strati di deriva",
+    "resultsMenu": "Risultati"
   }
 }

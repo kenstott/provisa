@@ -101,10 +101,22 @@ class SchedulerHolder:
             conn.close()
 
     def close(self) -> None:
-        """End the session, releasing the lock if this process held it."""
+        """End the session, releasing the lock if this process held it. The lock is released by
+        name first: closing hands the connection back to its pool, and the server ends the session
+        (and frees the lock) only some time after the pool lets it go, so the worker that asks next
+        could find it still held."""
         with self._guard:
-            conn, self._conn, self._held = self._conn, None, False
+            conn, held, self._conn, self._held = self._conn, self._held, None, False
             if conn is not None:
+                if held:
+                    try:
+                        conn.execute(
+                            text("SELECT pg_advisory_unlock(:cls, hashtext(:scope))"),
+                            {"cls": _SCHEDULER_LOCK_CLASS, "scope": self._scope},
+                        )
+                    except DBAPIError:
+                        # The session is already gone, and its lock with it (as in holds()).
+                        log.warning("scheduler holder: control-plane session lost", exc_info=True)
                 conn.close()
         self._engine.dispose()
 

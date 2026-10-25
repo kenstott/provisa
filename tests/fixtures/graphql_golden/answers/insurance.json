@@ -1,0 +1,22 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:insurance/1-tiv-by-risk-rating.graphql",
+  "reads": [
+   "book",
+   "govdata"
+  ],
+  "root_field": "i__viewExposureByCountyGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:insurance/2-most-exposed-high-risk-counties.graphql",
+  "reads": [
+   "book",
+   "govdata"
+  ],
+  "root_field": "i__viewExposureByCounty"
+ }
+]

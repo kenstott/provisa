@@ -35,6 +35,7 @@ import { ListRow } from "../../components/list/ListTable";
 import { PanelActions } from "../../components/list/SplitPane";
 import { Tip } from "../../components/Tip";
 import { SEPARATOR, type DerivedPick } from "../../hooks/useDerivedRoles";
+import { matchesQuery } from "../../lib/searchItems";
 
 /** The list rows of the derived roles that match ``search``: each parent, then its value roles. */
 export function DerivedRoleRows({
@@ -48,15 +49,14 @@ export function DerivedRoleRows({
   picked: DerivedPick | null;
   onPick: (pick: DerivedPick) => void;
 }) {
-  const q = search.trim().toLowerCase();
   return (
     <>
       {roles
-        .filter(
-          (d) =>
-            !q ||
-            d.attribute.includes(q) ||
-            d.values.some((v) => `${d.attribute}${SEPARATOR}${v}`.toLowerCase().includes(q)),
+        .filter((d) =>
+          matchesQuery(
+            [d.attribute, ...d.values.map((v) => `${d.attribute}${SEPARATOR}${v}`)],
+            search,
+          ),
         )
         .map((d) => (
           <DerivedRowGroup key={d.attribute} d={d} picked={picked} onPick={onPick} />

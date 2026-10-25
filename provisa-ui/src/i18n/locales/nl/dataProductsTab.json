@@ -82,7 +82,6 @@
     "relatedTermsLabel": "Gerelateerde termen",
     "relatedTermsEmpty": "Geen gerelateerde termen",
     "relatedTermsLoading": "Gerelateerde termen laden…",
-    "relatedTermsAbstract": "abstract",
     "graphqlQueriesLabel": "Toegangspatronen",
     "graphqlQueriesEmpty": "Geen bevraagbare tabellen of relaties",
     "graphqlQueryAria": "Voorbeeld-GraphQL-query voor {{table}} uitvoeren",
@@ -93,6 +92,7 @@
     "openApiQueryAria": "Voorbeeld-REST-verzoek voor {{table}} uitvoeren",
     "detail": {
       "field": {
+        "details": "Details",
         "customProperties": "Aangepaste eigenschappen",
         "relatedTables": "Gerelateerde tabellen",
         "relationships": "Relaties",
@@ -110,10 +110,14 @@
       "lineageEmpty": "Geen lineage",
       "lineageLoading": "Lineage laden…",
       "lineageHint": "Kolomlineagegrafiek met de tabellen van dit product als gepubliceerd endpoint, plus elke upstreamtabel waaruit ze zijn afgeleid. Alleen ter informatie — vereist de capability view_governance.",
-      "outputPortsHint": "Het bevraagbare oppervlak van dit product: de bijbehorende tabellen/kolommen en commando's, met voorbeeldqueries hieronder onder Voorbeeldqueries en commando's.",
-      "customPropertiesEmpty": "Geen aangepaste eigenschappen"
+      "inputPortsHint": "De tabellen die dit product rechtstreeks leest, uit lineage. Klap een tabel uit voor de kolommen die het leest. Vereist de capability view_governance.",
+      "outputPortsHint": "Het bevraagbare oppervlak van dit product: de lidtabellen en opdrachten. Voorbeeldquery's voor elk staan onder Toegangspatronen.",
+      "customPropertiesEmpty": "Geen aangepaste eigenschappen",
+      "lineageLaneUpstream": "Stroomopwaarts, stap {{n}}",
+      "lineageLaneDownstream": "Stroomafwaarts, stap {{n}}"
     },
     "readOnly": "Alleen-lezen",
-    "readOnlyHint": "Je hebt alleen data_product_read — een org_admin kan data_product_rw toekennen om te bewerken."
+    "readOnlyHint": "Je hebt alleen data_product_read — een org_admin kan data_product_rw toekennen om te bewerken.",
+    "relatedTermsConcept": "concept"
   }
 }

@@ -25,6 +25,7 @@
 #   scripts/deploy-cloud.sh all    # all three, one restart at the end
 #   scripts/deploy-cloud.sh reset  # accounts/orgs -> none, demo data re-seeded
 #   scripts/deploy-cloud.sh patch  # like all, but KEEPS accounts and orgs
+#   scripts/deploy-cloud.sh sandbox-reset  # the sandbox tier alone: its orgs -> none, no build
 #
 # Every arm that pushes first ensures the observability and demo overlays are installed on the
 # node — the ops reports over the OTLP parquet store (traces, queries, metrics, logs) are empty
@@ -35,6 +36,11 @@
 # claimed super-admin, no accounts, no tenant orgs) and let the restart re-seed
 # the bootstrap org's demo data set from the deployment config. Use `patch` when
 # a sign-in session or a hand-built org under test has to survive the deploy.
+#
+# Every arm that pushes the python package to a sandbox VM also resets the sandbox tier there
+# (reset_sandbox_state: its demo templates and sandboxes, never the coordinator's accounts or
+# orgs) -- patch included, since the tier's tables are rebuilt only from nothing -- and proves a
+# demo opens. `sandbox-reset` does that alone, with no build.
 #
 # Env overrides: NODE, ZONE, PROJECT, CONTAINERS, SITE, SQL_IMAGE.
 set -euo pipefail
@@ -56,8 +62,8 @@ trap 'rm -rf "$STAGE"' EXIT
 
 TARGET="${1:-}"
 case "$TARGET" in
-  ui|api|cfg|all|reset|patch) ;;
-  *) echo "usage: $(basename "$0") {ui|api|cfg|all|reset|patch}" >&2; exit 2 ;;
+  ui|api|cfg|all|reset|patch|sandbox-reset) ;;
+  *) echo "usage: $(basename "$0") {ui|api|cfg|all|reset|patch|sandbox-reset}" >&2; exit 2 ;;
 esac
 
 ssh_node() { gcloud compute ssh "$NODE" --zone "$ZONE" --project "$PROJECT" --command "$1"; }
@@ -228,7 +234,7 @@ push_api() {
 # The set is the SAME explicit list the Dockerfile bakes (Dockerfile:31-34) — never the whole
 # config/ dir, which also holds the divergent dev-local config/provisa.yaml.
 CONFIG_FILES="capabilities.yaml pg_extension_catalog.yaml custom_connectors.yaml \
-provisa-install.yaml provisa-install-base.yaml"
+provisa-install.yaml provisa-install-base.yaml provisa-sandbox-regions.yaml"
 
 # The sample data provisa-install.yaml's SQLite sources resolve to, via ${env:PROVISA_DEMO_DIR},
 # which the demo overlay sets to /app/config/demo/files (Dockerfile:41-45). It ships WITH the config
@@ -289,9 +295,14 @@ run_sql() {
     echo $b64 | base64 -d | sudo tee /tmp/provisa-$label.sql >/dev/null
     NET=\$(sudo docker inspect -f '{{range \$k, \$v := .NetworkSettings.Networks}}{{\$k}}{{end}}' $API_CONTAINER)
     [ -n \"\$NET\" ] || { echo 'cannot resolve the network of $API_CONTAINER' >&2; exit 1; }
-    DSN=\$(sudo docker exec $API_CONTAINER printenv PLATFORM_DATABASE_URL | sed -E 's|^([a-z]+)\+[a-z0-9]+://|\1://|')
+    # Read from the container's configuration, not a shell in it: the sandbox reset runs it with
+    # the tier stopped.
+    ENVS=\$(sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' $API_CONTAINER)
+    DSN=\$(printf '%s\n' \"\$ENVS\" | sed -n 's/^PLATFORM_DATABASE_URL=//p' | sed -E 's|^([a-z]+)\+[a-z0-9]+://|\1://|')
+    [ -n \"\$DSN\" ] || { echo '$API_CONTAINER names no PLATFORM_DATABASE_URL' >&2; exit 1; }
     # ORG_ID names the bootstrap org's schema (provisa/api/app.py:216 — 'default' when unset).
-    BOOT=\$(sudo docker exec $API_CONTAINER sh -c 'echo \${ORG_ID:-default}')
+    BOOT=\$(printf '%s\n' \"\$ENVS\" | sed -n 's/^ORG_ID=//p')
+    BOOT=\${BOOT:-default}
     # The DSN is expanded INSIDE the container, not by the node's shell: as a command-line
     # argument it would stand in the node's process list for the life of the query.
     sudo docker run --rm -i --network \"\$NET\" -e PGDSN=\"\$DSN\" -e BOOT=\"\$BOOT\" \
@@ -441,6 +452,16 @@ services:
       PROVISA_SANDBOX_AI_BASE_URL: "https://openrouter.ai/api/v1"
       PROVISA_SANDBOX_AI_API_KEY: "\$\${env:OPENROUTER_API_KEY}"
       OPENROUTER_API_KEY: "\${OPENROUTER_API_KEY:-}"
+  # REQ-2068: the regions sandbox tier runs the same app under its own deployment config
+  # (provisa-sandbox-regions.yaml, shipped in CONFIG_FILES); without the tree it ran the image's
+  # code and the image's config directory.
+  provisa-sandbox-regions:
+    volumes:
+      - ${OVERLAY_DIR}/static:/app/static
+      - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/config:/app/config
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
 YAML
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"
@@ -935,6 +956,110 @@ SANDBOX_NODE="${SANDBOX_NODE:-provisa-saas-sandbox}"
 # server reaches it by service name (first-launch.sh's default); deploy_sandbox_vm sets the VM's.
 SANDBOX_PUBLISH="127.0.0.1:18000"
 
+# The sandbox tier's containers on its VM: the tier and, where it runs, the regions tier.
+sandbox_containers() {
+  ssh_node "sudo docker ps -a --format '{{.Names}}'" | tr -d '\r' \
+    | grep -xE 'compose-provisa-sandbox-1|compose-provisa-sandbox-regions-1' | tr '\n' ' '
+}
+
+# The sandbox tier back to no orgs of its own: every demo template and sandbox (ids sbx*, REQ-2006)
+# out of the control plane, their schemas out of it and out of the regions tier's two stores, and
+# their folders off the VM. There are no migrations (V1): a template built by older code keeps its
+# old tables, and a sandbox opened from it fails on a column added since (500 ProgrammingError,
+# "column calendars.day_close does not exist"). The coordinator's accounts and orgs are untouched;
+# the tier rebuilds each template from its bundle at its next start. Runs with NODE set to the
+# sandbox VM (deploy_sandbox_vm), its containers stopped so nothing writes while it runs.
+reset_sandbox_state() {
+  local containers
+  containers="$(sandbox_containers)"
+  [ -n "$containers" ] || { echo "sandbox VM: no sandbox tier container on $NODE" >&2; exit 1; }
+  echo "== sandbox VM: resetting the sandbox tier's orgs (stopping $containers)"
+  # A step that fails below ends the script (set -e); the tier is started again on the way out,
+  # so a failed reset never leaves it down. Replaced by the stage cleanup alone once it is done.
+  trap "echo 'sandbox reset failed: starting $containers again' >&2; ssh_node 'sudo docker start $containers >/dev/null'; rm -rf \"\$STAGE\"" EXIT
+  ssh_node "sudo docker stop $containers >/dev/null"
+  # One schema per statement, each its own transaction (psql autocommit + \gexec): every
+  # template's schema holds hundreds of views, and dropping them all in one transaction runs
+  # out of locks (max_locks_per_transaction). Schemas first, then the orgs rows, so a failure
+  # part way leaves orgs whose schemas a rerun drops.
+  cat > "$STAGE/reset_sandbox.sql" <<'SQL'
+\pset pager off
+SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
+  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
+-- Every admin row of an org cascades from its orgs row (provisa/core/schema_admin.py).
+DELETE FROM public.orgs WHERE id LIKE 'sbx%';
+SELECT count(*) AS sandbox_orgs_left FROM public.orgs WHERE id LIKE 'sbx%';
+SQL
+  run_sql "$STAGE/reset_sandbox.sql" reset-sandbox
+  # The regions tier's stores (first-launch.sh: region-pg-eu, region-pg-us) hold each region's
+  # schemas of its orgs.
+  cat > "$STAGE/reset_sandbox_store.sql" <<'SQL'
+SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
+  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
+SQL
+  local b64 store
+  b64="$(base64 < "$STAGE/reset_sandbox_store.sql" | tr -d '\n')"
+  for store in $(ssh_node "sudo docker ps --format '{{.Names}}'" | tr -d '\r' | grep -E 'region-pg-(eu|us)'); do
+    ssh_node "set -e; echo $b64 | base64 -d | sudo docker exec -i $store psql -U provisa -d provisa -v ON_ERROR_STOP=1 -q -f -"
+    echo "   $store: sandbox schemas dropped"
+  done
+  # Their folders (provisa.core.org_files: <data dir>/orgs/<org>; first-launch.sh mounts the
+  # tiers' data dirs from these). Only orgs/sbx*: demo-bundles/ beside it is the demo stores sync's.
+  # Expanded as root: the login user cannot list /root, where its own shell would expand nothing.
+  ssh_node "sudo sh -c 'rm -rf /root/.provisa/sandbox-data/orgs/sbx* /root/.provisa/sandbox-regions-data/orgs/sbx*'"
+  trap 'rm -rf "$STAGE"' EXIT
+  CONTAINERS="$containers"
+}
+
+# A demo opened through the public site, as a visitor opens one, and closed again: the proof the
+# sandbox tier serves after a deploy (a template rebuilt from its bundle can take minutes).
+verify_sandbox_demo() {
+  local demo deadline body code token org
+  demo="$(tr -d '[:space:]' < "$REPO/packaging/linux/demo-stores/sandbox-tier-bundles" | cut -d, -f1)"
+  echo "== verifying a sandbox opens ($demo)"
+  deadline=$(( $(date +%s) + 1800 ))
+  while :; do
+    body="$(curl -s --max-time 600 -X POST "$SITE/public/demos/$demo")" || body=""
+    token="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("token",""))' "$body" 2>/dev/null)" || token=""
+    [ -n "$token" ] && break
+    code="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("code",""))' "$body" 2>/dev/null)" || code=""
+    case "$code" in
+      sandbox.demo_not_ready|sandbox.starting|sandbox.demo_starting) ;;
+      *) echo "$SITE/public/demos/$demo -> ${body:0:600}" >&2; exit 1 ;;
+    esac
+    [ "$(date +%s)" -lt "$deadline" ] || { echo "$demo not open in 1800s: ${body:0:600}" >&2; exit 1; }
+    sleep 10
+  done
+  org="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["org_id"])' "$body")"
+  echo "   $demo opened as $org"
+  curl -s -o /dev/null -w '   closed: %{http_code}\n' -X POST -H "Authorization: Bearer $token" \
+    -H "x-org-provisa: $org" "$SITE/sandboxes/closing"
+}
+
+# The coordinator, which holds the control plane the sandbox reset changes, up and answering. It
+# powers itself off when idle (its front door starts it on a visitor's hit); a reset that reached
+# for its database then timed out. Started as deploy_sandbox_vm starts the sandbox VM, then
+# awaited on /health, which the API answers only once its lifespan, database included, is up.
+ensure_coordinator() {
+  local status
+  status="$(gcloud compute instances describe "$NODE" --zone "$ZONE" --project "$PROJECT" \
+    --format='value(status)')"
+  if [ "$status" != "RUNNING" ]; then
+    echo "== coordinator $NODE: $status; starting it for the sandbox reset"
+    gcloud compute instances start "$NODE" --zone "$ZONE" --project "$PROJECT" >/dev/null
+  fi
+  # A cold coordinator boots the VM, its database and the API's lifespan (~115s in engine-wake
+  # alone): longer than verify_api's budget after a plain restart.
+  local i code
+  for i in $(seq 1 300); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE/health") || code="unreachable"
+    [ "$code" = "200" ] && { echo "== coordinator: $SITE/health -> 200 after $((i * 2))s"; return 0; }
+    sleep 2
+  done
+  echo "coordinator $NODE: $SITE/health -> $code (never reached 200 in 600s)" >&2
+  exit 1
+}
+
 deploy_sandbox_vm() {
   local status
   status="$(gcloud compute instances describe "$SANDBOX_NODE" --zone "$ZONE" --project "$PROJECT" \
@@ -943,6 +1068,10 @@ deploy_sandbox_vm() {
     echo "== sandbox VM: none ($SANDBOX_NODE); the tier runs on $NODE"
     return
   fi
+  # Asked of the coordinator before NODE names the sandbox VM below.
+  if [ -f "$STAGE/api.tgz" ] || [ "$TARGET" = sandbox-reset ]; then
+    ensure_coordinator
+  fi
   if [ "$status" != "RUNNING" ]; then
     echo "== sandbox VM: $status; starting it for the push"
     gcloud compute instances start "$SANDBOX_NODE" --zone "$ZONE" --project "$PROJECT" >/dev/null
@@ -950,11 +1079,18 @@ deploy_sandbox_vm() {
   NODE="$SANDBOX_NODE" API_CONTAINER=compose-provisa-sandbox-1 CONTAINERS=compose-provisa-sandbox-1
   SANDBOX_PUBLISH="$(gcloud compute instances describe "$SANDBOX_NODE" --zone "$ZONE" \
     --project "$PROJECT" --format='value(networkInterfaces[0].networkIP)'):8000"
-  local i
+  local i state
   for i in $(seq 1 120); do
-    ssh_node "sudo docker inspect -f '{{.State.Running}}' $API_CONTAINER 2>/dev/null" 2>/dev/null \
-      | grep -q true && break
-    [ "$i" = 120 ] && { echo "sandbox VM: $API_CONTAINER never came up" >&2; exit 1; }
+    # Empty while the VM boots and docker has not yet listed it.
+    state="$(ssh_node "sudo docker inspect -f '{{.State.Status}}' $API_CONTAINER 2>/dev/null" 2>/dev/null \
+      | tr -d '\r')" || state=""
+    [ "$state" = running ] && break
+    # Stopped (a reset that failed before this guard, or a hand stop): nothing else starts it.
+    if [ "$state" = exited ] || [ "$state" = created ]; then
+      echo "== sandbox VM: $API_CONTAINER is $state; starting it"
+      ssh_node "sudo docker start $API_CONTAINER >/dev/null"
+    fi
+    [ "$i" = 120 ] && { echo "sandbox VM: $API_CONTAINER never came up (last: ${state:-not listed})" >&2; exit 1; }
     sleep 15
   done
   echo "== sandbox VM: $SANDBOX_NODE"
@@ -963,7 +1099,13 @@ deploy_sandbox_vm() {
   # What this deploy built: the api arm has no configs, the cfg arm no package.
   [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }
   [ -f "$STAGE/cfg.tgz" ] && push_cfg
+  # New code against the tier's old tables fails (no migrations): whenever the package is pushed,
+  # or asked for alone (sandbox-reset), the tier starts from no orgs of its own.
+  if [ -f "$STAGE/api.tgz" ] || [ "$TARGET" = sandbox-reset ]; then
+    reset_sandbox_state
+  fi
   restart
+  verify_sandbox_demo
 }
 
 case "$TARGET" in
@@ -978,6 +1120,11 @@ case "$TARGET" in
     { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   all)
     { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+  sandbox-reset)
+    # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
+    # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
+    # the VM; with one, the leading node check is the VM's own (deploy_sandbox_vm), as on every arm.
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; sandbox_on_own_vm || { echo "no sandbox VM ($SANDBOX_NODE): the tier runs on $NODE, which 'reset' resets" >&2; exit 2; }; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;

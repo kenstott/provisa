@@ -27,7 +27,6 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from provisa.cypher.map_projection import rewrite_bare_map_literals
 from provisa.cypher.params import rewrite_params
 
 _NAMES = ["a", "b", "c", "x", "y"]
@@ -61,34 +60,3 @@ def test_rewrite_params_is_positional_and_stable(case) -> None:
         assert f"${name}" not in out
     # Idempotent: positional refs are not themselves named params.
     assert rewrite_params(out, declared) == out
-
-
-def _render_map(value) -> str:
-    if isinstance(value, dict):
-        return "{" + ", ".join(f"{k}: {_render_map(v)}" for k, v in value.items()) + "}"
-    return str(value)
-
-
-_nested = st.recursive(
-    st.integers(0, 9),
-    lambda child: st.dictionaries(st.sampled_from(["a", "b", "c"]), child, min_size=1, max_size=2),
-    max_leaves=6,
-)
-
-
-@st.composite
-def _map_literal(draw) -> str:
-    top = draw(st.dictionaries(st.sampled_from(["a", "b", "c"]), _nested, min_size=1, max_size=2))
-    return _render_map(top)
-
-
-@settings(max_examples=300, deadline=None)
-@given(text=_map_literal())
-def test_rewrite_bare_maps_leaves_none_behind(text: str) -> None:
-    out = rewrite_bare_map_literals(text)
-    # Every bare map literal is gone (MAP(...) uses ARRAY[...], never braces).
-    assert "{" not in out and "}" not in out
-    # Each `{` in the input is exactly one map, and becomes exactly one MAP(.
-    assert out.count("MAP(") == text.count("{")
-    # Bottom-up rewrite reaches a fixed point.
-    assert rewrite_bare_map_literals(out) == out

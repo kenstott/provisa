@@ -125,6 +125,8 @@ def _map_source(
             "database, user and password in the import's source settings and convert again.",
         )
     pool = conn.get("pool_settings") or {}
+    if pool.get("min_connections"):  # REQ-623: both pool settings are preserved
+        fields["pool_min"] = int(pool["min_connections"])
     if pool.get("max_connections"):
         fields["pool_max"] = int(pool["max_connections"])
     source = Source(id=hs.name, type=_source_type_from_kind(hs.kind), **fields)

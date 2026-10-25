@@ -78,6 +78,7 @@ function table(
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -129,7 +130,19 @@ function table(
 }
 
 const TABLES = [
-  table(7, "orders", [], { region: "eu" }),
+  table(7, "orders", [], {
+    region: "eu",
+    // A column a graph links to (?column=).
+    columns: [
+      {
+        id: 70,
+        columnName: "email",
+        visibleTo: [],
+        masks: [],
+        scope: "domain",
+      } as unknown as RegisteredTable["columns"][number],
+    ],
+  }),
   table(8, "staging", [], { region: "eu", draft: true }),
 ];
 const SOURCES = [
@@ -214,6 +227,19 @@ async function select(name: string) {
 
 describe("TablesPage — the detail panel", () => {
   beforeEach(() => localStorage.clear());
+
+  it("opens on a linked column: its table's Columns section, the row marked", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    render(<TablesPage />, {
+      initialEntries: ["/tables?table=7&section=columns&column=email"],
+    });
+    const panel = await screen.findByTestId("tables-split-panel");
+    expect(within(panel).getByTestId("tables-split-title")).toHaveTextContent("orders");
+    expect(within(panel).getByTestId("table-read-column-email")).toHaveAttribute(
+      "data-linked",
+      "true",
+    );
+  });
 
   it("has no panel until a table is selected", async () => {
     render(<TablesPage />);

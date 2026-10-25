@@ -115,24 +115,21 @@ def _sql_name(name: str) -> str:
     return apply_sql_name(name)
 
 
-def is_native_read(table: dict, types: dict[str, str], state: Any) -> bool:
+def is_native_read(table: dict, types: dict[str, str]) -> bool:
     """Whether Provisa reads ``table`` itself, per statement, under the statement's arguments: a
     MongoDB pipeline table (REQ-1980), a Cosmos DB table with a query or parameters (REQ-1982),
     a Qdrant search (REQ-1983), an Elasticsearch native search (REQ-2017), or a code source's
-    table, a function run in its worker (REQ-1984, REQ-1993) -- unless the engine attaches its
-    built host (REQ-2100, codesource.attach). No engine runs any of them."""
+    table, a function run in its worker or on its built host (REQ-1984, REQ-1993, REQ-2100). No
+    engine runs any of them."""
     from provisa.codesource.table import is_code_table
     from provisa.cosmosdb.table import has_parameters
     from provisa.elasticsearch.native_table import is_native_search_table
     from provisa.mongodb.pipeline_table import is_pipeline_table
     from provisa.qdrant.table import is_search
 
-    if is_code_table(table, types):
-        from provisa.codesource.attach import attached
-
-        return not attached(state, table)
     if (
-        is_pipeline_table(table, types)
+        is_code_table(table, types)
+        or is_pipeline_table(table, types)
         or is_search(table, types)
         or is_native_search_table(table, types)
     ):
@@ -159,33 +156,8 @@ def _pipeline_tables(state, table_ids: Iterable[int]) -> dict[str, dict]:
     return {
         _sql_name(t["table_name"]): t
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids and is_native_read(t, types, state) and not _kept_for_good(state, t)
+        if t.get("id") in ids and is_native_read(t, types) and not _kept_for_good(state, t)
     }
-
-
-def _attached_code_tables(state, table_ids: Iterable[int]) -> dict[str, dict]:
-    """REQ-2100: the code tables the statement reads that the engine attaches
-    (codesource.attach), by their sql names."""
-    from provisa.codesource.attach import attached
-
-    ids = set(table_ids)
-    return {
-        _sql_name(t["table_name"]): t
-        for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids and attached(state, t)
-    }
-
-
-def _given_in_statement(exec_sql: str, table: dict) -> dict[str, object]:
-    """REQ-2100: the parameters of an attached code table the statement gives a value in its own
-    conditions (``_nf_{name} = value``, a literal or a bound parameter), by name."""
-    from provisa.compiler.nf_extractor import extract_nf_args
-    from provisa.core.parameters import is_parameter
-
-    names = {c["column_name"] for c in table["columns"] if is_parameter(c)}
-    _sql, _params, given = extract_nf_args(exec_sql, [], names)
-    # A value bound when the statement runs ($N) is given, though not known here.
-    return {name: "$bound" if value is None else value for name, value in given.items()}
 
 
 def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str | None]:
@@ -199,11 +171,7 @@ def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str |
     types = getattr(state, "source_types", None) or {}
     filters: dict[str, str | None] = {}
     for t in getattr(state, "tables", None) or []:
-        if (
-            t.get("id") not in ids
-            or not is_native_read(t, types, state)
-            or not _kept_for_good(state, t)
-        ):
+        if t.get("id") not in ids or not is_native_read(t, types) or not _kept_for_good(state, t):
             continue
         landed = {c["column_name"] for c in t["columns"] if not is_parameter(c)}
         for c in t["columns"]:
@@ -255,18 +223,65 @@ async def _mat_pipeline_table(
     cache_rewrites: dict,
     values_cte_entries: dict,
     nf_args: dict | None,
+    statement: str,
 ) -> None:
     """Run a pipeline table with the statement's arguments and land its rows for the engine,
     kept under those arguments for the table's TTL (REQ-1980): two argument sets are two
     answers, never one."""
-    if state.source_types[table["source_id"]] == "cosmosdb":
+    source_type = state.source_types[table["source_id"]]
+    if source_type in ("node", "python"):
+        # REQ-2100, REQ-1756: a code table is called by its source's proxy, which plans the
+        # read -- its declared predicates a pre-filter -- and its rows are kept under every
+        # argument the call was given.
+        from provisa.codesource.proxy import CodeProxy
+        from provisa.codesource.table import cache_arguments as code_arguments
+        from provisa.federation.connector_contract import Read
+
+        proxy = CodeProxy()
+        plan = await proxy.plan(
+            state,
+            Read(
+                table=table,
+                name=tn,
+                statement=statement,
+                source_id=table["source_id"],
+                arguments=nf_args,
+            ),
+        )
+        await _land_per_statement(
+            tn,
+            table,
+            state,
+            cache_rewrites,
+            values_cte_entries,
+            code_arguments(table, plan.arguments),
+            lambda: proxy.call(state, plan),
+        )
+        return
+    if source_type == "qdrant":
+        # A search table is landed (REQ-1983): its connector's call, under its arguments.
+        from provisa.federation.connector_contract import Plan, Read
+        from provisa.qdrant.contract import QdrantContract
+        from provisa.qdrant.table import cache_arguments as search_arguments
+
+        search = Plan(
+            read=Read(table=table, name=tn, statement=statement, source_id=table["source_id"]),
+            arguments=dict(nf_args or {}),
+        )
+        await _land_per_statement(
+            tn,
+            table,
+            state,
+            cache_rewrites,
+            values_cte_entries,
+            search_arguments(table, nf_args),
+            lambda: QdrantContract().call(state, search),
+        )
+        return
+    if source_type == "cosmosdb":
         from provisa.cosmosdb.table import cache_arguments, read
-    elif state.source_types[table["source_id"]] == "qdrant":
-        from provisa.qdrant.table import cache_arguments, read
-    elif state.source_types[table["source_id"]] == "elasticsearch":
+    elif source_type == "elasticsearch":
         from provisa.elasticsearch.native_table import cache_arguments, read
-    elif state.source_types[table["source_id"]] in ("node", "python"):
-        from provisa.codesource.table import cache_arguments, read
     else:
         from provisa.mongodb.pipeline_table import cache_arguments, read
     await _land_per_statement(
@@ -278,28 +293,6 @@ async def _mat_pipeline_table(
         cache_arguments(table, nf_args),
         lambda: read(state, table, nf_args),
     )
-
-
-async def land_deferred(exec_sql: str, state) -> str:
-    """REQ-2100: ``exec_sql``, routed to the engine, reading the rows of each code table held for
-    a DIRECT read (``codesource.direct.defer``), landed now as any code table's are."""
-    from provisa.api_source.engine_cache import rewrite_all_from_cache
-    from provisa.cache.values_cte import build_values_ctes_sql
-    from provisa.codesource.direct import take
-
-    from provisa.codesource.attach import attached
-
-    held = take()
-    if not held:
-        return exec_sql
-    cache_rewrites: dict = {}
-    values_cte_entries: dict = {}
-    for tn, (table, arguments) in held.items():
-        if attached(state, table):
-            continue  # the engine reads it from its host, its parameters in the statement
-        await _mat_pipeline_table(tn, table, state, cache_rewrites, values_cte_entries, arguments)
-    exec_sql = build_values_ctes_sql(exec_sql, values_cte_entries)
-    return rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
 
 
 async def mat_live_part(
@@ -424,7 +417,7 @@ def _parameter_tables(state, table_ids: Iterable[int]) -> dict[str, list]:
     return {
         apply_sql_name(t["table_name"]): [c for c in t["columns"] if is_parameter(c)]
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids and not (is_native_read(t, types, state) and _kept_for_good(state, t))
+        if t.get("id") in ids and not (is_native_read(t, types) and _kept_for_good(state, t))
     }
 
 
@@ -466,22 +459,54 @@ class _Feed:
     relationship: str
     parameters: dict[str, str]
     source: Any  # the source table's TableMeta in the statement's model
+    # The target's column the relationship joins on (REQ-2099): a parameter column when the
+    # target's rows do not carry the value they were read for, as a Qdrant search's points do not.
+    target_column: str | None = None
 
 
-def _feed_of(state, ctx, table: dict, table_ids: Iterable[int]) -> _Feed | None:
+def _feed_of(state, ctx, table: dict, table_ids: Iterable[int], given: dict | None) -> _Feed | None:
     """The relationship feeding ``table``'s parameters from a table the statement reads, or None.
-    Only a table of the role's model feeds one: the source is read as the role reads it."""
+    Only a table of the role's model feeds one: the source is read as the role reads it. A
+    statement that gives one of the parameters the relationship feeds reads the table under its
+    own arguments, and is not fed: a search for a phrase of its own, beside the lines it joins its
+    points back to."""
+    from provisa.compiler.naming import apply_sql_name
+
     if ctx is None:
         return None
+    stated = {apply_sql_name(k.lstrip("_")) for k, v in (given or {}).items() if v is not None}
     ids = set(table_ids)
     metas = {m.table_id: m for m in ctx.tables.values()}
     for rel in getattr(state, "relationships", None) or []:
         if not rel["parameters"] or rel.get("target_table_id") != table["id"]:
             continue
+        if stated & {apply_sql_name(p) for p in rel["parameters"]}:
+            continue
         source = metas.get(rel["source_table_id"])
         if source is not None and source.table_id in ids:
-            return _Feed(rel["id"], dict(rel["parameters"]), source)
+            return _Feed(rel["id"], dict(rel["parameters"]), source, rel.get("target_column"))
     return None
+
+
+def _carried(feed: _Feed, state) -> dict[str, tuple[str, str]]:
+    """REQ-2099: the parameter column the relationship joins on, when it joins on one, as
+    ``{column: (parameter, IR type)}``: each fed row carries the value its argument set gave that
+    parameter, typed as the source column it was read from, so the join matches each row to the
+    source row it was read for. Empty when the relationship joins on a column of the rows."""
+    from provisa.core.parameters import NF_PREFIX
+
+    column = feed.target_column
+    if column is None or not column.startswith(NF_PREFIX):
+        return {}
+    parameter = column[len(NF_PREFIX) :]
+    if parameter not in feed.parameters:
+        raise ValueError(
+            f"relationship {feed.relationship!r} joins on {column!r}, a parameter it does not feed"
+        )
+    source_column = feed.parameters[parameter]
+    [source] = [t for t in state.tables if t["id"] == feed.source.table_id]
+    [data_type] = [c["data_type"] for c in source["columns"] if c["column_name"] == source_column]
+    return {column: (parameter, data_type)}
 
 
 async def _fed_argument_sets(feed: _Feed, role_id: str) -> list[dict]:
@@ -516,24 +541,31 @@ async def _mat_fed_table(
     values_cte_entries: dict,
     nf_args: dict | None,
 ) -> None:
-    """A code table joined over a relationship that feeds its parameters (REQ-2099): called once
-    per distinct argument set the source gives the role, with the statement's own arguments for
-    the parameters the relationship does not feed, and landed together for the engine's join,
-    kept under those argument sets for the table's TTL."""
-    from provisa.codesource.table import read_each
+    """A code table or a Qdrant search joined over a relationship that feeds its parameters
+    (REQ-2099): called once per distinct argument set the source gives the role, with the
+    statement's own arguments for the parameters the relationship does not feed, and landed
+    together for the engine's join, kept under those argument sets for the table's TTL. A search's
+    rows carry the value of the parameter the relationship joins on (:func:`_carried`)."""
+    from provisa.qdrant.table import is_search
 
     given = dict(nf_args or {})
     sets = [{**given, **fed} for fed in await _fed_argument_sets(feed, role_id)]
     key = {"fed_by": feed.relationship, "sets": json.dumps(sets, sort_keys=True, default=str)}
-    await _land_per_statement(
-        tn,
-        table,
-        state,
-        cache_rewrites,
-        values_cte_entries,
-        key,
-        lambda: read_each(state, table, sets, joined=True),
-    )
+    if is_search(table, state.source_types):
+        from provisa.qdrant.table import read_each as search_each
+
+        carried = _carried(feed, state)
+
+        def answer():
+            return search_each(state, table, sets, carried)
+    else:
+        from provisa.codesource.proxy import CodeProxy
+
+        def answer():
+            # REQ-2099: through the code source's proxy, once per set of the parent's values.
+            return CodeProxy().call_each(state, table, sets, joined=True)
+
+    await _land_per_statement(tn, table, state, cache_rewrites, values_cte_entries, key, answer)
 
 
 def _refuse_or_drop(exec_sql: str, tn: str, missing: list[str], dropped_tables: dict) -> None:
@@ -543,11 +575,11 @@ def _refuse_or_drop(exec_sql: str, tn: str, missing: list[str], dropped_tables: 
         drop_union_branches_for_table,
         find_api_table_names,
     )
-    from provisa.core.parameters import missing_reason
+    from provisa.core.parameters import ParameterRequired, missing_reason
 
     reason = missing_reason(missing)
     if tn in find_api_table_names(drop_union_branches_for_table(exec_sql, tn)):
-        raise ValueError(f"Table {tn!r} {reason}")
+        raise ParameterRequired(tn, reason)
     log.warning("[MAT] %s lacks required parameter(s) %s — dropping its union branch", tn, missing)
     dropped_tables[tn] = reason
 
@@ -1083,13 +1115,16 @@ async def _mat_api_ep_table(
     values_cte_entries: dict,
     nf_args: dict | None = None,
     ctx=None,
+    pushed: dict | None = None,
 ) -> None:
     """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE.
 
     The cache table is kept under the arguments the statement gives the endpoint (REQ-318): an
     endpoint with a parameter is a function of its arguments, so the answer to one argument set
     is never another's. ``ctx`` is the model the statement compiled against, for the joins that
-    feed a parameter from a parent's keys."""
+    feed a parameter from a parent's keys. ``pushed``: the arguments the statement's own
+    conditions narrow the call by (a SPARQL table's narrowed query, REQ-2138), part of the call
+    and of the name its answer is kept under."""
     from provisa.api_source.engine_cache import (
         cache_table_name,
         ensure_cache_schema,
@@ -1109,7 +1144,7 @@ async def _mat_api_ep_table(
     )
 
     _cache_loc = source_cache_location(state, source_id, api_source)
-    args = endpoint_args(ep, nf_args)
+    args = {**endpoint_args(ep, nf_args), **(pushed or {})}
     # Read by its parent's keys, the fills are one argument set per key and the table is all of
     # them, whatever else the statement gives. Read by argument, the table is that answer's:
     # named as the fetch names it, with the endpoint's default parameters under the arguments.
@@ -1135,7 +1170,7 @@ async def _mat_api_ep_table(
     redirect_config = RedirectConfig.from_env()
     # An endpoint with a parameter is a function of its arguments: what its fills or a fetch hold
     # is the rows for some arguments, never the table's whole rows, so none of it is held hot.
-    whole = not any(c.param_type for c in ep.columns)
+    whole = not any(c.param_type for c in ep.columns) and not pushed
 
     if not response_cols:
         log.warning("[MAT] %s has no response columns — skipping", tn)
@@ -1351,11 +1386,11 @@ async def _materialize_api_to_engine_cache(
         ``nf_extractor.apply_dropped_tables`` raises the reason for it. A remote that fails is
         never dropped: its error fails the query (REQ-1661, amended 2026-09-30).
     """
-    from provisa.codesource import direct as code_direct
     from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
+    from provisa.qdrant.table import is_search
+    from provisa.sparql import pushdown as sparql_pushdown
 
-    code_direct.begin()
     cache_rewrites: dict = {}
     values_cte_entries: dict = {}
     dropped_tables: dict[str, str] = {}
@@ -1385,29 +1420,21 @@ async def _materialize_api_to_engine_cache(
 
     params_of = _parameter_tables(state, table_ids)
     pipelines = _pipeline_tables(state, table_ids)
-    attached_tables = _attached_code_tables(state, table_ids)
     statement_args = nf_args
     for tn in table_names:
         # A read named for itself is its table's, under its own arguments; its rows are put in
         # under its own name, so the statement's other reads of the table keep theirs.
         table, nf_args = (read_args or {}).get(tn, (tn, statement_args))
-        attached_table = attached_tables.get(_sql_name(table))
-        if attached_table is not None:
-            # REQ-2100: the engine reads it from its host, its parameters' conditions left in the
-            # statement for the host; a read of it alone is its source's to answer, DIRECT.
-            given = {**(nf_args or {}), **_given_in_statement(exec_sql, attached_table)}
-            missing = _missing_parameters(params_of, table, None, given, ctx, None)
-            if missing:
-                _refuse_or_drop(exec_sql, tn, missing, dropped_tables)
-            elif len(table_names) == 1 and tn not in (read_args or {}):
-                code_direct.defer(tn, attached_table, nf_args)
-            continue
         pipeline_table = pipelines.get(_sql_name(table))
-        # REQ-2099: a code table the statement joins to a table whose relationship feeds its
-        # parameters is given them by the join.
+        # REQ-2099: a code table or a Qdrant search the statement joins to a table whose
+        # relationship feeds its parameters is given them by the join.
         feed = (
-            _feed_of(state, ctx, pipeline_table, table_ids)
-            if pipeline_table is not None and is_code_table(pipeline_table, state.source_types)
+            _feed_of(state, ctx, pipeline_table, table_ids, nf_args)
+            if pipeline_table is not None
+            and (
+                is_code_table(pipeline_table, state.source_types)
+                or is_search(pipeline_table, state.source_types)
+            )
             else None
         )
         # REQ-1986: a table read without a value for a required parameter is refused before
@@ -1434,17 +1461,10 @@ async def _materialize_api_to_engine_cache(
             )
             continue
         if pipeline_table is not None:
-            if (
-                len(table_names) == 1
-                and tn not in (read_args or {})
-                and is_code_table(pipeline_table, state.source_types)
-            ):
-                # REQ-2100: a read of one code table alone is its source's to answer, DIRECT; it
-                # is landed only if the statement is routed to the engine after all.
-                code_direct.defer(tn, pipeline_table, nf_args)
-                continue
+            # REQ-2100 (amended 2026-10-23): a code table's rows are landed, its arguments a
+            # pre-filter, and the engine runs the statement over them.
             await _mat_pipeline_table(
-                tn, pipeline_table, state, cache_rewrites, values_cte_entries, nf_args
+                tn, pipeline_table, state, cache_rewrites, values_cte_entries, nf_args, exec_sql
             )
             continue
         # Hot cache: inline rows as VALUES CTE — avoids cross-catalog JOIN entirely
@@ -1526,6 +1546,7 @@ async def _materialize_api_to_engine_cache(
             values_cte_entries,
             nf_args=nf_args,
             ctx=ctx,
+            pushed=sparql_pushdown.pushed_arguments(ep, exec_sql, tn),
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:
             log.warning("[MAT] %s could not be materialized — dropping union branch", tn)

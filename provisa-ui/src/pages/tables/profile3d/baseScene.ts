@@ -45,7 +45,37 @@ interface PinnedLabel {
   at: () => THREE.Vector3;
   rotate: number;
   alignEnd: boolean;
+  /** Where the last frame put it on the stage, in CSS pixels; null while it is behind the camera. */
+  placed: { x: number; y: number } | null;
 }
+
+/** A pinned label as the last frame drew it: what an export paints in place of the DOM layer. */
+export interface PlacedLabel {
+  el: HTMLElement;
+  x: number;
+  y: number;
+  rotate: number;
+  alignEnd: boolean;
+}
+
+/** One frame of a full orbit, at ``fraction`` of the way round (0 is the view it started from). */
+export interface Orbit {
+  frame: (fraction: number, draw: (src: HTMLCanvasElement) => void) => void;
+  end: () => void;
+}
+
+/** A scene projected flat, for an SVG: what the stage shows, in CSS pixels. Each shape is a drawn
+ * mesh's silhouette (the outline of its projected vertices) in its material's colour, listed back
+ * to front, so later shapes cover earlier ones as they do on the stage. */
+export interface VectorScene {
+  width: number;
+  height: number;
+  /** Line segments drawn under everything else (the floor grid). */
+  floor: { x1: number; y1: number; x2: number; y2: number; color: string; opacity: number }[];
+  shapes: { points: [number, number][]; color: string; opacity: number }[];
+}
+
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
 
 export abstract class BaseScene<H> {
   protected renderer: THREE.WebGLRenderer;
@@ -75,6 +105,11 @@ export abstract class BaseScene<H> {
   private dragging = false;
   private resizeObserver: ResizeObserver;
   private disposers: (() => void)[] = [];
+  /** The floor grid under the content, as last laid, and whether it is drawn (setGrid). */
+  private floor: THREE.GridHelper | null = null;
+  private floorShown = true;
+  /** Set while an export drives the camera (orbit()): the loop then draws nothing of its own. */
+  private held = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -146,7 +181,7 @@ export abstract class BaseScene<H> {
     el.className = cls;
     el.textContent = text;
     this.labelsEl.appendChild(el);
-    this.labels.push({ el, at, rotate, alignEnd });
+    this.labels.push({ el, at, rotate, alignEnd, placed: null });
     return el;
   }
 
@@ -187,6 +222,17 @@ export abstract class BaseScene<H> {
     return this.camera.aspect;
   }
 
+  /** Lays a size×size floor grid at height ``y`` in ``world``, drawn or not as setGrid last said. */
+  protected layFloor(world: THREE.Object3D, size: number, y: number, mat: THREE.LineBasicMaterial) {
+    const grid = new THREE.GridHelper(size, size, this.theme.grid, this.theme.grid);
+    (grid.material as THREE.Material).dispose();
+    grid.material = mat;
+    grid.position.y = y;
+    grid.visible = this.floorShown;
+    world.add(grid);
+    this.floor = grid;
+  }
+
   protected disposeTree(root: THREE.Object3D) {
     root.traverse((n) => {
       const mesh = n as THREE.Mesh;
@@ -202,8 +248,183 @@ export abstract class BaseScene<H> {
     this.applyTheme();
   }
 
+  /** Draws the floor grid, or leaves it out. */
+  setGrid(shown: boolean) {
+    this.floorShown = shown;
+    if (this.floor) this.floor.visible = shown;
+  }
+
   setRotate(on: boolean) {
     this.controls.autoRotate = on && !this.reduced;
+  }
+
+  /** The stage's background, in the theme: what an export fills behind the frame. */
+  get background(): string {
+    return this.theme.canvas;
+  }
+
+  /** The labels as the last frame placed them, the ones in view. */
+  placedLabels(): PlacedLabel[] {
+    return this.labels.flatMap((l) =>
+      l.placed
+        ? [{ el: l.el, x: l.placed.x, y: l.placed.y, rotate: l.rotate, alignEnd: l.alignEnd }]
+        : [],
+    );
+  }
+
+  /**
+   * Renders one frame of the current view at ``scale`` times the stage's CSS size and hands the
+   * canvas to ``draw`` in the same task, while its drawing buffer still holds the frame -- so the
+   * renderer never needs preserveDrawingBuffer. The usual size is put back after.
+   */
+  snapshot(scale: number, draw: (src: HTMLCanvasElement) => void) {
+    const usual = this.renderer.getPixelRatio();
+    this.renderer.setPixelRatio(scale);
+    this.resize();
+    this.placeLabels();
+    this.renderer.render(this.scene, this.camera);
+    try {
+      draw(this.renderer.domElement);
+    } finally {
+      this.renderer.setPixelRatio(usual);
+      this.resize();
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  /**
+   * A full turn about the view's target, for a recording: the loop stops moving the camera, each
+   * frame is drawn when asked for, and end() puts the camera back where it was. The orbit starts
+   * from the current view and turns at an even step, so the same view records the same video.
+   */
+  orbit(scale: number): Orbit {
+    const position = this.camera.position.clone();
+    const target = this.controls.target.clone();
+    const rotating = this.controls.autoRotate;
+    const usual = this.renderer.getPixelRatio();
+    const offset = position.clone().sub(target);
+    this.held = true;
+    this.tween = null;
+    this.controls.autoRotate = false;
+    this.renderer.setPixelRatio(scale);
+    this.resize();
+    return {
+      frame: (fraction, draw) => {
+        const turned = offset.clone().applyAxisAngle(UP_AXIS, fraction * Math.PI * 2);
+        this.camera.position.copy(target).add(turned);
+        this.camera.lookAt(target);
+        this.onFrame();
+        this.placeLabels();
+        this.renderer.render(this.scene, this.camera);
+        draw(this.renderer.domElement);
+      },
+      end: () => {
+        this.camera.position.copy(position);
+        this.controls.target.copy(target);
+        this.camera.lookAt(target);
+        this.controls.autoRotate = rotating;
+        this.renderer.setPixelRatio(usual);
+        this.resize();
+        this.held = false;
+      },
+    };
+  }
+
+  /** The scene projected flat for an SVG, or null where it cannot be drawn faithfully that way
+   * (a surface, a cloud): those scenes offer raster images only. */
+  vector(): VectorScene | null {
+    return null;
+  }
+
+  /** Whether vector() draws this scene: what decides if an SVG is offered. */
+  get canVector(): boolean {
+    return false;
+  }
+
+  /** A world point on the stage, in CSS pixels, and its depth (larger is further). */
+  protected toStage(p: THREE.Vector3): { x: number; y: number; z: number } {
+    const parent = this.canvas.parentElement as HTMLElement;
+    const v = p.clone().project(this.camera);
+    return {
+      x: ((v.x + 1) / 2) * parent.clientWidth,
+      y: ((1 - v.y) / 2) * parent.clientHeight,
+      z: v.z,
+    };
+  }
+
+  /** ``meshes`` as their silhouettes, back to front, over the floor grid: a scene's vector() for
+   * content made of solid meshes (nodes, edges, arrowheads). Labels are the export's own layer. */
+  protected vectorOf(meshes: THREE.Mesh[]): VectorScene {
+    // The camera as it is now, though no frame has been rendered since it moved.
+    this.camera.updateMatrixWorld();
+    const shapes = meshes
+      .flatMap((m) => {
+        const s = this.silhouette(m);
+        return s ? [s] : [];
+      })
+      .sort((a, b) => b.depth - a.depth)
+      .map(({ points, color, opacity }) => ({ points, color, opacity }));
+    return { ...this.stageSize, floor: this.floorLines(), shapes };
+  }
+
+  /** A mesh as the camera sees it: the outline of its projected vertices, in its material's
+   * colour, with its depth for ordering; null while it is behind the camera. */
+  protected silhouette(
+    mesh: THREE.Mesh,
+  ): { points: [number, number][]; color: string; opacity: number; depth: number } | null {
+    mesh.updateMatrixWorld();
+    const pos = mesh.geometry.getAttribute("position");
+    const pts: [number, number][] = [];
+    let depth = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const p = this.toStage(
+        new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld),
+      );
+      if (p.z > 1) return null;
+      pts.push([p.x, p.y]);
+      depth += p.z;
+    }
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    return {
+      points: hull(pts),
+      color: `#${mat.color.getHexString()}`,
+      opacity: mat.transparent ? mat.opacity : 1,
+      depth: depth / pos.count,
+    };
+  }
+
+  /** The stage's size in CSS pixels. */
+  protected get stageSize(): { width: number; height: number } {
+    const parent = this.canvas.parentElement as HTMLElement;
+    return { width: parent.clientWidth, height: parent.clientHeight };
+  }
+
+  /** The floor grid's lines on the stage, while it is drawn. */
+  protected floorLines(): VectorScene["floor"] {
+    const grid = this.floor;
+    if (!grid || !grid.visible) return [];
+    grid.updateMatrixWorld();
+    const pos = grid.geometry.getAttribute("position");
+    const mat = grid.material as THREE.LineBasicMaterial;
+    const out: VectorScene["floor"] = [];
+    for (let i = 0; i + 1 < pos.count; i += 2) {
+      const a = this.toStage(
+        new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(grid.matrixWorld),
+      );
+      const b = this.toStage(
+        new THREE.Vector3().fromBufferAttribute(pos, i + 1).applyMatrix4(grid.matrixWorld),
+      );
+      if (a.z > 1 || b.z > 1) continue;
+      out.push({
+        x1: a.x,
+        y1: a.y,
+        x2: b.x,
+        y2: b.y,
+        color: `#${mat.color.getHexString()}`,
+        opacity: mat.opacity,
+      });
+    }
+    return out;
   }
 
   dispose() {
@@ -297,6 +518,7 @@ export abstract class BaseScene<H> {
 
   private loop = (now: number) => {
     this.frame = requestAnimationFrame(this.loop);
+    if (this.held) return;
     if (this.tween) {
       const tw = this.tween;
       const k = Math.min(1, (now - tw.start) / tw.dur);
@@ -307,6 +529,12 @@ export abstract class BaseScene<H> {
     }
     this.controls.update();
     this.onFrame();
+    this.placeLabels();
+    this.renderer.render(this.scene, this.camera);
+  };
+
+  /** Puts every pinned label where the camera now sees its point. */
+  private placeLabels() {
     const parent = this.canvas.parentElement as HTMLElement;
     const w = parent.clientWidth;
     const h = parent.clientHeight;
@@ -314,17 +542,39 @@ export abstract class BaseScene<H> {
       const p = l.at().project(this.camera);
       if (p.z > 1) {
         l.el.style.visibility = "hidden";
+        l.placed = null;
         continue;
       }
       l.el.style.visibility = "visible";
       const x = ((p.x + 1) / 2) * w;
       const y = ((1 - p.y) / 2) * h;
+      l.placed = { x, y };
       l.el.style.transform =
         `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)` +
         (l.rotate ? ` rotate(${l.rotate}deg)` : "") +
         (l.alignEnd ? " translate(-100%,-50%)" : "");
     }
     this.onLabelsPlaced();
-    this.renderer.render(this.scene, this.camera);
-  };
+  }
+}
+
+/** The convex outline of a set of points (Andrew's monotone chain), counter-clockwise. */
+function hull(points: [number, number][]): [number, number][] {
+  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o: [number, number], a: [number, number], b: [number, number]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: [number, number][] = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0)
+      lower.pop();
+    lower.push(q);
+  }
+  const upper: [number, number][] = [];
+  for (const q of [...p].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0)
+      upper.pop();
+    upper.push(q);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
 }

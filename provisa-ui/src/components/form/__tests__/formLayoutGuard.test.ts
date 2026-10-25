@@ -36,6 +36,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
     "one reusable control (a grant list and its combine popover), placed by the form that uses it",
   "components/MaskListEditor.tsx":
     "one reusable control (a column's ordered mask list), placed by the form that uses it",
+  "components/RegexMaskFields.tsx":
+    "a regex entry's fields within the mask list, the list's own row (MaskListEditor)",
   "pages/tables/DescriptionField.tsx": "one reusable control, placed by the form that uses it",
   "pages/tables/VectorModelCell.tsx": "one reusable control, placed by the form that uses it",
   "pages/tables/NumericSizeInputs.tsx": "one reusable control, placed by the form that uses it",
@@ -65,11 +67,12 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/LineagePage.tsx": "the role filter above the lineage graph",
   "plugins/provisa-tools.tsx": "controls of the GraphiQL tools plugin",
   "pages/tables/ProfileChecksBar.tsx": "the action bar above the profile results",
-  "pages/tables/profile3d/terrain/ProfileTerrain.tsx": "the view controls above the profile terrain",
+  "pages/tables/profile3d/terrain/ProfileTerrain.tsx":
+    "the view controls above the profile terrain",
+  "pages/tables/profile3d/terrain/TerrainDetail.tsx":
+    "the include box beside each row of the terrain's column list",
   "pages/tables/profile3d/joint/ProfileJointCloud.tsx": "the view controls above the joint cloud",
   "pages/tables/profile3d/drift/ProfileDriftStrata.tsx": "the view controls above the drift strata",
-  "components/graph3d/GraphExplorer.tsx":
-    "the layer, filter and preset controls above the data product graph",
   "pages/tables/ProfilerPanel.tsx": "the add-metric picker above the profile results",
 };
 
@@ -88,6 +91,11 @@ const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
   "components/admin/GlossaryTab.tsx":
     "a term's name, definition and export tick each saved in place in its detail; the list's filter ticks",
   "components/TagControl.tsx": "a tag assigned and edited in its popover, beside what it tags",
+  "components/ColumnPiiForm.tsx": "pii on a column, in TagControl's popover: on its term or on the column alone",
+  "components/admin/GlossaryGroundedTables.tsx":
+    "a term's tables grounded and let go each as it is picked, in the term's detail",
+  "pages/tables/TableClassTerm.tsx":
+    "a table's class term set and cleared in place, beside its tags in its associations",
   "pages/tables/ProfileConstraintsModal.tsx":
     "a column's constraints edited in the row of the checklist that lists them",
   "components/admin/RedactionTab.tsx":

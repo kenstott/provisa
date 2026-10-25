@@ -454,9 +454,11 @@ query {
 
 以与 `createRelationship` 相同的检查修改已有关系。不属于任何关系的 id 会被拒绝（`schema.relationship_not_found`）。修改需要该权利本身；它从不作为请求排队。
 
-#### `deleteRelationship(id: String!) → MutationResult`
+在属性和类之间重新安置键列的保存操作可能会去掉这些列上的 `pii`。这时它会以 `tag.move_loses` 被拒绝，`params.columns` 会列出每一列失去（`loses`）和获得（`gains`）的标签。重新保存时用 `confirmTagLoss` 列出每个丢失的标签，或用 `carryTags: true` 把它们放到每一列要去的术语上。
 
-按 ID 删除一个关系并重建架构。
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+按 ID 删除一个关系并重建架构。会重新安置键列的删除操作接受与保存相同的 `confirmTagLoss` 和 `carryTags`。
 
 ---
 
@@ -538,11 +540,19 @@ query {
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-将一个标签分配给数据源、表、列、关系或命令。强制执行该标签的字段策略（`reason_policy`、`expires_policy`），并且——对于参数化标签——根据标签允许的列表验证参数值。
+将一个标签分配给数据源、表、列、关系或命令。强制执行该标签的字段策略（`reason_policy`、`expires_policy`），对于参数化标签，还会根据标签允许的列表检查参数值。
+
+`pii` 也可以加在术语表的术语上，这样具有该含义的每一列都会带上这个标签，包括以后注册的列。设置 `objectType: "term"` 和 `termId`：
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+在列上，`alsoTerm: true` 会改为把标签加在该列的术语上。结果中的 `params.covers` 说明标签覆盖多少列：对于列，是它的术语持有的其他列数；对于术语，是它持有的列数。以下情况会被明确拒绝：术语上的非 `pii` 标签（`tag.not_on_terms`）、不是属性的术语（`tag.term_not_property`）、草稿术语（`tag.term_not_live`，“定义 *术语* 后才能标记”），以及在使用 `alsoTerm` 时的键列（`tag.key_column`）或没有术语的列（`tag.column_has_no_term`）。直接标记的列需要提供原因。
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-移除一个标签分配。
+移除一个标签分配，也可以从术语上移除（`objectType: "term"`、`termId`）。从一个通过其术语带有 `pii` 的列上移除该标签会被拒绝（`tag.inherited_from_term`）：请取消该术语的标记，或者把该列移到与其内容相符的术语上。
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 

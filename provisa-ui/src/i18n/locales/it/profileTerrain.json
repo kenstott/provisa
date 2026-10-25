@@ -62,6 +62,11 @@
     "flagBimodal": "Bimodale",
     "flagSpike": "Picco a {{value}} ({{pct}})",
     "flagBeyond": "{{rows}} oltre 3×IQR",
-    "flagDistinct": "{{count}} distinti"
+    "flagDistinct": "{{count}} distinti",
+    "includeColumn": "Mostra {{column}} nel rilievo",
+    "includeAll": "Tutte",
+    "includeNone": "Nessuna",
+    "includeAllAria": "Mostra tutte le colonne nel rilievo",
+    "includeNoneAria": "Togli tutte le colonne dal rilievo"
   }
 }

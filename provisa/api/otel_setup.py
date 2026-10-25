@@ -1050,13 +1050,13 @@ def setup_otel(
                 PymongoInstrumentor().instrument()
             except ImportError:
                 pass
+        # The elasticsearch client traces itself (elasticsearch-py 8.13+), reading this variable
+        # each time a client is built; the contrib instrumentor is gone because no release of it
+        # resolves with an opentelemetry-api past CVE-2026-114603.
         if _subsystems.search_sources:
-            try:
-                from opentelemetry.instrumentation.elasticsearch import ElasticsearchInstrumentor
-
-                ElasticsearchInstrumentor().instrument()
-            except ImportError:
-                pass
+            os.environ["OTEL_PYTHON_INSTRUMENTATION_ELASTICSEARCH_ENABLED"] = "true"
+        else:
+            os.environ["OTEL_PYTHON_INSTRUMENTATION_ELASTICSEARCH_ENABLED"] = "false"
         if _subsystems.grpc_services:
             try:
                 from opentelemetry.instrumentation.grpc import (

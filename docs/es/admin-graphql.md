@@ -454,9 +454,11 @@ Crea una relación. La puerta comprueba el dominio de la tabla de origen (no el 
 
 Cambia una relación existente, con las mismas comprobaciones que `createRelationship`. Un id que no tiene ninguna relación se rechaza (`schema.relationship_not_found`). Un cambio necesita el derecho en sí; nunca se encola como solicitud.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+Un guardado que reubica columnas clave entre una Propiedad y una Clase puede quitarles `pii`. Entonces se rechaza con `tag.move_loses`, y `params.columns` lista cada columna con las etiquetas que pierde (`loses`) y gana (`gains`). Guarde de nuevo con `confirmTagLoss` nombrando cada etiqueta perdida, o con `carryTags: true` para ponerlas en el término al que va cada columna.
 
-Elimina una relación por ID y reconstruye los esquemas.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+Elimina una relación por ID y reconstruye los esquemas. Una eliminación que reubica columnas clave acepta los mismos `confirmTagLoss` y `carryTags` que un guardado.
 
 ---
 
@@ -538,11 +540,19 @@ Elimina una etiqueta. Rechaza las etiquetas del sistema y las derivadas.
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-Asigna una etiqueta a un origen, tabla, columna, relación o comando. Aplica las políticas de campo de la etiqueta (`reason_policy`, `expires_policy`) y — para etiquetas parametrizadas — valida el valor del parámetro contra la lista permitida de la etiqueta.
+Asigna una etiqueta a una fuente, tabla, columna, relación o comando. Aplica las políticas de campo de la etiqueta (`reason_policy`, `expires_policy`) y, para una etiqueta parametrizada, comprueba el valor del parámetro contra la lista permitida de la etiqueta.
+
+`pii` también puede ir en un término del glosario, de modo que cada columna con ese significado lleve la etiqueta, incluidas las columnas registradas más adelante. Establezca `objectType: "term"` y `termId`:
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+En una columna, `alsoTerm: true` pone la etiqueta en el término de la columna en su lugar. `params.covers` en el resultado indica a cuántas columnas llega la etiqueta: para una columna, cuántas otras columnas tiene su término; para un término, cuántas tiene. Se rechazan por nombre: una etiqueta distinta de `pii` en un término (`tag.not_on_terms`), un término que no es una Propiedad (`tag.term_not_property`), un término en borrador (`tag.term_not_live`, «Defina *término* para marcarlo») y, con `alsoTerm`, una columna clave (`tag.key_column`) o una columna sin término (`tag.column_has_no_term`). Una columna marcada directamente necesita un motivo.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-Elimina una asignación de etiqueta.
+Elimina una asignación de etiqueta, también de un término (`objectType: "term"`, `termId`). Quitar `pii` de una columna que la lleva a través de su término se rechaza (`tag.inherited_from_term`): desmarque el término, o mueva la columna a un término que corresponda a lo que contiene.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 

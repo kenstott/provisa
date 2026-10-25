@@ -54,11 +54,6 @@ OWNERS: dict[str, set[str]] = {
         # REQ-1994: a scratch in-memory DuckDB holding the one row a mail-source write names, to
         # evaluate the governed WHERE over it exactly as SQL does -- no engine, no store.
         "provisa/federation/mail_write.py",
-        # REQ-2100: a built code host's front end, carried as it is into the image, imports nothing
-        # of Provisa's: its scratch in-memory DuckDB applies a read's residual to the function's
-        # Arrow batches (residual.py) and answers pgwire's catalog over them (pgfront.py).
-        "provisa/codehost/residual.py",
-        "provisa/codehost/pgfront.py",
         # REQ-2068: a scratch in-memory DuckDB ATTACHes a regions demo's seed file and a region's
         # PostgreSQL store and copies tables between them -- no engine, no org, no query path.
         "provisa/api/demo_region_seed.py",
@@ -96,6 +91,9 @@ OWNERS: dict[str, set[str]] = {
         # Unity Catalog publishing maps the connector's own error class to report a refused
         # statement against its product, as Horizon does for Snowflake's (REQ-2117).
         "provisa/api/metadata_export/unity_catalog.py",
+        # The engine runtime maps the connector's errors to a refused statement or a lost
+        # warehouse (REQ-778), as clickhouse_runtime and snowflake_runtime do for theirs.
+        "provisa/federation/databricks_runtime.py",
     },
     "google.cloud.bigquery": set(),
     "asyncpg": {

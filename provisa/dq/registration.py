@@ -23,7 +23,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from provisa.dq.contract import CHECKERS, ContractError, contract_dataset, resolve_contract_target
+from provisa.dq.contract import (
+    CHECKERS,
+    ContractError,
+    contract_checks,
+    contract_dataset,
+    resolve_contract_target,
+)
 from provisa.dq.results import (
     DQ_PROMOTIONS,
     DQ_WATERMARK_COLUMN,
@@ -41,7 +47,8 @@ def is_checker_source_type(source_type: Any) -> bool:
 def derive_checker_table(table: Any, source_type: Any) -> str:
     """Validate a checker table's contract and derive its registration IN PLACE. Returns the dataset.
 
-      * the contract must parse and must name a three-part dataset; whether that dataset resolves
+      * the contract must parse, must name at least one check (stored as ``dq_rules``), and must
+        name a three-part dataset; whether that dataset resolves
         to a governed table is :func:`check_contract_target`, run once the compiled names exist;
       * the columns become :func:`results_columns` — the envelope is the CHECKER's, not the
         operator's, so a hand-written column list could only ever disagree with what lands;
@@ -78,8 +85,15 @@ def derive_checker_table(table: Any, source_type: Any) -> str:
         )
     try:
         dataset = contract_dataset(table.dq_contract, checker)
+        rules = contract_checks(table.dq_contract, checker)
     except ContractError as exc:
         raise ValueError(f"Table {table.table_name!r}: {exc}") from exc
+    if not rules:
+        raise ValueError(
+            f"Table {table.table_name!r}: its contract names no checks, so a scan would land nothing"
+        )
+    # REQ-1443 clause 10: parsed once, here, and stored for the meta domain's dq_rules.
+    table.dq_rules = rules
     if not is_relation_name(table.table_name, table.source_id):
         # The name the steward chose is what SQL and GraphQL publish; an alias they set is theirs.
         table.alias = table.alias or table.table_name

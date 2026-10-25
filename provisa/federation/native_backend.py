@@ -205,6 +205,25 @@ class NativeEngineBackend(EngineBackend):
     # renders each value as a literal of the engine's dialect instead.
     _cache_bind_placeholder: str | None = None
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """The engine driver's errors (REQ-778): those that mean the engine is not reachable, then
+        those that mean it refused the statement (a value it cannot convert, a name it does not
+        know). The driver is imported here, the one place it is needed for this."""
+        return (), ()
+
+    def classify_error(self, exc: Exception) -> str | None:
+        """``"connection"`` (503) or ``"query"`` (400, cypher.engine_refused) by the driver's own
+        errors, a lost engine read first (a driver's connection error may share a base with its
+        statement errors); None for an error the driver did not raise."""
+        connection, query = self._driver_errors()
+        if isinstance(exc, connection):
+            return "connection"
+        if isinstance(exc, query):
+            return "query"
+        return None
+
     def __init__(self, engine: Any) -> None:
         super().__init__(engine)
         self._runtime: Any = None
@@ -517,7 +536,7 @@ class NativeEngineBackend(EngineBackend):
         native = {
             (t["source_id"], t["schema_name"], t["table_name"])
             for t in (getattr(state, "tables", None) or [])
-            if is_native_read(t, _types, state)
+            if is_native_read(t, _types)
         }
 
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
@@ -752,6 +771,10 @@ class NativeEngineBackend(EngineBackend):
                     exc_info=exc,
                 )
                 continue
+            if outcome == "recreated":
+                # The table's rows were dropped with it: its build record no longer describes it,
+                # and a build is asked for (a TTL -1 replica is never refreshed otherwise).
+                await _rebuild_emptied(state, (src.id, schema_name, table_name))
             self._unreconciled.pop((src.id, table_name), None)
             reconciled.append((src.id, table_name))
             entry = LandedTable(src.id, schema_name, table_name, tuple(pk_columns))
@@ -1151,3 +1174,14 @@ class NativeEngineBackend(EngineBackend):
         (ClickHouse) raises from ``ensure_materialize_attached`` — explicit, never a wrong target."""
         rt = self._runtime_for(state)
         return rt.ensure_materialize_attached(), rt.mv_store_schema(org_id)
+
+
+async def _rebuild_emptied(state: Any, key: tuple[str, str, str]) -> None:
+    """The replica ``key``, whose table a reconcile re-created empty: recorded as unbuilt, and a
+    build of it requested."""
+    from provisa.federation import replica_state
+
+    async with state.tenant_db.acquire() as conn:
+        if await replica_state.unbuild(conn, key):
+            await replica_state.request_build(conn, key, replica_state.REASON_MODEL)
+    _log.warning("the replica of %s.%s.%s was re-created empty; a build is requested", *key)

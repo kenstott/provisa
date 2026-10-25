@@ -10,6 +10,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useQuery, useLazyQuery, useMutation } from "@apollo/client/react";
+import type { TagLossResolution } from "../api/glossary";
 import type { Role } from "../types/auth";
 import type {
   Source,
@@ -584,8 +585,15 @@ export function useDeleteRelationship() {
     },
   );
   return {
-    deleteRelationship: async (id: string) => {
-      const result = await deleteRelationship({ variables: { id } });
+    /** ``resolve``: how a delete that re-homes key refs off a tagged term goes ahead (REQ-2145). */
+    deleteRelationship: async (id: string, resolve?: TagLossResolution) => {
+      const result = await deleteRelationship({
+        variables: {
+          id,
+          confirmTagLoss: resolve?.confirm_tag_loss ?? null,
+          carryTags: resolve?.carry_tags === true,
+        },
+      });
       return (result.data?.deleteRelationship ?? { success: false, message: "" }) as MutationResult;
     },
     loading,

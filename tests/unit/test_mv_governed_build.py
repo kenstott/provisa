@@ -81,6 +81,7 @@ def pipeline(monkeypatch):
             physical_sql="SELECT id, home FROM governed",
             exec_params=None,
             dialect="postgres",
+            columns=None,
         )
 
     async def _residency(_state, plan):
@@ -113,7 +114,11 @@ async def test_a_regions_build_is_governed_by_the_pipeline_as_its_administrator(
         (
             "SELECT id, home FROM sales.orders",
             "org_admin",
-            {"session_vars": {"tier": "gold", "region": "us"}, "route_hint": None},
+            {
+                "session_vars": {"tier": "gold", "region": "us"},
+                "route_hint": None,
+                "building": "view-eu_orders",
+            },
         )
     ]
     assert pipeline.resident == ["SELECT id, home FROM governed"]
@@ -169,7 +174,11 @@ async def test_with_no_platform_regions_a_build_is_governed_the_same_way(pipelin
         (
             "SELECT id, home FROM sales.orders",
             "org_admin",
-            {"session_vars": {"tier": "gold", "region": DEFAULT_REGION}, "route_hint": None},
+            {
+                "session_vars": {"tier": "gold", "region": DEFAULT_REGION},
+                "route_hint": None,
+                "building": "view-eu_orders",
+            },
         )
     ]
     assert pipeline.resident == ["SELECT id, home FROM governed"]

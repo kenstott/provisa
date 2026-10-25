@@ -11,6 +11,8 @@
 // REQ-2124: the joint cloud — a column and its parents in the dependency network as a cube of row
 // counts, coloured by rows or by lift, beside the combinations that most beat independence.
 
+import { ResetSettingsButton } from "../ResetSettingsButton";
+import { useGraphSettings } from "../graphSettings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
@@ -26,6 +28,8 @@ import "../profile3d.css";
 const LISTED = 8;
 
 interface Shared {
+  /** What the view's exports are named after. */
+  exportName: string;
   targets: string[];
   target: string;
   setTarget: (c: string) => void;
@@ -37,6 +41,7 @@ interface Shared {
   hover: JointHover | null;
   setHover: (h: JointHover | null) => void;
   slotName: (axis: number, slot: number) => string;
+  resetSettings: () => void;
 }
 
 function useSlotName(model: JointModel) {
@@ -131,6 +136,8 @@ function JointStage({ s, command }: { s: Shared; command: CameraCommand | null }
       error={error}
       canvasLabel={t("profileJoint.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={s.exportName}
       testId="joint-stage"
       legend={
         s.color === "rows" ? (
@@ -285,6 +292,7 @@ function JointView({
         >
           {t("profile3d.resetView")}
         </Button>
+        <ResetSettingsButton onReset={s.resetSettings} testId="joint" />
         {onExpand && <ExpandButton onClick={onExpand} testId="joint-expand" />}
       </Group>
       <div className="p3d-body">
@@ -297,23 +305,35 @@ function JointView({
 
 function JointLoaded({
   results,
+  tableId,
   tableName,
   targets,
 }: {
   results: ProfileRunResults;
+  tableId: number;
   tableName: string;
   targets: string[];
 }) {
   const { t } = useTranslation();
-  const [picked, setTarget] = useState(targets[0]);
-  const target = targets.includes(picked) ? picked : targets[0];
+  // Remembered for this table's joint cloud (graphSettings.ts). A target the profile no longer has
+  // falls back to the first.
+  const [saved, save, resetSettings] = useGraphSettings(
+    { kind: "profile-joint", subject: tableId },
+    { target: null as string[] | null, color: "lift", rotate: true as boolean },
+  );
+  const picked = (saved.target as string[] | null)?.[0] ?? null;
+  const setTarget = (c: string) => save("target", [c]);
+  const target = picked != null && targets.includes(picked) ? picked : targets[0];
   // jointTargets lists only columns with joint counts, so the model exists.
   const model = useMemo(() => buildJoint(results, target) as JointModel, [results, target]);
-  const [color, setColor] = useState<JointColor>("lift");
-  const [rotate, setRotate] = useState(true);
+  const color: JointColor = saved.color === "rows" ? "rows" : "lift";
+  const setColor = (c: JointColor) => save("color", c);
+  const rotate = saved.rotate as boolean;
+  const setRotate = (on: boolean) => save("rotate", on);
   const [hover, setHover] = useState<JointHover | null>(null);
   const slotName = useSlotName(model);
   const s: Shared = {
+    exportName: `${tableName}-joint`,
     targets,
     target,
     setTarget: (c) => {
@@ -328,6 +348,7 @@ function JointLoaded({
     hover,
     setHover,
     slotName,
+    resetSettings,
   };
   return (
     <Expandable3D
@@ -340,9 +361,11 @@ function JointLoaded({
 
 export function ProfileJointCloud({
   results,
+  tableId,
   tableName,
 }: {
   results: ProfileRunResults;
+  tableId: number;
   tableName: string;
 }) {
   const { t } = useTranslation();
@@ -354,5 +377,7 @@ export function ProfileJointCloud({
       </Text>
     );
   }
-  return <JointLoaded results={results} tableName={tableName} targets={targets} />;
+  return (
+    <JointLoaded results={results} tableId={tableId} tableName={tableName} targets={targets} />
+  );
 }

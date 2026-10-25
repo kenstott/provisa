@@ -93,5 +93,9 @@
     "notGranted": "A função com que você está atuando não concede esta página. Uma função que você tem concede:",
     "switchTo": "Mudar para {{role}}",
     "noneHeld": "Nenhuma das funções que você tem concede esta página."
+  },
+  "pageError": {
+    "title": "Não foi possível mostrar esta página",
+    "body": "Ocorreu uma falha na renderização. O resto do aplicativo continua funcionando: vá para outra página ou recarregue esta."
   }
 }

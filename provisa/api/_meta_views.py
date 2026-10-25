@@ -60,10 +60,18 @@ def _sensitive_assignments_sql() -> str:
     the environment's Test (fake) choice applies (provisa.core.env_data)."""
     from sqlalchemy.dialects import postgresql
 
-    from provisa.core.schema_org import registered_tables, tag_assignments, tags
+    from provisa.core.schema_org import (
+        glossary_term_refs,
+        glossary_terms,
+        registered_tables,
+        tag_assignments,
+        tags,
+    )
     from provisa.security.sensitive import sensitive_assignments
 
-    statement = sensitive_assignments(tag_assignments, registered_tables, tags)
+    statement = sensitive_assignments(
+        tag_assignments, registered_tables, tags, glossary_term_refs, glossary_terms
+    )
     return str(
         statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
     )
@@ -697,6 +705,21 @@ _META_TABLE_VIEWS: dict[str, str] = {
         JOIN sources s ON s.id = rt.source_id
         WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
     """,
+    # REQ-1443 clause 10: a checker table's rules, one row per check of its contract in the order
+    # authored -- parsed once at registration (provisa.dq.registration) and stored on the table.
+    "dq_rules": """
+        CREATE OR REPLACE VIEW dq_rules AS
+        SELECT CAST(rt.id AS TEXT) || ':' || CAST(r.position AS TEXT) AS id,
+               rt.id AS table_id, rt.domain_id, s.type AS checker, r.position,
+               r.rule ->> 'column_name' AS column_name,
+               r.rule ->> 'check_type' AS check_type,
+               r.rule ->> 'definition' AS definition,
+               rt.tenant_id
+        FROM registered_tables rt
+        JOIN sources s ON s.id = rt.source_id
+        CROSS JOIN LATERAL jsonb_array_elements(rt.dq_rules) WITH ORDINALITY AS r(rule, position)
+        WHERE rt.dq_rules IS NOT NULL AND NOT rt.draft
+    """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
     # REQ-2126: a data product's links to the rest of the model, one row per product, target and
@@ -732,8 +755,32 @@ _META_TABLE_VIEWS: dict[str, str] = {
                -- which is what makes the join select only the column-level tags.
                CAST(table_id AS TEXT) || ':' || column_name AS column_key,
                tenant_id,
-               product_id
+               product_id,
+               term_id  -- the glossary term, when the object is one
         FROM tag_assignments
+    """,
+    # REQ-2145: every tag each column carries, its own and its glossary term's, each saying where
+    # it comes from -- computed here, never copied into tag_assignments.
+    "effective_column_tags": """
+        CREATE OR REPLACE VIEW effective_column_tags AS
+        SELECT 'column:' || CAST(ta.id AS TEXT) AS id,
+               CAST(ta.table_id AS TEXT) || ':' || ta.column_name AS column_key,
+               ta.table_id, ta.column_name, ta.tag_id, ta.base_tag_id,
+               'column' AS via, CAST(NULL AS INTEGER) AS term_id, CAST(NULL AS TEXT) AS term,
+               ta.reason, CAST(ta.tenant_id AS TEXT) AS tenant_id
+        FROM tag_assignments ta
+        WHERE ta.object_type = 'column'
+        UNION ALL
+        SELECT 'term:' || CAST(ta.id AS TEXT) || ':' || CAST(r.id AS TEXT),
+               CAST(r.table_id AS TEXT) || ':' || r.column_name,
+               r.table_id, r.column_name, ta.tag_id, ta.base_tag_id,
+               'term', ta.term_id, gt.name, ta.reason, CAST(ta.tenant_id AS TEXT)
+        FROM tag_assignments ta
+        JOIN glossary_term_refs r ON r.term_id = ta.term_id
+        JOIN glossary_terms gt ON gt.id = ta.term_id
+        WHERE ta.object_type = 'term'
+          -- only a defined, in-service term governs its columns (provisa.core.term_tags.governs)
+          AND COALESCE(TRIM(gt.definition), '') <> '' AND NOT gt.retired
     """,
     # REQ-1375: the management report — every assignment with a planned end date, with its
     # state derived at query time. expires_on is an ISO date string, so lexicographic
@@ -758,12 +805,16 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW glossary_term_domains_meta AS
         WITH d AS (
             SELECT DISTINCT r.term_id, rt.domain_id, r.tenant_id
-            FROM glossary_term_refs r
+            FROM (SELECT term_id, table_id, tenant_id FROM glossary_term_refs
+                  UNION
+                  SELECT class_term_id, id, tenant_id FROM registered_tables
+                  WHERE class_term_id IS NOT NULL) r
             JOIN registered_tables rt ON rt.id = r.table_id
             UNION ALL
             SELECT g.term_id, g.domain_id, g.tenant_id
             FROM glossary_term_domains g
             WHERE NOT EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = g.term_id)
+              AND NOT EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = g.term_id)
         ),
         s AS (
             SELECT term_id, '|' || STRING_AGG(domain_id, '|') || '|' AS term_domains
@@ -777,7 +828,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     # REQ-1584: the business glossary as queryable metadata. `live` restates the export's
     # admission rule (provisa.core.glossary.live_term_ids) in SQL rather than approximating it:
-    # in service, defined, and connected over in-service edges to a term holding a physical ref.
+    # in service, defined, and connected over in-service edges to a term holding a physical ref --
+    # a column, or a whole table (REQ-1387, GROUNDED TO A TABLE).
     # Grounding is transitive, so it needs the recursive CTE — every control-plane dialect the
     # meta domain is served from (PostgreSQL, SQLite, MySQL) supports WITH RECURSIVE in a view.
     # `rooted` here counts EVERY ref, which is the repository's reading of it; the exporter's
@@ -804,23 +856,58 @@ _META_TABLE_VIEWS: dict[str, str] = {
         ),
         grounded AS (
             SELECT DISTINCT r.term_id AS id
-            FROM glossary_term_refs r
+            FROM (SELECT term_id FROM glossary_term_refs
+                  UNION
+                  SELECT class_term_id FROM registered_tables WHERE class_term_id IS NOT NULL) r
             JOIN in_service s ON s.id = r.term_id
             UNION
             SELECT ce.b
             FROM grounded g
             JOIN conducting_edges ce ON ce.a = g.id
+        ),
+        -- A class term grounded in several tables is a curation gap until same-entity
+        -- relationships join them all -- every one reached from one of them (identity.py's
+        -- identity_gap_ids is the same rule).
+        same_entity_edges AS (
+            SELECT r.source_table_id AS a, r.target_table_id AS b
+            FROM relationships r WHERE r.same_entity
+            UNION ALL
+            SELECT r.target_table_id, r.source_table_id
+            FROM relationships r WHERE r.same_entity
+        ),
+        identity_reach (term_id, table_id) AS (
+            SELECT class_term_id, MIN(id) FROM registered_tables
+            WHERE class_term_id IS NOT NULL GROUP BY class_term_id
+            UNION
+            SELECT ir.term_id, se.b
+            FROM identity_reach ir
+            JOIN same_entity_edges se ON se.a = ir.table_id
+            JOIN registered_tables gt ON gt.class_term_id = ir.term_id AND gt.id = se.b
         )
-        SELECT t.id, t.name, t.definition, t.is_abstract, t.deprecated, t.retired,
+        SELECT t.id, t.name, t.definition,
+               CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
+                      OR EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = t.id)
+                    THEN FALSE ELSE TRUE END AS is_abstract,
+               t.deprecated, t.retired,
                t.export_excluded,
                (SELECT COUNT(*) FROM glossary_term_refs r WHERE r.term_id = t.id) AS ref_count,
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
+                      OR EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = t.id)
                     THEN TRUE ELSE FALSE END AS is_rooted,
                CASE WHEN t.id IN (SELECT id FROM grounded)
                      AND TRIM(COALESCE(t.definition, '')) <> ''
                     THEN TRUE ELSE FALSE END AS live,
                t.tenant_id,
                CASE WHEN t.id IN (SELECT id FROM grounded) THEN TRUE ELSE FALSE END AS grounded,
+               CASE WHEN t.retired THEN 'retired'
+                    WHEN t.deprecated OR t.deprecation_asserted THEN 'deprecated'
+                    WHEN t.id IN (SELECT id FROM grounded)
+                     AND TRIM(COALESCE(t.definition, '')) <> '' THEN 'live'
+                    ELSE 'draft' END AS status,
+               t.status_reason, t.retire_on,
+               CASE WHEN (SELECT COUNT(*) FROM registered_tables r WHERE r.class_term_id = t.id)
+                         > (SELECT COUNT(*) FROM identity_reach ir WHERE ir.term_id = t.id)
+                    THEN TRUE ELSE FALSE END AS identity_gap,
                (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = t.id) AS term_domains
         FROM glossary_terms t
     """,
@@ -878,12 +965,22 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS profiled_table_id,
                (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
                    AS checked_table_id,
+               -- The table's class term, NULL when none grounds it.
+               rt.class_term_id,
+               -- REQ-2132: a checker table's latest scan. Last, like the columns above, so an
+               -- existing view is replaced in place.
                (SELECT r.outcome FROM checker_latest_runs r WHERE r.table_id = rt.id)
                    AS latest_outcome,
                (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
                    AS latest_run_at
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
+    """,
+    # REQ-1443 clause 10: a source's identity and type only -- the checker dialect a data-quality
+    # table's rules are parsed with. Its connection settings stay out of the catalog.
+    "sources": """
+        CREATE OR REPLACE VIEW sources_meta AS
+        SELECT id, type FROM sources
     """,
     # REQ-2125: one row per data product, its own fields only. Everything one-to-many about a
     # product -- members, commands, tags, terms, profiles -- is reached through meta-domain
@@ -1103,14 +1200,26 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     "judgment_review": _judgment_review_sql(),
     "pii_access": """
         CREATE OR REPLACE VIEW pii_access AS
-        SELECT CAST(u.id AS TEXT) || ':' || CAST(ta.id AS TEXT) AS id,
+        SELECT CAST(u.id AS TEXT) || ':' || ta.id AS id,
                u.table_id, rt.table_name, rt.domain_id,
                ta.object_type, ta.column_name AS pii_column,
                u.user_id, ud.display_name AS user_name, u.role_id, u.source, u.status_code,
                u.logged_at
         FROM ops_table_usage u
-        JOIN tag_assignments ta
-          ON ta.table_id = u.table_id AND ta.tag_id = 'pii'
+        JOIN (
+            SELECT CAST(id AS TEXT) AS id, table_id, object_type, column_name
+            FROM tag_assignments
+            WHERE tag_id = 'pii' AND table_id IS NOT NULL
+            -- a column carries pii through its glossary term too
+            UNION ALL
+            SELECT CAST(t.id AS TEXT) || ':' || r.column_name, r.table_id, t.object_type,
+                   r.column_name
+            FROM tag_assignments t
+            JOIN glossary_term_refs r ON r.term_id = t.term_id
+            JOIN glossary_terms gt ON gt.id = t.term_id
+            WHERE t.object_type = 'term' AND t.base_tag_id = 'pii'
+              AND COALESCE(TRIM(gt.definition), '') <> '' AND NOT gt.retired
+        ) ta ON ta.table_id = u.table_id
         JOIN registered_tables rt ON rt.id = u.table_id
         LEFT JOIN user_directory ud ON ud.user_id = u.user_id
     """,

@@ -7,10 +7,13 @@ name: Integration suite (containers)
 # Two rules, at two levels because a level takes one concurrency group:
 #   * A newer push to a branch replaces that branch's older run, running or waiting (the
 #     workflow-level group, per ref, cancel-in-progress). It never touches another branch's run.
-#   * Runs of different branches do not overlap: the account's concurrent-job limit is smaller
-#     than two runs' lanes, and two at once left each waiting hours for runners. The job-level
-#     group is suite-wide and waits instead of cancelling; `queue: max` keeps every waiting run
-#     (the default keeps one and cancels the rest), first in, first out.
+#   * Full runs of different branches do not overlap: the account's concurrent-job limit is
+#     smaller than two full runs' lanes, and two at once left each waiting hours for runners. A
+#     full run (no `tests` named) takes the suite-wide job-level group, which waits instead of
+#     cancelling; `queue: max` keeps every waiting run (the default keeps one and cancels the
+#     rest), first in, first out.
+#   * A targeted run (`tests` named) plans only the lanes its tests select, a few jobs, so it
+#     takes a group of its own ref instead and runs beside other runs (maintainer 2026-10-23).
 
 on:
   # During alpha the full suite runs only on request (maintainer 2026-10-15): no run on push.
@@ -26,11 +29,11 @@ on:
         required: false
         default: ""
       lanes:
-        description: "Lanes: all, or comma-separated (core, app, hive_s3, kafka, neo4j, datastores, isolated, e2e, vector, cluster)"
+        description: "Lanes: all, or comma-separated (core, app, hive_s3, kafka, neo4j, datastores, isolated, e2e, vector, cluster, leak -- leak only when named)"
         required: false
         default: "all"
       tests:
-        description: "Targeted run: space-separated pytest node ids or files; each named lane runs only its own of them, unsharded (empty: the whole lane)"
+        description: "Targeted run: space-separated pytest node ids or files, each run unsharded in every lane whose markers select it, whatever lanes are listed; a test only an un-included live lane selects fails the plan (empty: the whole lanes listed)"
         required: false
         default: ""
       include_warehouse:
@@ -181,5 +184,5 @@ jobs:
       include_servicenow: ${{ inputs.include_servicenow || false }}
       servicenow_calcite_ref: ${{ inputs.servicenow_calcite_ref || '' }}
     concurrency:
-      group: integration-suite
+      group: ${{ (inputs.tests || '') == '' && 'integration-suite' || format('integration-suite-targeted-{0}', github.ref) }}
       queue: max

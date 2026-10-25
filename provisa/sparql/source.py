@@ -30,12 +30,25 @@ from provisa.api_source.models import (
     ApiSource,
     ApiSourceType,
 )
-from provisa.api_source.normalizers import sparql_bindings
 from provisa.core.auth_models import ApiAuth
 from provisa.core.secrets import resolve_secrets
 
 
 _REFERENCE = "${"  # a credential reference (provisa.core.secrets), resolved where it is used
+
+
+def sparql_headers() -> dict[str, str]:  # REQ-2138
+    """The headers every call to a SPARQL endpoint carries. A public endpoint asks its clients to
+    say who they are (Wikidata's User-Agent policy refuses a library's default): Provisa, its
+    version and where to reach it. And the results format its tables are read in, JSON: an
+    endpoint's default is its own (Wikidata answers XML). A CONSTRUCT asks for its own format
+    (reasoning.fetch_slice)."""
+    from provisa.core.demo_bundles import running_provisa
+
+    return {
+        "User-Agent": f"Provisa/{running_provisa()} (https://provisa.dev)",
+        "Accept": "application/sparql-results+json",
+    }
 
 
 @dataclass
@@ -67,6 +80,7 @@ def build_api_source(cfg: SparqlSourceConfig) -> ApiSource:  # REQ-297
         type=ApiSourceType.sparql,
         base_url=base_url,
         auth=cfg.auth,
+        headers=sparql_headers(),
     )
 
 
@@ -76,15 +90,44 @@ def build_endpoint(
     sparql_query: str,
     columns: list[ApiColumn],
     ttl: int = 300,
-) -> ApiEndpoint:  # REQ-297, REQ-298, REQ-299
+    reasoner: tuple[str, str] | None = None,
+) -> ApiEndpoint:  # REQ-297, REQ-298, REQ-299, REQ-2138
     """Build an ApiEndpoint for a single SPARQL table.
 
     The endpoint POSTs the SPARQL query as form-encoded data following
     the SPARQL 1.1 Protocol and uses the sparql_bindings normalizer.
+
+    A table whose query is one IRI is an inferred class or property of the source's
+    ``reasoner`` (its name and axioms, provisa/sparql/reasoning): its rows are the reasoner's,
+    and the reasoner and axioms travel in its default parameters.
     """
     from urllib.parse import urlparse
 
+    from provisa.sparql import reasoning
+
     path = "" if _REFERENCE in cfg.endpoint_url else (urlparse(cfg.endpoint_url).path or "/")
+
+    if reasoning.inferred_iri(sparql_query) is not None:
+        if reasoner is None:
+            raise ValueError(
+                f"table {table_name!r}: a query that names one IRI reads an inferred class or "
+                f"property, and source {cfg.source_id!r} names no reasoner"
+            )
+        return ApiEndpoint(
+            source_id=cfg.source_id,
+            path=path,
+            method="POST",
+            table_name=table_name,
+            columns=columns,
+            ttl=ttl,
+            body_encoding="form",
+            query_template=sparql_query,
+            response_normalizer=reasoning.NORMALIZER,
+            default_params={
+                reasoning.REASONER_PARAM: reasoner[0],
+                reasoning.AXIOMS_PARAM: reasoner[1],
+            },
+        )
 
     return ApiEndpoint(
         source_id=cfg.source_id,
@@ -134,10 +177,11 @@ async def probe_endpoint(
     cfg: SparqlSourceConfig,
     sparql_query: str,
     timeout: float = 10.0,
-) -> list[dict]:  # REQ-297, REQ-298
+) -> dict:  # REQ-297, REQ-298
     """Execute a SPARQL probe (LIMIT 5) to validate the endpoint and infer columns.
 
-    Returns flat row dicts via sparql_bindings normalizer.
+    Returns the SPARQL 1.1 JSON results document as answered: its terms keep their datatypes,
+    which type the columns (``infer_columns``).
 
     Raises:
         httpx.HTTPError: on network or HTTP errors
@@ -148,10 +192,7 @@ async def probe_endpoint(
         data["default-graph-uri"] = cfg.default_graph_uri
     data.update(cfg.extra_params)
 
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/sparql-results+json",
-    }
+    headers = {**sparql_headers(), "Content-Type": "application/x-www-form-urlencoded"}
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -162,11 +203,48 @@ async def probe_endpoint(
         )
         resp.raise_for_status()
 
-    return sparql_bindings(resp.json())
+    return resp.json()
 
 
-def infer_columns(rows: list[dict]) -> list[ApiColumn]:  # REQ-297
-    """Infer column definitions from SPARQL probe results."""
-    if not rows:
-        return []
-    return [ApiColumn(name=var, type=ApiColumnType.string) for var in rows[0].keys()]
+_XSD = "http://www.w3.org/2001/XMLSchema#"
+
+# A literal's XSD datatype → the column type its values land as. Any other term (an IRI, a blank
+# node, a plain or language-tagged string, a datatype not listed) is text.
+_XSD_TYPES: dict[str, ApiColumnType] = {
+    **{
+        _XSD + name: ApiColumnType.integer
+        for name in (
+            "integer", "int", "long", "short", "byte", "nonNegativeInteger", "positiveInteger",
+            "nonPositiveInteger", "negativeInteger", "unsignedLong", "unsignedInt",
+            "unsignedShort", "unsignedByte",
+        )
+    },
+    _XSD + "decimal": ApiColumnType.number,
+    _XSD + "double": ApiColumnType.number,
+    _XSD + "float": ApiColumnType.number,
+    _XSD + "boolean": ApiColumnType.boolean,
+    _XSD + "date": ApiColumnType.date,
+    _XSD + "dateTime": ApiColumnType.timestamp,
+    _XSD + "dateTimeStamp": ApiColumnType.timestamp,
+}  # fmt: skip
+
+
+def term_type(term: dict) -> ApiColumnType:
+    """The column type one bound term of a SPARQL JSON result lands as."""
+    if term.get("type") in ("literal", "typed-literal"):
+        return _XSD_TYPES.get(term.get("datatype", ""), ApiColumnType.string)
+    return ApiColumnType.string
+
+
+def infer_columns(results: dict) -> list[ApiColumn]:  # REQ-297
+    """The columns of a SPARQL 1.1 JSON results document: one per variable its head names, typed
+    by the datatype its bound terms share; a variable bound to terms of different types, or never
+    bound, is text."""
+    variables = results.get("head", {}).get("vars", [])
+    bindings = results.get("results", {}).get("bindings", [])
+    columns = []
+    for var in variables:
+        kinds = {term_type(b[var]) for b in bindings if var in b}
+        kind = kinds.pop() if len(kinds) == 1 else ApiColumnType.string
+        columns.append(ApiColumn(name=var, type=kind))
+    return columns

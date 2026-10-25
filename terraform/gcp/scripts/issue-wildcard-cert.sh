@@ -13,9 +13,15 @@
 #
 # Usage:
 #   ACME_EMAIL=you@example.com CLOUDFLARE_DNS_API_TOKEN=xxxx ./issue-wildcard-cert.sh
+#   ACME_EMAIL=... CLOUDFLARE_DNS_API_TOKEN=... SECRET_PROJECT=<gcp project> ./issue-wildcard-cert.sh
 #
 # On success it writes terraform/gcp/certs.auto.tfvars (git-ignored) setting
 # tls_cert_pem / tls_key_pem, so the next `terraform apply` serves the real cert.
+#
+# With SECRET_PROJECT, it also stores the certificate as the new versions of the provisa-tls-cert
+# and provisa-tls-key secrets of that project: where terraform/gcp-saas keeps it
+# (secrets.tf). Each of its VMs installs it from there within the hour, or at its next boot;
+# the front door renews it there itself once fewer than tls_renew_days remain.
 set -euo pipefail
 
 DOMAIN="${DOMAIN:-provisa.dev}"
@@ -90,6 +96,14 @@ umask 077
   cat "${KEY}"
   echo "KEY"
 } > "${TFVARS}"
+
+if [ -n "${SECRET_PROJECT:-}" ]; then
+  # The key first: until the certificate follows, a VM reads a pair that does not match and
+  # installs nothing (terraform/gcp-saas/tls/provisa-tls-sync.sh).
+  gcloud secrets versions add provisa-tls-key --project "${SECRET_PROJECT}" --data-file "${KEY}" >/dev/null
+  gcloud secrets versions add provisa-tls-cert --project "${SECRET_PROJECT}" --data-file "${CRT}" >/dev/null
+  echo "[issue-wildcard-cert] stored in Secret Manager (${SECRET_PROJECT}): provisa-tls-cert, provisa-tls-key"
+fi
 
 echo ""
 echo "[issue-wildcard-cert] wildcard cert issued:"

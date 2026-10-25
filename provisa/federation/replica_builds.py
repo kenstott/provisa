@@ -52,6 +52,8 @@ _PASS_SECONDS = 2
 #: pass at once. Each environment's replicas have their own build state (its tenant schema), so
 #: each has its own runner; one keyed by org alone was replaced by the next environment built (#273).
 _runners: dict[tuple[str | None, str], ReplicaRunner] = {}
+#: The orgs a build was asked of with no runner here, said once each (kick).
+_no_runner_said: set[tuple[str | None, str]] = set()
 
 
 class ReplicaTableGone(BuildFailure, LookupError):
@@ -85,13 +87,18 @@ class NoWholeCopy(BuildFailure, LookupError):
 def store_identity(state: Any) -> str:
     """What identifies the store this engine's replicas are written into: the engine's own
     address where it is its own store, else the address of the store it reads through. A
-    digest, so no credential in an address is recorded."""
+    digest, so no credential in an address is recorded.
+
+    DuckDB is never its own replicas' store: they are written into its materialize store (its
+    embedded file, MotherDuck, or a region's PostgreSQL), so that store is what identifies them.
+    Keyed by the engine, a regions node's template recorded the replicas its provisioning build
+    wrote into the embedded file as built in its region's store, and never built them there."""
     import hashlib
 
     from provisa.federation.engine import configured_engine_url
 
     engine = state.federation_engine.engine
-    if engine.native_store is not None:
+    if engine.native_store is not None and engine.native_store != "duckdb":
         where = engine_job_key(engine.name, configured_engine_url())
     else:
         where = engine.materialize_store()
@@ -1070,6 +1077,11 @@ def wire_replica_runner(scheduler: Any, *, state: Any, platform_url: str) -> Non
     org_id = require_current_org()
     env = active_env()
     runner = make_runner(state, org_id, platform_url)
+    replaced = _runners.get((org_id, env))
+    if replaced is not None:
+        # A re-applied config: the runner it replaces starts nothing more. A build of its still
+        # running would otherwise chain into a pass of a runner shutdown no longer reaches.
+        replaced.stop()
     _runners[(org_id, env)] = runner
 
     async def _pass() -> None:
@@ -1152,6 +1164,16 @@ def kick(org_id: str | None, env: str | None = None) -> None:
     from provisa.core.connection_loop import spawn_background
     from provisa.core.request_context import active_env
 
-    runner = _runners.get((org_id, env or active_env()))
-    if runner is not None:
-        spawn_background(runner.run_pass(), name="replica-builds:kick")
+    scope = (org_id, env or active_env())
+    runner = _runners.get(scope)
+    if runner is None:
+        if scope not in _no_runner_said:
+            _no_runner_said.add(scope)
+            log.warning(
+                "replica builds of org %s (environment %s) requested with no build runner in this "
+                "process: another node's pass builds them",
+                *scope,
+            )
+        return
+    _no_runner_said.discard(scope)
+    spawn_background(runner.run_pass(), name="replica-builds:kick")

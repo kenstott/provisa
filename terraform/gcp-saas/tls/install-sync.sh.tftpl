@@ -1,0 +1,48 @@
+# The deployment's certificate, from Secret Manager (secrets.tf): provisa-tls-sync, installed at
+# every boot before ${before} starts and every hour after (a renewal reaches a running VM within
+# the hour). A boot whose startup script exits early still runs it: it is a unit of its own.
+mkdir -p /etc/provisa-tls
+printf '%s' '${script}' | base64 -d > /usr/local/bin/provisa-tls-sync
+chmod 755 /usr/local/bin/provisa-tls-sync
+cat > /etc/provisa-tls/sync.env <<'TLSENV'
+PROJECT='${project}'
+CERT_SECRET='${cert_secret}'
+KEY_SECRET='${key_secret}'
+TARGETS='${targets}'
+RESTART='${restart}'
+TLSENV
+cat > /etc/systemd/system/provisa-tls-sync-boot.service <<'UNIT'
+[Unit]
+Description=Provisa TLS certificate from Secret Manager, at boot
+Wants=network-online.target
+After=network-online.target
+Before=${before}
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/provisa-tls-sync --boot
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/systemd/system/provisa-tls-sync.service <<'UNIT'
+[Unit]
+Description=Provisa TLS certificate from Secret Manager
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/provisa-tls-sync
+UNIT
+cat > /etc/systemd/system/provisa-tls-sync.timer <<'UNIT'
+[Unit]
+Description=Provisa TLS certificate from Secret Manager, hourly
+[Timer]
+OnBootSec=1h
+OnUnitActiveSec=1h
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable provisa-tls-sync-boot.service provisa-tls-sync.timer
+systemctl start provisa-tls-sync.timer
+# This boot's own: the units take over from the next one.
+/usr/local/bin/provisa-tls-sync --boot

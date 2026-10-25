@@ -15,6 +15,7 @@ WHERE/order_by/distinct_on inputs, and db-field argument maps. Depends only on
 schema_directives, naming, type_map, and enum_detect — never on schema_gen.
 """
 
+from collections.abc import Callable
 from typing import cast
 
 from graphql import (
@@ -176,12 +177,14 @@ def _gql_col_name(col: dict, table: _TableInfo) -> str:
     return conv if conv else raw
 
 
-def _build_where_input(  # REQ-008, REQ-221
+def _build_where_input(  # REQ-008, REQ-221, REQ-2136
     table: _TableInfo,
     type_name: str,
     enum_types: dict | None = None,
+    relationships: Callable[[], dict[str, GraphQLInputField]] | None = None,
 ) -> GraphQLInputObjectType | None:
-    """Build a typed WHERE input for a table's visible columns."""
+    """Build a typed WHERE input for a table's visible columns, and (``relationships``, read when
+    the schema is built) a condition per relationship: a row with a related row matching it."""
     _enums = enum_types or {}
     _enum_filters = build_enum_filter_types(_enums)
     input_fields: dict[str, GraphQLInputField] = {}
@@ -226,6 +229,8 @@ def _build_where_input(  # REQ-008, REQ-221
         fields = dict(input_fields)
         fields["_and"] = GraphQLInputField(GraphQLList(GraphQLNonNull(wi)))
         fields["_or"] = GraphQLInputField(GraphQLList(GraphQLNonNull(wi)))
+        if relationships is not None:
+            fields.update(relationships())
         return fields
 
     where_input = cast(GraphQLInputObjectType, GraphQLInputObjectType(name, thunk))

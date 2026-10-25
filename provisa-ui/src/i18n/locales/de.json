@@ -93,5 +93,9 @@
     "notGranted": "Die Rolle, als die Sie handeln, gewährt diese Seite nicht. Eine Rolle, die Sie besitzen, schon:",
     "switchTo": "Zu {{role}} wechseln",
     "noneHeld": "Keine der Rollen, die Sie besitzen, gewährt diese Seite."
+  },
+  "pageError": {
+    "title": "Diese Seite konnte nicht angezeigt werden",
+    "body": "Beim Rendern ist ein Fehler aufgetreten. Der Rest der App funktioniert weiterhin: Wechseln Sie zu einer anderen Seite oder laden Sie diese neu."
   }
 }

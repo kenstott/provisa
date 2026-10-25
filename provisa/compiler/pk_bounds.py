@@ -87,7 +87,7 @@ def _literal_value(e: exp.Expr, params: list[Any] | None = None) -> tuple[Any, b
     $1` should not have, and previously always did. ``params=None`` (the default, when the caller
     has none to offer) preserves the exact old behavior: a parameter placeholder stays unresolved.
     Two placeholder shapes exist depending on how sqlglot parsed the surrounding query (see
-    provisa.cypher.translator._reconcile_params_with_placeholders's own docstring for why): a bare
+    provisa.gql.translator._reconcile_params_with_placeholders's own docstring for why): a bare
     ``exp.Column`` whose identifier IS the literal text ``"$1"`` (the text/UNWIND parse path), or
     ``exp.Parameter(this=exp.Literal(this=1))`` (the AST/predicate parse path this module's own
     ``sqlglot.parse_one(..., read="postgres")`` call uses) -- both handled."""

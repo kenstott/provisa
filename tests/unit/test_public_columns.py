@@ -406,7 +406,7 @@ def test_the_grpc_proto_carries_the_published_table_and_columns():
 
 
 def test_the_cypher_labels_carry_the_published_table_as_a_match_root():
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     role = _role("seller", SALES)
     _si, _schema, ctx = _compiled(role)

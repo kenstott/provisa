@@ -245,6 +245,23 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 
 搜索按每条语句、在其参数下读取，其行在这些参数下保留一个表 TTL 的时间。搜索表是只读的。
 
+**由连接提供参数的搜索。** 关系可以用另一张表的列为搜索的参数提供值，就像它为代码表提供参数一样：它的 `parameters` 映射列出每个参数及其取值的源列。把搜索与该表连接的语句随后会针对源值的每一组不同取值（按语句角色所读到的值）各运行一次 Qdrant 查询，关系未提供的参数则使用语句自身的参数。搜索返回的点不保存找到它们的查询的任何信息，因此关系按查询的参数列连接：每个点在该列中携带它被搜索时所用的值。
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+每一行诗句的词语都会被搜索，并通过搜索的 `"@sonnet"` 过滤器排除该行所属十四行诗的点，每一行都会得到为它找到的三个点。自行给出某个被提供参数的语句，例如 `WHERE s._nf_query = 'the ravages of time'`，会按自身参数读取搜索，不再由关系提供参数。
+
 ### Streaming {: #streaming }
 
 | Source Type | Mechanism | Mutations |
@@ -1607,7 +1624,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 
 #### 通过配置文件和界面注册 {: #config-file-and-ui-registration }
 
-一个 `sparql` 数据源的 `host` 就是其 SPARQL 端点 URL（Sources 表单以同样的方式存储它）。其下的每张表都携带 `query_template`，即一个变量即为列的 SELECT 语句；每个绑定都是 `text`。
+一个 `sparql` 数据源的 `host` 就是其 SPARQL 端点 URL（Sources 表单以同样的方式存储它）。其下的每张表都携带 `query_template`，即一个变量即为列的 SELECT 语句。预览会按每列绑定共有的 XSD 数据类型确定列类型：整数类型为 `integer`，`xsd:decimal`、`xsd:double` 和 `xsd:float` 为 `double`，`xsd:boolean` 为 `boolean`，`xsd:date` 为 `date`，`xsd:dateTime` 为 `timestamp`。IRI、空白节点、普通字符串或带语言标签的字符串，以及绑定类型不一致的变量，均为 `text`。
 
 ```yaml
 sources:
@@ -1628,6 +1645,64 @@ tables:
 ```
 
 Register Table 的工作方式与 Neo4j 相同：选择数据源，输入一个表名和 SELECT 语句，点击 Preview（`sparqlPreview` 查询以 `LIMIT 5` 运行该语句并填充列列表），然后注册。注册过程会持久化一条 `api_sources` 行和一条 `api_endpoints` 行（对该端点路径进行表单编码的 POST，`sparql_bindings` normalizer），与配置文件注册写入的行相同，原生引擎通过与 Neo4j 相同的获取链路落地这些行。
+
+**下推。** 当语句单独读取一张 SPARQL 表（没有连接）时，它在该表各列上的条件会进入发送给端点的查询。已注册的 SELECT 会变成子查询 `SELECT * WHERE { { <the SELECT> } FILTER(...) }`，其 `PREFIX` 和 `BASE` 行保留在前面。
+- 会下推：`text` 列上的等值和 `IN`（按 `STR(?var)` 比较，因此 IRI 可以匹配其文本）；`integer` 或 `double` 列上的任何比较；`boolean` 上的等值。
+- 不下推：其他条件，例如文本上的大小比较、日期、列的函数或绑定参数。它们会作用在 Provisa 收到的行上。
+- 每个条件都会再次作用在行上，因此下推一个条件只会缩小所获取的内容。
+- 只有当所有条件都已下推，且语句不分组、不聚合、不使用 `DISTINCT`、`ORDER BY` 或 `OFFSET` 时，语句的 `LIMIT` 才会下推。
+- 缩小后的结果以其自身的查询为键缓存，与整张表的缓存分开。
+
+#### 推理机 {: #reasoner }
+
+一个 `sparql` 数据源可以指定一个推理机和一份 OWL 公理文档。查询为尖括号中单个 IRI 的表，随后会按公理推导的结果提供该类或属性：
+- 类：一列，即它的成员；
+- 对象属性或数据属性：两列，即每个主体及其值。
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+公理可以用 OWL API 能读取的任何语法书写：Turtle、RDF/XML、OWL 函数式语法或 Manchester 语法。HermiT 是唯一的推理机。
+
+读取推理表时，推理机会：
+1. 读取公理中提到的类和属性；
+2. 向端点发送一个 `CONSTRUCT`，请求这些属性的每个三元组和这些类的每个成员关系，格式为 N-Triples；
+3. 按公理对这部分数据进行分类；
+4. 返回由此推出的事实。
+
+一个数据源的所有推理表共享同一次分类，并在表的缓存 TTL 内复用。因此，数据源的新鲜度声明就是它推理的频率：实时表为 `cache_ttl`，副本为副本的刷新，TTL 为 `-1` 时只推理一次。推理表提供的内容对每个读者都像其他表一样受治理。
+
+HermiT 作为独立程序运行，绝不在服务器内部运行。它运行在固定版本的 Eclipse Temurin JDK 21 上，HermiT、OWL API 及其库位于类路径中。每个组件在首次使用时下载，按 Provisa 固定的 SHA-256 校验，并缓存在运行时依赖缓存根目录下（`$PROVISA_RUNTIME_DEPS_CACHE`，默认 `~/.cache/provisa/runtime_deps`）。下载失败，或文件校验和与固定值不符，都会使读取失败并指明是哪个文件。
 
 ## 连接示例 {: #connection-examples }
 

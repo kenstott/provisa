@@ -31,7 +31,7 @@ def _table(schema="s", name="t", cols=("id", "name")):
     return SimpleNamespace(
         schema_name=schema,
         table_name=name,
-        columns=[SimpleNamespace(name=c, native_filter_type=None) for c in cols],
+        columns=[SimpleNamespace(name=c, native_filter_type=None, path=None) for c in cols],
         landing_filter=None,
     )
 
@@ -137,6 +137,83 @@ async def test_mongodb_reads_off_one_cursor_fetching_a_batch_per_round_trip(monk
     got = await _batches(reader, 2)
     assert [len(b) for b in got] == [2, 2, 1]
     assert asked == [{"id": 1, "name": 1, "_id": 0}, 2]
+
+
+class _MongoCollection:
+    """A collection of ``docs`` that records each find's filter and projection."""
+
+    def __init__(self, docs, asked):
+        self._docs = docs
+        self._asked = asked
+
+    def find(self, query, projection):
+        self._asked.append((query, projection))
+        docs = self._docs
+
+        class _Cursor(list):
+            def batch_size(self, _n):
+                return self
+
+        return _Cursor(docs)
+
+
+def _mongo_with(monkeypatch, docs):
+    from provisa.mongodb import fetch as mf
+
+    asked: list = []
+
+    @contextmanager
+    def _client(self):
+        yield {"db": {"coll": _MongoCollection(docs, asked)}}
+
+    monkeypatch.setattr(mf.MongoConnection, "client", _client)
+    source = SimpleNamespace(
+        id="m", host="localhost", port=27017, username="", password="", database="db"
+    )
+    table = SimpleNamespace(
+        schema_name="db",
+        table_name="coll",
+        columns=[
+            SimpleNamespace(name="order_id", native_filter_type=None, path=None),
+            SimpleNamespace(
+                name="shipping_carrier", native_filter_type=None, path="shipping.carrier"
+            ),
+        ],
+        landing_filter=None,
+    )
+    return source, table, asked
+
+
+_NESTED_DOCS = [{"order_id": 1, "shipping": {"carrier": "UPS"}}, {"order_id": 2}]
+_NESTED_ROWS = [
+    {"order_id": 1, "shipping_carrier": "UPS"},
+    {"order_id": 2, "shipping_carrier": None},
+]
+
+
+async def test_a_mongodb_replica_reads_a_column_at_its_document_path(monkeypatch):
+    """A column registered with a path (shipping_carrier: shipping.carrier) is read from that
+    nested field; read by its name, every replica row held null there."""
+    source, table, asked = _mongo_with(monkeypatch, _NESTED_DOCS)
+    reader = sl.make_mongodb_loader().replica_source(
+        source, table, [("order_id", "bigint"), ("shipping_carrier", "text")]
+    )
+    assert await _batches(reader, 10) == [_NESTED_ROWS]
+    assert asked == [({}, {"order_id": 1, "shipping.carrier": 1, "_id": 0})]
+
+
+async def test_a_mongodb_fetch_reads_a_column_at_its_document_path(monkeypatch):
+    source, table, _ = _mongo_with(monkeypatch, _NESTED_DOCS)
+    assert await sl.make_mongodb_loader()(source, table) == _NESTED_ROWS
+
+
+async def test_a_mongodb_keyed_fetch_reads_and_filters_columns_at_their_document_paths(monkeypatch):
+    source, table, asked = _mongo_with(monkeypatch, _NESTED_DOCS[:1])
+    rows = await sl.make_mongodb_keyed_loader()(source, table, ["shipping_carrier"], [("UPS",)])
+    assert rows == _NESTED_ROWS[:1]
+    assert asked == [
+        ({"shipping.carrier": {"$in": ["UPS"]}}, {"order_id": 1, "shipping.carrier": 1, "_id": 0})
+    ]
 
 
 async def test_redis_scans_its_keys_in_bounded_batches(monkeypatch):

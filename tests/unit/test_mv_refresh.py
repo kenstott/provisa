@@ -118,7 +118,10 @@ def pipeline(monkeypatch):
     async def _govern_and_route(sql, role_id, **_kw):
         calls.routed.append((sql, role_id))
         return SimpleNamespace(
-            route=Route.ENGINE, physical_sql="SELECT id FROM governed", exec_params=None
+            route=Route.ENGINE,
+            physical_sql="SELECT id FROM governed",
+            exec_params=None,
+            columns=None,
         )
 
     async def _resident(_state, _plan):
@@ -207,9 +210,11 @@ class TestBuildRefreshSQL:
             "AND team = current_setting('provisa.team')"
         )
 
-        async def _govern_and_route(sql, _role, *, session_vars, route_hint):
+        async def _govern_and_route(sql, _role, *, session_vars, route_hint, building):
             resolved = _pipeline._resolve_session_settings(sql, session_vars, "postgres")
-            return SimpleNamespace(route=Route.ENGINE, physical_sql=resolved, exec_params=None)
+            return SimpleNamespace(
+                route=Route.ENGINE, physical_sql=resolved, exec_params=None, columns=None
+            )
 
         async def _residency(*_a):
             return None

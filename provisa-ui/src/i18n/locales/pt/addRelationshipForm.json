@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "Nomear a aresta a partir de",
     "viaLabelSourceColumn": "Valor discriminador",
     "viaLabelSourceTable": "Nome da tabela de junção",
-    "viaLabelSourceFixed": "Alias de Cypher"
+    "viaLabelSourceFixed": "Alias de Cypher",
+    "cardinalityOneToOne": "um-para-um"
   }
 }

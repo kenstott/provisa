@@ -112,6 +112,7 @@ from provisa.api.admin.schema_helpers import (
     _dynamic_openapi_columns,
     _ensure_openapi_spec,
     _fetch_table_with_columns,
+    table_listing,
     _get_pool,
 )
 
@@ -331,6 +332,7 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
             graphql_alias=None,
             computed_cypher_alias=None,
             disable_cypher=False,
+            same_entity=False,
             via_table_id=None,
             via_table_name=None,
             via_source_column=None,
@@ -861,22 +863,23 @@ class Query:  # REQ-021, REQ-042
                 all_tables = [dict(r._mapping) for r in _ares.fetchall()]
                 # REQ-1958: the caller is answered the tables it administers or is served.
                 scope = catalog_scope(info)
+                listed = [r for r in rows if scope.lists_table(r["id"], r["domain_id"])]
+                # What every listed table reads beside its row, read once for all of them.
+                listing = await table_listing(conn, listed)
                 return [
                     _trim_table(
                         scope,
-                        await _fetch_table_with_columns(conn, r, all_tables, user_can_deploy),
+                        await _fetch_table_with_columns(
+                            conn, r, all_tables, user_can_deploy, listing
+                        ),
                     )
-                    for r in rows
-                    if scope.lists_table(r["id"], r["domain_id"])
+                    for r in listed
                 ]
 
     @strawberry.field
     async def relationships(
         self, info: StrawberryInfo
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
-        from provisa.api.app import state
-
-        convention = state.global_gql_naming_convention
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -903,7 +906,7 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
             return await _listed_relationships(conn, catalog_scope(info), rows)
 
     @strawberry.field
@@ -911,9 +914,6 @@ class Query:  # REQ-021, REQ-042
         self, info: StrawberryInfo
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
         """All relationships including system-generated meta:% entries (used by ERD)."""
-        from provisa.api.app import state
-
-        convention = state.global_gql_naming_convention
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -936,7 +936,7 @@ class Query:  # REQ-021, REQ-042
                 .where(relationships.c.id.not_like("gql_auto__%"))
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
             rows.extend(await _has_table_synthetic_relationships(conn))
             return await _listed_relationships(conn, catalog_scope(info), rows)
 
@@ -1193,13 +1193,26 @@ class Query:  # REQ-021, REQ-042
         offers write operations (REQ-1924): an OpenAPI source's operations that are not GETs, a
         remote GraphQL source's mutations, a gRPC source's mutation methods. An OpenAPI source
         also offers each GET whose response declares no row schema. A database source
-        offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. Listing
+        offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. A code
+        source offers its ``@columns`` functions under schema ``code`` (REQ-2131). Listing
         them registers none: registration is the steward's curation step."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.executor.source_operation import OPERATION_SCHEMA, offered_operations
 
         source_type = (getattr(state, "source_types", None) or {}).get(source_id, "")
+        from provisa.codesource.source import CODE_SOURCE_TYPES
+
+        if source_type in CODE_SOURCE_TYPES:
+            # REQ-2131: a code source offers its @columns functions, each a batch column transform.
+            from provisa.codesource.columns import SCHEMA, offered
+
+            if schema_name != SCHEMA:
+                return []
+            return [
+                AvailableTableType(name=name, comment=comment)
+                for name, comment in await offered(state, source_id)
+            ]
         operation_schema = OPERATION_SCHEMA.get(source_type)
         if operation_schema is None:
             from provisa.api.admin.introspect import native_routines

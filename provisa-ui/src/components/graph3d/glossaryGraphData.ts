@@ -9,51 +9,381 @@
 // permission from the copyright holder.
 
 // REQ-2130: the glossary's Ontology View data, read from the meta domain as the signed-in user --
-// glossary_terms_meta (its live and grounded columns), the domains each term is in, its refs to
-// columns and the products owning those columns' tables, and glossary_term_edges_meta -- turned
-// into the graph's nodes and edges.
+// glossary_terms_meta (its standing columns), the domains each term is in, its refs to columns
+// with those columns' tables and the relationships declared from them, and the edges leaving it
+// (glossary_term_edges_meta, read with the term); and the data products with their datasets, the datasets' columns and
+// the terms those columns are -- turned into the graph's nodes and edges.
 
-import { rootQuery, type MetaReader, type Selection } from "../../api/metaGraph";
-import type { GraphData, GraphEdge, GraphNode, TermStatus } from "./graphModel";
+import { termRole } from "../../api/glossary";
+import { NEIGHBOURHOOD } from "./neighbourhood";
+import {
+  operation,
+  rootField,
+  type MetaReader,
+  type Selection,
+  type Where,
+} from "../../api/metaGraph";
+import type {
+  GraphData,
+  GraphEdge,
+  GraphNode,
+  LayerId,
+  QueryScope,
+  TermStatus,
+} from "./graphModel";
 
 /** REQ-1593: a term in every domain, the org's shared vocabulary. */
 export const ENTERPRISE_DOMAIN = "*";
 
-const TERMS: Selection = {
-  fields: ["id", "name", "definition", "is_abstract", "deprecated", "retired", "live", "grounded"],
-  rels: {
-    domains: { alias: "domains", sel: { fields: ["domain_id"] } },
-    refs: {
-      alias: "refs",
+/** A relationship declared from a table: its name is the Cypher type it is served under
+ * (relationships.cypher_type), as the Relationships page shows it. Its id is configuration, never
+ * a label. */
+const RELATIONSHIP: Selection = { fields: ["id", "cypher_type", "target_table_id"] };
+
+/** The term standings ``hidden`` leaves out, as conditions on glossary_terms_meta's columns. */
+const NOT_STATUS: Record<TermStatus, Where> = {
+  retired: { retired: { eq: false } },
+  deprecated: { _or: [{ retired: { eq: true } }, { deprecated: { eq: false } }] },
+  live: { _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: false } }] },
+  draft: {
+    _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: true } }],
+  },
+};
+
+const all = (conds: Where[]): Where | undefined =>
+  conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { _and: conds };
+
+/** A row whose domain is one of ``domains``; every row when there are none. */
+const inDomains = (domains: string[], column = "domain_id"): Where | undefined =>
+  domains.length === 0 ? undefined : { [column]: { in: domains } };
+
+/** A relationship served under one of the Cypher ``types``. */
+const named = (types: string[]): Where | undefined =>
+  types.length === 0 ? undefined : { cypher_type: { in: types } };
+
+function relationships(s: QueryScope): Selection["rels"] {
+  return s.layers.has("ownerTables") && s.layers.has("columns")
+    ? {
+        source_relationships: {
+          alias: "sourceRelationships",
+          sel: RELATIONSHIP,
+          where: named(s.edgeTypes),
+        },
+      }
+    : {};
+}
+
+/** The terms ``s`` keeps by their own columns: their standing and their domains. */
+function termKept(s: QueryScope): Where | undefined {
+  const domainWhere: Where | undefined =
+    s.domains.length === 0
+      ? undefined
+      : {
+          // term_domains is the term's domains as |a|b| (glossary_term_domains_meta); an
+          // enterprise-wide term ("*") is in every one.
+          _or: [...s.domains, ENTERPRISE_DOMAIN].map((d) => ({
+            term_domains: { like: `%|${d}|%` },
+          })),
+        };
+  return all([
+    ...(domainWhere ? [domainWhere] : []),
+    ...s.hiddenStatuses.map((st) => NOT_STATUS[st]),
+  ]);
+}
+
+/** A term with a relationship drawn: an edge of a type kept to a term kept (either way, under
+ * Ontology), a domain kept it is in (under Domains: its domains are its refs' and tables', so a
+ * draft named for a column is in its table's domain whatever else is drawn), or a column it IS in
+ * a domain kept (under Columns). With none of these layers on, none. */
+function related(s: QueryScope): Where {
+  const kept = termKept(s);
+  const typed: Where | undefined =
+    s.edgeTypes.length === 0 ? undefined : { rel_type: { in: s.edgeTypes } };
+  const edge = (other: string): Where =>
+    all([...(typed ? [typed] : []), ...(kept ? [{ [other]: kept }] : [])]) ?? {};
+  return {
+    _or: [
+      ...(s.layers.has("ontology")
+        ? [
+            { edges_out: edge("target_term") },
+            { edges_in: edge("source_term") },
+            { tables: inDomains(s.domains) ?? {} },
+          ]
+        : []),
+      ...(s.layers.has("domains")
+        ? [
+            {
+              domains:
+                inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]) ?? {},
+            },
+          ]
+        : []),
+      ...(s.layers.has("columns") ? [{ refs: inDomains(s.domains) ?? {} }] : []),
+    ],
+  };
+}
+
+/** A search item as an ILIKE pattern: anywhere in the text, its own % _ and \\ taken literally. */
+const anywhere = (item: string) => `%${item.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+/** REQ-2143: the terms the page's search matches, searchItems' rule -- any item, in the name or the
+ * definition, whatever its case. */
+export function searchWhere(items: string[]): Where {
+  const any: Where[] = [];
+  for (const i of items)
+    any.push({ name: { ilike: anywhere(i) } }, { definition: { ilike: anywhere(i) } });
+  return { _or: any };
+}
+
+const TERM_FIELDS = [
+  "id",
+  "name",
+  "definition",
+  "ref_count",
+  "deprecated",
+  "retired",
+  "live",
+  "identity_gap",
+];
+
+/** A term's selection at ``level`` hops from the search's matches. Under a search the terms a term's
+ * edges reach are read with it, a level further, to the neighbourhood's depth: a term at the
+ * last level is read with its edges' ends alone, so an edge between two of them is drawn and
+ * nothing past them is. With no search every term is read at level 0, its edges' ends by id. */
+function termSelection(s: QueryScope, level: number): Selection {
+  const depth = s.search.length > 0 ? NEIGHBOURHOOD.depth : 0;
+  const last = level >= depth;
+  const kept = termKept(s);
+  const rels: NonNullable<Selection["rels"]> = {};
+  const end = (side: "target_term" | "source_term", alias: string) => ({
+    [side]: { alias, sel: last ? { fields: ["id"] } : termSelection(s, level + 1) },
+  });
+  const edgeWhere = (other: "target_term" | "source_term"): Where | undefined =>
+    all([
+      ...(s.edgeTypes.length === 0 ? [] : [{ rel_type: { in: s.edgeTypes } }]),
+      // Under a search the term an edge reaches is read: one the filters leave out is not.
+      ...(depth > 0 && kept ? [{ [other]: kept }] : []),
+    ]);
+  // A term's edges are read with it, from the term they leave (each edge once), so the view is one
+  // query: terms with their edges to other terms. An edge to a term not read has no end to draw.
+  if (s.layers.has("ontology")) {
+    rels.edges_out = {
+      alias: "edgesOut",
       sel: {
-        fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
-        rels: {
-          table: {
-            to: "registered_tables",
-            sel: {
-              fields: ["id"],
-              rels: {
-                product: { alias: "product", sel: { fields: ["id", "name", "domain_id"] } },
+        fields: ["id", "from_term_id", "to_term_id", "rel_type"],
+        rels: end("target_term", "targetTerm"),
+      },
+      where: edgeWhere("target_term"),
+    };
+    // Under a search a match's neighbourhood runs both ways: the edges reaching it too.
+    if (depth > 0)
+      rels.edges_in = {
+        alias: "edgesIn",
+        sel: {
+          fields: ["id", "from_term_id", "to_term_id", "rel_type"],
+          rels: end("source_term", "sourceTerm"),
+        },
+        where: edgeWhere("source_term"),
+      };
+  }
+  // What a term touches is a hop past it: the last level's is past the neighbourhood.
+  if (!last || depth === 0) {
+    // A class term's tables are the ontology's: what the term names the rows of.
+    if (s.layers.has("ontology"))
+      rels.tables = {
+        alias: "tables",
+        sel: { fields: ["id", "table_name", "domain_id"] },
+        where: inDomains(s.domains),
+      };
+    if (s.layers.has("domains"))
+      rels.domains = {
+        alias: "domains",
+        sel: { fields: ["domain_id"] },
+        where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
+      };
+    if (s.layers.has("columns"))
+      rels.refs = {
+        alias: "refs",
+        sel: {
+          fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
+          rels: {
+            table: {
+              to: "registered_tables",
+              sel: {
+                fields: ["id"],
+                rels: {
+                  // With Data off, a column's product is read for its look alone: no product node.
+                  product: {
+                    alias: "product",
+                    sel: { fields: s.layers.has("data") ? ["id", "name", "domain_id"] : ["id"] },
+                  },
+                  ...relationships(s),
+                },
               },
             },
           },
         },
+        where: inDomains(s.domains),
+      };
+  }
+  return { fields: TERM_FIELDS, rels };
+}
+
+/** The terms ``s`` reads at the root: those its filters keep, and under a search those it matches. */
+function rootWhere(s: QueryScope): Where | undefined {
+  const kept = termKept(s);
+  return all([
+    ...(kept ? [kept] : []),
+    ...(s.orphans ? [] : [related(s)]),
+    ...(s.search.length > 0 ? [searchWhere(s.search)] : []),
+  ]);
+}
+
+function termsField(m: MetaReader, s: QueryScope): string | null {
+  return rootField(m, "glossary_terms", termSelection(s, 0), rootWhere(s));
+}
+
+/** REQ-2143: how many terms the view's query would read at its root -- the matches under a search,
+ * else every term the filters keep -- read as their ids alone, before the graph is. */
+export function ontologyCountQuery(m: MetaReader, s: QueryScope): string | null {
+  // Each term's domains with it: the overview counts the terms in each.
+  const field = rootField(
+    m,
+    "glossary_terms",
+    { fields: ["id"], rels: { domains: { alias: "domains", sel: { fields: ["domain_id"] } } } },
+    rootWhere(s),
+  );
+  return field === null ? null : operation("OntologyCount", [field]);
+}
+
+/** What the count read answers: each term's id and domains. */
+export interface CountRow {
+  id: number;
+  domains?: { domain_id: string }[] | null;
+}
+
+/** REQ-2143: the overview drawn when the whole ontology is past the budget -- each domain, named
+ * with the number of terms in it; ``label`` words a domain and its count. */
+export function overviewGraph(
+  rows: CountRow[],
+  label: (domain: string, count: number) => string,
+): GraphData {
+  const counts = new Map<string, number>();
+  for (const r of rows)
+    for (const d of r.domains ?? []) counts.set(d.domain_id, (counts.get(d.domain_id) ?? 0) + 1);
+  return {
+    nodes: [...counts]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([d, n]) => ({
+        id: `d:${d}`,
+        type: "domain" as const,
+        label: label(d, n),
+        domains: [d],
+      })),
+    edges: [],
+  };
+}
+
+function productsField(m: MetaReader, s: QueryScope): string | null {
+  return rootField(
+    m,
+    "data_products",
+    {
+      fields: ["id", "name", "domain_id"],
+      rels: {
+        member_tables: {
+          alias: "memberTables",
+          sel: {
+            fields: ["id", "domain_id", "table_name"],
+            rels: {
+              table_columns: {
+                to: "table_columns",
+                sel: {
+                  fields: ["column_name", "column_key"],
+                  rels: { glossary_ref: { alias: "glossaryRef", sel: { fields: ["term_id"] } } },
+                },
+              },
+              ...relationships(s),
+            },
+          },
+          where: inDomains(s.domains),
+        },
       },
     },
-  },
-};
+    inDomains(s.domains),
+  );
+}
+
+/** The Ontology View's one query for ``s``: its terms, each with the edges leaving it under the
+ * Ontology layer, and the data products under Data; null when the role cannot read the terms. A part the
+ * role cannot read is left out. */
+export function ontologyQuery(m: MetaReader, s: QueryScope): string | null {
+  const terms = termsField(m, s);
+  if (terms === null) return null;
+  const products = s.layers.has("data") ? productsField(m, s) : null;
+  return operation(
+    "Ontology",
+    [terms, products].filter((f): f is string => f !== null),
+  );
+}
+
+/** Every term the query read, at whatever level of a search's neighbourhood, once: a term read at
+ * two levels keeps what the fuller read holds. */
+export function flatTerms(rows: TermRow[]): TermRow[] {
+  const byId = new Map<number, TermRow>();
+  const visit = (t: TermRow) => {
+    const seen = byId.get(t.id);
+    // The fuller read: a nearer level reads what a term touches, the last its edges' ends alone.
+    if (!seen || Object.keys(t).length > Object.keys(seen).length) byId.set(t.id, t);
+    for (const e of t.edges_out ?? [])
+      if (e.target_term && "name" in e.target_term) visit(e.target_term as TermRow);
+    for (const e of t.edges_in ?? [])
+      if (e.source_term && "name" in e.source_term) visit(e.source_term as TermRow);
+  };
+  rows.forEach(visit);
+  return [...byId.values()];
+}
+
+/** The edges the terms were read with, each once: from the term it leaves or the one it reaches. */
+export function termEdges(terms: TermRow[]): TermEdgeRow[] {
+  const out = new Map<string, TermEdgeRow>();
+  for (const t of terms)
+    for (const e of [...(t.edges_out ?? []), ...(t.edges_in ?? [])])
+      out.set(`${e.from_term_id}>${e.to_term_id}:${e.rel_type}`, {
+        id: e.id,
+        from_term_id: e.from_term_id,
+        to_term_id: e.to_term_id,
+        rel_type: e.rel_type,
+      });
+  return [...out.values()];
+}
+
+/** What the Ontology View's query answers: a part not read is absent. */
+export interface OntologyRows {
+  glossary_terms: TermRow[];
+  data_products?: ProductRow[];
+}
 
 export interface TermRow {
   id: number;
   name: string;
   definition: string | null;
-  is_abstract: boolean;
+  /** The columns the term names. */
+  ref_count: number;
   deprecated: boolean;
   retired: boolean;
   live: boolean;
-  grounded?: boolean;
+  // REQ-2130/2141: grounded in tables that same-entity relationships do not all join; absent
+  // when the role cannot read it.
+  identity_gap?: boolean;
   // One-to-many: null when the term has none (see rowsOf).
   domains?: { domain_id: string }[] | null;
+  // Under Ontology: the edges leaving the term (null when none; see rowsOf).
+  // Under a search, the term an edge reaches is read in full to the neighbourhood's depth.
+  edges_out?: (TermEdgeRow & { target_term?: TermRow | { id: number } | null })[] | null;
+  edges_in?: (TermEdgeRow & { source_term?: TermRow | { id: number } | null })[] | null;
+  // REQ-2130 (class grounding): the tables whose rows the term names.
+  tables?: { id: number; table_name: string; domain_id: string }[] | null;
   refs?:
     | {
         column_key: string;
@@ -63,8 +393,38 @@ export interface TermRow {
         domain_id: string;
         table?: {
           id: number;
-          product?: { id: string; name: string; domain_id: string } | null;
+          product?: { id: string; name?: string; domain_id?: string } | null;
+          source_relationships?: RelationshipRow[] | null;
         } | null;
+      }[]
+    | null;
+}
+
+interface RelationshipRow {
+  id: string;
+  // Every relationship has its served type stored (relationship_names.store_effective_names).
+  cypher_type: string;
+  target_table_id: number | null;
+}
+
+export interface ProductRow {
+  id: string;
+  name: string;
+  domain_id: string;
+  // One-to-many: null when there are none (see rowsOf).
+  member_tables?:
+    | {
+        id: number;
+        domain_id: string;
+        table_name: string;
+        table_columns?:
+          | {
+              column_name: string;
+              column_key: string;
+              glossary_ref?: { term_id: number }[] | null;
+            }[]
+          | null;
+        source_relationships?: RelationshipRow[] | null;
       }[]
     | null;
 }
@@ -76,51 +436,79 @@ export interface TermEdgeRow {
   rel_type: string;
 }
 
-export function termsQuery(m: MetaReader): string | null {
-  return rootQuery(m, "GlossaryTerms", "glossary_terms", TERMS);
+/** A term's standing (REQ-1387: a draft is in service and not live). The graph names a term by its
+ * title and marks its standing by style; it carries neither the term's definition nor reasons. */
+export function standing(t: TermRow): TermStatus {
+  if (t.retired) return "retired";
+  if (t.deprecated) return "deprecated";
+  if (t.live) return "live";
+  return "draft";
 }
 
-export function termEdgesQuery(m: MetaReader): string | null {
-  return rootQuery(m, "GlossaryTermEdges", "glossary_term_edges", {
-    fields: ["id", "from_term_id", "to_term_id", "rel_type"],
-  });
-}
-
-/** A term's standing, and why a proposal is one (REQ-1387: proposed is in service and not live;
- * live is defined and grounded). What the role's columns do not establish is not said. */
-export type ProposalReason = "undefined" | "ungrounded";
-
-export function standing(
-  t: TermRow,
-  say: (reason: ProposalReason) => string,
-): { status: TermStatus; note?: string } {
-  if (t.retired) return { status: "retired" };
-  if (t.deprecated) return { status: "deprecated" };
-  if (t.live) return { status: "live" };
-  const undefinedTerm = (t.definition ?? "").trim() === "";
-  // Not live and defined: so not grounded, whether or not the grounded column was read.
-  const ungrounded = t.grounded === undefined ? !undefinedTerm : !t.grounded;
-  const why: ProposalReason[] = [];
-  if (undefinedTerm) why.push("undefined");
-  if (ungrounded) why.push("ungrounded");
-  return { status: "proposed", note: why.map(say).join(", ") };
-}
-
-/** The glossary's graph; ``say`` words a proposal's reasons in the reader's language. */
+/**
+ * The glossary's graph. Each node and edge says which layers draw it where its kind's own layer is
+ * not the whole answer:
+ * - a column a term IS is Columns'; a data product's column is Data's too, and its datasets' other
+ *   columns are Data's alone;
+ * - a table is drawn only through a column drawn (Tables, with Columns) or as a product's dataset
+ *   (Data); the relationships declared between the tables drawn are Tables' (ownerTables).
+ */
 export function glossaryGraph(
   terms: TermRow[],
   edges: TermEdgeRow[],
-  say: (reason: ProposalReason) => string,
+  products: ProductRow[] = [],
 ): GraphData {
   const nodes = new Map<string, GraphNode>();
   const out = new Map<string, GraphEdge>();
+  // A node or edge met again (a term's column that is also a product's) is drawn by either's layers.
+  const widen = (into: { layers?: LayerId[] }, layers: LayerId[] | undefined) => {
+    if (!layers || !into.layers) return;
+    into.layers = [...new Set([...into.layers, ...layers])];
+  };
   const node = (n: GraphNode) => {
-    if (!nodes.has(n.id)) nodes.set(n.id, n);
+    const seen = nodes.get(n.id);
+    if (!seen) nodes.set(n.id, n);
+    else {
+      widen(seen, n.layers);
+      if (n.inProduct) seen.inProduct = true;
+    }
   };
-  const edge = (a: string, b: string, kind: GraphEdge["kind"], label?: string) => {
+  const edge = (
+    a: string,
+    b: string,
+    kind: GraphEdge["kind"],
+    label?: string,
+    layers?: LayerId[],
+  ) => {
     const id = `${kind}:${a}>${b}${label ? `:${label}` : ""}`;
-    if (!out.has(id)) out.set(id, { id, a, b, kind, ...(label ? { label } : {}) });
+    const seen = out.get(id);
+    if (!seen)
+      out.set(id, { id, a, b, kind, ...(label ? { label } : {}), ...(layers ? { layers } : {}) });
+    else widen(seen, layers);
   };
+  const table = (id: number, domain: string, name: string, dataset: boolean) =>
+    node({
+      id: `t:${id}`,
+      type: "table",
+      label: `${domain}.${name}`,
+      domains: [domain],
+      stored: true,
+      layers: dataset ? ["data"] : [],
+    });
+  // A product is in its domain, as on the data product graph: drawn beside the domain's terms
+  // even when none of its tables' columns is drawn.
+  const product = (id: string, name: string, domain: string) => {
+    node({ id: `p:${id}`, type: "product", label: name, domains: [domain] });
+    if (nodes.has(`d:${domain}`)) edge(`p:${id}`, `d:${domain}`, "in_domain");
+  };
+  const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
+    for (const r of rows ?? [])
+      if (r.target_table_id !== null)
+        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.cypher_type, [
+          "ownerTables",
+        ]);
+  };
+
   const named = new Set<string>();
   for (const t of terms)
     for (const d of t.domains ?? []) if (d.domain_id !== ENTERPRISE_DOMAIN) named.add(d.domain_id);
@@ -128,44 +516,99 @@ export function glossaryGraph(
 
   for (const t of terms) {
     const id = `term:${t.id}`;
-    const { status, note } = standing(t, say);
+    const status = standing(t);
     const domains = (t.domains ?? []).map((d) => d.domain_id);
     node({
       id,
       type: "term",
       label: t.name,
       status,
-      hollow: t.is_abstract,
-      ...(note ? { note } : {}),
+      role: termRole({ table_count: (t.tables ?? []).length, ref_count: t.ref_count }),
+      // For the side panel only; a proposal with none has nothing said there.
+      ...(t.definition ? { definition: t.definition } : {}),
+      // REQ-2130/2141: a class whose tables are not all declared one entity: a curation gap.
+      ...(t.identity_gap
+        ? { unlinkedTables: (t.tables ?? []).map((g) => `${g.domain_id}.${g.table_name}`) }
+        : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),
     });
     // An enterprise-wide term is joined to every domain, so it settles among them, at the centre.
     for (const d of domains.includes(ENTERPRISE_DOMAIN) ? named : domains)
       edge(id, `d:${d}`, "in_domain");
+    // REQ-2130: the term IS each table it grounds (a class term): the table a cylinder, drawn
+    // with the ontology.
+    for (const g of t.tables ?? []) {
+      node({
+        id: `t:${g.id}`,
+        type: "table",
+        label: `${g.domain_id}.${g.table_name}`,
+        domains: [g.domain_id],
+        stored: true,
+        layers: ["ontology"],
+      });
+      edge(id, `t:${g.id}`, "term_binding", "IS", ["ontology"]);
+    }
     for (const r of t.refs ?? []) {
       const tid = `t:${r.table_id}`;
       const cid = `c:${r.column_key}`;
-      node({
-        id: tid,
-        type: "table",
-        label: `${r.domain_id}.${r.table_name}`,
-        domains: [r.domain_id],
-      });
+      const p = r.table?.product;
+      // A column whose table a data product holds is the Data layer's too.
+      const held: LayerId[] = p ? ["columns", "data"] : ["columns"];
+      table(r.table_id, r.domain_id, r.table_name, p != null);
       node({
         id: cid,
         type: "column",
         label: `${r.table_name}.${r.column_name}`,
         parent: tid,
         domains: [r.domain_id],
+        inProduct: p != null,
+        layers: held,
       });
-      edge(tid, cid, "has_column");
-      edge(id, cid, "term_binding");
-      const p = r.table?.product;
-      if (p) {
-        node({ id: `p:${p.id}`, type: "product", label: p.name, domains: [p.domain_id] });
+      edge(tid, cid, "has_column", undefined, p ? ["data", "ownerTables"] : ["ownerTables"]);
+      // glossary.py's physical refs: the term IS this column.
+      edge(id, cid, "term_binding", "IS", held);
+      // A product read for its column's look alone (Data off) has neither name nor domain and is
+      // no node; under Data both are read.
+      if (p?.name !== undefined && p.domain_id !== undefined) {
+        product(p.id, p.name, p.domain_id);
         edge(`p:${p.id}`, tid, "member");
       }
+      relationships(r.table_id, r.table?.source_relationships);
+    }
+  }
+  for (const p of products) {
+    product(p.id, p.name, p.domain_id);
+    for (const m of p.member_tables ?? []) {
+      const tid = `t:${m.id}`;
+      table(m.id, m.domain_id, m.table_name, true);
+      edge(`p:${p.id}`, tid, "member");
+      for (const c of m.table_columns ?? []) {
+        const cid = `c:${c.column_key}`;
+        const bound = (c.glossary_ref ?? []).map((g) => `term:${g.term_id}`);
+        // A dataset's column is the Data layer's; one a term IS is Columns' as well.
+        node({
+          id: cid,
+          type: "column",
+          label: `${m.table_name}.${c.column_name}`,
+          parent: tid,
+          domains: [m.domain_id],
+          inProduct: true,
+          layers: bound.length > 0 ? ["data", "columns"] : ["data"],
+        });
+        // Tables joins only the columns drawn by Columns: a column no term is stays Data's.
+        edge(
+          tid,
+          cid,
+          "has_column",
+          undefined,
+          bound.length > 0 ? ["data", "ownerTables"] : ["data"],
+        );
+        // A term the role cannot read has no end to draw.
+        for (const term of bound)
+          if (nodes.has(term)) edge(term, cid, "term_binding", "IS", ["data", "columns"]);
+      }
+      relationships(m.id, m.source_relationships);
     }
   }
   for (const e of edges) {

@@ -37,7 +37,11 @@ export function AdminRail() {
   if (activeGroupId(location.pathname) !== "admin") return null;
 
   return (
-    <nav className="admin-rail" data-testid="admin-rail" aria-label={t("navBar.groupAdmin")}>
+    <nav
+      className="admin-rail vertical-nav"
+      data-testid="admin-rail"
+      aria-label={t("navBar.groupAdmin")}
+    >
       {ADMIN_GROUP.items
         .filter((item) => !(item.commercial && !billing) && !(item.installedOnly && billing))
         .map((item) =>

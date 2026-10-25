@@ -82,7 +82,6 @@
     "relatedTermsLabel": "関連用語",
     "relatedTermsEmpty": "関連用語はありません",
     "relatedTermsLoading": "関連用語を読み込んでいます…",
-    "relatedTermsAbstract": "抽象",
     "graphqlQueriesLabel": "アクセスパターン",
     "graphqlQueriesEmpty": "クエリ可能なテーブルまたはリレーションシップはありません",
     "graphqlQueryAria": "{{table}} の GraphQL クエリ例を実行",
@@ -93,6 +92,7 @@
     "openApiQueryAria": "{{table}} の REST リクエスト例を実行",
     "detail": {
       "field": {
+        "details": "詳細",
         "customProperties": "カスタムプロパティ",
         "relatedTables": "関連テーブル",
         "relationships": "リレーションシップ",
@@ -110,10 +110,14 @@
       "lineageEmpty": "リネージはありません",
       "lineageLoading": "リネージを読み込んでいます…",
       "lineageHint": "このプロダクトのテーブルを公開エンドポイントとして示し、それらの導出に使われたすべての上流テーブルを含むカラムリネージグラフ。参考情報のみです。view_governance ケイパビリティが必要です。",
-      "outputPortsHint": "このプロダクトのクエリ可能なサーフェス。所属するテーブル/カラムとコマンドが含まれ、クエリ例は下の「サンプルクエリとコマンド」にあります。",
-      "customPropertiesEmpty": "カスタムプロパティはありません"
+      "inputPortsHint": "このプロダクトが直接読み取るテーブル（リネージより）。テーブルを展開すると読み取る列が表示されます。view_governance ケイパビリティが必要です。",
+      "outputPortsHint": "このプロダクトのクエリ可能な範囲：メンバーテーブルとコマンド。それぞれのクエリ例は「アクセスパターン」にあります。",
+      "customPropertiesEmpty": "カスタムプロパティはありません",
+      "lineageLaneUpstream": "上流、{{n}} ホップ",
+      "lineageLaneDownstream": "下流、{{n}} ホップ"
     },
     "readOnly": "読み取り専用",
-    "readOnlyHint": "data_product_read のみを持っています。編集するには、org_admin が data_product_rw を付与できます。"
+    "readOnlyHint": "data_product_read のみを持っています。編集するには、org_admin が data_product_rw を付与できます。",
+    "relatedTermsConcept": "概念"
   }
 }

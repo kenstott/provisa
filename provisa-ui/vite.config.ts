@@ -15,6 +15,7 @@ import react from "@vitejs/plugin-react";
 import istanbul from "vite-plugin-istanbul";
 import fs from "fs";
 import path from "path";
+import { binaryStreams } from "./src/plugins/binaryStreams";
 import { graphqlLoader } from "./src/plugins/graphql-loader";
 import {
   assertPatchedMonaco,
@@ -205,6 +206,7 @@ assertPatchedMonaco(__dirname);
 
 export default defineConfig((config) => ({
   plugins: [
+    binaryStreams(),
     monacoCancelBackport(),
     e2eWorkerBackendRouter(),
     react(),

@@ -21,12 +21,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unit:
-    name: pytest tests/unit
+  # Four shards side by side, each its own runner with xdist across its cores. The files split by
+  # their paths' hashes (scripts/ci/unit_shard.py), so a file added moves no other file. Each
+  # shard writes the test ids it collected for the check below.
+  shard:
+    name: pytest tests/unit ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    # The suite takes about eight minutes. Without a limit a run that stops making progress held
+    # A shard takes about four minutes. Without a limit a run that stops making progress held
     # its runner for the hosted default of six hours.
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +47,80 @@ jobs:
       - name: Run unit tests
         # faulthandler_timeout: a test still running after five minutes has every thread's stack
         # written to the log, so a run that stops making progress names the test it stopped in.
-        run: uv run pytest tests/unit/ --no-cov -q -n auto -o faulthandler_timeout=300
+        env:
+          PYTHONPATH: scripts/ci
+          PROVISA_COLLECTED_IDS: ${{ github.workspace }}/ids.txt
+          SHARD: ${{ matrix.shard }}/4
+        run: |
+          mapfile -t files < <(python3 scripts/ci/unit_shard.py files "$SHARD")
+          uv run pytest -p unit_shard "${files[@]}" --no-cov -q -n auto -o faulthandler_timeout=300
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-ids-${{ matrix.shard }}
+          path: ids.txt
+          if-no-files-found: error
+
+  # The full collection of tests/unit the check compares the shards with, beside the shards.
+  collect:
+    name: collect tests/unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          client: "true"
+
+      - name: Collect tests/unit whole
+        env:
+          PYTHONPATH: scripts/ci
+          PROVISA_COLLECTED_IDS: ${{ github.workspace }}/ids.txt
+        run: uv run pytest -p unit_shard tests/unit --collect-only -q --no-cov > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unit-ids-full
+          path: ids.txt
+          if-no-files-found: error
+
+  # Every test runs once: the shards' collected ids against the full collection.
+  check:
+    name: every unit test in one shard
+    needs: [shard, collect]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: unit-ids-*
+          path: ids
+
+      - name: Compare
+        run: >-
+          python3 scripts/ci/unit_shard.py check ids/unit-ids-full/ids.txt
+          ids/unit-ids-[0-9]/ids.txt
+
+  # The workflow's verdict under the job name it had before sharding.
+  unit:
+    name: pytest tests/unit
+    needs: [shard, check]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed and ran every test once
+        env:
+          SHARD: ${{ needs.shard.result }}
+          CHECK: ${{ needs.check.result }}
+        run: |
+          echo "shards: $SHARD; check: $CHECK"
+          [ "$SHARD" = success ] && [ "$CHECK" = success ]
 
   jdbc-driver:
     # The JDBC driver's own JUnit tests (jdbc-driver/src/test, *Test classes): no container and

@@ -163,7 +163,11 @@ const TRINO_SPECS = [
 // org schema (PROVISA_E2E_ORG_ID == PROVISA_E2E_TRINO_ORG_ID), which no ordinary core/trino run
 // sets up. Excluded from "core" the same way TRINO_SPECS is: a routine core-lane run has no Trino
 // backend at all and this spec would just fail on a missing PROVISA_E2E_TRINO_CONFIG.
-const SWAP_SPECS = ["**/engine-swap.spec.ts"];
+const SWAP_SPECS = [
+  "**/engine-swap.spec.ts",
+  "**/engine-swap-reboot.spec.ts",
+  "**/engine-swap-reboot-engines.spec.ts",
+];
 // Specs whose sources only an amd64 host can boot (exasol/docker-db never turns healthy under an
 // arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
 // ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.
@@ -403,6 +407,20 @@ function wipeStaleMaterializeStore(dataDir: string): void {
   }
 }
 
+// A backend's own home, not local-dev's ~/.provisa (three-instance isolation; the same values
+// tests/conftest.py forces for pytest): the MCP TLS certificates and the ops store follow
+// PROVISA_HOME; licensing writes its trial anchors and high-water mark only under its sandbox
+// (provisa/licensing/home.py), still reading the real trial clock; and the encryption master key
+// is read from the keyring BEFORE PROVISA_ENCRYPTION_KEY (REQ-684, REQ-1802), so the OS keychain
+// is swapped for the test key store, a file under PROVISA_DATA_DIR (tests/_memory_keyring.py).
+function homeEnvFor(dataDir: string): Record<string, string> {
+  return {
+    PROVISA_HOME: dataDir,
+    PROVISA_LICENSING_SANDBOX_DIR: path.resolve(dataDir, "licensing"),
+    PYTHON_KEYRING_BACKEND: "tests._memory_keyring.MemoryKeyring",
+  };
+}
+
 const embeddedControlPlaneDir = (dataDir: string) => path.join(dataDir, "control-pg");
 
 function controlPlanePg(...args: string[]): string {
@@ -477,6 +495,9 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${E2E_UI_PORT}`,
     headless: true,
+    // In CI a failed test keeps its trace (network, console, DOM at each step) in the report
+    // artifact, for a failure whose error alone does not say which request it waited on.
+    trace: process.env.CI ? "retain-on-failure" : "off",
     // The 3D views (three.js) need a WebGL context. CI runners have no GPU, and Chromium no longer
     // falls back to its software renderer unasked, so SwiftShader is requested by name.
     launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
@@ -524,11 +545,15 @@ export default defineConfig({
             PROVISA_MCP_PORT: String(b.port + 4),
             PROVISA_PGWIRE_PORT: String(b.port + 5),
             PROVISA_DATA_DIR: b.dataDir,
+            // Its own trace folder, not ~/.provisa/telemetry (local-dev's): every backend compacts
+            // its folder each minute, and four sharing one compacted each other's files.
+            PROVISA_TELEMETRY_DIR: path.resolve(b.dataDir, "telemetry"),
             PROVISA_CONFIG: b.configPath,
             ORG_ID: b.orgId,
             GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
             PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
             PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+            ...homeEnvFor(b.dataDir),
             ...controlPlaneEnvFor(b.dataDir),
           },
           reuseExistingServer: !process.env.CI,
@@ -561,11 +586,13 @@ export default defineConfig({
                   PROVISA_MCP_PORT: String(E2E_TRINO_MCP_PORT),
                   PROVISA_PGWIRE_PORT: String(E2E_TRINO_PGWIRE_PORT),
                   PROVISA_DATA_DIR: E2E_TRINO_DATA_DIR,
+                  PROVISA_TELEMETRY_DIR: path.resolve(E2E_TRINO_DATA_DIR, "telemetry"),
                   PROVISA_CONFIG: E2E_TRINO_CONFIG_PATH,
                   ORG_ID: E2E_TRINO_ORG_ID,
                   GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
                   PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
                   PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+                  ...homeEnvFor(E2E_TRINO_DATA_DIR),
                   PROVISA_ENGINE: "trino",
                   // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
                   // Trino container itself, not the host. These vars make engine_visible_address()

@@ -9,8 +9,8 @@
 // permission from the copyright holder.
 
 // REQ-2130: the glossary's Ontology View, as REQ-2130's scenario sets it: a concrete term bound to
-// a column, an abstract term linked to it by KIND_OF, an undefined term bound to a column, an
-// abstract term with no edges, a deprecated term and a retired term.
+// a column, a concept linked to it by KIND_OF, an undefined term bound to a column, a concept with
+// no edges, a deprecated term and a retired term.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -22,6 +22,9 @@ import {
   type LayerId,
 } from "../graphModel";
 import { glossaryGraph, type TermEdgeRow, type TermRow } from "../glossaryGraphData";
+import { NO_FILTERS } from "../graphModel";
+
+const NO_FILTERS_ONTOLOGY: GraphFilters = { ...NO_FILTERS };
 
 const ref = (table: number, column: string, product?: string) => ({
   column_key: `${table}:${column}`,
@@ -38,22 +41,26 @@ const ref = (table: number, column: string, product?: string) => ({
 const term = (id: number, name: string, over: Partial<TermRow>): TermRow => ({
   id,
   name,
-  definition: `${name}, defined.`,
-  is_abstract: false,
+  definition: `${name}, as the business uses it.`,
+  ref_count: 0,
   deprecated: false,
   retired: false,
   live: true,
-  grounded: true,
   domains: [{ domain_id: "sales" }],
   refs: [],
   ...over,
 });
 
 const TERMS: TermRow[] = [
-  term(1, "Customer", { refs: [ref(10, "email", "c360")] }),
-  term(2, "Party", { is_abstract: true, domains: [{ domain_id: "*" }] }),
-  term(3, "Loyalty tier", { definition: null, live: false, refs: [ref(10, "tier")] }),
-  term(4, "Concept", { is_abstract: true, live: false, grounded: false }),
+  term(1, "Customer", { ref_count: 1, refs: [ref(10, "email", "c360")] }),
+  term(2, "Party", { ref_count: 0, domains: [{ domain_id: "*" }] }),
+  term(3, "Loyalty tier", {
+    definition: null,
+    live: false,
+    ref_count: 1,
+    refs: [ref(10, "tier")],
+  }),
+  term(4, "Concept", { ref_count: 0, live: false }),
   term(5, "Old customer", { deprecated: true, live: false, domains: [{ domain_id: "finance" }] }),
   term(6, "Ancient", { retired: true, live: false }),
 ];
@@ -63,15 +70,14 @@ const EDGES: TermEdgeRow[] = [
   { id: 3, from_term_id: 3, to_term_id: 1, rel_type: "PART_OF" },
 ];
 
-const say = (r: string) => r;
-const G: GraphData = glossaryGraph(TERMS, EDGES, say);
+const G: GraphData = glossaryGraph(TERMS, EDGES);
 const node = (g: GraphData, id: string) => g.nodes.find((n) => n.id === id);
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 const defaults: GraphFilters = {
   domains: [],
   tags: [],
   sensitivities: [],
-  focus: null,
+  focus: [],
   edgeTypes: [],
   hiddenStatuses: GLOSSARY_SCOPE.hiddenStatuses,
 };
@@ -84,34 +90,51 @@ const view = (layers: LayerId[], filters: GraphFilters = defaults) =>
   visibleGraph(G, new Set(layers), filters, new Set(), GLOSSARY_SCOPE);
 
 describe("the Ontology View's terms", () => {
-  it("says why a proposal is one: undefined, or ungrounded", () => {
-    expect(node(G, "term:3")).toMatchObject({ status: "proposed", note: "undefined" });
-    expect(node(G, "term:4")).toMatchObject({ status: "proposed", note: "ungrounded" });
-    expect(node(G, "term:1")?.status).toBe("live");
+  it("marks a class whose tables are not all declared one entity, naming its tables", () => {
+    const tables = [
+      { id: 10, table_name: "customers", domain_id: "sales" },
+      { id: 11, table_name: "contacts", domain_id: "crm" },
+    ];
+    const g = glossaryGraph(
+      [
+        term(1, "Customer", { tables, identity_gap: true }),
+        term(2, "Order", { tables: tables.slice(0, 1), identity_gap: false }),
+      ],
+      [],
+    );
+    const node = (id: string) => g.nodes.find((n) => n.id === id);
+    expect(node("term:1")?.unlinkedTables).toEqual(["sales.customers", "crm.contacts"]);
+    expect(node("term:2")?.unlinkedTables).toBeUndefined();
   });
 
-  it("says ungrounded of a defined proposal even when the grounded column was not read", () => {
-    const g = glossaryGraph([term(9, "X", { live: false, grounded: undefined })], [], say);
-    expect(node(g, "term:9")?.note).toBe("ungrounded");
-    const u = glossaryGraph(
-      [term(9, "X", { live: false, grounded: undefined, definition: "" })],
-      [],
-      say,
-    );
-    expect(node(u, "term:9")?.note).toBe("undefined");
+  it("names a draft term by its title, its standing marked by style alone", () => {
+    expect(node(G, "term:3")).toMatchObject({ status: "draft", label: "Loyalty tier" });
+    expect(node(G, "term:4")).toMatchObject({ status: "draft", label: "Concept" });
+    expect(node(G, "term:1")).toMatchObject({ status: "live", label: "Customer" });
+    expect(G.nodes.some((n) => /undefined|·/.test(n.label))).toBe(false);
+    // The definition rides along for the side panel, never in the label; none, nothing.
+    expect(node(G, "term:1")?.definition).toBe("Customer, as the business uses it.");
+    expect(node(G, "term:3")?.definition).toBeUndefined();
   });
 
   it("draws a term the server answered no domains and no references for (null lists)", () => {
-    const g = glossaryGraph([term(7, "Lone", { domains: null, refs: null })], [], say);
+    const g = glossaryGraph([term(7, "Lone", { domains: null, refs: null })], []);
     expect(node(g, "term:7")?.label).toBe("Lone");
   });
 
-  it("draws abstract terms hollow and concrete ones solid", () => {
-    expect(node(G, "term:2")?.hollow).toBe(true);
-    expect(node(G, "term:1")?.hollow).toBe(false);
+  it("gives each term its role -- class, property or concept -- and marks columns a product holds", () => {
+    expect(node(G, "term:2")?.role).toBe("concept");
+    expect(node(G, "term:1")?.role).toBe("property");
+    const grounded = glossaryGraph(
+      [term(9, "Order", { tables: [{ id: 20, table_name: "orders", domain_id: "sales" }] })],
+      [],
+    );
+    expect(node(grounded, "term:9")?.role).toBe("class");
+    // customers.email's table is c360's; customers.tier's too, so both are in a product.
+    expect(node(G, "c:10:email")?.inProduct).toBe(true);
   });
 
-  it("shows proposed and deprecated terms by default and hides retired ones", () => {
+  it("shows draft and deprecated terms by default and hides retired ones", () => {
     const g = view(preset("ontology").layers);
     expect(ids(g)).toEqual(expect.arrayContaining(["term:3", "term:4", "term:5"]));
     expect(ids(g)).not.toContain("term:6");
@@ -120,7 +143,7 @@ describe("the Ontology View's terms", () => {
     expect(ids(all)).toContain("term:6");
     const noProposals = view(preset("ontology").layers, {
       ...defaults,
-      hiddenStatuses: ["proposed", "retired"],
+      hiddenStatuses: ["draft", "retired"],
     });
     expect(ids(noProposals)).not.toContain("term:3");
   });
@@ -168,12 +191,61 @@ describe("the Ontology View's presets", () => {
     expect(y("term:1")).toBeGreaterThan(y("term:3"));
   });
 
-  it("the data layer, off by default, adds the bound columns' tables and their products", () => {
+  it("the data layer, off by default, adds the products' datasets, unfolded into their columns", () => {
     expect(preset("ontology").layers).not.toContain("data");
     const g = view([...preset("ontology").layers, "data"]);
-    expect(ids(g)).toEqual(expect.arrayContaining(["t:10", "p:c360"]));
-    // The columns are folded into their table.
-    expect(ids(g)).not.toContain("c:10:email");
-    expect(g.edges.find((e) => e.kind === "term_binding" && e.a === "term:1")?.b).toBe("t:10");
+    expect(ids(g)).toEqual(expect.arrayContaining(["t:10", "p:c360", "c:10:email"]));
+    // A column is drawn as itself, joined to its dataset, and the term IS it.
+    expect(g.edges.find((e) => e.kind === "term_binding" && e.a === "term:1")?.b).toBe(
+      "c:10:email",
+    );
+    expect(g.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "has_column", a: "t:10", b: "c:10:email" }),
+      ]),
+    );
+  });
+
+  it("draws a class term's tables with the ontology: the term IS the table, a cylinder", () => {
+    const grounded = glossaryGraph(
+      [term(7, "Order", { tables: [{ id: 20, table_name: "orders", domain_id: "sales" }] })],
+      [],
+    );
+    const on = (layers: LayerId[]) =>
+      visibleGraph(grounded, new Set(layers), NO_FILTERS_ONTOLOGY, new Set(), GLOSSARY_SCOPE);
+    const g = on(["ontology"]);
+    expect(g.nodes.find((n) => n.id === "t:20")).toMatchObject({
+      type: "table",
+      label: "sales.orders",
+      stored: true,
+    });
+    expect(g.edges).toEqual([
+      expect.objectContaining({ kind: "term_binding", a: "term:7", b: "t:20", label: "IS" }),
+    ]);
+    // Not drawn without the ontology.
+    expect(on(["domains"]).nodes.map((n) => n.id)).not.toContain("t:20");
+  });
+});
+
+describe("a draft named for a column, with Domains alone drawn", () => {
+  it("is drawn linked to its table's domain, its refs not read", () => {
+    // Read as the query reads it under Layers: Domains -- no refs, no tables, no term edges; its
+    // domain the server's (term_domains: its refs' tables' domain).
+    const draft = term(7, "shift end", {
+      definition: null,
+      live: false,
+      ref_count: 1,
+      refs: undefined,
+      domains: [{ domain_id: "shelter" }],
+    });
+    const g = visibleGraph(
+      glossaryGraph([draft], []),
+      new Set(["ontology", "domains"]),
+      NO_FILTERS_ONTOLOGY,
+      new Set(),
+      GLOSSARY_SCOPE,
+    );
+    expect(g.nodes.map((n) => n.id).sort()).toEqual(["d:shelter", "term:7"]);
+    expect(g.edges.map((e) => [e.kind, e.a, e.b])).toEqual([["in_domain", "term:7", "d:shelter"]]);
   });
 });

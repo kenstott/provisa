@@ -8,7 +8,9 @@
 # permission from the copyright holder.
 #
 # What the insider demo runs once, in order, after the server is up (REQ-2056;
-# scripts/run_demo_setup.py): every message matched to the watch list, then the review queue built.
+# scripts/run_demo_setup.py): every message matched to every deal (message_deal_signals, stored),
+# the matches written to deal_match, then the review queue built.
 steps:
+- refresh: message_deal_signals
 - command: match_deals
 - refresh: review_queue

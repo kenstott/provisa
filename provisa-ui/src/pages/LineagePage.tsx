@@ -276,7 +276,7 @@ export function LineagePage(): React.ReactElement {
             />
             <Tip text={sqlCopied ? t("lineagePage.copied") : t("lineagePage.copy")}>
               <ActionIcon
-                variant="default"
+                variant="subtle"
                 size="sm"
                 aria-label={t("lineagePage.copy")}
                 data-testid="lineage-copy"

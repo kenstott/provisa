@@ -1,0 +1,61 @@
+{
+  "classificationKinds": {
+    "intro": "Each profile run tests a sample of every column's values against these kinds. Where enough values pass, the column gets a suggestion a data steward accepts or rejects. A disabled kind is not tested.",
+    "kindHeader": "Kind",
+    "testHeader": "Test",
+    "thresholdHeader": "Share that must pass",
+    "maskHeader": "Mask offered",
+    "enabledHeader": "Enabled",
+    "enabledAria": "Test for {{kind}}",
+    "sensitive": "Sensitive",
+    "noMask": "None",
+    "kind": {
+      "us_ssn": "US social security number",
+      "payment_card": "Payment card number",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "UK National Insurance number",
+      "ca_social_insurance_number": "Canadian social insurance number",
+      "es_dni": "Spanish DNI or NIE",
+      "nl_bsn": "Dutch citizen service number (BSN)",
+      "in_aadhaar": "Indian Aadhaar number",
+      "us_passport": "US passport number",
+      "country": "Country name",
+      "country_code": "Country code (ISO 3166)",
+      "currency_code": "Currency code (ISO 4217)",
+      "language_code": "Language code (ISO 639)",
+      "city": "World city"
+    },
+    "test": {
+      "us_ssn": "Nine digits, written 123-45-6789 or plain: the area is never 000, 666 or 900 to 999, the group never 00, the serial never 0000.",
+      "payment_card": "13 to 19 digits, spaces or dashes allowed between groups, passing the Luhn check.",
+      "iban": "A country code, two check digits and up to 30 letters and digits whose check digits are right (mod 97).",
+      "uk_national_insurance_number": "Two prefix letters of the allowed set, six digits and a final letter A to D.",
+      "ca_social_insurance_number": "Nine digits, the first not 0 or 8, passing the Luhn check.",
+      "es_dni": "Eight digits and their check letter; a foreigner's NIE starts with X, Y or Z.",
+      "nl_bsn": "Nine digits passing the eleven test.",
+      "in_aadhaar": "Twelve digits, the first 2 to 9, passing the Verhoeff check.",
+      "us_passport": "A letter and eight digits, the format of US passports issued since 2021.",
+      "country": "A country name from the shipped list of countries.",
+      "country_code": "A two- or three-letter ISO 3166 country code.",
+      "currency_code": "A three-letter ISO 4217 currency code.",
+      "language_code": "A two- or three-letter ISO 639 language code.",
+      "city": "The name of a city of 15,000 people or more, from the shipped list."
+    },
+    "noun": {
+      "us_ssn": "a US social security number",
+      "payment_card": "a payment card number",
+      "iban": "an IBAN",
+      "uk_national_insurance_number": "a UK National Insurance number",
+      "ca_social_insurance_number": "a Canadian social insurance number",
+      "es_dni": "a Spanish DNI or NIE",
+      "nl_bsn": "a Dutch citizen service number",
+      "in_aadhaar": "an Indian Aadhaar number",
+      "us_passport": "a US passport number",
+      "country": "a country",
+      "country_code": "an ISO 3166 country code",
+      "currency_code": "an ISO 4217 currency code",
+      "language_code": "an ISO 639 language code",
+      "city": "a world city"
+    }
+  }
+}

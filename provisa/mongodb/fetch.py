@@ -170,11 +170,33 @@ def _coerce(value: Any) -> Any:
     return value
 
 
+def _at(doc: dict, path: str) -> Any:
+    """The value at a dotted document ``path`` (``shipping.carrier``), None where it is absent."""
+    node: Any = doc
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
+def _projection(columns: list[tuple[str, str]]) -> dict[str, int]:
+    """The find projection of ``columns`` (name, document path): ``_id`` excluded unless read."""
+    projection = {path: 1 for _, path in columns}
+    if "_id" not in projection:
+        projection["_id"] = 0
+    return projection
+
+
+def _row(doc: dict, columns: list[tuple[str, str]]) -> dict:
+    return {name: _coerce(_at(doc, path)) for name, path in columns}
+
+
 def fetch_rows(
-    conn: MongoConnection, database: str, collection: str, columns: list[str]
+    conn: MongoConnection, database: str, collection: str, columns: list[tuple[str, str]]
 ) -> list[dict]:  # REQ-1730
-    """Every document of ``database.collection``, ``columns`` projected (``_id`` excluded unless
-    named), read via a single find-all cursor."""
+    """Every document of ``database.collection``, each of ``columns`` (name, document path) read
+    at its path (``_id`` excluded unless read), via a single find-all cursor."""
     return [
         row
         for batch in iter_row_batches(conn, database, collection, columns, _CURSOR_BATCH_ROWS)
@@ -186,18 +208,20 @@ _CURSOR_BATCH_ROWS = 1000
 
 
 def iter_row_batches(
-    conn: MongoConnection, database: str, collection: str, columns: list[str], batch_rows: int
+    conn: MongoConnection,
+    database: str,
+    collection: str,
+    columns: list[tuple[str, str]],
+    batch_rows: int,
 ) -> Iterator[list[dict]]:  # REQ-1915
-    """The documents of ``database.collection`` in batches of at most ``batch_rows`` rows, off
-    one find-all cursor that fetches that many per round trip: only one batch is held."""
-    projection = {c: 1 for c in columns}
-    if "_id" not in columns:
-        projection["_id"] = 0
+    """The documents of ``database.collection`` as rows of ``columns`` (name, document path), in
+    batches of at most ``batch_rows`` rows, off one find-all cursor that fetches that many per
+    round trip: only one batch is held."""
     with conn.client() as client:
-        cursor = client[database][collection].find({}, projection).batch_size(batch_rows)
+        cursor = client[database][collection].find({}, _projection(columns)).batch_size(batch_rows)
         batch: list[dict] = []
         for doc in cursor:
-            batch.append({c: _coerce(doc.get(c)) for c in columns})
+            batch.append(_row(doc, columns))
             if len(batch) >= batch_rows:
                 yield batch
                 batch = []
@@ -227,27 +251,27 @@ def fetch_rows_by_keys(
     conn: MongoConnection,
     database: str,
     collection: str,
-    columns: list[str],
+    columns: list[tuple[str, str]],
     pk_columns: list[str],
     keys: list[tuple[Any, ...]],
 ) -> list[dict]:  # REQ-1865
     """Exactly the documents whose ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) —
     a bound ``$in``/``$or`` filter, never a full-collection scan. Single-column key: ``$in``;
-    composite key: ``$or`` of per-key ``$and`` equality filters (Mongo has no native tuple-IN)."""
+    composite key: ``$or`` of per-key ``$and`` equality filters (Mongo has no native tuple-IN).
+    ``columns`` are (name, document path); a key column is matched at its path."""
     if not keys:
         return []
-    projection = {c: 1 for c in columns}
-    if "_id" not in columns:
-        projection["_id"] = 0
-    if len(pk_columns) == 1:
-        query = {pk_columns[0]: {"$in": [k[0] for k in keys]}}
+    paths = dict(columns)
+    key_paths = [paths[c] for c in pk_columns]
+    if len(key_paths) == 1:
+        query = {key_paths[0]: {"$in": [k[0] for k in keys]}}
     else:
-        query = {"$or": [{c: v for c, v in zip(pk_columns, key)} for key in keys]}
-    rows: list[dict] = []
+        query = {"$or": [{p: v for p, v in zip(key_paths, key)} for key in keys]}
     with conn.client() as client:
-        for doc in client[database][collection].find(query, projection):
-            rows.append({c: _coerce(doc.get(c)) for c in columns})
-    return rows
+        return [
+            _row(doc, columns)
+            for doc in client[database][collection].find(query, _projection(columns))
+        ]
 
 
 class ChangeStreamsUnavailable(ValueError):

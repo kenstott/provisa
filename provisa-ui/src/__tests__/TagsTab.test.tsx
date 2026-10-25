@@ -128,6 +128,25 @@ describe("TagsTab", () => {
     ];
   });
 
+  it("opens on a linked tag: its scope, found and marked", () => {
+    render(<TagsTab />, { initialEntries: ["/admin/tags?tag=audit"] });
+    const row = screen.getByTestId("tags-row-audit");
+    expect(row.className).toContain("row-selected");
+    expect(screen.getAllByTestId(/^tags-row-/)).toHaveLength(1);
+  });
+
+  it("finds tags matching any word of the search", () => {
+    render(<TagsTab />);
+    fireEvent.click(
+      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
+    );
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii finance" } });
+    expect(screen.getAllByTestId(/^tags-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "tags-row-pii",
+      "tags-row-finance",
+    ]);
+  });
+
   it("filters the registry by the selected scope and counts assignments", () => {
     render(<TagsTab />);
     // Default scope is "source": only the user tag applies.

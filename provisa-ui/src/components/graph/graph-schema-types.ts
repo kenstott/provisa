@@ -12,6 +12,8 @@ export interface SchemaNodeLabel {
   domainLabel: string | null;
   domainId: string | null;
   tableLabel: string;
+  /** The registered table the label reads. */
+  tableId: number;
   properties: string[];
   pkColumns: string[];
   idColumn: string | null;
@@ -33,4 +35,18 @@ export interface CypherSchema {
   labels: string[];
   relationshipTypes: string[];
   propertyKeys: string[];
+}
+
+/** A label's or relationship type's count, or why the engine could not count it. */
+export interface CountEntry {
+  count: number | null;
+  error?: string;
+}
+
+/** /data/graph-counts: each label's and type's count; a total only when every one was counted. */
+export interface GraphCounts {
+  node_count: number | null;
+  rel_count: number | null;
+  label_counts: Record<string, CountEntry>;
+  rel_counts: Record<string, CountEntry>;
 }

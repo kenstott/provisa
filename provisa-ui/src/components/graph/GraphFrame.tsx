@@ -14,7 +14,7 @@
    ref reads/writes during render are intentional throughout this module. */
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { ActionIcon, Loader, Menu, Select, useComputedColorScheme } from "@mantine/core";
+import { ActionIcon, Menu, Select, useComputedColorScheme } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Relationship } from "../../types/admin";
 import { injectExclusion } from "./graph-model";
@@ -37,11 +37,11 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { createPortal } from "react-dom";
-import { CopySymbolButton } from "../../components/CopyButton";
 import type { CyInstance } from "./cytoscape-types";
 import type { ClusterLevel } from "./graph-clusters";
 import { downloadBlob, compositeGraphDownload, downloadGraphSvg, toCSV } from "./graph-export";
 import { GraphCanvas, GraphCutNote } from "./GraphCanvas";
+import type { CanvasHighlight } from "./canvas/canvas-types";
 import { GraphStatsPanel } from "./GraphStatsModal";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
@@ -63,6 +63,7 @@ import {
 } from "./GraphIcons";
 import { Tip } from "../Tip";
 import { ResultRedirectNotice } from "../ResultRedirectNotice";
+import { FrameError, FrameQueryActions, FrameRunning, FrameStatementTabs } from "./FrameParts";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -82,6 +83,8 @@ interface GraphFrameProps {
   onColorChange: (label: string, color: string) => void;
   pkMap: Record<string, string[]>;
   labelToTableLabel: Record<string, string>;
+  /** Each node label's registered table, which the inspector links a node to. */
+  labelToTableId: Record<string, number>;
   relationships?: Relationship[];
   // Full relationship set (including meta:%-prefixed system relationships, e.g. HAS_TABLE_COLUMNS)
   // for graph traversal — expand/collapse affordances and exclude-node query rewriting need to see
@@ -94,6 +97,8 @@ interface GraphFrameProps {
   onAddFavorite?: (query: string) => void;
   isFavorited?: (query: string) => boolean;
   onPin?: (id: string) => void;
+  /** Show the frame's ``index``th statement's result, of a query holding several. */
+  onStatement?: (id: string, index: number) => void;
   onEffectiveDataChange?: (
     frameId: string,
     nodes: Map<string, GNode>,
@@ -117,6 +122,7 @@ export function GraphFrame({
   onColorChange,
   pkMap,
   labelToTableLabel,
+  labelToTableId,
   relationships,
   graphRelationships = relationships,
   autoImpute: autoImputeProp = false,
@@ -125,6 +131,7 @@ export function GraphFrame({
   onAddFavorite,
   isFavorited,
   onPin,
+  onStatement,
   onEffectiveDataChange,
 }: GraphFrameProps) {
   const { t } = useTranslation();
@@ -136,6 +143,7 @@ export function GraphFrame({
     { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null
   >(null);
   const [inspectorVisible, setInspectorVisible] = useState(true);
+  const [highlight, setHighlight] = useState<CanvasHighlight | null>(null); // an Overview pill's
   const setSelected = useCallback(
     (
       s:
@@ -420,10 +428,9 @@ export function GraphFrame({
             basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
           />
         )}
-        <CopySymbolButton
-          text={editQuery}
-          className="gf-copy-query-btn"
-          title={t("graphFrame.copyQuery")}
+        <FrameQueryActions
+          query={editQuery}
+          onDelete={isModal ? undefined : () => onClose(frame.id)}
         />
       </div>
       <div className="gf-header-right">
@@ -769,32 +776,9 @@ export function GraphFrame({
         )}
       </div>
       <div className="gf-body-content">
-        {frame.status === "loading" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "2rem",
-              gap: "0.5rem",
-              color: "var(--text-muted)",
-              fontSize: "0.85rem",
-            }}
-          >
-            <Loader size="xs" />
-            {t("graphFrame.running")}
-          </div>
-        )}
-        {frame.status === "error" && (
-          <div className="gf-error gf-error--copyable">
-            <span className="gf-error-text">{frame.error}</span>
-            <CopySymbolButton
-              text={frame.error ?? ""}
-              className="gf-error-copy-btn"
-              title={t("graphFrame.copyErrorTitle")}
-            />
-          </div>
-        )}
+        {onStatement && <FrameStatementTabs frame={frame} onStatement={onStatement} />}
+        {frame.status === "loading" && <FrameRunning />}
+        {frame.status === "error" && <FrameError frame={frame} />}
         {frame.redirect && (
           <ResultRedirectNotice className="gf-redirect" redirect={frame.redirect} />
         )}
@@ -807,6 +791,8 @@ export function GraphFrame({
             }}
           >
             <GraphCanvas
+              highlight={highlight}
+              onClearHighlight={() => setHighlight(null)}
               nodes={augmentedNodes}
               edges={frame.edges}
               overlayNodes={overlayNodes}
@@ -862,6 +848,8 @@ export function GraphFrame({
                 selected={selected}
                 graphStats={selected?.kind === "node" ? selected.graphStats : undefined}
                 overviewData={overviewData}
+                highlight={highlight}
+                onHighlight={setHighlight}
                 colorOverrides={colorOverrides}
                 onColorChange={onColorChange}
                 onClose={() => setInspectorVisible(false)}
@@ -869,7 +857,7 @@ export function GraphFrame({
                 onResizeStart={handleResizeStart}
                 relationships={relationships}
                 onSaveEdgeAlias={onSaveEdgeAlias}
-                pkMap={pkMap}
+                labelToTableId={labelToTableId}
               />
             )}
           </div>

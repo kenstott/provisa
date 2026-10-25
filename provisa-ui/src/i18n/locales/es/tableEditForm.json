@@ -138,7 +138,7 @@
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "Producto de datos",
     "dataProductNone": "Ninguno",
-    "dataProductDesc": "Se publica en el catálogo y se exporta a Atlas, Atlan y otros.",
+    "dataProductDesc": "Se publica en el catálogo y se exporta a Atlas, {{atlan}} y otros.",
     "enableAggregatesLabel": "Habilitar agregados",
     "enableAggregatesDesc": "(exponer el campo raíz _aggregate en GraphQL)",
     "enableGroupByLabel": "Habilitar Group By",

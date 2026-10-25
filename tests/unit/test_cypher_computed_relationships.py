@@ -26,9 +26,9 @@ from provisa.compiler.sql_validator import (
     tables_outside_relationships,
 )
 from provisa.compiler.stage2 import GovernanceContext
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.translator import cypher_to_sql
 
 _COLUMNS = {
     "orders": (1, ["id", "customer_code", "doc"]),
@@ -363,4 +363,5 @@ def test_a_walk_of_a_relationship_of_a_table_to_itself_passes_the_guard_with_its
         ]
 
     assert refusals({2: frozenset({"id"})}) == [], sql_tree.sql(dialect="postgres")
-    assert any("customers.id = customers.id" in said for said in refusals({}))
+    # The walk reads the table again through its recursive CTE: the pairing named as it reads.
+    assert any("between customers.id and customers.id" in said for said in refusals({}))

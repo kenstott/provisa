@@ -14,13 +14,9 @@
     "upstream": "アップストリーム",
     "downstream": "ダウンストリーム",
     "via": "経由: {{vias}}",
-    "metaQueries": "クエリ",
-    "metaQueriesHint": "このパネルがあなたとして meta ドメインに対して実行する読み取りです。コピーするか、エクスプローラーで開いてください。結果は同じです。",
-    "copy": "コピー",
-    "copied": "コピーしました",
-    "copyQuery": "{{surface}} クエリをコピー",
-    "openQuery": "{{surface}} クエリをエクスプローラーで開く",
     "unreadable": "あなたのロールは meta ドメインのデータプロダクトを読み取れません。",
+    "detailExpand": "項目全体を表示",
+    "detailCollapse": "表示を減らす",
     "inputs": "入力",
     "inputsHint": "プロダクトに最も近い物理的な入力：メンバーの元になるテーブルとソース。",
     "inputsEmpty": "記録された入力はありません。",
@@ -53,8 +49,6 @@
     "unassigned": "どのプロダクトにも未割り当て",
     "orphan": "孤立したチェック",
     "orphanWarning": "{{checker}} はこのプロダクトに割り当てられていますが、入力でも出力ポートでもない {{table}} をチェックしています。",
-    "inProduct": "{{product}} 内",
-    "detailExpand": "項目全体を表示",
-    "detailCollapse": "表示を減らす"
+    "inProduct": "{{product}} 内"
   }
 }

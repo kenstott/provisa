@@ -399,7 +399,7 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 | 系统设计与组件地图 | [docs/architecture.md](docs/architecture.md) |
 | 安全模型（RLS、脱敏、认证） | [docs/security.md](docs/security.md) |
 | 密钥存储与 `${secret:NAME}` 引用 | [docs/secrets.md](docs/secrets.md) |
-| 业务术语表与术语管理 | [docs/glossary.md](docs/glossary.md) |
+| 业务术语表与术语管理 | [docs/ontology.md](docs/ontology.md) |
 | 环境（开发 / 预发布 / 生产） | [docs/environments.md](docs/environments.md) |
 | 构建测试环境（画像、伪造数据、合成数据） | [docs/test-data.md](docs/test-data.md) |
 | 伪造数据方法参考 | [docs/fake-methods.md](docs/fake-methods.md) |

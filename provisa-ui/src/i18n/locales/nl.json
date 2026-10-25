@@ -93,5 +93,9 @@
     "notGranted": "De rol waarmee u werkt, geeft geen toegang tot deze pagina. Een rol die u hebt wel:",
     "switchTo": "Overschakelen naar {{role}}",
     "noneHeld": "Geen van de rollen die u hebt, geeft toegang tot deze pagina."
+  },
+  "pageError": {
+    "title": "Deze pagina kon niet worden weergegeven",
+    "body": "Er ging iets mis bij het renderen. De rest van de app werkt nog: ga naar een andere pagina of laad deze opnieuw."
   }
 }

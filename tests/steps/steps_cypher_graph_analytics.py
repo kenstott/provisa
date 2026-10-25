@@ -15,7 +15,7 @@ import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.api.rest.graph_tools_router import ImputeRequest
-from provisa.cypher.assembler import Edge, _parse_edge
+from provisa.gql.assembler import Edge, _parse_edge
 
 
 # ---------------------------------------------------------------------------

@@ -1303,7 +1303,7 @@ def ui_requesting_graph_schema(shared_data):
 @when("the endpoint responds")
 def graph_schema_endpoint_responds(shared_data):
     """Build the real CypherLabelMap and serialize node labels like the handler."""
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
     from provisa.api.rest.cypher_router import _cql_prop
 
     label_map = CypherLabelMap.from_schema(shared_data["ctx"], domain_access=["*"])

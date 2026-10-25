@@ -142,5 +142,32 @@ def greet(name: str, greeting: str = "hello", punctuation: str = "!") -> list[di
     return [{"text": f"{greeting} {name}{punctuation}"}]
 
 
+@dataclass
+class Address:
+    street: str
+    city: str
+    country: str
+
+
+def clean_address(raw_address: list[str]) -> list[Address]:
+    """A batch column transform (REQ-2131): each raw address of the batch, as its parts.
+
+    @columns
+    """
+    out = []
+    for raw in raw_address:
+        street, city, country = (part.strip() for part in raw.split(","))
+        out.append(Address(street, city.title(), country.upper()))
+    return out
+
+
+def short_address(raw_address: list[str]) -> list[Address]:
+    """One result too few for its batch: refused naming it.
+
+    @columns
+    """
+    return clean_address(raw_address)[:-1]
+
+
 def helper() -> int:
     return 1

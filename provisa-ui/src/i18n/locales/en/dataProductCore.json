@@ -14,13 +14,9 @@
     "upstream": "Upstream",
     "downstream": "Downstream",
     "via": "via {{vias}}",
-    "metaQueries": "Queries",
-    "metaQueriesHint": "The reads this panel runs on the meta domain, as you. Copy one or open it in its explorer: the answer is the same.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "copyQuery": "Copy the {{surface}} query",
-    "openQuery": "Open the {{surface}} query in its explorer",
     "unreadable": "Your role cannot read the data products in the meta domain.",
+    "detailExpand": "Show the whole entry",
+    "detailCollapse": "Show less",
     "inputs": "Inputs",
     "inputsHint": "The product's nearest physical inputs: the tables and sources its members are built from.",
     "inputsEmpty": "No inputs recorded.",
@@ -53,8 +49,6 @@
     "unassigned": "assigned to no product",
     "orphan": "Orphan check",
     "orphanWarning": "{{checker}} is assigned to this product but scans {{table}}, which is neither one of its inputs nor one of its output ports.",
-    "inProduct": "in {{product}}",
-    "detailExpand": "Show the whole entry",
-    "detailCollapse": "Show less"
+    "inProduct": "in {{product}}"
   }
 }

@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from provisa.core.schema_org import node_ids
-from provisa.api.rest.cypher_router import router
+from provisa.api.rest.cypher_router import cypher_error, router
 from provisa.api.rest.cypher_exec import (  # noqa: F401
     _build_label_map,
     _execute_call_body,
@@ -56,13 +56,15 @@ async def impute_relationships(
     merged nodes+edges in the standard cypher response format.
     """
     from provisa.api.app import state
-    from provisa.cypher.assembler import assemble_rows, to_serializable
+    from provisa.gql.assembler import assemble_rows, to_serializable
     from provisa.cypher.parser import parse_cypher
 
     role_id = _resolve_role_id(request, state)
     ctx = state.contexts.get(role_id)
     if ctx is None:
-        return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
 
     label_map = _build_label_map(ctx, role_id, state)
     nm_by_label = {nm.label: nm for nm in label_map.nodes.values()}
@@ -150,7 +152,7 @@ async def impute_relationships(
                         key = f"{ser['label']}:{ser['id']}"
                         all_nodes[key] = ser
 
-    from provisa.cypher.assembler import register_node_ids, register_rel_ids
+    from provisa.gql.assembler import register_node_ids, register_rel_ids
 
     serializable_merged = [{"node": r} for r in list(all_nodes.values()) + list(all_edges.values())]
     await register_node_ids(serializable_merged, state.model_db)
@@ -239,16 +241,21 @@ async def neo4j_export(body: Neo4jExportRequest) -> JSONResponse:
                 timeout=request_timeout_for("cypher_http"),  # REQ-1905
             )
     except _httpx.ConnectError as exc:
-        return JSONResponse(status_code=502, content={"error": f"Cannot connect to Neo4j: {exc}"})
+        return cypher_error(
+            502, "cypher.neo4j_unreachable", f"Cannot connect to Neo4j: {exc}", error=str(exc)
+        )
     except _httpx.TimeoutException:
-        return JSONResponse(status_code=504, content={"error": "Neo4j request timed out"})
+        return cypher_error(504, "cypher.neo4j_timed_out", "Neo4j request timed out")
 
     if resp.status_code == 401:
-        return JSONResponse(status_code=401, content={"error": "Neo4j authentication failed"})
+        return cypher_error(401, "cypher.neo4j_auth_failed", "Neo4j authentication failed")
     if resp.status_code // 100 != 2:
-        return JSONResponse(
-            status_code=resp.status_code,
-            content={"error": f"Neo4j HTTP {resp.status_code}: {resp.text[:200]}"},
+        return cypher_error(
+            resp.status_code,
+            "cypher.neo4j_refused",
+            f"Neo4j HTTP {resp.status_code}: {resp.text[:200]}",
+            http_status=resp.status_code,
+            error=resp.text[:200],
         )
 
     data = resp.json()

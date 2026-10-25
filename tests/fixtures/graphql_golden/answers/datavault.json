@@ -1,0 +1,233 @@
+[
+ {
+  "columns": [
+   "customer_id",
+   "viewCustomerAsKnowns__asOf",
+   "viewCustomerAsKnowns__ordersSource",
+   "viewCustomerAsKnowns__ordersLoadDate",
+   "viewCustomerAsKnowns__ordersAddress",
+   "viewCustomerAsKnowns__crmSource",
+   "viewCustomerAsKnowns__crmLoadDate",
+   "viewCustomerAsKnowns__crmAddress"
+  ],
+  "engine": "duckdb",
+  "ordered": false,
+  "origin": "demo:datavault/1-what-was-known.graphql",
+  "root_field": "v__viewHubCustomer",
+  "rows": [
+   [
+    "ALFKI",
+    "1996-07-01 09:00:00",
+    "orders",
+    "1996-07-01 09:00:00",
+    "Obere Str. 57",
+    "crm",
+    "1996-07-01 09:00:00",
+    "Obere Str. 57"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "customer_id",
+   "viewLinkCustomerOrders"
+  ],
+  "engine": "duckdb",
+  "ordered": false,
+  "origin": "demo:datavault/2-customer-orders-products.graphql",
+  "root_field": "v__viewHubCustomer",
+  "rows": [
+   [
+    "ALFKI",
+    [
+     {
+      "viewHubOrder": {
+       "orderId": 10643,
+       "viewLinkOrderProducts": [
+        {
+         "viewHubProduct": {
+          "productId": 28,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "R\u00f6ssle Sauerkraut",
+            "unitPrice": 45.6
+           }
+          ]
+         }
+        },
+        {
+         "viewHubProduct": {
+          "productId": 39,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Chartreuse verte",
+            "unitPrice": 18.0
+           }
+          ]
+         }
+        },
+        {
+         "viewHubProduct": {
+          "productId": 46,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Spegesild",
+            "unitPrice": 12.0
+           }
+          ]
+         }
+        }
+       ]
+      }
+     },
+     {
+      "viewHubOrder": {
+       "orderId": 10692,
+       "viewLinkOrderProducts": [
+        {
+         "viewHubProduct": {
+          "productId": 63,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Vegie-spread",
+            "unitPrice": 43.9
+           }
+          ]
+         }
+        }
+       ]
+      }
+     },
+     {
+      "viewHubOrder": {
+       "orderId": 10702,
+       "viewLinkOrderProducts": [
+        {
+         "viewHubProduct": {
+          "productId": 3,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Aniseed Syrup",
+            "unitPrice": 10.0
+           }
+          ]
+         }
+        },
+        {
+         "viewHubProduct": {
+          "productId": 76,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Lakkalik\u00f6\u00f6ri",
+            "unitPrice": 18.0
+           }
+          ]
+         }
+        }
+       ]
+      }
+     },
+     {
+      "viewHubOrder": {
+       "orderId": 10835,
+       "viewLinkOrderProducts": [
+        {
+         "viewHubProduct": {
+          "productId": 59,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Raclette Courdavault",
+            "unitPrice": 55.0
+           }
+          ]
+         }
+        },
+        {
+         "viewHubProduct": {
+          "productId": 77,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Original Frankfurter gr\u00fcne So\u00dfe",
+            "unitPrice": 13.0
+           }
+          ]
+         }
+        }
+       ]
+      }
+     },
+     {
+      "viewHubOrder": {
+       "orderId": 10952,
+       "viewLinkOrderProducts": [
+        {
+         "viewHubProduct": {
+          "productId": 6,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Grandma's Boysenberry Spread",
+            "unitPrice": 25.0
+           }
+          ]
+         }
+        },
+        {
+         "viewHubProduct": {
+          "productId": 28,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "R\u00f6ssle Sauerkraut",
+            "unitPrice": 45.6
+           }
+          ]
+         }
+        }
+       ]
+      }
+     },
+     {
+      "viewHubOrder": {
+       "orderId": 11011,
+       "viewLinkOrderProducts": [
+        {
+         "viewHubProduct": {
+          "productId": 58,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Escargots de Bourgogne",
+            "unitPrice": 13.25
+           }
+          ]
+         }
+        },
+        {
+         "viewHubProduct": {
+          "productId": 71,
+          "viewSatProducts": [
+           {
+            "loadDate": "1996-07-01 09:00:00",
+            "productName": "Flotemysost",
+            "unitPrice": 21.5
+           }
+          ]
+         }
+        }
+       ]
+      }
+     }
+    ]
+   ]
+  ]
+ }
+]

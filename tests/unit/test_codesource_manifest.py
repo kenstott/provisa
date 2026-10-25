@@ -411,3 +411,45 @@ def test_the_reader_ships_with_the_package():
     pyproject = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())
     assert "reader.mjs" in pyproject["tool"]["setuptools"]["package-data"]["provisa.node"]
     assert reader.READER.is_file()
+
+
+ADDRESS = {
+    "kind": "object",
+    "name": "Address",
+    "fields": [
+        {"name": n, "description": "", "optional": False, "type": S}
+        for n in ("street", "city", "country")
+    ],
+}
+
+
+def test_a_columns_function_takes_input_columns_as_lists_and_returns_one_object_a_row():
+    """REQ-2131: each parameter is one input column, a list of the batch's values; the result is
+    a list holding one object per input row, whose fields are the output columns."""
+    (transform,) = read_manifest(
+        raw(
+            fn("clean_address", ["columns"], [("raw_address", False, arr(S))], arr(ref("Address"))),
+            types={"Address": ADDRESS},
+        )
+    ).exports
+    assert transform.kind == "columns"
+    assert [(p.name, p.shape) for p in transform.parameters] == [
+        ("raw_address", ListOf(Scalar("text")))
+    ]
+    assert transform.returns == Named("Address") and transform.many
+
+
+def test_a_columns_function_that_does_not_batch_is_refused_by_name():
+    problems = refused(
+        fn("one_at_a_time", ["columns"], [("raw_address", False, S)], arr(ref("Address"))),
+        fn("single", ["columns"], [("raw_address", False, arr(S))], ref("Address")),
+        fn("loose", ["columns"], [("raw_address", False, arr(S))], arr({"kind": "any"})),
+        fn("nothing_in", ["columns"], [], arr(ref("Address"))),
+        types={"Address": ADDRESS},
+    )
+    assert problems == [
+        "one_at_a_time: @columns parameter raw_address is one input column: a list of values",
+        "single: @columns returns a list holding one result per input row",
+        "loose: @columns declares its output columns: its result is a typed object",
+        "nothing_in: @columns takes at least one input column",
+    ]

@@ -23,7 +23,6 @@
     "descriptionLabel": "Descripción",
     "descriptionPlaceholder": "Aparece en la documentación SDL",
     "dataProductLabel": "Producto de datos",
-    "dataProductHint": "(publicar en el catálogo / exportar a Atlas, Atlan, etc.)",
     "discoverLabel": "Descubrir columnas",
     "discoverHint": "(inferir columnas desde el origen en vivo al registrar — para orígenes sin esquema/NoSQL; no requiere selección manual de columnas)",
     "watermarkLabel": "Columna de marca de agua",

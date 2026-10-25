@@ -14,13 +14,9 @@
     "upstream": "Upstream",
     "downstream": "Downstream",
     "via": "über {{vias}}",
-    "metaQueries": "Abfragen",
-    "metaQueriesHint": "Die Lesevorgänge, die dieses Panel als Sie in der Meta-Domäne ausführt. Kopieren Sie einen oder öffnen Sie ihn in seinem Explorer: die Antwort ist dieselbe.",
-    "copy": "Kopieren",
-    "copied": "Kopiert",
-    "copyQuery": "Die {{surface}}-Abfrage kopieren",
-    "openQuery": "Die {{surface}}-Abfrage in ihrem Explorer öffnen",
     "unreadable": "Ihre Rolle kann die Datenprodukte in der Meta-Domäne nicht lesen.",
+    "detailExpand": "Ganzen Eintrag anzeigen",
+    "detailCollapse": "Weniger anzeigen",
     "inputs": "Eingaben",
     "inputsHint": "Die nächsten physischen Eingaben des Produkts: die Tabellen und Quellen, aus denen seine Mitglieder gebaut sind.",
     "inputsEmpty": "Keine Eingaben erfasst.",
@@ -53,8 +49,6 @@
     "unassigned": "keinem Produkt zugeordnet",
     "orphan": "Verwaiste Prüfung",
     "orphanWarning": "{{checker}} ist diesem Produkt zugeordnet, prüft aber {{table}}, das weder eine seiner Eingaben noch einer seiner Ausgabeports ist.",
-    "inProduct": "in {{product}}",
-    "detailExpand": "Ganzen Eintrag anzeigen",
-    "detailCollapse": "Weniger anzeigen"
+    "inProduct": "in {{product}}"
   }
 }

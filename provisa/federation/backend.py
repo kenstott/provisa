@@ -22,6 +22,7 @@ every Trino reference inside the Trino engine's own instance and out of the gene
 
 from __future__ import annotations
 
+from provisa.core.read_refusal import ReadRefused
 import asyncio
 import logging
 from contextlib import contextmanager
@@ -564,6 +565,12 @@ class EngineBackend:
     def classify_error(self, exc: Exception) -> str | None:
         return None
 
+    def refusal_of(self, exc: Exception) -> ReadRefused | None:
+        """What the engine cannot answer because of what it is, said by name (REQ-778): a
+        refusal its error stands for, else None and the error is answered by its kind."""
+        del exc
+        return None
+
     # -- federation lifecycle (REQ-825) ----------------------------------------
     # The boot sequence drives every engine through the same lifecycle:
     #   write_config → configure_session → provision → provision_infra → (serve) → close
@@ -982,13 +989,18 @@ class TrinoBackend(EngineBackend):
         return frozenset(OPS_TABLES)
 
     def transpile_physical(self, pg_sql: str) -> str:
+        from provisa.federation.trino_connectors import trino_utc_wall_columns
         from provisa.transpiler.transpile import (
+            rewrite_instants_for_trino,
             rewrite_prometheus_labels_for_trino,
             transpile_to_trino,
         )
 
         sql = transpile_to_trino(pg_sql)
         from provisa.api.app import state
+
+        # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
+        sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
 
         label_columns = getattr(state, "prometheus_label_columns", None)
         if label_columns:
@@ -1145,6 +1157,7 @@ class TrinoBackend(EngineBackend):
                 table=address.table,
                 columns=columns,
                 pk_columns=pk_columns,
+                key_after_landing=True,
             )
             reconciled.append((src.id, table_name))
         return reconciled

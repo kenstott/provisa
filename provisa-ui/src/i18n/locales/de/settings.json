@@ -265,6 +265,10 @@
       "port": {
         "label": "HTTP-API-Port",
         "help": "Der Port, auf dem die HTTP-API lauscht. Neustart erforderlich; bestätigungspflichtig, da die UI und alle Clients einer Änderung folgen müssen."
+      },
+      "public_url": {
+        "label": "Öffentliche Adresse",
+        "help": "Die Adresse, unter der diese Bereitstellung bekannt ist, etwa https://data.example.com. Jede IRI eines Subjekts in SPARQL und in RDF-Exporten beginnt damit, daher sollte sie gleich bleiben, solange diese IRIs verwendet werden. Ist sie nicht gesetzt, wird eine Abfrage abgelehnt, die die IRI eines Subjekts liefert."
       }
     },
     "tls": {
@@ -861,6 +865,22 @@
       "leak_rate_threshold": {
         "label": "Leckraten-Schwelle für Fake-Werte",
         "help": "Der Anteil der Stichprobenwerte einer sensiblen Spalte, den ihr Fake-Wert gleich dem echten Wert lassen darf, bevor die Leckraten-Prüfung den Fake-Wert als unzureichend markiert. 0 lässt einen Fake-Wert scheitern, der irgendeinen Wert unverändert lässt."
+      }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Host-Code-Befehle zulassen",
+        "help": "Ein: Python- und Skript-Befehle dürfen registriert und aufgerufen werden. Jeder läuft mit dem vollen Zugriff des Servers auf seinen Speicher, seine Zugangsdaten, Dateien und sein Netzwerk, und sein Code wird nicht mit dem Modell übertragen. Standardmäßig aus; verwenden Sie stattdessen einen Code-Resolver."
+      }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Tiefster Graphpfad",
+        "help": "Die meisten Hops, die ein Cypher-Pfad variabler Länge oder ein SPARQL-Property-Path durchläuft, wenn die Abfrage selbst keine Grenze setzt. Ein Ergebnis, das an dieser Tiefe abgeschnitten wurde, weist darauf hin."
+      },
+      "union_limit": {
+        "label": "Höchstzahl der Prädikate einer Prädikatvariable",
+        "help": "Ein SPARQL-Muster, dessen Prädikat eine Variable ist, liest jedes zugeordnete Prädikat, das passen könnte, mit je einem Zweig. Eine Abfrage, die mehr Zweige braucht, wird abgelehnt und nennt die Grenze."
       }
     }
   }

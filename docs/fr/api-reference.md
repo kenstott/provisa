@@ -982,18 +982,18 @@ Renvoie toutes les fonctions DB et webhooks suivis.
 {
   "functions": [
     {
-      "name": "random_python_set",
-      "implKind": "python",
-      "binding": {"callable": "demo.py_functions:random_dataset"},
+      "name": "random_grpc_set",
+      "implKind": "grpc",
+      "binding": {"target": "localhost:50071", "method": "/provisa.demo.RandomData/GetRandomSet"},
       "returns": "",
       "returnSchema": {
         "type": "array",
         "items": {"type": "object", "properties": {"id": {"type": "integer"}, "region": {"type": "string"}}}
       },
-      "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
+      "arguments": [],
       "visibleTo": ["admin"],
       "domainId": "pet-store",
-      "description": "Demo Python command returning random rows",
+      "description": "Demo gRPC command returning random rows",
       "kind": "query"
     }
   ],
@@ -1033,12 +1033,14 @@ Enregistre une fonction suivie (commande).
 | `implKind` | Ce qui s'exécute | Champs `binding` |
 | --- | --- | --- |
 | `source_procedure` | Procédure stockée sur une source enregistrée (par défaut) | `sourceId`, `schemaName`, `functionName` |
-| `script` | Script côté serveur | `script` |
+| `script` | Script côté serveur (code hôte) | `script` |
 | `http` | Appel HTTP sortant | `url`, `method` |
 | `grpc` | Appel gRPC sortant vers un serveur externe | `target`, `method` |
-| `python` | Callable Python hébergé par Provisa | `callable` (p. ex. `"demo.py_functions:random_dataset"`) |
+| `python` | Callable Python hébergé par Provisa (code hôte) | `callable` (p. ex. `"demo.py_functions:random_dataset"`) |
 
-Les commandes de démonstration `random_python_set` (`implKind: python`) et `random_grpc_set` (`implKind: grpc`) illustrent en pratique les commandes à ensemble de résultats avec `returnSchema` ; les deux figurent dans `config/provisa-install.yaml`.
+`script` et `python` sont du code hôte. Tant que le paramètre de déploiement `commands.allow_host_code` est désactivé, ce qu'il est par défaut, enregistrer, mettre à jour ou appeler l'un d'eux est refusé avec HTTP 403 et le code `functions.host_code_refused` (voir [Code hôte](commands.md#host-code)).
+
+La commande de démonstration `random_grpc_set` (`implKind: grpc`) illustre en pratique une commande à ensemble de résultats avec `returnSchema` ; elle figure dans `config/provisa-install.yaml`.
 
 #### `PUT /admin/actions/functions/{name}`
 
@@ -1339,7 +1341,7 @@ La normalisation applique cinq règles en séquence :
 4. Retirer un **jeton de substitution** final (`identifier`, `code`, `index`, ou `reference`). Une colonne nommée d'après sa clé ou son code pointe vers le concept sous-jacent via une valeur de substitution, donc le terme devrait être le concept lui-même. Le dernier jeton restant n'est jamais retiré.
 5. Qualifier une **expression trop générique** avec le concept de la table. Lorsque l'expression normalisée complète est un simple mot d'attribut (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, et similaires), le terme devient `<table concept> <phrase>` : `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. Un seul terme `name` partagé entre des tables non liées fusionnerait des significations distinctes ; la qualification relie chaque colonne à son concept englobant à la place. Le concept de table est le nom métier de la table, normalisé avec un nom de tête singulier (`order_lines` → `order line`).
 
-Les pseudo-colonnes de filtre natif (préfixées `_nf_`, ou toute colonne portant `native_filter_type`) sont de la mécanique de paramètres de requête, pas des champs métier, et ne dérivent aucun terme.
+Les pseudo-colonnes de filtre natif (préfixées `_nf_`, ou toute colonne portant `native_filter_type`) sont de la mécanique de paramètres de requête et ne dérivent aucun terme.
 
 Parce que `id`, `key`, `pk`, et `sk` se développent tous en `identifier` avant la vérification du jeton de substitution, trois noms de colonnes physiquement différents aboutissent exactement au même terme :
 
@@ -1352,30 +1354,38 @@ Parce que `id`, `key`, `pk`, et `sk` se développent tous en `identifier` avant 
 
 Les trois premiers se réduisent à un seul terme. `transaction amount` garde ses deux jetons, car `amount` n'est pas un substitut. Une colonne `id` seule, sans jeton devant, ne peut pas être raccourcie ; elle est normalisée en `identifier` pour que le terme ne soit pas vide.
 
+Les colonnes de clé ne reçoivent pas de terme normalisé. Chaque colonne d'une clé primaire place sa référence sur le terme Classe de sa table, et chaque colonne d'une clé étrangère déclarée place sa référence sur la Classe de la table cible, quel que soit son nom. Une table à clé sans Classe en propose une en brouillon, nommée d'après son concept. Voir [Ontologie](ontology.md#classes-properties-and-concepts) pour les rôles et la façon dont les clés sont placées.
+
 ### Cycle de vie {: #lifecycle }
 
-Les termes sont **dérivés de l'appartenance à la couche sémantique** ; les utilisateurs ne les créent pas à la demande. Le dépôt des tables est le seul chemin d'écriture : `sync_table_refs` s'exécute dans chaque upsert d'un ensemble de colonnes, et `sweep_refless_terms` après tout chemin de suppression.
+Les termes sont **dérivés de l'appartenance à la couche sémantique**. Le dépôt des tables est le seul chemin d'écriture : il réconcilie les colonnes d'une table à chaque enregistrement et règle les termes qu'une suppression laisse sans référence.
 
-**Lorsqu'une colonne est ajoutée :** Provisa recherche le terme normalisé par nom. S'il existe déjà, la colonne obtient une référence vers lui (et si le terme était déprécié, il est réactivé, et `deprecated` est remis à `False`). Si aucun terme n'existe encore, un est créé.
+**Lorsqu'une colonne est ajoutée :** Provisa recherche son terme par nom. Si le terme existe, la colonne obtient une référence vers lui, et un terme déprécié pour avoir perdu sa dernière colonne est réactivé. Si aucun terme n'existe encore, un terme en brouillon est créé.
 
-**Quand une colonne disparaît** (changement de schéma ou retrait d'une table), sa référence est supprimée et le terme est **réglé** selon une règle « supprimer ou déprécier ». Un terme enraciné sans référence restante est supprimé d'office, avec ses arêtes et ses affectations d'experts, sauf si cela laissait un terme abstrait sans chemin dans le graphe des termes vers un terme enraciné. Dans ce cas, le terme est **déprécié** (marqué `deprecated=True`) au lieu d'être supprimé, et le terme abstrait garde son ancrage dans le graphe.
+**Quand une colonne disparaît** (changement de schéma ou retrait d'une table), sa référence est supprimée et le terme est **réglé**. Un terme non curé sans référence restante est supprimé avec ses arêtes. Un terme curé (doté d'une définition, d'une arête, d'un expert, d'une étiquette ou d'un retrait) est déprécié et conservé, de même que tout terme dont la suppression laisserait un Concept sans chemin vers les données.
 
-Les termes abstraits ne sont jamais supprimés automatiquement ; ils existent en dehors du cycle de vie physique et ne sont supprimés qu'explicitement via l'API admin.
-
-**Réactivation :** si le nom normalisé d'un terme déprécié réapparaît (une colonne est réenregistrée), le terme est démarqué et ses références recommencent à s'accumuler.
+Chaque terme a un statut : `draft`, `live`, `deprecated` ou `retired`. La liste, le détail et la vue méta le portent. Un curateur ne le change que par les actions de statut ci-dessous ; un `PATCH` qui définit un statut est refusé. Voir [Ontologie](ontology.md#status) pour la signification de chaque statut.
 
 ### Points de terminaison de curation {: #curation-endpoints }
 
-Tous les points de terminaison sont sous `/admin/glossary`. Ils requièrent un accès `org_admin` et une organisation configurée. Chaque mutation déclenche une publication de métadonnées.
+Tous les points de terminaison sont sous `/admin/glossary` et nécessitent une organisation configurée. La lecture requiert le droit `glossary_read`, et chaque modification `glossary_rw`, dans les domaines que l'appelant peut atteindre. Chaque modification déclenche une publication de métadonnées.
 
 | Méthode | Chemin | Description |
 | --- | --- | --- |
-| `GET` | `/admin/glossary/terms` | Liste les termes. Paramètres de requête : `q` (recherche nom/définition), `include_deprecated` (par défaut `true`) |
-| `GET` | `/admin/glossary/terms/{term_id}` | Obtient le détail du terme : définition, références physiques, arêtes typées, experts |
-| `POST` | `/admin/glossary/terms` | Crée un terme abstrait — vocabulaire utilisateur sans référence physique |
-| `PATCH` | `/admin/glossary/terms/{term_id}` | Renomme, définit une définition, ou bascule l'exclusion d'export |
-| `DELETE` | `/admin/glossary/terms/{term_id}` | Supprime un terme sans référence physique |
-| `POST` | `/admin/glossary/refs/move` | Déplace une référence physique vers un autre terme (consolidation) |
+| `GET` | `/admin/glossary/terms` | Liste les termes, chacun avec son `status` et son nombre de `findings`. Paramètres de requête : `q` (recherche nom/définition), `include_deprecated` (par défaut `true`) |
+| `GET` | `/admin/glossary/terms/{term_id}` | Obtient le détail du terme : définition, statut, références physiques, arêtes typées, experts, étiquettes |
+| `POST` | `/admin/glossary/terms` | Crée un Concept, un terme sans colonnes ni tables |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | Renomme, définit la définition, définit les domaines d'un Concept, ou bascule l'exclusion d'export |
+| `DELETE` | `/admin/glossary/terms/{term_id}` | Supprime un terme qui ne porte aucune colonne |
+| `POST` | `/admin/glossary/refs/move` | Déplace la référence d'une colonne vers un autre terme |
+| `GET` | `/admin/glossary/terms/{term_id}/tables` | Liste les tables dans lesquelles une Classe est ancrée |
+| `POST` | `/admin/glossary/terms/{term_id}/tables` | Ancre une table dans le terme, qui devient la Classe de la table |
+| `DELETE` | `/admin/glossary/terms/{term_id}/tables/{table_id}` | Désancre une table ; ses clés reviennent à sa Classe proposée |
+| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | Déprécie un terme actif |
+| `POST` | `/admin/glossary/terms/{term_id}/retire` | Retire un terme, en déplaçant ses colonnes ou ses tables vers un successeur |
+| `POST` | `/admin/glossary/terms/{term_id}/restore` | Annule un retrait ou la dépréciation d'un curateur |
+| `GET` | `/admin/glossary/terms/{term_id}/applied-history` | Les colonnes et tables d'un terme retiré, à l'état du commit précédant son retrait |
+| `GET` | `/admin/glossary/findings` | Chaque terme ayant des constats, avec ses constats |
 | `POST` | `/admin/glossary/terms/{term_id}/edges` | Ajoute une arête de relation typée entre deux termes |
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Supprime une arête (paramètres de requête : `to_term_id`, `rel_type`) |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | Étiquette un utilisateur comme expert ou auteur pour un terme |
@@ -1383,6 +1393,8 @@ Tous les points de terminaison sont sous `/admin/glossary`. Ils requièrent un a
 | `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Rédige une définition pour un terme en utilisant le modèle IA de l'organisation — renvoie uniquement le texte, rien n'est persisté avant l'enregistrement |
 | `POST` | `/admin/glossary/definitions/generate` | Génère et persiste des définitions pour chaque terme qui n'en a aucune — n'écrase jamais un texte rédigé par un humain |
 | `POST` | `/admin/glossary/relationships/generate` | Propose et persiste des arêtes typées à travers tout le glossaire en utilisant le modèle IA de l'organisation |
+
+Le rôle d'un terme est dérivé de ce qu'il ancre et n'est jamais défini. Un `PATCH` ou une création qui définit `is_abstract` est refusé (`glossary.abstract_is_derived`).
 
 **Corps de `POST /admin/glossary/terms` :**
 
@@ -1396,7 +1408,7 @@ Tous les points de terminaison sont sous `/admin/glossary`. Ils requièrent un a
 {"to_term_id": 42, "rel_type": "KIND_OF"}
 ```
 
-Valeurs `rel_type` valides : `KIND_OF`, `RELATED_TO`, `PART_OF`, `SYNONYM_OF`.
+Valeurs `rel_type` valides : `KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`.
 
 **Corps de `POST /admin/glossary/terms/{term_id}/experts` :**
 
@@ -1412,9 +1424,56 @@ Valeurs `kind` valides : `expert`, `author`.
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-Déplacer une référence règle le terme qui la perd selon la règle « supprimer ou déprécier ». Servez-vous-en pour fusionner deux termes que la normalisation a gardés séparés, par exemple quand une source emploie une abréviation non standard que la table d'expansion ne couvre pas.
+Déplacer une référence règle le terme qui la perd. Servez-vous-en pour fusionner deux termes que la normalisation a gardés séparés, par exemple quand une source emploie une abréviation non standard que la table d'expansion ne couvre pas.
 
-Supprimer un terme ancré (avec des références physiques) renvoie `400 glossary.invalid`. Supprimez ou déplacez d'abord toutes les références.
+Un déplacement vers une Classe est refusé (`glossary.term_is_class`), tout comme le déplacement d'une colonne de clé, quelle que soit la cible (`glossary.key_column_derived`, qui nomme la colonne, sa table et sa Classe).
+
+Quand le déplacement retirerait `pii` de la colonne, il est refusé avec `409 tag.move_loses`, qui liste chaque colonne avec les étiquettes qu'elle perd (`loses`) et gagne (`gains`). Renvoyez le déplacement avec `confirm_tag_loss` nommant chaque étiquette perdue, ou avec `carry_tags: true` pour placer les étiquettes perdues sur le terme vers lequel la colonne se déplace :
+
+```json
+{"table_id": 7, "column_name": "email", "to_term_id": 12, "confirm_tag_loss": ["pii"]}
+```
+
+Le retrait, ainsi que l'enregistrement ou la suppression d'une relation qui reloge des références de clé, acceptent les mêmes deux champs.
+
+Supprimer un terme qui porte encore des colonnes renvoie `400 glossary.invalid`, en nommant les tables. Retirez-le, ou déplacez ses colonnes, d'abord. Supprimer une Classe désancre d'abord ses tables, de sorte que leurs clés reviennent à leurs Classes proposées.
+
+**Corps de `POST /admin/glossary/terms/{term_id}/deprecate` :**
+
+```json
+{"reason": "Superseded by net revenue", "retire_on": "2026-12-31"}
+```
+
+`reason` est obligatoire. `retire_on` est facultatif et ne peut pas être dans le passé ; à cette date, le planificateur de l'organisation retire le terme. Seul un terme actif peut être déprécié.
+
+**Corps de `POST /admin/glossary/terms/{term_id}/retire` :**
+
+```json
+{"reason": "Merged into customer", "successor": 12}
+```
+
+`successor` est obligatoire quand le terme porte des colonnes ou des tables. Le successeur d'une Propriété doit être une Propriété ou un Concept, celui d'une Classe une Classe ou un Concept. Les colonnes du terme, ou ses tables avec leurs clés, passent au successeur, qui reçoit une arête `REPLACES` vers le terme retiré. La réponse liste les changements d'étiquettes de chaque colonne déplacée. Chaque refus est un `400` qui nomme la règle : `glossary.reason_required`, `glossary.successor_required`, `glossary.successor_is_self`, `glossary.successor_retired` ou `glossary.successor_role`.
+
+**Réponse de `GET /admin/glossary/findings` :**
+
+```json
+[
+  {
+    "term_id": 3,
+    "term": "customer",
+    "findings": [
+      {
+        "kind": "unlinked_tables",
+        "code": "glossary.finding.unlinked_tables",
+        "message": "the class is grounded in tables that same-entity relationships do not all join",
+        "params": {"tables": "pg.public.customers, crm.public.contacts"}
+      }
+    ]
+  }
+]
+```
+
+Les types sont `unlinked_tables`, `class_and_attribute`, `tag_wrong_kind`, `retirement_blocked` et `no_data`. Un terme sans constat est omis, et un simple brouillon n'est pas un constat. Le point de terminaison signale et ne change rien.
 
 **`PATCH /admin/glossary/terms/{term_id}` — champ `export_excluded` :**
 
@@ -1422,11 +1481,11 @@ Supprimer un terme ancré (avec des références physiques) renvoie `400 glossar
 {"export_excluded": true}
 ```
 
-Définir `export_excluded` à `true` retient le terme de tous les instantanés d'export de métadonnées, indépendamment de ses références physiques ou de son statut abstrait. Le remettre à `false` restaure le terme dans l'instantané à la prochaine publication. Les données de curation (définition, arêtes, experts) ne sont pas affectées.
+Définir `export_excluded` à `true` retient le terme de tous les instantanés d'export de métadonnées, quels que soient ses références ou son rôle. Le remettre à `false` restaure le terme dans l'instantané à la prochaine publication. Les données de curation (définition, arêtes, experts) ne sont pas affectées.
 
 ### Curation assistée par IA {: #ai-assisted-curation }
 
-Le modèle IA configuré de l'organisation peut rédiger des définitions et proposer des arêtes de relation à travers tout le glossaire en une seule opération. Les deux actions groupées requièrent un accès `org_admin` et une organisation configurée.
+Le modèle IA configuré de l'organisation peut rédiger des définitions et proposer des arêtes de relation à travers tout le glossaire en une seule opération. Les deux actions groupées requièrent le droit `glossary_rw` et une organisation configurée.
 
 **`POST /admin/glossary/definitions/generate`**
 
@@ -1492,10 +1551,11 @@ Le graphe de termes du glossaire est inclus dans chaque `MetadataSnapshot` const
 
 L'export applique les mêmes filtres que le reste de l'instantané :
 
-- Un terme marqué `export_excluded` est retenu purement, indépendamment de ses références physiques, de son statut abstrait, ou du fait que le catalogue de l'organisation soit configuré.
-- Un terme ancré ne publie que lorsqu'au moins une de ses références physiques appartient à une colonne qui passe à la fois le filtre **Produit de données** (le drapeau `data_product` de la table doit être `true`) et le filtre de colonne **technique** (les colonnes étiquetées `technical` sont retenues).
-- Un terme ancré dont toutes les références sont retenues par ces filtres est retenu avec elles.
-- Les termes abstraits publient sans condition: ce sont du vocabulaire utilisateur, non lié à des colonnes physiques.
+- Seuls les termes actifs sont publiés : en service, définis, et reliés à un terme dont la colonne ou la table est publiée.
+- Une colonne est publiée quand elle passe à la fois le filtre **Produit de données** (le drapeau `data_product` de la table doit être `true`) et le filtre de colonne **technique** (les colonnes étiquetées `technical` sont retenues). Un terme dont toutes les références sont retenues ainsi n'est pas ancré pour l'export.
+- Un Concept est publié quand il atteint un terme publié par le graphe des relations.
+- Un terme marqué `export_excluded` est retenu purement.
+- Un terme déprécié est publié avec son `status`, son `status_reason` et son `retire_on`, pour que chaque catalogue l'associe à son propre marqueur de dépréciation.
 - Une arête entre deux termes ne publie que lorsque les deux termes aux extrémités publient.
 
 Chaque adaptateur de fournisseur publie le graphe des termes nativement, dans un conteneur de glossaire qui appartient à Provisa et qu'il crée de façon idempotente, jamais dans un glossaire de catalogue existant :
@@ -1508,7 +1568,7 @@ Chaque adaptateur de fournisseur publie le graphe des termes nativement, dans un
 | OpenMetadata | Glossaire Provisa via `/v1/glossaries` | PUT indexé par fqn, renommages PATCH-rebind par UUID stocké | KIND_OF → hiérarchie parente native, SYNONYM_OF → `synonyms`, autres → `relatedTerms` | `entityStatus` |
 | Collibra | Domaine de type glossaire « Provisa Glossary » | Actifs Business Term via l'API Import | types de relation Business Term natifs | statut d'actif |
 
-Ce qui compte, c'est le lien, pas le nom. L'id fournisseur de chaque terme publié est enregistré dans `catalog_bindings` sous l'URN du terme (`provisa://<org>/terms/<name>`), et Provisa ne modifie ou ne supprime un élément de glossaire côté fournisseur que s'il détient ce lien, ou si l'élément se trouve dans le conteneur que Provisa a créé. Un élément de glossaire sans lien Provisa vient du système externe et n'est jamais touché. Les mises à jour lisent puis fusionnent, si bien que les champs ajoutés par un intendant aux termes propres de Provisa sont conservés, et rien n'est supprimé quand un terme quitte l'instantané. Les affectations de termes aux actifs faites par les intendants restent au système externe : aucun adaptateur ne les écrit (publier les affectations rédigées dans Provisa est une suite à part). Sur Collibra en particulier, l'API d'import remplace ce qu'elle reçoit, et la sécurité repose sur le confinement : la charge utile ne nomme que des actifs du domaine de glossaire Provisa et des relations entre termes Provisa, donc les glossaires des intendants et leurs relations sont hors d'atteinte.
+Ce qui compte, c'est le lien, pas le nom. L'id fournisseur de chaque terme publié est enregistré dans `catalog_bindings` sous l'URN du terme (`provisa://<org>/terms/<name>`), et Provisa ne modifie ou ne supprime un élément de glossaire côté fournisseur que s'il détient ce lien, ou si l'élément se trouve dans le conteneur que Provisa a créé. Un élément de glossaire sans lien Provisa vient du système externe et n'est jamais touché. Les mises à jour lisent puis fusionnent, si bien que les champs ajoutés par un intendant aux termes propres de Provisa sont conservés, et rien n'est supprimé quand un terme quitte l'instantané. Chaque terme porte son rôle (classe, propriété ou concept) comme propriété du terme : `provisaRole` dans les propriétés personnalisées de DataHub, une propriété personnalisée dans OpenMetadata, les attributs additionnels du terme dans Atlas, Purview et Atlan, et l'attribut `Provisa Role` dans Collibra. Dans DataHub, le nœud Provisa de l'organisation a un nœud enfant par rôle, nommés Classes, Properties et Concepts. OpenMetadata n'a pas d'autre nœud de glossaire qu'un terme, donc chaque rôle est un terme de groupe qui contient les termes de premier niveau de ce rôle, et un terme qui a un parent `KIND_OF` reste sous ce parent. Provisa affecte aussi chaque terme aux données qu'il désigne. Un terme de classe est affecté aux tables publiées qu'il ancre, un terme de propriété à ses colonnes publiées, et un concept à rien. Chaque affectation est écrite comme l'affectation automatique propre au catalogue et attribuée à Provisa : un libellé `Automated` dans OpenMetadata, une association de terme attribuée à l'acteur de Provisa dans DataHub, une affectation sémantique dont la source est Provisa dans Atlas et Atlan, et une relation créée par l'utilisateur de Provisa dans Collibra. Provisa n'ajoute et ne retire que celles-là, donc une affectation faite par un intendant n'est jamais supprimée ni dupliquée. Une affectation n'est pas retirée parce qu'une requête a échoué. Sur Collibra, les affectations passent par l'API des relations plutôt que par l'API d'import, car l'import remplacerait les relations du même type d'un intendant. Sur Collibra en particulier, l'API d'import remplace ce qu'elle reçoit, et la sécurité repose sur le confinement : la charge utile ne nomme que des actifs du domaine de glossaire Provisa et des relations entre termes Provisa, donc les glossaires des intendants et leurs relations sont hors d'atteinte.
 
 ---
 

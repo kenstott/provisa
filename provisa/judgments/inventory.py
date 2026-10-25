@@ -55,6 +55,8 @@ def _iso(value: Any) -> Any:
 async def judgments(conn: Any) -> list[Judgment]:
     """Every judgment of the org whose model ``conn`` is bound to."""
     from provisa.core.schema_org import (
+        glossary_term_refs,
+        glossary_terms,
         registered_tables,
         rls_rules,
         table_columns,
@@ -67,7 +69,11 @@ async def judgments(conn: Any) -> list[Judgment]:
     sens = {
         (r[0], r[2])
         for r in (
-            await conn.execute_core(sensitive_assignments(tag_assignments, registered_tables, tags))
+            await conn.execute_core(
+                sensitive_assignments(
+                    tag_assignments, registered_tables, tags, glossary_term_refs, glossary_terms
+                )
+            )
         ).fetchall()
     }
     out: list[Judgment] = []

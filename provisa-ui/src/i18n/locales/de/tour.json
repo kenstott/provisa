@@ -180,7 +180,7 @@
       },
       "stepDomains": {
         "title": "Domänen und ihre Stewards",
-        "description": "🗂️ Eine Domäne gruppiert Tabellen, und ihr Data Steward steuert diesen Teil des Modells: wer was sieht, Masken und Zeilenregeln, sensible Daten sowie ihr Glossar und ihre Datenprodukte."
+        "description": "🗂️ Eine Domäne gruppiert Tabellen, und ihr Data Steward steuert diesen Teil des Modells: wer was sieht, Masken und Zeilenregeln, sensible Daten sowie ihre Ontologie und ihre Datenprodukte."
       },
       "stepTags": {
         "title": "Tags tragen Bedeutung",
@@ -287,12 +287,12 @@
         "description": "📦 Nennen Sie Eigentümer und Team, Zweck, Nutzung, SLA und Support und wählen Sie dann die Tabellen und Befehle, die es enthält. Das sind die Felder, die veröffentlicht werden. Eine Tabelle gehört nur dann zu einem Produkt, wenn beide dieselbe Domäne haben."
       },
       "stepGlossary": {
-        "title": "Ein lebendiges Fachglossar",
-        "description": "📖 Jeder Begriff verweist auf die Spalten, die ihn tragen, und auf andere Begriffe. Pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI die Lücken füllen: <strong>✨ Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>✨ Beziehungen</strong> schlägt Verknüpfungen im gesamten Glossar vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
+        "title": "Eine lebendige Ontologie",
+        "description": "📖 Jeder Begriff verweist auf die Spalten, die ihn tragen, und auf andere Begriffe. Pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI über das Menü <strong>✨</strong> die Lücken füllen: <strong>Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>Beziehungen</strong> schlägt Verknüpfungen in der gesamten Ontologie vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
       },
       "stepDataProducts": {
         "title": "Datenprodukte, veröffentlicht dort, wo Konsumenten bereits suchen",
-        "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard): Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support und benutzerdefinierte Eigenschaften. Provisa veröffentlicht es direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> (Tabellen, Lineage, Tags, Glossarbegriffe), sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Das Veröffentlichen sendet außerdem einen <strong>Ontologie-Auszug</strong>: den Teil Ihres Glossars, der für das Veröffentlichte relevant ist, also die Begriffe, die seine Spalten definieren, die übergeordneten und verwandten Begriffe, mit denen sie verbunden sind, und die typisierten Beziehungen zwischen ihnen. Die Datenqualitätsergebnisse der Prüfer, die es scannen, gehen mit. Das Feld <strong>Verwandte Begriffe</strong> eines Produkts listet seine Begriffe.</p>"
+        "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard): Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support und benutzerdefinierte Eigenschaften. Provisa veröffentlicht es direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> (Tabellen, Lineage, Tags, Ontologiebegriffe), sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Das Veröffentlichen sendet außerdem einen <strong>Ontologie-Auszug</strong>: den Teil Ihrer Ontologie, der für das Veröffentlichte relevant ist, also die Begriffe, die seine Spalten definieren, die übergeordneten und verwandten Begriffe, mit denen sie verbunden sind, und die typisierten Beziehungen zwischen ihnen. Die Datenqualitätsergebnisse der Prüfer, die es scannen, gehen mit. Das Feld <strong>Verwandte Begriffe</strong> eines Produkts listet seine Begriffe.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Einen Begriff hinzufügen",
@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "In den Werkzeugen Ihrer Organisation veröffentlichen",
-        "description": "📤 <strong>Veröffentlichen Sie dort, wo Ihre Organisation ohnehin hinschaut.</strong> Katalogeinträge (Tabellen, Spalten, Domänen, Data Stewards, freigegebene Beziehungen), Datenprodukte und spaltengenaue Lineage gehen hinaus, und jedes Ziel erhält, was es unterstützt: <strong>DataHub, OpenMetadata, Collibra, Atlan und Apache Atlas</strong> als Kataloge, <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong> als Listings für Datenprodukte und die Lineage über <strong>OpenLineage</strong>.<p>Die Veröffentlichung geht nur nach außen: Provisa liest ein Ziel nie als Wahrheitsquelle zurück.</p>"
+        "description": "📤 <strong>Veröffentlichen Sie dort, wo Ihre Organisation ohnehin hinschaut.</strong> Katalogeinträge (Tabellen, Spalten, Domänen, Data Stewards, freigegebene Beziehungen), Datenprodukte und spaltengenaue Lineage gehen hinaus, und jedes Ziel erhält, was es unterstützt: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} und Apache Atlas</strong> als Kataloge, <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong> als Listings für Datenprodukte und die Lineage über <strong>OpenLineage</strong>.<p>Die Veröffentlichung geht nur nach außen: Provisa liest ein Ziel nie als Wahrheitsquelle zurück.</p>"
       },
       "stepRelsAgents": {
         "title": "Beziehungen und KI-Agenten",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "Was eine offene Beschwerde ist",
-        "description": "Das Glossar sagt, was eine offene Beschwerde ist: eine, die die Stadt noch nicht geschlossen hat. Begriffe wie dieser sagen, was die Daten des Katalogs bedeuten."
+        "description": "Die Ontologie sagt, was eine offene Beschwerde ist: eine, die die Stadt noch nicht geschlossen hat. Begriffe wie dieser sagen, was die Daten des Katalogs bedeuten."
       },
       "filesAnswer": {
         "title": "Die Antwort",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "Aus einem Ordner wurde ein Katalog",
-        "description": "Ein Ordner mit Dateien wurde zu einem verwalteten Katalog: Tabellen, Beziehungen, ein Glossarbegriff und eine gespeicherte Ansicht, ohne dass etwas geladen wurde. Eine neue monatliche Beschwerdedatei braucht keine neue Tabelle: Das Muster erfasst sie bereits."
+        "description": "Ein Ordner mit Dateien wurde zu einem verwalteten Katalog: Tabellen, Beziehungen, ein Ontologiebegriff und eine gespeicherte Ansicht, ohne dass etwas geladen wurde. Eine neue monatliche Beschwerdedatei braucht keine neue Tabelle: Das Muster erfasst sie bereits."
       },
       "reviewsCatalog": {
         "title": "Worum es in dieser Demo geht",
@@ -492,7 +492,7 @@
       },
       "insuranceTerms": {
         "title": "In der Sprache des Versicherers",
-        "description": "Das Glossar benennt, wonach ein Underwriter fragt: Gesamtversicherungswert, Kumulierung, wahrscheinlicher Höchstschaden und erwarteter Jahresschaden. Kumulierung bedeutet hier eine Konzentration der Exponierung dort, wo ein Ereignis viele Policen treffen kann."
+        "description": "Die Ontologie benennt, wonach ein Underwriter fragt: Gesamtversicherungswert, Kumulierung, wahrscheinlicher Höchstschaden und erwarteter Jahresschaden. Kumulierung bedeutet hier eine Konzentration der Exponierung dort, wo ein Ereignis viele Policen treffen kann."
       },
       "insuranceByRating": {
         "title": "Nach Risikoeinstufung, in GraphQL",
@@ -632,7 +632,7 @@
       },
       "vulnerabilitiesTerms": {
         "title": "Das Vokabular",
-        "description": "Das Glossar des Unternehmens definiert bekannte ausgenutzte Schwachstelle, CVE, CWE und CVSS und verknüpft jeden Begriff mit den Spalten, die er beschreibt. Ein CVSS-Wert sagt, wie schwer eine Schwachstelle ist. Nur der Katalog sagt, ob jemand sie ausnutzt."
+        "description": "Die Ontologie des Unternehmens definiert bekannte ausgenutzte Schwachstelle, CVE, CWE und CVSS und verknüpft jeden Begriff mit den Spalten, die er beschreibt. Ein CVSS-Wert sagt, wie schwer eine Schwachstelle ist. Nur der Katalog sagt, ob jemand sie ausnutzt."
       },
       "vulnerabilitiesAnswer": {
         "title": "Die Antwort in SQL",
@@ -717,7 +717,7 @@
       },
       "profilingTerms": {
         "title": "Das Vokabular",
-        "description": "Das Glossar definiert Datenprofil, plausibler Typ, Wertform, doppelte Zeile und Platzhalterwert und verknüpft jeden Begriff mit den Messwerten, die er beschreibt."
+        "description": "Die Ontologie definiert Datenprofil, plausibler Typ, Wertform, doppelte Zeile und Platzhalterwert und verknüpft jeden Begriff mit den Messwerten, die er beschreibt."
       },
       "profilingAnswer": {
         "title": "Was jede Spalte enthält",
@@ -802,7 +802,7 @@
       },
       "opioidsTerms": {
         "title": "In einfachen Worten",
-        "description": "Das Glossar erklärt die Begriffe, auf die ein Ratsmitglied oder ein Einwohner stößt: Vergleichsfonds, Abhilfe, Zuweisung, Ausgabe, unterdrückte Zahl und Rate pro 100.000. Abhilfe bedeutet hier, wofür das Geld laut den Vergleichen ausgegeben werden muss."
+        "description": "Die Ontologie erklärt die Begriffe, auf die ein Ratsmitglied oder ein Einwohner stößt: Vergleichsfonds, Abhilfe, Zuweisung, Ausgabe, unterdrückte Zahl und Rate pro 100.000. Abhilfe bedeutet hier, wofür das Geld laut den Vergleichen ausgegeben werden muss."
       },
       "opioidsAsPublic": {
         "title": "Als Öffentlichkeit ausführen",
@@ -910,7 +910,7 @@
       },
       "agricultureTerms": {
         "title": "In den Begriffen des Versicherers",
-        "description": "Das Glossar benennt, wonach ein Ernte-Underwriter fragt: Schadenquote, Schadenursache, tatsächliche Produktionshistorie, Deckungsgrad, Haftung und Wachstumsperiode. Die Schadenquote ist hier die Entschädigungen geteilt durch die Prämie. Über 1 hat das Jahr Geld verloren."
+        "description": "Die Ontologie benennt, wonach ein Ernte-Underwriter fragt: Schadenquote, Schadenursache, tatsächliche Produktionshistorie, Deckungsgrad, Haftung und Wachstumsperiode. Die Schadenquote ist hier die Entschädigungen geteilt durch die Prämie. Über 1 hat das Jahr Geld verloren."
       },
       "agricultureAnswer": {
         "title": "Die Antwort in SQL",
@@ -1106,7 +1106,7 @@
       },
       "pharmaTerms": {
         "title": "In der Sprache der Apotheke",
-        "description": "Das Glossar benennt, wonach ein Apothekeneinkäufer fragt: NDC, Arzneimittelliste, Lieferengpass, Rückrufklasse und Reichweite in Tagen. Versorgungsrisiko bedeutet hier einen Lieferengpass, einen Rückruf durch den Hersteller des Produkts oder zu wenige Tage Vorrat."
+        "description": "Die Ontologie benennt, wonach ein Apothekeneinkäufer fragt: NDC, Arzneimittelliste, Lieferengpass, Rückrufklasse und Reichweite in Tagen. Versorgungsrisiko bedeutet hier einen Lieferengpass, einen Rückruf durch den Hersteller des Produkts oder zu wenige Tage Vorrat."
       },
       "pharmaAnswer": {
         "title": "Die Antwort in SQL",
@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "Wieder als Administrator",
         "description": "Das Dashboard zeigt, was der Betrieb sieht. Der Rest der Tour läuft wieder als Administrator, und jede folgende Anweisung nennt die Rolle, unter der sie läuft."
+      },
+      "groupexposureScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Eine Prager Bank vergibt Kredite an Unternehmen und hält für jedes das Unternehmen fest, dem es gehört, mit dessen Legal Entity Identifier (LEI). EU-Regeln begrenzen, was sie einem Kunden oder einer von einem Eigentümer kontrollierten Unternehmensgruppe leihen darf, auf 25 % ihres Kernkapitals (Tier 1). Die Frage: Bei welchen Gruppen liegt die Bank über dieser Grenze? Ihre Bücher nennen den Eigentümer jedes Kreditnehmers, nicht, wem dieser gehört. Die Bank, ihre Kreditnehmer und ihre Kredite sind erfunden; die Konzerne, denen sie gehören, sind echt."
+      },
+      "groupexposureJoin": {
+        "title": "Verknüpft über den LEI",
+        "description": "Die Eigentümertabelle der Bank und die Tabellen aus Wikidata teilen den LEI des Eigentümers, und diese Beziehungen verknüpfen sie. Die Daten der Bank bleiben in ihrer Datenbank, die von Wikidata in ihrem Replikat; die Verknüpfung geschieht in der Abfrage."
+      },
+      "groupexposureAnswer": {
+        "title": "Die Antwort in SQL",
+        "description": "Die View group_exposure ordnet jede Kreditlinie über den LEI des Eigentümers und Wikidata dem Konzern ihres Kreditnehmers zu. Die Konzerne Veolia und Vinci überschreiten jeweils 25 % des Kernkapitals, und ein Gemeinschaftsunternehmen von Veolia und EPH zählt bei beiden. Weder die Bücher der Bank noch Wikidata zeigen das allein. Die Kreditnehmer und ihre Kredite sind erfunden."
+      },
+      "groupexposureExample": {
+        "title": "Die Antwort in GraphQL",
+        "description": "Dieselbe View in GraphQL: die Konzerne, an die die Bank am meisten verleiht, ihre Kreditnehmer, der zugesagte Betrag und ob jeder über der Grenze liegt."
+      },
+      "groupexposureRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Das Kreditbuch einer erfundenen Bank und öffentliche Linked Data aus Wikidata, per LEI in einem governten Modell verknüpft. Die Eigentümerketten aus Wikidata machen aus vielen kleinen Krediten wenige große Gruppen-Exposures, und die Antwort wird über SQL, GraphQL und REST bereitgestellt."
+      },
+      "groupexposureWikidata": {
+        "title": "Wem die Eigentümer gehören, aus Wikidata",
+        "description": "Wikidata, der öffentliche Wissensgraph, verzeichnet den LEI jedes Unternehmens und seine übergeordnete Organisation. Diese Quelle liest ihn über den SPARQL-Abfragedienst von Wikidata. Ihre Tabellen wurden einmal beim Erstellen der Demo geladen, daher ruft die Demo Wikidata nie auf, während Sie sie nutzen."
+      },
+      "groupexposureFacilities": {
+        "title": "Die Kreditlinien der Bank",
+        "description": "Jedes Darlehen, jede revolvierende Kreditlinie und jede Garantie der Bank, mit dem Kreditnehmer, dem zugesagten und dem in Anspruch genommenen Betrag. Die Grenze zählt den zugesagten Betrag."
+      },
+      "groupexposureGroups": {
+        "title": "Der Konzern jedes Eigentümers",
+        "description": "Für jeden Eigentümer, den die Bank festhält, das Unternehmen an der Spitze seiner Kette übergeordneter Organisationen in Wikidata, gefunden mit einem einzigen SPARQL-Eigenschaftspfad. Wikidata weiß, dass eine tschechische Holding zu Veolia oder zu E.ON gehört, auch wenn die Bücher der Bank es nicht wissen."
+      },
+      "groupexposureTerms": {
+        "title": "In einfachen Worten",
+        "description": "Das Glossar erklärt die Begriffe, mit denen ein Risikomanager arbeitet: Großkredit, Kernkapital (Tier 1), Legal Entity Identifier und übergeordnete Organisation. Eine Gruppe verbundener Kunden sind Unternehmen, die ein einziges Risiko darstellen, weil eines die anderen kontrolliert."
+      },
+      "groupexposureAlone": {
+        "title": "Die Bücher allein",
+        "description": "Das eigene Exposure jedes Kreditnehmers, wie es die Bücher der Bank sehen. Das größte liegt unter 10 % des Kernkapitals, kein Kreditnehmer ist also auch nur in der Nähe der 25-%-Grenze."
+      },
+      "groupexposureRest": {
+        "title": "Dieselbe Antwort über REST",
+        "description": "Die View ist auch ein REST-Endpunkt, hier danach gruppiert, ob ein Konzern über der Grenze liegt, und auf dem Server summiert, bereit für einen Risikobericht oder eine Tabellenkalkulation."
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "Tagesabschluss-Reporting, ohne das Hauptbuch zu kopieren",
         "summary": "Die Tagesabschlusssummen einer Bank, an jedem Geschäftsschluss direkt aus einem Hauptbuch gebildet, das nie ins Warehouse kopiert wird, gelesen wie gemeldet und wie seither korrigiert, mit derselben Antwort über GraphQL, SQL und einen Agenten."
+      },
+      "groupexposure": {
+        "title": "Gruppenexposure über Wikidata",
+        "summary": "Bei welchen Konzernen überschreitet eine Bank ihre Großkreditgrenze? Ihr Kreditbuch, über den LEI des Eigentümers jedes Kreditnehmers per SPARQL mit den Ketten übergeordneter Organisationen in Wikidata verknüpft, ordnet jeden Kreditnehmer seinem Konzern zu. Die Bank und ihre Kreditnehmer sind erfunden; die Konzerne sind echt."
       }
     }
   }

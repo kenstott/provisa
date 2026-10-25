@@ -27,19 +27,25 @@ from provisa.api.metadata_export.collibra import (
     DEFINITION_ATTRIBUTE,
     DEPRECATED_STATUS,
     GLOSSARY_TERM_TYPE,
+    ROLE_ATTRIBUTE,
     TERM_RELATION_TYPES,
     URI_ATTRIBUTE,
     CollibraExport,
     glossary_rows,
 )
 from provisa.api.metadata_export.model import (
+    AssetKind,
+    AssetRef,
+    ColumnAsset,
     GlossaryTermAsset,
     GlossaryTermEdge,
     MetadataSnapshot,
+    TableAsset,
 )
 from provisa.core.models import MetadataExportTarget
 
 COMMUNITY = "Provisa"
+PROVISA_USER = "user-provisa"
 GLOSSARY_DOMAIN = "Provisa Glossary"
 
 
@@ -50,10 +56,14 @@ def _term(term_id: int, name: str, **overrides) -> GlossaryTermAsset:
         "definition": None,
         "is_abstract": False,
         "deprecated": False,
+        "status": "live",
         "semantic_uri": f"provisa://acme/terms/{name}",
     }
     fields.update(overrides)
-    return GlossaryTermAsset(**fields)
+    # REQ-2144: a deprecated term is one a curator deprecated -- its status.
+    if fields.pop("deprecated"):
+        fields["status"] = "deprecated"
+    return GlossaryTermAsset(deprecated=False, **fields)
 
 
 @pytest.fixture
@@ -158,17 +168,35 @@ def _export() -> CollibraExport:
     )
 
 
-def _fake_target(monkeypatch, *, community_exists: bool, domain_exists: bool) -> dict:
-    """The Collibra surface the adapter touches, recording every call in order."""
-    recorded = {"calls": [], "imports": []}
+def _fake_target(
+    monkeypatch,
+    *,
+    community_exists: bool,
+    domain_exists: bool,
+    relations: dict[str, list[dict]] | None = None,
+    role_attribute: bool = True,
+) -> dict:
+    """The Collibra surface the adapter touches, recording every call in order.
+
+    ``relations`` maps a term asset id to its live "represents" relations."""
+    recorded = {"calls": [], "imports": [], "assigned": [], "withdrawn": []}
+    live_relations = relations or {}
 
     async def _get(self, url, params=None, headers=None):
         recorded["calls"].append(("GET", url))
         request = httpx.Request("GET", url)
-        if url.endswith("/rest/2.0/communities"):
+        if url.endswith("/rest/2.0/users/current"):
+            return httpx.Response(200, json={"id": PROVISA_USER}, request=request)
+        if url.endswith("/rest/2.0/relationTypes"):
+            results = [{"id": "rt-represents", "role": "represents"}]
+        elif url.endswith("/rest/2.0/relations"):
+            results = live_relations.get(params["sourceId"], [])
+        elif url.endswith("/rest/2.0/communities"):
             results = [{"id": "comm-1", "name": COMMUNITY}] if community_exists else []
         elif url.endswith("/rest/2.0/domains"):
             results = [{"id": "dom-1", "name": GLOSSARY_DOMAIN}] if domain_exists else []
+        elif url.endswith("/rest/2.0/attributeTypes"):
+            results = [{"id": "at-role", "name": params["name"]}] if role_attribute else []
         elif url.endswith("/rest/2.0/domainTypes"):
             results = [{"id": "type-glossary", "name": "Glossary"}]
         else:
@@ -182,6 +210,9 @@ def _fake_target(monkeypatch, *, community_exists: bool, domain_exists: bool) ->
         if url.endswith("/rest/2.0/import/json-job"):
             recorded["imports"].append({"files": files, "data": data})
             return httpx.Response(200, request=request)
+        if url.endswith("/rest/2.0/relations/bulk"):
+            recorded["assigned"].extend(json)
+            return httpx.Response(200, json=[], request=request)
         if url.endswith("/rest/2.0/communities"):
             return httpx.Response(200, json={"id": "comm-1"}, request=request)
         assert url.endswith("/rest/2.0/domains")
@@ -198,7 +229,14 @@ def _fake_target(monkeypatch, *, community_exists: bool, domain_exists: bool) ->
     monkeypatch.setattr(httpx.AsyncClient, "get", _get)
     monkeypatch.setattr(httpx.AsyncClient, "post", _post)
     monkeypatch.setattr(httpx.AsyncClient, "patch", _patch)
+
+    async def _request(self, method, url, json=None, headers=None):
+        recorded["calls"].append((method, url))
+        recorded["withdrawn"].extend(json)
+        return httpx.Response(204, request=httpx.Request(method, url))
+
     monkeypatch.setattr(httpx.AsyncClient, "delete", _delete)
+    monkeypatch.setattr(httpx.AsyncClient, "request", _request)
     return recorded
 
 
@@ -298,3 +336,116 @@ async def test_import_payload_never_names_an_asset_outside_the_provisa_glossary_
         for targets in row["relations"].values():
             for target in targets:
                 assert target["domain"] == provisa_domain
+
+
+# --- Term-to-asset assignment (REQ-1389, amended) -------------------------------------------
+
+ORDERS = AssetRef(kind=AssetKind.TABLE, parts=("wh", "public", "orders"))
+AMOUNT = AssetRef(kind=AssetKind.COLUMN, parts=("wh", "public", "orders", "amount"))
+ORDERS_URI = "provisa://acme/sales/tables/orders"
+
+
+def _with_table(terms) -> MetadataSnapshot:
+    column = ColumnAsset(ref=AMOUNT, name="amount", data_type="numeric", description="")
+    table = TableAsset(
+        ref=ORDERS,
+        name="orders",
+        source_id="wh",
+        domain_id=None,
+        description="",
+        columns=[column],
+        semantic_uri=ORDERS_URI,
+    )
+    return MetadataSnapshot(org_id="acme", tables=[table], glossary_terms=list(terms))
+
+
+async def test_a_class_term_represents_its_table_and_a_property_its_column(monkeypatch):
+    """Provisa writes its assignments through the relations API with Collibra's own
+    'represents' relation, never through the import, whose REPLACE would set-replace a
+    steward's relations of that type."""
+    recorded = _fake_target(monkeypatch, community_exists=True, domain_exists=True)
+    order = _term(1, "order", role="class", tables=(ORDERS,))
+    amount = _term(2, "amount", role="property", refs=(AMOUNT,))
+    result = await _export().publish(_with_table([order, amount, _term(3, "party")]))
+    assert result.ok, result.errors
+    assert sorted(recorded["assigned"], key=lambda r: r["sourceId"]) == [
+        {
+            "sourceId": "uuid-amount",
+            "targetId": "uuid-wh.public.orders.amount",
+            "typeId": "rt-represents",
+        },
+        {"sourceId": "uuid-order", "targetId": f"uuid-{ORDERS.fqn()}", "typeId": "rt-represents"},
+    ]
+    for row in _imported_rows(recorded):
+        assert not any("represents" in key for key in row.get("relations", {}))
+
+
+async def test_a_stewards_relation_stands_and_provisas_stale_ones_are_withdrawn(monkeypatch):
+    """createdBy is the ownership test: another user's relation is never removed or
+    duplicated; Provisa's own relation to an asset the term no longer grounds is removed, and
+    a term that left the snapshot loses only Provisa's relations."""
+    relations = {
+        "uuid-order": [
+            {"id": "rel-human", "target": {"id": f"uuid-{ORDERS.fqn()}"}, "createdBy": "steward"},
+            {"id": "rel-stale", "target": {"id": "old-table"}, "createdBy": PROVISA_USER},
+        ],
+        "uuid-margin": [
+            {"id": "rel-margin", "target": {"id": "some-column"}, "createdBy": PROVISA_USER},
+            {"id": "rel-human-2", "target": {"id": "other"}, "createdBy": "steward"},
+        ],
+    }
+    recorded = _fake_target(
+        monkeypatch, community_exists=True, domain_exists=True, relations=relations
+    )
+    export = _export()
+    export.stored_bindings = {"provisa://acme/terms/margin": ("uuid-margin", "margin")}
+    order = _term(1, "order", role="class", tables=(ORDERS,))
+    result = await export.publish(_with_table([order]))
+    assert result.ok, result.errors
+    assert recorded["assigned"] == []
+    assert sorted(recorded["withdrawn"]) == ["rel-margin", "rel-stale"]
+
+
+def test_every_term_row_carries_its_role():
+    """REQ-2141: the role rides the Provisa-authored 'Provisa Role' attribute type."""
+    snapshot = _with_table([_term(1, "order", role="class"), _term(2, "party")])
+    rows = {r["name"]: r for r in glossary_rows(snapshot, COMMUNITY, GLOSSARY_DOMAIN)}
+    assert rows["order"]["attributes"][ROLE_ATTRIBUTE] == [{"value": "class"}]
+    assert rows["party"]["attributes"][ROLE_ATTRIBUTE] == [{"value": "concept"}]
+
+
+async def test_a_target_without_the_role_attribute_type_fails_naming_it(snapshot, monkeypatch):
+    """The import would refuse every row carrying an unknown attribute type, so the terms go
+    out without the role and the publish fails, naming the attribute type to create."""
+    recorded = _fake_target(
+        monkeypatch, community_exists=True, domain_exists=True, role_attribute=False
+    )
+    result = await _export().publish(snapshot)
+    assert not result.ok
+    (error,) = result.errors
+    assert "the term role was not exported" in error.message
+    assert "'Provisa Role'" in error.message and "Business Term" in error.message
+    assert all(ROLE_ATTRIBUTE not in row["attributes"] for row in _imported_rows(recorded))
+
+
+async def test_a_term_whose_relations_cannot_be_read_is_refused_and_the_others_sync(
+    monkeypatch,
+):
+    """REQ-1389: without the live relations a person's could be duplicated, so the term whose
+    read failed writes nothing, reported by name, and the other terms' assignments land."""
+    recorded = _fake_target(monkeypatch, community_exists=True, domain_exists=True)
+    get = httpx.AsyncClient.get
+
+    async def _unreadable_order(self, url, params=None, headers=None):
+        if url.endswith("/rest/2.0/relations") and params["sourceId"] == "uuid-order":
+            return httpx.Response(503, request=httpx.Request("GET", url))
+        return await get(self, url, params=params, headers=headers)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _unreadable_order)
+    order = _term(1, "order", role="class", tables=(ORDERS,))
+    amount = _term(2, "amount", role="property", refs=(AMOUNT,))
+    result = await _export().publish(_with_table([order, amount]))
+    assert [r["sourceId"] for r in recorded["assigned"]] == ["uuid-amount"]
+    refused = [e for e in result.errors if "assignments not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == ["uuid-order"]
+    assert "HTTP 503" in refused[0].message

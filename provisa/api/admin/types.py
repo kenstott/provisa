@@ -85,6 +85,16 @@ class SourceCdcConfigType:  # REQ-824
 class SourceType:  # REQ-012
     id: str
     type: str
+
+    @strawberry.field
+    def row_fetch_by_keys(self) -> bool:  # REQ-1865
+        """Whether this source's type fetches rows by primary key, so a table of it may be
+        replicated row by row (core.source_registry). For a type whose fetch is each table's
+        own (a remote GraphQL source), whether a table may have one: its save says."""
+        from provisa.core.source_registry import supports_row_fetch_by_keys
+
+        return supports_row_fetch_by_keys(self.type)
+
     # The fields that locate or authenticate to the source are null for a caller without
     # source_registration (see _row_mappers._source_from_row).
     host: str | None
@@ -386,6 +396,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     replicate: int | None  # REQ-826: NULL = inherit source
     region: str | None  # REQ-1921: where its data lives; null = no region
     draft: bool  # REQ-1921: out of service until its domain's owners release it
+    row_materialize: bool  # REQ-1865: replicated row by row, fetched by key as statements ask
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
     off_peak_tz: str | None  # REQ-1141: per-table window zone override
@@ -645,6 +656,9 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     fake_why: JsonScalar | None = None
     # REQ-1494: the column is tagged pii.
     is_pii: bool = False
+    # REQ-2145: the glossary term the column is pii through, when it is; None when the column is
+    # tagged itself or is not pii.
+    pii_term: str | None = None
 
 
 @strawberry.type
@@ -788,6 +802,8 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     graphql_alias: str | None = None
     computed_cypher_alias: str | None = None
     disable_cypher: bool = False
+    # REQ-2141: the rows this edge joins are the same entity.
+    same_entity: bool = False
     # REQ-1586: junction declaration. via_table_name names the associative table this edge
     # traverses; via_label_source names where the exposed Cypher type comes from. The ERD keys
     # its nodes by registered-table id, so it needs the id as well as the name (REQ-1588).
@@ -1022,6 +1038,11 @@ class TagAssignmentInput:  # REQ-1377
     # REQ-2094: purpose, bases (ids) and review_on given; reason is the field above. Left out,
     # the stored ones stand.
     why: JsonScalar | None = None
+    # REQ-2145: the glossary term an object_type "term" assignment is on.
+    term_id: int | None = None
+    # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
+    # with the same meaning, those to come included.
+    also_term: bool = False
 
 
 @strawberry.input
@@ -1163,6 +1184,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     # REQ-1907: the table's own landing Cache TTL; null: none of its own (the source's applies).
     # Left out, a registration has none and an update keeps the stored one.
     cache_ttl: int | None = strawberry.UNSET
+    # REQ-1865: replicated row by row, fetched by primary key as statements name the rows. Left
+    # out, a registration is not and an update keeps what the table has.
+    row_materialize: bool | None = strawberry.UNSET
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
     materialize: bool = False
@@ -1240,6 +1264,8 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     alias: str | None = None  # e.g. WORKS_FOR; unique per (source_table, alias)
     graphql_alias: str | None = None
     disable_cypher: bool = False  # when True, exclude from Cypher graph edges
+    # REQ-2141: mark the rows this edge joins as the same entity (repositories/identity.py).
+    same_entity: bool = False
     # REQ-1586: junction declaration — the associative table this edge traverses, its two key
     # columns, an optional discriminator, and which source names the exposed Cypher type.
     via_table: str = ""  # registered table name of the junction; empty = FK/PK-backed edge
@@ -1251,6 +1277,10 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list[RelationshipParameterInput] = strawberry.field(default_factory=list)
     record_candidate: bool = False  # when True, also insert accepted relationship_candidates record
+    # REQ-2145: a save that re-homes key refs off a tagged term takes the tags off those columns:
+    # each lost tag confirmed, or carried to the term the column moves to.
+    confirm_tag_loss: list[str] = strawberry.field(default_factory=list)
+    carry_tags: bool = False
 
 
 @strawberry.input

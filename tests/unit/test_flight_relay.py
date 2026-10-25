@@ -19,14 +19,17 @@ itself (SO_REUSEPORT) and relays the bytes to its own Flight server on a loopbac
 from __future__ import annotations
 
 import datetime
+import os
+import signal
 import socket
 import threading
+import time
 
 import pyarrow as pa
 import pyarrow.flight as fl
 import pytest
 
-from provisa.api.flight.relay import FlightRelay
+from provisa.api.flight.relay import FlightRelay, serve_in_background
 from tests.port_lease import lease_port
 
 
@@ -50,7 +53,7 @@ def started():
     def _start(thing):
         opened.append(thing)
         if isinstance(thing, fl.FlightServerBase):
-            threading.Thread(target=thing.serve, daemon=True).start()
+            serve_in_background(thing)
         return thing
 
     yield _start
@@ -61,14 +64,74 @@ def started():
             thing.shutdown()
 
 
-def _get(port: int, ticket: str = "t", **client_kwargs) -> dict:
+def _listeners(port: int) -> list[str]:
+    """Every socket listening on ``port`` and the process holding it, as Linux says (``/proc``):
+    under -n 4 a relay's port and its server's port have each been answered by a listener the
+    test did not open. Elsewhere it says that it cannot be read."""
+    import glob
+    import os
+
+    if not os.path.exists("/proc/net/tcp"):
+        return [f"(listeners on {port} cannot be read on this platform)"]
+    inodes: dict[str, str] = {}
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        with open(table) as fh:
+            for line in fh.readlines()[1:]:
+                fields = line.split()
+                local, state, inode = fields[1], fields[3], fields[9]
+                if state == "0A" and int(local.rsplit(":", 1)[1], 16) == port:
+                    inodes[inode] = f"{table.rsplit('/', 1)[1]} {local}"
+    found = []
+    for fd in glob.glob("/proc/[0-9]*/fd/*"):
+        try:
+            target = os.readlink(fd)
+        except OSError:
+            continue  # gone, or not this user's
+        inode = target[len("socket:[") : -1] if target.startswith("socket:[") else None
+        if inode in inodes:
+            pid = int(fd.split("/")[2])
+            whose = "this process" if pid == os.getpid() else f"pid {pid}"
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                    command = fh.read().replace(b"\0", b" ").decode(errors="replace")[:160]
+            except OSError:
+                command = "?"
+            found.append(
+                f"{inodes.pop(inode)} held by {whose} (fd {fd.rsplit('/', 1)[1]}): {command}"
+            )
+    found += [f"{where} held by no process this user can see" for where in inodes.values()]
+    return found or [f"nothing listens on {port}"]
+
+
+def _get(port: int, ticket: str = "t", *, upstream: int | None = None, **client_kwargs) -> dict:
+    """``ticket`` read through ``port``. A failure names who listens on ``port`` and, given the
+    relay's ``upstream``, on the server's port too."""
     scheme = "grpc+tls" if client_kwargs else "grpc"
     client = fl.connect(f"{scheme}://127.0.0.1:{port}", **client_kwargs)
     try:
         reader = client.do_get(fl.Ticket(ticket.encode()), fl.FlightCallOptions(timeout=20))
         return reader.read_all().to_pylist()[0]
+    except fl.FlightError as exc:
+        where = {f"relay port {port}": _listeners(port)}
+        if upstream is not None:
+            where[f"server port {upstream}"] = _listeners(upstream)
+        raise AssertionError({"error": str(exc).splitlines()[0][:300], **where}) from exc
     finally:
         client.close()
+
+
+def _server_listens(server) -> None:
+    """The server's own listener answers a direct connection, before the relay is asked: under
+    -n 4 a relay found this server's port refused, and only this says it was the server's."""
+    try:
+        socket.create_connection(("127.0.0.1", server.port), timeout=5).close()
+    except OSError as exc:
+        raise AssertionError(
+            {
+                "the Flight server's own listener refused a direct connection": str(exc),
+                f"server port {server.port}": _listeners(server.port),
+            }
+        ) from exc
 
 
 def test_a_call_on_the_advertised_port_reaches_the_workers_own_server(started):
@@ -86,6 +149,10 @@ def test_a_large_stream_arrives_whole_through_the_relay(started):
     server = started(_Big("grpc://127.0.0.1:0"))
     port = lease_port()
     started(FlightRelay("127.0.0.1", port, server.port))
+    # Under -n 4 this server's own listener once refused the relay's connection moments after it
+    # was bound, and the client saw only the relay's reset ("recvmsg: Connection reset"). Asked
+    # directly first, so such a failure says where it is.
+    _server_listens(server)
     client = fl.connect(f"grpc://127.0.0.1:{port}")
     try:
         table = client.do_get(fl.Ticket(b"x"), fl.FlightCallOptions(timeout=60)).read_all()
@@ -93,6 +160,28 @@ def test_a_large_stream_arrives_whole_through_the_relay(started):
         client.close()
     assert table.num_rows == 3_000_000
     assert table["n"][2_999_999].as_py() == 2_999_999
+
+
+def test_a_server_served_in_the_background_is_not_stopped_by_a_signal_to_the_process(started):
+    """pyarrow's serve() hands the server to Arrow's signal handling, which keeps ONE running
+    server for the whole process: a SIGINT stops it, and a server whose serve() returns stops
+    whichever server serve()d last -- under -n 4 the next test's, moments after it was bound (the
+    relay found its port refused). A server run behind the relay is stopped only by shutdown()."""
+    got: list[int] = []
+    previous = signal.signal(signal.SIGINT, lambda signum, _frame: got.append(signum))
+    try:
+        server = started(_Echo("w1"))
+        time.sleep(0.5)  # serve() takes over SIGINT when its thread starts serving
+        os.kill(os.getpid(), signal.SIGINT)
+        deadline = time.monotonic() + 5
+        while not got and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert got == [signal.SIGINT]  # the process's own handler received it
+        port = lease_port()
+        started(FlightRelay("127.0.0.1", port, server.port))
+        assert _get(port, "after", upstream=server.port) == {"server": "w1", "ticket": "after"}
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def test_two_workers_bind_the_same_advertised_port(started):
@@ -201,7 +290,8 @@ def test_a_relay_closes_while_another_listener_shares_its_port(started):
         closing.join(timeout=10)
         assert not closing.is_alive(), "close() did not return while another listener held the port"
         assert not relay._acceptor.is_alive()  # noqa: SLF001 - the property under test
-    assert _get(port)["server"] == "w1"  # the listener that stayed still serves
+    _server_listens(server)
+    assert _get(port, upstream=server.port)["server"] == "w1"  # the listener that stayed serves
     del other
 
 
@@ -210,18 +300,20 @@ def test_a_relay_closes_while_another_listener_shares_its_port(started):
 
 class _ShortOfBufferSpace:
     """A socket whose host refuses some sends for want of buffer space, and takes only part of
-    what it is given when it does accept."""
+    what it is given when it does accept. It records each send's size and flags."""
 
     def __init__(self, refusals: list[int], takes: int) -> None:
         self.refusals = refusals  # the send calls (by number) refused with ENOBUFS
         self.takes = takes
         self.calls = 0
+        self.sends: list[tuple[int, int]] = []
         self.received = bytearray()
 
-    def send(self, data) -> int:
+    def send(self, data, flags: int = 0) -> int:
         import errno
 
         self.calls += 1
+        self.sends.append((len(data), flags))
         if self.calls in self.refusals:
             raise OSError(errno.ENOBUFS, "No buffer space available")
         taken = bytes(data[: self.takes])
@@ -237,11 +329,63 @@ def test_a_host_short_of_buffer_space_is_waited_out_and_every_byte_arrives_once(
     from provisa.api.flight import relay
 
     monkeypatch.setattr(relay, "_NO_BUFFER_SPACE_WAIT", 0.0)
+    monkeypatch.setattr(relay, "_wait_writable", lambda _sock: None)
     payload = bytes(range(256)) * 40  # 10,240 bytes, every position distinguishable
     sink = _ShortOfBufferSpace(refusals=[1, 4, 5, 9], takes=1000)
     relay._send_all(sink, memoryview(payload))  # noqa: SLF001
     assert bytes(sink.received) == payload
     assert sink.calls == 11 + 4  # eleven partial sends, four refusals waited out
+
+
+def test_each_send_is_one_bounded_non_blocking_call_made_once_there_is_room_for_it(monkeypatch):
+    """On macOS a send that queues part of what it was given and then runs out of buffers
+    reports ENOBUFS and not what it queued (XNU sendit: only EINTR, ERESTART and EWOULDBLOCK keep
+    a partial count), so a sender that sends the rest again sends some bytes twice -- a relayed
+    stream then stops being HTTP/2 at the client. A send XNU builds as one chain (at most
+    sosendmaxchain, 64 KB) into room it already has is queued whole or not at all: the relay
+    waits for that much room, then sends at most that much without blocking."""
+    import socket as _socket
+
+    from provisa.api.flight import relay
+
+    events: list[str] = []
+    monkeypatch.setattr(relay, "_wait_writable", lambda _sock: events.append("wait"))
+    sink = _ShortOfBufferSpace(refusals=[], takes=1 << 30)
+    original_send = sink.send
+
+    def send(data, flags=0):
+        events.append("send")
+        return original_send(data, flags)
+
+    sink.send = send  # type: ignore[method-assign]
+    payload = bytes(range(256)) * 1000  # 256,000 bytes
+    relay._send_all(sink, memoryview(payload))  # noqa: SLF001
+    assert bytes(sink.received) == payload
+    assert all(size <= relay._SEND_CHUNK == 65536 for size, _ in sink.sends), sink.sends  # noqa: SLF001
+    assert all(flags & _socket.MSG_DONTWAIT for _, flags in sink.sends), sink.sends
+    assert events == ["wait", "send"] * len(sink.sends), events
+
+
+def test_a_relayed_socket_is_writable_only_with_room_for_a_whole_send():
+    """Where the kernel lets the low-water mark be set (macOS), a relayed connection's sockets
+    report writable only once a whole bounded send fits, so the send is one chain."""
+    import socket as _socket
+
+    from provisa.api.flight import relay
+
+    if not relay._SETS_SEND_LOW_WATER:  # noqa: SLF001
+        assert relay._SEND_CHUNK == 65536  # noqa: SLF001
+        return
+    # a loopback TCP connection, as the relay's are (a Unix socketpair's buffer is far smaller)
+    with _socket.create_server(("127.0.0.1", 0)) as listener:
+        a = _socket.create_connection(listener.getsockname())
+        b, _ = listener.accept()
+    try:
+        relay._bound_sends(a)  # noqa: SLF001
+        assert a.getsockopt(_socket.SOL_SOCKET, _socket.SO_SNDLOWAT) == relay._SEND_CHUNK  # noqa: SLF001
+    finally:
+        a.close()
+        b.close()
 
 
 def test_any_other_socket_error_still_ends_the_copy():
@@ -250,11 +394,23 @@ def test_any_other_socket_error_still_ends_the_copy():
     from provisa.api.flight import relay
 
     class _Reset:
-        def send(self, data) -> int:
+        def send(self, data, flags=0) -> int:
             raise ConnectionResetError(errno.ECONNRESET, "Connection reset by peer")
 
-    with pytest.raises(ConnectionResetError):
-        relay._send_all(_Reset(), memoryview(b"abc"))  # noqa: SLF001
+    import unittest.mock
+
+    with unittest.mock.patch.object(relay, "_wait_writable", lambda _sock: None):
+        with pytest.raises(ConnectionResetError):
+            relay._send_all(_Reset(), memoryview(b"abc"))  # noqa: SLF001
+
+
+# What a stream the Flight server sent twice in part looks like, and why (gRPC, not the relay).
+GRPC_ENOBUFS = (
+    'a stream the relay RECEIVED that stops being HTTP/2 part way ("not a frame at byte N") '
+    "holds bytes the Flight server sent twice: XNU's sendmsg reports ENOBUFS for a send that "
+    "queued part of its bytes and does not say how many (bsd/kern/uipc_syscalls.c sendit), and "
+    "gRPC's tcp_flush (src/core/lib/iomgr/tcp_posix.cc) then sends its whole batch again"
+)
 
 
 _H2_FRAMES = {0: "DATA", 1: "HEADERS", 2: "PRIORITY", 3: "RST_STREAM", 4: "SETTINGS", 5: "PUSH_PROMISE",
@@ -286,9 +442,11 @@ def _as_http2(raw: bytes) -> str:
 
 
 def _where(sock) -> tuple:
-    """A socket's descriptor and peer, as the operating system says them now."""
+    """A socket's descriptor and both its ends, as the operating system says them now. Both ends:
+    every relayed upstream socket has the one peer (the Flight server), so only its own end tells
+    one upstream connection from another."""
     try:
-        return (sock.fileno(), sock.getpeername())
+        return (sock.fileno(), sock.getsockname(), sock.getpeername())
     except OSError as exc:
         return (sock.fileno(), f"{type(exc).__name__}: {exc}")
 
@@ -315,15 +473,15 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
     """Twelve 24 MB streams relayed at once, twice over. Each must arrive whole -- every row, in
     order -- and the relay must have carried the same number of bytes towards each client.
 
-    On macOS, while the whole machine was under load, relayed streams have failed at the client
-    with "frame of size N overflows local window of M". It has not been reproduced on a quiet
-    machine in any arrangement, and what the relay does to bytes has been verified separately,
-    so where the stream goes wrong is not yet known. This test runs on Linux in CI, where the
-    product runs; and when a stream fails it says what the relay carried to each client, read as
-    HTTP/2 frames, so the failure names the place. It also says whether a relayed socket's
-    descriptor or peer changed while it was read: the bytes a failed stream carried were out of
-    step as the relay received them, and a descriptor closed under the relay and reused by
-    another connection is one way that happens."""
+    On macOS, with the whole machine under load, relayed streams have failed at the client
+    ("frame of size N overflows local window of M", "Deadline Exceeded") and the relay has
+    received a stream that stops being HTTP/2 part way: bytes the Flight server sent twice. XNU
+    reports ENOBUFS for a send that queued part of its bytes and drops the count, and gRPC's
+    tcp_flush then sends its whole batch again (see GRPC_ENOBUFS below). The relay's own sends
+    are built so it cannot do the same (_send_all); the Flight server's are gRPC's. When a stream
+    fails this test says what the relay carried to each client, read as HTTP/2 frames, so the
+    failure names the place, and whether a relayed socket's descriptor or peer changed while it
+    was read."""
     import zlib
 
     import pyarrow.compute as pc
@@ -343,6 +501,7 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
             "packer": zlib.compressobj(1),
             "packed": [],
             "source": _where(source),
+            "sink": _where(sink),
             "moved": [],
         }
         with copies_lock:
@@ -350,8 +509,11 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
         real_copy(_Watched(source, this_copy.record), sink)
 
     def _send_all(sink, data) -> None:
-        real_send_all(sink, data)
         record = this_copy.record
+        now = _where(sink)
+        if now != record["sink"]:
+            record["moved"].append({"sink_after_bytes": record["bytes"], "now": now})
+        real_send_all(sink, data)
         record["bytes"] += len(data)
         record["packed"].append(record["packer"].compress(data))  # sequential integers: small
 
@@ -402,11 +564,20 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
     ]
     # Whether a socket's descriptor or peer changed while it was read: a descriptor closed under
     # the relay and reused by another connection would splice that connection's bytes in.
-    moved = [{"source": c["source"], "moved": c["moved"][:5]} for c in copies if c["moved"]]
+    moved = [
+        {"source": c["source"], "sink": c["sink"], "moved": c["moved"][:5]}
+        for c in copies
+        if c["moved"]
+    ]
     assert failures == [], {
+        "a known cause, on macOS": GRPC_ENOBUFS,
         "failures": failures,
         "carried": carried,
         "streams that differ": odd,
         "sockets whose descriptor or peer changed mid-stream": moved,
     }
-    assert len(carried) == 24 and odd == [], {"carried": carried, "streams that differ": odd}
+    assert len(carried) == 24 and odd == [], {
+        "a known cause, on macOS": GRPC_ENOBUFS,
+        "carried": carried,
+        "streams that differ": odd,
+    }
