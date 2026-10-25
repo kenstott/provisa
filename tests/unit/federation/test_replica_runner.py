@@ -13,6 +13,7 @@ PostgreSQL's advisory locks are in ``tests/integration/test_replica_build_locks_
 
 import asyncio
 import logging
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -634,3 +635,53 @@ async def test_the_heap_freezes_once_at_the_first_pass_with_no_build_left(
     assert frozen == [1]
     assert await node.runner.run_pass() == 0
     assert frozen == [1]  # once per process
+
+
+def _builds(caplog) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == f"{replica_runner.__name__}.builds" and r.levelno == logging.WARNING
+    ]
+
+
+async def test_each_build_says_where_the_server_log_shows_it_when_it_starts_and_ends(
+    plane, tmp_path, caplog
+):
+    """A build holds its node's slot from start to end: what held the slot while others waited
+    (run 40186596223) is named by its start and end, at WARNING, with how long it took."""
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0))
+
+    async def build(key, progress):
+        return BuildOutcome(rows_copied=4, method="stream_batches")
+
+    node = _Node("a", url, db, tmp_path, build=build, permits=_Permits())
+    with caplog.at_level(logging.WARNING, logger=f"{replica_runner.__name__}.builds"):
+        assert await node.runner.run_pass() == 1
+        await node.drain()
+    name = ".".join(_key(0))
+    started, ended = _builds(caplog)
+    assert started == f"replica build of {name} started (org {ORG})"
+    assert re.fullmatch(rf"replica build of {re.escape(name)} built 4 rows in \d+\.\d s", ended)
+
+
+async def test_a_failed_build_says_it_ended_failed_and_how_long_it_held_the_slot(
+    plane, tmp_path, caplog
+):
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0))
+
+    async def build(key, progress):
+        raise RuntimeError("source refused the connection")
+
+    node = _Node("a", url, db, tmp_path, build=build, permits=_Permits())
+    with caplog.at_level(logging.WARNING, logger=f"{replica_runner.__name__}.builds"):
+        assert await node.runner.run_pass() == 1
+        await node.drain()
+    name = ".".join(_key(0))
+    started, ended = _builds(caplog)
+    assert started == f"replica build of {name} started (org {ORG})"
+    assert re.fullmatch(rf"replica build of {re.escape(name)} failed in \d+\.\d s", ended)

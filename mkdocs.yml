@@ -144,6 +144,7 @@ nav:
       - Building Test Environments: test-data.md
       - Fake Methods: fake-methods.md
   - Security & Governance:
+      - Access Model: access-model.md
       - Security Model: security.md
       - Regions: regions.md
       - Secrets: secrets.md

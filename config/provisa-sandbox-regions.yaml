@@ -50,8 +50,10 @@ auth:
     role_id: org_admin
   provider: none
 
+# The sandbox tier's naming (config/provisa-install-base.yaml): the demos' queries, tours and
+# Cypher labels are written against its domain prefix (r__viewGroupCustomers).
 naming:
-  domain_prefix: false
+  domain_prefix: true
   rules: []
 
 cache:

@@ -37,7 +37,7 @@ from psycopg import sql
 import pytest
 
 from tests.integration.test_demo_sandboxes_e2e import _JWT_SECRET
-from tests.integration.test_region_read_in_place_e2e import _MASTER_KEY, _Stack
+from tests.integration.regions_tier import regions_tier
 
 # The setup builds the bundle (up to 2400 s, the build itself bounded at 900 s) and boots the tier
 # node (up to 900 s): the test's own limit covers what its setup is allowed, so a build that does
@@ -46,14 +46,10 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(3600)]
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "demo_bundle.py"
-_TIER_CONFIG = _REPO / "config" / "provisa-sandbox-regions.yaml"
 
 
 @pytest.fixture(scope="module")
 def tier(tmp_path_factory):
-    from tests.integration.demo_registry import DemoRegistry
-    from tests.integration.isolated_server import IsolatedServer
-
     work = tmp_path_factory.mktemp("retail_regions_tier")
     out = work / "out"
     # The tier offers, and a bundle build's seeding node templates, only a published demo: retail
@@ -70,60 +66,11 @@ def tier(tmp_path_factory):
     print(done.stdout[-4000:])
     assert done.returncode == 0, f"{done.stdout[-4000:]}\n{done.stderr[-12000:]}"
     (bundle,) = out.glob("retail-*.tar.gz")
-    registry, stack = DemoRegistry(), _Stack()
-    registry.start()
-    stack.start()
-    # The tier's config declares every regions demo's regions (retail's and banking's): each is
-    # given a store, as each node of the tier is.
-    with psycopg.connect(stack.url(stack.engine_port, "provisa"), autocommit=True) as conn:
-        for region in ("ledger", "warehouse"):
-            conn.execute(f"CREATE DATABASE {region}_store")
-    server = None
-    try:
-        registry.push(bundle)
-        bundles = work / "data" / "demo-bundles"
-        synced = registry.sync("retail", bundles)
-        assert synced.returncode == 0, f"{synced.stdout}\n{synced.stderr}"
-        control_plane = stack.url(stack.engine_port, "provisa", "+psycopg")
-        server = IsolatedServer(
-            "sbxrtiere2e",
-            engine="duckdb",
-            config=str(_TIER_CONFIG),
-            control_plane="postgres",
-            # A visitor's token is read only by a configured provider: unsecured, every request
-            # is the anonymous principal on the boot org, never the visitor's sandbox.
-            auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
-            env={
-                "PLATFORM_DATABASE_URL": control_plane,
-                "TENANT_DATABASE_URL": control_plane,
-                "PROVISA_REGION": "us",
-                "PROVISA_ENCRYPTION_KEY": _MASTER_KEY,
-                "PROVISA_DEMO_EU_ADDRESS": "http://127.0.0.1:1",
-                "PROVISA_DEMO_US_ADDRESS": "http://127.0.0.1:2",
-                "PROVISA_DEMO_EU_PG_URL": stack.url(stack.engine_port, "eu_store", "+psycopg"),
-                "PROVISA_DEMO_US_PG_URL": stack.url(stack.engine_port, "us_store", "+psycopg"),
-                "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:3",
-                "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:4",
-                "PROVISA_DEMO_LEDGER_PG_URL": stack.url(
-                    stack.engine_port, "ledger_store", "+psycopg"
-                ),
-                "PROVISA_DEMO_WAREHOUSE_PG_URL": stack.url(
-                    stack.engine_port, "warehouse_store", "+psycopg"
-                ),
-                "REDIS_URL": f"redis://127.0.0.1:{stack.redis_port}/0",
-                "PROVISA_SANDBOX_TIER": "true",
-                "PROVISA_DEMO_BUNDLES": "retail",
-                "PROVISA_DEMO_REGISTRY": registry.url,
-                "PROVISA_DATA_DIR": str(work / "data"),
-            },
-        )
-        server.start(timeout=900)
+    # A visitor's token is read only by a configured provider: unsecured, every request is the
+    # anonymous principal on the boot org, never the visitor's sandbox.
+    auth = {"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"}
+    with regions_tier("sbxrtiere2e", "retail", bundle, work, auth=auth) as (server, stack, _):
         yield {"server": server, "stack": stack}
-    finally:
-        if server is not None:
-            server.stop_process()
-        stack.stop()
-        registry.stop()
 
 
 def _open(server) -> dict:

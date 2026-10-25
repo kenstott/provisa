@@ -394,3 +394,31 @@ def test_an_optional_match_of_two_hops_from_a_new_node_is_refused_by_name(con):
             "MATCH (a:Person) OPTIONAL MATCH (p:Person)-[:WORKS_AT]->(c:Company)"
             "-[:PARENT]->(d:Company) RETURN a.name",
         )
+
+
+def test_comma_separated_patterns_of_one_match_are_its_parts(con):
+    rows = _rows(
+        con,
+        "MATCH (s:Person)-[:WORKS_AT]->(c:Company), (c)-[:PARENT]->(d:Company) "
+        "RETURN s.name, c.name, d.name",
+    )
+    want = _rows(
+        con,
+        "MATCH (s:Person)-[:WORKS_AT]->(c:Company)-[:PARENT]->(d:Company) "
+        "RETURN s.name, c.name, d.name",
+    )
+    assert rows == want and len(want) == 3
+
+
+def test_comma_separated_patterns_take_the_where_after_them(con):
+    rows = _rows(
+        con,
+        "MATCH (s:Person)-[:WORKS_AT]->(c:Company), (s)-[:KNOWS]->(t:Person) "
+        'WHERE c.name = "Acme" RETURN s.name, t.name',
+    )
+    assert rows == [("Ann", "Bo"), ("Bo", "Cy")]
+
+
+def test_comma_separated_node_patterns_are_their_product(con):
+    rows = _rows(con, "MATCH (c:Company {name: 'Beta'}), (k:Club) RETURN c.name, k.name")
+    assert rows == [("Beta", "Chess"), ("Beta", "Go")]

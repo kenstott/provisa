@@ -12,7 +12,6 @@
 
 import pytest
 
-from provisa.api_source.cache import DEFAULT_TTL, resolve_ttl
 from provisa.api_source.engine_cache import (
     CacheLocation,
     cache_location,
@@ -20,25 +19,6 @@ from provisa.api_source.engine_cache import (
     rewrite_all_from_cache,
     rewrite_from_cache,
 )
-
-
-# --- TTL resolution ---
-
-
-def test_ttl_endpoint_wins():
-    assert resolve_ttl(60, 120, 300) == 60
-
-
-def test_ttl_source_fallback():
-    assert resolve_ttl(None, 120, 300) == 120
-
-
-def test_ttl_global_fallback():
-    assert resolve_ttl(None, None, 300) == 300
-
-
-def test_ttl_default():
-    assert resolve_ttl(None, None, None) == DEFAULT_TTL
 
 
 # --- cache_location factory ---

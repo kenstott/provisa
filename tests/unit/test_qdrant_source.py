@@ -353,12 +353,14 @@ async def test_a_point_whose_payload_is_not_its_columns_type_is_refused_naming_i
             await read(SimpleNamespace(), _state_table(_SEARCH, *_ARGS), {"q": [1, 0]})
 
 
-async def test_a_search_is_read_per_statement_and_landed_under_its_arguments():
+async def test_a_search_with_a_ttl_of_its_own_is_landed_under_its_arguments():
+    """A search is parameterized: its rows are kept only when the table sets a TTL of its own,
+    and then under the arguments that read them (REQ-1986)."""
     from provisa.api.data.materialization import _materialize_api_to_engine_cache
     from provisa.api_source.engine_cache import CacheLocation
     from provisa.mongodb.pipeline_table import PipelineRead
 
-    table = _state_table(_SEARCH, *_ARGS)
+    table = {**_state_table(_SEARCH, *_ARGS), "cache_ttl": 300}
     engine = MagicMock()
     engine.land_source_table = AsyncMock()
     state = SimpleNamespace(
@@ -389,6 +391,37 @@ async def test_a_search_is_read_per_statement_and_landed_under_its_arguments():
     assert rewrites == {"docs_search": (loc, "c_1")}
     ran.assert_awaited_once()
     assert named.call_args.args == ("vec", "pipeline:docs_search", {"q": "[1, 0]"})
+
+
+async def test_a_search_with_no_ttl_of_its_own_is_read_live_for_the_statement_alone():
+    """REQ-1986: whatever its source or the organisation keeps, a search with no TTL of its own
+    is read for each statement and handed to it inline: nothing is landed, kept or reused."""
+    from provisa.api.data.materialization import _materialize_api_to_engine_cache
+    from provisa.mongodb.pipeline_table import PipelineRead
+
+    table = _state_table(_SEARCH, *_ARGS)
+    engine = MagicMock()
+    engine.land_source_table = AsyncMock()
+    state = SimpleNamespace(
+        hot_manager=None,
+        api_endpoints={},
+        graphql_remote_sources={},
+        source_types={"vec": "qdrant"},
+        replica_routes=ReplicaRoutes(),
+        tables=[table],
+        federation_engine=engine,
+        source_cache={"vec": {"cache_ttl": 600}},
+        response_cache_default_ttl=300,
+    )
+    answer = PipelineRead(rows=[{"id": "a1"}], columns=[("id", "text")])
+    with patch("provisa.qdrant.table.read", AsyncMock(return_value=answer)) as ran:
+        for _ in range(2):
+            rewrites, inline, _ = await _materialize_api_to_engine_cache(
+                "SELECT * FROM docs_search", state, nf_args={"q": "[1, 0]"}, table_ids=[4]
+            )
+            assert rewrites == {} and inline["docs_search"].rows == [{"id": "a1"}]
+    assert ran.await_count == 2  # one read per statement
+    engine.land_source_table.assert_not_awaited()
 
 
 async def test_a_search_left_without_its_query_is_refused_before_any_read():

@@ -163,6 +163,17 @@ def _pipeline_tables(state, table_ids: Iterable[int]) -> dict[str, dict]:
     }
 
 
+def _registrations(state, table_ids: Iterable[int]) -> dict[str, dict]:
+    """The registered tables the statement reads, by their sql names: what ``landing_ttl`` reads
+    a table's own TTL and parameters from (REQ-1986)."""
+    ids = set(table_ids)
+    return {
+        _sql_name(t["table_name"]): t
+        for t in (getattr(state, "tables", None) or [])
+        if t.get("id") in ids
+    }
+
+
 def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str | None]:
     """REQ-2031: each parameter of a native-read table the statement reads that is kept for good
     (``_nf_<name>``), and the landed column its value filters: the table's column of the same
@@ -193,7 +204,10 @@ _STATEMENT_SCRATCH: ContextVar[list | None] = ContextVar("statement_scratch", de
 @contextmanager
 def statement_scratch() -> Iterator[list]:
     """Collect the scratch tables landed while one statement is planned (see
-    :data:`_STATEMENT_SCRATCH`). A nested statement's go to the one that holds it."""
+    :data:`_STATEMENT_SCRATCH`), and the API fills it fetches (``fill_cache.statement_fills``,
+    REQ-1986). A nested statement's go to the one that holds it."""
+    from provisa.api_source.fill_cache import statement_fills
+
     held = _STATEMENT_SCRATCH.get()
     if held is not None:
         yield held
@@ -201,21 +215,53 @@ def statement_scratch() -> Iterator[list]:
     scratch: list = []
     token = _STATEMENT_SCRATCH.set(scratch)
     try:
-        yield scratch
+        with statement_fills():
+            yield scratch
     finally:
         _STATEMENT_SCRATCH.reset(token)
 
 
-def landing_ttl(table: dict, state) -> int:  # REQ-1986
-    """The seconds a table's landed rows are kept: its own TTL, else its source's, else the
-    response cache's default -- the first one set. A TTL of 0 is set: the rows are never kept."""
+def is_parameterized(table: dict) -> bool:  # REQ-1986
+    """Whether ``table`` declares parameters: an OpenAPI/REST endpoint's path or query parameters,
+    a code function's parameters, a Qdrant search's query, a GraphQL-remote or gRPC-remote
+    table's arguments, a Cosmos DB partition key -- each registered as a parameter column
+    (``core.parameters``)."""
+    from provisa.core.parameters import is_parameter
+
+    return any(is_parameter(c) for c in table.get("columns") or [])
+
+
+def registration_of(state, source_id: str, table_name: str) -> dict:  # REQ-1986
+    """The registered row of ``source_id``'s ``table_name``: what ``landing_ttl`` reads the
+    table's own TTL and parameters from. A table read and not registered is an error."""
+    for t in getattr(state, "tables", None) or []:
+        if t.get("source_id") == source_id and t.get("table_name") == table_name:
+            return t
+    raise LookupError(f"table {table_name!r} of source {source_id!r} is not registered")
+
+
+def landing_ttl(table: dict, state, endpoint_ttl: int | None = None) -> int:  # REQ-1986
+    """The seconds a table's landed rows are kept -- the one resolver every landing surface asks.
+
+    A parameterized table (``is_parameterized``) keeps its rows for its own TTL, else not at all
+    (0): it is read live for each statement and nothing is reused across statements, whatever
+    its source or the organisation says, unless the table itself sets a TTL; then the rows each
+    set of arguments answers are reused for it. Any other table's is the first one set of its own,
+    its source's, the response cache's default and, for an API endpoint, the endpoint's. A TTL of
+    0 is set: the rows are never kept."""
+    own = table.get("cache_ttl")
+    if own is not None:
+        return int(own)
+    if is_parameterized(table):
+        return 0
+    # Each asked only when every one before it is unset.
     for ttl in (
-        table.get("cache_ttl"),
-        getattr(state, "source_cache", {}).get(table["source_id"], {}).get("cache_ttl"),
-        state.response_cache_default_ttl,
+        lambda: getattr(state, "source_cache", {}).get(table["source_id"], {}).get("cache_ttl"),
+        lambda: state.response_cache_default_ttl,
+        lambda: endpoint_ttl,
     ):
-        if ttl is not None:
-            return int(ttl)
+        if (value := ttl()) is not None:
+            return int(value)
     raise ValueError(f"table {table['table_name']!r}: no TTL is set, nor any default")
 
 
@@ -367,6 +413,14 @@ async def _land_per_statement(
     schedule_drop(engine, cache_loc, cache_tbl, ttl, RedirectConfig.from_env())
     cache_rewrites[tn] = (cache_loc, cache_tbl)
     log.warning("[MAT] pipeline %s: %d rows → %s", tn, len(answer.rows), cache_tbl)
+
+
+@dataclass(frozen=True)
+class _LiveRead:
+    """The rows one statement's live read of a table answers, and their (name, type) columns."""
+
+    rows: list[dict]
+    columns: list[tuple[str, str]]
 
 
 async def _answer_live(
@@ -696,8 +750,12 @@ async def _mat_gql_remote_table(
     values_cte_entries: dict,
     extra_selections: dict[str, str] | None = None,
     variables: dict | None = None,
+    *,
+    registration: dict,
 ) -> None:
-    """Materialize a graphql_remote-backed table into the engine cache or VALUES CTE."""
+    """Materialize a graphql_remote-backed table into the engine cache or VALUES CTE, kept for
+    ``registration``'s TTL (``landing_ttl``); with a TTL of 0 it is read live for this statement
+    alone (REQ-1986)."""
     from provisa.api_source.engine_cache import (
         org_cache_schema,
         cache_location,
@@ -813,6 +871,26 @@ async def _mat_gql_remote_table(
         values_cte_entries[tn] = InlineRows(gql_rows, col_names)
         return
 
+    async def _fetch() -> tuple[list[dict], bool]:
+        try:
+            return await _fetch_gql_remote_rows(
+                gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
+            )
+        except Exception as fetch_exc:
+            raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
+
+    ttl = landing_ttl(registration, state)
+    if ttl == 0:
+        # REQ-1986: read live for this statement alone; nothing is kept or reused.
+        from provisa.api_source.engine_cache import _land_columns
+
+        async def _answer() -> _LiveRead:
+            rows, _cut = await _fetch()
+            return _LiveRead(rows=rows, columns=_land_columns(col_objs))
+
+        await _answer_live(tn, state, gql_cache_loc, cache_rewrites, values_cte_entries, _answer)
+        return
+
     # Cache hit — only trust in-process table_known_live
     with state.federation_engine.isolated_sync() as _c:
         ensure_cache_schema(_c, gql_cache_loc)
@@ -821,12 +899,7 @@ async def _mat_gql_remote_table(
         return
 
     # Cache miss — fetch from remote
-    try:
-        gql_rows, cut = await _fetch_gql_remote_rows(
-            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
-        )
-    except Exception as fetch_exc:
-        raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
+    gql_rows, cut = await _fetch()
     if cut:
         # REQ-1350: an answer cut at max_rows lands under a name of this statement's own, so no
         # later statement finds it as the table's answer, and it is never held hot.
@@ -842,7 +915,7 @@ async def _mat_gql_remote_table(
         )
     except Exception as cache_exc:
         raise RuntimeError(f"GQL remote landing failed for {tn!r}: {cache_exc}") from cache_exc
-    schedule_drop(state.federation_engine, gql_cache_loc, gql_cache_tbl, 300, redirect_config)
+    schedule_drop(state.federation_engine, gql_cache_loc, gql_cache_tbl, ttl, redirect_config)
 
     # Inline as VALUES CTE if below threshold; else use cache rewrite
     if 0 < len(gql_rows) <= _hot_threshold:
@@ -880,8 +953,12 @@ async def _mat_grpc_remote_table(
     cache_rewrites: dict,
     values_cte_entries: dict,
     nf_args: dict | None = None,
+    *,
+    registration: dict,
 ) -> None:
-    """Materialize a grpc_remote query's result into the engine cache or VALUES CTE.
+    """Materialize a grpc_remote query's result into the engine cache or VALUES CTE, kept for
+    ``registration``'s TTL (``landing_ttl``); with a TTL of 0 it is read live for this statement
+    alone (REQ-1986).
 
     Mirrors _mat_gql_remote_table: the raw-SQL surface (/data/sql, pgwire) has no live-fetch
     handler of its own, so without this a grpc_remote table left decide_route at Route.API with
@@ -923,10 +1000,39 @@ async def _mat_grpc_remote_table(
     cache_loc = cache_location(source_id, _cache_cat, org_cache_schema(state))
     cache_tbl = cache_table_name(source_id, tn, nf_args or {})
     redirect_config = RedirectConfig.from_env()
-    # REQ-2003: the registration's TTL, else its source's, else the default -- the first one set.
-    ttl = landing_ttl(
-        {"table_name": tn, "source_id": source_id, "cache_ttl": reg.get("cache_ttl")}, state
-    )
+    # REQ-2003, REQ-1986: the one resolver -- a parameterized table keeps its rows only for a TTL
+    # of its own.
+    ttl = landing_ttl(registration, state)
+
+    async def _fetch() -> list[dict]:
+        return await grpc_remote_adapter.fetch(
+            source_id=source_id,
+            full_method_path=grpc_query.full_method_path,
+            input_message_name=grpc_query.input_message,
+            output_message_name=grpc_query.output_message,
+            pb2=reg["pb2"],
+            args=nf_args or {},
+            grpc_remote_sources=getattr(state, "grpc_remote_sources", {}),
+            response_cache_store=NoopCacheStore(),  # the PG cache table is the cache, not Redis
+            ttl=ttl,
+            server_streaming=grpc_query.server_streaming,
+        )
+
+    def _columns(rows: list[dict]) -> list:
+        if grpc_query.columns:
+            return cache_cols
+        return [_GCol(name=n, type="string") for n in (list(rows[0].keys()) if rows else [])]
+
+    if ttl == 0:
+        # REQ-1986: read live for this statement alone; nothing is kept or reused.
+        from provisa.api_source.engine_cache import _land_columns
+
+        async def _answer() -> _LiveRead:
+            rows = await _fetch()
+            return _LiveRead(rows=rows, columns=_land_columns(_columns(rows)))
+
+        await _answer_live(tn, state, cache_loc, cache_rewrites, values_cte_entries, _answer)
+        return
 
     with state.federation_engine.isolated_sync() as _c:
         ensure_cache_schema(_c, cache_loc)
@@ -935,21 +1041,10 @@ async def _mat_grpc_remote_table(
         cache_rewrites[tn] = (cache_loc, cache_tbl)
         return
 
-    rows = await grpc_remote_adapter.fetch(
-        source_id=source_id,
-        full_method_path=grpc_query.full_method_path,
-        input_message_name=grpc_query.input_message,
-        output_message_name=grpc_query.output_message,
-        pb2=reg["pb2"],
-        args=nf_args or {},
-        grpc_remote_sources=getattr(state, "grpc_remote_sources", {}),
-        response_cache_store=NoopCacheStore(),  # the PG cache table is the cache, not Redis
-        ttl=ttl,
-        server_streaming=grpc_query.server_streaming,
-    )
+    rows = await _fetch()
     if not col_names:
-        col_names = list(rows[0].keys()) if rows else []
-        cache_cols = [_GCol(name=n, type="string") for n in col_names]
+        cache_cols = _columns(rows)
+        col_names = [c.name for c in cache_cols]
 
     if rows:
         # A failed landing fails the read: the statement is rewritten to the cache table below,
@@ -984,17 +1079,24 @@ async def _mat_grpc_remote_table(
 
 
 async def _mat_fetch_rows_from_fills(
-    ep, col_names: list, _META_COLS: set, state, args: dict | None = None
+    ep,
+    col_names: list,
+    _META_COLS: set,
+    state,
+    args: dict | None = None,
+    *,
+    hashes: frozenset[str] | None = None,
 ) -> list[dict]:
     """The rows this API table's fills hold in the store (``api_source.fill_cache``): every
     argument set's, or only the answer to ``args`` when one is given -- ``[]`` when no fill
-    has made its table yet (a miss the caller fills live). A failed read raises: it is never a
-    cue to fetch from REST instead (REQ-1661, amended 2026-09-30)."""
+    has made its table yet (a miss the caller fills live); ``hashes`` limits them to those
+    argument sets. A failed read raises: it is never a cue to fetch from REST instead
+    (REQ-1661, amended 2026-09-30)."""
     from provisa.api_source import fill_cache
 
     table = fill_cache.fill_table(state, ep, getattr(state, "api_sources", {}).get(ep.source_id))
     with state.federation_engine.isolated_sync() as conn:
-        raw = fill_cache.read_rows(conn, table, args)
+        raw = fill_cache.read_rows(conn, table, args, hashes=hashes)
     col_set = set(col_names)
     return [
         {k: _normalize_mat_value(v) for k, v in r.items() if k not in _META_COLS and k in col_set}
@@ -1002,19 +1104,37 @@ async def _mat_fetch_rows_from_fills(
     ]
 
 
+async def _fills_fetched_this_statement(
+    ep, col_names: list, _META_COLS: set, state, args: dict | None
+) -> list[dict] | None:
+    """A TTL-0 read's fills (REQ-1986): only those the statement being planned fetched, never
+    another statement's -- None when it fetched none of them; an answer it fetched may be
+    empty."""
+    from provisa.api_source import fill_cache
+
+    table = fill_cache.fill_table(state, ep, getattr(state, "api_sources", {}).get(ep.source_id))
+    fetched = fill_cache.fetched_this_statement(table)
+    if args is not None:
+        fetched = fetched & {fill_cache.params_hash(args)}
+    if not fetched:
+        return None
+    return await _mat_fetch_rows_from_fills(ep, col_names, _META_COLS, state, args, hashes=fetched)
+
+
 async def _mat_fetch_rows_from_rest(
     ep,
     col_names: list,
     engine,
     api_source,
-    source_id,
-    state,
     _cache_loc,
     cache_tbl,
     cache_rewrites: dict,
     params: dict | None = None,
+    *,
+    ttl: int,
 ) -> list | None:
-    """Fetch rows for an API endpoint from REST fallback.
+    """Fetch rows for an API endpoint from REST fallback, under the table's resolved ``ttl``
+    (``landing_ttl``; 0 reads no cache).
 
     Returns rows list, or None if the table is in cache_rewrites (already handled).
     Raises on unrecoverable REST failure.
@@ -1022,13 +1142,7 @@ async def _mat_fetch_rows_from_rest(
     from provisa.api_source.router_integration import handle_api_query
 
     rest_result = await handle_api_query(
-        ep,
-        params or {},
-        engine,
-        source=api_source,
-        source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
-        global_ttl=getattr(state, "response_cache_default_ttl", None),
-        loc=_cache_loc,
+        ep, params or {}, engine, source=api_source, ttl=ttl, loc=_cache_loc
     )
     log.warning(
         "[MAT] REST fallback for %s: from_cache=%s rows=%d",
@@ -1043,6 +1157,33 @@ async def _mat_fetch_rows_from_rest(
     return [
         {k: _normalize_mat_value(v) for k, v in r.items() if k in col_set} for r in rest_result.rows
     ]
+
+
+def _missing_path_params(ep, args: dict) -> list[str]:
+    """The endpoint's path parameters ``args`` gives no value for: without them it cannot be
+    called generically."""
+    return [
+        c.name
+        for c in ep.columns
+        if c.param_type == "path" and (c.param_name or c.name) not in args
+    ]
+
+
+def _rest_live_read(rows: list, response_cols: list, all_ep_col_names: list) -> _LiveRead:
+    """A TTL-0 REST read's rows as the engine reads them (REQ-1986): under the compiler's
+    snake_case names, every endpoint column present -- a parameter column NULL -- as
+    ``_mat_store_rows`` lands them."""
+    from provisa.api_source.engine_cache import _land_columns
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
+    snake_cols = [c.model_copy(update={"name": _apply_sql_name(c.name)}) for c in response_cols]
+    name_map = {c.name: _apply_sql_name(c.name) for c in response_cols}
+    columns = _land_columns(snake_cols)
+    landed = {name for name, _type in columns}
+    columns += [(name, "VARCHAR") for name in all_ep_col_names if name not in landed]
+    names = [name for name, _type in columns]
+    snake_rows = [{name_map.get(k, k): v for k, v in r.items()} for r in rows]
+    return _LiveRead(rows=[{n: r.get(n) for n in names} for r in snake_rows], columns=columns)
 
 
 def _mat_store_rows(
@@ -1117,8 +1258,12 @@ async def _mat_api_ep_table(
     nf_args: dict | None = None,
     ctx=None,
     pushed: dict | None = None,
+    *,
+    registration: dict,
 ) -> None:
-    """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE.
+    """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE, kept for
+    ``registration``'s TTL (``landing_ttl``, the endpoint's last); with a TTL of 0 it is read live
+    for this statement alone, its fills and cache never read (REQ-1986).
 
     The cache table is kept under the arguments the statement gives the endpoint (REQ-318): an
     endpoint with a parameter is a function of its arguments, so the answer to one argument set
@@ -1151,16 +1296,8 @@ async def _mat_api_ep_table(
     # named as the fetch names it, with the endpoint's default parameters under the arguments.
     by_keys = read_by_parent_keys(ep, args, ctx)
     cache_tbl = cache_table_name(source_id, tn, {} if by_keys else {**ep.default_params, **args})
-    # The first one set: a TTL of 0 is set, and keeps nothing (REQ-1986).
-    ttl = next(
-        t
-        for t in (
-            getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
-            getattr(state, "response_cache_default_ttl", None),
-            ep.ttl,
-        )
-        if t is not None
-    )
+    # REQ-1986: the one resolver; a TTL of 0 is set, and keeps nothing.
+    ttl = landing_ttl(registration, state, endpoint_ttl=ep.ttl)
     from provisa.compiler.naming import apply_sql_name
 
     # param_only, not param_type: a query/path param whose name collides with a response field is
@@ -1175,6 +1312,39 @@ async def _mat_api_ep_table(
 
     if not response_cols:
         log.warning("[MAT] %s has no response columns — skipping", tn)
+        return
+
+    if ttl == 0:
+        # REQ-1986: read live for this statement alone. Its cache is never read and nothing it
+        # answers is kept or reused; of its fills it takes only the ones this statement fetched
+        # (a join's parent keys, batched by hydration), else it calls the endpoint.
+        rows = await _fills_fetched_this_statement(
+            ep, col_names, _META_COLS, state, None if by_keys else args
+        )
+        if rows is None:
+            missing = _missing_path_params(ep, args)
+            if missing:
+                log.warning("[MAT] %s requires path param(s) %s — skipping", tn, missing)
+                return
+            live = await _mat_fetch_rows_from_rest(
+                ep,
+                col_names,
+                state.federation_engine,
+                api_source,
+                _cache_loc,
+                cache_tbl,
+                cache_rewrites,
+                params={} if by_keys else args,
+                ttl=0,
+            )
+            assert live is not None  # a TTL-0 call never answers from a cache
+            rows = live
+        read = _rest_live_read(rows, response_cols, all_ep_col_names)
+
+        async def _answer() -> _LiveRead:
+            return read
+
+        await _answer_live(tn, state, _cache_loc, cache_rewrites, values_cte_entries, _answer)
         return
 
     # Priority 2: the engine cache hit
@@ -1222,11 +1392,7 @@ async def _mat_api_ep_table(
     fetched = not rows  # the rows are a live fetch's, not the fills'
 
     if not rows:
-        missing = [
-            c.name
-            for c in ep.columns
-            if c.param_type == "path" and (c.param_name or c.name) not in args
-        ]
+        missing = _missing_path_params(ep, args)
         if missing:
             # Required path param(s) absent from this query — cannot call the endpoint
             # generically (mirrors the graphql_remote required_args branch above).
@@ -1239,13 +1405,12 @@ async def _mat_api_ep_table(
             col_names,
             state.federation_engine,
             api_source,
-            source_id,
-            state,
             _cache_loc,
             cache_tbl,
             cache_rewrites,
             # No argument when the table is all its parent-keyed fills: its name carries none.
             params={} if by_keys else args,
+            ttl=ttl,
         )
         if rows is None:
             return  # already written to cache_rewrites by _mat_fetch_rows_from_rest
@@ -1420,6 +1585,7 @@ async def _materialize_api_to_engine_cache(
     }
 
     params_of = _parameter_tables(state, table_ids)
+    registrations = _registrations(state, table_ids)
     pipelines = _pipeline_tables(state, table_ids)
     statement_args = nf_args
     for tn in table_names:
@@ -1514,6 +1680,7 @@ async def _materialize_api_to_engine_cache(
                     values_cte_entries,
                     extra_selections=(gql_remote_extra_selections or {}).get(tn),
                     variables=resolved or None,
+                    registration=registrations[_sql_name(table)],
                 )
                 continue
 
@@ -1531,6 +1698,7 @@ async def _materialize_api_to_engine_cache(
                     cache_rewrites,
                     values_cte_entries,
                     nf_args=nf_args,
+                    registration=registrations[_sql_name(table)],
                 )
                 continue
 
@@ -1548,6 +1716,7 @@ async def _materialize_api_to_engine_cache(
             nf_args=nf_args,
             ctx=ctx,
             pushed=sparql_pushdown.pushed_arguments(ep, exec_sql, tn),
+            registration=registrations[_sql_name(table)],
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:
             log.warning("[MAT] %s could not be materialized — dropping union branch", tn)
