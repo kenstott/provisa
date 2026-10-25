@@ -295,7 +295,7 @@
       "calendar_deleted": "לוח השנה '{{calendar}}' נמחק",
       "calendar_in_use": "לוח השנה '{{calendar}}' נמצא בשימוש על ידי {{count}} Materialized View — נקו את לוח הזמנים של תמונות המצב שלהם לפני המחיקה",
       "calendar_not_found": "לוח השנה '{{calendar}}' לא נמצא",
-      "calendar_saved": "לוח השנה '{{calendar}}' v{{version}} נשמר",
+      "calendar_saved": "לוח השנה '{{calendar}}' {{version}} נשמר",
       "column_natively_nested": "לא ניתן לרשום: העמודה {{column}} היא באופן מקורי {{native_type}} במקור שלה, ולכן הסוג שלה הוא json ולא {{type}}.",
       "column_types_unresolved": "לא ניתן לרשום: לא נמצא סוג נתונים מהמקור עבור העמודות: {{columns}}. בצעו Introspection לטבלה (Discover schema) או הגדירו Data Type לכל אחת לפני הרישום.",
       "config_not_found": "קובץ התצורה לא נמצא",

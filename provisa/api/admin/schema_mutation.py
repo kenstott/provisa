@@ -2088,7 +2088,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
         return MutationResult(
             success=True,
-            message=f"calendar {input.name!r} v{input.version} saved",
+            message=f"calendar {input.name!r} {input.version} saved",
             code="schema.calendar_saved",
             params={"calendar": input.name, "version": input.version},
         )

@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 2f8bc0ae-c2c7-4f48-8b29-19955da9ef5c
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -60,7 +61,7 @@ const mocks: MockedResponse[] = [
         createCalendar: {
           __typename: "MutationResult",
           success: true,
-          message: "calendar 'e2e-fiscal' vv1 saved",
+          message: "calendar 'e2e-fiscal' v1 saved",
           code: "schema.calendar_saved",
           params: null,
         },

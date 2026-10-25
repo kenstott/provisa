@@ -295,7 +295,7 @@
       "calendar_deleted": "カレンダー「{{calendar}}」を削除しました",
       "calendar_in_use": "カレンダー「{{calendar}}」は{{count}}件のマテリアライズドビューで使用中です。削除する前にスナップショットスケジュールを解除してください",
       "calendar_not_found": "カレンダー「{{calendar}}」が見つかりません",
-      "calendar_saved": "カレンダー「{{calendar}}」v{{version}} を保存しました",
+      "calendar_saved": "カレンダー「{{calendar}}」{{version}} を保存しました",
       "column_natively_nested": "登録できません：列 {{column}} はソースではネイティブに {{native_type}} であるため、型は {{type}} ではなく json です。",
       "column_types_unresolved": "登録できません：次の列についてソースからデータ型を解決できませんでした：{{columns}}。テーブルをイントロスペクトする（スキーマ検出）か、登録前に各列にデータ型を設定してください。",
       "config_not_found": "設定ファイルが見つかりません",
