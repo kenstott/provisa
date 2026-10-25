@@ -60,8 +60,7 @@ _META: dict[str, str] = {
     "member tables, commands, tags, glossary terms and profiles are reached by relationship",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
-    "products it reaches through relationships, and the relations upstream and downstream of "
-    "its tables in lineage — one row per product, target and kind",
+    "products it reaches through relationships — one row per product, target and kind",
     # REQ-1443
     "product_checks": "How each data product shows each data-quality check that touches it — "
     "a promise or expectation of its own, partner DQ from another owner, or an orphan",
@@ -209,27 +208,16 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "data_product_edges": {
         "id": "Edge identifier: product, kind and target",
         "product_id": "The data product the edge starts from",
-        "kind": "relationship or lineage",
-        "direction": "For a lineage edge, upstream (the product derives from the target) or "
-        "downstream (the target derives from the product); empty for a relationship edge",
+        "kind": "relationship (through tables in no product) or related (one relationship away)",
         "target_product_id": "The other data product the edge reaches, when its end is a member "
         "of one",
         "target_table_id": "The table the edge reaches, when its end is a registered table",
-        "target_relation": "For a lineage edge, the relation it reaches (domain.table)",
-        "direct": "True when one relationship, or one derivation, joins a member to the target",
-        "hops": "The shortest number of relationships or derivations between a member and the "
-        "target",
+        "direct": "True when one relationship joins a member to the target",
+        "hops": "The shortest number of relationships between a member and the target",
         "path_count": "How many paths connect the product to the target",
         "aliases": "The aliases of the relationships on those paths",
         "relationship_ids": "The relationships on those paths",
         "supporting_tables": "Tables in no product that a path runs through",
-        "vias": "For a lineage edge, the views and commands on its paths",
-        "nearest_input": "For an upstream lineage edge, true when its target is one of the "
-        "product's nearest physical inputs: a source table or materialized view reached through "
-        "plain views only, or the source a member is read from",
-        "target_source_id": "For a lineage edge, the source its target is read from",
-        "target_source_type": "The type of that source",
-        "target_address": "The target's address in that source: source/schema/table",
     },
     # REQ-1443
     "product_checks": {

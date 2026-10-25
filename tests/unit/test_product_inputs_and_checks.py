@@ -113,16 +113,7 @@ async def test_inputs_stop_at_the_first_source_table_or_materialized_view(contro
             await _build(conn)
             m_inputs = await nearest_physical_inputs(conn, M)
             rv_inputs = await nearest_physical_inputs(conn, RV)
-            lineage = await _rows(
-                conn,
-                "SELECT product_id, target_relation, hops, nearest_input FROM data_product_edges "
-                "WHERE kind = 'lineage' ORDER BY product_id, target_relation",
-            )
-            derivation = await _rows(
-                conn,
-                "SELECT product_id, target_product_id, path_count, supporting_tables "
-                "FROM data_product_edges WHERE kind = 'derivation'",
-            )
+            kinds = await _rows(conn, "SELECT DISTINCT kind FROM data_product_edges")
     finally:
         await db.close()
 
@@ -130,22 +121,9 @@ async def test_inputs_stop_at_the_first_source_table_or_materialized_view(contro
     assert m_inputs == [NearestInput(S, "s.s", SOURCE_TABLE, "erp/public/s")]
     assert rv_inputs == [NearestInput(M, "s.m", MATERIALIZED_VIEW, f"{DERIVED_SOURCE_ID}/public/m")]
 
-    # The Lineage section keeps the whole ancestry; the inputs are the rows marked nearest.
-    assert [
-        (r["product_id"], r["target_relation"], r["hops"], r["nearest_input"]) for r in lineage
-    ] == [
-        ("q", "s.pv", 1, False),
-        ("q", "s.rv", 1, None),  # one hop down: RV derives from Q's M
-        ("q", "s.s", 2, True),
-        ("r", "s.m", 1, True),
-        ("r", "s.pv", 2, False),
-        ("r", "s.s", 3, False),
-    ]
-
-    # R is built from Q's member M: a derivation between products, not a relationship.
-    assert derivation == [
-        {"product_id": "r", "target_product_id": "q", "path_count": 1, "supporting_tables": "m"}
-    ]
+    # A product's lineage, and what it is built from, are the product lineage endpoint's
+    # (REQ-2156): data_product_edges holds its relationships only.
+    assert {r["kind"] for r in kinds} <= {"relationship", "related"}
 
 
 @pytest.mark.asyncio

@@ -33,16 +33,13 @@ const PRODUCT = {
 const EDGE: CoreEdge = {
   id: "pet_health:related:12",
   kind: "related",
-  direction: null,
   target_product_id: null,
   target_table_id: 12,
-  target_relation: null,
   direct: false,
   hops: 3,
   path_count: 2,
   aliases: "HAS_OWNER, VISITED_BY",
   supporting_tables: "pet-store.visits, pet-store.appointments, pet-store.clinics",
-  vias: null,
   target_table: {
     id: 12,
     domain_id: "pet-store",
@@ -71,7 +68,6 @@ function panel() {
       coreError={null}
       reader={null}
       canEdit={false}
-      canSeeLineage={false}
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}

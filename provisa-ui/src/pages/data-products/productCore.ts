@@ -157,20 +157,13 @@ const PANEL: Selection = {
         fields: [
           "id",
           "kind",
-          "direction",
           "target_product_id",
           "target_table_id",
-          "target_relation",
           "direct",
           "hops",
           "path_count",
           "aliases",
           "supporting_tables",
-          "vias",
-          // REQ-2126: a nearest physical input, and the source it is read from.
-          "nearest_input",
-          "target_source_type",
-          "target_address",
         ],
         rels: {
           target_product: { alias: "targetProduct", sel: { fields: ["id", "name", "domain_id"] } },
@@ -245,24 +238,18 @@ export interface CoreRelationship {
 }
 
 export interface CoreEdge {
-  /** REQ-2126: joins (relationship, the graph's), direct neighbours (related, the panel's),
-   * provenance (lineage) and built-from products (derivation). */
-  kind: "relationship" | "related" | "lineage" | "derivation";
+  /** REQ-2126: joins (relationship, the graph's) and direct neighbours (related, the panel's).
+   * A product's lineage is the product lineage endpoint's (REQ-2156). */
+  kind: "relationship" | "related";
   /** The edge's key in data_product_edges, unique per product. */
   id: string;
-  direction: "upstream" | "downstream" | null;
   target_product_id: string | null;
   target_table_id: number | null;
-  target_relation: string | null;
   direct: boolean;
   hops: number;
   path_count: number;
   aliases: string | null;
   supporting_tables: string | null;
-  vias: string | null;
-  nearest_input?: boolean | null;
-  target_source_type?: string | null;
-  target_address?: string | null;
   target_product?: { id: string; name: string; domain_id: string } | null;
   target_table?: {
     id: number;
@@ -310,16 +297,6 @@ export function modelName(t: {
   alias: string | null;
 }): string {
   return `${t.domain_id}.${t.alias || t.table_name}`;
-}
-
-/** What a lineage edge reaches. A member read straight from a source names no relation (REQ-2126)
- * and is the one reference given by its source address; a registered table is named as the model
- * names it; a relation the model has not registered, by the name the lineage records. */
-export function edgeTarget(e: CoreEdge): string {
-  if (e.target_relation === null && e.target_address) return e.target_address;
-  if (e.target_table) return modelName(e.target_table);
-  if (e.target_relation === null) throw new Error(`data_product_edges row ${e.id} names no target`);
-  return e.target_relation;
 }
 
 interface PanelRow {

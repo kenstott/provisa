@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { dqStatus } from "../dataProductClaims";
+import type { ProductInput, ProductLineage } from "../../../api/lineage";
 import type { CoreCheck, CoreEdge, CoreTable, ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
@@ -86,21 +87,27 @@ const CHECKS: CoreCheck[] = [
   check(15, "orphan", [99, "fx_rates"]),
 ];
 
-const input = (id: number, relation: string): CoreEdge => ({
-  id: `c360:lineage:${relation}`,
-  kind: "lineage",
-  direction: "upstream",
-  target_product_id: null,
-  target_table_id: id,
-  target_relation: relation,
-  direct: true,
-  hops: 1,
-  path_count: 1,
-  aliases: null,
-  supporting_tables: null,
-  vias: null,
-  nearest_input: true,
+// REQ-2126: the product's nearest physical inputs, as the product lineage endpoint finds them.
+const input = (id: number, relation: string): ProductInput => ({
+  relation,
+  kind: "source_table",
+  table_id: id,
+  domain_id: relation.split(".")[0],
+  table_name: relation.split(".")[1],
+  alias: null,
+  product_id: null,
+  source_id: null,
+  source_type: null,
+  source_schema: null,
+  source_table: null,
 });
+const LINEAGE: ProductLineage = {
+  nodes: [],
+  edges: [],
+  outputs: [],
+  members: [],
+  inputs: [input(30, "raw.raw_orders"), input(31, "raw.raw_customers")],
+};
 
 const CORE: ProductCore = {
   product: P,
@@ -113,7 +120,6 @@ const CORE: ProductCore = {
     }),
   ],
   checks: CHECKS,
-  edges: [input(30, "raw.raw_orders"), input(31, "raw.raw_customers")],
   queries: { graphql: "", sql: "", jsonapi: "" },
 };
 
@@ -126,9 +132,8 @@ function panel() {
       reader={null}
       lineageLoading={false}
       lineageError=""
-      lineageGraph={null}
+      lineageGraph={LINEAGE}
       canEdit={false}
-      canSeeLineage={true}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,
@@ -198,9 +203,8 @@ describe("a data product's quality claims (REQ-2132)", () => {
         reader={null}
         lineageLoading={false}
         lineageError=""
-        lineageGraph={null}
+        lineageGraph={LINEAGE}
         canEdit={false}
-        canSeeLineage={true}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
       />,
@@ -237,16 +241,13 @@ describe("Related Tables (REQ-2126)", () => {
     const edge = (over: Partial<CoreEdge>): CoreEdge => ({
       id: `c360:related:${over.target_table_id}`,
       kind: "related",
-      direction: null,
       target_product_id: null,
       target_table_id: null,
-      target_relation: null,
       direct: true,
       hops: 1,
       path_count: 1,
       aliases: null,
       supporting_tables: null,
-      vias: null,
       ...over,
     });
     render(
@@ -291,7 +292,6 @@ describe("Related Tables (REQ-2126)", () => {
         lineageError=""
         lineageGraph={null}
         canEdit={false}
-        canSeeLineage={false}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
       />,

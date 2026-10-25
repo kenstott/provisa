@@ -49,7 +49,8 @@ vi.mock("../api/actions", () => ({
   saveFunction: vi.fn(),
 }));
 vi.mock("../api/lineage", () => ({
-  fetchFederationGraph: () => Promise.resolve({ nodes: [], edges: [] }),
+  fetchProductLineage: () =>
+    Promise.resolve({ nodes: [], edges: [], outputs: [], members: [], inputs: [] }),
 }));
 vi.mock("../api/glossary", () => ({
   fetchRelatedGlossaryTerms: () => Promise.resolve([]),

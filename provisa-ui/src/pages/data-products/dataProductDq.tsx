@@ -22,7 +22,8 @@ import { Alert, Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@
 import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { tableSqlRef } from "../../naming";
-import { edgeTarget, modelName, type CoreCheck, type CoreEdge } from "./productCore";
+import type { ProductInput } from "../../api/lineage";
+import { modelName, type CoreCheck } from "./productCore";
 import { checksIn, dqStatus, type DqStatus } from "./dataProductClaims";
 
 const COLOR: Record<DqStatus, string> = { passing: "green", failing: "red", notRun: "gray" };
@@ -224,20 +225,24 @@ export function PartnersAndOrphans({ checks, testId }: { checks: CoreCheck[]; te
   );
 }
 
+/** An input as the panel names it: a registered table by its model name; the source a member is
+ *  read from by its source and where in it (source/schema/table). */
+function inputName(input: ProductInput): string {
+  if (input.kind !== "source") return modelName(input);
+  return [input.source_id, input.source_schema, input.source_table].filter(Boolean).join("/");
+}
+
 /** REQ-2126: the product's nearest physical inputs, each with its expectations' DQ icon. */
 export function InputsList({
-  edges,
+  inputs,
   checks,
   testId,
 }: {
-  edges: CoreEdge[];
+  inputs: ProductInput[];
   checks: CoreCheck[];
   testId: string;
 }) {
   const { t } = useTranslation();
-  const inputs = edges.filter(
-    (e) => e.kind === "lineage" && e.direction === "upstream" && e.nearest_input === true,
-  );
   if (inputs.length === 0) {
     return (
       <Text size="sm" c="var(--text-muted)">
@@ -248,24 +253,24 @@ export function InputsList({
   const expectations = checksIn(checks, "expectation");
   return (
     <List size="sm" data-testid={testId}>
-      {inputs.map((e) => {
-        return (
-          <List.Item key={e.id} ff="monospace">
-            {edgeTarget(e)}
-            {e.target_source_type && (
-              <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-                {" "}
-                ({e.target_source_type})
-              </Text>
-            )}
+      {inputs.map((input) => (
+        <List.Item key={input.relation} ff="monospace">
+          {inputName(input)}
+          {input.kind === "source" && input.source_type && (
+            <Text component="span" c="var(--text-muted)" ff="text" size="xs">
+              {" "}
+              ({input.source_type})
+            </Text>
+          )}
+          {input.kind !== "source" && (
             <DqIcon
               checks={expectations}
-              tableId={e.target_table_id}
-              testId={`${testId}-dq-${e.target_table_id}`}
+              tableId={input.table_id}
+              testId={`${testId}-dq-${input.table_id}`}
             />
-          </List.Item>
-        );
-      })}
+          )}
+        </List.Item>
+      ))}
     </List>
   );
 }

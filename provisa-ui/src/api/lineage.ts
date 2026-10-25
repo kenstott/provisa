@@ -36,6 +36,11 @@ export interface LineageNode {
   // REQ-2116: native is the raw field a source reads, beneath a registered table's column.
   kind: "source" | "derived" | "command" | "native";
   materialized: boolean;
+  // REQ-2116: a native node's source object -- its source, and the schema and table it is read
+  // from where the source has them. Absent on every other kind.
+  source_id?: string;
+  source_schema?: string | null;
+  source_table?: string | null;
 }
 
 /** REQ-2116: where a registered table is read from natively, and how it is served. Sent only to a
@@ -75,6 +80,29 @@ export interface LineageGraphData {
   outputs: string[];
   cycles?: LineageCycle[];
   natives?: Record<string, LineageNative>; // by native relation ("native:<relation>")
+}
+
+/** REQ-2126: one of a product's nearest physical inputs -- a source table or materialized view,
+ *  or, for a member read straight from a source, that source ("source"). */
+export interface ProductInput {
+  relation: string;
+  kind: "source_table" | "materialized_view" | "source";
+  table_id: number;
+  domain_id: string;
+  table_name: string;
+  alias: string | null;
+  // The product the input belongs to, when it is another product's member: built from it.
+  product_id: string | null;
+  source_id: string | null;
+  source_type: string | null;
+  source_schema: string | null;
+  source_table: string | null;
+}
+
+/** REQ-2156: a data product's lineage, cut to what its reader may read. */
+export interface ProductLineage extends LineageGraphData {
+  members: string[]; // the member relations, a checker's left out
+  inputs: ProductInput[];
 }
 
 /**
@@ -154,6 +182,17 @@ export async function fetchFederationGraph(opts?: {
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(serverMessage(data, requestFailed("Federation graph", resp.status)));
+  }
+  return resp.json();
+}
+
+// REQ-2156: a data product's lineage -- its members, their ancestry and one hop downstream, and its
+// nearest physical inputs -- for any reader of the product, cut to that reader's rights.
+export async function fetchProductLineage(productId: string): Promise<ProductLineage> {
+  const resp = await fetch(`${API_BASE}/data-products/${encodeURIComponent(productId)}/lineage`);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("Product lineage", resp.status)));
   }
   return resp.json();
 }

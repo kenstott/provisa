@@ -317,10 +317,8 @@ describe("a product's own graph (REQ-2136)", () => {
         edges: [
           {
             kind: "relationship",
-            direction: null,
             target_product_id: "billing",
             target_table_id: null,
-            target_relation: null,
             hops: 1,
             path_count: 2,
             aliases: "BILLED_TO",
@@ -350,45 +348,12 @@ describe("the product's links (REQ-2126)", () => {
       edges: [
         {
           kind: "relationship",
-          direction: null,
           target_product_id: "p2",
           target_table_id: null,
-          target_relation: null,
           hops: 1,
           path_count: 2,
           aliases: "BOUGHT, PAID",
           target_product: { id: "p2", name: "P2", domain_id: "finance" },
-        },
-        {
-          kind: "lineage",
-          direction: "upstream",
-          target_product_id: null,
-          target_table_id: null,
-          target_relation: "raw.d",
-          hops: 2,
-          path_count: 1,
-          aliases: null,
-        },
-        {
-          kind: "lineage",
-          direction: "downstream",
-          target_product_id: null,
-          target_table_id: null,
-          target_relation: "mart.e",
-          hops: 1,
-          path_count: 1,
-          aliases: null,
-        },
-        {
-          kind: "lineage",
-          direction: "upstream",
-          target_product_id: null,
-          target_table_id: 7,
-          target_relation: "pet_store.pets",
-          hops: 1,
-          path_count: 1,
-          aliases: null,
-          target_table: { domain_id: "pet-store", table_name: "pets" },
         },
       ],
     },
@@ -404,22 +369,10 @@ describe("the product's links (REQ-2126)", () => {
     });
   });
 
-  it("names a registered lineage table as the catalog does, an unregistered relation by its name", () => {
+  it("draws no lineage from the product's edges: its lineage is the product lineage endpoint's", () => {
     const g = toGraphData(linked, null, null);
-    const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
-    expect(label("l:pet_store.pets")).toBe("pet-store.pets");
-    expect(label("l:raw.d")).toBe("raw.d");
-  });
-
-  it("stands lineage in lanes: ancestry by its distance upstream, a consumer one lane down", () => {
-    const g = toGraphData(linked, null, null);
-    const lane = (id: string) => g.nodes.find((n) => n.id === id)?.lane;
-    expect([lane("l:raw.d"), lane("p:p1"), lane("l:mart.e")]).toEqual([-2, 0, 1]);
-    expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
-      ["l:raw.d", "p:p1"],
-      ["p:p1", "l:mart.e"],
-      ["l:pet_store.pets", "p:p1"],
-    ]);
+    expect(g.nodes.some((n) => n.id.startsWith("l:"))).toBe(false);
+    expect(g.edges.some((e) => e.kind === "lineage")).toBe(false);
   });
 });
 

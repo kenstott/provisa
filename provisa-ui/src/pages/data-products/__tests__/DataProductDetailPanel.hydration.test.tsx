@@ -28,7 +28,7 @@ vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
 
 /** Each panel input, by where it comes from. */
 const META = ["p", "core", "coreError", "reader"]; // the meta domain: the product, its core, its schema
-const NOT_DATA = ["canEdit", "canSeeLineage", "onEdit", "onDelete"]; // capabilities and callbacks
+const NOT_DATA = ["canEdit", "onEdit", "onDelete"]; // capabilities and callbacks
 /** Decided: the lineage DAG reads the lineage API, scoped to the product. */
 const LINEAGE = [
   "lineageLoading",
@@ -109,16 +109,13 @@ const CORE: ProductCore = {
     {
       id: "pet_health:related:12",
       kind: "related",
-      direction: null,
       target_product_id: null,
       target_table_id: 12,
-      target_relation: null,
       direct: true,
       hops: 1,
       path_count: 1,
       aliases: "HAS_OWNER",
       supporting_tables: null,
-      vias: null,
       target_table: {
         id: 12,
         domain_id: "pet-store",
@@ -140,7 +137,6 @@ function panelFromMetaAlone() {
       reader={null}
       // Every input that is not the meta read is empty: what the cards show is the core's.
       canEdit={false}
-      canSeeLineage={false}
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}

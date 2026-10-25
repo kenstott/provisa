@@ -21,7 +21,6 @@ import {
   type Where,
 } from "../../api/metaGraph";
 import type { GraphData, GraphEdge, GraphNode, QueryScope } from "./graphModel";
-import { catalogTableName } from "../../naming";
 
 /** What the product graph's query keeps (REQ-2136): its domain, tag, sensitivity and term edge
  * type filters, in its where. None of one is every one. A row the filters drop takes what hangs off
@@ -157,16 +156,7 @@ function productSel(f: ProductFilters): Selection {
       edges: {
         alias: "edges",
         sel: {
-          fields: [
-            "kind",
-            "direction",
-            "target_product_id",
-            "target_table_id",
-            "target_relation",
-            "hops",
-            "path_count",
-            "aliases",
-          ],
+          fields: ["kind", "target_product_id", "target_table_id", "hops", "path_count", "aliases"],
           rels: {
             target_product: {
               alias: "targetProduct",
@@ -178,7 +168,7 @@ function productSel(f: ProductFilters): Selection {
             },
           },
         },
-        where: dom && { _or: [{ kind: { eq: "lineage" } }, { target_product: dom }] },
+        where: dom && { target_product: dom },
       },
     },
   };
@@ -235,17 +225,15 @@ interface TableRow extends Tagged {
 }
 
 export interface EdgeRow {
-  // data_product_edges' kinds (REQ-2126); the graph draws relationship and lineage rows.
-  kind: "relationship" | "related" | "lineage" | "derivation";
-  direction: "upstream" | "downstream" | null;
+  // data_product_edges' kinds (REQ-2126); the graph draws the relationship rows. A product's
+  // lineage is the product lineage endpoint's, cut to its reader's rights (REQ-2156).
+  kind: "relationship" | "related";
   target_product_id: string | null;
   target_table_id: number | null;
-  target_relation: string | null;
   hops: number;
   path_count: number;
   aliases: string | null;
   target_product?: { id: string; name: string; domain_id: string } | null;
-  // Set when a lineage relation is a registered table; null for one that is not (REQ-1626, REQ-2001).
   target_table?: { domain_id: string; table_name: string } | null;
 }
 
@@ -397,21 +385,6 @@ export function toGraphData(
             paths: e.path_count,
             ...(e.aliases ? { label: e.aliases } : {}),
           });
-      } else if (e.kind === "lineage" && e.target_relation) {
-        // Upstream ancestry stands in lanes by its distance; a consumer one lane downstream.
-        const xid = `l:${e.target_relation}`;
-        const lane = e.direction === "upstream" ? -e.hops : 1;
-        // A registered table by its catalog name; a relation that is no registered table (REQ-1626,
-        // REQ-2001) by its relation name, which is its identity.
-        const label = e.target_table
-          ? catalogTableName({
-              domainId: e.target_table.domain_id,
-              tableName: e.target_table.table_name,
-            })
-          : e.target_relation;
-        node({ id: xid, type: "relation", label, lane });
-        if (e.direction === "upstream") edge(xid, pid, "lineage");
-        else edge(pid, xid, "lineage");
       }
     }
     for (const c of p.commands ?? []) {

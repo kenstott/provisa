@@ -47,16 +47,12 @@ tables:
     data_type: text
   - name: direct
     data_type: boolean
-  - name: direction
-    data_type: text
   - name: hops
     data_type: integer
   - name: id
     data_type: text
   - name: kind
     data_type: text
-  - name: nearest_input
-    data_type: boolean
   - name: path_count
     data_type: bigint
   - name: product_id
@@ -65,20 +61,10 @@ tables:
     data_type: text
   - name: supporting_tables
     data_type: text
-  - name: target_address
-    data_type: text
   - name: target_product_id
-    data_type: text
-  - name: target_relation
-    data_type: text
-  - name: target_source_id
-    data_type: text
-  - name: target_source_type
     data_type: text
   - name: target_table_id
     data_type: integer
-  - name: vias
-    data_type: text
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default

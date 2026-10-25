@@ -46,7 +46,6 @@ function fields(p: DataProduct): [string, string][] {
       coreError={null}
       reader={null}
       canEdit={false}
-      canSeeLineage={false}
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}

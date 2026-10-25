@@ -163,19 +163,18 @@ def _data_product_edges_sql() -> str:
     product's member tables through tables that belong to no product. It stops at another
     product's member, and the row targets that product; a table that belongs to no product is a
     target only where nothing reachable through it is another product's member (otherwise it
-    supports that product's row). A lineage edge is a relation the product's members derive from,
-    all the way up, or one that derives from them, one hop down, read from the lineage edge table
-    the model build writes (REQ-2129); a checker member's results are about a member, not part of
-    its data flow, so they start no lineage.
+    supports that product's row). A related edge is a table one declared relationship from a
+    member, not one of the product's own. A product's lineage is no row here: it is cut to its
+    caller's read rights, so it is served by the product lineage endpoint (REQ-2156).
 
     Everything is computed from reachability, never by enumerating routes: the path count is the
-    number of distinct relationships (or derivations) leaving the members that lead on to the
-    target, the hops are the shortest distance, and the aliases and supporting tables are those on
-    any walk from a member to the target. Each recursion's rows are bounded by the model's tables
-    (or relations), so the cost grows with the model, not with the routes through it.
+    number of distinct relationships leaving the members that lead on to the target, the hops are
+    the shortest distance, and the aliases and supporting tables are those on any walk from a
+    member to the target. Each recursion's rows are bounded by the model's tables, so the cost
+    grows with the model, not with the routes through it.
 
-    Every table a row names -- a supporting table, a view a lineage edge goes through -- is named
-    as the model names it: its domain and its alias, or its name when it has none."""
+    Every supporting table a row names is named as the model names it: its domain and its alias,
+    or its name when it has none."""
     return """
         CREATE OR REPLACE VIEW data_product_edges AS
         WITH RECURSIVE
@@ -338,143 +337,6 @@ def _data_product_edges_sql() -> str:
             JOIN model_names t ON t.table_id = s.node
             GROUP BY s.product_id, s.target_product_id, s.target_table_id
         ),
-        ledges AS (
-            SELECT DISTINCT source_relation AS src, target_relation AS tgt, via
-            FROM lineage_edges
-            WHERE source_relation <> target_relation
-        ),
-        relation_tables AS (
-            SELECT DISTINCT source_relation AS relation, source_table_id AS table_id
-            FROM lineage_edges WHERE source_table_id IS NOT NULL
-            UNION
-            SELECT DISTINCT target_relation, target_table_id
-            FROM lineage_edges WHERE target_table_id IS NOT NULL
-        ),
-        member_relations AS (
-            SELECT DISTINCT m.product_id, rt.relation
-            FROM members m
-            JOIN relation_tables rt ON rt.table_id = m.table_id
-            WHERE m.dq_contract IS NULL
-        ),
-        -- (product, the derivation into its member, a relation reached upstream).
-        upstream (product_id, first_edge, relation) AS (
-            SELECT mr.product_id, e.src || ' > ' || e.via || ' > ' || e.tgt, e.src
-            FROM member_relations mr
-            JOIN ledges e ON e.tgt = mr.relation
-            UNION
-            SELECT u.product_id, u.first_edge, e.src
-            FROM upstream u
-            JOIN ledges e ON e.tgt = u.relation
-        ),
-        up_dist (product_id, relation, hops) AS (
-            SELECT mr.product_id, e.src, 1
-            FROM member_relations mr
-            JOIN ledges e ON e.tgt = mr.relation
-            UNION
-            SELECT u.product_id, e.src, u.hops + 1
-            FROM up_dist u
-            JOIN ledges e ON e.tgt = u.relation
-            WHERE u.hops < (SELECT COUNT(*) FROM relation_tables)
-        ),
-        -- (product, an upstream relation, a relation its derivations reach on the way down to a
-        -- member): the chain each upstream row stands for.
-        chain (product_id, origin, relation) AS (
-            SELECT DISTINCT u.product_id, u.relation, u.relation
-            FROM upstream u
-            UNION
-            SELECT c.product_id, c.origin, e.tgt
-            FROM chain c
-            JOIN ledges e ON e.src = c.relation
-            JOIN upstream u ON u.product_id = c.product_id AND u.relation = e.tgt
-        ),
-        -- The views and commands on that chain: each derivation out of a relation on it, into a
-        -- relation on it or into a member.
-        up_vias AS (
-            SELECT DISTINCT c.product_id, c.origin AS relation, e.via
-            FROM chain c
-            JOIN ledges e ON e.src = c.relation
-            WHERE EXISTS (SELECT 1 FROM member_relations mr
-                          WHERE mr.product_id = c.product_id AND mr.relation = e.tgt)
-               OR EXISTS (SELECT 1 FROM upstream u
-                          WHERE u.product_id = c.product_id AND u.relation = e.tgt)
-        ),
-        lineage_paths AS (
-            SELECT u.product_id, 'upstream' AS direction, u.relation, u.first_edge
-            FROM upstream u
-            WHERE NOT EXISTS (
-                SELECT 1 FROM member_relations mr
-                WHERE mr.product_id = u.product_id AND mr.relation = u.relation)
-            UNION ALL
-            SELECT mr.product_id, 'downstream', e.tgt,
-                   e.src || ' > ' || e.via || ' > ' || e.tgt
-            FROM member_relations mr
-            JOIN ledges e ON e.src = mr.relation
-            WHERE NOT EXISTS (
-                  SELECT 1 FROM member_relations own
-                  WHERE own.product_id = mr.product_id AND own.relation = e.tgt)
-              AND NOT EXISTS (
-                  SELECT 1 FROM upstream up
-                  WHERE up.product_id = mr.product_id AND up.relation = e.tgt)
-              AND NOT EXISTS (
-                  SELECT 1 FROM relation_tables rt
-                  JOIN members chk ON chk.table_id = rt.table_id AND chk.dq_contract IS NOT NULL
-                  WHERE rt.relation = e.tgt)
-        ),
-        lineage_rows AS (
-            SELECT l.product_id, l.direction, l.relation,
-                   COUNT(DISTINCT l.first_edge) AS path_count,
-                   CASE WHEN l.direction = 'downstream' THEN 1
-                        ELSE (SELECT MIN(d.hops) FROM up_dist d
-                              WHERE d.product_id = l.product_id AND d.relation = l.relation)
-                   END AS hops
-            FROM lineage_paths l
-            GROUP BY l.product_id, l.direction, l.relation
-        ),
-        -- A view a derivation goes through, by its model name; a command, by its own name; a
-        -- relation the model has not registered, by the name the lineage records.
-        via_names AS (
-            SELECT DISTINCT e.via, COALESCE(n.model_name, e.via) AS via_name
-            FROM lineage_edges e
-            LEFT JOIN relation_tables rt ON e.via_kind = 'view' AND rt.relation = e.via
-            LEFT JOIN model_names n ON n.table_id = rt.table_id
-        ),
-        lineage_vias AS (
-            SELECT u.product_id, 'upstream' AS direction, u.relation,
-                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name) AS vias
-            FROM up_vias u
-            JOIN via_names n ON n.via = u.via
-            GROUP BY u.product_id, u.relation
-            UNION ALL
-            SELECT mr.product_id, 'downstream', e.tgt,
-                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name)
-            FROM member_relations mr
-            JOIN ledges e ON e.src = mr.relation
-            JOIN via_names n ON n.via = e.via
-            GROUP BY mr.product_id, e.tgt
-        
-        ),
-        -- Where each registered table is read from: its source, its kind and its address there
-        -- (the three-part form a checker contract names a dataset by).
-        located AS (
-            SELECT t.id AS table_id, t.source_id, s.type AS source_type,
-                   t.source_id || '/' || t.schema_name || '/' || t.table_name AS address,
-                   CASE WHEN t.source_id <> '{derived}' THEN 'source_table'
-                        WHEN t.materialize THEN 'materialized_view'
-                        ELSE 'view' END AS table_kind
-            FROM registered_tables t
-            JOIN sources s ON s.id = t.source_id
-        ),
-        -- A product's nearest physical inputs (table_inputs), from its members that are not
-        -- checkers.
-        product_inputs AS (
-            SELECT DISTINCT m.product_id, ti.input_table_id, ti.input_relation
-            FROM members m
-            JOIN table_inputs ti ON ti.table_id = m.table_id
-            WHERE m.dq_contract IS NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM members own
-                  WHERE own.table_id = ti.input_table_id AND own.product_id = m.product_id)
-        ),
         -- Every table one declared relationship from a member that is not one of the product's
         -- own: the panel's Related.
         related AS (
@@ -494,15 +356,10 @@ def _data_product_edges_sql() -> str:
                    || CASE WHEN r.target_product_id IS NOT NULL
                            THEN 'product:' || r.target_product_id
                            ELSE 'table:' || CAST(r.target_table_id AS TEXT) END AS id,
-               r.product_id, 'relationship' AS kind, CAST(NULL AS TEXT) AS direction,
-               r.target_product_id, r.target_table_id, CAST(NULL AS TEXT) AS target_relation,
+               r.product_id, 'relationship' AS kind,
+               r.target_product_id, r.target_table_id,
                CASE WHEN r.hops = 1 THEN TRUE ELSE FALSE END AS direct,
-               r.hops, r.path_count, d.aliases, d.relationship_ids, s.supporting_tables,
-               CAST(NULL AS TEXT) AS vias,
-               CAST(NULL AS BOOLEAN) AS nearest_input,
-               CAST(NULL AS TEXT) AS target_source_id,
-               CAST(NULL AS TEXT) AS target_source_type,
-               CAST(NULL AS TEXT) AS target_address
+               r.hops, r.path_count, d.aliases, d.relationship_ids, s.supporting_tables
         FROM rel_rows r
         JOIN rel_detail d
           ON d.product_id = r.product_id
@@ -513,56 +370,12 @@ def _data_product_edges_sql() -> str:
          AND s.target_product_id IS NOT DISTINCT FROM r.target_product_id
          AND s.target_table_id IS NOT DISTINCT FROM r.target_table_id
         UNION ALL
-        SELECT x.product_id || ':lineage:' || x.relation,
-               x.product_id, 'lineage', x.direction,
-               (SELECT m.product_id FROM members m WHERE m.table_id = x.table_id),
-               x.table_id, x.relation,
-               CASE WHEN x.hops = 1 THEN TRUE ELSE FALSE END,
-               x.hops, x.path_count, NULL, NULL, NULL, x.vias,
-               CASE WHEN x.direction = 'downstream' THEN NULL
-                    WHEN EXISTS (SELECT 1 FROM product_inputs pi
-                                 WHERE pi.product_id = x.product_id
-                                   AND pi.input_relation = x.relation) THEN TRUE
-                    ELSE FALSE END,
-               lc.source_id, lc.source_type, lc.address
-        FROM (
-            SELECT l.product_id, l.direction, l.relation, l.hops, l.path_count, v.vias,
-                   (SELECT rt.table_id FROM relation_tables rt WHERE rt.relation = l.relation)
-                       AS table_id
-            FROM lineage_rows l
-            JOIN lineage_vias v
-              ON v.product_id = l.product_id AND v.direction = l.direction
-             AND v.relation = l.relation
-        ) x
-        LEFT JOIN located lc ON lc.table_id = x.table_id
-        UNION ALL
-        -- A member read from a source has that source as its input.
-        SELECT m.product_id || ':lineage:source:' || CAST(m.table_id AS TEXT),
-               m.product_id, 'lineage', 'upstream', NULL, m.table_id, NULL,
-               TRUE, 1, 1, NULL, NULL, NULL, NULL,
-               TRUE, lc.source_id, lc.source_type, lc.address
-        FROM members m
-        JOIN located lc ON lc.table_id = m.table_id AND lc.table_kind = 'source_table'
-        WHERE m.dq_contract IS NULL
-        UNION ALL
-        -- A product built from another product's member: built from, not joined to.
-        SELECT pi.product_id || ':derivation:product:' || o.product_id,
-               pi.product_id, 'derivation', 'upstream', o.product_id, NULL, NULL,
-               NULL, NULL, COUNT(DISTINCT pi.input_table_id), NULL, NULL,
-               STRING_AGG(DISTINCT t.table_name, ', ' ORDER BY t.table_name), NULL,
-               TRUE, NULL, NULL, NULL
-        FROM product_inputs pi
-        JOIN members o ON o.table_id = pi.input_table_id AND o.product_id <> pi.product_id
-        JOIN registered_tables t ON t.id = pi.input_table_id
-        GROUP BY pi.product_id, o.product_id
-        UNION ALL
         SELECT rl.product_id || ':related:' || CAST(rl.table_id AS TEXT),
-               rl.product_id, 'related', NULL, o.product_id, rl.table_id, NULL,
-               TRUE, 1, rl.path_count, rl.aliases, rl.relationship_ids, NULL, NULL,
-               NULL, NULL, NULL, NULL
+               rl.product_id, 'related', o.product_id, rl.table_id,
+               TRUE, 1, rl.path_count, rl.aliases, rl.relationship_ids, NULL
         FROM related rl
         LEFT JOIN members o ON o.table_id = rl.table_id
-    """.replace("{derived}", DERIVED_SOURCE_ID)
+    """
 
 
 def _table_inputs_sql() -> str:

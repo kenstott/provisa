@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
-import type { CoreEdge } from "../productCore";
+import type { ProductLineage } from "../../../api/lineage";
 import type { DataProduct } from "../../../types/admin";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
@@ -31,38 +31,37 @@ const PRODUCT = {
 } as unknown as DataProduct;
 
 // REQ-2126: the product's nearest physical inputs, long names that cannot wrap.
-const INPUTS: CoreEdge[] = Array.from({ length: 12 }, (_, i) => ({
-  id: `pet_health:lineage:${i}`,
-  kind: "lineage",
-  direction: "upstream",
-  target_product_id: null,
-  target_table_id: null,
-  target_relation: `pet_store.a_rather_long_table_name_${i}`,
-  direct: true,
-  hops: 1,
-  path_count: 1,
-  aliases: null,
-  supporting_tables: null,
-  vias: null,
-  nearest_input: true,
-}));
+const LINEAGE: ProductLineage = {
+  nodes: [],
+  edges: [],
+  outputs: [],
+  members: [],
+  inputs: Array.from({ length: 12 }, (_, i) => ({
+    relation: `pet_store.a_rather_long_table_name_${i}`,
+    kind: "source_table" as const,
+    table_id: 100 + i,
+    domain_id: "pet-store",
+    table_name: `a_rather_long_table_name_${i}`,
+    alias: null,
+    product_id: null,
+    source_id: null,
+    source_type: null,
+    source_schema: null,
+    source_table: null,
+  })),
+};
 
 function panel() {
   return render(
     <DataProductDetailPanel
       p={PRODUCT}
-      core={{
-        product: PRODUCT,
-        edges: INPUTS,
-        queries: { graphql: "query X { x }", sql: "", jsonapi: "" },
-      }}
+      core={{ product: PRODUCT, queries: { graphql: "query X { x }", sql: "", jsonapi: "" } }}
       coreError={null}
       reader={null}
       canEdit={false}
-      canSeeLineage
       lineageLoading={false}
       lineageError=""
-      lineageGraph={null}
+      lineageGraph={LINEAGE}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,
