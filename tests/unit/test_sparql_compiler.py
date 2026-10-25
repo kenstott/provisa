@@ -541,3 +541,40 @@ def test_a_date_part_of_a_cast(con):
 def test_now_is_one_instant_for_the_whole_query(con):
     rows = _answer(con, "SELECT ?s ?x WHERE { ?s p:name ?n BIND(YEAR(NOW()) AS ?x) }")
     assert {r["x"] for r in rows} == {_sql(con, "SELECT year(now())")[0][0]}
+
+
+def test_a_bind_after_an_optional_reads_what_the_optional_binds(con):
+    rows = _answer(
+        con, "SELECT ?n ?x WHERE { ?s p:name ?n OPTIONAL { ?s p:age ?a } BIND(?a + 1 AS ?x) }"
+    )
+    want = _sql(con, "SELECT name, age + 1 FROM pg.public.persons")
+    assert sorted((r["n"], r["x"]) for r in rows) == want
+
+
+def test_a_filter_beside_an_optional_reads_what_the_optional_binds(con):
+    rows = _answer(
+        con, "SELECT ?n ?a WHERE { ?s p:name ?n OPTIONAL { ?s p:age ?a } FILTER(?a > 30) }"
+    )
+    want = _sql(con, "SELECT name, age FROM pg.public.persons WHERE age > 30")
+    assert sorted((r["n"], r["a"]) for r in rows) == want and want
+
+
+def test_a_filter_on_whether_an_optional_matched(con):
+    rows = _answer(
+        con, "SELECT ?n WHERE { ?s p:name ?n OPTIONAL { ?s p:age ?a } FILTER(!BOUND(?a)) }"
+    )
+    assert [r["n"] for r in rows] == ["Di"]
+
+
+def test_a_bind_before_an_optional_is_read_inside_it(con):
+    rows = _answer(
+        con,
+        'SELECT ?n ?cn WHERE { ?s p:name ?n BIND("Acme" AS ?skip) '
+        "OPTIONAL { ?s rel:WORKS_AT ?c . ?c c:name ?cn FILTER(?cn != ?skip) } }",
+    )
+    assert sorted((r["n"], r["cn"]) for r in rows) == [
+        ("Ann", None),
+        ("Bo", None),
+        ("Cy", "Beta"),
+        ("Di", None),
+    ]
