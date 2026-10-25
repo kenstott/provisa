@@ -90,6 +90,10 @@ A table's panel answers the same question from the other side. Choose a column a
 
 Both views are capped by your own read rights. They list only tables and columns you can read.
 
+## Limits
+
+A role can also carry limits. A rate limit caps how many requests per second the role may send. A row limit caps the rows any result returns, applied as a LIMIT on the statement. Session variables are named values that a statement reads with `current_setting('provisa.<name>')` when the request binds none of that name. Each is the role's own value, or else the first ancestor's that sets it, and each applies on every transport.
+
 ## Comparison with other products
 
 Each entry cites that product's own documentation. An empty cell means the cited documentation does not address that question.
@@ -106,3 +110,15 @@ Each entry cites that product's own documentation. An empty cell means the cited
 | PostgreSQL | "For most kinds of objects, the initial state is that only the owner (or a superuser) can do anything with the object." No privileges go to PUBLIC by default on tables or table columns ([privileges](https://www.postgresql.org/docs/current/ddl-priv.html)). | | A role can be a member of several group roles. Members granted with INHERIT use the privileges of the roles they belong to ([role membership](https://www.postgresql.org/docs/current/role-membership.html)). | The owner. A privilege granted "with grant option" lets the recipient grant it to others ([privileges](https://www.postgresql.org/docs/current/ddl-priv.html)). | Privileges are added with GRANT and removed with REVOKE ([privileges](https://www.postgresql.org/docs/current/ddl-priv.html)). |
 | AWS IAM | | | Identity-based and resource-based policies combine as a union ([policy evaluation logic](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic.html)). | | "An explicit deny in either of these policies overrides the allow" ([policy evaluation logic](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic.html)). |
 | Windows access control lists | | | | | A DACL holds access-allowed and access-denied entries. In the preferred order, explicit deny entries come before explicit allow entries, and explicit entries come before inherited ones ([order of ACEs in a DACL](https://learn.microsoft.com/en-us/windows/win32/secauthz/order-of-aces-in-a-dacl)). |
+
+### Per-role limits
+
+| Product | What a limit attaches to | Request rate | Result size or cost | Session settings |
+| --- | --- | --- | --- | --- |
+| Provisa | A role, inherited from the first ancestor that sets it | A rate limit per role | A row limit per role, applied as a LIMIT | Session variables per role |
+| PostgreSQL | A role | | | `ALTER ROLE ... SET` changes "a role's session default for a configuration variable", and the value takes effect "only at login" ([ALTER ROLE](https://www.postgresql.org/docs/current/sql-alterrole.html)). `CONNECTION LIMIT` "specifies how many concurrent connections the role can make" ([CREATE ROLE](https://www.postgresql.org/docs/current/sql-createrole.html)). |
+| Snowflake | A warehouse or the account for resource monitors. The account, a user or a session for statement timeouts | | A resource monitor tracks warehouse credit usage, and "Resource monitors work for warehouses only" ([resource monitors](https://docs.snowflake.com/en/user-guide/resource-monitors)). STATEMENT_TIMEOUT_IN_SECONDS cancels a running statement after a set time, and "can be set for Account » User » Session" as well as on a warehouse ([parameters](https://docs.snowflake.com/en/sql-reference/parameters)). | |
+| Hasura | A role, or globally: "API limits can have a global or per role configuration" ([API limits](https://hasura.io/docs/2.0/security/api-limits/)) | Rate limits per minute | Depth, node, time and batch limits | |
+| AWS API Gateway | An API key, through a usage plan ([usage plans](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-api-usage-plans.html)) | A throttling limit and a quota limit per API key. AWS states these "are not hard limits, and are applied on a best-effort basis" ([usage plans](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-api-usage-plans.html)). | | |
+
+Hasura's API limits are available on Cloud Professional, Cloud Enterprise and Self-Hosted Enterprise ([API limits](https://hasura.io/docs/2.0/security/api-limits/)).
