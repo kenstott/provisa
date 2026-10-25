@@ -28,6 +28,8 @@
     "noTargets": "暂无目标。请添加此组织要发布到的目录。",
     "catalog": "目录",
     "catalogHelp": "在 管理 → 目录 中连接的目录。",
+    "role": "以角色发布",
+    "roleHelp": "目录只会收到此角色可读取的内容。",
     "betaProvider": "{{name}}（测试版）"
   }
 }

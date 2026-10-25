@@ -214,3 +214,73 @@ def test_there_is_no_reader_the_workbook_is_never_an_edit_path():
 @pytest.mark.parametrize("sheet", wb.OBJECT_SHEETS)
 def test_every_sheet_has_a_declared_header(sheet: str):
     assert sheet in wb.HEADERS
+
+
+async def test_the_workbook_shows_only_what_its_caller_reads(monkeypatch):
+    """REQ-2152: the right that opens the workbook does not widen it. Its tables and columns
+    are the caller's served ones, and its metrics those granted to the caller's role."""
+    import types
+
+    from provisa.api.admin import report_router
+    from provisa.api.admin.catalog_scope import CatalogScope
+    from provisa.api.metadata_export.model import (
+        AssetKind,
+        AssetRef,
+        ColumnAsset,
+        MetadataSnapshot,
+        TableAsset,
+    )
+    from provisa.core.models import Metric, ProvisaConfig
+
+    def _table(name: str, columns: list[str]) -> TableAsset:
+        return TableAsset(
+            ref=AssetRef(kind=AssetKind.TABLE, parts=("pg", "public", name)),
+            name=name,
+            source_id="pg",
+            domain_id="sales",
+            description="",
+            columns=[
+                ColumnAsset(
+                    ref=AssetRef(kind=AssetKind.COLUMN, parts=("pg", "public", name, c)),
+                    name=c,
+                    data_type="int",
+                    description="",
+                )
+                for c in columns
+            ],
+        )
+
+    snapshot = MetadataSnapshot(
+        org_id="acme", tables=[_table("orders", ["id", "secret"]), _table("payroll", ["salary"])]
+    )
+    config = ProvisaConfig(
+        sources=[],
+        domains=[],
+        tables=[],
+        roles=[],
+        metrics=[
+            Metric(name="open", expression="COUNT(*)", visible_to=["*"]),
+            Metric(name="hr_only", expression="COUNT(*)", visible_to=["hr"]),
+        ],
+    )
+    scope = CatalogScope(
+        whole=False,
+        reach=None,
+        served={1: {"id"}},
+        governance=False,
+        role="analyst",
+        compiled=frozenset({1, 2}),
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+
+    async def _reader(state, served_of):
+        ids = {"orders": 1, "payroll": 2}
+        return lambda table: served_of(ids[table.name])
+
+    monkeypatch.setattr("provisa.api.metadata_export.publishing.snapshot_reader", _reader)
+    monkeypatch.setattr("provisa.api.app.state.contexts", {"analyst": object()}, raising=False)
+    narrowed, narrowed_config = await report_router._as_served(
+        types.SimpleNamespace(state=types.SimpleNamespace()), snapshot, config
+    )
+    assert [(t.name, [c.name for c in t.columns]) for t in narrowed.tables] == [("orders", ["id"])]
+    assert [m.name for m in narrowed_config.metrics] == ["open"]

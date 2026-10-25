@@ -144,7 +144,8 @@ async def test_the_read_reports_each_target_by_its_catalog(surface):  # REQ-2122
     body = await get_metadata_export(_request())
 
     assert body["config"]["targets"] == [
-        {"catalog": "mz", "datazone_project_id": "", "delta_share": False}
+        # REQ-2152: the role it publishes as, none until the export names one.
+        {"catalog": "mz", "datazone_project_id": "", "delta_share": False, "role": None}
     ]
 
 
@@ -317,7 +318,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
     surface.stored.update(
         {
             "enabled": True,
-            "targets": [{"catalog": "mz"}],
+            "targets": [{"catalog": "mz", "role": "steward"}],
         }
     )
     result = PublishResult(
@@ -358,6 +359,11 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
     # The model now assembles from the registration tables (DB truth, #97); stub the
     # assembly the same way the builder is stubbed — this test is about the publish report.
     monkeypatch.setattr(sync_mod, "_model_for_export", _stub_model)
+
+    async def _reads_everything(state, role):
+        return lambda table: None  # what a role is sent is test_metadata_export_scope
+
+    monkeypatch.setattr(sync_mod, "role_reader", _reads_everything)
     body = await publish_metadata_export(_request())
 
     assert body["ok"] is False
@@ -382,3 +388,34 @@ async def test_publishing_a_disabled_target_is_refused_before_a_snapshot_is_buil
     with pytest.raises(ApiError) as exc:
         await publish_metadata_export(_request())
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_a_target_naming_no_role_is_sent_nothing_and_says_why(surface, monkeypatch):
+    """REQ-2152 (Q1): a catalog is published as a role; a target naming none is refused by name
+    and the other targets still publish."""
+    from provisa.api.admin.metadata_export_router import publish_metadata_export
+    from provisa.api.metadata_export.model import MetadataSnapshot
+
+    import provisa.api.metadata_export.publishing as sync_mod
+
+    surface.stored.update({"enabled": True, "targets": [{"catalog": "mz"}]})
+    monkeypatch.setattr(
+        sync_mod,
+        "build_snapshot",
+        lambda config, **kwargs: MetadataSnapshot(org_id=ORG_ID),
+    )
+
+    async def _stub_model():
+        return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+
+    monkeypatch.setattr(sync_mod, "_model_for_export", _stub_model)
+    monkeypatch.setattr(sync_mod, "metadata_export", lambda config: pytest.fail("published"))
+    body = await publish_metadata_export(_request())
+    (target,) = body["targets"]
+    assert target["errors"] == [
+        {
+            "asset": "mz",
+            "message": "catalog 'mz' names no role to publish as: set the role whose reads it is sent",
+        }
+    ]

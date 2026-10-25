@@ -28,6 +28,8 @@
     "noTargets": "Nessuna destinazione. Aggiungere i cataloghi in cui questa organizzazione pubblica.",
     "catalog": "Catalogo",
     "catalogHelp": "Un catalogo collegato in Amministrazione → Cataloghi.",
+    "role": "Pubblica come ruolo",
+    "roleHelp": "Il catalogo riceve solo ciò che questo ruolo può leggere.",
     "betaProvider": "{{name}} (beta)"
   }
 }

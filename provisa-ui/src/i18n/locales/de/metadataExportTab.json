@@ -28,6 +28,8 @@
     "noTargets": "Noch keine Ziele. Fügen Sie die Kataloge hinzu, in denen diese Organisation veröffentlicht.",
     "catalog": "Katalog",
     "catalogHelp": "Ein unter Admin → Kataloge verbundener Katalog.",
+    "role": "Als Rolle veröffentlichen",
+    "roleHelp": "Der Katalog erhält nur, was diese Rolle lesen darf.",
     "betaProvider": "{{name}} (Beta)"
   }
 }

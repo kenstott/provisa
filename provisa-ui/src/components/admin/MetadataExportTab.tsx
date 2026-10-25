@@ -37,6 +37,7 @@ import {
   type MetadataExportTarget,
   type PublishOutcome,
 } from "../../api/metadataExport";
+import { useRoles } from "../../hooks/useAdminQueries";
 import { exportProviderName } from "../../lib/exportProviders";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
@@ -53,10 +54,12 @@ const blankTarget = (): MetadataExportTarget => ({
   catalog: "",
   datazone_project_id: "",
   delta_share: false,
+  role: null,
 });
 
 export function MetadataExportTab() {
   const { t } = useTranslation();
+  const { roles } = useRoles();
   const [s, setS] = useState<MetadataExportState | null>(null);
   const [rows, setRows] = useState<MetadataExportTarget[]>([]);
   const [catalogs, setCatalogs] = useState<CatalogConnection[]>([]);
@@ -195,6 +198,17 @@ export function MetadataExportTab() {
               }))}
               value={target.catalog || null}
               onChange={(v) => patchRow(i, { catalog: v ?? "" })}
+            />
+          </FormField>
+          {/* REQ-2152: a catalog is sent exactly what the role it is published as reads. */}
+          <FormField help={t("metadataExportTab.roleHelp")} size="medium">
+            <Select
+              label={t("metadataExportTab.role")}
+              data-testid={tid("role")}
+              data={roles.map((r) => r.id)}
+              value={target.role}
+              onChange={(v) => patchRow(i, { role: v })}
+              required
             />
           </FormField>
           {provider === DATAZONE && (

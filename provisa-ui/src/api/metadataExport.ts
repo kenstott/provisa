@@ -21,6 +21,8 @@ export interface MetadataExportTarget {
   catalog: string;
   datazone_project_id: string;
   delta_share: boolean;
+  /** REQ-2152: the role the catalog is published as -- it is sent what that role reads. */
+  role: string | null;
 }
 
 export interface MetadataExportConfig {

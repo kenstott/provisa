@@ -205,8 +205,11 @@ metadata_export:
   reconcile_cron: "0 * * * *"
   targets:
     - catalog: marquez
+      role: catalog_reader
     - catalog: openmetadata-prod
+      role: catalog_reader
     - catalog: datazone
+      role: finance_reader
       datazone_project_id: prj_def456
 ```
 
@@ -232,6 +235,7 @@ Export settings:
 | `enabled` | Whether this org publishes at all. An enabled export with no target is refused when it is saved, not at the next publish. |
 | `targets` | The catalogs the org publishes to. A target left out of the list when the settings are saved is removed. |
 | `catalog` | The catalog a target publishes to, by its `id`. A target naming no catalog of the org is refused when it is saved. |
+| `role` | The role a target publishes as. The catalog is sent exactly what that role reads: the columns it is served, the tables holding one, the data products with such a table, and the relationships, lineage, tags and glossary links among them. A target naming no role is sent nothing, and its publish reports the missing role. |
 | `datazone_project_id` | The project that owns the data products published to a `datazone` catalog. The export to a `datazone` catalog without it is refused when it is saved. |
 | `delta_share` | Whether a `unity_catalog` catalog also gets each product as a Delta Share. |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |

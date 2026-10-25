@@ -28,6 +28,8 @@
     "noTargets": "No targets yet. Add the catalogs this organization publishes to.",
     "catalog": "Catalog",
     "catalogHelp": "A catalog connected in Admin → Catalogs.",
+    "role": "Publish as role",
+    "roleHelp": "The catalog is sent only what this role can read.",
     "betaProvider": "{{name}} (beta)"
   }
 }

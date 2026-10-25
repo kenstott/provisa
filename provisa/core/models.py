@@ -2653,6 +2653,8 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
     delta_share: whether a unity_catalog target also publishes each product as a Delta Share
         (REQ-2117).
     domains: the domains whose tables and data products this catalog is published (REQ-2122).
+    role: the role the catalog is published as: it is sent exactly what that role reads
+        (REQ-2152, ruling Q1). None until the export names one, and then nothing is published to it.
     """
 
     id: str
@@ -2676,6 +2678,7 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
     delta_share: bool = False
     timeout_seconds: int = 30
     domains: list[str] = Field(default_factory=list)
+    role: str | None = None
 
     @field_validator("id")
     @classmethod
@@ -2766,6 +2769,7 @@ class CatalogConnection(BaseModel):  # REQ-2122
             datazone_project_id=export.datazone_project_id,
             delta_share=export.delta_share,
             domains=list(self.domains),
+            role=export.role,
         )
 
 
@@ -2792,11 +2796,14 @@ class CatalogExport(BaseModel):  # REQ-2118, REQ-2122
     datazone_project_id: the DataZone project that owns the org's data products (REQ-2118).
     delta_share: whether a unity_catalog catalog also gets each product as a Delta Share
         (REQ-2117).
+    role: the role the catalog is published as -- it is sent exactly what that role reads
+        (REQ-2152, ruling Q1); a publish refuses an export that names none.
     """
 
     catalog: str
     datazone_project_id: str = ""
     delta_share: bool = False
+    role: str | None = None
 
 
 class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118, REQ-2122

@@ -7375,6 +7375,8 @@
   "es/catalogsTab.json::catalogsTab.domainsHelp": "The domains that work with this catalog. Their tables and data products publish to it, and their tables offer it.",
   "es/metadataExportTab.json::metadataExportTab.catalog": "Catalog",
   "es/metadataExportTab.json::metadataExportTab.catalogHelp": "A catalog connected in Admin → Catalogs.",
+  "es/metadataExportTab.json::metadataExportTab.role": "Publish as role",
+  "es/metadataExportTab.json::metadataExportTab.roleHelp": "The catalog is sent only what this role can read.",
   "es/navBar.json::navBar.itemCatalogs": "Catalogs",
   "es.json::pageError.body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one.",
   "es.json::pageError.title": "This page could not be shown",

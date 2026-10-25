@@ -28,6 +28,8 @@
     "noTargets": "Aún no hay destinos. Añada los catálogos en los que publica esta organización.",
     "catalog": "Catálogo",
     "catalogHelp": "Un catálogo conectado en Administración → Catálogos.",
+    "role": "Publicar como rol",
+    "roleHelp": "El catálogo recibe solo lo que este rol puede leer.",
     "betaProvider": "{{name}} (beta)"
   }
 }

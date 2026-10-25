@@ -28,6 +28,8 @@
     "noTargets": "Nog geen doelen. Voeg de catalogi toe waarnaar deze organisatie publiceert.",
     "catalog": "Catalogus",
     "catalogHelp": "Een catalogus die is verbonden in Beheer → Catalogi.",
+    "role": "Publiceren als rol",
+    "roleHelp": "De catalogus krijgt alleen wat deze rol mag lezen.",
     "betaProvider": "{{name}} (bèta)"
   }
 }

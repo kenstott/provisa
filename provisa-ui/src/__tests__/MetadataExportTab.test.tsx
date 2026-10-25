@@ -31,6 +31,11 @@ vi.mock("../api/metadataExport", () => ({
 
 vi.mock("../api/catalogs", () => ({ fetchCatalogs: vi.fn() }));
 
+// REQ-2152: the roles a target may be published as.
+vi.mock("../hooks/useAdminQueries", () => ({
+  useRoles: () => ({ roles: [{ id: "steward" }, { id: "analyst" }], loading: false }),
+}));
+
 import {
   fetchMetadataExport,
   setMetadataExport,
@@ -78,6 +83,7 @@ const MARQUEZ: MetadataExportTarget = {
   catalog: "marquez",
   datazone_project_id: "",
   delta_share: false,
+  role: "steward",
 };
 
 function state(
@@ -172,7 +178,7 @@ describe("MetadataExportTab", () => {
 
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     expect(mockSet.mock.calls[0][0].targets).toEqual([
-      { catalog: "", datazone_project_id: "", delta_share: false },
+      { catalog: "", datazone_project_id: "", delta_share: false, role: null },
     ]);
   });
 
@@ -193,7 +199,7 @@ describe("MetadataExportTab", () => {
 
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     expect(mockSet.mock.calls[0][0].targets).toEqual([
-      { catalog: "datazone", datazone_project_id: "prj_1", delta_share: false },
+      { catalog: "datazone", datazone_project_id: "prj_1", delta_share: false, role: "steward" },
     ]);
   });
 
@@ -304,5 +310,22 @@ describe("MetadataExportTab", () => {
       expect(screen.getByTestId("metadata-export-last-publish")).toBeInTheDocument(),
     );
     expect(screen.getByTestId("metadata-export-publish-marquez")).toHaveTextContent("4");
+  });
+
+  it("publishes each target as the role it names, and saves the role picked", async () => {
+    // REQ-2152 (ruling Q1): a catalog is sent exactly what its role reads.
+    mockFetch.mockResolvedValue(state());
+    mockSet.mockResolvedValue(SAVED);
+    render(<MetadataExportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("metadata-export-role-0")).toHaveValue("steward"),
+    );
+    fireEvent.click(screen.getByTestId("metadata-export-role-0"));
+    fireEvent.click(await screen.findByRole("option", { name: "analyst", hidden: true }));
+    fireEvent.click(screen.getByTestId("metadata-export-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    expect(mockSet.mock.calls[0][0].targets).toEqual([{ ...MARQUEZ, role: "analyst" }]);
   });
 });
