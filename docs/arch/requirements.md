@@ -21666,7 +21666,7 @@ Randomized workload benchmark with tuning knobs. One benchmark driver generates 
 
 **Code:** `demo/named/perf/bench/request_mix.py`, `demo/named/perf/bench/request_render.py`
 
-**Tests:** `tests/unit/perf_bench/test_mix.py`, `tests/unit/perf_bench/test_filters_knob.py`, `tests/unit/perf_bench/test_soak.py`
+**Tests:** `tests/unit/perf_bench/test_mix.py`, `tests/unit/perf_bench/test_filters_knob.py`, `tests/unit/perf_bench/test_soak.py`, `tests/unit/perf_bench/test_bench_features_checks.py`, `tests/integration/test_bench_features_e2e.py`
 
 ## 4. Source Connectors
 
