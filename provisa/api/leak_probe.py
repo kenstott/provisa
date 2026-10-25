@@ -22,8 +22,10 @@ sockets the test reads of the process from outside.
 from __future__ import annotations
 
 import asyncio
+import collections
 import gc
 import os
+import re
 import threading
 import tracemalloc
 from typing import Any
@@ -62,6 +64,16 @@ def _grew(last: list[tracemalloc.Snapshot], top: int) -> tuple[int, list[dict[st
     return held, grew
 
 
+def _thread_names() -> dict[str, int]:
+    """Live threads by name, a pool's worker number left off: which pool or server a rise in
+    ``threads`` is in."""
+    return dict(
+        collections.Counter(
+            re.sub(r"(_\d+|-\d+.*|:.*)$", "", t.name) for t in threading.enumerate()
+        )
+    )
+
+
 def mount(app: Any) -> None:
     """Mount ``/debug/leak-probe`` on ``app`` when :data:`ENV` is set; otherwise nothing."""
     if not enabled():
@@ -94,6 +106,7 @@ def mount(app: Any) -> None:
             "tasks": sum(len(asyncio.all_tasks(loop)) for loop in loops),
             "loops": len(loops),
             "threads": threading.active_count(),
+            "thread_names": _thread_names(),
             "org_maps": sizes(),
             "maps": held_sizes.sizes(),
             "pools": pools(),

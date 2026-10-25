@@ -93,3 +93,18 @@ def test_the_process_wide_maps_are_registered_at_their_modules_import():
         "provisa.federation.pgwire_replica._ENDPOINT_USERS",
         "provisa.nl.schema_matcher._CACHE",
     } <= set(held_sizes.sizes())
+
+
+def test_it_answers_live_threads_by_name_without_a_workers_number(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setenv(leak_probe.ENV, "1")
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="probe-test") as pool:
+        started = threading.Barrier(3)
+        for _ in range(2):
+            pool.submit(started.wait)
+        started.wait()
+        answer = TestClient(_app()).get("/debug/leak-probe").json()
+    assert answer["thread_names"]["probe-test"] == 2
+    assert sum(answer["thread_names"].values()) == answer["threads"]
