@@ -376,42 +376,9 @@ describe("the product's links (REQ-2126)", () => {
   });
 });
 
-describe("column lineage (REQ-2129)", () => {
-  it("joins each member column to the columns deriving it, named by their relation", () => {
-    const rows: ProductRow[] = [
-      {
-        id: "p1",
-        name: "P1",
-        domain_id: "sales",
-        member_tables: [
-          {
-            id: 1,
-            domain_id: "sales",
-            table_name: "a",
-            table_columns: [
-              {
-                column_name: "total",
-                column_key: "1:total",
-                upstream: [
-                  {
-                    source_column_key: "9:amount",
-                    source_relation: "finance.b",
-                    source_column: "amount",
-                    via: "sales.a",
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ];
-    const g = toGraphData(rows, null, null);
-    expect(g.nodes.find((n) => n.id === "c:9:amount")?.label).toBe("finance.b.amount");
-    expect(g.edges.find((e) => e.kind === "column_lineage")).toMatchObject({
-      a: "c:9:amount",
-      b: "c:1:total",
-      label: "sales.a",
-    });
+describe("column lineage (REQ-2129, REQ-2156)", () => {
+  it("is read from no meta view: a member column carries no upstream edge here", () => {
+    const g = toGraphData(ROWS, null, null);
+    expect(g.edges.some((e) => e.kind === "column_lineage")).toBe(false);
   });
 });

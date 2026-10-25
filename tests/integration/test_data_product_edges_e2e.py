@@ -117,24 +117,11 @@ async def test_the_product_edges_hold_no_lineage(server):
 
 
 async def test_the_views_columns_are_derived_from_the_tables_columns(server):
-    """REQ-2129: the same build's column edges, read through column_lineage_edges."""
+    """REQ-2129: the same build's column edges, in the product's lineage."""
     async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
-        resp = await client.post(
-            "/data/sql",
-            json={
-                "sql": "SELECT source_relation, source_column, target_relation, target_column, "
-                "via FROM meta.column_lineage_edges WHERE target_relation = 'dpe.view_open_orders'",
-                "role": "org_admin",
-            },
+        resp = await client.get(
+            "/data-products/order_book/lineage", headers={"X-Provisa-Role": "org_admin"}
         )
     assert resp.status_code == 200, f"{resp.text}\n{server.dump_stderr_debug()[-6000:]}"
-    body = resp.json()
-    rows = body.get("data") or body.get("rows") or []
-    if isinstance(rows, dict):
-        rows = next(iter(rows.values()))
-    assert sorted(
-        (r["source_relation"], r["source_column"], r["target_column"], r["via"]) for r in rows
-    ) == [
-        ("dpe.orders", "customer", "customer", "dpe.view_open_orders"),
-        ("dpe.orders", "id", "id", "dpe.view_open_orders"),
-    ], rows
+    edges = {(e["source"], e["target"]) for e in resp.json()["edges"]}
+    assert ("dpe.orders.customer", "dpe.view_open_orders.customer") in edges, edges

@@ -64,9 +64,6 @@ _META: dict[str, str] = {
     # REQ-1443
     "product_checks": "How each data product shows each data-quality check that touches it — "
     "a promise or expectation of its own, partner DQ from another owner, or an orphan",
-    # REQ-2129
-    "column_lineage_edges": "The model's column lineage — each column a view or command derives "
-    "from another registered column, naming the view or command",
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
@@ -187,22 +184,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
         "passed, fail otherwise; empty when it has never run",
         "latest_run_at": "For a checker table, when its latest scan ran",
-    },
-    # REQ-2129
-    "column_lineage_edges": {
-        "id": "Edge identifier",
-        "source_relation": "The relation the derivation reads (domain.table)",
-        "source_column": "The column it reads, by its SQL name",
-        "target_relation": "The relation the derivation produces (domain.table)",
-        "target_column": "The column it produces, by its SQL name",
-        "via": "The view (its relation) or the command (its name) that derives the target",
-        "via_kind": "view or command",
-        "source_table_id": "The registered table the source column belongs to",
-        "source_column_name": "The source column's stored name",
-        "target_table_id": "The registered table the target column belongs to",
-        "target_column_name": "The target column's stored name",
-        "source_column_key": "Synthesized column identity (table_id:column_name) of the source",
-        "target_column_key": "Synthesized column identity (table_id:column_name) of the target",
     },
     # REQ-2126
     "data_product_edges": {
