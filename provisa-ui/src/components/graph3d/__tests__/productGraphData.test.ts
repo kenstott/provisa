@@ -394,6 +394,7 @@ describe("the product's links (REQ-2126)", () => {
         nodes: [],
         edges: [],
         outputs: [],
+        dq: { expectations: [], promises: [], related: [], unattached: [] },
         members: [],
         inputs: [
           input({ relation: "pet_store.pets", domain_id: "pet-store", table_name: "pets" }),
@@ -468,6 +469,7 @@ describe("the product's links (REQ-2126)", () => {
           { source: "raw.d.name", target: "pet_store.pets.name", transform: "", ops: [] },
         ],
         outputs: ["pet_store.pets.name"],
+        dq: { expectations: [], promises: [], related: [], unattached: [] },
         members: ["pet_store.pets"],
         inputs: [
           {
