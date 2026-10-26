@@ -123,9 +123,13 @@ class BuildClaim:
             conn, self._conn = self._conn, None
             engine, self._engine = self._engine, None
             if conn is not None:
+                # Released on the session first: ending it frees them too, but only once the
+                # server has ended the backend, which closing does not wait for -- a pass started
+                # at once would find them still held.
+                conn.execute(text("SELECT pg_advisory_unlock_all()"))
                 conn.close()
             if engine is not None:
-                engine.dispose()  # ends the session: the server frees its advisory locks
+                engine.dispose()  # ends the session
 
 
 class BuildLocks:
