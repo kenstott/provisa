@@ -89188,10 +89188,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     its semantics (ordering, equality, comparison); where it states none, its base type''s apply. inet orders
     numerically and compares as an address (10.0.0.1 equals 10.0.0.1/32); money behaves as numeric; xml,
     macaddr and point as text. Every engine driver maps each subtype to an equivalent with those semantics
-    (Postgres inet, Trino ipaddress, ClickHouse IPv6), and an engine with no native equivalent delivers
-    the semantics on the base type itself (a sortable normalised form for ordering, normalised comparison
-    for equality), never plain base-type behaviour. The engine driver contract test kit (REQ-2169) checks
-    every subtype''s semantics on every engine, so moving between engines never changes an answer.'
+    (Postgres inet, Trino ipaddress, ClickHouse IPv6), and [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded
+    by KNOWN ANOMALY WHERE AN ENGINE LACKS THE TYPE. Kept here for history; do not implement against it.]
+    an engine with no native equivalent delivers the semantics on the base type itself [END SUPERSEDED BLOCK]
+    (a sortable normalised form for ordering, normalised comparison for equality), never plain base-type
+    behaviour. The engine driver contract test kit (REQ-2169) checks every subtype''s semantics on every
+    engine, so moving between engines never changes an answer. (Amended 2026-10-25, KNOWN ANOMALY WHERE
+    AN ENGINE LACKS THE TYPE:) Maintainer 2026-10-26: emulating a subtype''s semantics on an engine without
+    the type is more challenging than it is worth. Engines map every subtype to a native equivalent wherever
+    one exists (every effort); an engine with no equivalent treats the subtype as its base type, and that
+    difference is a known anomaly, listed per engine and subtype (e.g. ''inet orders as text on engine X'')
+    on the engine''s compatibility page, not emulated. The engine contract test kit checks native mappings
+    and asserts the listed anomalies, so an undocumented difference fails.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
