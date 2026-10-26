@@ -37,6 +37,7 @@ from sqlalchemy import select
 
 from provisa.api.admin.capabilities import require_capability_request, require_dq_read_request
 from provisa.api.admin.profiler_router import _db, _member
+from provisa.dq.contract import model_contexts
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 
@@ -90,7 +91,7 @@ async def list_constraints(request: Request, table_id: int) -> dict:
     async with _db().acquire() as conn:
         await _member(conn, table_id)
         decided = await constraints.decisions(conn, table_id)
-        checkers = await export.checkers_scanning(conn, state.contexts, {table_id})
+        checkers = await export.checkers_scanning(conn, model_contexts(state), {table_id})
     return {
         "decisions": [
             {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in d.items()}
@@ -172,7 +173,7 @@ async def export_constraint(
                 "profile.constraint_not_accepted",
                 f"Table {member['table_name']!r} has no accepted constraint {constraint_id}",
             )
-        found = await export.checkers_scanning(conn, state.contexts, {table_id})
+        found = await export.checkers_scanning(conn, model_contexts(state), {table_id})
         try:
             checker = export.pick(found, body.checkerTableId, f"table {member['table_name']!r}")
         except export.ExportRefused as exc:
@@ -220,7 +221,7 @@ async def check_candidates(request: Request, table_id: int) -> dict:
     async with _db().acquire() as conn:
         member = await _member(conn, table_id)
         drift_ids = await _registered_drift_ids(conn, member, table_id)
-        checkers = await export.checkers_scanning(conn, state.contexts, drift_ids)
+        checkers = await export.checkers_scanning(conn, model_contexts(state), drift_ids)
         rows = (await conn.execute_core(select(rt.c.id, rt.c.table_name))).fetchall()
     shaped = []
     for tid, name in rows:
@@ -247,7 +248,7 @@ async def _drift_checker(conn: Any, table_id: int, checker_table_id: int | None)
             "profile.export_refused",
             f"the drift table {name!r} is not registered: register it on the profiler first",
         )
-    found = await export.checkers_scanning(conn, state.contexts, drift_ids)
+    found = await export.checkers_scanning(conn, model_contexts(state), drift_ids)
     try:
         return export.pick(found, checker_table_id, f"the registered drift table {name!r}")
     except export.ExportRefused as exc:

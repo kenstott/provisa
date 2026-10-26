@@ -52,6 +52,14 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+
+def _member_surface(held: Any) -> Any:
+    """A member role's surface, built on first read (api/role_surface.LazySurface)."""
+    from provisa.api.role_surface import built_surface
+
+    return built_surface(held)
+
+
 META_PREFIX = "meta:"
 _LOCK = threading.Lock()
 
@@ -176,7 +184,7 @@ def _fold_write_grants(
                     member = by_id[g["role"]]
                     expr = g.get(stated)
                     if expr is None:
-                        ctx = state.surfaces[member["id"]].rls
+                        ctx = _member_surface(state.surfaces[member["id"]]).rls
                         expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(
                             t.get("domain_id") or ""
                         )
@@ -198,7 +206,7 @@ def _fold_write_grants(
                 member = by_id[g["role"]]
                 expr = g.get(stated)
                 if expr is None:
-                    ctx = state.surfaces[member["id"]].rls
+                    ctx = _member_surface(state.surfaces[member["id"]]).rls
                     expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(t.get("domain_id") or "")
                 if _every_row(expr):
                     return "TRUE"
@@ -257,14 +265,17 @@ def _member_reads(
         readers = [
             m
             for m in members
-            if any(tm.table_id == t["id"] for tm in state.surfaces[m["id"]].context.tables.values())
+            if any(
+                tm.table_id == t["id"]
+                for tm in _member_surface(state.surfaces[m["id"]]).context.tables.values()
+            )
         ]
         if not readers:
             continue
         domain = t.get("domain_id")
         flags: list[str] = []
         for m in readers:
-            ctx = state.surfaces[m["id"]].rls
+            ctx = _member_surface(state.surfaces[m["id"]]).rls
             expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(domain or "")
             flags.append("TRUE" if expr is None else _inlined(expr, m.get("session_vars") or {}))
         columns: dict[str, tuple[tuple[int, Any, str], ...]] = {}
@@ -309,7 +320,9 @@ def _rls(
         terms: list[str] = []
         lifted = False
         for m in members:
-            member = state.surfaces[m["id"]]  # one snapshot: context and filters of one build
+            member = _member_surface(
+                state.surfaces[m["id"]]
+            )  # one snapshot: context and filters of one build
             reads = any(tm.table_id == t["id"] for tm in member.context.tables.values())
             if not reads:
                 continue

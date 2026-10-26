@@ -37,7 +37,7 @@ async def apply_dq_registration(conn: "Connection", model) -> None:
     failed ``MutationResult`` rather than a 500.
     """
     from provisa.api.app import state
-    from provisa.dq.contract import CHECKERS
+    from provisa.dq.contract import CHECKERS, model_contexts
     from provisa.dq.registration import (
         check_contract_target,
         derive_checker_table,
@@ -55,7 +55,7 @@ async def apply_dq_registration(conn: "Connection", model) -> None:
             )
         return
     dataset = derive_checker_table(model, source_type)
-    check_contract_target(model, dataset, state.contexts)
+    check_contract_target(model, dataset, model_contexts(state))
     from provisa.dq.scan import ensure_relation
 
     # Its scans append here (provisa.dq.scan); it reads as an empty history until the first.
