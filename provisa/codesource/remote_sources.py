@@ -40,7 +40,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from provisa.codesource.bundle import BundleRefused
-from provisa.codesource.remote import Identity, RemoteWorker, host_certificate, new_identity, pair
+from provisa.codesource.remote import Identity, RemoteWorker, new_identity, pair
 from provisa.core.org_forget import on_forget
 
 DEV = "dev"
@@ -206,8 +206,6 @@ async def connect(state: Any, source_id: str, host: str, port: int, code: str) -
             "host": host,
             "port": int(port),
             "pin": pin,
-            # REQ-2100: what an engine attaching the host verifies it by.
-            "certificate": await asyncio.to_thread(host_certificate, host, int(port), pin, me),
             "exports": exports,
             "manifest": manifest_json(prepared.manifest),
         },
@@ -319,13 +317,6 @@ async def repin(state: Any, source_id: str, code_hash: str) -> dict:
         remote["exports"],
     )
     mapping["content_hash"] = code_hash
-    # REQ-2100: the host's certificate, again, for the engines that attach it.
-    mapping["remote"] = {
-        **remote,
-        "certificate": await asyncio.to_thread(
-            host_certificate, remote["host"], int(remote["port"]), remote["pin"], me
-        ),
-    }
     await _save_mapping(source_id, mapping)
     return mapping
 
