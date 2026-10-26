@@ -50,8 +50,10 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>One model</span></p>
         <h1>One model.</h1>
         <p class="lead">
-          Sources, metrics, ontology and governance from one model. Nothing to keep
-          in sync.
+          Four tools, each holding its own description of the same data. When one
+          changes, the others are wrong until someone catches it. The query engine,
+          the metrics layer, the catalog, the policy service — each drifts on its
+          own schedule. One model means one description, and nothing drifts.
         </p>
       </div>
 
@@ -67,10 +69,15 @@
 
         <h2 id="federation">Cross-source queries</h2>
         <p>
-          73 connectors reaching 85+ kinds of source, including Salesforce, ServiceNow, Jira and Stripe, are reached in place.
-          The SaaS systems the business runs on are tables beside the databases, with no
-          pipeline into a warehouse first. You register the tables you want; nothing a
-          source offers is registered for you.
+          The systems the business actually runs on — Salesforce, ServiceNow, Jira,
+          Stripe — never appear in the query engine. Getting to them means a pipeline
+          into a warehouse first, which means lag, another copy to secure, and another
+          thing to break.
+        </p>
+        <p>
+          73 connectors reaching 85+ kinds of source are reached in place, with no
+          pipeline. You register the tables you want; nothing a source offers is
+          registered for you.
         </p>
         <p>
           Query in SQL, GraphQL or Cypher over nine protocols: pgwire, Bolt, Arrow Flight,
@@ -81,6 +88,11 @@
 
         <h2 id="metrics">Metrics</h2>
         <p>
+          Every tool has its own metric definition, and they don't agree. The BI tool
+          computes "active customer" one way; the app uses another; the dashboard has a
+          third. Reconciling them is a recurring project that never fully closes.
+        </p>
+        <p>
           A metric is a named, governed aggregate: a name, an expression, a data type, a
           description. It is defined once and every tool and language that asks gets the
           same definition. A metric carries the same role visibility and stewardship as a
@@ -90,7 +102,12 @@
 
         <h2 id="ontology">Ontology</h2>
         <p>
-          The business glossary is a graph. Terms are derived from the field names in the
+          A glossary disconnected from the data it names is documentation. It tells you
+          what "customer" should mean; it can't tell you which column is the customer ID,
+          or how "customer" in the sales domain relates to "account" in the support domain.
+        </p>
+        <p>
+          The business glossary here is a graph. Terms are derived from the field names in the
           model, linked to the physical columns they name, and connected by the relationships
           between those tables. You can also add any concept of your own, give it a
           definition, and link it into the glossary. That is an ontology: a graph of

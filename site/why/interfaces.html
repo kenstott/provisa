@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Query interfaces &amp; wire protocols — Provisa</title>
-  <meta name="description" content="Three query languages and nine wire protocols over one model: GraphQL, SQL, Cypher over pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, and MCP." />
+  <meta name="description" content="SQL, GraphQL, Cypher and more, over nine wire protocols, all compiling to one governed IR. Add a language or protocol without adding a governance gap: the same rules reach every combination." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -48,21 +48,32 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Interfaces</span></p>
-        <h1>Three languages. Nine protocols. One model.</h1>
+        <h1>Each language and protocol you add is a new hole to close.</h1>
         <p class="lead">
-          The query language and the wire protocol are independent choices. Every entry
-          point resolves against the same model and passes through the same governance. No path in skips it.
+          Each language-transport stack needs its own governance integration and its own
+          programmers. Data leaks and exfiltration paths appear at every new surface; the
+          attack surface grows with each protocol you add. A change to the access model now
+          touches every interface point — which becomes its own lock-in. Business logic
+          fragments across stacks, and every system is trusted less because nobody can prove
+          what goes in and out where.
         </p>
         <p class="lead">
-          One model does not mean one namespace. You divide sources into
-          <strong>domains</strong>, and a domain is what a SQL client sees as a schema, so
-          <code>sales.orders</code> and <code>finance.orders</code> stay distinct
-          while resolving through the same governed model.
+          Every language and wire protocol here compiles to one IR. Governance is applied
+          once at that IR and pushed down to the engine. A change happens once. No path in
+          skips it. One model does not mean one namespace: you divide sources into
+          <strong>domains</strong>, so <code>sales.orders</code> and
+          <code>finance.orders</code> stay distinct while resolving through the same
+          governed model.
         </p>
       </div>
 
       <div class="doc-body">
         <h2>Query languages</h2>
+        <p>
+          Your analyst opens psql. Your app sends GraphQL. Your data scientist runs
+          Arrow Flight. None of these should mean a separate governance integration.
+          All of them compile to the same governed plan.
+        </p>
 
         <h3>GraphQL</h3>
         <p>
@@ -85,6 +96,11 @@
         </p>
 
         <h2>Wire protocols</h2>
+        <p>
+          Adding a wire protocol normally means adding a new access path to govern.
+          Here each protocol is another surface for the same compiled plan, not a new
+          integration to secure.
+        </p>
 
         <h3>pgwire — port 5439</h3>
         <p>

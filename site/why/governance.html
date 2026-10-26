@@ -50,9 +50,12 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Governance</span></p>
         <h1>Governance, in its complete sense.</h1>
         <p class="lead">
-          Access control is one part of governance. The whole of it answers five questions
-          about every piece of processing, and Provisa declares each answer once, in the
-          model, and applies it to every query.
+          When access control is configured per API, each new interface is another
+          integration to get right and another thing for an auditor to check. Adding a
+          column means finding every place access is enforced and updating each one. Access
+          control here is compiled into every query plan, on every language and every
+          transport. That is one part of governance; where, when, how and what the data
+          means are declared in the same model and applied the same way.
         </p>
       </div>
 
@@ -75,9 +78,11 @@
 
         <h2>Access control: six layers, compiled into the plan</h2>
         <p>
-          Access control is applied at query time, uniformly, on every language and every
-          transport. Add a source, a column or a relationship and every layer applies to it; there
-          is nothing to re-apply per API.
+          The usual failure mode: access control configured separately per API, so adding
+          a new protocol leaves a gap until someone finds it. Every layer here is applied
+          at query compile time, uniformly, on every language and every transport. Add a
+          source, a column or a relationship and every layer applies to it; there is nothing
+          to re-apply per interface.
         </p>
 
         <h3>0 — Introspection filtering</h3>

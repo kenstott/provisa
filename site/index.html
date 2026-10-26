@@ -267,19 +267,18 @@
     <section class="whatis">
       <div class="container">
         <p>
-          You describe your data once: sources, tables, relationships, who may see what.
-          Everything else is generated from that one description: the APIs, the legal join
-          paths, the governance, and the audit trail. <em>There is no second place to keep
-          in sync.</em>
+          Those are usually four tools, each holding its own description of the same data:
+          a query engine, a metrics layer, a catalog, a policy service. When one changes,
+          the others are wrong until someone catches it. <em>The descriptions drift, and
+          there is no mechanism to keep them in step.</em>
         </p>
         <p class="whatis-name">One model: sources, metrics, ontology and governance.</p>
         <p class="whatis-def">
-          Those are usually four tools, each holding its own description of the same data.
-          Keep the ones you have, and Provisa keeps them in sync from one model: it publishes
-          to your catalog and lineage tools, and imports from your semantic layer. Or use
-          Provisa on its own; the extra tools are optional. Either way there is nothing to
-          drift. Data catalogs that provide a context layer tell an agent what it should do;
-          Provisa enforces what it can do.
+          You describe your data once: sources, tables, relationships, who may see what.
+          Everything else is generated from that one description — the APIs, the legal join
+          paths, the governance, and the audit trail. Keep the catalog and lineage tools
+          you have; Provisa publishes to them. Data catalogs that provide a context layer
+          tell an agent what it should do; Provisa enforces what it can do.
         </p>
         <a class="more" href="/why/one-model">One model — what each part covers</a>
         <a class="more" href="/why/no-lock-in#promote-config">Every change is versioned, and promoted through environments</a>
@@ -289,12 +288,12 @@
     <!-- Value pillars -->
     <section class="pillars container" aria-label="Why Provisa">
       <article class="pillar">
-        <h3>Three languages, one model</h3>
+        <h3>Any language, one governed IR</h3>
         <p>
           GraphQL, Cypher, and SQL all query the same model and retarget to
           any source dialect. Domains carve it into namespaces (a domain is the schema a SQL client sees),
-          and governance applies identically across all three languages: <em>one
-          integration, not three</em>.
+          and governance applies identically across all of them. Add a protocol and the
+          governance follows automatically.
         </p>
       </article>
       <article class="pillar">
@@ -319,14 +318,15 @@
       <div class="container">
         <header class="section-head">
           <p class="eyebrow">Query interfaces &amp; wire protocols</p>
-          <h2>Write in three languages. Connect your way.</h2>
+          <h2>Each language and protocol you add is a new hole to close.</h2>
           <p class="section-sub">
-            Transport, language, and interface contract are three independent choices,
-            not one bundled "protocol." The transport moves the bytes: HTTP, gRPC, a native driver. The language is
-            what you write: SQL, GraphQL, Cypher. The interface contract is what your
-            tooling expects: JDBC, JSON:API, a typed gRPC schema. Your tooling and
-            performance needs decide the combination, and the same governance reaches
-            every one.
+            Each language-transport stack needs its own governance integration and its own
+            programmers. Data leaks and exfiltration paths appear at every new surface.
+            A change to the access model now touches every interface point, which becomes
+            its own lock-in: you can't change one thing without changing several. Every
+            language and wire protocol here compiles to one IR. Governance is applied once
+            at that IR — a change happens once, and the same rules reach every combination
+            of language, transport, and tool.
           </p>
         </header>
 
@@ -405,12 +405,13 @@
           <p class="eyebrow">Access control, compiled in</p>
           <h2>Six access layers. Every language. Every transport.</h2>
           <p class="section-sub">
-            You do not configure any of this to get started; one source and a role are
-            enough. It matters later, when the project you started alone has to survive
-            an auditor: access control is applied uniformly, there is no query path that
-            bypasses it, and adding a source, column, or relationship applies every layer
-            automatically. It's one part of governance; where, when and how work runs, and
-            what the data means, are declared in the same model.
+            When access control is configured per API, every new interface is another
+            integration to get right, and proving to an auditor that no path was missed means
+            checking each one separately. Here access control is compiled into the query plan
+            on every language and every transport. Add a source, a column, or a relationship
+            and every layer applies to it automatically — there is nothing to re-apply per
+            interface. It's one part of governance; where, when and how work runs, and what
+            the data means, are declared in the same model.
           </p>
         </header>
 
@@ -541,7 +542,13 @@
       <div class="container">
         <header class="section-head">
           <p class="eyebrow">Derived data &amp; your existing stack</p>
-          <h2>Declare the analytics layer. Publish it.</h2>
+          <h2>Pipelines are code. Code breaks. Declare the dataset instead.</h2>
+          <p class="section-sub">
+            A pipeline is a program that ran; to audit one you read code. When the source
+            changes, the pipeline is wrong until someone finds it and fixes it. The only
+            durable record of what happened is the output table and a log line.
+            Declare the dataset instead and the definition is the record.
+          </p>
         </header>
 
         <div class="grid grid-3">
@@ -590,12 +597,12 @@
       <div class="container dist-inner">
         <div class="dist-copy">
           <p class="eyebrow">Enterprise-ready</p>
-          <h2>Airgap-ready. Install from PyPI.</h2>
+          <h2>Regulated orgs can't add a new Docker registry for every evaluation.</h2>
           <p class="section-sub">
-            The embedded profile ships the entire runnable system, precompiled UI
-            included, as a single Python wheel. Regulated and airgapped orgs already trust
-            Artifactory-as-PyPI, so there's no new supply chain to approve: no Docker
-            registry to mirror, no JVM, no root.
+            No Docker registry to mirror, no JVM, no root. The embedded profile ships the
+            entire runnable system, precompiled UI included, as a single Python wheel.
+            Regulated and airgapped orgs already trust Artifactory-as-PyPI, so there is no
+            new supply chain to approve.
           </p>
           <ul class="ticks">
             <li>Embedded PostgreSQL control plane + embedded DuckDB engine — no Docker, no daemon</li>

@@ -50,13 +50,23 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Fits your stack</span></p>
         <h1>It feeds the catalog you already bought.</h1>
         <p class="lead">
-          The model that governs your queries publishes to the catalog tools your
-          organization already runs, and gives every governed value an address.
+          Catalog metadata goes stale the moment it falls out of sync with the systems it
+          describes. Someone renames a column; the catalog still says it means something
+          else. Nobody notices until an agent or a report uses it wrong. The model that
+          governs queries here is already correct — it has to be, or nothing runs.
+          Publishing from it means the catalog stays in step without anyone maintaining it
+          separately.
         </p>
       </div>
 
       <div class="doc-body">
         <h2>Publishes to your catalog</h2>
+        <p>
+          Catalog assets maintained by hand drift from the systems they describe. A table
+          moves; the lineage breaks. A column is renamed; the classification no longer
+          applies. Keeping multiple catalog destinations in sync is a recurring job nobody
+          hired for.
+        </p>
         <p>
           One registration, eight destinations: <strong>OpenMetadata</strong>,
           <strong>DataHub</strong>, <strong>Collibra</strong>, <strong>Atlan</strong>,
