@@ -88916,12 +88916,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     run in CI against a test instance, scheduled after green. Suites: SPARQL 1.1 (W3C test suite: query,
     update, result formats) and RDF 1.1 syntax (Turtle, N-Triples) from w3c/rdf-tests; Cypher (openCypher
     TCK); Bolt (the Neo4j driver test kit); GraphQL over HTTP (the graphql-http compliance audit); pgwire
-    (the Postgres conformance suite plus the psycopg and JDBC drivers'' own test suites); Arrow Flight
-    SQL (Apache Arrow''s Flight SQL integration scenarios); and the equivalent public suite for every
-    other served surface (REST/OpenAPI, JSON:API, gRPC, MCP) where one exists. Each run reports a pass
-    rate per surface. Every failing case is either fixed or listed as a deliberate difference with its
-    reason (for example, transaction statements are a no-op by design); none is skipped silently. The
-    deliberate differences are published as a compatibility page per surface.'
+    (the Postgres conformance suite plus the psycopg and JDBC drivers'' own test suites); Arrow Flight SQL
+    (Apache Arrow''s Flight SQL integration scenarios); and the equivalent public suite for every other
+    served surface (REST/OpenAPI, JSON:API, gRPC, MCP) where one exists. Each run reports a pass rate per
+    surface. Every failing case is either fixed or listed as a deliberate difference with its reason (for
+    example, transaction statements are a no-op by design); none is skipped silently. The deliberate differences
+    are published as a compatibility page per surface. (Amended 2026-10-25, RESULTS IN THE DOCS:) Maintainer
+    2026-10-26: the results are published in the docs under a Conformance section, one page per surface,
+    each giving the suite and its version, the pass rate, and every deliberate difference with its reason.
+    The pages are generated from the CI run''s results, never typed by hand, so they cannot drift from what
+    the suite last reported.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
