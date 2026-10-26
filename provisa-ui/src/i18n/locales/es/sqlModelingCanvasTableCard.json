@@ -1,6 +1,0 @@
-{
-  "sqlModelingCanvasTableCard": {
-    "removeTable": "Quitar {{tableName}} del lienzo",
-    "connectColumn": "Iniciar relación desde {{columnName}}"
-  }
-}

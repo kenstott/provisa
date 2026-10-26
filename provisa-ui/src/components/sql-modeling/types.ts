@@ -59,14 +59,6 @@ export interface JoinCanvasProps {
   existingRels: Relationship[];
   onGenerateSql: (sql: string) => void;
 }
-export interface CanvasTableCardProps {
-  ct: CanvasTable;
-  tbl: RegisteredTable;
-  onMove: (x: number, y: number) => void;
-  onRemove: () => void;
-  onStartConnect: (colName: string) => void;
-}
-
 export interface ColumnProfile {
   col: string;
   nullCount: number;
@@ -78,10 +70,6 @@ export interface ColumnProfile {
   mean: number | null;
   topValues: { value: string; count: number }[];
 }
-
-export const CARD_W = 200;
-export const CARD_HEADER_H = 34;
-export const COL_ROW_H = 27;
 
 export const HISTORY_KEY = "sql_modeling_history";
 export const HISTORY_MAX = 50;

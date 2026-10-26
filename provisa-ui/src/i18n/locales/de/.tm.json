@@ -5347,8 +5347,6 @@
   "de/sqlEditorPanel.json::sqlEditorPanel.saveViewTitle": "Save current SQL as the definition for view \"{{tableName}}\"",
   "de/sqlEditorPanel.json::sqlEditorPanel.saving": "Saving…",
   "de/sqlEditorPanel.json::sqlEditorPanel.updateView": "Update \"{{tableName}}\"",
-  "de/sqlModelingCanvasTableCard.json::sqlModelingCanvasTableCard.connectColumn": "Start relationship from {{columnName}}",
-  "de/sqlModelingCanvasTableCard.json::sqlModelingCanvasTableCard.removeTable": "Remove {{tableName}} from canvas",
   "de/sqlModelingHistoryPanel.json::sqlModelingHistoryPanel.colActions": "Actions",
   "de/sqlModelingHistoryPanel.json::sqlModelingHistoryPanel.colDuration": "Duration",
   "de/sqlModelingHistoryPanel.json::sqlModelingHistoryPanel.colRole": "Role",
@@ -8130,5 +8128,8 @@
   "de/serverErrors.json::serverErrors.profile.classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
   "de/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads",
   "de/securityPage.json::securityPage.standardRole": "Standard role",
-  "de/securityPage.json::securityPage.standardRoleNote": "Provisa's own, kept up to date by Provisa. Extend it with a role of your own that inherits from it."
+  "de/securityPage.json::securityPage.standardRoleNote": "Provisa's own, kept up to date by Provisa. Extend it with a role of your own that inherits from it.",
+  "de/sqlCanvasTableCard.json::sqlCanvasTableCard.allColumns": "All columns ({{selected}} of {{total}})",
+  "de/sqlCanvasTableCard.json::sqlCanvasTableCard.unjoined": "{{tables}} isn't joined to the other tables",
+  "de/sqlCanvasTableCard.json::sqlCanvasTableCard.joinsUnavailable": "The joins this role may write could not be read: {{reason}}"
 }

@@ -12,13 +12,17 @@ import React, { useState, useCallback, useMemo, useRef } from "react";
 import { Network } from "lucide-react";
 import type { RegisteredTable } from "../../types/admin";
 import type { CanvasTable, CanvasJoin, JoinCanvasProps } from "./types";
-import { CARD_W, CARD_HEADER_H, COL_ROW_H } from "./types";
-import { CanvasTableCard } from "./CanvasTableCard";
-import { tableSqlRef } from "../../naming";
+import { useTranslation } from "react-i18next";
+import { CanvasTableCard } from "../canvas/CanvasTableCard";
+import { CARD_W, CARD_HEADER_H, COL_ROW_H, columnsTop } from "../canvas/geometry";
+import { buildJoinSql } from "../canvas/joinGraph";
 
 export function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
   const [canvasTables, setCanvasTables] = useState<CanvasTable[]>([]);
   const [canvasJoins, setCanvasJoins] = useState<CanvasJoin[]>([]);
+  // The tables no join reaches, named when → SQL was asked for (buildJoinSql).
+  const [unjoined, setUnjoined] = useState<string[]>([]);
+  const { t } = useTranslation();
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null);
   const [connecting, setConnecting] = useState<{
     tableName: string;
@@ -117,36 +121,26 @@ export function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
 
   const handleGenerateSql = () => {
     if (canvasTables.length === 0) return;
-    const aliasOf = (name: string) => name.replace(/\W/g, "_").toLowerCase();
-    const tbl0 = canvasTables[0];
-    const tblObj0 = tableMap[tbl0.tableName];
-    let s = `SELECT *\nFROM ${tableSqlRef(tblObj0)} ${aliasOf(tbl0.tableName)}`;
-    const inQuery = new Set([tbl0.tableName]);
-    for (const join of canvasJoins) {
-      const fromInQuery = inQuery.has(join.fromTable);
-      const toInQuery = inQuery.has(join.toTable);
-      // Determine which side is new to the query
-      let newTable: string, newCol: string, existingTable: string, existingCol: string;
-      if (!toInQuery) {
-        newTable = join.toTable;
-        newCol = join.toCol;
-        existingTable = join.fromTable;
-        existingCol = join.fromCol;
-      } else if (!fromInQuery) {
-        newTable = join.fromTable;
-        newCol = join.fromCol;
-        existingTable = join.toTable;
-        existingCol = join.toCol;
-      } else {
-        // Both already in query — still emit the join condition without re-declaring
-        s += `\n  AND ${aliasOf(join.fromTable)}."${join.fromCol}" = ${aliasOf(join.toTable)}."${join.toCol}"`;
-        continue;
-      }
-      const newTbl = tableMap[newTable];
-      s += `\nJOIN ${tableSqlRef(newTbl)} ${aliasOf(newTable)} ON ${aliasOf(existingTable)}."${existingCol}" = ${aliasOf(newTable)}."${newCol}"`;
-      inQuery.add(newTable);
+    // The first table, then every table the joins reach from it, each joined on the join that
+    // reached it (components/canvas/joinGraph.buildJoinSql); a table none reaches is named.
+    const built = buildJoinSql(
+      canvasTables.map((ct) => tableMap[ct.tableName]),
+      canvasJoins,
+      new Map(
+        canvasTables.map((ct) => [
+          ct.tableName,
+          new Set(
+            tableMap[ct.tableName].columns.filter((c) => c.isPrimaryKey).map((c) => c.columnName),
+          ),
+        ]),
+      ),
+    );
+    if ("unjoined" in built) {
+      setUnjoined(built.unjoined);
+      return;
     }
-    onGenerateSql(s);
+    setUnjoined([]);
+    onGenerateSql(built.sql);
   };
 
   const handleClear = () => {
@@ -159,11 +153,11 @@ export function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
   // Port position helpers
   const fromPort = (ct: CanvasTable, colIdx: number) => ({
     x: ct.x + CARD_W,
-    y: ct.y + CARD_HEADER_H + colIdx * COL_ROW_H + COL_ROW_H / 2,
+    y: ct.y + columnsTop(false) + colIdx * COL_ROW_H + COL_ROW_H / 2,
   });
   const toPort = (ct: CanvasTable, colIdx: number) => ({
     x: ct.x,
-    y: ct.y + CARD_HEADER_H + colIdx * COL_ROW_H + COL_ROW_H / 2,
+    y: ct.y + columnsTop(false) + colIdx * COL_ROW_H + COL_ROW_H / 2,
   });
 
   const bezierPath = (from: { x: number; y: number }, to: { x: number; y: number }) => {
@@ -229,6 +223,15 @@ export function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
             ? `${canvasTables.length} table${canvasTables.length !== 1 ? "s" : ""}, ${canvasJoins.length} join${canvasJoins.length !== 1 ? "s" : ""}`
             : ""}
         </span>
+        {unjoined.length > 0 && (
+          <span
+            role="alert"
+            data-testid="join-canvas-unjoined"
+            style={{ fontSize: "0.72rem", color: "var(--danger, #c0392b)" }}
+          >
+            {t("sqlCanvasTableCard.unjoined", { tables: unjoined.join(", ") })}
+          </span>
+        )}
       </div>
 
       {/* Canvas area */}

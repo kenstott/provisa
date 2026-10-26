@@ -490,6 +490,30 @@ async def sql_statements_endpoint(request: SplitRequest) -> dict:
     return {"statements": split_sql_statements(request.sql)}
 
 
+@router.get("/sql/approved-joins")
+async def sql_approved_joins_endpoint(
+    raw_request: Request, x_provisa_role: str | None = Header(None)
+) -> dict:
+    """The joins the SQL page's canvas draws for the acting role: exactly the joins its statements
+    may write (sql_validator.canvas_joins), each by its tables' ids and columns."""
+    from provisa.api.acting_role import acting_role
+    from provisa.api.app import state
+    from provisa.compiler.sql_validator import canvas_joins
+
+    role_id = acting_role(raw_request, x_provisa_role, None, "org_admin")
+    ctx = state.contexts.get(role_id)
+    if ctx is None:
+        raise ApiError(
+            400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+        )
+    return {
+        "joins": [
+            {"fromTableId": a, "fromColumn": ac, "toTableId": b, "toColumn": bc}
+            for a, ac, b, bc in canvas_joins(ctx)
+        ]
+    }
+
+
 class ExplainRequest(BaseModel):
     sql: str
     role: str = "org_admin"

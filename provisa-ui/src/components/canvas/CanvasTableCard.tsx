@@ -1,5 +1,4 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 2c8a1562-f1fe-4dfb-8e9f-052854a5a6f0
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -8,12 +7,75 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+// A table on a join canvas: the SQL Explorer's (pages/sql/JoinCanvas) and the SQL modeling
+// modal's (components/sql-modeling/JoinCanvas). Its columns can be selected where the canvas
+// selects them, with one row above them that checks or unchecks them all.
+
 import React, { useRef } from "react";
-import { X, Check } from "lucide-react";
+import { X, Check, Minus } from "lucide-react";
 import { ActionIcon, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { CARD_W, CARD_HEADER_H, COL_ROW_H } from "./types";
-import type { CanvasTableCardProps } from "./types";
+import { CARD_HEADER_H, CARD_W, COL_ROW_H, columnsTop } from "./geometry";
+
+export interface ColumnSelection {
+  selected: Set<string>;
+  onToggle: (colName: string) => void;
+  /** Every column selected (``cols`` all of them) or none (``cols`` empty). */
+  onSetAll: (cols: string[]) => void;
+}
+
+export interface CanvasTableCardProps {
+  ct: { tableName: string; x: number; y: number };
+  tbl: { columns: { columnName: string; dataType?: string | null }[] };
+  onMove: (x: number, y: number) => void;
+  onRemove: () => void;
+  onStartConnect: (colName: string) => void;
+  /** Absent where the canvas selects no columns. */
+  selection?: ColumnSelection;
+}
+
+function Box({ state }: { state: "on" | "off" | "some" }) {
+  const filled = state !== "off";
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 13,
+        height: 13,
+        borderRadius: 2,
+        border: `1px solid ${filled ? "var(--primary)" : "var(--border)"}`,
+        background: filled ? "var(--primary)" : "transparent",
+        color: "#fff",
+        flexShrink: 0,
+        marginInlineEnd: 5,
+      }}
+    >
+      {state === "on" && <Check size={9} strokeWidth={3} />}
+      {state === "some" && <Minus size={9} strokeWidth={3} />}
+    </span>
+  );
+}
+
+const rowStyle: React.CSSProperties = {
+  height: COL_ROW_H,
+  display: "flex",
+  alignItems: "center",
+  borderTop: "1px solid var(--border)",
+  position: "relative",
+  fontSize: "0.72rem",
+  fontFamily: "monospace",
+  padding: "0 14px",
+  color: "var(--text)",
+};
+
+function activate(e: React.KeyboardEvent, act: () => void) {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    act();
+  }
+}
 
 export function CanvasTableCard({
   ct,
@@ -21,8 +83,7 @@ export function CanvasTableCard({
   onMove,
   onRemove,
   onStartConnect,
-  selectedCols,
-  onToggleCol,
+  selection,
 }: CanvasTableCardProps) {
   const { t } = useTranslation();
   const dragRef = useRef<{
@@ -56,7 +117,11 @@ export function CanvasTableCard({
     document.addEventListener("mouseup", onUp);
   };
 
-  const cardH = CARD_HEADER_H + tbl.columns.length * COL_ROW_H;
+  const names = tbl.columns.map((c) => c.columnName);
+  const chosen = selection ? names.filter((n) => selection.selected.has(n)).length : 0;
+  const all: "on" | "off" | "some" = chosen === 0 ? "off" : chosen === names.length ? "on" : "some";
+  const toggleAll = () => selection?.onSetAll(all === "on" ? [] : names);
+  const cardH = columnsTop(selection !== undefined) + tbl.columns.length * COL_ROW_H;
 
   return (
     <div
@@ -114,38 +179,53 @@ export function CanvasTableCard({
         </ActionIcon>
       </div>
 
+      {/* All columns */}
+      {selection && (
+        <div
+          data-col=""
+          role="checkbox"
+          aria-checked={all === "some" ? "mixed" : all === "on"}
+          tabIndex={0}
+          data-testid="canvas-table-card-all"
+          onClick={toggleAll}
+          onKeyDown={(e) => activate(e, toggleAll)}
+          style={{ ...rowStyle, cursor: "pointer", background: "var(--surface-alt, transparent)" }}
+        >
+          <Box state={all} />
+          <Text
+            span
+            c="var(--text-muted)"
+            fz="0.72rem"
+            style={{ flex: 1, fontFamily: "var(--mantine-font-family)" }}
+          >
+            {t("sqlCanvasTableCard.allColumns", { selected: chosen, total: names.length })}
+          </Text>
+        </div>
+      )}
+
       {/* Columns */}
       {tbl.columns.map((col) => {
-        const selected = selectedCols.has(col.columnName);
+        const selected = selection?.selected.has(col.columnName) ?? false;
+        const toggle = () => selection?.onToggle(col.columnName);
         return (
           <div
             key={col.columnName}
             data-table={ct.tableName}
             data-col={col.columnName}
-            role="checkbox"
-            aria-checked={selected}
-            tabIndex={0}
-            aria-label={t("sqlCanvasTableCard.toggleColumn", { columnName: col.columnName })}
+            {...(selection
+              ? {
+                  role: "checkbox",
+                  "aria-checked": selected,
+                  tabIndex: 0,
+                  "aria-label": t("sqlCanvasTableCard.toggleColumn", {
+                    columnName: col.columnName,
+                  }),
+                  onClick: toggle,
+                  onKeyDown: (e: React.KeyboardEvent) => activate(e, toggle),
+                }
+              : {})}
             data-testid={`canvas-table-card-col-${col.columnName}`}
-            onClick={() => onToggleCol(col.columnName)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onToggleCol(col.columnName);
-              }
-            }}
-            style={{
-              height: COL_ROW_H,
-              display: "flex",
-              alignItems: "center",
-              borderTop: "1px solid var(--border)",
-              position: "relative",
-              fontSize: "0.72rem",
-              fontFamily: "monospace",
-              padding: "0 14px",
-              color: "var(--text)",
-              cursor: "pointer",
-            }}
+            style={{ ...rowStyle, cursor: selection ? "pointer" : undefined }}
           >
             {/* Left dot (visual only) */}
             <div
@@ -162,23 +242,7 @@ export function CanvasTableCard({
                 pointerEvents: "none",
               }}
             />
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 13,
-                height: 13,
-                borderRadius: 2,
-                border: `1px solid ${selected ? "var(--primary)" : "var(--border)"}`,
-                background: selected ? "var(--primary)" : "transparent",
-                color: "#fff",
-                flexShrink: 0,
-                marginInlineEnd: 5,
-              }}
-            >
-              {selected && <Check size={9} strokeWidth={3} />}
-            </span>
+            {selection && <Box state={selected ? "on" : "off"} />}
             <Text
               span
               c="var(--text)"

@@ -1,6 +1,0 @@
-{
-  "sqlModelingCanvasTableCard": {
-    "removeTable": "Убрать {{tableName}} с холста",
-    "connectColumn": "Начать связь от {{columnName}}"
-  }
-}

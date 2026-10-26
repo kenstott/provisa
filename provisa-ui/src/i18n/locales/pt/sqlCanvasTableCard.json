@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "Remover {{tableName}} da tela",
     "toggleColumn": "Alternar seleção da coluna {{columnName}}",
-    "connectColumn": "Iniciar relacionamento a partir de {{columnName}}"
+    "connectColumn": "Iniciar relacionamento a partir de {{columnName}}",
+    "allColumns": "Todas as colunas ({{selected}} de {{total}})",
+    "unjoined": "{{tables}} não está unida às outras tabelas",
+    "joinsUnavailable": "Não foi possível ler as junções que esta função pode escrever: {{reason}}"
   }
 }

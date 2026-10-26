@@ -1,6 +1,0 @@
-{
-  "sqlModelingCanvasTableCard": {
-    "removeTable": "{{tableName}} をキャンバスから削除",
-    "connectColumn": "{{columnName}} からリレーションシップを開始"
-  }
-}
