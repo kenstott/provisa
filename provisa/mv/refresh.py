@@ -32,6 +32,7 @@ from datetime import date, datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
 from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl, system_ts_literal
+from provisa.mv.store_shape import output_columns, view_key
 from provisa.mv.bitemporal_inherit import InheritedBuild, inherited_build
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
@@ -631,6 +632,22 @@ async def _sealed_stamp(mv: MVDefinition, day: date, store) -> str:  # REQ-2120
     return system_ts_literal(sealed.end)
 
 
+async def _create_keyed(engine, mv: MVDefinition, select_sql: str, authorization) -> bool:
+    """Create the view's store table through the engine's reconcile, keyed by ``view_key``, as
+    the event loop's reconcile keeps it (REQ-970). False when the engine gives no column types to
+    create it from -- the reconcile then skips the view too, so neither keys its table."""
+    columns = await output_columns(engine, select_sql, authorization=authorization)
+    if not columns:
+        return False
+    await engine.reconcile_mv_table(
+        schema=mv.target_schema,
+        table=mv.target_table,
+        columns=columns,
+        pk_columns=view_key(mv) or None,
+    )
+    return True
+
+
 async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     engine,
     mv: MVDefinition,
@@ -953,6 +970,12 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                         )
                         table_exists = False
 
+                if not table_exists and hasattr(engine, "reconcile_mv_table"):
+                    # REQ-970: the store table is created as the event loop's reconcile keeps it
+                    # -- its columns and its key (declared, or its GROUP BY's) -- and then filled.
+                    # A CREATE TABLE AS built it with no key, which that reconcile took for drift:
+                    # it dropped and re-created the table empty while the view read as fresh.
+                    table_exists = await _create_keyed(engine, mv, select_sql, authorization)
                 if table_exists:
                     await engine.execute_engine(
                         f"DELETE FROM {target}", authorization=authorization
@@ -970,7 +993,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                     await engine.reconcile_mv_metadata(
                         schema=mv.target_schema,
                         table=mv.target_table,
-                        pk_columns=list(getattr(mv, "primary_key", []) or []) or None,
+                        pk_columns=view_key(mv) or None,
                     )
 
             # Get row count
