@@ -44,6 +44,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -1163,30 +1164,27 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     from provisa.api.demo_region_seed import (
         regional,
         unanswered_regions,
-        view_records_here,
         views_built_here,
         views_kept_here,
-        views_unrecorded_here,
+        views_kept_here_ids,
         views_waiting_here,
     )
 
     if exporting and regional():
-        # REQ-2068: a region's seed carries its views too; no node of it builds them after.
+        # REQ-2068: a region's seed carries its views too; no node of it builds them after. Each
+        # is built from the replicas that have now landed: one built before then (as the node
+        # started, from replicas not yet there) would be carried as it read them, short.
+        landed_at = datetime.now(UTC)
+        for mv_id in views_kept_here_ids(template_seed(org_id)):
+            # As an operator's refresh asks (schema_mutation.refresh_mv): a view nothing else
+            # builds -- its inputs all read in place, its refresh periodic -- is built here too.
+            await _build_view(org_id, mv_id)
         said = None
         unanswered_since: dict[str, float] = {}
-        asked: set[str] = set()
-        while (built := await views_built_here(org_id)) < (
+        while (built := await views_built_here(org_id, landed_at)) < (
             kept := views_kept_here(template_seed(org_id))
         ):
-            waiting = await views_waiting_here(org_id)
-            # A view nothing builds -- its inputs all read in place, its refresh periodic -- is
-            # asked for once, as an operator's refresh asks (schema_mutation.refresh_mv).
-            for mv_id in views_unrecorded_here(
-                template_seed(org_id), await view_records_here(org_id)
-            ):
-                if mv_id not in asked:
-                    asked.add(mv_id)
-                    await _build_view(org_id, mv_id)
+            waiting = await views_waiting_here(org_id, landed_at)
             # A view may read a table another region keeps in place: that region's node answers
             # at the address the deployment config declares for it, or the view never builds.
             from provisa.api.app import state

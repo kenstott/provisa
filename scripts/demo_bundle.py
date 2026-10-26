@@ -1097,14 +1097,13 @@ def _seed_node(
         )
 
 
-def _demo_config(demo: Path, stores: Stores, env: dict[str, str] | None = None):
-    """The demo's config.yaml, parsed against its running stores (and, for a demo in regions, its
-    region stores' ``env``)."""
+def _demo_config(demo: Path, stores: Stores):
+    """The demo's config.yaml, parsed against its running stores."""
     from provisa.core.config_loader import parse_config_dict, read_config_with_includes
     from provisa.core.demo_secrets import resolving
 
     saved = dict(os.environ)
-    os.environ.update({**stores.addresses, **(env or {})})
+    os.environ.update(stores.addresses)
     try:
         # REQ-2095: the secrets it names, from its own secrets.yaml.
         with resolving(demo, demo.name):
@@ -1143,22 +1142,23 @@ def _prefetch_connector_bundles(demo: Path) -> None:
         print(f"connector bundle {spec.artifact_name} {spec.version}: {resolver.resolve(spec)}")
 
 
-def _carry_region_views(demo: Path, stores: Stores, regional: "_RegionStores") -> None:
+def _carry_region_views(regional: "_RegionStores", demo: Path) -> None:
     """REQ-1162, REQ-2068: a regions demo's bitemporal views' history, as its setup built it in each
-    view's home region's store, carried in that region's seed (demo_region_seed
-    .carry_setup_history) -- which its template lands with the rest of the region's views."""
+    region's store, carried in that region's seed (demo_region_seed.carry_setup_history) -- which
+    its template lands with the rest of the region's views. Read from the stores themselves: the
+    demo's config is not parsed here (its secrets are its nodes', not this process's)."""
     from provisa.api.demo_region_seed import carry_setup_history
-    from provisa.api.demo_replicas import bitemporal_view_homes
 
-    homes = bitemporal_view_homes(_demo_config(demo, stores, regional.env), regional.regions)
-    if not homes:
-        return
-    carry_setup_history(
+    carried = carry_setup_history(
         _SETUP_ORG,
         demo,
-        homes,
         {r: regional.env[f"PROVISA_DEMO_{r.upper()}_PG_URL"] for r in regional.regions},
     )
+    for region, tables in carried.items():
+        if tables:
+            print(
+                f"{demo.name}: region {region} carries the setup's history of {', '.join(tables)}"
+            )
 
 
 def _export_views(work: Path, demo: Path, stores: Stores) -> None:
@@ -1246,7 +1246,7 @@ def build(args: argparse.Namespace) -> int:
             if regional is not None or _replicates(demo, stores):
                 _seed(work, demo, stores, args.timeout, regional)
                 if regional is not None and set_up:
-                    _carry_region_views(demo, stores, regional)
+                    _carry_region_views(regional, demo)
                 _refuse_empty_replicas(demo)
             dumped = stores.dump()
         finally:
