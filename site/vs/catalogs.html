@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Provisa and data catalogs — Provisa</title>
+  <meta name="description" content="Data catalogs help you see the mess after it forms. Provisa makes your declaration the system, so nothing exists outside the model to drift — then publishes to your catalog so it shows what is actually enforced." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/vs/catalogs" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+        <span class="brand-tag">Preview</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/compare">Compare</a>
+        <a href="/#deploy">Deploy</a>
+        <a href="/how-it-works">Works</a>
+        <a href="/demos">Demos</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <a href="/compare">Compare</a> <span>/</span> <span>Provisa and data catalogs</span></p>
+        <h1>See it. Fix it. Stop it.</h1>
+        <p class="lead">
+          Data catalogs describe and govern data after it exists, alongside your systems.
+          They help you see the mess. Provisa makes the declaration the system itself —
+          so the mess never forms — then publishes to your catalog so the catalog shows
+          what is actually governed, not what someone last wrote down.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <h2>Three different positions</h2>
+
+        <h3>See it</h3>
+        <p>
+          Catalogs excel here. Browse, search, tag, classify and document assets across
+          every system. Atlan, Collibra, Alation and DataHub all do this well.
+          A steward can find any table, read its lineage, and understand its business meaning.
+          The problem is the catalog came after the data — it describes what was built,
+          and keeping that description accurate requires discipline.
+        </p>
+
+        <h3>Fix it</h3>
+        <p>
+          Catalogs can flag problems and let stewards annotate them. Some can propagate
+          classification tags into the SQL warehouses they connect to. Fixing the underlying
+          policy, the missing join, or the inconsistent name still means going back to the
+          data platform itself. The catalog is beside the system; it cannot change it.
+        </p>
+
+        <h3>Stop it</h3>
+        <p>
+          This is Provisa's position. You declare sources, tables, relationships and governance
+          in a model. Provisa compiles that declaration into the running system. A table that
+          is not in the model does not exist in any API, query result or published catalog entry.
+          Drift cannot form because there is no gap between the declaration and what runs.
+        </p>
+
+        <h2>Where each fits</h2>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr><th>You need to&hellip;</th><th>Catalogs</th><th>Provisa</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>Find and understand data across all your systems</th>
+                <td>&#10003; Browse, search, filter and tag assets; descriptions and owners</td>
+                <td class="is-us">&#10003; Every governed table and column has a description, steward, domain, and business name in the model</td>
+              </tr>
+              <tr>
+                <th>Maintain a business glossary</th>
+                <td>&#10003; Terms, definitions, synonyms, owners, and links to assets</td>
+                <td class="is-us">&#10003; Typed ontology: class, property and concept terms grounded directly to the tables and columns they mean</td>
+              </tr>
+              <tr>
+                <th>Track column-level lineage</th>
+                <td>&#10003; Most scan lineage from query logs or pipeline metadata</td>
+                <td class="is-us">&#10003; Column-level lineage derived from model definitions — not inferred from scans; published with transforms</td>
+              </tr>
+              <tr>
+                <th>Enforce access policy on every source — warehouses, APIs, NoSQL, graph, code</th>
+                <td>Tag-based classification; enforcement depends on each platform's own controls, which vary by source type</td>
+                <td class="is-us">&#10003; Masking, row-level security and column visibility enforced identically on every protocol and source type: SQL, GraphQL, Cypher, SPARQL, MCP and more</td>
+              </tr>
+              <tr>
+                <th>Keep catalog descriptions in sync with reality</th>
+                <td>Periodic crawl or manual update; catalog and system drift apart between refreshes</td>
+                <td class="is-us">&#10003; Model is the source of truth; every change triggers a publish within seconds</td>
+              </tr>
+              <tr>
+                <th>Stop new data from existing outside governance</th>
+                <td>Describe existing assets; cannot prevent new ones from being created outside the catalog</td>
+                <td class="is-us">&#10003; A source, table or field that is not declared in the model is not exposed on any interface</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>Use them together</h2>
+        <p>
+          Provisa publishes to your catalog automatically. Every governed table, column,
+          domain, approved relationship, ontology term and column-level lineage edge flows
+          to the target on each model change — typically within fifteen seconds.
+          Your catalog does not need to crawl anything; it receives what Provisa knows.
+        </p>
+        <p>
+          Supported targets: OpenMetadata, DataHub, Collibra, Atlan (beta), Apache Atlas,
+          Microsoft Purview, OpenLineage (Marquez and any OpenLineage consumer),
+          Databricks Unity Catalog, Amazon DataZone, Google Dataplex,
+          and Snowflake Horizon Catalog (data products).
+          Configure one or several in Admin — each gets the same snapshot, covering every
+          domain you assign to it.
+        </p>
+        <p>
+          Governance signals travel with the publish. A masked column arrives in the catalog
+          with the fact that it is masked and which roles the mask applies to.
+          Rule bodies never leave Provisa, so the catalog does not expose your policy logic.
+        </p>
+        <p>
+          You can also take descriptions back. When a steward edits a table's description
+          in the catalog, the Catalogs panel in Provisa lets them pull that edit into the model,
+          table by table. Governance rules — grants, row rules and masks — are never read from
+          a catalog; they belong in the model.
+        </p>
+
+        <h2>If you only need a catalog</h2>
+        <p>
+          You want to document and classify data that already exists across many teams and
+          systems. Governance is handled by each platform independently. The problem you
+          are solving is visibility and discoverability, not uniformity of enforcement.
+          A catalog covers that on its own.
+        </p>
+
+        <h2>If you only need Provisa</h2>
+        <p>
+          You are building new APIs, governed access across source types, or a data control
+          plane for a product. You want governance to hold from the moment data is declared,
+          not applied retroactively. You may not have an external catalog yet — or you want
+          to keep the one you have accurate without manual effort.
+        </p>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/compare">All comparisons</a>
+        <a class="more" href="/#download">Try Provisa</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/vs/catalogs">Provisa and data catalogs</a>
+        <a href="/vs/starburst">Provisa and Starburst</a>
+        <a href="/vs/hasura">Provisa and Hasura</a>
+        <a href="/vs/denodo">Provisa and Denodo</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
+<!-- Sources verified 2026-10-26:
+  Provisa metadata export targets: docs/metadata-export.md — openlineage (Marquez), openmetadata, atlas (Apache Atlas, Microsoft Purview),
+    atlan (beta), datahub, collibra, snowflake_horizon (Snowflake Horizon Catalog — data products only),
+    purview (Microsoft Purview), unity_catalog (Databricks Unity Catalog), datazone (Amazon DataZone),
+    dataplex (Google Dataplex). All tool-verified from docs/metadata-export.md.
+  Change-driven publish (within ~15 seconds): docs/metadata-export.md "within about fifteen seconds" — tool-verified.
+  Governance signals in publish (masked, rls_restricted, visibility_restricted; rule bodies never published):
+    docs/metadata-export.md "Governance signals in the target catalog" section — tool-verified.
+  Description read-back (table by table, Catalogs panel): docs/metadata-export.md "A catalog's descriptions...
+    can also be read back into Provisa, table by table, when a steward asks for it" — tool-verified.
+  Governance rules never read from catalog: docs/metadata-export.md "Governance (grants, row rules and masks)
+    is never read from a catalog." — tool-verified.
+  Atlan beta status: docs/metadata-export.md "The Atlan adapter has not yet run against a live Atlan tenant" — tool-verified.
+  Catalog vendor capabilities (browsing, search, tagging, glossary, lineage): inferred from well-known product capabilities;
+    not verified against current vendor documentation.
+  Tag propagation note ("enforcement depends on each platform's own controls"): inferred; not verified against
+    current Atlan, Collibra or Alation documentation.
+-->
