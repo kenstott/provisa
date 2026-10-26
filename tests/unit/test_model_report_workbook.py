@@ -16,6 +16,8 @@ rather than from the raw config.
 
 from __future__ import annotations
 
+import dataclasses
+
 import io
 from datetime import UTC, datetime
 
@@ -279,11 +281,46 @@ async def test_the_workbook_shows_only_what_its_caller_reads(monkeypatch):
 
     monkeypatch.setattr("provisa.api.metadata_export.publishing.snapshot_reader", _reader)
     monkeypatch.setattr("provisa.api.app.state.contexts", {"analyst": object()}, raising=False)
+
+    class _Model:
+        """The org's model store: the registered tables' ids (both compiled, so the scope
+        answers each)."""
+
+        def acquire(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def execute_core(self, stmt):  # noqa: ARG002
+            rows = [types.SimpleNamespace(id=1), types.SimpleNamespace(id=2)]
+            return types.SimpleNamespace(fetchall=lambda: rows)
+
+    monkeypatch.setattr("provisa.api.app.state.model_db", _Model(), raising=False)
     narrowed, narrowed_config = await report_router._as_served(
         types.SimpleNamespace(state=types.SimpleNamespace()), snapshot, config
     )
     assert [(t.name, [c.name for c in t.columns]) for t in narrowed.tables] == [("orders", ["id"])]
     assert [m.name for m in narrowed_config.metrics] == ["open"]
+
+    # payroll saved since the last build: judged by its stored grants, as the catalog answers it.
+    saved_since = dataclasses.replace(scope, compiled=frozenset({1}))
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: saved_since)
+
+    async def _stored(conn, caller, table_id):  # noqa: ARG001
+        return {"salary"} if table_id == 2 else caller.served.get(table_id, set())
+
+    monkeypatch.setattr("provisa.api.admin.read_rights.served_columns_of", _stored)
+    narrowed, _ = await report_router._as_served(
+        types.SimpleNamespace(state=types.SimpleNamespace()), snapshot, config
+    )
+    assert [(t.name, [c.name for c in t.columns]) for t in narrowed.tables] == [
+        ("orders", ["id"]),
+        ("payroll", ["salary"]),
+    ]
 
 
 def test_a_withheld_view_is_listed_with_a_blank_definition():

@@ -183,7 +183,18 @@ async def _as_served(
     caller = catalog_scope(types.SimpleNamespace(context={"request": request}))
     if caller.whole:
         return snapshot, config
-    narrowed = for_role(snapshot, await snapshot_reader(state, caller.columns))
+    # Each table as the catalog answers it: a table no build compiled yet (saved since) by its
+    # stored grants, as read_rights.served_columns_of judges it.
+    from sqlalchemy import select
+
+    from provisa.api.admin.read_rights import served_columns_of
+    from provisa.core.schema_org import registered_tables as rt
+
+    assert state.model_db is not None  # the org's model store is bound with its runtime
+    async with state.model_db.acquire() as conn:
+        ids = [r.id for r in (await conn.execute_core(select(rt.c.id))).fetchall()]
+        served = {i: await served_columns_of(conn, caller, i) for i in ids}
+    narrowed = for_role(snapshot, await snapshot_reader(state, lambda i: served.get(i, set())))
     role = caller.role
     metrics = [m for m in config.metrics if role is not None and role_sees_metric(state, role, m)]
     return narrowed, config.model_copy(update={"metrics": metrics})

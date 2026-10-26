@@ -178,12 +178,18 @@ async def plane(monkeypatch):
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
-    # The meta-roles of the users holding several roles: what each acts as (security/meta_role).
+    # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    # The meta-roles of the users holding several roles: what each acts as, as the runtime's
+    # meta-roles answer it (security/meta_role.acting_roles); any other role is itself.
+    from provisa.security import meta_role
+
+    members = {_acting(u): tuple(sorted(_held(u))) for u in _ALSO_HOLDS}
+    real_acting_roles = meta_role.acting_roles
     monkeypatch.setattr(
-        appmod.state,
-        "meta_roles",
-        {_acting(u): sorted(_held(u)) for u in _ALSO_HOLDS},
-        raising=False,
+        meta_role,
+        "acting_roles",
+        lambda state, role_id: members.get(role_id) or real_acting_roles(state, role_id),
     )
     monkeypatch.setattr(
         appmod.state,

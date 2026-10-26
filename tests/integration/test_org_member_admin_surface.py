@@ -38,6 +38,7 @@ from provisa.core.db import init_schema
 from provisa.core.schema_org import domains as domains_t
 from provisa.core.schema_org import registered_tables as registered_tables_t
 from provisa.core.schema_org import sources as sources_t
+from provisa.core.schema_org import table_columns as table_columns_t
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -93,18 +94,35 @@ async def org_plane(monkeypatch):
         await conn.execute_core(
             insert(sources_t).values(id="sales-pg", type="postgres", dialect="postgresql")
         )
-        await conn.execute_core(
-            insert(registered_tables_t).values(
+        inserted = await conn.execute_core(
+            insert(registered_tables_t)
+            .values(
                 source_id="sales-pg",
                 schema_name="public",
                 table_name="orders",
                 domain_id="shelter",
+            )
+            .returning(registered_tables_t.c.id)
+        )
+        # A column org_admin reads: a table its caller reads no column of is not listed to it
+        # (REQ-2152).
+        await conn.execute_core(
+            insert(table_columns_t).values(
+                table_id=inserted.scalar_one(),
+                domain_id="shelter",
+                column_name="id",
+                visible_to=["org_admin"],
             )
         )
 
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
+    # No schema build runs here: nothing is compiled, so the table is answered by its stored
+    # grants (catalog_scope), whatever an earlier test left built.
+    monkeypatch.setattr(app_state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    monkeypatch.setattr(app_state, "tables", [], raising=False)
+    monkeypatch.setattr(app_state, "contexts", {}, raising=False)
     monkeypatch.setattr(
         app_state,
         "roles",
