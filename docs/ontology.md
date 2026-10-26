@@ -247,3 +247,95 @@ The **Draft** banner on a term tells you whether it is undefined (alias the colu
 
 - [Metadata Export](metadata-export.md) covers how terms and relationships publish to external data catalogs.
 - [Column-Level Lineage](lineage.md) covers the lineage explorer and how a physical column reports the terms bound to it.
+
+## The ontology schema
+
+The `ontology` system schema makes the vocabulary queryable from SQL, GraphQL, Cypher, REST, and MCP — the same surfaces you use for your own data. It sits alongside `meta`, which holds the model's structure; `ontology` holds its meaning.
+
+Two parts make up the schema: definition views and class tables.
+
+### Definition views
+
+Five views expose the glossary's contents:
+
+| View | Contents |
+| --- | --- |
+| `_terms` | Every live term: its name, role (Class, Property, Concept), definition, and status. |
+| `_term_refs` | Every term-to-column binding: the term name, the source, the table, and the column. |
+| `_term_edges` | Every relationship edge: source term, edge type, and target term. |
+| `_domains` | Domain membership: the term name and each domain it belongs to. |
+| `_experts` | Expert assignments: the term name, user ID, and role (`expert` or `author`). |
+
+A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express — one row per triple, with columns for subject, predicate, and object. TBD: exact column names and datatypes for `_axioms`. Tools that prefer triples over tabular rows read from here.
+
+A **term binding** — a term bound to a column, recorded in `_term_refs` — is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
+
+### Class tables
+
+Each live Class term becomes a view in the `ontology` schema named for that term, with spaces replaced by underscores. A Class grounded in one table yields one view; a Class grounded in several tables yields the union of those tables.
+
+In a union view, every source table's rows appear, with a column identifying which table each row came from. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column. TBD: the name of the source-table column.
+
+Every column in a Class view corresponds to a bound Property. The view is governed through the same pipeline as any other read.
+
+**Example.** A `customer` Class grounded in `sales.customers` and `crm.contacts`, with a `name` Property bound to `customers.name` and `contacts.full_name`, and a `segment` Property bound only to `customers.segment`:
+
+```sql
+-- rows from both tables; segment is NULL for crm.contacts rows
+SELECT _source_table, name, segment
+FROM ontology.customer
+WHERE segment = 'enterprise';
+```
+
+### Read rights
+
+The same governance rules that apply to your own tables apply here.
+
+A term appears in the definition views only if you reach at least one of its domains. A term with no domain is visible to everyone. A binding row appears only when its column is served to you. An edge appears only when both its terms are visible to you. A Property column in a Class view appears only when its underlying columns are served.
+
+No special access is needed. If you can query a table, you can query the Class terms grounded in it.
+
+### SPARQL
+
+The SPARQL endpoint serves the `ontology` schema as a standard RDFS/OWL/SKOS ontology. Every Class term becomes an `owl:Class`, every kind-of edge becomes `rdfs:subClassOf`, every Property term becomes `owl:DatatypeProperty` or `owl:ObjectProperty` with `rdfs:domain` and `rdfs:range`, sub-property edges become `rdfs:subPropertyOf`, names become `skos:prefLabel`, and definitions become `skos:definition`. The same read rights apply.
+
+The base IRI for all terms is derived from the `server.public_url` setting, under the `/vocab/term/` path. A Class term named `customer` has the IRI `{public_url}/vocab/term/customer`.
+
+Three queries an ontologist would write:
+
+**Find all subtypes of Party, at any depth:**
+
+```sparql
+PREFIX : <{public_url}/vocab/term/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?c WHERE {
+  ?c rdfs:subClassOf* :Party .
+}
+```
+
+**Find customers with a segment value, using the term IRI:**
+
+```sparql
+PREFIX : <{public_url}/vocab/term/>
+
+SELECT ?x ?s WHERE {
+  ?x a :Customer ;
+     :segment ?s .
+}
+```
+
+**List all properties declared on Customer with their ranges:**
+
+```sparql
+PREFIX : <{public_url}/vocab/term/>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?p ?range WHERE {
+  ?p rdfs:domain :Customer ;
+     rdfs:range ?range .
+}
+```
+
+Replace `{public_url}` with your deployment's public address as configured in `server.public_url`.

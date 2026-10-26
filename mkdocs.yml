@@ -152,6 +152,19 @@ nav:
       - Ontology: ontology.md
       - Metadata Export: metadata-export.md
       - Data Products: data-products.md
+  - Conformance:
+      - Overview: conformance/index.md
+      - SPARQL 1.1: conformance/sparql.md
+      - RDF 1.1 Syntax: conformance/rdf-syntax.md
+      - Cypher: conformance/cypher.md
+      - Bolt: conformance/bolt.md
+      - GraphQL: conformance/graphql.md
+      - pgwire: conformance/pgwire.md
+      - Arrow Flight SQL: conformance/flight-sql.md
+      - REST / OpenAPI: conformance/rest.md
+      - JSON:API: conformance/jsonapi.md
+      - gRPC: conformance/grpc.md
+      - MCP: conformance/mcp.md
   - Clients:
       - Python Client: python-client.md
   - Administration:
