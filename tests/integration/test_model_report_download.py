@@ -174,7 +174,10 @@ def _request(role_id: str) -> Request:
     identity = SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
     return cast(
         Request,
-        SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=ORG_ID)),
+        # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
+        SimpleNamespace(
+            state=SimpleNamespace(identity=identity, active_org_id=ORG_ID, role=role_id)
+        ),
     )
 
 
@@ -221,6 +224,8 @@ async def served(
     acme.tenant_db = tenant_db
     acme.model_db = tenant_db
     acme.roles = {rid: {"id": rid, **spec} for rid, spec in _ROLES.items()}
+    # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
+    acme.role_build_inputs = {"draft_tables": []}
     registry = OrgRegistry()
     for key in app_module.state.org_registry.all_org_ids():
         rt = app_module.state.org_registry.get(key)

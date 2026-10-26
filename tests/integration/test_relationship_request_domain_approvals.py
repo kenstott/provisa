@@ -71,6 +71,23 @@ _USERS = {
     "tina": "sales_builder",
     "tom": "sales_builder",
 }
+# Roles a user holds besides the one above. fay reads sales (REQ-2152: a relationship is asked
+# for only between tables its asker reads) without holding create_relationship there, so a
+# relationship owned by a sales table is a request she makes, not one she creates.
+_ALSO_HOLDS = {"fay": ["sales_reader"]}
+
+
+def _held(user: str) -> list[str]:
+    return [_USERS[user], *_ALSO_HOLDS.get(user, [])]
+
+
+def _acting(user: str) -> str:
+    """The role ``user``'s requests act as, as the auth middleware resolves it: the one role
+    held, or the meta-role of several."""
+    from provisa.security.meta_role import meta_role_id
+
+    held = _held(user)
+    return held[0] if len(held) == 1 else meta_role_id(held)
 
 
 async def _drop(db: Database) -> None:
@@ -87,8 +104,10 @@ def _api() -> FastAPI:
     async def _sign_in(request: Request, call_next):  # pyright: ignore[reportUnusedFunction]
         user = request.headers["x-user"]
         request.state.identity = types.SimpleNamespace(
-            user_id=user, roles=[_USERS[user]], acting_roles=[_USERS[user]]
+            user_id=user, roles=_held(user), acting_roles=_held(user)
         )
+        # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
+        request.state.role = _acting(user)
         return await call_next(request)
 
     @app.exception_handler(ApiError)
@@ -159,6 +178,19 @@ async def plane(monkeypatch):
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
+    # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    # The meta-roles of the users holding several roles: what each acts as, as the runtime's
+    # meta-roles answer it (security/meta_role.acting_roles); any other role is itself.
+    from provisa.security import meta_role
+
+    members = {_acting(u): tuple(sorted(_held(u))) for u in _ALSO_HOLDS}
+    real_acting_roles = meta_role.acting_roles
+    monkeypatch.setattr(
+        meta_role,
+        "acting_roles",
+        lambda state, role_id: members.get(role_id) or real_acting_roles(state, role_id),
+    )
     monkeypatch.setattr(
         appmod.state,
         "config",
@@ -187,11 +219,10 @@ async def plane(monkeypatch):
 
 
 def _info(user: str) -> Any:
-    identity = types.SimpleNamespace(
-        user_id=user, roles=[_USERS[user]], acting_roles=[_USERS[user]]
-    )
+    identity = types.SimpleNamespace(user_id=user, roles=_held(user), acting_roles=_held(user))
+    # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
     request = types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID)
+        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID, role=_acting(user))
     )
     return types.SimpleNamespace(context={"request": request})
 

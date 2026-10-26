@@ -105,6 +105,8 @@ async def plane(monkeypatch):
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
+    # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
     monkeypatch.setattr(
         appmod.state,
         "config",
@@ -132,8 +134,9 @@ async def plane(monkeypatch):
 
 def _info(role_id: str) -> Any:
     identity = types.SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
+    # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
     request = types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID)
+        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID, role=role_id)
     )
     return types.SimpleNamespace(context={"request": request})
 

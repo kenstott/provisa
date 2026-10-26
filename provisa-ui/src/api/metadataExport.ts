@@ -21,6 +21,8 @@ export interface MetadataExportTarget {
   catalog: string;
   datazone_project_id: string;
   delta_share: boolean;
+  /** REQ-2152: the role the catalog is published as -- it is sent what that role reads. */
+  role: string | null;
 }
 
 export interface MetadataExportConfig {
@@ -55,6 +57,8 @@ export interface MetadataExportState {
   providers: string[];
   /** The providers not yet proven against a live instance, which are labelled "(beta)". */
   beta_providers: string[];
+  /** REQ-2152: the roles a target may be published as -- those whose reads the caller holds. */
+  publishable_roles: string[];
   config: MetadataExportConfig;
   last_publish: PublishOutcome | null;
 }

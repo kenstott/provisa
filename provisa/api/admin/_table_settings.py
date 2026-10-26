@@ -103,6 +103,18 @@ async def role_ttl_refusal(
     return None
 
 
+def write_grant_names(grant: Any) -> set[str]:
+    """Every column a write grant names: its columns, its presets' and its rows' and check's."""
+    import sqlglot
+    from sqlglot import exp
+
+    names = set(grant.columns) | {p.column for p in grant.presets}
+    for predicate in (grant.rows, grant.check):
+        if predicate:
+            names |= {c.name for c in sqlglot.parse_one(predicate).find_all(exp.Column)}
+    return names
+
+
 def write_grant_invalid(reason: str) -> MutationResult:  # REQ-2074
     return MutationResult(
         success=False,

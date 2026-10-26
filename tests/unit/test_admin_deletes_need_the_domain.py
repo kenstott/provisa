@@ -39,6 +39,7 @@ from provisa.core.schema_org import (
     tracked_functions,
     tracked_webhooks,
 )
+from tests.unit.gate_identity import serve_every_column
 
 RIGHTS = ["table_registration", "create_relationship"]
 ROLES = {
@@ -46,6 +47,13 @@ ROLES = {
     "everywhere": {"id": "everywhere", "capabilities": RIGHTS, "domain_access": ["*"]},
 }
 TABLES = {"orders": "sales", "customers": "sales", "invoices": "finance", "ledgers": "finance"}
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which tables and columns a caller reads is REQ-2152's own
+    tests (test_model_edits_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 @pytest.fixture

@@ -33,9 +33,14 @@ from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, registered_tables, sources, table_columns
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.admin.schema_common import remote_source_counts
+from provisa.api.admin.read_rights import (
+    readable_columns_report,
+    readable_dependents,
+    reader_for_request,
+)
 
 if TYPE_CHECKING:
-    pass
+    from provisa.api.admin.read_rights import DependentsReader
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/graphql-remote", tags=["admin", "graphql-remote"])
@@ -321,13 +326,14 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     domain_id: str,
     tables: list[dict],
     model_db,
+    reader: "DependentsReader",
 ) -> list[dict]:
     """Write discovered GraphQL tables into registered_tables with descriptions.
 
     Each table is upserted by its identity (source, schema, name), so one that is still in the
     remote schema keeps its id and what refers to it. One the remote no longer has is deleted
     through the model store; when something depends on it, it is kept, and returned here with
-    what still refers to it (REQ-1918)."""
+    what still refers to it (REQ-1918) -- only what ``reader`` may read (REQ-2152)."""
     from provisa.api.admin._graphql_table_registration import arguments
     from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
@@ -425,7 +431,11 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 # as it was and reported.
                 held = await table_repo.get_by_name(conn, source_id, "graphql", _sql_name)
                 unchanged.append(
-                    table_repo.kept_columns_report(refused, held["id"] if held else None)
+                    {
+                        "id": held["id"] if held else None,
+                        "name": refused.table_name,
+                        "columns": await readable_columns_report(conn, reader, refused.columns),
+                    }
                 )
 
         kept = await table_repo.retire_generated(
@@ -436,7 +446,20 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         )
         # REQ-1387: settle only the terms whose fields truly departed.
         await glossary_repo.sweep_refless_terms(conn, before=refs_before)
-        return [*table_repo.kept_report(kept), *unchanged]
+        return [
+            *[
+                {
+                    "id": refused.table_id,
+                    "name": refused.name,
+                    "dependents": [
+                        d.as_dict()
+                        for d in await readable_dependents(conn, reader, refused.dependents)
+                    ],
+                }
+                for refused in kept
+            ],
+            *unchanged,
+        ]
 
 
 async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
@@ -613,7 +636,7 @@ async def refresh_graphql_remote_source(request: Request, source_id: str):  # RE
 
     # REQ-1918: tables the remote schema no longer has that something still refers to.
     kept_tables = await _upsert_tables_to_semantic_layer(
-        source_id, reg.get("domain_id", ""), tables, state.model_db
+        source_id, reg.get("domain_id", ""), tables, state.model_db, reader_for_request(request)
     )
     reg["tables"] = []
     for table in tables:

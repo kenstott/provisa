@@ -30,11 +30,14 @@ const PREMIUM_STATE = {
   required_tier: "premium",
   providers: ["openlineage", "openmetadata"],
   beta_providers: [],
+  // REQ-2152: the roles a target may be published as.
+  publishable_roles: ["admin"],
   config: {
     enabled: true,
     reconcile_cron: "0 * * * *",
-    // REQ-2118, REQ-2122: an org's targets, each naming a catalog with its export settings.
-    targets: [{ catalog: "marquez", datazone_project_id: "", delta_share: false }],
+    // REQ-2118, REQ-2122: an org's targets, each naming a catalog with its export settings, and
+    // the role it is published as (REQ-2152).
+    targets: [{ catalog: "marquez", datazone_project_id: "", delta_share: false, role: "admin" }],
   },
   last_publish: null,
 };
@@ -179,12 +182,15 @@ test("a target is added by picking a catalog, with the settings its provider nee
   await page.getByTestId("metadata-export-catalog-1").click();
   await page.getByRole("option", { name: "datazone · datazone" }).click();
   await page.getByTestId("metadata-export-datazone-project-id-1").fill("prj_1");
+  // REQ-2152: a target is published as a role whose reads the saver holds.
+  await page.getByTestId("metadata-export-role-1").click();
+  await page.getByRole("option", { name: "admin" }).click();
   await page.getByTestId("metadata-export-save").click();
 
   await expect(page.getByTestId("metadata-export-saved")).toBeVisible();
   expect(sent.body?.targets).toEqual([
-    { catalog: "marquez", datazone_project_id: "", delta_share: false },
-    { catalog: "datazone", datazone_project_id: "prj_1", delta_share: false },
+    { catalog: "marquez", datazone_project_id: "", delta_share: false, role: "admin" },
+    { catalog: "datazone", datazone_project_id: "prj_1", delta_share: false, role: "admin" },
   ]);
 });
 
