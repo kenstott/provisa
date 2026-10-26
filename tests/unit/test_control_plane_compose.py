@@ -49,6 +49,7 @@ def test_every_service_is_the_control_planes_or_the_sandbox_tiers(tmp_path):
         "provisa-sandbox": ["sandbox"],
         # REQ-2068: the regions sandbox tier's nodes and the region PostgreSQLs.
         "provisa-sandbox-regions": ["sandbox"],
+        "provisa-sandbox-regions-warehouse": ["sandbox"],
         "region-pg-eu": ["sandbox"],
         "region-pg-us": ["sandbox"],
         "provisa-ui": ["control"],
