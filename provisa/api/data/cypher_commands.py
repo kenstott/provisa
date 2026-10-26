@@ -45,7 +45,7 @@ _E = TypeVar("_E", bound=exp.Expression)
 def expand_functions(sql_ast: _E, role_id: str, state: Any) -> _E:
     """``sql_ast`` with each call of a Cypher-bound SQL expression function replaced by its
     template. A namespaced call that names no such function is refused by name."""
-    from provisa.core.sql_expression import SqlExpressionRefused, render
+    from provisa.core.sql_expression import SqlExpressionRefused, refuse_unless_writable, render
 
     calls = [
         n
@@ -73,6 +73,7 @@ def expand_functions(sql_ast: _E, role_id: str, state: Any) -> _E:
                 name=node.name,
             )
         try:
+            refuse_unless_writable(fn, node.name, state)
             return render(fn, list(node.expressions))
         except SqlExpressionRefused as exc:
             raise ApiError(

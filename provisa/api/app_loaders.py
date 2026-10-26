@@ -1588,18 +1588,11 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # no longer resolves against the model carries why (contract.broken), and a call is refused.
     from provisa.compiler.statement_contract import derive as _derive_contract
 
-    # REQ-2168: a SQL expression function's template, written for every engine of the deployment.
-    from provisa.core.sql_expression import check_for_engines, deployment_dialects
-
+    # REQ-2168: a SQL expression function's template was checked for the deployment's engines when
+    # it was saved (actions_router); a source added since is not a reason to refuse the build.
     for f in tracked_functions:
         if f["impl_kind"] == "sql_expression":
             f["binding"] = _json_dict(f["binding"])
-            check_for_engines(
-                f["name"],
-                f["binding"],
-                [a["name"] for a in f["arguments"]],
-                deployment_dialects(state),
-            )
     for f in tracked_functions:
         if f["impl_kind"] == "statement":
             f["binding"] = _json_dict(f["binding"])

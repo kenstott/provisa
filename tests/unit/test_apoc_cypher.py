@@ -120,6 +120,7 @@ def state(monkeypatch):
         tracked_webhooks={},
         undefined_commands={},
         graph=graph,
+        federation_engine=SimpleNamespace(dialect="duckdb"),
     )
 
 
@@ -179,7 +180,7 @@ async def test_an_apoc_function_is_its_template_pushed_down_with_the_statement(s
     )
     sql = expand_functions(sql_ast, "reader", state).sql(dialect="postgres")
     assert "ARRAY_TO_STRING(ARRAY[" in sql
-    assert "apoc" not in sql.lower()
+    assert "apoc.text.join(" not in sql.lower()
 
 
 async def test_an_apoc_name_no_function_is_bound_to_is_refused_by_name(state):
@@ -313,3 +314,24 @@ async def test_apoc_meta_data_without_its_config_takes_the_default(state):
     sql = await put_command_rows(sql_ast.sql(dialect="postgres"), "reader", state)
     engine_sql = sqlglot.transpile(sql, read="postgres", write="duckdb")[0]
     assert duckdb.sql(engine_sql).fetchall() == [("Employees", "WORKS_IN")]
+
+
+async def test_a_function_the_engine_cannot_write_is_refused_by_name_before_anything_is_sent(state):
+    state.federation_engine = SimpleNamespace(dialect="clickhouse")
+    sql_ast, _, _ = cypher_to_sql(
+        parse_cypher("MATCH (e:Employees) RETURN apoc.map.fromLists(['a'], [e.name]) AS m"),
+        state.graph,
+        {},
+    )
+    with pytest.raises(ApiError, match="apoc.map.fromLists isn't available on the clickhouse"):
+        expand_functions(sql_ast, "reader", state)
+
+
+async def test_a_source_that_cannot_write_a_function_leaves_the_statement_to_the_engine():
+    from provisa.transpiler.router import _unwritable_function
+
+    sql = "SELECT (MAP(keys, vals)) /* provisa:fn apoc_map_from_lists */ FROM t"
+    assert _unwritable_function(sql, "clickhouse") is not None
+    assert _unwritable_function(sql, "duckdb") is None
+    # Asked only of a statement that calls such a function.
+    assert _unwritable_function("SELECT MAP(keys, vals) FROM t", "clickhouse") is None

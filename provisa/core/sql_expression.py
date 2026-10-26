@@ -110,6 +110,34 @@ def _kept(function: str, sql: str, arguments: tuple[str, ...]) -> exp.Expression
     return parse_template(function, {"sql": sql}, list(arguments))
 
 
+# The comment each rendered call carries, naming its function: a route to a source whose dialect
+# cannot write the call is told by it (transpiler/router), only for a statement that holds one.
+MARKER = "provisa:fn "
+
+
+@lru_cache(maxsize=4096)
+def _writable(function: str, sql: str, arguments: tuple[str, ...], dialect: str) -> bool:
+    try:
+        _kept(function, sql, arguments).sql(dialect=dialect, unsupported_level=ErrorLevel.RAISE)
+    except SqlglotError:
+        return False
+    return True
+
+
+def writable(function: dict, dialect: str) -> bool:
+    """Whether ``function``'s template can be written in ``dialect``."""
+    names = tuple(a["name"] for a in function.get("arguments") or [])
+    return _writable(function["name"], function["binding"]["sql"], names, dialect)
+
+
+def refuse_unless_writable(function: dict, called: str, state: object) -> None:
+    """Refuse a call of ``function`` (written ``called``) by name, before anything is sent, when
+    the deployment's engine cannot write its template."""
+    dialect = getattr(state, "federation_engine").dialect
+    if not writable(function, dialect):
+        raise SqlExpressionRefused(f"{called} isn't available on the {dialect} engine")
+
+
 def render(function: dict, args: list[exp.Expression]) -> exp.Expression:
     """The call ``function(args)`` as its template with ``args`` put in, in declared order. A call
     with another number of arguments is refused naming the function's signature."""
@@ -127,4 +155,6 @@ def render(function: dict, args: list[exp.Expression]) -> exp.Expression:
             return by_slot[node.name].copy()
         return node
 
-    return exp.Paren(this=template.transform(_put))
+    call = exp.Paren(this=template.transform(_put))
+    call.add_comments([f"{MARKER}{function['name']}"])
+    return call

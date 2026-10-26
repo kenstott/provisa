@@ -182,8 +182,9 @@ def test_a_template_that_cannot_be_used_is_refused_at_save(sql, refusal):
 def test_a_call_puts_its_arguments_in_the_template_and_transpiles_per_engine():
     fn = _function()
     call = render(fn, [sqlglot.parse_one("ARRAY['a','b']"), sqlglot.exp.Literal.string("-")])
-    assert call.sql("postgres") == "(ARRAY_TO_STRING(ARRAY['a', 'b'], '-'))"
-    assert call.sql("trino") == "(ARRAY_JOIN(ARRAY['a', 'b'], '-'))"
+    marked = " /* provisa:fn text_join */"
+    assert call.sql("postgres") == "(ARRAY_TO_STRING(ARRAY['a', 'b'], '-'))" + marked
+    assert call.sql("trino") == "(ARRAY_JOIN(ARRAY['a', 'b'], '-'))" + marked
 
 
 def test_a_call_with_another_number_of_arguments_is_refused_naming_the_signature():
@@ -211,7 +212,9 @@ def test_the_deployment_engines_are_the_federation_engine_and_each_source():
 def test_a_function_called_on_its_own_selects_its_template_with_bound_parameters():
     from provisa.executor.sql_expression_call import statement
 
-    assert statement(_function()) == 'SELECT (ARRAY_TO_STRING($1, $2)) AS "value"'
+    assert statement(_function()) == (
+        'SELECT (ARRAY_TO_STRING($1, $2)) /* provisa:fn text_join */ AS "value"'
+    )
 
 
 def test_the_template_parses_with_its_argument_slots():
@@ -240,6 +243,7 @@ def _sql_state(**roles) -> SimpleNamespace:
     return SimpleNamespace(
         tracked_functions={"text_join": fn},
         roles={rid: {"id": rid, "domain_access": access} for rid, access in roles.items()},
+        federation_engine=SimpleNamespace(dialect="duckdb"),
     )
 
 
@@ -250,7 +254,8 @@ def test_a_sql_statement_calls_a_function_by_its_sql_binding_and_reads_its_templ
     tree = sqlglot.parse_one(sql, read="postgres")
     assert expand(tree, sql, "seller", _sql_state(seller=["sales"]))
     assert tree.sql(dialect="postgres") == (
-        "SELECT (ARRAY_TO_STRING(ARRAY[a, UPPER((ARRAY_TO_STRING(b, '-')))], ', ')) AS j FROM t"
+        "SELECT (ARRAY_TO_STRING(ARRAY[a, UPPER((ARRAY_TO_STRING(b, '-')) /* provisa:fn text_join */)],"
+        " ', ')) /* provisa:fn text_join */ AS j FROM t"
     )
 
 
@@ -271,3 +276,17 @@ def test_a_function_the_role_may_not_use_is_left_as_written():
     tree = sqlglot.parse_one(sql, read="postgres")
     assert not expand(tree, sql, "outsider", _sql_state(outsider=["hr"]))
     assert "JOIN_TEXT" in tree.sql(dialect="postgres").upper()
+
+
+def test_the_engine_function_anomalies_page_is_what_the_templates_say():
+    import subprocess
+    import sys
+
+    checked = subprocess.run(
+        [sys.executable, "scripts/gen_engine_function_anomalies.py", "--check"],
+        capture_output=True,
+    )
+    assert checked.returncode == 0, (
+        "docs/engines.md's function anomalies are stale: run "
+        "scripts/gen_engine_function_anomalies.py"
+    )

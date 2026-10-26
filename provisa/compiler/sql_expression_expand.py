@@ -57,7 +57,7 @@ def expand(tree: exp.Expression, raw_sql: str, role_id: str, state: object) -> b
     named = [name for name in functions if name in text]
     if not named:
         return False
-    from provisa.core.sql_expression import render
+    from provisa.core.sql_expression import refuse_unless_writable, render
     from provisa.security.mutation_authz import command_reachable
     from provisa.security.rights import require_role
 
@@ -68,6 +68,8 @@ def expand(tree: exp.Expression, raw_sql: str, role_id: str, state: object) -> b
         for node in tree.find_all(exp.Anonymous)
         if node.name.lower() in usable and not isinstance(node.parent, exp.Table)
     ]
+    for node in calls:  # REQ-2168: refused by name where the engine cannot write it
+        refuse_unless_writable(usable[node.name.lower()], node.name, state)
     for node in reversed(calls):  # the innermost first: an outer call copies its arguments
         node.replace(render(usable[node.name.lower()], list(node.expressions)))
     return bool(calls)
