@@ -86,6 +86,11 @@ interface LineageDagProps {
   // The first view is legible rather than whole: the graph fitted to the canvas's width, never
   // below READABLE_ZOOM, and the canvas as tall as the graph then is, up to `height` (a number).
   readable?: boolean;
+  // With `readable`: the least zoom the first view takes (READABLE_ZOOM unless given), and which
+  // end of a graph wider than the canvas at it the first view shows -- its first layer (the
+  // default) or its last -- the rest reached by panning.
+  minZoom?: number;
+  overflowAt?: "start" | "end";
   // REQ-2116: where each element is defined, as far as the user's rights open it; a click on a
   // field, a double click on a box or a click on a command's edge opens it.
   links?: LineageLinks;
@@ -109,6 +114,8 @@ export function LineageDag({
   describeColumn,
   relationLabel,
   readable = false,
+  minZoom = READABLE_ZOOM,
+  overflowAt = "start",
   links,
   onOpenLink,
 }: LineageDagProps): React.ReactElement {
@@ -717,10 +724,16 @@ export function LineageDag({
         return;
       }
       const bb = cy.elements().boundingBox();
-      const zoom = Math.min(1.5, Math.max(READABLE_ZOOM, (el.clientWidth - 2 * FIT_PAD) / bb.w));
+      const zoom = Math.min(
+        Math.max(1.5, minZoom),
+        Math.max(minZoom, (el.clientWidth - 2 * FIT_PAD) / bb.w),
+      );
       cy.zoom(zoom);
       cy.pan({
-        x: Math.max(FIT_PAD, (el.clientWidth - bb.w * zoom) / 2) - bb.x1 * zoom,
+        x:
+          overflowAt === "end" && bb.w * zoom + 2 * FIT_PAD > el.clientWidth
+            ? el.clientWidth - FIT_PAD - bb.x2 * zoom
+            : Math.max(FIT_PAD, (el.clientWidth - bb.w * zoom) / 2) - bb.x1 * zoom,
         y: FIT_PAD - bb.y1 * zoom,
       });
       if (typeof height === "number")

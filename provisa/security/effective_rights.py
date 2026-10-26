@@ -10,8 +10,9 @@
 """A role's effective rights, as the role panel shows them (REQ-2161).
 
 The capabilities half: the role's lineage from the standard roles down to it, by the same chains
-the registry resolves (security/inheritance.py), with what each role in it adds and every
-capability with the nearest role that lists it. A meta-role (``meta:a+b``, security/meta_role.py)
+the registry resolves (security/inheritance.py), with what each role in it adds -- a right none of
+its ancestors holds -- and every capability with the roles it enters at. With several parents a
+right can enter in more than one branch; it comes from each. A meta-role (``meta:a+b``, security/meta_role.py)
 is an ephemeral child of its members, so its members are its parents and it adds nothing."""
 
 # Requirements: REQ-2161, REQ-2155, REQ-1620
@@ -42,13 +43,7 @@ def capabilities_view(role_id: str, rows: Iterable[dict], *, standard: Collectio
         rid: sorted(own[rid] - {c for anc in role_chain(rid, parents)[1:] for c in own[anc]})
         for rid in chain
     }
-    capabilities = sorted(
-        {
-            right: next(rid for rid in reversed(chain) if right in adds[rid])
-            for rid in chain
-            for right in own[rid]
-        }.items()
-    )
+    rights = sorted({right for rid in chain for right in own[rid]})
     return {
         "role": role_id,
         "standard": role_id in standard,
@@ -56,5 +51,8 @@ def capabilities_view(role_id: str, rows: Iterable[dict], *, standard: Collectio
         "parents": {rid: list(parents.get(rid, [])) for rid in chain},
         "adds": adds,
         "standards": [rid for rid in chain if rid in standard],
-        "capabilities": [{"right": right, "from": source} for right, source in capabilities],
+        "capabilities": [
+            {"right": right, "from": [rid for rid in chain if right in adds[rid]]}
+            for right in rights
+        ],
     }

@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Loader, Table, Text } from "@mantine/core";
+import { Alert, Badge, Group, Loader, Table, Text } from "@mantine/core";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import { fetchRoleEffective, type RoleEffective } from "../../api/roleRights";
 import { roleLineageGraph } from "./roleLineage";
@@ -54,7 +54,9 @@ export function RoleCapabilities({ roleId }: { roleId: string }) {
       <Text size="sm" c="dimmed" mb="xs">
         {t("roleRights.lineageHint")}
       </Text>
-      <LineageDag graph={graph} height={360} allColumns />
+      {/* Its names read at body size (the diagram's 10px rows at 1.4); a lineage wider than the
+          panel shows the role itself, the standard roles reached by panning. */}
+      <LineageDag graph={graph} height={480} allColumns readable minZoom={1.4} overflowAt="end" />
       <Table mt="md" data-testid="role-capabilities-list">
         <Table.Thead>
           <Table.Tr>
@@ -67,14 +69,20 @@ export function RoleCapabilities({ roleId }: { roleId: string }) {
             <Table.Tr key={c.right} data-testid={`role-capability-${c.right}`}>
               <Table.Td ff="monospace">{c.right}</Table.Td>
               <Table.Td>
-                <Text component="span" ff="monospace" size="sm">
-                  {c.from === view.role ? t("roleRights.own") : c.from}
-                </Text>
-                {standards.has(c.from) && (
-                  <Badge size="xs" variant="light" ml={6}>
-                    {t("roleRights.kind_standard")}
-                  </Badge>
-                )}
+                <Group gap={8}>
+                  {c.from.map((from) => (
+                    <span key={from}>
+                      <Text component="span" ff="monospace" size="sm">
+                        {from === view.role ? t("roleRights.own") : from}
+                      </Text>
+                      {standards.has(from) && (
+                        <Badge size="xs" variant="light" ml={6}>
+                          {t("roleRights.kind_standard")}
+                        </Badge>
+                      )}
+                    </span>
+                  ))}
+                </Group>
               </Table.Td>
             </Table.Tr>
           ))}

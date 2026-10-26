@@ -30,10 +30,10 @@ def test_each_capability_names_the_role_it_comes_from():
     assert view["standard"] is False
     assert view["chain"] == ["dq_lead", "dq_steward", "viewer", "dp_owner"]
     assert view["capabilities"] == [
-        {"right": "data_product_owned_rw", "from": "dp_owner"},
-        {"right": "dq_rw", "from": "dq_steward"},
-        {"right": "export", "from": "dq_lead"},
-        {"right": "read", "from": "viewer"},
+        {"right": "data_product_owned_rw", "from": ["dp_owner"]},
+        {"right": "dq_rw", "from": ["dq_steward"]},
+        {"right": "export", "from": ["dq_lead"]},
+        {"right": "read", "from": ["viewer"]},
     ]
 
 
@@ -53,6 +53,37 @@ def test_the_lineage_has_every_role_s_parents_and_what_it_adds():
         "dq_lead": ["export"],
     }
     assert view["standards"] == ["dq_steward", "viewer", "dp_owner"]
+
+
+def test_a_right_entering_in_two_branches_comes_from_both():
+    diamond = [
+        {"id": "base", "capabilities": ["read"], "parents": []},
+        {"id": "left", "capabilities": ["relate"], "parents": ["base"]},
+        {"id": "right", "capabilities": ["relate", "write"], "parents": ["base"]},
+        {"id": "top", "capabilities": [], "parents": ["left", "right"]},
+    ]
+    view = capabilities_view("top", diamond, standard=set())
+    assert {"right": "relate", "from": ["left", "right"]} in view["capabilities"]
+    assert view["adds"]["left"] == ["relate"] and view["adds"]["right"] == ["relate", "write"]
+
+
+def test_a_right_restated_by_a_child_is_added_only_where_it_enters():
+    rows = [
+        {"id": "base", "capabilities": ["read"], "parents": []},
+        {"id": "child", "capabilities": ["read", "export"], "parents": ["base"]},
+    ]
+    view = capabilities_view("child", rows, standard=set())
+    assert view["adds"] == {"child": ["export"], "base": ["read"]}
+    assert {"right": "read", "from": ["base"]} in view["capabilities"]
+
+
+def test_on_the_standard_roster_org_admin_relates_through_developer_and_data_steward():
+    from provisa.core.db import STANDARD_ROLES, standard_role_dicts
+
+    view = capabilities_view("org_admin", standard_role_dicts(), standard=STANDARD_ROLES)
+    assert {"right": "create_relationship", "from": ["developer", "data_steward"]} in view[
+        "capabilities"
+    ]
 
 
 def test_a_meta_role_is_a_child_of_its_members():
@@ -119,7 +150,7 @@ async def test_the_endpoint_answers_a_role_the_caller_may_read(wired):
     wired({"dq_lead"})
     view = await roles_router.effective_rights("dq_lead", _request())
     assert view["chain"] == ["dq_lead", "dq_steward", "viewer", "dp_owner"]
-    assert {"right": "export", "from": "dq_lead"} in view["capabilities"]
+    assert {"right": "export", "from": ["dq_lead"]} in view["capabilities"]
 
 
 @pytest.mark.asyncio
