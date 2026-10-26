@@ -25,6 +25,7 @@ limit) rides the X-Provisa-Warnings header as on every HTTP surface.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -102,10 +103,23 @@ async def vocabulary_for(state: Any, role_id: str, ctx: Any, label_map: Any) -> 
     )
 
 
-@router.api_route("/data/sparql", methods=["GET", "POST"])
-async def sparql_query(request: Request) -> Response:  # REQ-2135
-    """Answer a SPARQL SELECT, ASK or CONSTRUCT over the semantic model, for the caller's role."""
-    from provisa.api.app import state
+@dataclass
+class SparqlAnswer:
+    """A SPARQL query answered: the compiled query, its rows, the vocabulary it was read against,
+    and the media type (and rdflib format) its answer is written in."""
+
+    compiled: Any
+    rows: list[dict]
+    vocab: Any
+    media: str
+    fmt: str
+
+
+async def answer_sparql(  # REQ-2135, REQ-2165
+    query: str, role_id: str, state: Any, *, accept: str | None, as_of: str | None
+) -> SparqlAnswer | Response:
+    """``query`` answered for ``role_id`` through the one pipeline, at ``as_of`` (a request's time
+    travel, request_time_travel); a refusal is the Response the endpoint answers with."""
     from provisa.api.rest.cypher_router import _dict_rows, _run_plan, access_violations
     from provisa.api.role_surface import role_surface
     from provisa.compiler.directives import NO_CACHE_HINT
@@ -116,19 +130,8 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     from provisa.gql.translator_types import CypherTranslateError
     from provisa.pgwire._pipeline import _govern_and_route_compiled
     from provisa.sparql_query.compiler import compile_sparql
-    from provisa.sparql_query.results import (
-        NotAcceptable,
-        negotiate,
-        write_ask,
-        write_construct,
-        write_select,
-    )
+    from provisa.sparql_query.results import NotAcceptable, negotiate
 
-    query = await _query_text(request)
-    if isinstance(query, Response):
-        return query
-
-    role_id = _resolve_role_id(request, state)
     surface = role_surface(state, role_id)
     if surface is None:
         return cypher_error(
@@ -142,7 +145,7 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     try:
         vocab = await vocabulary_for(state, role_id, ctx, label_map)
         compiled = compile_sparql(query, vocab, graph)
-        media, fmt = negotiate(request.headers.get("accept"), compiled.form)
+        media, fmt = negotiate(accept, compiled.form)
     except NotAcceptable as exc:
         return cypher_error(406, "sparql.not_acceptable", str(exc), reason=str(exc))
     except CypherTranslateError as exc:
@@ -169,6 +172,7 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
                 role_id,
                 buffered=True,
                 cache_hint=NO_CACHE_HINT,
+                as_of=as_of,
                 sdl_joins=False,
             )
         except ComplexityLimitExceeded:
@@ -181,14 +185,39 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         if isinstance(executed, Response):
             return executed
         rows = assemble_rows(take_cut(_dict_rows(executed), plan.warnings), graph_vars)
+    return SparqlAnswer(compiled, rows, vocab, media, fmt)
 
+
+@router.api_route("/data/sparql", methods=["GET", "POST"])
+async def sparql_query(request: Request) -> Response:  # REQ-2135
+    """Answer a SPARQL SELECT, ASK or CONSTRUCT over the semantic model, for the caller's role."""
+    from provisa.api.app import state
+    from provisa.api.data.endpoint_helpers import request_time_travel
+    from provisa.sparql_query.results import write_ask, write_construct, write_select
+
+    query = await _query_text(request)
+    if isinstance(query, Response):
+        return query
+    answer = await answer_sparql(
+        query,
+        _resolve_role_id(request, state),
+        state,
+        accept=request.headers.get("accept"),
+        # REQ-1163: as the other read surfaces take it.
+        as_of=request_time_travel(
+            request.headers.get("x-provisa-as-of"), request.headers.get("x-provisa-as-recorded")
+        ),
+    )
+    if isinstance(answer, Response):
+        return answer
+    compiled, rows, vocab = answer.compiled, answer.rows, answer.vocab
     if compiled.form == "ASK":
-        body = write_ask(bool(rows), fmt)
+        body = write_ask(bool(rows), answer.fmt)
     elif compiled.form == "CONSTRUCT":
-        body = write_construct(rows, vocab.base, vocab.prefixes, fmt)
+        body = write_construct(rows, vocab.base, vocab.prefixes, answer.fmt)
     else:
-        body = write_select(compiled.variables, rows, vocab.base, fmt)
-    return Response(content=body, media_type=media)
+        body = write_select(compiled.variables, rows, vocab.base, answer.fmt)
+    return Response(content=body, media_type=answer.media)
 
 
 @router.get("/data/sparql/vocabulary")
