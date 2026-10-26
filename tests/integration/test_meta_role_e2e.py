@@ -11,10 +11,10 @@
 """A request naming several held roles acts as their meta-role, on a real server (REQ-1620).
 
 One server over PostgreSQL: ``orders(id, region, email)`` with ``email`` masked except to
-``org_admin``. ``analyst`` sees east rows with the mask; ``east_reader`` and ``west_reader`` each
+``org_admin``. ``itest_analyst`` sees east rows with the mask; ``east_reader`` and ``west_reader`` each
 see their region's rows; ``org_admin`` sees everything. The meta-role is a child of every role it
 names: its rows are the OR of its members' filters, and it sees a value unmasked when any member
-does — so acting as (analyst, org_admin) is exactly acting as org_admin."""
+does — so acting as (itest_analyst, org_admin) is exactly acting as org_admin."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-_ROLES = ["org_admin", "analyst", "east_reader", "west_reader"]
+_ROLES = ["org_admin", "itest_analyst", "east_reader", "west_reader"]
 _ROWS = [(1, "east"), (2, "west"), (3, "north")]
 _ALL = [{"id": i, "region": r, "email": f"u{i}@x"} for i, r in _ROWS]
 
@@ -79,7 +79,7 @@ def server():
                 {
                     "description": "Test rule.",
                     "table_id": "orders",
-                    "role_id": "analyst",
+                    "role_id": "itest_analyst",
                     "filter": "region = 'east'",
                 },
                 {
@@ -152,12 +152,12 @@ def _graphql(boot, roles: str) -> list[dict]:
 
 def test_each_role_alone_reads_its_own_rows(server):
     assert _sql(server, "org_admin") == _ALL
-    assert _sql(server, "analyst") == [{"id": 1, "region": "east", "email": "***"}]
+    assert _sql(server, "itest_analyst") == [{"id": 1, "region": "east", "email": "***"}]
 
 
 @pytest.mark.parametrize("read", [_sql, _graphql])
 def test_a_filtered_masked_role_beside_org_admin_reads_what_org_admin_reads(server, read):
-    assert read(server, "analyst,org_admin") == read(server, "org_admin") == _ALL
+    assert read(server, "itest_analyst,org_admin") == read(server, "org_admin") == _ALL
 
 
 @pytest.mark.parametrize("read", [_sql, _graphql])
@@ -173,7 +173,7 @@ def test_the_order_of_the_set_does_not_matter(server):
 
 def test_a_meta_role_named_directly_is_refused(server):
     status, body = _post(
-        server, "meta:analyst+org_admin", "/data/sql", {"sql": "SELECT id FROM sales.orders"}
+        server, "meta:itest_analyst+org_admin", "/data/sql", {"sql": "SELECT id FROM sales.orders"}
     )
     assert status == 403 and "is not a role" in str(body), body
 
@@ -241,7 +241,7 @@ def _mcp(boot, roles: str) -> list[dict]:
 
 @pytest.mark.parametrize("read", [_pgwire, _bolt, _mcp])
 def test_every_transport_acts_as_the_set(server, read):
-    assert read(server, "analyst,org_admin") == _ALL
+    assert read(server, "itest_analyst,org_admin") == _ALL
     rows = read(server, "west_reader,east_reader")
     assert [(r["id"], r["region"], r["email"]) for r in rows] == [
         (1, "east", "***"),
@@ -252,4 +252,4 @@ def test_every_transport_acts_as_the_set(server, read):
 @pytest.mark.parametrize("read", [_pgwire, _bolt, _mcp])
 def test_every_transport_refuses_a_meta_role_named_directly(server, read):
     with pytest.raises(Exception, match="is not a role|does not exist or is not accessible"):
-        read(server, "meta:analyst+org_admin")
+        read(server, "meta:itest_analyst+org_admin")

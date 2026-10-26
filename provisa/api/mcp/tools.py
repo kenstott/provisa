@@ -860,24 +860,27 @@ async def create_data_product(  # REQ-1855
     full — fetch it first with list_data_products if you mean to change only some fields).
     `domain_id` must be a real, existing domain."""
     require_role(role, state)
-    from provisa.api.admin.capabilities import require_capability_request
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
 
-    require_capability_request(request, "data_product_rw")
-    from provisa.api.admin.capabilities import require_right_in_domains_request
+    from provisa.api.admin.capabilities import data_product_edit_refusal
+    from provisa.api.errors import ApiError
 
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        # REQ-1944: the product's domain, and the one it is moved out of when it exists.
+        # REQ-1944: the product's domain, and the one it is moved out of when it exists. REQ-2155:
+        # a product's owner (data_product_owned_rw) edits the one it owns.
         stored = await data_product_repo.get(conn, id)
-        require_right_in_domains_request(
-            request,
-            "data_product_rw",
+        refusal = data_product_edit_refusal(
+            getattr(request.state, "identity", None),
+            state,
+            stored,
             {domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
+        if refusal is not None:
+            raise ApiError(403, "auth.missing_capability", refusal)
         if await domain_repo.get(conn, domain_id) is None:
             raise ValueError(f"Domain not found: {domain_id}")
         model = DataProductModel(

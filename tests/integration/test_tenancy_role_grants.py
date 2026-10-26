@@ -69,12 +69,21 @@ async def _domain_access(db: Database) -> dict[str, list[str]]:
 
 
 async def _caps(db: Database) -> dict[str, set[str]]:
+    """Each standard role's rights: its own and every ancestor's (REQ-2155)."""
+    from provisa.security.inheritance import effective_capabilities
+
     async with db.acquire() as conn:
         result = await conn.execute_core(
-            text("SELECT id, capabilities FROM roles WHERE org_id IS NULL")
+            text("SELECT id, capabilities, parents FROM roles WHERE org_id IS NULL")
         )
-        rows = result.fetchall()
-    return {r[0]: set(r[1] or []) for r in rows}
+        rows = [{"id": r[0], "capabilities": r[1] or [], "parents": r[2] or []} for r in result]
+    return {r["id"]: set(effective_capabilities(r["id"], rows)) for r in rows}
+
+
+async def _reinit(db: Database) -> None:
+    """init_schema again: what every start and provision runs."""
+    with open(_SCHEMA_SQL, encoding="utf-8") as fh:
+        await init_schema(db, fh.read(), org_id=_ORG_ID)
 
 
 async def test_multitenant_withdraws_platform_settings_from_org_admin(tenant_db):
@@ -183,23 +192,16 @@ async def test_org_scoped_rights_are_held_in_either_mode(tenant_db, multitenancy
         assert not ({"admin", "superadmin"} & held), role_id
 
 
-@pytest.mark.parametrize("multitenancy", [True, False])
-async def test_org_scoped_rights_are_reasserted_on_a_pre_existing_row(tenant_db, multitenancy):
-    # REQ-1349: schema.sql seeds roles with ON CONFLICT (id) DO NOTHING, so a deployment whose
-    # org_admin row predates the rights would never receive them from the seed. This function is
-    # the seam where an existing deployment picks them up, on the next init_schema.
+async def test_a_standard_role_edited_in_the_store_is_written_back(tenant_db):
+    # REQ-2155: a standard role is Provisa's; init_schema writes every one as defined on each run,
+    # so a row an earlier release (or a hand edit) left without a right gets it back.
     async with tenant_db.acquire() as conn:
         await conn.execute_core(
-            text(
-                "UPDATE roles SET capabilities = COALESCE("
-                "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
-                "   WHERE v NOT IN ('\"org_settings\"'::jsonb, '\"observability\"'::jsonb)),"
-                "  '[]'::jsonb) WHERE id = 'org_admin'"
-            )
+            text("UPDATE roles SET capabilities = '[]'::jsonb WHERE id = 'org_operator'")
         )
     assert not ({"org_settings", "observability"} & (await _caps(tenant_db))["org_admin"])
 
-    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
+    await _reinit(tenant_db)
 
     assert {"org_settings", "observability"} <= (await _caps(tenant_db))["org_admin"]
 
@@ -215,41 +217,20 @@ async def test_no_other_role_gains_the_org_scoped_rights(tenant_db, multitenancy
         assert not ({"org_settings", "observability"} & caps[role_id]), role_id
 
 
-@pytest.mark.parametrize("multitenancy", [True, False])
-async def test_glossary_rights_are_reasserted_on_pre_existing_rows(tenant_db, multitenancy):
-    # REQ-1590: an org whose role rows predate the glossary rights keeps them stripped forever —
-    # ON CONFLICT (id) DO NOTHING never updates an existing row — which hides the glossary nav link
-    # and 403s the surface for the org's own administrator. Same seam as the REQ-1349 rights.
-    async with tenant_db.acquire() as conn:
-        await conn.execute_core(
-            text(
-                "UPDATE roles SET capabilities = COALESCE("
-                "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
-                "   WHERE v NOT IN ('\"glossary_read\"'::jsonb, '\"glossary_rw\"'::jsonb,"
-                "                    '\"org_glossary_rw\"'::jsonb)),"
-                "  '[]'::jsonb)"
-            )
-        )
-    stripped = await _caps(tenant_db)
-    for role_id in ("org_admin", "analyst", "developer", "modeler"):
-        assert not ({"glossary_read", "glossary_rw"} & stripped[role_id]), role_id
-
-    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
-
+async def test_the_glossary_rights_are_where_the_standard_roles_put_them(tenant_db):
+    # REQ-1590, REQ-2155: every standard data role reads the glossary (viewer); the data steward
+    # curates it, org_admin through it; REQ-1592: the org's glossary owner is org_admin ALONE.
     caps = await _caps(tenant_db)
-    # Every seeded role reads; curation stays with the roles that own the model.
-    for role_id in ("org_admin", "analyst", "developer", "modeler"):
+    for role_id in ("org_admin", "analyst", "developer", "modeler", "data_steward"):
         assert "glossary_read" in caps[role_id], role_id
-    assert {"glossary_rw"} <= caps["org_admin"]
-    assert {"glossary_rw"} <= caps["modeler"]
-    for role_id in ("analyst", "developer"):
-        assert "glossary_rw" not in caps[role_id], role_id
-    # REQ-1592: the org's glossary owner is org_admin ALONE — not modeler, which curates the model
-    # but does not override another curator's authorship or the org-wide scope.
-    assert "org_glossary_rw" in caps["org_admin"]
+    for role_id in ("org_admin", "data_steward"):
+        assert "glossary_rw" in caps[role_id], role_id
     for role_id in ("analyst", "developer", "modeler"):
+        assert "glossary_rw" not in caps[role_id], role_id
+    assert "org_glossary_rw" in caps["org_admin"]
+    for role_id in ("analyst", "developer", "modeler", "data_steward"):
         assert "org_glossary_rw" not in caps[role_id], role_id
-    # platform_admin is control-plane only: it gains no data-plane right here.
+    # platform_admin is control-plane only: it holds no data-plane right.
     assert not ({"glossary_read", "glossary_rw", "org_glossary_rw"} & caps["platform_admin"])
 
 
@@ -263,70 +244,11 @@ async def test_no_other_role_gains_platform_settings(tenant_db):
         assert "platform_settings" not in caps[role_id], role_id
 
 
-async def test_a_derived_role_is_re_read_after_every_re_assertion(tenant_db):
-    """REQ-1624: a role whose ``defined_from`` names another IS that other role, here.
-
-    REQ-1602 defines the sandbox visitor by subtracting four rights from ``org_admin`` in the
-    visitor's own environment (``env_copy.adopt_role_definition``), and the visitor holds both
-    names, so the union has to be the narrow one. Every branch above re-asserts ``org_admin``'s
-    rights into whatever schema is being asserted, environment schemas included, so a subtraction
-    applied once was handed straight back on the next runtime build: a sandbox visitor recovered
-    ``environment_management`` and reached the org's environments surface, other visitors'
-    environments and all.
-    """
-    async with tenant_db.acquire() as conn:
-        await conn.execute("UPDATE roles SET defined_from = 'sandbox' WHERE id = 'org_admin'")
-
-    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=True)
-
-    caps = await _caps(tenant_db)
-    assert caps["org_admin"] == caps["sandbox"]
-    for withheld in (
-        "environment_management",
-        "org_glossary_rw",
-    ):
-        assert withheld not in caps["org_admin"], withheld
-    # REQ-2053: switching between the environments that exist is held.
-    assert "environment_switch" in caps["org_admin"]
-
-
-async def test_an_underived_role_keeps_the_tenancy_answer(tenant_db):
-    # The re-read is scoped by the column: an org_admin with no ``defined_from`` is unaffected by
-    # the sandbox row sitting in the same table.
+async def test_the_sandbox_never_manages_environments(tenant_db):
+    # REQ-2155: the sandbox is a union of standard roles that leaves out what reaches past its
+    # environment; org_admin manages any environment.
     await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=True)
 
     caps = await _caps(tenant_db)
     assert "environment_management" in caps["org_admin"]
     assert "environment_management" not in caps["sandbox"]
-
-
-@pytest.mark.parametrize("multitenancy", [True, False])
-async def test_a_pre_existing_sandbox_row_is_rederived_from_org_admin(tenant_db, multitenancy):
-    """REQ-1597: sandbox is org_admin minus a denylist -- and stays so on a row the seed cannot
-    reach. The sandbox org on cloud was seeded before REQ-1634 added the data-product rights; the
-    seed's ON CONFLICT DO NOTHING left its sandbox row without them, the seam re-asserted them onto
-    org_admin alone, and every visitor (whose org_admin is derived FROM sandbox) lost the Data
-    Products nav entry."""
-    async with tenant_db.acquire() as conn:
-        await conn.execute(
-            "UPDATE roles SET capabilities = COALESCE("
-            "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
-            "   WHERE v NOT IN ('\"data_product_read\"'::jsonb, '\"data_product_rw\"'::jsonb)),"
-            "  '[]'::jsonb) WHERE id = 'sandbox'"
-        )
-        await conn.execute("UPDATE roles SET defined_from = 'sandbox' WHERE id = 'org_admin'")
-
-    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
-
-    caps = await _caps(tenant_db)
-    assert {"data_product_read", "data_product_rw"} <= caps["sandbox"]
-    assert caps["org_admin"] == caps["sandbox"]
-    for withheld in (
-        "environment_management",
-        "user_management",
-        "org_glossary_rw",
-        "platform_settings",
-    ):
-        assert withheld not in caps["sandbox"], withheld
-    # REQ-2053: switching between the environments that exist is held.
-    assert "environment_switch" in caps["sandbox"]

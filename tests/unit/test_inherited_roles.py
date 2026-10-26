@@ -42,7 +42,7 @@ def _role(role_id: str, caps: list[str], domains: list[str], parent: str | None 
         description="Test role.",
         capabilities=caps,
         domain_access=domains,
-        parent_role_id=parent,
+        parents=[parent] if parent else [],
     )
 
 
@@ -73,7 +73,8 @@ def _inherited_rls(rules: list[dict], chains: dict[str, list[str]], role_id: str
     """The role's row filters as the server builds them: inherited rules materialized down the
     role chain (security/inheritance.materialize_rls), folded per table (row_filters)."""
     tables = [{"id": ORDERS_TABLE_ID, "domain_id": ""}]
-    resolved = resolve_table_rules(materialize_rls(rules, tables, chains), tables, chains, [], {})
+    parents = {role: chain[1:2] for role, chain in chains.items()}  # each chain is one parent deep
+    resolved = resolve_table_rules(materialize_rls(rules, tables, parents), tables, chains, [], {})
     return build_rls_context(resolved, role_id)
 
 
@@ -98,7 +99,7 @@ def _orders_ctx() -> CompilationContext:
 
 class TestFlattenRoles:
     def test_flatten_roles_produces_merged_context(self):
-        """flatten_roles() merges capabilities and domain_access from parent."""
+        """flatten_roles() merges the parent's capabilities; reach is the role's own (REQ-2155)."""
         parent = _role("parent", caps=["read"], domains=["sales"])
         child = _role("child", caps=["export"], domains=["ops"], parent="parent")
 
@@ -107,8 +108,7 @@ class TestFlattenRoles:
 
         assert "read" in by_id["child"].capabilities
         assert "export" in by_id["child"].capabilities
-        assert "sales" in by_id["child"].domain_access
-        assert "ops" in by_id["child"].domain_access
+        assert by_id["child"].domain_access == ["ops"]
 
     def test_child_retains_own_capabilities(self):
         """Child-only capabilities are preserved after flattening."""
@@ -131,15 +131,16 @@ class TestFlattenRoles:
 
         assert "aggregate" not in by_id["base"].capabilities
 
-    def test_wildcard_domain_propagates(self):
-        """A wildcard domain_access '*' in parent propagates to child."""
+    def test_wildcard_domain_does_not_propagate(self):
+        """REQ-2155: a parent reaching every domain gives its child no reach; the child's own list
+        stands."""
         parent = _role("super", caps=["read"], domains=["*"])
         child = _role("sub", caps=["read"], domains=["finance"], parent="super")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
-        assert "*" in by_id["sub"].domain_access
+        assert by_id["sub"].domain_access == ["finance"]
 
     def test_no_parent_role_is_unchanged(self):
         """A role with no parent must remain identical after flattening."""
@@ -147,7 +148,7 @@ class TestFlattenRoles:
         result = flatten_roles([solo])
         assert result[0].capabilities == ["read"]
         assert result[0].domain_access == ["sales"]
-        assert result[0].parent_role_id is None
+        assert result[0].parents == []
 
 
 # ---------------------------------------------------------------------------
@@ -208,10 +209,8 @@ class TestInheritedRolesRLS:
         assert "aggregate" in by_id["child"].capabilities
         assert "export" in by_id["child"].capabilities
 
-        # Child should have all three domain sets
-        assert "sales" in by_id["child"].domain_access
-        assert "ops" in by_id["child"].domain_access
-        assert "finance" in by_id["child"].domain_access
+        # REQ-2155: reach is the child's own
+        assert by_id["child"].domain_access == ["finance"]
 
     def test_child_rls_sql_where_injected_correctly(self):
         """The row filter is placed before ORDER BY, on the table's alias."""

@@ -91,7 +91,10 @@ def test_its_tags_are_the_standard_demo_s_over_those_sources():
 
 
 def test_its_analyst_role_is_the_standard_demo_s_on_its_one_domain():
-    (standard,) = [r for r in _STANDARD["roles"] if r["id"] == "analyst"]
+    # REQ-2155: the standard demo's own analyst, a child of the standard analyst.
+    (standard,) = [r for r in _STANDARD["roles"] if r["id"] == "pet_analyst"]
     (role,) = _DEMO["roles"]
+    assert role["id"] == standard["id"]
+    assert role["parents"] == standard["parents"] == ["analyst"]
     assert role["capabilities"] == standard["capabilities"]
     assert role["domain_access"] == [d["id"] for d in _DEMO["domains"]] == ["pet-store"]

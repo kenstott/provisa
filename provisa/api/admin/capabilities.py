@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from provisa.auth.models import AuthIdentity
 from provisa.security.rights import (
     acting_claims,
+    role_ids_from_claims,
     capabilities_for_claims,
     domain_access_for_capability,
     domain_access_for_claims,
@@ -285,6 +286,15 @@ def require_capability_request(request, capability: str) -> None:  # REQ-1531
         raise ApiError(403, "auth.missing_capability", f"Missing capability: {capability!r}")
 
 
+def require_dq_read_request(request) -> None:  # REQ-2155
+    """Reading data quality -- profile runs, check definitions and results -- needs dq_read, which
+    dq_rw implies: whoever manages checks reads what they are managed from. Refused naming
+    dq_read."""
+    if has_capability_request(request, "dq_rw"):
+        return
+    require_capability_request(request, "dq_read")
+
+
 def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
     """The domains a REST caller may act in, or ``None`` when domains gate nothing for it.
 
@@ -458,6 +468,31 @@ def right_domain_refusal(  # REQ-1944
         if domain_id not in allowed:
             return f"No access to domain {domain_id!r} for {label}"
     return None
+
+
+def data_product_edit_refusal(  # REQ-2155
+    identity, state, stored: dict | None, domains: "Iterable[str]"
+) -> str | None:
+    """Why ``identity`` may not save a data product into ``domains``, or None when it may.
+
+    ``data_product_rw`` edits any product its reach covers, and is the only right that creates or
+    deletes one. ``data_product_owned_rw`` edits an existing product (``stored``) whose owner_role
+    the caller holds -- itself or through an ancestor -- within its reach. ``domains`` are those
+    of what the edit changes: the product's domain, and the one it moves out of."""
+    refusal = right_domain_refusal(identity, state, "data_product_rw", domains)
+    if refusal is None or stored is None or not stored.get("owner_role"):
+        return refusal
+    chains = getattr(state, "role_chains", {}) or {}
+    held = {
+        anc
+        for rid in role_ids_from_claims(acting_claims(identity))
+        for anc in chains.get(rid, [rid])
+    }
+    if stored["owner_role"] not in held:
+        return refusal
+    if right_domain_refusal(identity, state, "data_product_owned_rw", domains) is None:
+        return None
+    return refusal
 
 
 def require_right_in_domains(  # REQ-1944

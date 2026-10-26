@@ -809,7 +809,7 @@ def reader(stack) -> str:
                     "description": "The features test's second reader.",
                     "capabilities": list(top["capabilities"]),
                     "domainAccess": list(top["domainAccess"]),
-                    "parentRoleId": "org_admin",
+                    "parents": ["org_admin"],
                 }
             },
         )

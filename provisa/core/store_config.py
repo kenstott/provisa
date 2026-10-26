@@ -59,7 +59,6 @@ from provisa.core.schema_org import (
     naming_rules,
     registered_tables,
 )
-from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -86,8 +85,6 @@ MODEL_SECTIONS: tuple[str, ...] = (
     "scheduled_triggers",
     "kafka_sources",
 )
-
-_RESERVED_ROLES = frozenset({ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
 
 
 def _written(model: BaseModel) -> dict[str, Any]:
@@ -139,9 +136,12 @@ async def _domains(conn: "Connection") -> list[dict[str, Any]]:
 async def _roles(conn: "Connection") -> list[dict[str, Any]]:
     from provisa.core.repositories import role as role_repo
 
+    from provisa.core.db import STANDARD_ROLES
+
     out = []
     for row in await role_repo.list_all(conn):
-        if row["id"] in _RESERVED_ROLES:
+        # REQ-2155: a standard role is Provisa's, never a config file's (role_repo refuses one).
+        if row["id"] in STANDARD_ROLES:
             continue
         written = _written(Role.model_validate(_fields(Role, row)))
         # A role always states its domains (ProvisaConfig refuses one that does not).
@@ -410,7 +410,7 @@ def _key(item: dict[str, Any]) -> str:
 
 
 def _roles_parents_first(roles: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Roles by id, each after the role it inherits from, so an apply finds the parent stored."""
+    """Roles by id, each after the roles it inherits from, so an apply finds its parents stored."""
     by_id = {r["id"]: r for r in roles}
     out: list[dict[str, Any]] = []
     placed: set[str] = set()
@@ -418,9 +418,9 @@ def _roles_parents_first(roles: list[dict[str, Any]]) -> list[dict[str, Any]]:
     def _place(role: dict[str, Any]) -> None:
         if role["id"] in placed:
             return
-        parent = role.get("parent_role_id")
-        if parent in by_id:
-            _place(by_id[parent])
+        for parent in role.get("parents") or []:
+            if parent in by_id:
+                _place(by_id[parent])
         placed.add(role["id"])
         out.append(role)
 

@@ -40,7 +40,8 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: security_analyst
+  parents: [analyst]
   description: "Queries the security domain's findings."
   capabilities:
   - query_development
@@ -78,24 +79,24 @@ tables:
   table: repositories
   description: The company's repositories, who owns each and how exposed it is
   columns:
-  - {name: repo_id, data_type: integer, is_primary_key: true, description: The repository's number, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: The repository's name, visible_to: [org_admin, analyst]}
-  - {name: team, data_type: varchar, description: The team that owns it, visible_to: [org_admin, analyst]}
-  - {name: language, data_type: varchar, description: Its main language, visible_to: [org_admin, analyst]}
-  - {name: ecosystem, data_type: varchar, description: 'The package ecosystem its manifest is in: maven, npm, pip, composer or go', visible_to: [org_admin, analyst]}
-  - {name: criticality, data_type: varchar, description: 'How critical it is to the business: high, medium or low', visible_to: [org_admin, analyst]}
-  - {name: internet_facing, data_type: boolean, description: Whether it serves the internet, visible_to: [org_admin, analyst]}
+  - {name: repo_id, data_type: integer, is_primary_key: true, description: The repository's number, visible_to: [data_steward, security_analyst]}
+  - {name: name, data_type: varchar, description: The repository's name, visible_to: [data_steward, security_analyst]}
+  - {name: team, data_type: varchar, description: The team that owns it, visible_to: [data_steward, security_analyst]}
+  - {name: language, data_type: varchar, description: Its main language, visible_to: [data_steward, security_analyst]}
+  - {name: ecosystem, data_type: varchar, description: 'The package ecosystem its manifest is in: maven, npm, pip, composer or go', visible_to: [data_steward, security_analyst]}
+  - {name: criticality, data_type: varchar, description: 'How critical it is to the business: high, medium or low', visible_to: [data_steward, security_analyst]}
+  - {name: internet_facing, data_type: boolean, description: Whether it serves the internet, visible_to: [data_steward, security_analyst]}
 - source_id: code
   domain_id: security
   schema: public
   table: dependencies
   description: Each repository's dependency manifest -- the packages it pins, by version
   columns:
-  - {name: repo_id, data_type: integer, is_primary_key: true, description: The repository that pins the package, visible_to: [org_admin, analyst]}
-  - {name: package_name, data_type: varchar, is_primary_key: true, description: The package, visible_to: [org_admin, analyst]}
-  - {name: ecosystem, data_type: varchar, description: The package's ecosystem, visible_to: [org_admin, analyst]}
-  - {name: version, data_type: varchar, description: The version pinned, visible_to: [org_admin, analyst]}
-  - {name: scope, data_type: varchar, description: 'runtime, or development only', visible_to: [org_admin, analyst]}
+  - {name: repo_id, data_type: integer, is_primary_key: true, description: The repository that pins the package, visible_to: [data_steward, security_analyst]}
+  - {name: package_name, data_type: varchar, is_primary_key: true, description: The package, visible_to: [data_steward, security_analyst]}
+  - {name: ecosystem, data_type: varchar, description: The package's ecosystem, visible_to: [data_steward, security_analyst]}
+  - {name: version, data_type: varchar, description: The version pinned, visible_to: [data_steward, security_analyst]}
+  - {name: scope, data_type: varchar, description: 'runtime, or development only', visible_to: [data_steward, security_analyst]}
 - source_id: code
   domain_id: security
   schema: public
@@ -104,17 +105,17 @@ tables:
   enable_group_by: true
   description: The Dependabot alerts on the vulnerable pins -- one for each pin and CVE
   columns:
-  - {name: alert_id, data_type: integer, is_primary_key: true, description: The alert's number, visible_to: [org_admin, analyst]}
-  - {name: repo_id, data_type: integer, description: The repository it was raised in, visible_to: [org_admin, analyst]}
-  - {name: ecosystem, data_type: varchar, description: The package's ecosystem, visible_to: [org_admin, analyst]}
-  - {name: package_name, data_type: varchar, description: The vulnerable package, visible_to: [org_admin, analyst]}
-  - {name: vulnerable_version, data_type: varchar, description: The version pinned when the alert was raised, visible_to: [org_admin, analyst]}
-  - {name: fixed_version, data_type: varchar, description: The first version that fixes it, visible_to: [org_admin, analyst]}
-  - {name: cve_id, data_type: varchar, description: The CVE the alert is about, visible_to: [org_admin, analyst]}
-  - {name: severity, data_type: varchar, description: 'The advisory''s severity: critical, high, medium or low', visible_to: [org_admin, analyst]}
-  - {name: state, data_type: varchar, description: 'open, fixed or dismissed', visible_to: [org_admin, analyst]}
-  - {name: created_at, data_type: date, description: When the alert was raised, visible_to: [org_admin, analyst]}
-  - {name: fixed_at, data_type: date, description: When it was fixed, visible_to: [org_admin, analyst]}
+  - {name: alert_id, data_type: integer, is_primary_key: true, description: The alert's number, visible_to: [data_steward, security_analyst]}
+  - {name: repo_id, data_type: integer, description: The repository it was raised in, visible_to: [data_steward, security_analyst]}
+  - {name: ecosystem, data_type: varchar, description: The package's ecosystem, visible_to: [data_steward, security_analyst]}
+  - {name: package_name, data_type: varchar, description: The vulnerable package, visible_to: [data_steward, security_analyst]}
+  - {name: vulnerable_version, data_type: varchar, description: The version pinned when the alert was raised, visible_to: [data_steward, security_analyst]}
+  - {name: fixed_version, data_type: varchar, description: The first version that fixes it, visible_to: [data_steward, security_analyst]}
+  - {name: cve_id, data_type: varchar, description: The CVE the alert is about, visible_to: [data_steward, security_analyst]}
+  - {name: severity, data_type: varchar, description: 'The advisory''s severity: critical, high, medium or low', visible_to: [data_steward, security_analyst]}
+  - {name: state, data_type: varchar, description: 'open, fixed or dismissed', visible_to: [data_steward, security_analyst]}
+  - {name: created_at, data_type: date, description: When the alert was raised, visible_to: [data_steward, security_analyst]}
+  - {name: fixed_at, data_type: date, description: When it was fixed, visible_to: [data_steward, security_analyst]}
 - source_id: govdata
   domain_id: security
   schema: cyber_vuln
@@ -125,12 +126,12 @@ tables:
   description: The NVD's record of each CVE the alerts name -- what it is, when it was published,
     and its CVSS score
   columns:
-  - {name: cve_id, data_type: varchar, is_primary_key: true, description: The CVE's identifier, visible_to: [org_admin, analyst]}
-  - {name: published, data_type: varchar, description: When the NVD published it (ISO 8601), visible_to: [org_admin, analyst]}
-  - {name: description_en, data_type: varchar, description: What the vulnerability is, visible_to: [org_admin, analyst]}
-  - {name: cvss_v31_score, data_type: double, description: Its CVSS v3.1 base score from 0 to 10, visible_to: [org_admin, analyst]}
-  - {name: cvss_v31_severity, data_type: varchar, description: 'Its CVSS v3.1 severity: LOW, MEDIUM, HIGH or CRITICAL', visible_to: [org_admin, analyst]}
-  - {name: cvss_v31_vector, data_type: varchar, description: Its CVSS v3.1 vector -- how it is exploited and what it reaches, visible_to: [org_admin, analyst]}
+  - {name: cve_id, data_type: varchar, is_primary_key: true, description: The CVE's identifier, visible_to: [data_steward, security_analyst]}
+  - {name: published, data_type: varchar, description: When the NVD published it (ISO 8601), visible_to: [data_steward, security_analyst]}
+  - {name: description_en, data_type: varchar, description: What the vulnerability is, visible_to: [data_steward, security_analyst]}
+  - {name: cvss_v31_score, data_type: double, description: Its CVSS v3.1 base score from 0 to 10, visible_to: [data_steward, security_analyst]}
+  - {name: cvss_v31_severity, data_type: varchar, description: 'Its CVSS v3.1 severity: LOW, MEDIUM, HIGH or CRITICAL', visible_to: [data_steward, security_analyst]}
+  - {name: cvss_v31_vector, data_type: varchar, description: Its CVSS v3.1 vector -- how it is exploited and what it reaches, visible_to: [data_steward, security_analyst]}
 - source_id: govdata
   domain_id: security
   schema: cyber_vuln
@@ -139,8 +140,8 @@ tables:
   landing_filter: cve_id IN ('CVE-2017-5638', 'CVE-2019-11358', 'CVE-2020-14343', 'CVE-2020-1938', 'CVE-2021-23337', 'CVE-2021-3129', 'CVE-2021-33503', 'CVE-2021-44228', 'CVE-2021-44906', 'CVE-2021-45046', 'CVE-2022-1471', 'CVE-2022-22817', 'CVE-2022-22965', 'CVE-2022-24785', 'CVE-2022-25845', 'CVE-2022-42889', 'CVE-2023-32681', 'CVE-2023-44487', 'CVE-2023-46604')
   description: The weaknesses (CWE) each CVE is an instance of, as the NVD classifies it
   columns:
-  - {name: cve_id, data_type: varchar, is_primary_key: true, description: The CVE, visible_to: [org_admin, analyst]}
-  - {name: cwe_id, data_type: varchar, is_primary_key: true, description: The weakness it is an instance of, visible_to: [org_admin, analyst]}
+  - {name: cve_id, data_type: varchar, is_primary_key: true, description: The CVE, visible_to: [data_steward, security_analyst]}
+  - {name: cwe_id, data_type: varchar, is_primary_key: true, description: The weakness it is an instance of, visible_to: [data_steward, security_analyst]}
 - source_id: govdata
   domain_id: security
   schema: cyber_vuln
@@ -148,10 +149,10 @@ tables:
   alias: weaknesses
   description: MITRE's catalog of software weaknesses (CWE)
   columns:
-  - {name: cwe_id, data_type: varchar, is_primary_key: true, description: The weakness's identifier, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: The weakness's name, visible_to: [org_admin, analyst]}
-  - {name: abstraction, data_type: varchar, description: 'How specific it is: Pillar, Class, Base or Variant', visible_to: [org_admin, analyst]}
-  - {name: description, data_type: varchar, description: What the weakness is, visible_to: [org_admin, analyst]}
+  - {name: cwe_id, data_type: varchar, is_primary_key: true, description: The weakness's identifier, visible_to: [data_steward, security_analyst]}
+  - {name: name, data_type: varchar, description: The weakness's name, visible_to: [data_steward, security_analyst]}
+  - {name: abstraction, data_type: varchar, description: 'How specific it is: Pillar, Class, Base or Variant', visible_to: [data_steward, security_analyst]}
+  - {name: description, data_type: varchar, description: What the weakness is, visible_to: [data_steward, security_analyst]}
 - source_id: govdata
   domain_id: security
   schema: cyber_vuln
@@ -160,14 +161,14 @@ tables:
   description: CISA's catalog of Known Exploited Vulnerabilities -- each CVE attackers are known to
     exploit, and the date federal agencies must remediate it by
   columns:
-  - {name: cve_id, data_type: varchar, is_primary_key: true, description: The CVE, visible_to: [org_admin, analyst]}
-  - {name: vendor_project, data_type: varchar, description: The vendor or project, visible_to: [org_admin, analyst]}
-  - {name: product, data_type: varchar, description: The product, visible_to: [org_admin, analyst]}
-  - {name: vulnerability_name, data_type: varchar, description: CISA's name for the vulnerability, visible_to: [org_admin, analyst]}
-  - {name: date_added, data_type: varchar, description: When CISA added it to the catalog (YYYY-MM-DD), visible_to: [org_admin, analyst]}
-  - {name: required_action, data_type: varchar, description: What CISA requires be done about it, visible_to: [org_admin, analyst]}
-  - {name: due_date, data_type: varchar, description: 'The date federal agencies must remediate it by (YYYY-MM-DD)', visible_to: [org_admin, analyst]}
-  - {name: known_ransomware_use, data_type: varchar, description: 'Whether ransomware campaigns are known to use it: Known or Unknown', visible_to: [org_admin, analyst]}
+  - {name: cve_id, data_type: varchar, is_primary_key: true, description: The CVE, visible_to: [data_steward, security_analyst]}
+  - {name: vendor_project, data_type: varchar, description: The vendor or project, visible_to: [data_steward, security_analyst]}
+  - {name: product, data_type: varchar, description: The product, visible_to: [data_steward, security_analyst]}
+  - {name: vulnerability_name, data_type: varchar, description: CISA's name for the vulnerability, visible_to: [data_steward, security_analyst]}
+  - {name: date_added, data_type: varchar, description: When CISA added it to the catalog (YYYY-MM-DD), visible_to: [data_steward, security_analyst]}
+  - {name: required_action, data_type: varchar, description: What CISA requires be done about it, visible_to: [data_steward, security_analyst]}
+  - {name: due_date, data_type: varchar, description: 'The date federal agencies must remediate it by (YYYY-MM-DD)', visible_to: [data_steward, security_analyst]}
+  - {name: known_ransomware_use, data_type: varchar, description: 'Whether ransomware campaigns are known to use it: Known or Unknown', visible_to: [data_steward, security_analyst]}
 views:
 # The answer: each open alert whose CVE attackers are known to exploit, with the repository it sits
 # in and how many days past CISA's remediation due date it is. Stored, and built again when its
@@ -192,21 +193,21 @@ views:
     LEFT JOIN "security"."cves" AS v ON v.cve_id = a.cve_id
     WHERE a.state = 'open'
   columns:
-  - {name: alert_id, data_type: integer, description: The alert's number, visible_to: [org_admin, analyst]}
-  - {name: repository, data_type: varchar, description: The repository the alert is in, visible_to: [org_admin, analyst]}
-  - {name: team, data_type: varchar, description: The team that owns it, visible_to: [org_admin, analyst]}
-  - {name: criticality, data_type: varchar, description: How critical the repository is to the business, visible_to: [org_admin, analyst]}
-  - {name: internet_facing, data_type: boolean, description: Whether the repository serves the internet, visible_to: [org_admin, analyst]}
-  - {name: package_name, data_type: varchar, description: The vulnerable package, visible_to: [org_admin, analyst]}
-  - {name: vulnerable_version, data_type: varchar, description: The version pinned, visible_to: [org_admin, analyst]}
-  - {name: fixed_version, data_type: varchar, description: The first version that fixes it, visible_to: [org_admin, analyst]}
-  - {name: cve_id, data_type: varchar, description: The CVE, visible_to: [org_admin, analyst]}
-  - {name: vulnerability_name, data_type: varchar, description: CISA's name for it, visible_to: [org_admin, analyst]}
-  - {name: known_ransomware_use, data_type: varchar, description: Whether ransomware campaigns are known to use it, visible_to: [org_admin, analyst]}
-  - {name: cisa_due_date, data_type: date, description: The date CISA set to remediate it by, visible_to: [org_admin, analyst]}
-  - {name: days_past_due, data_type: integer, description: Days since that date passed, visible_to: [org_admin, analyst]}
-  - {name: cvss_v31_score, data_type: double, description: Its CVSS v3.1 base score, visible_to: [org_admin, analyst]}
-  - {name: cvss_v31_severity, data_type: varchar, description: Its CVSS v3.1 severity, visible_to: [org_admin, analyst]}
+  - {name: alert_id, data_type: integer, description: The alert's number, visible_to: [data_steward, security_analyst]}
+  - {name: repository, data_type: varchar, description: The repository the alert is in, visible_to: [data_steward, security_analyst]}
+  - {name: team, data_type: varchar, description: The team that owns it, visible_to: [data_steward, security_analyst]}
+  - {name: criticality, data_type: varchar, description: How critical the repository is to the business, visible_to: [data_steward, security_analyst]}
+  - {name: internet_facing, data_type: boolean, description: Whether the repository serves the internet, visible_to: [data_steward, security_analyst]}
+  - {name: package_name, data_type: varchar, description: The vulnerable package, visible_to: [data_steward, security_analyst]}
+  - {name: vulnerable_version, data_type: varchar, description: The version pinned, visible_to: [data_steward, security_analyst]}
+  - {name: fixed_version, data_type: varchar, description: The first version that fixes it, visible_to: [data_steward, security_analyst]}
+  - {name: cve_id, data_type: varchar, description: The CVE, visible_to: [data_steward, security_analyst]}
+  - {name: vulnerability_name, data_type: varchar, description: CISA's name for it, visible_to: [data_steward, security_analyst]}
+  - {name: known_ransomware_use, data_type: varchar, description: Whether ransomware campaigns are known to use it, visible_to: [data_steward, security_analyst]}
+  - {name: cisa_due_date, data_type: date, description: The date CISA set to remediate it by, visible_to: [data_steward, security_analyst]}
+  - {name: days_past_due, data_type: integer, description: Days since that date passed, visible_to: [data_steward, security_analyst]}
+  - {name: cvss_v31_score, data_type: double, description: Its CVSS v3.1 base score, visible_to: [data_steward, security_analyst]}
+  - {name: cvss_v31_severity, data_type: varchar, description: Its CVSS v3.1 severity, visible_to: [data_steward, security_analyst]}
 relationships:
 - {id: dependency-in-repository, alias: PINNED_IN, graphql_alias: repository, cardinality: many-to-one, source_table_id: dependencies, source_column: repo_id, target_table_id: repositories, target_column: repo_id}
 - {id: alert-in-repository, alias: RAISED_IN, graphql_alias: repository, cardinality: many-to-one, source_table_id: dependabot_alerts, source_column: repo_id, target_table_id: repositories, target_column: repo_id}

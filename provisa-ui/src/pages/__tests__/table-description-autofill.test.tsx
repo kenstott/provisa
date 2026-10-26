@@ -40,7 +40,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => {
       role: "admin",
       selectedRoles: ["admin"],
       // The org administrator's rights: no capability stands in for them (REQ-1327).
-      capabilities: actual.DEFAULT_ADMIN_ROLE.capabilities,
+      capabilities: actual.DEFAULT_ADMIN_ROLE.effectiveCapabilities,
       domainAccess: ["*"],
     }),
   };
@@ -119,7 +119,9 @@ const mutationOk = () => ({ success: true, message: "" });
 // the refetch fns and runs in an effect, so a fresh fn each render would loop forever.
 // Likewise an effect keyed on `tables` re-runs setState on every new array identity.
 const EMPTY_TABLES: never[] = [];
-const ROLES = [{ id: "admin", capabilities: ["admin"], domainAccess: ["*"] }];
+const ROLES = [
+  { id: "admin", capabilities: ["admin"], effectiveCapabilities: ["admin"], domainAccess: ["*"] },
+];
 const DOMAINS = [{ id: "sales", description: "Sales data" }];
 const refetchTables = vi.fn();
 const refetchSources = vi.fn();

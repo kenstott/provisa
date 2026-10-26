@@ -253,8 +253,7 @@ REFERENCES: tuple[Reference, ...] = (
     # --- to a relationship ---------------------------------------------------------------------
     _part("tag_assignments", "relationship_id", "relationship"),
     # --- to a role -----------------------------------------------------------------------------
-    _dep("roles", "parent_role_id", "role", "role", "id"),
-    _dep("roles", "defined_from", "role", "role", "id"),
+    _dep("roles", "parents", "role", "role", "id", match=Match.MEMBER),  # REQ-2155
     # Anyone who holds the role, and every grant or ownership that names it, blocks it: nothing
     # may be left naming a deleted role.
     _dep("user_role_assignments", "role_id", "role", "role_assignment", "id"),

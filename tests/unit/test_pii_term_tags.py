@@ -400,18 +400,20 @@ async def test_a_column_pii_through_its_term_is_masked_and_held_to_its_fake(
 
 @pytest.mark.asyncio
 async def test_a_terms_tag_rides_in_its_file_and_comes_back_on_the_term(control_plane, monkeypatch):
-    from provisa.core.env_deploy import _decompose, _existing_ids
+    from provisa.core.env_deploy import _decompose, _existing_ids, _roles_after
     from provisa.core.env_project import project
 
     async with _model(control_plane, monkeypatch) as (db, ids):
         async with db.acquire() as conn:
             tree = await project(conn, "org_default")
             existing = await _existing_ids(conn, "org_default")
+            # The roles the tree holds, as a deploy reads them (REQ-2155: they name their parents).
+            roles = await _roles_after(conn, "org_default", tree)
         term_path = next(p for p, b in tree.items() if b.get("name") == "home address")
         assert tree[term_path]["tags"] == [
             {"tag_id": "pii", "base_tag_id": "pii", "reason": "a home address"}
         ]
-        rows = _decompose(tree, existing, frozenset())
+        rows = _decompose(tree, existing, roles)
         assert [r for r in rows["tag_assignments"] if r.get("object_type") == "term"] == [
             {
                 "tag_id": "pii",

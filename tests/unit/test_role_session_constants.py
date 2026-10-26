@@ -114,9 +114,9 @@ def test_the_nodes_region_and_org_are_set_over_any_constant(monkeypatch):
 
 def test_a_child_takes_its_ancestors_constants_under_its_own():
     rows = [
-        {"id": "base", "parent_role_id": None, "session_vars": {"tier": "silver", "zone": "a"}},
-        {"id": "mid", "parent_role_id": "base", "session_vars": {"tier": "gold"}},
-        {"id": "leaf", "parent_role_id": "mid", "session_vars": {"desk": "7"}},
+        {"id": "base", "parents": [], "session_vars": {"tier": "silver", "zone": "a"}},
+        {"id": "mid", "parents": ["base"], "session_vars": {"tier": "gold"}},
+        {"id": "leaf", "parents": ["mid"], "session_vars": {"desk": "7"}},
     ]
     flat = {r["id"]: r for r in flatten_role_dicts(rows)}
     assert flat["base"]["session_vars"] == {"tier": "silver", "zone": "a"}
@@ -131,7 +131,7 @@ def test_the_model_flattening_merges_constants_alike():
         for r in flatten_roles(
             [
                 _role(id="base", session_vars={"tier": "silver", "zone": "a"}),
-                _role(id="leaf", parent_role_id="base", session_vars={"tier": "gold"}),
+                _role(id="leaf", parents=["base"], session_vars={"tier": "gold"}),
             ]
         )
     }
@@ -155,7 +155,7 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
             "id": "base",
             "capabilities": [],
             "domain_access": ["sales"],
-            "parent_role_id": None,
+            "parents": [],
             "max_rows": None,
             "rate_limit": None,
             "session_vars": {"tier": "gold"},
@@ -165,7 +165,7 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
             "id": "east",
             "capabilities": [],
             "domain_access": ["sales"],
-            "parent_role_id": "base",
+            "parents": ["base"],
             "max_rows": None,
             "rate_limit": None,
             "session_vars": {},
@@ -175,7 +175,7 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
             "id": "west",
             "capabilities": [],
             "domain_access": ["sales"],
-            "parent_role_id": None,
+            "parents": [],
             "max_rows": None,
             "rate_limit": None,
             "session_vars": {},
@@ -363,11 +363,16 @@ def test_the_role_type_carries_its_constants_as_name_value_pairs():
             "residency_values": [],
             "session_vars": {"zone": "a", "tier": "gold"},
             "inactivity_days": None,  # REQ-2077: a stored role always carries it
-        }
+            "parents": [],  # REQ-2155: a stored role always carries it
+        },
+        detail=True,
+        effective=[],
     )
     assert [(p.name, p.value) for p in out.session_vars] == [("tier", "gold"), ("zone", "a")]
     assert (
-        _role_from_row({"id": "seller", "description": "Test role."}, detail=False).session_vars
+        _role_from_row(
+            {"id": "seller", "description": "Test role."}, detail=False, effective=[]
+        ).session_vars
         is None
     )
 

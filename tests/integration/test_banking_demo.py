@@ -249,13 +249,13 @@ def test_the_late_trade_restates_its_own_trade_date(nodes):
     # Its own day only: the corporate totals of every day run past the server's default row limit.
     oct_2 = f"{_CORPORATE} AND e.business_date = DATE '2026-10-02'"
     at_its_close = _total(
-        _sql(nodes["warehouse"], oct_2, "analyst", {"as_recorded": _OCT_2_CLOSE}),
+        _sql(nodes["warehouse"], oct_2, "banking_analyst", {"as_recorded": _OCT_2_CLOSE}),
         "2026-10-02",
         "Edinburgh",
         "USD",
     )
     now = _total(
-        _sql(nodes["warehouse"], oct_2, "analyst", {"as_recorded": _LAST_CLOSE}),
+        _sql(nodes["warehouse"], oct_2, "banking_analyst", {"as_recorded": _LAST_CLOSE}),
         "2026-10-02",
         "Edinburgh",
         "USD",
@@ -289,7 +289,7 @@ def test_the_analyst_reads_the_totals_and_no_posting(nodes):
     refused = httpx.post(
         f"{nodes['warehouse'].base_url}/data/sql",
         json={"sql": 'SELECT p.counterparty FROM "banking"."view_ledger_postings" AS p'},
-        headers={"X-Provisa-Role": "analyst"},
+        headers={"X-Provisa-Role": "banking_analyst"},
         timeout=nodes["warehouse"].request_timeout + 10,
     )
     assert refused.status_code in (400, 403), refused.text
@@ -336,7 +336,7 @@ def test_a_pgwire_session_reads_as_recorded_at_a_close(answers, nodes):
         host="127.0.0.1",
         port=srv.pgwire_port,
         dbname="provisa",
-        user="analyst",
+        user="banking_analyst",
         password="provisa",
         autocommit=True,
     ) as conn:

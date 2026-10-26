@@ -10,7 +10,7 @@
 
 """REQ-1365, on a real server: resolve(uri, as_of) over GraphQL, REST and MCP.
 
-One server, one keyed table with two rows. The analyst role is restricted three ways: an RLS
+One server, one keyed table with two rows. The keyed_reader role is restricted three ways: an RLS
 rule leaves it one row, ``region`` is masked for it, and it has no ``full_results``. Each surface
 dereferences the same semantic address and must answer what the role's own query would: the
 masked value, nothing for the row RLS hides, and a refusal for a physical address. The audit
@@ -60,11 +60,23 @@ def server():
         pg_port=_PG_PORT,
         extra_config={
             "tables": [orders],
+            # REQ-2155: the restricted role is the test's own, a child of the standard analyst
+            # (whose grants on the table it inherits). A rule on the standard analyst would hold
+            # for every role that inherits from it, org_admin among them.
+            "roles": [
+                {
+                    "id": "keyed_reader",
+                    "description": "Test role.",
+                    "parents": ["analyst"],
+                    "capabilities": [],
+                    "domain_access": ["*"],
+                }
+            ],
             "rls_rules": [
                 {
                     "description": "Test rule.",
                     "table_id": "orders",
-                    "role_id": "analyst",
+                    "role_id": "keyed_reader",
                     "filter": "id = 1",
                 }
             ],
@@ -142,35 +154,35 @@ def test_rest_returns_one_column_in_either_address_form(server):
 
 
 def test_a_masked_column_resolves_to_its_mask(server):
-    status, body = _rest(server, "analyst", _ADDRESS.format(key=1) + "/region")
+    status, body = _rest(server, "keyed_reader", _ADDRESS.format(key=1) + "/region")
     assert status == 200, body
     assert body["row"] == {"region": "MASKED"}
 
 
 def test_a_row_rls_hides_resolves_to_nothing(server):
-    status, body = _rest(server, "analyst", _ADDRESS.format(key=2))
+    status, body = _rest(server, "keyed_reader", _ADDRESS.format(key=2))
     assert status == 200, body
     assert body["row"] is None
     # ... exactly what a key that matches no row answers.
-    status, absent = _rest(server, "analyst", _ADDRESS.format(key=999))
+    status, absent = _rest(server, "keyed_reader", _ADDRESS.format(key=999))
     assert status == 200, absent
     assert absent["row"] is None
 
 
 def test_graphql_answers_the_same_as_rest(server):
-    status, body = _graphql(server, "analyst", _ADDRESS.format(key=1))
+    status, body = _graphql(server, "keyed_reader", _ADDRESS.format(key=1))
     assert status == 200, body
     assert body["data"]["resolve"]["row"] == {"id": 1, "region": "MASKED"}
-    status, body = _graphql(server, "analyst", _ADDRESS.format(key=2))
+    status, body = _graphql(server, "keyed_reader", _ADDRESS.format(key=2))
     assert status == 200, body
     assert body["data"]["resolve"]["row"] is None
 
 
 def test_mcp_answers_the_same_as_rest(server):
-    is_error, text = _mcp(server, "analyst", _ADDRESS.format(key=1))
+    is_error, text = _mcp(server, "keyed_reader", _ADDRESS.format(key=1))
     assert not is_error, text
     assert json.loads(text)["row"] == {"id": 1, "region": "MASKED"}
-    is_error, text = _mcp(server, "analyst", _ADDRESS.format(key=2))
+    is_error, text = _mcp(server, "keyed_reader", _ADDRESS.format(key=2))
     assert not is_error, text
     assert json.loads(text)["row"] is None
 
@@ -222,13 +234,13 @@ def test_a_resolve_is_audited_with_the_pipelines_provenance(server):
                 return conn.execute(
                     sa.text(
                         f'SELECT count(*) FROM "{schema}".query_audit_log '
-                        "WHERE role_id = 'analyst' AND status_code = 200 AND row_count = 1 "
+                        "WHERE role_id = 'keyed_reader' AND status_code = 200 AND row_count = 1 "
                         "AND route IS NOT NULL AND table_ids::text <> '[]'"
                     )
                 ).scalar_one()
 
             before = _rows()
-            status, body = _rest(server, "analyst", _ADDRESS.format(key=1))
+            status, body = _rest(server, "keyed_reader", _ADDRESS.format(key=1))
             assert status == 200, body
             deadline = time.monotonic() + _AUDIT_WAIT_SECONDS
             while _rows() == before and time.monotonic() < deadline:

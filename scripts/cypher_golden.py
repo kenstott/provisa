@@ -346,6 +346,10 @@ def model_inputs(config_path: Path, *, parameters: bool = False) -> tuple[Any, l
         for r in raw.get("relationships") or []
         if r.get("source_table_id") in ids and r.get("target_table_id") in ids
     ]
+    # REQ-2155: the grants folded over each role's ancestors, as the server's build does.
+    from provisa.core.db import fold_config_grants
+
+    fold_config_grants(tables, raw.get("roles") or [])
     role = {"id": "org_admin", "domain_access": ["*"], "capabilities": []}
     naming.configure(gql="apollo_graphql")
     schema_input = SchemaInput(

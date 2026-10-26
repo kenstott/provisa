@@ -32,7 +32,8 @@ const ROLES = [
     capabilities: [],
     demonstrated: [],
     domain_access: ["sales"],
-    parentRoleId: null,
+    parents: [],
+    standard: false,
     sessionVars: [{ name: "tier", value: "gold", __typename: "SessionVarType" }],
   },
 ];

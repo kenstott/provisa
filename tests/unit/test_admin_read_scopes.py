@@ -132,7 +132,7 @@ _ROLE_ROWS = [
         "session_vars": {},  # REQ-1682: a stored role always carries its session values
         "inactivity_days": None,  # REQ-2077: likewise its grants' inactivity limit
         "org_id": None,
-        "parent_role_id": None,
+        "parents": [],
     },
     {
         "description": "Test role.",
@@ -144,7 +144,7 @@ _ROLE_ROWS = [
         "session_vars": {},  # REQ-1682: a stored role always carries its session values
         "inactivity_days": None,  # REQ-2077: likewise its grants' inactivity limit
         "org_id": None,
-        "parent_role_id": None,
+        "parents": [],
     },
 ]
 
@@ -171,7 +171,7 @@ async def test_graphql_roles_full_for_user_management_else_own_role_only(monkeyp
     assert seen["analyst"].capabilities == ["usage"]  # the caller's own role: the client needs it
     assert seen["org_admin"].capabilities is None
     assert seen["org_admin"].domain_access is None
-    assert seen["org_admin"].parent_role_id is None
+    assert seen["org_admin"].parents == []
 
 
 async def test_rest_roles_full_for_user_management_else_own_role_only(monkeypatch):
@@ -185,7 +185,7 @@ async def test_rest_roles_full_for_user_management_else_own_role_only(monkeypatc
         seen = {r["id"]: r for r in await roles_router.list_roles(request)}
     assert seen["analyst"]["capabilities"] == ["usage"]
     # REQ-2080: what a role is for is shown with it even where its definition is withheld.
-    assert seen["org_admin"] == {"id": "org_admin", "description": "Test role."}
+    assert seen["org_admin"] == {"id": "org_admin", "description": "Test role.", "standard": True}
 
 
 _STATUS = {

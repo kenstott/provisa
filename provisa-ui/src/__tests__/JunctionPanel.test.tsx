@@ -48,7 +48,12 @@ describe("REQ-1586 junction declaration panel", () => {
     const setForm = vi.fn();
     const { rerender } = render(
       <MantineProvider theme={{ components: {} }}>
-        <JunctionPanel form={EMPTY_FORM} setForm={setForm} tables={TABLES} testIdPrefix="rel-form" />
+        <JunctionPanel
+          form={EMPTY_FORM}
+          setForm={setForm}
+          tables={TABLES}
+          testIdPrefix="rel-form"
+        />
       </MantineProvider>,
     );
     fireEvent.click(screen.getByTestId("rel-form-junction-toggle"));

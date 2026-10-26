@@ -223,15 +223,13 @@ async def grant_org_role(
     REQ-1337: ``granter_capabilities`` is what the grant is made WITH, and it is required — a role
     carrying a platform right is conferred only by a holder of that right
     (``rights.check_role_grant``, raising ``PlatformRoleGrantError``). The role's capabilities are
-    read here, from the schema the assignment lands in and with its parent chain folded in, so the
+    read here, from the schema the assignment lands in and with its ancestors folded in, so the
     answer is about the row being granted rather than a registry a caller happened to hold. A
     grant the deployment makes on its own behalf passes ``rights.DEPLOYMENT_GRANTER``; a grant
     nobody stands behind — an auto-join — passes an empty set.
     """
     async with model_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.parent_role_id)
-        )
+        result = await conn.execute_core(select(roles.c.id, roles.c.capabilities, roles.c.parents))
         role_rows = [dict(r._mapping) for r in result.fetchall()]
         if role_id not in {r["id"] for r in role_rows}:
             raise ValueError(

@@ -20,7 +20,6 @@ import {
   ActionIcon,
   Menu,
   NumberInput,
-  Select,
   Stack,
   Table,
   Text,
@@ -53,9 +52,9 @@ import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./securi
 import { useDerivedRoles, type DerivedPick } from "../hooks/useDerivedRoles";
 import { matchesQuery } from "../lib/searchItems";
 
-/** A role may be saved once it lists a domain — its own, or one a parent role hands down. */
-function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): boolean {
-  return form.domainAccess.length > 0 || form.parentRoleId !== "";
+/** A role may be saved once it lists a domain of its own: reach is never inherited (REQ-2155). */
+function listsADomain(form: { domainAccess: string[] }): boolean {
+  return form.domainAccess.length > 0;
 }
 
 const EMPTY_ROLE = {
@@ -64,7 +63,7 @@ const EMPTY_ROLE = {
 
   capabilities: [] as Capability[],
   domainAccess: [] as string[],
-  parentRoleId: "" as string, // REQ-1677: "" = no parent
+  parents: [] as string[], // REQ-2155: the roles it inherits from, in order
   residencyValues: [] as string[], // REQ-1921: with data_residency, the values it covers
   sessionVars: [] as SessionVar[], // REQ-1682: the role's constant session values
   // REQ-1174: per-role rate + query-complexity limits ("" = unlimited on that dimension).
@@ -150,7 +149,7 @@ export function SecurityRolesPage() {
           capabilities: roleForm.capabilities,
           domainAccess: roleForm.domainAccess,
           rateLimit: hasLimit ? rateLimit : null,
-          parentRoleId: roleForm.parentRoleId || null, // REQ-1677
+          parents: roleForm.parents, // REQ-2155
           // REQ-1921: the grant's values go with the right; without it the role lists none.
           residencyValues: roleForm.capabilities.includes("data_residency")
             ? roleForm.residencyValues
@@ -208,7 +207,7 @@ export function SecurityRolesPage() {
       description: role.description,
       capabilities: [...role.capabilities],
       domainAccess: [...role.domain_access],
-      parentRoleId: role.parentRoleId ?? "", // REQ-1677
+      parents: [...(role.parents ?? [])], // REQ-2155
       residencyValues: [...(role.residencyValues ?? [])], // REQ-1921
       // REQ-1682: name and value only -- the input type takes no __typename.
       sessionVars: (role.sessionVars ?? []).map(({ name, value }) => ({ name, value })),
@@ -323,20 +322,19 @@ export function SecurityRolesPage() {
           <DomainsNote savedWithNone={false} />
         </FormField>
       )}
-      {/* REQ-1677: single parent; the chain is walked child-first at build time. */}
-      <FormField help={t("securityPage.parentRoleHelp")} size="medium">
-        <Select
-          label={t("securityPage.parentRole")}
-          placeholder={t("securityPage.parentRoleNone")}
-          data={roles
-            .filter((r) => r.id !== roleForm.id)
-            .map((r) => ({ value: r.id, label: r.id }))}
-          value={roleForm.parentRoleId || null}
-          onChange={(v) => setRoleForm({ ...roleForm, parentRoleId: v ?? "" })}
-          clearable
-          searchable
-          data-testid="role-parent-select"
-        />
+      {/* REQ-2155: several parents; capabilities are the union over every ancestor. */}
+      <FormField help={t("securityPage.parentRoleHelp")} size="long">
+        <div data-testid="role-parent-select">
+          <MultiSelect
+            label={t("securityPage.parentRole")}
+            placeholder={t("securityPage.parentRoleNone")}
+            options={roles
+              .filter((r) => r.id !== roleForm.id)
+              .map((r) => ({ id: r.id, label: r.id }))}
+            value={roleForm.parents}
+            onChange={(selected) => setRoleForm({ ...roleForm, parents: selected })}
+          />
+        </div>
       </FormField>
       <FormFooter
         panel
@@ -354,8 +352,9 @@ export function SecurityRolesPage() {
   ) : selectedRole ? (
     ((r) => (
       <>
-        {/* Its actions sit in the panel's head; while its form is open the head is the form's. */}
-        {editingRoleInRow !== r.id && (
+        {/* Its actions sit in the panel's head; while its form is open the head is the form's. A
+            standard role is Provisa's and locked (REQ-2155): it has none. */}
+        {editingRoleInRow !== r.id && !r.standard && (
           <PanelActions>
             <fieldset className="panel-action-set">
               <Group gap="xs">
@@ -439,17 +438,18 @@ export function SecurityRolesPage() {
                 <DomainsNote savedWithNone={r.domain_access.length === 0} />
               </FormField>
             )}
-            <FormField size="medium">
-              <Select
-                label={t("securityPage.parentRole")}
-                placeholder={t("securityPage.parentRoleNone")}
-                data={roles.filter((x) => x.id !== r.id).map((x) => ({ value: x.id, label: x.id }))}
-                value={roleForm.parentRoleId || null}
-                onChange={(v) => setRoleForm({ ...roleForm, parentRoleId: v ?? "" })}
-                clearable
-                searchable
-                data-testid={`role-parent-select-${r.id}`}
-              />
+            <FormField size="long">
+              <div data-testid={`role-parent-select-${r.id}`}>
+                <MultiSelect
+                  label={t("securityPage.parentRole")}
+                  placeholder={t("securityPage.parentRoleNone")}
+                  options={roles
+                    .filter((x) => x.id !== r.id)
+                    .map((x) => ({ id: x.id, label: x.id }))}
+                  value={roleForm.parents}
+                  onChange={(selected) => setRoleForm({ ...roleForm, parents: selected })}
+                />
+              </div>
             </FormField>
             <FormField size="full">
               <SessionValuesField

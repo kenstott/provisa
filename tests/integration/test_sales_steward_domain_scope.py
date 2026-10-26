@@ -10,9 +10,9 @@
 
 """A sales steward governs sales and nothing else (REQ-1944), against a real org schema.
 
-The org schema is built by the real ``init_schema`` so schema.sql's seed runs; the sales steward is
-a COPY of the seeded data_steward -- its rights, with domain_access narrowed to sales. (Not a child
-of it: a child inherits its parent's every-domain reach.) It then masks a sales column, writes a
+The org schema is built by the real ``init_schema`` so the standard roles are written; the sales
+steward is a child of the standard data_steward reaching sales alone (REQ-2155: a role's reach is
+its own, never inherited). It then masks a sales column, writes a
 sales row rule and creates a sales data product, and each of those acts on a finance object is
 refused naming finance.
 """
@@ -63,6 +63,7 @@ async def plane(monkeypatch):
     from provisa.core.models import Column, ProvisaConfig, Table
     from provisa.core.repositories import role as role_repo
     from provisa.core.repositories import table as table_repo
+    from provisa.security.inheritance import flatten_role_dicts
 
     ids: dict[str, int] = {}
     async with db.acquire() as conn:
@@ -86,19 +87,21 @@ async def plane(monkeypatch):
             )
         seeded = (
             await conn.execute_core(
-                select(roles.c.capabilities, roles.c.domain_access).where(
-                    roles.c.id == "data_steward"
-                )
+                select(roles.c.domain_access).where(roles.c.id == "data_steward")
             )
         ).one()
-        # The seeded steward reaches every domain; the sales steward is its copy for sales.
-        assert list(seeded[1]) == ["*"]
+        # The standard steward reaches every domain; the sales steward is its child for sales.
+        assert list(seeded[0]) == ["*"]
         await conn.execute_core(
             insert(roles).values(
-                id="sales_steward", capabilities=list(seeded[0]), domain_access=["sales"]
+                id="sales_steward",
+                capabilities=[],
+                parents=["data_steward"],
+                domain_access=["sales"],
             )
         )
-        loaded = {r["id"]: r for r in await role_repo.list_all(conn)}
+        # As the build registers them: each with its ancestors' rights folded in.
+        loaded = {r["id"]: r for r in flatten_role_dicts(await role_repo.list_all(conn))}
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)

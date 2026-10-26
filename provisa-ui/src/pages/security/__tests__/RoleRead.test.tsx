@@ -20,9 +20,11 @@ const steward: Role = {
   id: "data_steward",
   description: "What data_steward is for.",
   capabilities: ["data_residency", "masking_config"],
+  effectiveCapabilities: ["data_residency", "masking_config"],
   demonstrated: ["create_relationship"],
   domain_access: ["*"],
-  parentRoleId: "analyst",
+  parents: ["analyst"],
+  standard: false,
   residencyValues: ["eu", "no_region"],
   sessionVars: [
     { name: "tier", value: "gold" },
@@ -70,6 +72,14 @@ describe("a role's read view", () => {
     expect(screen.getByTestId("role-read-fields").querySelector("strong")).toBeNull();
   });
 
+  it("says a standard role is Provisa's", () => {
+    render(<RoleRead role={{ ...steward, standard: true }} />);
+    expect(fields("role-read-fields")).toContainEqual([
+      "Standard role",
+      "Provisa's own, kept up to date by Provisa. Extend it with a role of your own that inherits from it.",
+    ]);
+  });
+
   it("shows an empty value as a dash, and a role with no domain as reaching no data", () => {
     render(
       <RoleRead
@@ -77,9 +87,11 @@ describe("a role's read view", () => {
           id: "guest",
           description: "What guest is for.",
           capabilities: [],
+          effectiveCapabilities: [],
           demonstrated: [],
           domain_access: [],
-          parentRoleId: null,
+          parents: [],
+          standard: false,
           rateLimit: null,
         }}
       />,

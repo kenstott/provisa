@@ -31,7 +31,9 @@ const CATALOGS = files(join(SRC, "i18n", "locales"), (n) => n.endsWith(".json"))
 
 describe("no origin is shown (REQ-1919)", () => {
   it("no page renders an origin badge", () => {
-    const marking = SOURCES.filter((f) => /OriginBadge|origin-badge|originBadge\./.test(readFileSync(f, "utf-8")));
+    const marking = SOURCES.filter((f) =>
+      /OriginBadge|origin-badge|originBadge\./.test(readFileSync(f, "utf-8")),
+    );
     expect(marking).toEqual([]);
   });
 
@@ -48,7 +50,9 @@ describe("no origin is shown (REQ-1919)", () => {
   });
 
   it("no change is followed by a notice that a later config load re-applies the file", () => {
-    const announcing = SOURCES.filter((f) => /announceWarnings|mutationWarnings/.test(readFileSync(f, "utf-8")));
+    const announcing = SOURCES.filter((f) =>
+      /announceWarnings|mutationWarnings/.test(readFileSync(f, "utf-8")),
+    );
     expect(announcing).toEqual([]);
   });
 });

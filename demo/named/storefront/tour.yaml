@@ -54,7 +54,7 @@ steps:
 - key: storefrontAnalyst
   route: /sql
   capability: query_development
-  role: analyst
+  role: shop_analyst
 - key: storefrontAnalystSql
   sql: >-
     SELECT c.region, s.carrier, COUNT(*) AS shipments,

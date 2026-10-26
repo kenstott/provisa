@@ -48,7 +48,7 @@ def _role(role_id: str, parent: str | None = None) -> Role:
         description="Test role.",
         capabilities=["query_development"],
         domain_access=["*"],
-        parent_role_id=parent,
+        parents=[parent] if parent else [],
     )
 
 
@@ -156,7 +156,7 @@ async def test_a_role_others_inherit_from_is_refused_naming_them(plane):
         with pytest.raises(role_repo.RoleDeleteRefused) as err:
             await role_repo.delete(conn, "base")
     assert err.value.reason == "dependents"
-    assert _named(err.value) == [("role", "derived", ("roles.parent_role_id",))]
+    assert _named(err.value) == [("role", "derived", ("roles.parents",))]
     assert "role derived" in str(err.value)
     assert "base" in await _ids(plane)
 
@@ -230,14 +230,14 @@ def graphql_pool(plane, monkeypatch):
 async def test_rest_refuses_a_role_the_deployment_seeds(plane, rebuilds, role_id):
     with pytest.raises(ApiError) as err:
         await _rest(role_id)
-    assert (err.value.status_code, err.value.code) == (400, "roles.cannot_delete_system")
+    assert (err.value.status_code, err.value.code) == (400, "roles.standard_locked")
     assert role_id in await _ids(plane) and rebuilds == []
 
 
 @pytest.mark.parametrize("role_id", ["analyst"])
 async def test_graphql_refuses_a_role_the_deployment_seeds(plane, graphql_pool, rebuilds, role_id):
     result = await _graphql(role_id)
-    assert (result.success, result.code) == (False, "schema.role_is_system")
+    assert (result.success, result.code) == (False, "schema.role_standard_locked")
     assert role_id in await _ids(plane) and rebuilds == []
 
 
@@ -249,7 +249,7 @@ async def test_rest_refuses_a_parent_naming_its_heirs(plane, rebuilds):
         "role": "base",
         "count": 1,
         "dependents": [
-            {"kind": "role", "id": "derived", "name": "derived", "via": ["roles.parent_role_id"]}
+            {"kind": "role", "id": "derived", "name": "derived", "via": ["roles.parents"]}
         ],
     }
     assert "base" in await _ids(plane) and rebuilds == []
@@ -261,7 +261,7 @@ async def test_graphql_refuses_a_parent_naming_its_heirs(plane, graphql_pool, re
     assert result.params == {
         "role": "base",
         "dependents": [
-            {"kind": "role", "id": "derived", "name": "derived", "via": ["roles.parent_role_id"]}
+            {"kind": "role", "id": "derived", "name": "derived", "via": ["roles.parents"]}
         ],
     }
     assert "base" in await _ids(plane) and rebuilds == []

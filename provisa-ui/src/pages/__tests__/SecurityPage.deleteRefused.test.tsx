@@ -24,7 +24,8 @@ const ROLES = [
     capabilities: [],
     demonstrated: [],
     domain_access: ["sales"],
-    parentRoleId: null,
+    parents: [],
+    standard: false,
   },
 ];
 
