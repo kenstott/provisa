@@ -295,7 +295,7 @@
       "calendar_deleted": "calendar '{{calendar}}' deleted",
       "calendar_in_use": "calendar '{{calendar}}' is in use by {{count}} materialized view(s) — clear their snapshot schedule before deleting",
       "calendar_not_found": "calendar '{{calendar}}' not found",
-      "calendar_saved": "calendar '{{calendar}}' v{{version}} saved",
+      "calendar_saved": "calendar '{{calendar}}' {{version}} saved",
       "column_natively_nested": "Cannot register: column {{column}} is natively {{native_type}} at its source, so its type is json, not {{type}}.",
       "column_types_unresolved": "Cannot register: no data type could be resolved from the source for column(s): {{columns}}. Introspect the table (Discover schema) or set a Data Type for each before registering.",
       "config_not_found": "Config file not found",

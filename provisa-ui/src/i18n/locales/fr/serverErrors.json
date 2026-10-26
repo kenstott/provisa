@@ -295,7 +295,7 @@
       "calendar_deleted": "calendrier « {{calendar}} » supprimé",
       "calendar_in_use": "le calendrier « {{calendar}} » est utilisé par {{count}} vue(s) matérialisée(s) — retirez leur planification d'instantané avant de le supprimer",
       "calendar_not_found": "calendrier « {{calendar}} » introuvable",
-      "calendar_saved": "calendrier « {{calendar}} » v{{version}} enregistré",
+      "calendar_saved": "calendrier « {{calendar}} » {{version}} enregistré",
       "column_natively_nested": "Enregistrement impossible : la colonne {{column}} est nativement {{native_type}} dans sa source, son type est donc json, et non {{type}}.",
       "column_types_unresolved": "Enregistrement impossible : aucun type de données n'a pu être résolu depuis la source pour la ou les colonnes : {{columns}}. Introspectez la table (Découvrir le schéma) ou définissez un type de données pour chacune avant d'enregistrer.",
       "config_not_found": "Fichier de configuration introuvable",

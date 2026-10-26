@@ -295,7 +295,7 @@
       "calendar_deleted": "kalender '{{calendar}}' verwijderd",
       "calendar_in_use": "kalender '{{calendar}}' is in gebruik door {{count}} gematerialiseerde view(s) — verwijder eerst hun snapshotschema voordat de kalender wordt verwijderd",
       "calendar_not_found": "kalender '{{calendar}}' niet gevonden",
-      "calendar_saved": "kalender '{{calendar}}' v{{version}} opgeslagen",
+      "calendar_saved": "kalender '{{calendar}}' {{version}} opgeslagen",
       "column_natively_nested": "Registreren niet mogelijk: kolom {{column}} is in de bron van nature {{native_type}}, dus het type is json, niet {{type}}.",
       "column_types_unresolved": "Registreren niet mogelijk: er kon geen datatype uit de bron worden bepaald voor kolom(men): {{columns}}. Introspecteer de tabel (Schema detecteren) of stel voor elke kolom een datatype in voordat wordt geregistreerd.",
       "config_not_found": "Configuratiebestand niet gevonden",

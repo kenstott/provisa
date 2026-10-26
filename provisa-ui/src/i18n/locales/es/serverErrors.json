@@ -295,7 +295,7 @@
       "calendar_deleted": "calendario '{{calendar}}' eliminado",
       "calendar_in_use": "el calendario '{{calendar}}' está en uso por {{count}} vista(s) materializada(s) — borre su programación de instantáneas antes de eliminarlo",
       "calendar_not_found": "no se encontró el calendario '{{calendar}}'",
-      "calendar_saved": "calendario '{{calendar}}' v{{version}} guardado",
+      "calendar_saved": "calendario '{{calendar}}' {{version}} guardado",
       "column_natively_nested": "No se puede registrar: la columna {{column}} es nativamente {{native_type}} en su origen, por lo que su tipo es json, no {{type}}.",
       "column_types_unresolved": "No se puede registrar: no se pudo resolver ningún tipo de datos desde el origen para la(s) columna(s): {{columns}}. Introspeccione la tabla (Descubrir esquema) o establezca un tipo de datos para cada una antes de registrar.",
       "config_not_found": "No se encontró el archivo de configuración",
