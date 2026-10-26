@@ -235,16 +235,7 @@ describe("a legend glyph clipped to its outline", () => {
     glyph.dataset.glyph = "0.5,0 0.933,0.25 0.933,0.75 0.5,1 0.067,0.75 0.067,0.25";
     glyph.style.background = "rgb(1, 2, 3)";
     glyph.getBoundingClientRect = () =>
-      ({
-        left: 20,
-        top: 30,
-        width: 10,
-        height: 10,
-        right: 30,
-        bottom: 40,
-        x: 20,
-        y: 30,
-      }) as DOMRect;
+      ({ left: 20, top: 30, width: 10, height: 10, right: 30, bottom: 40, x: 20, y: 30 }) as DOMRect;
     stage.querySelector(".p3d-legend")!.prepend(glyph);
 
     const svg = await (await exportImage(scene, stage, "svg", 1)).text();
