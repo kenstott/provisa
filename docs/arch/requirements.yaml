@@ -89009,7 +89009,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     OPT-OUT:) Maintainer 2026-10-26: language targeting is opt-out. A command or function is offered in
     every language under its generated default name; excluding it from a language, or renaming it there,
     is an explicit declaration, so leaving it out is always an active choice. SQL cannot be excluded. The
-    APOC set''s commands declare their exclusions from GraphQL, REST, MCP and SPARQL.'
+    APOC set''s commands declare their exclusions from GraphQL, REST, MCP and SPARQL. (Amended 2026-10-25,
+    TERM: COMMAND BINDINGS:) Maintainer 2026-10-26: the mechanism is named command bindings. A command (or
+    function) has a binding per language; each binding has a name, defaulting to the generated one, and
+    may be renamed or excluded; the SQL binding cannot be excluded. Always written in full as ''command
+    binding'', never a bare ''binding'', since a term binding (a term bound to a column, REQ-2163) is a
+    different thing; in the UI a command''s tab is Bindings and a term shows Bound columns. It is the answer
+    to ''does it support this library or tool we use?'': it can, by creating command bindings for it.'
   scenario: 'Given a role that reads Shelter:Employees but not Shelter:Payroll
 
     When LangChain''s Neo4j integration connects over Bolt as that role and loads the schema with apoc.meta.data
