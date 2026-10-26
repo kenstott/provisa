@@ -142,8 +142,10 @@ def _build_grammar() -> pp.ParserElement:
     # function call: name( [DISTINCT] (args | *) )
     _star = pp.Literal("*")
     arg_list = pp.Optional(pp.DelimitedList(expr))
+    # A namespaced name (apoc.text.join) is one name: a function's Cypher command binding.
+    func_name = pp.Combine(_ident_any + pp.ZeroOrMore("." + _ident_any), adjacent=False)
     func_call = (
-        _ident_any("name")
+        func_name("name")
         + _LPAR
         + pp.Group(pp.Optional(pp.CaselessKeyword("DISTINCT"))("distinct") + (_star | arg_list))(
             "body"

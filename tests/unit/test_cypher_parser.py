@@ -156,9 +156,12 @@ def test_remove_rejected():
         parse_cypher("MATCH (n:Person) REMOVE n.name")
 
 
-def test_apoc_rejected():
-    with pytest.raises(CypherParseError, match="APOC"):
-        parse_cypher("MATCH (n) RETURN apoc.util.sleep(100)")
+def test_an_apoc_function_is_read_as_a_function_call():
+    # REQ-2168: a namespaced function is a function's Cypher command binding; one no function is
+    # bound to is refused when the statement is bound for its role (api/data/cypher_commands.py).
+    ast = parse_cypher("MATCH (n) RETURN apoc.util.sleep(100)")
+    (item,) = ast.return_clause.items
+    assert item.expression.name == "apoc.util.sleep"
 
 
 def test_unbounded_variable_length_rejected():

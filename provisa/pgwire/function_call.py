@@ -79,7 +79,8 @@ def detect_sql_function_call(sql: str, state, role_id: str) -> tuple[str, list] 
         if not (isinstance(inner, exp.Anonymous) and inner.name in callables):
             return None  # a non-command table source is present → composed
     node = cmd_nodes[0]
-    return node.name, [_literal_value(a) for a in node.expressions]
+    # REQ-2168: written as its SQL command binding; answered as the command it names.
+    return callables[node.name]["name"], [_literal_value(a) for a in node.expressions]
 
 
 def rows_to_query_result(rows: list[dict]) -> QueryResult:

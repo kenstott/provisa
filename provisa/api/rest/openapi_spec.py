@@ -420,14 +420,19 @@ def generate_rest_openapi_spec(
 
     # REQ-1155: registered commands are POST paths so they appear in the OpenAPI/Swagger surface
     # alongside tables. Invocation routes through the same governed executor as every other surface.
+    from provisa.core.command_bindings import binding_name
+
     _seen_cmd: set[str] = set()
     # Functions AND webhooks are governed commands (REQ-872 / REQ-1155): both appear as POST paths.
     for fn in [
         *(getattr(state, "tracked_functions", {}) or {}).values(),
         *(getattr(state, "tracked_webhooks", {}) or {}).values(),
     ]:
-        cmd_name = fn.get("name")
-        if not cmd_name or cmd_name in _seen_cmd:
+        if not fn.get("name") or fn["name"] in _seen_cmd:
+            continue
+        # REQ-2168: the path is the command's REST command binding; none when excluded.
+        cmd_name = binding_name(fn, "rest")
+        if cmd_name is None:
             continue
         cmd_domain = fn.get("domain_id", "")
         if domain_filter is not None and cmd_domain not in domain_filter:
@@ -435,7 +440,7 @@ def generate_rest_openapi_spec(
         visible_to = fn.get("visible_to") or []
         if visible_to and role_id not in visible_to:
             continue
-        _seen_cmd.add(cmd_name)
+        _seen_cmd.add(fn["name"])
 
         arg_props: dict[str, Any] = {}
         for a in fn.get("arguments") or []:

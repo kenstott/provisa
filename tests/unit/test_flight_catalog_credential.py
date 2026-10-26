@@ -158,7 +158,7 @@ def _server(monkeypatch, *, auth: bool = True, multitenancy: bool = False) -> Pr
     )
     monkeypatch.setattr(
         "provisa.api.data.action_exec.list_visible_commands",
-        lambda state, role: [
+        lambda state, role, language: [
             {
                 "name": n,
                 "domain": "sales",

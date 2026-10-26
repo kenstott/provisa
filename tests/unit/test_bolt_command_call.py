@@ -113,10 +113,23 @@ async def test_yield_with_as_and_return_shape_the_rows():
 
 
 async def test_a_return_it_cannot_apply_is_refused_not_ignored():
-    for tail in ("RETURN id + 1", "WHERE id > 1 RETURN id", "YIELD id ORDER BY id"):
+    for tail in ("RETURN id + 1", "WHERE id > 1 RETURN id"):
         with _executor([{"id": 1}]), pytest.raises(CommandCallRefused):
             await _maybe_invoke_command_call(
                 f"CALL random_python_set(2, 3) {tail}", {}, "admin", _state()
+            )
+
+
+async def test_a_call_composed_in_a_statement_is_left_to_the_translator():
+    # REQ-2168: a YIELD followed by more of the statement is a call composed in it, which the
+    # Cypher translator reads; the command-call reader does not take it.
+    for tail in ("YIELD id ORDER BY id", "YIELD id WHERE id > 1 RETURN id", "YIELD id WITH id"):
+        with _executor([{"id": 1}]):
+            assert (
+                await _maybe_invoke_command_call(
+                    f"CALL random_python_set(2, 3) {tail}", {}, "admin", _state()
+                )
+                is None
             )
 
 

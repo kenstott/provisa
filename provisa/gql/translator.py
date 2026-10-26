@@ -933,13 +933,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         return from_expr, cross_joins
 
     def _call_value(self, arg: CypherExpr, call: ProcedureCall, position: int) -> Any:
-        """A CALL argument's value: a literal, a list of them, or a ``$parameter``'s value."""
+        """A CALL argument's value: a literal, a ``$parameter``'s value, or a list or map of
+        them (``apoc.meta.data({sample: $SAMPLE})``)."""
         from provisa.gql.expr_ast import ListLiteral, Literal, Parameter
 
         if isinstance(arg, Literal):
             return arg.value
         if isinstance(arg, ListLiteral):
             return [self._call_value(item, call, position) for item in arg.items]
+        if isinstance(arg, MapLiteral):
+            return {k: self._call_value(v, call, position) for k, v in arg.entries}
         if isinstance(arg, Parameter):
             if arg.name not in self._params:
                 raise CypherTranslateError(

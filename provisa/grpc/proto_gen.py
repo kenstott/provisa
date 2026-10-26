@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.aggregate_gen import _classify_columns
+from provisa.core import command_bindings
 from provisa.compiler.schema_gen import (
     RESOLVE_FIELD,
     SchemaInput,
@@ -296,7 +297,9 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
     """Commands (tracked functions) visible to this role, deduped by name (REQ-1156).
 
     The commands the role may call (``mutation_authz.command_reachable``): assigned to it
-    (``visible_to`` empty = every role) and in a domain it reaches, as on every other surface."""
+    (``visible_to`` empty = every role) and in a domain it reaches, as on every other surface.
+    The proto is the GraphQL schema's, so a command excluded from GraphQL has no RPC (REQ-2168)."""
+    from provisa.core.command_bindings import binding_name
     from provisa.security.mutation_authz import command_reachable
 
     out: list[dict] = []
@@ -306,7 +309,7 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
         name = fn.get("name")
         if not name or name in seen:
             continue
-        if not command_reachable(fn, si.role):
+        if not command_reachable(fn, si.role) or binding_name(fn, "graphql") is None:
             continue
         seen.add(name)
         out.append(fn)
@@ -582,7 +585,7 @@ def generate_proto(
     # route through the single invoke_tracked_function executor server-side.
     commands = _visible_commands(si)
     for fn in commands:
-        cmd = command_rpc_name(fn["name"])
+        cmd = command_rpc_name(command_bindings.offered_name(fn, "graphql"))
         lines.append(f"message {cmd}Request {{")
         for i, arg in enumerate([a for a in (fn.get("arguments") or []) if a.get("name")], start=1):
             lines.append(f"  {_arg_proto_type(arg.get('type', 'String'))} {arg['name']} = {i};")
@@ -596,7 +599,7 @@ def generate_proto(
         f"  rpc {RESOLVE_RPC}({RESOLVE_RPC}AddressRequest) returns ({RESOLVE_RPC}AddressResponse);"
     )
     for fn in commands:
-        cmd = command_rpc_name(fn["name"])
+        cmd = command_rpc_name(command_bindings.offered_name(fn, "graphql"))
         resp = "MutationResponse" if fn.get("kind") == "mutation" else "CommandResponse"
         lines.append(f"  rpc Call{cmd}({cmd}Request) returns ({resp});")
     # The tables a role may CALL are the roots of its Query message above — the root rule of the

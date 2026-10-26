@@ -82,6 +82,14 @@ def parse_template(function: str, binding: dict, arguments: list[str]) -> exp.Ex
     return select.expressions[0]
 
 
+def deployment_dialects(state: object) -> set[str]:  # object-ok: AppState lives above core
+    """The dialects a statement of this deployment may run in: its federation engine's and each
+    registered source's (a single-source read runs on its source)."""
+    engine = getattr(state, "federation_engine")
+    sources = getattr(state, "source_dialects")
+    return {engine.dialect, *(d for d in sources.values() if d)}
+
+
 def check_for_engines(function: str, binding: dict, arguments: list[str], dialects) -> None:
     """Transpile the template for each engine dialect in ``dialects``; one an engine cannot
     express is refused naming the engine."""

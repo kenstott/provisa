@@ -154,6 +154,14 @@ def binding_name(command: dict, language: str) -> str | None:
     return declared.get("name") or command["name"]
 
 
+def offered_name(command: dict, language: str) -> str:
+    """``command``'s name in ``language``, for a command already known to be offered there."""
+    name = binding_name(command, language)
+    if name is None:
+        raise CommandBindingRefused(f"command {command['name']!r} is not offered in {language}")
+    return name
+
+
 def bound(commands: Iterable[dict], language: str) -> dict[str, dict]:
     """``commands`` offered in ``language``, by their name there."""
     out: dict[str, dict] = {}

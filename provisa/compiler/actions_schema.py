@@ -176,7 +176,13 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             resolve_return_and_args: Callable(item) → (gql_return, args) that computes
                 the GraphQL return type and argument dict for one item.
         """
+        from provisa.core.command_bindings import binding_name
+
         for item in items:
+            # REQ-2168: the field is the command's GraphQL command binding; none when excluded.
+            called = binding_name(item, "graphql")
+            if called is None:
+                continue
             visible_to = item.get("visible_to") or []
             if visible_to and role_id not in visible_to:
                 continue
@@ -205,7 +211,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             # Apply the active GraphQL naming convention to the command name, exactly like table
             # fields (apollo_graphql -> camelCase). The reverse lookup in app_loaders applies the
             # SAME transform, so the emitted field name still routes back to the command (REQ-1156).
-            field_key = apply_gql_name(item["name"])
+            field_key = apply_gql_name(called)
             if si.domain_prefix and domain_id:
                 alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
                 field_key = f"{alias}__{field_key}"

@@ -526,7 +526,7 @@ async def _exec_sql_expression(fn: dict, args: dict, state, _payload, session) -
 
 async def _exec_builtin(fn: dict, args: dict, state, _payload, session) -> list[dict]:
     """REQ-2168: a command Provisa ships, its implementation named in the built-in registry."""
-    from provisa.executor.builtin_commands import implementation
+    from provisa.core.builtin_commands import implementation
 
     spec = str(_require(fn["binding"], "callable", "builtin"))
     return await implementation(spec)(_bind_arg_names(fn, args), state, session.role_id)

@@ -2260,6 +2260,14 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
         return self
 
     @model_validator(mode="after")
+    def _builtin_names_a_builtin(self) -> "Function":  # REQ-2168
+        if self.impl_kind == "builtin":
+            from provisa.core.builtin_commands import check
+
+            check(self.name, self.binding)
+        return self
+
+    @model_validator(mode="after")
     def _sql_expression_is_a_query_template(self) -> "Function":  # REQ-2168
         """A function declared as a SQL expression is a query, its binding one PostgreSQL-dialect
         expression naming each of its arguments as {name} and nothing else."""

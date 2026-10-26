@@ -157,10 +157,14 @@ def _recorded(value):
     return value
 
 
-def usable_commands(state, role_id: str, *, webhooks: bool = True) -> dict[str, dict]:
-    """The commands ``role_id`` may call, by name: assigned to it and in a domain it reaches. A
-    surface that recognizes a command by its name in the statement (SQL) recognizes only these,
-    so a command the role may not use reads exactly like a name that was never registered."""
+def usable_commands(
+    state, role_id: str, *, webhooks: bool = True, language: str = "sql"
+) -> dict[str, dict]:
+    """The commands ``role_id`` may call, by their command binding in ``language`` (REQ-2168):
+    assigned to it, in a domain it reaches, and offered in the language. A surface that
+    recognizes a command by its name in the statement (SQL, Cypher) recognizes only these, so a
+    command the role may not use reads exactly like a name that was never registered."""
+    from provisa.core.command_bindings import bound
     from provisa.security.mutation_authz import command_reachable
 
     role = (getattr(state, "roles", None) or {}).get(role_id)
@@ -169,15 +173,29 @@ def usable_commands(state, role_id: str, *, webhooks: bool = True) -> dict[str, 
     pools = [getattr(state, "tracked_functions", None) or {}]
     if webhooks:
         pools.append(getattr(state, "tracked_webhooks", None) or {})
-    return {
-        name: command
-        for pool in pools
-        for name, command in pool.items()
-        if command_reachable(command, role)
-    }
+    return bound(
+        (
+            command
+            for pool in pools
+            for command in pool.values()
+            if command_reachable(command, role)
+        ),
+        language,
+    )
 
 
-def list_visible_commands(state, role_id: str | None) -> list[dict]:
+def command_named(state, role_id: str | None, language: str, name: str) -> str:
+    """The command ``name`` calls in ``language`` for ``role_id`` -- its registered name -- or the
+    one unknown-command answer when no command the role may use is bound to it there."""
+    if role_id is None:
+        raise unknown_command(name)
+    command = usable_commands(state, role_id, language=language).get(name)
+    if command is None:
+        raise unknown_command(name)
+    return command["name"]
+
+
+def list_visible_commands(state, role_id: str | None, language: str) -> list[dict]:
     """Every registered command visible to ``role_id``, as ordered metadata dicts (REQ-1156).
 
     The one discovery path every surface (MCP, Arrow Flight, gRPC, Cypher/Bolt) projects, so a
@@ -192,6 +210,8 @@ def list_visible_commands(state, role_id: str | None) -> list[dict]:
     Flight table catalog; a concrete role filters by ``visible_to`` (empty ``visible_to`` = every
     role), matching the REST/OpenAPI surface.
     """
+    from provisa.core.command_bindings import binding_name
+
     out: list[dict] = []
     seen: set[str] = set()
     # Functions AND webhooks are both governed commands (REQ-872): a webhook is a scalar-argument
@@ -207,9 +227,15 @@ def list_visible_commands(state, role_id: str | None) -> list[dict]:
         if role_id is not None and not command_reachable(fn, require_role(state.roles, role_id)):
             continue
         seen.add(name)
+        # REQ-2168: listed by its command binding in the surface's language; one excluded from
+        # the language is not listed there.
+        called = binding_name(fn, language)
+        if called is None:
+            continue
         out.append(
             {
-                "name": name,
+                "name": called,
+                "command": name,
                 "domain": fn.get("domain_id", "") or "",
                 "kind": fn.get("kind", "mutation"),
                 "set_returning": bool(

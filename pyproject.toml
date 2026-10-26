@@ -343,7 +343,7 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # REQ-2147: the profiler's classification kinds and the reference lists they test, and their notice.
 "provisa.profiler" = ["classification_kinds.yaml", "reference/*.txt.gz", "reference/THIRD_PARTY_NOTICES"]
 # REQ-2155: the standard roles' definitions, read by provisa.core.db.
-"provisa.core" = ["standard_roles.yaml"]
+"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.

@@ -114,7 +114,7 @@ async def grpc_commands(role_id: str, request: Request):  # REQ-1156
     # The one discovery list (functions and webhooks the role may call), as the picker shows it.
     return [
         {"name": c["name"], "description": c["description"], "arguments": c["arguments"]}
-        for c in list_visible_commands(state, role_id)
+        for c in list_visible_commands(state, role_id, "graphql")
     ]
 
 
@@ -128,7 +128,11 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
     import json
 
     from provisa.api.app import state
-    from provisa.api.data.action_exec import bind_named_args, invoke_tracked_function
+    from provisa.api.data.action_exec import (
+        bind_named_args,
+        command_named,
+        invoke_tracked_function,
+    )
 
     role_id = named_role(request, role_id)  # the command runs AS this role: held by the caller
     body = await request.json()
@@ -151,6 +155,7 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
     if not isinstance(parsed_args, dict):
         raise ApiError(400, "data.args_json_not_object", "args_json must be a JSON object")
     try:
+        name = command_named(state, role_id, "graphql", name)  # REQ-2168
         args = bind_named_args(name, parsed_args, state, role_id)
         rows = await invoke_tracked_function(name, args, state, role_id)
     except ComplexityLimitExceeded:
