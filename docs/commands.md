@@ -40,6 +40,17 @@ Each argument declares an `arg_kind`:
 An external command receiving only scalar arguments would be invoked once per row, which defeats
 batching. The dispatcher rejects this configuration at call time (422).
 
+An argument may declare a `default`. A call on any surface may leave that argument out, and it
+takes the default; an argument without one is required, and a call missing it is refused naming
+it. The default is checked against the argument's type when the command is saved.
+
+```yaml
+    arguments:
+      - name: config
+        type: json
+        default: {}
+```
+
 A command that returns a set (declared via `output_columns` and `return_schema`) is a
 table-valued function. Use it in a `FROM` clause or a `JOIN`.
 
@@ -348,6 +359,8 @@ Commands appear in each environment's git projection. See [Environments](environ
 
 A command binding is the name a command or function uses in a specific language. Every command gets a generated default binding in each surface Provisa exposes: SQL, Cypher, GraphQL, REST, MCP, SPARQL and the others. Rename a binding in one language, or exclude the command from a language entirely, and you are making an explicit declaration. Omit a language from the declaration, and the command appears there under its generated name.
 
+A SPARQL binding is accepted and checked like the others, but the SPARQL endpoint does not call commands yet, so it has no effect there.
+
 SQL is the one language you cannot exclude. Every other surface compiles to SQL, so a command targeted only to Cypher still has a SQL binding.
 
 A variant that returns a different result shape is its own command. When APOC's `apoc.text.join` returns a plain string but your general `text_join` command returns a row set, those are two commands with two implementations. Producing results in the shape the caller expects is the command developer's responsibility. A command binding is a name. Arguments, governance and grants are declared once on the command, and every binding shares them.
@@ -491,6 +504,8 @@ functions:
         exclude: true
 ```
 
+An argument may declare a default, so a call can leave it out: `apoc.meta.data()` with no argument takes its default configuration, as older LangChain versions call it.
+
 A command called inside a larger Cypher statement names the columns it yields, and the rest of the statement reads them. This is the statement LangChain sends:
 
 ```cypher
@@ -504,7 +519,7 @@ RETURN {label: nodeLabel, properties: properties} AS output
 
 The governance model does the filtering. A role that can read `Employees` but not `Payroll` sees `Employees` and its relationships in the result. `Payroll` is absent, and any Cypher LangChain generates next cannot reference it. Counts in the answer are null: a schema read never scans the data.
 
-The path procedures take a start node the statement has matched with a label, a direction on each relationship type and a bounded depth:
+The path procedures take a start node the statement has matched with a label, a label the walk ends at and a bounded depth. A relationship type is walked out (`TYPE>`), in (`<TYPE`), or either way when the walk ends at the start's own label:
 
 ```cypher
 MATCH (p:Person {name: 'Ada'})

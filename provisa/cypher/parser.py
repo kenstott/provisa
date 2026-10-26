@@ -268,16 +268,19 @@ def _path_procedure(call: ProcedureCall, serial: int, pipeline: list) -> MatchSt
             f"CALL {call.name}: maxLevel bounds the walk; an unbounded one is not read"
         )
     types, direction = _relationship_filter(call, rel_spec)
-    if direction == "none":
-        raise CypherParseError(
-            f"CALL {call.name}: relationshipFilter {rel_spec!r} walks each type one way: mark it "
-            "out (TYPE>) or in (<TYPE)"
-        )
     labels = _label_filter(call, label_spec)
     start_labels = _start_labels(call, start, pipeline)
+    if direction == "none" and labels != start_labels:
+        # Either way is walked recursively from a label back to the same label; between two
+        # labels the pattern is a fixed join, not a walk.
+        raise CypherParseError(
+            f"CALL {call.name}: relationshipFilter {rel_spec!r} walks either way only from a "
+            f"label to the same label ({':'.join(start_labels)}); mark each type out (TYPE>) or "
+            "in (<TYPE)"
+        )
     variable = call.yields[0][1]
     end = variable if not expand else f"_apoc_end{serial}"
-    left, right = ("<-", "-") if direction == "left" else ("-", "->")
+    left, right = {"left": ("<-", "-"), "right": ("-", "->"), "none": ("-", "-")}[direction]
     rel = f"[{':' + '|'.join(types) if types else ''}*{low}..{high}]"
     node = f"({end}{''.join(':' + label for label in labels)})"
     head = f"({start}{''.join(':' + label for label in start_labels)})"

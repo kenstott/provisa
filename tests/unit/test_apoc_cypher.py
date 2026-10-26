@@ -257,6 +257,20 @@ async def test_subgraph_nodes_is_the_recursive_sql_of_its_variable_length_patter
     assert "WITH RECURSIVE" in walked
 
 
+async def test_an_undirected_walk_from_a_label_back_to_it_is_recursive_either_way():
+    walked = _sql(
+        "MATCH (n:Person {name: 'a'}) CALL apoc.path.subgraphNodes(n, {relationshipFilter: "
+        "'KNOWS', labelFilter: '+Person', minLevel: 1, maxLevel: 2}) YIELD node "
+        "RETURN DISTINCT node.name AS name"
+    )
+    written = _sql(
+        "MATCH (n:Person {name: 'a'}) MATCH (n:Person)-[:KNOWS*1..2]-(node:Person) "
+        "RETURN DISTINCT node.name AS name"
+    )
+    assert walked == written
+    assert "WITH RECURSIVE" in walked
+
+
 async def test_expand_binds_the_path_it_yields():
     walked = _sql(
         "MATCH (n:Person {name: 'a'}) CALL apoc.path.expand(n, '<KNOWS', '+Person', 1, 3) "
@@ -269,7 +283,7 @@ async def test_expand_binds_the_path_it_yields():
 @pytest.mark.parametrize(
     ("call", "refusal"),
     [
-        ("apoc.path.expand(n, 'KNOWS', '+Person', 1, 2) YIELD path", "walks each type one way"),
+        ("apoc.path.expand(n, 'KNOWS', '+Company', 1, 2) YIELD path", "to the same label"),
         ("apoc.path.expand(n, 'KNOWS>', '', 1, 2) YIELD path", "the label the walk ends at"),
         ("apoc.path.expand(n, 'KNOWS>|<KNOWS', '+Person', 1, 2) YIELD path", "different"),
         ("apoc.path.expand(n, 'KNOWS>', '-Person', 1, 2) YIELD path", "blacklists"),
