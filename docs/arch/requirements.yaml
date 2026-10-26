@@ -89036,17 +89036,25 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   description: 'Provisa is extended through drivers, one kind per core contract: source drivers, engine
     drivers and secrets drivers, alongside command bindings (REQ-2168) for commands and functions. Every
     built-in implementation is itself a driver of its kind, and each kind ships with the kit the built-ins
-    use: (1) a scaffold (provisa new source-driver / engine-driver / secrets-driver); (2) the contract
-    test kit, the same tests every built-in driver must pass, so a third-party driver is held to the same
-    standard and the kit is also the gate for Provisa''s own drivers; (3) a docs guide with an effort
-    table by case. Source drivers cover schema discovery, filter and limit pushdown, reachability methods
-    and write operations; a code data source (a Python or Node function as a governed table) remains the
-    quick path for rows only. Engine drivers cover the SQL dialect, connection, live-attach methods for
-    reachability and the materialize store. Secrets drivers resolve credentials from a vault the customer
-    already runs. Security is not a driver kind: the model (scope, capabilities, grants) is the governance,
-    and its extension point is the external policy hook (the ABAC approval hook). Always written in full
-    (''source driver'', ''engine driver''), distinct from a database''s client driver such as psycopg
-    or JDBC.'
+    use: (1) a scaffold (provisa new source-driver / engine-driver / secrets-driver); (2) the contract test
+    kit, the same tests every built-in driver must pass, so a third-party driver is held to the same standard
+    and the kit is also the gate for Provisa''s own drivers; (3) a docs guide with an effort table by case.
+    Source drivers cover schema discovery, filter and limit pushdown, reachability methods and write operations;
+    a code data source (a Python or Node function as a governed table) remains the quick path for rows only.
+    Engine drivers cover the SQL dialect, connection, live-attach methods for reachability and the materialize
+    store. Secrets drivers resolve credentials from a vault the customer already runs. Security is not a
+    driver kind: the model (scope, capabilities, grants) is the governance, and its extension point is the
+    external policy hook (the ABAC approval hook). Always written in full (''source driver'', ''engine driver''),
+    distinct from a database''s client driver such as psycopg or JDBC. (Amended 2026-10-25, UI DETAILS:)
+    Maintainer 2026-10-26: a driver carries its UI details, so a new driver appears on every UI surface
+    with no UI code change: its name, category and mark for the source (or engine, or secrets) picker; its
+    setup form (fields, types, which are credentials, defaults, hints, validation), following the shared
+    form layout and the rule that a credential field holds what was entered; its connection test; the capabilities
+    it reports (pushdown, reachability methods, writes) as the UI shows them; and its strings for every
+    UI locale (English required, others translated as for any UI string). The UI renders all of this generically
+    from the driver''s declaration, and the generated site source picker reads the same declaration. The
+    contract test kit checks the UI details too (required fields present, hints within the length limit,
+    strings for every locale).'
   scenario: 'Given a third-party source driver scaffolded with provisa new source-driver
 
     When its author runs the source driver contract test kit
