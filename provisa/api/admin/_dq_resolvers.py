@@ -87,7 +87,7 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
     """
     from provisa.api.app import state
     from provisa.dq.catalog import check_catalog, checks_for_column
-    from provisa.dq.contract import ContractError, resolve_contract_target
+    from provisa.dq.contract import ContractError, model_contexts, resolve_contract_target
 
     try:
         kinds = check_catalog(checker)
@@ -95,7 +95,7 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
         return {"error": str(exc), "dataset_checks": [], "columns": []}
     dataset_checks = [_kind_document(k) for k in kinds if k.scope == "dataset"]
     try:
-        target = resolve_contract_target(dataset, state.contexts)
+        target = resolve_contract_target(dataset, model_contexts(state))
     except ContractError as exc:
         return {"error": str(exc), "dataset_checks": dataset_checks, "columns": []}
     columns = (
@@ -167,7 +167,12 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
     straight into the response, so a dry run costs one scan and changes nothing.
     """
     from provisa.api.app import state
-    from provisa.dq.contract import ContractError, contract_dataset, resolve_contract_target
+    from provisa.dq.contract import (
+        ContractError,
+        contract_dataset,
+        model_contexts,
+        resolve_contract_target,
+    )
     from provisa.dq.registration import is_checker_source_type
     from provisa.dq.runner import CheckerError, run_contract
 
@@ -189,7 +194,7 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
 
     try:
         dataset = contract_dataset(contract_text, checker)
-        target = resolve_contract_target(dataset, state.contexts)
+        target = resolve_contract_target(dataset, model_contexts(state))
     except ContractError as exc:
         return {"success": False, "message": str(exc)}
     async with bound_to_request_org():

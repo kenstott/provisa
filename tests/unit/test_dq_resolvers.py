@@ -176,12 +176,13 @@ class _Conn:
 
 @pytest.fixture(autouse=True)
 def _governed_orders():
-    """The dataset resolves against the compiled contexts — the pgwire names — not a catalog read."""
+    """The dataset resolves against the model-wide compiled context — the pgwire names — not a
+    catalog read."""
     from provisa.api.app import state
 
-    state.contexts = dq_contexts((1, "wh", "sales", "sales", "orders"))
+    state.view_context = dq_contexts((1, "wh", "sales", "sales", "orders"))["analyst"]
     yield
-    state.contexts = {}
+    state.view_context = None
 
 
 @pytest.mark.asyncio

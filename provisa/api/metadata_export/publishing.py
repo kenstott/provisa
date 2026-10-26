@@ -54,6 +54,7 @@ from provisa.control_plane.entitlements import (
     require_feature,
 )
 from provisa.core.models import CatalogsConfig, MetadataExportConfig, MetadataExportTarget
+from provisa.dq.contract import model_contexts
 from provisa.events import queue
 
 if TYPE_CHECKING:
@@ -250,7 +251,7 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         dialect=GOVERNED_DIALECT,
         glossary=glossary,
         dq_outcomes=dq_outcomes,
-        contexts=state.contexts,
+        contexts=model_contexts(state),
         # REQ-1659: the listing's documentation link points back at the product's page, at
         # the org's public origin -- the one mail.base_url names, for the same reason an
         # invitation cannot derive it from the request that created it.

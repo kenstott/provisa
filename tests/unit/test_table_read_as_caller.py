@@ -29,6 +29,7 @@ import pytest
 
 from provisa.api.admin import table_read
 from provisa.api.errors import ApiError
+from provisa.api.role_surface import role_surface
 from tests.unit.test_empty_domain_access_reaches_nothing import SALES, _built_roles, _tables
 
 _REFUNDS = 9
@@ -92,8 +93,8 @@ def state(multi_domain, monkeypatch):
     monkeypatch.setattr(built, "tables", _tables(), raising=False)
     built.role_build_inputs["draft_tables"] = [_refunds()]
     # The role's own context names the draft only to refuse it, as the build leaves it.
-    built.surfaces["r"].context.draft_names['"sales"."refunds"'] = "refunds"
-    built.surfaces["r"].context.draft_names["sales.refunds"] = "refunds"
+    role_surface(built, "r").context.draft_names['"sales"."refunds"'] = "refunds"
+    role_surface(built, "r").context.draft_names["sales.refunds"] = "refunds"
     return built
 
 
@@ -148,7 +149,7 @@ async def test_the_same_words_are_still_refused_after_a_steward_read(state, rout
     routing.assert_not_awaited()
     assert state.tables == tables_before and _REFUNDS not in [t["id"] for t in state.tables]
     assert state.surfaces["r"] is surface_before
-    assert "refunds" not in state.surfaces["r"].context.tables
+    assert "refunds" not in role_surface(state, "r").context.tables
     if kept_before is not None:
         assert len(state.compiled_query_cache._store) == kept_before
 
