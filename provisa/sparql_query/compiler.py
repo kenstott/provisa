@@ -39,6 +39,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import re
+from urllib.parse import unquote
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -52,6 +53,7 @@ from rdflib.plugins.sparql.parserutils import Comp, CompValue, Param
 
 from provisa.core import settings_registry
 from provisa.gql.expr_ast import (
+    AxiomObject,
     Binary,
     Case,
     CypherExpr,
@@ -63,6 +65,7 @@ from provisa.gql.expr_ast import (
     Property,
     SubqueryExpr,
     Term,
+    TermIri,
     TypedLiteral,
     Unary,
     Variable,
@@ -93,9 +96,44 @@ from provisa.gql.iri import parse_subject_iri
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.security import universal_regex
 from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
-from provisa.sparql_query.vocabulary import RDF, RDF_TYPE, XSD, ColumnPredicate, Vocabulary
+from provisa.security.rights import ONTOLOGY_DOMAIN_ID
+from provisa.sparql_query.vocabulary import (
+    OWL,
+    RDF,
+    RDF_TYPE,
+    RDFS,
+    SKOS,
+    XSD,
+    ColumnPredicate,
+    Vocabulary,
+)
 
 _ORDER_PREFIX = "__ord"
+
+# REQ-2163: the ontology schema as RDFS/OWL/SKOS, read from ontology._axioms. A triple is an axiom
+# when its predicate is one of these, or it is rdf:type with an OWL class; its object is a term
+# (TERM), an IRI or term (EITHER), or a literal (LITERAL).
+_TERM, _EITHER, _LITERAL = "term", "either", "literal"
+_AXIOM_OBJECTS = {
+    f"{RDFS}subClassOf": _TERM,
+    f"{RDFS}subPropertyOf": _TERM,
+    f"{RDFS}domain": _TERM,
+    f"{RDFS}range": _EITHER,
+    f"{SKOS}prefLabel": _LITERAL,
+    f"{SKOS}definition": _LITERAL,
+}
+_OWL_CLASSES = frozenset({f"{OWL}Class", f"{OWL}ObjectProperty", f"{OWL}DatatypeProperty"})
+
+
+def _is_axiom(p: Any, o: Any) -> bool:
+    if isinstance(p, Path) or _is_var(p):
+        return False
+    iri = str(p)
+    return iri in _AXIOM_OBJECTS or (
+        iri == RDF_TYPE and isinstance(o, URIRef) and str(o) in _OWL_CLASSES
+    )
+
+
 RDF_NIL = URIRef(f"{RDF}nil")
 
 # The functions the back end lowers by the name given here, each of the arguments named.
@@ -424,6 +462,7 @@ class _Lowering:
         self.vocab = vocab
         self._lm = lm
         self._placed: set[str] = set()
+        self._axioms = 0  # REQ-2163: the ontology._axioms nodes placed so far
 
     # -- node labels ----------------------------------------------------------------------
 
@@ -459,6 +498,8 @@ class _Lowering:
 
         constraints: list[tuple[str, str, str]] = []  # (kind, s, o/iri)
         for s, p, o in group.triples:
+            if _is_axiom(p, o):
+                continue  # read from ontology._axioms: its terms are no nodes of the graph
             sv = self._subject_node(s, named, keys)
             if isinstance(p, Path):
                 path = _path_expr(p, self.vocab)
@@ -558,6 +599,11 @@ class _Lowering:
             return var
 
         for s, p, o in group.triples:
+            if _is_axiom(p, o):
+                axiom = self._axiom_node(labels)
+                nodes.append(axiom)
+                conditions.extend(self._axiom_conditions(axiom, s, p, o, bindings))
+                continue
             sv = node(s)
             if isinstance(p, Path):
                 path = _path_expr(p, self.vocab)
@@ -625,6 +671,105 @@ class _Lowering:
                 cond = Binary("AND", cond, c)
             where = WhereClause(cond)
         return MatchStep(matches, where)
+
+    # -- the ontology's axioms (REQ-2163) -------------------------------------------------
+
+    def refuse_axioms_joined_to_data(self, group: _Group) -> None:
+        def names(*terms: Any) -> set[str]:
+            return {str(t) for t in terms if _is_var(t)}
+
+        axiom_vars: set[str] = set()
+        data_vars: set[str] = set()
+        for s, p, o in group.triples:
+            if _is_axiom(p, o):
+                axiom_vars |= names(s, o)
+            else:
+                data_vars |= names(s, o) | (set() if isinstance(p, Path) else names(p))
+        if axiom_vars & data_vars:
+            raise SparqlRefused(
+                "Joining the ontology's axioms to instance data is not supported yet; query "
+                "them apart"
+            )
+
+    def _axiom_node(self, labels: dict[str, str]) -> str:
+        """A fresh node of ontology._axioms, one row of which is one triple."""
+        label = self._lm.sql_only_tables.get((ONTOLOGY_DOMAIN_ID, "_axioms"))
+        if label is None:
+            raise SparqlRefused("The ontology's axioms are not readable here")
+        var = f"_ax{self._axioms}"
+        self._axioms += 1
+        labels[var] = label
+        return var
+
+    def _term_name(self, iri: str) -> str | None:
+        """The name of the term ``iri`` is the vocabulary IRI of; None for any other IRI."""
+        root = f"{self.vocab.base}/vocab/term/"
+        return unquote(iri[len(root) :]) if iri.startswith(root) else None
+
+    def _axiom_conditions(
+        self,
+        var: str,
+        s: Any,
+        p: Any,
+        o: Any,
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """The row ``var`` states the triple ``s p o``: its predicate, and its subject and object
+        each the term, IRI or literal written, or bound to (or by) a variable."""
+        iri = str(p)
+        conditions: list[CypherExpr] = [
+            Binary("=", Property(Variable(var), "predicate"), Literal(iri, "string"))
+        ]
+        if iri == RDF_TYPE:
+            conditions.append(
+                Binary("=", Property(Variable(var), "object_iri"), Literal(str(o), "string"))
+            )
+            objects: tuple[CypherExpr | None, str] = (None, _TERM)
+        else:
+            kind = _AXIOM_OBJECTS[iri]
+            value: CypherExpr = (
+                TermIri(Property(Variable(var), "object"))
+                if kind == _TERM
+                else AxiomObject(var)
+                if kind == _EITHER
+                else Property(Variable(var), "object_literal")
+            )
+            objects = (value, kind)
+        conditions += self._axiom_position(
+            s, TermIri(Property(Variable(var), "subject")), _TERM, bindings
+        )
+        if objects[0] is not None:
+            conditions += self._axiom_position(o, objects[0], objects[1], bindings)
+        return conditions
+
+    def _axiom_position(
+        self,
+        x: Any,
+        value: CypherExpr,
+        kind: str,
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """``x`` -- a variable, a term's IRI, another IRI or a literal -- is the ``value`` an axiom
+        row holds at one position."""
+        if _is_var(x):
+            name = str(x)
+            if name in bindings:
+                return [Binary("=", value, bindings[name][0])]
+            bindings[name] = (value, None)
+            return [IsNull(value, negated=True)] if not isinstance(value, AxiomObject) else []
+        if isinstance(x, URIRef):
+            term = self._term_name(str(x))
+            if kind == _LITERAL or (term is None and kind == _TERM):
+                return [Literal(False, "boolean")]
+            if term is not None:
+                return [Binary("=", value, Literal(term, "string"))]
+            assert isinstance(value, AxiomObject)
+            return [
+                Binary("=", Property(Variable(value.node), "object_iri"), Literal(str(x), "string"))
+            ]
+        if isinstance(x, RdfLiteral) and kind == _LITERAL:
+            return [Binary("=", value, Literal(str(x), "string"))]
+        return [Literal(False, "boolean")]
 
     def _optional_bindings(
         self,
@@ -1254,6 +1399,7 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
     lowering = _Lowering(vocab, lm)
     parts: list[CypherAST] = []
     for group in _alternatives(pattern):
+        lowering.refuse_axioms_joined_to_data(group)
         for labels in lowering.interpretations(group, {}):
             parts.append(lowering.statement(group, labels, mods, form, template, aggregation))
     if aggregation is not None and len(parts) > 1:

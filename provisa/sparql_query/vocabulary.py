@@ -67,6 +67,17 @@ def xsd_of(sql_type: str) -> str:
     return f"{XSD}string"
 
 
+def xsd_of_sql(column: str) -> str:
+    """:func:`xsd_of` as a PostgreSQL expression over the SQL type held in ``column`` (REQ-2163:
+    a Property's range in ontology._axioms), from the same table."""
+    head = f"LOWER(SPLIT_PART(SPLIT_PART(TRIM({column}), '(', 1), ' ', 1))"
+    whens = " ".join(
+        f"WHEN {head} IN ({', '.join(repr(n) for n in names)}) THEN '{XSD}{xsd}'"
+        for names, xsd in _XSD_OF_SQL
+    )
+    return f"CASE {whens} ELSE '{XSD}string' END"
+
+
 def _seg(value: str) -> str:
     return quote(value, safe="")
 

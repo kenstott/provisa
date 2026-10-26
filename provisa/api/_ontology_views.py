@@ -19,16 +19,27 @@ are from ``*_meta`` views. Dialect-neutral, as meta's are (provisa.api._meta_vie
 
 from __future__ import annotations
 
+from provisa.sparql_query.vocabulary import OWL, RDF, RDFS, SKOS, xsd_of_sql
+
 
 #: The definition tables, in the order their views are created: _domains first, since the
 #: others read each term's domains from it.
-ONTOLOGY_TABLES: list[str] = ["_terms", "_term_refs", "_term_edges", "_domains", "_experts"]
+ONTOLOGY_TABLES: list[str] = [
+    "_terms",
+    "_term_refs",
+    "_term_edges",
+    "_domains",
+    "_experts",
+    "_axioms",
+]
 
 #: Each definition table's view.
 ONTOLOGY_TABLE_ALIAS: dict[str, str] = {t: f"{t}_ontology" for t in ONTOLOGY_TABLES}
 
-#: The glossary base table each definition table restates (its primary key is that table's).
-ONTOLOGY_BASE_TABLE: dict[str, str] = {
+#: The glossary base table each definition table restates (its primary key is that table's); _axioms
+#: restates none, and its key is its own id.
+ONTOLOGY_BASE_TABLE: dict[str, str | None] = {
+    "_axioms": None,
     "_terms": "glossary_terms",
     "_term_refs": "glossary_term_refs",
     "_term_edges": "glossary_term_edges",
@@ -187,5 +198,81 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
         SELECT x.id, x.term_id, x.user_id, x.kind, t.name AS term_name, x.tenant_id
         FROM glossary_term_experts x
         JOIN glossary_terms t ON t.id = x.term_id
+    """,
+    # REQ-2163: the ontology stated as RDFS/OWL/SKOS, one triple a row, for SPARQL to lower its
+    # RDFS/OWL/SKOS patterns to (SQL's alone: no GraphQL field, no Cypher label). A subject is a
+    # term, named by its name (the answer writes its IRI); an object is a term, an IRI or a literal.
+    # A retired term states nothing. Class terms are owl:Class and Property terms owl:*Property; a
+    # kind-of edge from a Class is rdfs:subClassOf, from a Property rdfs:subPropertyOf. A
+    # Property's rdfs:domain is the Class of each table it binds a column of. It is an
+    # owl:ObjectProperty when every column it binds is a many-to-one key to a table with a Class,
+    # whose Class is then its rdfs:range; otherwise an owl:DatatypeProperty ranging over its
+    # columns' xsd types. Every term has its name as skos:prefLabel and its definition, when it
+    # has one, as skos:definition.
+    "_axioms": f"""
+        CREATE OR REPLACE VIEW _axioms_ontology AS
+        WITH t AS (
+            SELECT id, name, definition, is_class, is_property, term_domains, tenant_id
+            FROM _terms_ontology WHERE NOT retired
+        ),
+        bound AS (
+            SELECT r.term_id, rt.class_term_id AS domain_term_id, tc.data_type,
+                   (SELECT MIN(tt.class_term_id)
+                    FROM relationships rel
+                    JOIN registered_tables tt ON tt.id = rel.target_table_id
+                    WHERE rel.source_table_id = r.table_id AND rel.source_column = r.column_name
+                      AND rel.cardinality = 'many-to-one' AND rel.via_table_id IS NULL
+                      AND tt.class_term_id IS NOT NULL) AS range_term_id
+            FROM glossary_term_refs r
+            JOIN registered_tables rt ON rt.id = r.table_id
+            LEFT JOIN table_columns tc
+              ON tc.table_id = r.table_id AND tc.column_name = r.column_name
+        ),
+        object_properties AS (
+            SELECT term_id FROM bound GROUP BY term_id HAVING COUNT(*) = COUNT(range_term_id)
+        ),
+        x (subject_id, predicate, object_id, object_iri, object_literal) AS (
+            -- The first branch types the columns: an object term's id, and a literal's text.
+            SELECT id, '{RDF}type', CAST(NULL AS INTEGER), '{OWL}Class', CAST(NULL AS TEXT)
+            FROM t WHERE is_class
+            UNION
+            SELECT id, '{RDF}type', NULL,
+                   CASE WHEN id IN (SELECT term_id FROM object_properties)
+                        THEN '{OWL}ObjectProperty' ELSE '{OWL}DatatypeProperty' END,
+                   NULL
+            FROM t WHERE is_property
+            UNION
+            SELECT e.from_term_id,
+                   CASE WHEN f.is_class THEN '{RDFS}subClassOf' ELSE '{RDFS}subPropertyOf' END,
+                   e.to_term_id, NULL, NULL
+            FROM glossary_term_edges e
+            JOIN t f ON f.id = e.from_term_id
+            WHERE e.rel_type = 'KIND_OF' AND (f.is_class OR f.is_property)
+            UNION
+            SELECT term_id, '{RDFS}domain', domain_term_id, NULL, NULL
+            FROM bound WHERE domain_term_id IS NOT NULL
+            UNION
+            SELECT term_id, '{RDFS}range', range_term_id, NULL, NULL
+            FROM bound WHERE term_id IN (SELECT term_id FROM object_properties)
+            UNION
+            SELECT term_id, '{RDFS}range', NULL, {xsd_of_sql("data_type")}, NULL
+            FROM bound
+            WHERE term_id NOT IN (SELECT term_id FROM object_properties) AND data_type IS NOT NULL
+            UNION
+            SELECT id, '{SKOS}prefLabel', NULL, NULL, name FROM t
+            UNION
+            SELECT id, '{SKOS}definition', NULL, NULL, definition
+            FROM t WHERE TRIM(COALESCE(definition, '')) <> ''
+        )
+        SELECT CAST(x.subject_id AS TEXT) || ' ' || x.predicate || ' '
+                   || COALESCE(CAST(x.object_id AS TEXT), x.object_iri, '"' || x.object_literal)
+                   AS id,
+               x.subject_id AS subject_term_id, s.name AS subject, x.predicate,
+               x.object_id AS object_term_id, o.name AS object, x.object_iri, x.object_literal,
+               s.term_domains AS subject_domains, o.term_domains AS object_domains, s.tenant_id
+        FROM x
+        JOIN t s ON s.id = x.subject_id
+        LEFT JOIN t o ON o.id = x.object_id
+        WHERE x.object_id IS NULL OR o.id IS NOT NULL
     """,
 }

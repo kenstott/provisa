@@ -82,6 +82,10 @@ _META: dict[str, str] = {
     "column's source, schema, table and domain",
     "_term_edges": "The term graph — how terms relate to one another, with both endpoint names",
     "_experts": "Who owns or authored each term, for routing a definition question",
+    # REQ-2163
+    "_axioms": "The ontology stated as RDFS, OWL and SKOS triples, one a row: each term's class "
+    "or property kind, its super-classes and super-properties, a property's domain and range, "
+    "and each term's label and definition",
 }
 
 _OPS: dict[str, str] = {
@@ -563,6 +567,21 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "for a term with no domains",
         "to_term_domains": "Synthesized: the to term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
+    },
+    "_axioms": {
+        "id": "The triple: its subject's id, predicate and object",
+        "subject_term_id": "The term the triple is about",
+        "subject": "That term's name; its IRI is its vocabulary IRI",
+        "predicate": "The RDF, RDFS, OWL or SKOS property stated",
+        "object_term_id": "The term the triple points at, when its object is a term",
+        "object": "That term's name",
+        "object_iri": "The object when it is an IRI: an OWL class or an XML Schema datatype",
+        "object_literal": "The object when it is a literal: a label or a definition",
+        "subject_domains": "Synthesized: the subject term's domains as |a|b| — what its "
+        "readable-term scope tests",
+        "object_domains": "Synthesized: the object term's domains as |a|b|; empty when the "
+        "object is no term",
+        "tenant_id": _TENANT,
     },
     "_experts": {
         "id": "Assignment identifier",

@@ -32,7 +32,7 @@ from provisa.core import domain_policy
 from provisa.core.db import SEEDED_DOMAIN_IDS
 from provisa.security.rights import GLOSSARY_SCOPED_VIEWS, ONTOLOGY_DOMAIN_ID
 
-DEFINITIONS = ("_terms", "_term_refs", "_term_edges", "_domains", "_experts")
+DEFINITIONS = ("_terms", "_term_refs", "_term_edges", "_domains", "_experts", "_axioms")
 _GLOSSARY = (
     "glossary_terms",
     "glossary_term_refs",
@@ -91,4 +91,5 @@ def test_a_terms_rows_are_read_by_the_glossarys_own_rule_in_ontology():
         "_term_refs_ontology": ("term_domains",),
         "_term_edges_ontology": ("from_term_domains", "to_term_domains"),
         "_domains_ontology": ("term_domains",),
+        "_axioms_ontology": ("subject_domains", "object_domains"),
     }

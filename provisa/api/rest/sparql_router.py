@@ -136,9 +136,12 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         )
     ctx = surface.context
     label_map = _build_label_map(ctx, role_id, state)
+    # REQ-2163: SPARQL lowers its RDFS/OWL/SKOS patterns to ontology._axioms, a table SQL alone
+    # serves and no Cypher label, so it reads through the map that holds the SQL-only tables.
+    graph = label_map.with_sql_only()
     try:
         vocab = await vocabulary_for(state, role_id, ctx, label_map)
-        compiled = compile_sparql(query, vocab, label_map)
+        compiled = compile_sparql(query, vocab, graph)
         media, fmt = negotiate(request.headers.get("accept"), compiled.form)
     except NotAcceptable as exc:
         return cypher_error(406, "sparql.not_acceptable", str(exc), reason=str(exc))
@@ -149,10 +152,10 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     if not compiled.empty:
         assert compiled.ast is not None
         try:
-            sql_ast, ordered_params, graph_vars = cypher_to_sql(compiled.ast, label_map, {})
+            sql_ast, ordered_params, graph_vars = cypher_to_sql(compiled.ast, graph, {})
         except CypherTranslateError as exc:
             return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
-        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, graph)
         semantic_sql = make_semantic_sql(sql_ast.sql(dialect="postgres"), ctx)
         assert not ordered_params, "a SPARQL statement binds no parameters"
         refusal = access_violations(semantic_sql, surface, role_id, state)

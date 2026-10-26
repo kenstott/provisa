@@ -60,6 +60,7 @@ from provisa.security.rights import (
     GOVERNANCE_META_COLUMNS,
     LOCKDOWN_DOMAINS,
     META_DOMAIN_ID,
+    SQL_ONLY_TABLES,
     Capability,
     column_served,
     has_capability,
@@ -983,6 +984,8 @@ def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
             "domain_description": domain_descs.get(t.domain_id),
         }
         for t in tables
+        # REQ-2163: a table SQL alone serves has no root field and no REST path.
+        if (t.domain_id, t.table_name) not in SQL_ONLY_TABLES
     }
 
 
@@ -1097,6 +1100,9 @@ def generate_schema(
             and t.domain_id not in _accessible_domains
         ):
             continue
+        # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
+        if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
+            continue
         gql_type = gql_types[t.table_id]
         query_fields[t.field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_type)),
@@ -1168,6 +1174,9 @@ def generate_schema(
             and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
             and t.domain_id not in _accessible_domains
         ):
+            continue
+        # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
+        if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
             continue
         # REQ-1157: a view_sql/MV-backed relation is derived, not a base table. Writes either fail
         # at the source (non-updatable view) or land in the mv_cache snapshot the next refresh

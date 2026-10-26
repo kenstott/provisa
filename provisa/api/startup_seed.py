@@ -252,12 +252,13 @@ async def _register_admin_view(
     schema_name: str,
     tbl: str,
     *,
-    base_table: str,
+    base_table: str | None,
     view_name: str,
 ) -> None:
     """Register one of the control plane's own views as table ``tbl`` of a system schema (meta,
-    ontology): its columns are the view's, its primary key the base table's it restates, and
-    descriptions are seeded without overwriting an edited one."""
+    ontology): its columns are the view's, its primary key the base table's it restates (a view
+    restating none, ontology._axioms, is keyed by its own id), and descriptions are seeded without
+    overwriting an edited one."""
     table_id = await conn.upsert_returning(
         _registered_tables_t,
         {
@@ -274,11 +275,15 @@ async def _register_admin_view(
     )
     # Portable reflection (SQLAlchemy Inspector) instead of information_schema. The org
     # schema is honoured only on schema-capable backends — the abstraction decides.
-    pk_cols = {
-        c["column_name"]
-        for c in await conn.reflect_columns(base_table, schema=schema_name)
-        if c["is_primary_key"]
-    }
+    pk_cols = (
+        {"id"}
+        if base_table is None
+        else {
+            c["column_name"]
+            for c in await conn.reflect_columns(base_table, schema=schema_name)
+            if c["is_primary_key"]
+        }
+    )
     cols = await conn.reflect_columns(view_name, schema=schema_name)
     col_names = {col["column_name"] for col in cols}
     # Remove stale columns that no longer appear in the view.

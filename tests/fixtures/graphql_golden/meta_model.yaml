@@ -13,6 +13,34 @@ tables:
 - source_id: provisa-admin
   domain_id: ontology
   schema: org_default
+  table: _axioms
+  columns:
+  - name: id
+    data_type: text
+    is_primary_key: true
+  - name: object
+    data_type: text
+  - name: object_domains
+    data_type: text
+  - name: object_iri
+    data_type: text
+  - name: object_literal
+    data_type: text
+  - name: object_term_id
+    data_type: integer
+  - name: predicate
+    data_type: text
+  - name: subject
+    data_type: text
+  - name: subject_domains
+    data_type: text
+  - name: subject_term_id
+    data_type: integer
+  - name: tenant_id
+    data_type: uuid
+- source_id: provisa-admin
+  domain_id: ontology
+  schema: org_default
   table: _domains
   columns:
   - name: domain_id
