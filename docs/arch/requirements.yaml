@@ -88787,13 +88787,26 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     is a table and each Property term bound to one of its columns is a column of it, generated as a view
     over the tables the Class is bound to and governed through the one pipeline like any view, so a query
     can be written in the ontology''s terms on every surface (SQL, GraphQL, Cypher, REST, MCP), as SPARQL
-    already is. The schema is read-only and regenerated with the model. Read rights apply throughout:
-    a term is shown only to a reader who reaches one of its domains (the glossary API''s readable_term
-    rule, one rule for both), a term with no domain is shown to every reader, a binding only when its
-    column is also served to the reader, an edge only when both its terms are shown, and an instance column
-    only when its underlying column is served. Open points to settle before building: a Class bound to
-    several tables (joined as one entity on the Class key, or not offered until curated), a Property bound
-    to several columns, and the naming of definition views against Class tables in the one schema.'
+    already is. The schema is read-only and regenerated with the model. Read rights apply throughout: a
+    term is shown only to a reader who reaches one of its domains (the glossary API''s readable_term rule,
+    one rule for both), a term with no domain is shown to every reader, a binding only when its column is
+    also served to the reader, an edge only when both its terms are shown, and an instance column only when
+    its underlying column is served. [SUPERSEDED by REQ-2163, 2026-10-25 -- settled 2026-10-26, see amendment.
+    Kept here for history; do not implement against it.] Open points to settle before building: a Class
+    bound to several tables (joined as one entity on the Class key, or not offered until curated), a Property
+    bound to several columns, and the naming of definition views against Class tables in the one schema.
+    [END SUPERSEDED BLOCK] (Amended 2026-10-25, OPEN POINTS SETTLED; SPARQL SERVES THE ONTOLOGY:) Maintainer
+    2026-10-26, scheduled before green, in parallel with the benchmark. (1) A Class bound to several tables
+    is their union, no join: each row an instance from one table, with a column naming that table; a Property
+    column a table does not bind is null for its rows. Identity across tables is a later curation step (owl:sameAs),
+    never inferred. (2) A Property bound to several columns of one table is a list column (SQL array, GraphQL
+    list); SPARQL answers each value. A steward who wants them apart binds narrower properties, each rdfs:subPropertyOf
+    the broader one. (3) The definition views carry a leading underscore (_terms, _term_refs, _term_edges,
+    _domains, _experts), as system fields do, so they never collide with a generated Class table. (4) SPARQL
+    serves the ontology schema as standard RDFS/OWL/SKOS: Class terms as owl:Class, kind-of edges as rdfs:subClassOf,
+    Property terms as owl:DatatypeProperty or owl:ObjectProperty with rdfs:domain and rdfs:range, sub-properties
+    as rdfs:subPropertyOf, names as skos:prefLabel, definitions as skos:definition, all under the same read
+    rights as the views.'
   scenario: 'Given Class term Customer bound to sales.customers (key id) with Property terms name and
     segment bound to its columns
 
