@@ -88723,3 +88723,38 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then the panel lists data_steward and clinical_reviewer with the grant, inheritance and reach behind
     each'
+- id: REQ-2163
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'A third generated system schema, ontology, holds the model''s meaning, as meta holds its
+    structure. Two parts. Definitions: the glossary views move from meta to ontology (terms, their bindings
+    to columns, the edges between terms, their domains and experts), and every reader of them (the Ontology
+    page, the product Graph''s ontology layer, the SPARQL vocabulary, the meta goldens) reads them there;
+    a binding links a term to a column in meta across the two system schemas. Instances: each Class term
+    is a table and each Property term bound to one of its columns is a column of it, generated as a view
+    over the tables the Class is bound to and governed through the one pipeline like any view, so a query
+    can be written in the ontology''s terms on every surface (SQL, GraphQL, Cypher, REST, MCP), as SPARQL
+    already is. The schema is read-only and regenerated with the model. Read rights apply throughout:
+    a term is shown only to a reader who reaches one of its domains (the glossary API''s readable_term
+    rule, one rule for both), a term with no domain is shown to every reader, a binding only when its
+    column is also served to the reader, an edge only when both its terms are shown, and an instance column
+    only when its underlying column is served. Open points to settle before building: a Class bound to
+    several tables (joined as one entity on the Class key, or not offered until curated), a Property bound
+    to several columns, and the naming of definition views against Class tables in the one schema.'
+  scenario: 'Given Class term Customer bound to sales.customers (key id) with Property terms name and
+    segment bound to its columns
+
+    And a role that reaches sales and is served customers.name but not customers.segment
+
+    When it queries SELECT name FROM ontology.Customer
+
+    Then the rows are the governed rows of sales.customers
+
+    And ontology.Customer offers no segment column to that role
+
+    And a term none of whose domains the role reaches is absent from ontology.terms'
