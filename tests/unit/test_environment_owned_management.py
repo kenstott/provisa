@@ -93,3 +93,11 @@ def test_a_branch_owner_keeps_managing_its_branch():
     from provisa.core.env_authority import ENVIRONMENT_OWNER_CAPABILITIES
 
     assert "environment_owned_management" in ENVIRONMENT_OWNER_CAPABILITIES
+
+
+def test_the_sandbox_switches_environments_and_manages_none():
+    # REQ-2053, REQ-2155: a sandbox visitor owns the environments minted for it, so the sandbox
+    # holds no right that manages an owned environment; it switches between the ones that exist.
+    sandbox = STANDARD_ROLE_RIGHTS["sandbox"]
+    assert "environment_switch" in sandbox
+    assert not {"environment_owned_management", "environment_management"} & sandbox

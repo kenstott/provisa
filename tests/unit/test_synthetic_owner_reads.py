@@ -9,8 +9,8 @@
 # permission from the copyright holder.
 
 """REQ-2155, REQ-1939: the synthetic datasets are read with environment_management, or by the
-owner of the environment the request acts in holding environment_owned_management -- a sandbox
-visitor reads its own environment's generation report. Writes stay environment_management's."""
+owner of the environment the request acts in holding environment_switch -- a sandbox visitor reads
+its own environment's generation report. Writes stay environment_management's."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def plane(monkeypatch):
 
 
 async def test_the_owner_reads_its_own_environments_datasets(plane):
-    request, token = plane("ada", "ada-env", "environment_owned_management")
+    request, token = plane("ada", "ada-env", "environment_switch")
     try:
         await router._require_read(request)
     finally:
@@ -65,7 +65,7 @@ async def test_the_owner_reads_its_own_environments_datasets(plane):
 
 
 async def test_an_owner_reads_no_other_environments_datasets(plane):
-    request, token = plane("ada", "bob-env", "environment_owned_management")
+    request, token = plane("ada", "bob-env", "environment_switch")
     try:
         with pytest.raises(_Refused):
             await router._require_read(request)

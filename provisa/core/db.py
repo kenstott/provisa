@@ -296,6 +296,9 @@ def assert_standard_roles(sync_conn, schema: str) -> None:  # REQ-2155
             },
         )
     )
+    from provisa.core.repositories.retired_roles import drop_retired_role_ids
+
+    drop_retired_role_ids(sync_conn)  # REQ-1297, after platform_admin is written above
 
 
 async def init_schema(

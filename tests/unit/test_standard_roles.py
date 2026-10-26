@@ -125,10 +125,17 @@ class TestWhatEachHolds:
 
 
 class TestTheSandbox:
-    def test_it_is_a_union_of_standard_roles_with_nothing_of_its_own(self):
-        assert STANDARD_ROLES[SANDBOX].capabilities == ()
+    def test_it_is_a_union_of_standard_roles_and_developers_rights_bar_owned_environments(self):
+        # REQ-2053, REQ-2155: not developer's child, which manages the environments it owns; it
+        # holds every other right developer holds.
+        assert set(STANDARD_ROLES[SANDBOX].capabilities) == {
+            "create_view",
+            "write",
+            "environment_switch",
+        }
+        assert _rights("developer") - _rights(SANDBOX) == {"environment_owned_management"}
         assert set(STANDARD_ROLES[SANDBOX].parents) == {
-            "developer",
+            "analyst",
             "data_product_owner",
             "dq_steward",
             "source_admin",

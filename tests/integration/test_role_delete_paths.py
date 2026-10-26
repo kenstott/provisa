@@ -114,13 +114,14 @@ def _delete_rest(c: httpx.Client, role_id: str) -> httpx.Response:
     return c.delete(f"/admin/roles/{role_id}")
 
 
-def test_a_seeded_role_is_refused_on_both_entry_points(server):
+def test_a_standard_role_is_refused_on_both_entry_points(server):
+    # REQ-2155: a standard role is Provisa's and locked on every surface.
     with _client(server) as c:
         answer = _delete_graphql(c, "analyst")
-        assert (answer["success"], answer["code"]) == (False, "schema.role_is_system"), answer
+        assert (answer["success"], answer["code"]) == (False, "schema.role_standard_locked"), answer
         resp = _delete_rest(c, "analyst")
         assert resp.status_code == 400, resp.text
-        assert resp.json()["code"] == "roles.cannot_delete_system", resp.text
+        assert resp.json()["code"] == "roles.standard_locked", resp.text
         assert "analyst" in _role_ids(c)
 
 

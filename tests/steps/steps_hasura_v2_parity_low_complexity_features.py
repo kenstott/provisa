@@ -579,7 +579,8 @@ def _when_system_starts_up(shared_data: dict) -> None:
 
 @then("capabilities and domain_access are flattened up the chain so lookups remain O(1)")
 def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
-    """Assert that flattening produced correct merged capabilities and domain_access."""
+    """Assert that flattening merged capabilities down the chain and kept each role's own
+    domain_access (REQ-2155)."""
     flattened_models: dict[str, Role] = shared_data["flattened_models"]
     flattened_dicts: dict[str, dict] = shared_data["flattened_dicts"]
 
@@ -626,15 +627,15 @@ def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     assert _caps(an_model) >= {"aggregate", "read"}, (
         f"analyst (model) capabilities must include {{'aggregate','read'}}; got {_caps(an_model)}"
     )
-    assert _domains(an_model) >= {"analytics", "public"}, (
-        f"analyst (model) domain_access must include {{'analytics','public'}}; "
-        f"got {_domains(an_model)}"
+    # REQ-2155 (superseding REQ-215's merge): a role's domain_access is its own, never inherited.
+    assert _domains(an_model) == {"analytics"}, (
+        f"analyst (model) domain_access must be its own {{'analytics'}}; got {_domains(an_model)}"
     )
     assert _caps(an_dict) >= {"aggregate", "read"}, (
         f"analyst (dict) capabilities must include {{'aggregate','read'}}; got {_caps(an_dict)}"
     )
-    assert _domains(an_dict) >= {"analytics", "public"}, (
-        f"analyst (dict) domain_access must include {{'analytics','public'}}; got {_domains(an_dict)}"
+    assert _domains(an_dict) == {"analytics"}, (
+        f"analyst (dict) domain_access must be its own {{'analytics'}}; got {_domains(an_dict)}"
     )
 
     sa_model = flattened_models["senior_analyst"]
@@ -644,15 +645,14 @@ def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     assert _caps(sa_model) >= {"export", "aggregate", "read"}, (
         f"senior_analyst (model) capabilities must include the whole chain; got {_caps(sa_model)}"
     )
-    assert _domains(sa_model) >= {"finance", "analytics", "public"}, (
-        f"senior_analyst (model) domain_access must include the whole chain; "
-        f"got {_domains(sa_model)}"
+    assert _domains(sa_model) == {"finance"}, (
+        f"senior_analyst (model) domain_access must be its own; got {_domains(sa_model)}"
     )
     assert _caps(sa_dict) >= {"export", "aggregate", "read"}, (
         f"senior_analyst (dict) capabilities must include the whole chain; got {_caps(sa_dict)}"
     )
-    assert _domains(sa_dict) >= {"finance", "analytics", "public"}, (
-        f"senior_analyst (dict) domain_access must include the whole chain; got {_domains(sa_dict)}"
+    assert _domains(sa_dict) == {"finance"}, (
+        f"senior_analyst (dict) domain_access must be its own; got {_domains(sa_dict)}"
     )
 
 

@@ -72,22 +72,18 @@ def _db() -> Any:
 
 
 async def _require_read(request: Request) -> None:  # REQ-2155
-    """Reading the datasets: environment_management, or environment_owned_management held by the
-    owner of the environment the request acts in -- a sandbox visitor reads its own environment's
-    generation report."""
+    """Reading the datasets: environment_management, or environment_switch held by the owner of the
+    environment the request acts in -- a sandbox visitor reads its own environment's generation
+    report. Generating and changing them stay environment_management's."""
     from provisa.api.admin.capabilities import has_capability_request
-    from provisa.api.admin.environments_router import (
-        OWNED_CAPABILITY,
-        _admin_pool,
-        _caller_user_id,
-    )
+    from provisa.api.admin.environments_router import _admin_pool, _caller_user_id
     from provisa.core.env_authority import owns_environment
     from provisa.core.request_context import active_env
 
     user_id = _caller_user_id(request)
     if (
         user_id is not None
-        and has_capability_request(request, OWNED_CAPABILITY)
+        and has_capability_request(request, "environment_switch")
         and await owns_environment(
             _admin_pool(), request.state.active_org_id, active_env(), user_id
         )

@@ -1380,8 +1380,9 @@ def _then_v2_roles_excluded(shared_data: dict) -> None:
     role_ids = {r.id for r in shared_data["config"].roles}
     # Roles are collected exclusively from permission entries: _v2_metadata grants
     # select/insert/update/delete perms to analyst, customer, clerk, manager and an
-    # action perm to analyst — nothing else.
-    assert role_ids == {"analyst", "customer", "clerk", "manager"}, role_ids
+    # action perm to analyst — nothing else. REQ-2155: analyst is a standard role, so the config
+    # declares the other three; the permissions name analyst as they stand.
+    assert role_ids == {"customer", "clerk", "manager"}, role_ids
     # A role that has no permission entry anywhere is not fabricated.
     assert "auditor" not in role_ids
 

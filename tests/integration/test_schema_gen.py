@@ -179,10 +179,15 @@ async def schema_input(tenant_db, trino_conn, _load_config) -> dict:
         table["write_returns_rows"] = table_write_returns_rows(table, stype, None, source_path=None)
         table["write_refused_forms"] = []
 
+    # REQ-2155: as the build registers them -- each grant held by the roles that inherit it, each
+    # role with its ancestors' rights folded in.
+    from provisa.security.inheritance import expand_column_grants, flatten_role_dicts, role_chains
+
+    expand_column_grants(tables, role_chains(roles))
     return {
         "tables": tables,
         "rels": rels,
-        "roles": {r["id"]: r for r in roles},
+        "roles": {r["id"]: r for r in flatten_role_dicts(roles)},
         "domains": domains,
         "column_types": column_types,
         "naming_rules": naming_rules,

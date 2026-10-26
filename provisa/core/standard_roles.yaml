@@ -109,9 +109,12 @@ sandbox:
   # REQ-2155 (superseding REQ-1597's subtraction): a union of standard roles like any role. It never
   # holds what reaches past the environment it was minted in: managing environments or their data,
   # conferring roles, or the org glossary's override.
-  parents: [developer, data_product_owner, dq_steward, source_admin, security_admin, data_steward, org_operator]
+  # Not developer's child: developer manages the environments it owns, and the sandbox never
+  # manages an environment (REQ-2053). It holds developer's other rights: create_relationship and
+  # full_results through data_steward, the rest as its own.
+  parents: [analyst, data_product_owner, dq_steward, source_admin, security_admin, data_steward, org_operator]
   domain_access: ["*"]
-  capabilities: []
+  capabilities: [create_view, write, environment_switch]
 
 platform_admin:
   description: "Runs the platform: organizations, infrastructure and deployment settings. Holds no right to any organization's data."
