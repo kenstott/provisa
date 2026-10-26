@@ -125,14 +125,16 @@ def test_the_grpc_proto_follows_the_graphql_binding():
     assert [f["name"] for f in _visible_commands(_schema_input([_SCHEMA, _ENRICH]))] == ["enrich"]
 
 
-def test_every_role_reaches_the_meta_domain_and_only_the_domains_it_lists_besides():
+def test_every_role_reaches_the_meta_domain_for_commands_but_not_for_data():
     from provisa.security.mutation_authz import command_reachable
-    from provisa.security.rights import reaches_domain
+    from provisa.security.rights import reaches_domain, reaches_implicitly
 
-    assert reaches_domain(["shelter"], "meta")
-    assert reaches_domain([], "meta")
-    assert not reaches_domain(["shelter"], "ops")
-    assert not reaches_domain(["shelter"], "hr")
+    assert reaches_implicitly(["shelter"], "meta")
+    assert reaches_implicitly([], "meta")
+    assert not reaches_implicitly(["shelter"], "ops")
+    assert not reaches_implicitly(["shelter"], "hr")
+    # Direct SQL over the catalog still needs it listed.
+    assert not reaches_domain(["shelter"], "meta")
     apoc = {"name": "apoc_meta_data", "domain_id": "meta", "visible_to": ["reader"]}
     assert command_reachable(apoc, {"id": "reader", "domain_access": ["shelter"]})
     # Grants still decide: reach alone assigns nothing.

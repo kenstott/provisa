@@ -99,8 +99,11 @@ def test_the_executor_fills_defaults_by_position_or_by_name():
         "size": 1,
         "config": {},
     }
-    with pytest.raises(ArgumentDefaultRefused, match="'table' was not given"):
-        with_defaults(_SAMPLE, {})
+    # One left out with no default stays left out: the surface's binding refuses it, or the
+    # implementation takes it as optional (a remote operation's argument).
+    assert with_defaults(_SAMPLE, {}) == {"size": 10, "config": {}}
+    with pytest.raises(ArgumentDefaultRefused, match="'nope' is not one it declares"):
+        with_defaults(_SAMPLE, {"nope": 1})
 
 
 def test_listings_carry_each_default():

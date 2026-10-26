@@ -58,10 +58,11 @@ def check_default(argument: str, type_name: str, value: Any) -> None:
 
 
 def with_defaults(command: dict, args: dict) -> dict:
-    """``args`` bound to the command's declared arguments by name, each one omitted taking its
-    default. Positional values (``a0``, ``a1`` …, as SQL and Cypher pass them) bind in declared
-    order. An omitted argument that declares no default, or a value no argument takes, is
-    refused naming it."""
+    """``args`` with each declared argument the call left out taking its default. Positional
+    values (``a0``, ``a1`` …, as SQL and Cypher pass them) stay positional. An argument left out
+    that declares no default stays left out: whether a call may omit it is the surface's binding
+    (action_exec.bind_*), or the implementation's -- a remote operation's optional argument. A
+    value no argument takes is refused naming it."""
     declared = [a for a in command.get("arguments") or [] if a.get("name")]
     if not declared:
         return args  # a source procedure registered without its signature takes what it is given
@@ -77,10 +78,7 @@ def with_defaults(command: dict, args: dict) -> dict:
         positional = dict(args)
         for i, a in enumerate(declared[len(keys) :], start=len(keys)):
             if "default" not in a:
-                raise ArgumentDefaultRefused(
-                    f"{command['name']}: argument {a['name']!r} was not given and declares no "
-                    "default"
-                )
+                break  # a position after one left out cannot be filled
             positional[f"a{i}"] = a["default"]
         return positional
     unknown = [k for k in args if k not in names]
@@ -88,14 +86,8 @@ def with_defaults(command: dict, args: dict) -> dict:
         raise ArgumentDefaultRefused(
             f"{command['name']}: argument {unknown[0]!r} is not one it declares"
         )
-    bound: dict = {}
+    bound = dict(args)
     for a in declared:
-        if a["name"] in args:
-            bound[a["name"]] = args[a["name"]]
-        elif "default" in a:
+        if a["name"] not in bound and "default" in a:
             bound[a["name"]] = a["default"]
-        else:
-            raise ArgumentDefaultRefused(
-                f"{command['name']}: argument {a['name']!r} was not given and declares no default"
-            )
     return bound

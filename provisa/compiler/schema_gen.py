@@ -65,7 +65,7 @@ from provisa.security.rights import (
     has_capability,
     IMPLICIT_DOMAINS,
     reaches_all_domains,
-    reaches_domain,
+    reaches_implicitly,
     served_across_domains,
 )
 from provisa.compiler.actions_schema import (
@@ -133,7 +133,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         # The role reaches the table's domain: one it lists, "*", or the catalog every role may
         # traverse. A table outside reach is still served when it publishes a column to the role
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
-        reaches = reaches_domain(role["domain_access"], table["domain_id"])
+        reaches = reaches_implicitly(role["domain_access"], table["domain_id"])
         if not reaches and not served_across_domains(role, table):
             continue
 

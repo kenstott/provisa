@@ -154,10 +154,11 @@ def command_assigned(command: dict, role_id: str) -> bool:
 
 
 def command_reachable(command: dict, role: dict) -> bool:
-    """Whether ``role`` may see ``command`` at all: assigned it, and reaching its domain."""
-    from provisa.security.rights import reaches_domain
+    """Whether ``role`` may see ``command`` at all: assigned it, and reaching its domain -- one it
+    lists, or one every role reaches (rights.IMPLICIT_DOMAINS, REQ-2168)."""
+    from provisa.security.rights import reaches_implicitly
 
-    return command_assigned(command, str(role.get("id", ""))) and reaches_domain(
+    return command_assigned(command, str(role.get("id", ""))) and reaches_implicitly(
         role.get("domain_access"), command.get("domain_id") or ""
     )
 
