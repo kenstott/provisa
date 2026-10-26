@@ -29,10 +29,14 @@ import pytest
 
 from provisa.api import engine_error_names, error_redaction
 from provisa.compiler.sql_types import TableMeta
+from provisa.core.request_context import reset_current_org, set_current_org
 
 _ORG = "acme"
 #: The binder error's own sentence, which names the table by the alias the statement gave it.
 _TOLD = 'Binder Error: Table "pets" does not have a column named "nope"'
+#: An engine error naming a table by its physical address in its own sentence, and as told.
+_CATALOG = "Catalog Error: Table with name pet_store_sqlite.pet_store.pets does not exist!"
+_CATALOG_TOLD = 'Catalog Error: Table with name "pet_store"."pets" does not exist!'
 
 
 def _meta(table_id: int, table: str) -> TableMeta:
@@ -53,9 +57,7 @@ def org(monkeypatch):
     """An org whose model holds pets and owners, read through the source pet-store-sqlite."""
     ctx = types.SimpleNamespace(tables={"pets": _meta(1, "pets"), "owners": _meta(2, "owners")})
     runtime = types.SimpleNamespace(contexts={"analyst": ctx})
-    registry = types.SimpleNamespace(
-        get=lambda org_id: runtime if org_id == _ORG else None, all_org_ids=lambda: [_ORG]
-    )
+    registry = types.SimpleNamespace(get=lambda org_id: runtime if org_id == _ORG else None)
     monkeypatch.setattr("provisa.api.app.state.org_registry", registry, raising=False)
 
 
@@ -174,14 +176,21 @@ def test_flight_answers_an_engine_failure_in_the_models_names(org):
 
     from provisa.api.flight.redaction import _redacted
 
-    said = _binder_error()
+    said = f"{_binder_error()}\n{_CATALOG}"
 
     def do_get(*args):
-        raise RuntimeError(said)
+        # As the handler: it binds the request's org and resets it before the error leaves.
+        token = set_current_org(_ORG)
+        try:
+            raise RuntimeError(said)
+        finally:
+            reset_current_org(token)
 
     with pytest.raises(flight.FlightServerError) as answered:  # pyright: ignore[reportPrivateImportUsage]
         _redacted(do_get)()
     _told(str(answered.value))
+    # Named by the org the RPC bound, though its binding ended before the error left.
+    assert _CATALOG_TOLD in str(answered.value)
 
 
 def test_mcp_answers_an_engine_failure_in_the_models_names(org):
@@ -195,7 +204,7 @@ def test_mcp_answers_an_engine_failure_in_the_models_names(org):
 def test_grpc_answers_an_engine_failure_in_the_models_names(org):
     from provisa.grpc.redaction import _unary
 
-    said = _binder_error()
+    said = f"{_binder_error()}\n{_CATALOG}"
     aborted: list[str] = []
 
     class _Context:
@@ -204,24 +213,26 @@ def test_grpc_answers_an_engine_failure_in_the_models_names(org):
             raise RuntimeError("abort ends the RPC by raising")
 
     def handler(request, ctx):
-        raise RuntimeError(said)
+        # As the handler: it binds the request's org and resets it before the error leaves.
+        token = set_current_org(_ORG)
+        try:
+            raise RuntimeError(said)
+        finally:
+            reset_current_org(token)
 
     with pytest.raises(RuntimeError):
         _unary(handler)(None, _Context())
     _told(aborted[0])
+    # Named by the org the RPC bound, though its binding ended before the error left.
+    assert _CATALOG_TOLD in aborted[0]
 
 
-def test_with_no_org_known_an_address_two_orgs_name_differently_is_left(monkeypatch):
-    """A transport whose error leaves after its org binding ends is answered by every org's
-    names; an address two orgs name differently cannot be told by either."""
-    pets = _meta(1, "pets")
-    other = TableMeta(**{**pets.__dict__, "domain_id": "kennel"})
-    runtimes = {
-        "a": types.SimpleNamespace(contexts={"r": types.SimpleNamespace(tables={"p": pets})}),
-        "b": types.SimpleNamespace(contexts={"r": types.SimpleNamespace(tables={"p": other})}),
-    }
-    registry = types.SimpleNamespace(get=runtimes.get, all_org_ids=lambda: list(runtimes))
-    monkeypatch.setattr("provisa.api.app.state.org_registry", registry, raising=False)
-    said = 'Table "pet_store_sqlite"."pet_store"."pets" is gone'
-    assert engine_error_names.model_named(said, None) == said
-    assert engine_error_names.model_named(said, "a") == 'Table "pet_store"."pets" is gone'
+def test_an_error_with_no_org_has_nothing_rewritten_and_its_excerpt_dropped(org):
+    """No other org's names are ever written into an error: one raised before a request bound an
+    org has its addresses left as they are, and the engine's excerpt dropped all the same."""
+    said = _binder_error()
+    told = engine_error_names.model_named(said, None)
+    assert "LINE 1" not in told and told.startswith(_TOLD)
+    plain = 'Table "pet_store_sqlite"."pet_store"."pets" is gone'
+    assert engine_error_names.model_named(plain, None) == plain
+    assert engine_error_names.model_named(plain, _ORG) == 'Table "pet_store"."pets" is gone'

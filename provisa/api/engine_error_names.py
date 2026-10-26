@@ -47,10 +47,12 @@ def model_named(text: str, org_id: str | None) -> str:
     the excerpt can begin inside a physical address, and its caret counts characters of SQL the
     caller never wrote.
 
-    The addresses are ``org_id``'s tables. With no org known (a transport whose error leaves after
-    its org binding ends), every org's: an address two orgs name differently is not rewritten,
-    the excerpt being dropped all the same."""
+    The addresses are ``org_id``'s tables, the org the request acted in; another org's names are
+    never written into it. An error with no org (one raised before a request bound any) has
+    nothing rewritten, its excerpt dropped all the same."""
     text = _EXCERPT.sub("", _EXCERPT_JSON.sub("", text))
+    if org_id is None:
+        return text
     named = _names(org_id)
     if not named:
         return text
@@ -62,29 +64,22 @@ def model_named(text: str, org_id: str | None) -> str:
     return found.sub(lambda m: named[m.group(0)], text)
 
 
-def _names(org_id: str | None) -> dict[str, str]:
-    """Each physical address, in its three spellings, → the model's name for it."""
+def _names(org_id: str) -> dict[str, str]:
+    """Each physical address of ``org_id``'s tables, in its three spellings, → the model's name
+    for it; none for an org whose model is not built."""
     from provisa.api.app import state
     from provisa.compiler.sql_rewrite import semantic_ref
 
-    registry = state.org_registry
-    if org_id is not None:
-        runtime = registry.get(org_id)
-        runtimes = [] if runtime is None else [runtime]
-    else:
-        runtimes = [r for o in registry.all_org_ids() if (r := registry.get(o)) is not None]
+    runtime = state.org_registry.get(org_id)
+    if runtime is None:
+        return {}
     named: dict[str, str] = {}
-    conflicting: set[str] = set()
-    for runtime in runtimes:
-        for ctx in runtime.contexts.values():
-            for meta in ctx.tables.values():
-                model = semantic_ref(meta)  # "domain"."table"
-                parts = (meta.catalog_name, meta.schema_name, meta.table_name)
-                for physical, said in (
-                    (".".join(f'"{p}"' for p in parts), model),
-                    (".".join(f'\\"{p}\\"' for p in parts), model.replace('"', '\\"')),
-                    (".".join(parts), model),
-                ):
-                    if named.setdefault(physical, said) != said:
-                        conflicting.add(physical)
-    return {k: v for k, v in named.items() if k not in conflicting}
+    for ctx in runtime.contexts.values():
+        for meta in ctx.tables.values():
+            model = semantic_ref(meta)  # "domain"."table"
+            parts = (meta.catalog_name, meta.schema_name, meta.table_name)
+            named[".".join(f'"{p}"' for p in parts)] = model
+            # As a JSON error body carries it, its quotes escaped.
+            named[".".join(f'\\"{p}\\"' for p in parts)] = model.replace('"', '\\"')
+            named[".".join(parts)] = model
+    return named
