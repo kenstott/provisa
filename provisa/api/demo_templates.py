@@ -1037,6 +1037,31 @@ async def _template_row(pool, demo: PublishedDemo) -> bool:
 _REGION_ANSWER_GRACE_S = 60.0
 
 
+async def _build_view(org_id: str, mv_id: str) -> None:
+    """Build the template's materialized view ``mv_id`` now (a seeding run's view nothing else
+    builds); a failed build is recorded on the view (mv.refresh.refresh_mv), where the wait reads
+    it."""
+    from provisa.api.app import state
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.mv.refresh import refresh_mv
+
+    token = set_current_org(org_id)
+    try:
+        assert state.federation_engine is not None
+        mv = state.mv_registry.get(mv_id)
+        if mv is None:
+            raise LookupError(f"view {mv_id!r} is kept in this region and not registered")
+        await refresh_mv(
+            state.federation_engine,
+            mv,
+            state.mv_registry,
+            store=state.model_db,
+            ledger=state.tenant_db,
+        )
+    finally:
+        reset_current_org(token)
+
+
 def silent_regions(
     down: dict[str, str], since: dict[str, float], now: float
 ) -> tuple[list[tuple[str, str]], dict[str, float]]:
@@ -1138,8 +1163,10 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     from provisa.api.demo_region_seed import (
         regional,
         unanswered_regions,
+        view_records_here,
         views_built_here,
         views_kept_here,
+        views_unrecorded_here,
         views_waiting_here,
     )
 
@@ -1147,10 +1174,19 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         # REQ-2068: a region's seed carries its views too; no node of it builds them after.
         said = None
         unanswered_since: dict[str, float] = {}
+        asked: set[str] = set()
         while (built := await views_built_here(org_id)) < (
             kept := views_kept_here(template_seed(org_id))
         ):
             waiting = await views_waiting_here(org_id)
+            # A view nothing builds -- its inputs all read in place, its refresh periodic -- is
+            # asked for once, as an operator's refresh asks (schema_mutation.refresh_mv).
+            for mv_id in views_unrecorded_here(
+                template_seed(org_id), await view_records_here(org_id)
+            ):
+                if mv_id not in asked:
+                    asked.add(mv_id)
+                    await _build_view(org_id, mv_id)
             # A view may read a table another region keeps in place: that region's node answers
             # at the address the deployment config declares for it, or the view never builds.
             from provisa.api.app import state

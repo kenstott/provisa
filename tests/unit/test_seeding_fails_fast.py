@@ -83,3 +83,30 @@ def test_a_region_fails_the_wait_only_once_it_has_not_answered_for_the_grace():
     assert dead == [("ledger", "http://127.0.0.1:41001")]
     dead, since = demo_templates.silent_regions({}, since, 100.0 + grace + 1)
     assert (dead, since) == ([], {})
+
+
+def test_a_view_nothing_builds_is_asked_for_once(monkeypatch):
+    """A view whose inputs are all read in place (banking's end-of-day totals, at the ledger) has
+    no replica build to fan out to it, and its calendar refresh waits for the next close: the
+    seeding run asks for its build, once. A view with a build record -- built, or building -- is
+    left to it (CI run 40318311383: 0 of 1 views built, no build recorded, for 1800 s)."""
+    from types import SimpleNamespace
+
+    from provisa.core.models import DERIVED_SOURCE_ID
+
+    monkeypatch.setattr(demo_region_seed, "here", lambda: "warehouse")
+
+    def view(name, region):
+        return SimpleNamespace(
+            source_id=DERIVED_SOURCE_ID, materialize=True, table_name=name, region=region
+        )
+
+    config = SimpleNamespace(
+        tables=[
+            view("view_eod_totals", "warehouse"),
+            view("view_rollup", "warehouse"),
+            view("view_ledger_side", "ledger"),
+        ]
+    )
+    records = [{"mv_id": "view-view_rollup", "region": "warehouse"}]
+    assert demo_region_seed.views_unrecorded_here(config, records) == ["view-view_eod_totals"]
