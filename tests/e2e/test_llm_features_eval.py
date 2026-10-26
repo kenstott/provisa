@@ -63,8 +63,12 @@ _OPENROUTER_CONFIG = {
 
 
 @pytest.fixture(autouse=True)
-def _openrouter_config(monkeypatch):
-    """ProvisaLLMClient reads the deployment config; give it the OpenRouter endpoint and models."""
+def _openrouter_config(monkeypatch, bind_org):
+    """ProvisaLLMClient reads the deployment config; give it the OpenRouter endpoint and models.
+    _call_llm reads the acting org's keys, a tenant-data path, so the deployment org is bound."""
+    import provisa.api.app as app_mod
+
+    bind_org(app_mod.state.org_id)
     monkeypatch.setattr("provisa.api.admin._config_io.read_config", lambda: _OPENROUTER_CONFIG)
 
 
