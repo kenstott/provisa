@@ -73,6 +73,7 @@ import tarfile
 import tempfile
 import time
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, NamedTuple
 
 import httpx
@@ -770,24 +771,46 @@ def _seed(
     if regional is None:
         _seed_node(work, demo, stores, timeout, record=demo / "seeded" / "replicas.json", env={})
         return
+    from concurrent.futures import ThreadPoolExecutor
+
     from provisa.api.demo_region_seed import seed_dir
 
-    for region in regional.regions:
-        _seed_node(
-            work,
-            demo,
-            stores,
-            timeout,
-            record=seed_dir(demo, region) / "record.json",
-            control_plane=f"cp-{region}",
-            env={
-                **regional.env,
-                "PROVISA_REGION": region,
-                "REDIS_URL": regional.redis_url,
-                "PROVISA_DATA_DIR": str(work / f"data-{region}"),
-            },
-            regions=regional.regions,
-        )
+    # Every region's node runs at once, on its region's address, until every region has written
+    # its seed: a view one region builds may read a table another region keeps in place (banking's
+    # end-of-day totals, built at the ledger), so that region's node has to be there to answer.
+    records = {region: seed_dir(demo, region) / "record.json" for region in regional.regions}
+    failed: list[BaseException] = []
+
+    def _all_seeded() -> bool:
+        return bool(failed) or all(r.exists() for r in records.values())
+
+    def _run(region: str) -> None:
+        try:
+            _seed_node(
+                work,
+                demo,
+                stores,
+                timeout,
+                record=records[region],
+                control_plane=f"cp-{region}",
+                env={
+                    **regional.env,
+                    "PROVISA_REGION": region,
+                    "REDIS_URL": regional.redis_url,
+                    "PROVISA_DATA_DIR": str(work / f"data-{region}"),
+                },
+                regions=regional.regions,
+                port=int(regional.env[f"PROVISA_DEMO_{region.upper()}_ADDRESS"].rsplit(":", 1)[1]),
+                until=_all_seeded,
+            )
+        except BaseException as exc:  # re-raised below, once every node has stopped
+            failed.append(exc)
+            raise
+
+    with ThreadPoolExecutor(max_workers=len(regional.regions)) as pool:
+        futures = [pool.submit(_run, region) for region in regional.regions]
+    for future in futures:
+        future.result()
 
 
 class _RegionStores:
@@ -969,11 +992,14 @@ def _seed_node(
     env: dict[str, str],
     control_plane: str = "cp",
     regions: list[str] | None = None,
+    port: int | None = None,
+    until: Callable[[], bool] | None = None,
 ) -> None:
     """Run one seeding node, on the control plane ``control_plane``, until it has written
-    ``record``; a regions demo's on the regions ``regions``."""
-    host, port, url = _control_plane(work, control_plane)
-    http_port = _free_port()
+    ``record`` -- or, given ``until``, until that holds (its nodes' all seeded, or one failed); a
+    regions demo's on the regions ``regions``, listening on ``port``, its region's address."""
+    host, port_, url = _control_plane(work, control_plane)
+    http_port = port if port is not None else _free_port()
     server_env = {
         **_config_env(demo),
         **stores.addresses,
@@ -991,7 +1017,7 @@ def _seed_node(
         "TENANT_DATABASE_URL": url,
         "PLATFORM_DATABASE_URL": url,
         "PG_HOST": host,
-        "PG_PORT": port,
+        "PG_PORT": port_,
         "OTEL_SDK_DISABLED": "true",
         **env,
     }
@@ -1015,7 +1041,7 @@ def _seed_node(
         )
     try:
         deadline = time.monotonic() + timeout
-        while not record.exists():
+        while not (until() if until is not None else record.exists()):
             if server.poll() is not None:
                 raise SystemExit(
                     f"the seeding run exited early ({server.returncode}):\n"

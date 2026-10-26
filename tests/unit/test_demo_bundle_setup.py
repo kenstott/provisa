@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import importlib.util
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -1126,3 +1127,67 @@ def test_a_regions_demo_s_setup_history_is_carried_after_its_regions_are_seeded(
         "regions down",
         "down",
     ]
+
+
+def test_a_regions_demo_s_seeding_nodes_run_together_until_every_region_is_seeded(
+    tmp_path, monkeypatch
+):
+    """A view one region builds may read a table another region keeps in place (banking's
+    end-of-day totals, built at the ledger): every region's seeding node runs at once, on its
+    region's address, and none stops before every region has written its seed (CI run
+    40271353724: the ledger's node had stopped, and the warehouse's view never built)."""
+    import threading
+
+    from provisa.api.demo_region_seed import seed_dir
+
+    demo = tmp_path / "banking"
+    regional = builder._RegionStores(tmp_path, ["ledger", "warehouse"])
+    regional.env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+    }
+    monkeypatch.setattr(builder._RegionStores, "redis_url", "redis://cache")
+    running: set[str] = set()
+    both_up = threading.Event()
+    stopped_before_all: list[str] = []
+
+    def _node(*_a, record, env, port, until, **_k):
+        region = env["PROVISA_REGION"]
+        running.add(region)
+        if running == {"ledger", "warehouse"}:
+            both_up.set()
+        assert both_up.wait(10), f"{region}'s node ran alone"
+        assert port == {"ledger": 41001, "warehouse": 41002}[region]
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text("{}")
+        deadline = time.monotonic() + 10
+        while not until():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        if not all(seed_dir(demo, r).joinpath("record.json").exists() for r in running):
+            stopped_before_all.append(region)
+
+    monkeypatch.setattr(builder, "_seed_node", _node)
+    builder._seed(tmp_path, demo, None, 60.0, regional)
+    assert both_up.is_set() and stopped_before_all == []
+
+
+def test_a_failing_seeding_node_stops_the_others_and_fails_the_build(tmp_path, monkeypatch):
+    regional = builder._RegionStores(tmp_path, ["ledger", "warehouse"])
+    regional.env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+    }
+    monkeypatch.setattr(builder._RegionStores, "redis_url", "redis://cache")
+
+    def _node(*_a, env, until, **_k):
+        if env["PROVISA_REGION"] == "ledger":
+            raise SystemExit("the seeding run exited early (3)")
+        deadline = time.monotonic() + 10
+        while not until():
+            assert time.monotonic() < deadline, "the warehouse's node waited past the failure"
+            time.sleep(0.01)
+
+    monkeypatch.setattr(builder, "_seed_node", _node)
+    with pytest.raises(SystemExit, match="exited early"):
+        builder._seed(tmp_path, tmp_path / "banking", None, 60.0, regional)
