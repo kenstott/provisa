@@ -89168,7 +89168,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     subtype, not alias. Some IR types are subtypes of another IR type: inet is a subtype of text, oid of
     bigint, money of numeric. A subtype has its base type''s semantics everywhere (comparison, ordering,
     filters, joins, governance); a type mapping that has no entry for a subtype maps it as its base type.
-    Every ''alias'' above reads as ''subtype'', in code, UI and docs.'
+    Every ''alias'' above reads as ''subtype'', in code, UI and docs. (Amended 2026-10-25, REGISTRATION
+    ALWAYS RECORDS THE SUBTYPE:) Maintainer 2026-10-26: table registration always records the subtype when
+    the source''s native type has one (a Postgres inet, a Trino ipaddress, a ClickHouse IPv4 registers as
+    inet), never the bare base type. Each source driver''s type mapping maps its native types to subtypes
+    the same way engines and surfaces map subtypes outward. Whether a subtype is used afterwards is then
+    each engine''s and surface''s own choice.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
