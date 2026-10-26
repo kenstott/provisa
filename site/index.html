@@ -548,6 +548,30 @@
           <a class="more" href="/why/sources">What it crawls, and what else registers</a>
         </div>
 
+        <div class="spot">
+          <div class="spot-head">
+            <div class="spot-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+              </svg>
+            </div>
+            <div>
+              <p class="eyebrow">Code resolvers</p>
+              <h3>A source nobody makes a connector for? Write a function, get a governed table.</h3>
+              <p class="spot-lead">
+                Code resolvers are the contract for integrating <em>any</em> data source. A Python
+                or Node function returns typed rows, and that function becomes a table: governed
+                like any other, with visibility, masks and row rules applied to what it returns,
+                joinable to the rest of the model, and served on every language and transport.
+                A function that takes a loader gets every key of a join in one call, and filters
+                can reach it as parameters. Its code is pinned by version, commit or hash, so it
+                is promoted with the model.
+              </p>
+            </div>
+          </div>
+          <a class="more" href="/docs/code-sources/">How code resolvers work</a>
+        </div>
+
         <figure class="shot">
           <div class="shot-frame">
             <div class="term-bar"><span></span><span></span><span></span></div>
