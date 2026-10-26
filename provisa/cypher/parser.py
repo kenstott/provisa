@@ -275,6 +275,10 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 # its condition, apart from the steps before it (REQ-345).
                 _flush_match_step()
                 current_matches.append(self._parse_match(optional=True))
+                # OPTIONAL MATCH a, b: one pattern, matched whole or not at all (REQ-345).
+                while (_comma := self._peek()) and _comma.type == "COMMA":
+                    self._advance()
+                    current_matches.append(self._parse_match(optional=True))
 
             elif kw == "MATCH":
                 self._advance()

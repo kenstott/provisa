@@ -471,6 +471,32 @@ def _fold_where_into_optional_joins(
     return _one_join_per_junction_row(modified, set(by_target)), remaining
 
 
+def _optional_step_matches_whole(joins: "list[dict]", step_vars: "set[str]") -> "list[dict]":
+    """An OPTIONAL MATCH's pattern -- each of its hops and comma-separated parts, and its own WHERE
+    -- matches whole or not at all: where only part of it matches, every variable it introduces is
+    null (REQ-345). As plain LEFT JOINs a row would keep the hops that matched beside nulls for the
+    rest. Each of the match's joins but the last holds the next as an EXISTS, built from the last
+    back, so a join matches only where all of the pattern after it does."""
+    span = [
+        i
+        for i, join in enumerate(joins)
+        if join["join_type"] == "LEFT" and _join_alias(join["table"]) in step_vars
+    ]
+    if len(span) < 2:
+        return joins
+    out = list(joins)
+    for k in range(span[-1] - 1, span[0] - 1, -1):
+        after = out[k + 1]
+        rest = exp.select(exp.Literal.number(1)).from_(after["table"].copy())
+        if after["on"] is not None:
+            rest = rest.where(after["on"].copy())
+        on = out[k]["on"]
+        whole = exp.Exists(this=rest)
+        bare = on is None or (isinstance(on, exp.Boolean) and on.this is True)
+        out[k] = {**out[k], "on": whole if bare else exp.And(this=on, expression=whole)}
+    return out
+
+
 def _one_join_per_junction_row(joins: "list[dict]", constrained: "set[str]") -> "list[dict]":
     """An optional junction-backed relationship constrained at its far end matches a junction
     row only where its far node meets the condition: the junction's join holds the far join as an

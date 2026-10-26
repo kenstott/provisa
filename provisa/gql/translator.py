@@ -58,6 +58,7 @@ from provisa.gql.translator_helpers import (
     _collects_maps,
     _properties_of,
     _fold_where_into_optional_joins,
+    _optional_step_matches_whole,
     _node_table_expr,
     _clause_vars,
     _rewrite_cypher_fn_node,
@@ -257,7 +258,33 @@ def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: igno
 
 #: A segment's WHEREs: the MATCHes' (filtering the rows) and each OPTIONAL MATCH's own, with the
 #: variables it introduces (_steps_where).
-_StageWheres = tuple["WhereClause | None", list[tuple[set[str], WhereClause]]]
+_StageWheres = tuple["WhereClause | None", list[tuple[set[str], "WhereClause | None"]]]
+
+
+#: The one row a statement that opens with an OPTIONAL MATCH starts from (_optional_start).
+_OPTIONAL_START = "_optional_start"
+
+
+def _optional_start(
+    from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    joins: list[dict],
+    matches: list[MatchClause],
+    carried: str | None,
+    lateral_bound: set[str],
+) -> "tuple[exp.Expression, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A statement that opens with an OPTIONAL MATCH answers one row, its variables null, where
+    the pattern matches nothing (REQ-345): it starts from one row and the pattern is joined to it as
+    any OPTIONAL MATCH is, so its WHERE conditions the match (_fold_where_into_optional_joins) and
+    it matches whole or not at all (_optional_step_matches_whole). After a WITH, the rows the WITH
+    carries are where it starts; in a CALL body, the outer row its imported variables are bound to
+    (``lateral_bound``)."""
+    if carried is not None or lateral_bound or not matches or not matches[0].optional:
+        return from_clause, joins
+    one = exp.Subquery(
+        this=exp.select(exp.alias_(exp.Literal.number(1), "_one")),
+        alias=exp.TableAlias(this=exp.to_identifier(_OPTIONAL_START)),
+    )
+    return one, [{"table": from_clause, "on": exp.true(), "join_type": "LEFT"}, *joins]
 
 
 def _and(
@@ -273,26 +300,26 @@ def _and(
 
 def _steps_where(
     steps: list,
-) -> tuple[WhereClause | None, list[tuple[set[str], WhereClause]]]:
+) -> tuple[WhereClause | None, list[tuple[set[str], "WhereClause | None"]]]:
     """A segment's MATCH steps' WHEREs, each its own clause's, as openCypher scopes it (REQ-345).
     A WHERE after a MATCH filters the rows: those WHEREs ANDed, none dropped for another, returned
     first. A WHERE after an OPTIONAL MATCH is that match's condition and never removes a row,
     whatever it names: returned with the variables the OPTIONAL MATCH introduces, whose join it
-    conditions (_fold_where_into_optional_joins)."""
+    conditions (_fold_where_into_optional_joins). Every OPTIONAL MATCH is returned, with its WHERE
+    or None: its pattern -- every comma-separated part of it -- matches whole or not at all
+    (_optional_step_matches_whole)."""
     required: list[CypherExpr] = []
-    optional: list[tuple[set[str], WhereClause]] = []
+    optional: list[tuple[set[str], WhereClause | None]] = []
     seen: set[str] = set()
     for step in steps:
         new: set[str] = set()
         for m in step.matches:
             mine = _clause_vars(m)
-            new = mine - seen
+            new |= mine - seen
             seen |= mine
-        if step.where is None:
-            continue
         if step.matches and step.matches[-1].optional:
             optional.append((new, step.where))
-        else:
+        elif step.where is not None:
             required.append(step.where.expression)
     if not required:
         return None, optional
@@ -424,6 +451,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
             held = list(self._held_end_conditions)
+            from_clause, joins = _optional_start(
+                from_clause, list(joins), all_matches, carried, self._lateral_bound
+            )
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
             if unwinds:
                 _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
@@ -444,10 +474,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         select_exprs = self._build_with_select_items(with_clause.items)
         where_expr = self._build_where(stage_where)
         for step_vars, owned in optional_wheres:
-            joins, kept = _fold_where_into_optional_joins(
-                self._lower_where(owned), step_vars, joins
-            )
-            where_expr = _and(where_expr, kept)
+            if owned is not None:
+                joins, kept = _fold_where_into_optional_joins(
+                    self._lower_where(owned), step_vars, joins
+                )
+                where_expr = _and(where_expr, kept)
+            joins = _optional_step_matches_whole(joins, step_vars)
 
         stage_query = exp.select(*select_exprs).from_(from_clause)
         for join in joins:
@@ -540,9 +572,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 joins = list(uw_joins)
         elif all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
-            joins = self._beside_carried_rows(
-                from_clause, list(joins), cte_defs[-1][0] if cte_defs else None
+            carried = cte_defs[-1][0] if cte_defs else None
+            from_clause, joins = _optional_start(
+                from_clause, list(joins), all_matches, carried, self._lateral_bound
             )
+            joins = self._beside_carried_rows(from_clause, list(joins), carried)
             if final_unwinds:
                 _, uw_joins = self._build_unwind_joins(final_unwinds, has_from=True)
                 joins = list(joins) + uw_joins
@@ -563,19 +597,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         required, optional_wheres = stage_where
         where_expr = self._build_where(required)
         for step_vars, owned in optional_wheres:
-            joins, kept = _fold_where_into_optional_joins(
-                self._lower_where(owned), step_vars, joins
-            )
-            where_expr = _and(where_expr, kept)
-            self._extra_path_branches = [
-                (
-                    bf,
-                    _fold_where_into_optional_joins(
-                        _of_branch(self._lower_where(owned), types), step_vars, bj
-                    )[0],
-                    bps,
-                    types,
+            if owned is not None:
+                joins, kept = _fold_where_into_optional_joins(
+                    self._lower_where(owned), step_vars, joins
                 )
+                where_expr = _and(where_expr, kept)
+                self._extra_path_branches = [
+                    (
+                        bf,
+                        _fold_where_into_optional_joins(
+                            _of_branch(self._lower_where(owned), types), step_vars, bj
+                        )[0],
+                        bps,
+                        types,
+                    )
+                    for bf, bj, bps, types in self._extra_path_branches
+                ]
+            joins = _optional_step_matches_whole(joins, step_vars)
+            self._extra_path_branches = [
+                (bf, _optional_step_matches_whole(bj, step_vars), bps, types)
                 for bf, bj, bps, types in self._extra_path_branches
             ]
         return where_expr, joins
