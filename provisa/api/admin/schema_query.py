@@ -240,6 +240,8 @@ async def _listed_relationships(
     def _lists(table_id: int | None, column: str | None) -> bool:
         if table_id is None:
             return True  # no such end: a relationship to a function has no target table
+        if column == _HAS_TABLE_KEY:
+            column = None  # a HAS_TABLE row anchors the table itself, by its id: no column
         # A composite key lists its columns comma-separated (REQ-1586).
         columns = [c.strip() for c in column.split(",")] if column else [None]
         return all(scope.lists_column(table_id, c) for c in columns)
@@ -293,6 +295,10 @@ def _sees_metric(info: StrawberryInfo, row: Any) -> bool:
     return scope.role is not None and any(r in granted for r in acting_roles(state, scope.role))
 
 
+#: The source "column" of a HAS_TABLE row: the table's own id, a literal, no column of it.
+_HAS_TABLE_KEY = "__table_id__"
+
+
 async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType]:
     """Virtual HAS_TABLE rows mirroring context.py's _register_meta_synthetic_joins.
 
@@ -327,7 +333,7 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
             source_table_name=r.table_name,
             source_domain_id=r.domain_id or "",
             target_table_name=meta_table_name,
-            source_column="__table_id__",
+            source_column=_HAS_TABLE_KEY,
             target_column="id",
             cardinality="many-to-one",
             materialize=False,
@@ -356,7 +362,9 @@ def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
     held by a table it is not served is not told) -- for the observability lists, which name
     tables rather than address them (REQ-2152, ruling Q3)."""
     ids: dict[str, list[int]] = {}
-    for t in state.tables:
+    # The compiled tables and the drafts, which no context compiles: the scope serves a draft by
+    # its stored columns (catalog_scope), so its builds are its readers' as well.
+    for t in [*state.tables, *state.role_build_inputs["draft_tables"]]:
         ids.setdefault(t["table_name"], []).append(t["id"])
 
     def _reads(name: str) -> bool:

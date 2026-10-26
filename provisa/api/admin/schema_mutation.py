@@ -226,6 +226,7 @@ async def _rule_beyond_reads(
     (REQ-2152), or None."""
     import sqlglot
     from sqlglot import exp
+    from sqlglot.errors import ParseError
 
     from provisa.api.admin.catalog_scope import catalog_scope
     from provisa.api.admin.read_rights import served_columns_of
@@ -233,7 +234,13 @@ async def _rule_beyond_reads(
     scope = catalog_scope(info)
     if scope.whole:
         return None
-    named = {c.name for c in sqlglot.parse_one(input.filter_expr).find_all(exp.Column)}
+    try:
+        parsed = sqlglot.parse_one(input.filter_expr)
+    except ParseError:
+        # A predicate that does not parse names no column to judge: the save's own check, which
+        # runs next (validate_rls_predicate), refuses it with the parse reason (REQ-1676).
+        return None
+    named = {c.name for c in parsed.find_all(exp.Column)}
     pool = await _get_pool()
     async with pool.acquire() as conn:
         for target in targets:

@@ -337,14 +337,20 @@ async def dataset_report(request: Request, dataset_id: str) -> list[dict]:
                 for published, physical in _physical_names(tid).items()
                 if served is None or physical in served
             }
+        # A row of the whole dataset (table "": its privacy budget, its closeness, an assertion,
+        # whose text names its tables) is told to a caller served a column of each of them.
+        whole_dataset = bool(readable) and all(readable.values())
         return [
             _report_row(r)
             for r in report
-            if r._mapping["table_name"] in readable
-            and readable[r._mapping["table_name"]]
-            and (
-                r._mapping["column_name"] is None
-                or r._mapping["column_name"] in readable[r._mapping["table_name"]]
+            if (r._mapping["table_name"] == "" and whole_dataset)
+            or (
+                r._mapping["table_name"] in readable
+                and readable[r._mapping["table_name"]]
+                and (
+                    r._mapping["column_name"] is None
+                    or r._mapping["column_name"] in readable[r._mapping["table_name"]]
+                )
             )
         ]
 
