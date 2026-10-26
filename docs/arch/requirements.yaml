@@ -89143,18 +89143,23 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   type: behavioral
   description: 'The canonical IR has type aliases. An alias is declared once in the IR vocabulary: a name,
     a canonical base type, and per-surface details (the pgwire type OID and text format, the GraphQL scalar
-    name, the RDF datatype, the Arrow extension name). A source column whose native type is an aliased
-    type registers as its canonical base type carrying the alias: a Postgres inet column is canonical
-    text with alias inet. Every surface that needs only the canonical type treats it as the base type
-    (filters, joins, aggregation, the engines); surfaces that care read the alias: pgwire reports the
-    alias''s type OID and sends the value in Postgres''s text form, GraphQL names the alias''s scalar
-    (serialized as its base), RDF uses its datatype. An alias adds names and wire details only, never
-    new comparison or arithmetic rules; a type needing its own operators is a real IR type. First set:
-    inet (text, pgwire 869, GraphQL IPAddress; Trino ipaddress and ClickHouse IPv4/IPv6 map to it), cidr
-    (text, 650, CIDR), macaddr (text, 829, MACAddress), xml (text, 142), point (text, 600), oid (bigint,
-    26), money (numeric, 790, Postgres money text format). Binary pgwire encoding of an alias is listed
-    as a difference on the pgwire Conformance page unless a tool needs it. Source drivers (REQ-2169) can
-    declare aliases for their own types.'
+    name, the RDF datatype, the Arrow extension name). A source column whose native type is an aliased type
+    registers as its canonical base type carrying the alias: a Postgres inet column is canonical text with
+    alias inet. Every surface that needs only the canonical type treats it as the base type (filters, joins,
+    aggregation, the engines); surfaces that care read the alias: pgwire reports the alias''s type OID and
+    sends the value in Postgres''s text form, GraphQL names the alias''s scalar (serialized as its base),
+    RDF uses its datatype. An alias adds names and wire details only, never new comparison or arithmetic
+    rules; a type needing its own operators is a real IR type. First set: inet (text, pgwire 869, GraphQL
+    IPAddress; Trino ipaddress and ClickHouse IPv4/IPv6 map to it), cidr (text, 650, CIDR), macaddr (text,
+    829, MACAddress), xml (text, 142), point (text, 600), oid (bigint, 26), money (numeric, 790, Postgres
+    money text format). Binary pgwire encoding of an alias is listed as a difference on the pgwire Conformance
+    page unless a tool needs it. Source drivers (REQ-2169) can declare aliases for their own types. (Amended
+    2026-10-25, ALIAS WHERE SUPPORTED, BASE ELSEWHERE:) Maintainer 2026-10-26: the rule is uniform for engines
+    and language surfaces alike. Where the native engine (or store) or the downstream surface supports the
+    aliased type, it uses the alias''s native form: a Postgres or Trino engine keeps inet/ipaddress, a replica
+    into a store with the type lands it natively, pgwire reports the alias''s OID, GraphQL names the alias''s
+    scalar. Where it does not, it uses the canonical base type. Each engine driver and surface declares
+    which aliases it supports; nothing is guessed.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
