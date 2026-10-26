@@ -94,7 +94,10 @@ def _org_admin_context():
     identity = SimpleNamespace(
         user_id="creator", roles=["org_admin:*"], acting_roles=["org_admin:*"]
     )
-    request = SimpleNamespace(state=SimpleNamespace(active_org_id=_ORG_ID, identity=identity))
+    # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
+    request = SimpleNamespace(
+        state=SimpleNamespace(active_org_id=_ORG_ID, identity=identity, role="org_admin")
+    )
     return {"request": request}
 
 

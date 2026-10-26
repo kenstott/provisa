@@ -160,6 +160,7 @@ async def test_a_report_names_only_the_columns_the_caller_is_served(monkeypatch)
         row("orders", "secret"),
         row("orders", None),
         row("payroll", "salary"),
+        row("", None),  # the whole dataset's: its budget, its closeness, an assertion
     ]
     _db(monkeypatch, [[(None,)], report, [(7, "orders"), (9, "payroll")]])
     monkeypatch.setattr(
@@ -167,4 +168,14 @@ async def test_a_report_names_only_the_columns_the_caller_is_served(monkeypatch)
         lambda tid: {7: {"id": "id", "secret": "secret"}, 9: {"salary": "salary"}}[tid],
     )
     out = await synthetic_router.dataset_report(_REQUEST, "demo")
+    # The dataset's own rows are not told: payroll, one of its tables, is not served.
     assert [(r["table"], r["column"]) for r in out] == [("orders", "id"), ("orders", None)]
+
+    # A dataset of orders alone: its caller reads every table of it, so is told its own rows.
+    _db(monkeypatch, [[(None,)], report, [(7, "orders")]])
+    out = await synthetic_router.dataset_report(_REQUEST, "demo")
+    assert [(r["table"], r["column"]) for r in out] == [
+        ("orders", "id"),
+        ("orders", None),
+        ("", None),
+    ]

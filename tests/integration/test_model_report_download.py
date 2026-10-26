@@ -174,7 +174,10 @@ def _request(role_id: str) -> Request:
     identity = SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
     return cast(
         Request,
-        SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=ORG_ID)),
+        # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
+        SimpleNamespace(
+            state=SimpleNamespace(identity=identity, active_org_id=ORG_ID, role=role_id)
+        ),
     )
 
 

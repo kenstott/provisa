@@ -68,7 +68,9 @@ async def _register_view(client: AsyncClient, domain: str, table_name: str) -> d
                 tableName: "{table_name}",
                 alias: "{_ALIAS}",
                 viewSql: "SELECT 1 AS n",
-                columns: [{{ name: "n", visibleTo: ["public"] }}]
+                # org_admin, the role these requests act as, reads the view: a table its caller
+                # reads no column of is not listed to it (REQ-2152).
+                columns: [{{ name: "n", visibleTo: ["public", "org_admin"] }}]
             }}) {{ success message code params }}
         }}
         """,

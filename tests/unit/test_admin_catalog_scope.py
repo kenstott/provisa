@@ -446,6 +446,23 @@ async def test_a_registrar_is_answered_the_relationships_among_what_it_is_served
     ]
 
 
+async def test_a_has_table_row_is_answered_with_the_table_it_anchors(monkeypatch):
+    # A HAS_TABLE row anchors a table to its registered_tables row by the table's own id, a
+    # literal: no column of the table is served for it, so it is answered as its table is.
+    async def _synthetic(conn):  # noqa: ARG001
+        return [
+            types.SimpleNamespace(
+                **_relationship(f"meta:has_table:{t}", t, schema_query._HAS_TABLE_KEY, 2, "id")
+            )
+            for t in (1, 3)
+        ]
+
+    monkeypatch.setattr(schema_query, "_has_table_synthetic_relationships", _synthetic)
+    ids = await _relationship_ids(_caller("analyst"), everything=True)
+    # orders is served to the analyst; staff is not.
+    assert [i for i in ids if i.startswith("meta:has_table:")] == ["meta:has_table:1"]
+
+
 async def test_a_control_plane_role_is_answered_no_relationships():
     assert await _relationship_ids(_caller("platform")) == []
 
@@ -550,3 +567,23 @@ async def test_observability_lists_only_the_tables_its_caller_reads(monkeypatch)
     monkeypatch.setattr(appmod.state, "mv_registry", registry, raising=False)
     monkeypatch.setattr("provisa.mv.bitemporal_capture.logged_table_id", lambda mv_id: None)
     assert [m.id for m in await Query().mv_list(_caller("analyst"))] == ["mv_orders"]
+
+
+def test_a_drafts_name_is_read_by_the_caller_it_is_served_to():
+    """A draft is in no compiled context; the scope serves it by its stored columns, so the
+    observability lists name it (its replica builds) to that caller too."""
+    from provisa.api.admin.catalog_scope import CatalogScope
+
+    state = types.SimpleNamespace(
+        tables=[{"id": 1, "table_name": "orders"}],
+        role_build_inputs={"draft_tables": [{"id": 9, "table_name": "drafted"}]},
+    )
+    scope = CatalogScope(
+        whole=False, reach=None, served={1: {"id"}, 9: {"id"}}, governance=False, role="analyst"
+    )
+    reads = schema_query._names_read(state, scope)
+    assert reads("orders") and reads("public.drafted")
+    unserved = CatalogScope(
+        whole=False, reach=None, served={1: {"id"}}, governance=False, role="analyst"
+    )
+    assert not schema_query._names_read(state, unserved)("drafted")

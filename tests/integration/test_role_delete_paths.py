@@ -141,9 +141,10 @@ def test_a_parent_is_refused_on_both_entry_points_then_goes_after_its_heir(serve
         assert resp.status_code == 409, resp.text
         refusal = resp.json()
         assert refusal["code"] == "roles.has_dependents", refusal
+        # The dependents its caller may read, and no count (REQ-2152): a count would include
+        # those it may not.
         assert refusal["params"] == {
             "role": parent,
-            "count": 1,
             "dependents": [{"kind": "role", "id": heir, "name": heir, "via": ["roles.parents"]}],
         }, refusal
         assert {parent, heir} <= _role_ids(c)

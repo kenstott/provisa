@@ -18,6 +18,8 @@ from sqlalchemy import select
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
+from tests.unit.gate_identity import serve_every_column
+
 # ---------------------------------------------------------------------------
 # Shared state fixture
 # ---------------------------------------------------------------------------
@@ -129,6 +131,9 @@ def when_update_table_live_config(shared_data: dict) -> None:
                 patches = _table_patches(db)
                 for p in patches:
                     stack.enter_context(p)
+                # The caller is served every column: which columns a save may name is REQ-2152's
+                # own tests (test_table_save_keeps_unserved_columns).
+                serve_every_column(stack.enter_context(pytest.MonkeyPatch.context()))
                 result = await shared_data["mutation"].update_table(
                     MagicMock(), _table_input(live=live_input)
                 )
@@ -190,6 +195,9 @@ def _save_live(db, mutation, poll_interval: int):
         with ExitStack() as stack:
             for p in _table_patches(db):
                 stack.enter_context(p)
+            # The caller is served every column: which columns a save may name is REQ-2152's
+            # own tests (test_table_save_keeps_unserved_columns).
+            serve_every_column(stack.enter_context(pytest.MonkeyPatch.context()))
             return await mutation.update_table(MagicMock(), _table_input(live=live_input))
 
     return _run()

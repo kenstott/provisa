@@ -105,6 +105,41 @@ def test_masked_column_tagged_with_kind_and_exempt_roles():
     assert tag.restricted_roles == ("analyst",)
 
 
+def test_a_role_reads_the_mask_entry_its_ancestor_holds():
+    # REQ-1677, REQ-2059: a role reads through the first entry its chain holds -- lead inherits
+    # from admin, so admin's unmasked entry exempts it, as the engine resolves it.
+    config = _config(
+        tables=[
+            _table(
+                "customers",
+                [
+                    Column(
+                        name="ssn",
+                        data_type="text",
+                        visible_to=["analyst", "admin"],
+                        masks=[
+                            {"to": ["admin"], "mask": None},
+                            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                        ],
+                    )
+                ],
+            )
+        ]
+    )
+    config.roles.append(
+        Role(
+            id="lead",
+            description="Test role.",
+            capabilities=[],
+            domain_access=["*"],
+            parent_role_id="admin",
+        )
+    )
+    (tag,) = _tags(config, GovernanceSignal.MASKED)
+    assert tag.exempt_roles == ("admin", "lead")
+    assert tag.restricted_roles == ("analyst",)
+
+
 def test_unmasked_column_produces_no_mask_tag():
     config = _config(
         tables=[

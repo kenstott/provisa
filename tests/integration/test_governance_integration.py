@@ -201,9 +201,10 @@ class TestSchemaVisibility:
     async def test_is_column_visible_returns_false_for_unauthorized(self):
         # REQ-039: is_column_visible must return False for unauthorized (role, column) pair.
         table = {
+            "domain_id": "sales",
             "columns": [
                 {"column_name": "secret", "visible_to": [ROLE_ADMIN]},
-            ]
+            ],
         }
         assert not is_column_visible(table, "secret", ROLE_ANALYST), (
             "REQ-039: 'secret' must not be visible to analyst"
@@ -212,9 +213,10 @@ class TestSchemaVisibility:
     async def test_is_column_visible_returns_true_for_authorized(self):
         # REQ-039: is_column_visible must return True for authorized (role, column) pair.
         table = {
+            "domain_id": "sales",
             "columns": [
                 {"column_name": "region", "visible_to": [ROLE_ANALYST]},
-            ]
+            ],
         }
         assert is_column_visible(table, "region", ROLE_ANALYST)
 

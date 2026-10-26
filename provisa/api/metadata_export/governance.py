@@ -42,14 +42,20 @@ from provisa.core.models import Column, ProvisaConfig, Table
 
 
 def _mask_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
+    table: Table,
+    column: Column,
+    all_roles: tuple[str, ...],
+    chains: dict[str, list[str]],
+    org_id: str | None,
 ) -> list[GovernanceTag]:
     """One tag per entry of the column's mask list that masks (REQ-2059): the roles that read the
-    column through it are restricted by it, the roles that read it unmasked are exempt."""
+    column through it are restricted by it, the roles that read it unmasked are exempt. A role
+    reads through the first entry its chain holds (REQ-1677: it and its ancestors), as the build
+    resolves it (app_loaders._load_masking_rules)."""
     from provisa.security.masking import entry_for
 
     masks = [e.model_dump() for e in column.masks]
-    reads = {r: entry_for(masks, [r]) for r in all_roles}
+    reads = {r: entry_for(masks, chains[r]) for r in all_roles}
     exempt = tuple(sorted(r for r, i in reads.items() if i is None or masks[i]["mask"] is None))
     uri = column_uri(org_id, table, column.name, column.alias)
     return [
@@ -155,7 +161,7 @@ def build_governance_tags(
     tags: list[GovernanceTag] = []
     for table in config.tables:
         for column in table.columns:
-            tags.extend(_mask_tags(table, column, all_roles, org_id))
+            tags.extend(_mask_tags(table, column, all_roles, chains, org_id))
             served = served_roles(
                 definitions,
                 chains,

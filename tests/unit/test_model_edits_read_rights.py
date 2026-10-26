@@ -101,6 +101,9 @@ async def test_a_row_rule_filter_names_only_columns_the_caller_reads(model):
     refused = await schema_mutation._rule_beyond_reads(_INFO, rule, await _targets("orders"))
     assert refused is not None and refused.code == "schema.rls_rule_invalid"
     assert "secret" not in refused.message
+    # One that does not parse is left to the save's parse check (REQ-1676), which follows.
+    rule.filter_expr = "secret = = 'x'"
+    assert await schema_mutation._rule_beyond_reads(_INFO, rule, await _targets("orders")) is None
     on_payroll = types.SimpleNamespace(table_id="payroll", domain_id=None, filter_expr="1 = 1")
     refused = await schema_mutation._rule_beyond_reads(_INFO, on_payroll, await _targets("payroll"))
     assert refused is not None and refused.code == "schema.table_not_found"

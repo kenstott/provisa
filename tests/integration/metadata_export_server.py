@@ -232,7 +232,13 @@ def model_config(
                             },
                         ],
                     },
-                    {"name": "margin", "data_type": "numeric", "visible_to": ["admin"]},
+                    # Restricted: the seeded roles do not read it. The org's admin does, so a
+                    # catalog published as it receives the column (REQ-2152).
+                    {
+                        "name": "margin",
+                        "data_type": "numeric",
+                        "visible_to": ["admin", ORG_ADMIN_ROLE],
+                    },
                 ],
             },
             {
@@ -325,7 +331,10 @@ async def published_server(
 
 
 # A target's settings that are the export's own; the rest are its catalog's (REQ-2122).
-EXPORT_SETTINGS = ("datazone_project_id", "delta_share")
+EXPORT_SETTINGS = ("datazone_project_id", "delta_share", "role")
+#: The role each catalog is published as (REQ-2152): what it is sent is what that role reads. The
+#: org's admin reads every column of the model, so every catalog receives all of it.
+PUBLISH_ROLE = ORG_ADMIN_ROLE
 
 
 async def org_domains(client: httpx.AsyncClient) -> list[str]:
@@ -348,7 +357,8 @@ async def save_targets(client: httpx.AsyncClient, targets: list[dict[str, Any]])
     connected = await client.put("/admin/catalogs", json={"catalogs": catalogs})
     assert connected.status_code == 200, connected.text
     exports = [
-        {"catalog": t["id"], **{k: t[k] for k in EXPORT_SETTINGS if k in t}} for t in targets
+        {"catalog": t["id"], "role": PUBLISH_ROLE, **{k: t[k] for k in EXPORT_SETTINGS if k in t}}
+        for t in targets
     ]
     saved = await client.put("/admin/metadata-export", json={"enabled": True, "targets": exports})
     assert saved.status_code == 200, saved.text

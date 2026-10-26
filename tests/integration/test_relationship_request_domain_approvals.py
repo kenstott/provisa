@@ -89,6 +89,8 @@ def _api() -> FastAPI:
         request.state.identity = types.SimpleNamespace(
             user_id=user, roles=[_USERS[user]], acting_roles=[_USERS[user]]
         )
+        # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
+        request.state.role = _USERS[user]
         return await call_next(request)
 
     @app.exception_handler(ApiError)
@@ -190,8 +192,9 @@ def _info(user: str) -> Any:
     identity = types.SimpleNamespace(
         user_id=user, roles=[_USERS[user]], acting_roles=[_USERS[user]]
     )
+    # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
     request = types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID)
+        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID, role=_USERS[user])
     )
     return types.SimpleNamespace(context={"request": request})
 

@@ -474,7 +474,11 @@ def build_mcp_server(state: Any):
             identity = SimpleNamespace(
                 user_id=identity.user_id, roles=list(identity.roles), acting_roles=[resolved_role]
             )
-        return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org_id))
+        # The acting role too, as the HTTP middleware sets it: the catalog a tool reads and edits
+        # is that role's (REQ-2152, catalog_scope).
+        return SimpleNamespace(
+            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role)
+        )
 
     @_tool
     async def describe_role(role: str | None = None) -> dict:  # REQ-2082
