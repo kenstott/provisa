@@ -58,9 +58,9 @@
         <h1 class="hero-hook" aria-live="polite">
           <span class="hook-rotate">
             <span class="hook-pair is-active" aria-hidden="false">Connect Postgres, Snowflake and Salesforce.<br />Query with SQL, GraphQL or your AI agent.<br />In 5 minutes.</span>
-            <span class="hook-pair" aria-hidden="true">Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</span>
-            <span class="hook-pair" aria-hidden="true">Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</span>
-            <span class="hook-pair" aria-hidden="true">Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</span>
+            <span class="hook-pair" aria-hidden="true" hidden>Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</span>
+            <span class="hook-pair" aria-hidden="true" hidden>Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</span>
+            <span class="hook-pair" aria-hidden="true" hidden>Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</span>
           </span>
         </h1>
         <p class="lead">Governed from the first query.</p>
@@ -912,9 +912,11 @@
       function next() {
         pairs[current].classList.remove('is-active');
         pairs[current].setAttribute('aria-hidden', 'true');
+        pairs[current].hidden = true;
         current = (current + 1) % pairs.length;
         pairs[current].classList.add('is-active');
         pairs[current].setAttribute('aria-hidden', 'false');
+        pairs[current].hidden = false;
       }
       setInterval(next, 4000);
     })();
