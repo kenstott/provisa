@@ -204,3 +204,71 @@ async def test_apoc_meta_schema_is_one_map_of_the_role_s_graph(state):
     assert row["WORKS_IN"]["type"] == "relationship"
     assert row["Employees"]["relationships"]["WORKS_IN"]["labels"] == ["Departments"]
     assert row["Departments"]["properties"]["title"]["type"] == "STRING"
+
+
+# --- the path expanders, compiled to the variable-length pattern they walk ---------------------
+
+
+def _people() -> CypherLabelMap:
+    people = _node("Person", 3, {"id": "integer", "name": "text", "friend_id": "integer"})
+    knows = RelationshipMapping(
+        rel_type="KNOWS",
+        source_label="Person",
+        target_label="Person",
+        join_source_column="friend_id",
+        join_target_column="id",
+        field_name="friend",
+    )
+    return CypherLabelMap(
+        nodes={"Person": people}, relationships={"KNOWS": knows}, aliases={"KNOWS": [knows]}
+    )
+
+
+def _sql(query: str) -> str:
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _people(), {})
+    return sql_ast.sql(dialect="postgres")
+
+
+async def test_subgraph_nodes_is_the_recursive_sql_of_its_variable_length_pattern():
+    walked = _sql(
+        "MATCH (n:Person {name: 'a'}) CALL apoc.path.subgraphNodes(n, {relationshipFilter: "
+        "'KNOWS>', labelFilter: '+Person', minLevel: 1, maxLevel: 2}) YIELD node "
+        "RETURN DISTINCT node.name AS name"
+    )
+    written = _sql(
+        "MATCH (n:Person {name: 'a'}) MATCH (n:Person)-[:KNOWS*1..2]->(node:Person) "
+        "RETURN DISTINCT node.name AS name"
+    )
+    assert walked == written
+    assert "WITH RECURSIVE" in walked
+
+
+async def test_expand_binds_the_path_it_yields():
+    walked = _sql(
+        "MATCH (n:Person {name: 'a'}) CALL apoc.path.expand(n, '<KNOWS', '+Person', 1, 3) "
+        "YIELD path "
+        "RETURN count(path) AS paths"
+    )
+    assert "WITH RECURSIVE" in walked
+
+
+@pytest.mark.parametrize(
+    ("call", "refusal"),
+    [
+        ("apoc.path.expand(n, 'KNOWS', '+Person', 1, 2) YIELD path", "walks each type one way"),
+        ("apoc.path.expand(n, 'KNOWS>', '', 1, 2) YIELD path", "the label the walk ends at"),
+        ("apoc.path.expand(n, 'KNOWS>|<KNOWS', '+Person', 1, 2) YIELD path", "different"),
+        ("apoc.path.expand(n, 'KNOWS>', '-Person', 1, 2) YIELD path", "blacklists"),
+        ("apoc.path.expand(n, 'KNOWS>', '+Person', 1, -1) YIELD path", "unbounded"),
+        (
+            "apoc.path.subgraphNodes(n, {relationshipFilter: 'KNOWS>', labelFilter: '+Person'}) "
+            "YIELD node",
+            "unbounded",
+        ),
+        ("apoc.path.expand(n, 'KNOWS>', '+Person', 1, 2) YIELD node", "yields path"),
+        ("apoc.path.expand(m, 'KNOWS>', '+Person', 1, 2) YIELD path", "matches with a label"),
+    ],
+)
+async def test_a_walk_a_pattern_cannot_express_is_refused_naming_why(call, refusal):
+    with pytest.raises(CypherParseError, match=refusal):
+        parse_cypher(f"MATCH (n:Person) MATCH (m) CALL {call} RETURN 1 AS one")

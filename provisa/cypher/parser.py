@@ -160,6 +160,134 @@ def _in_scope(pipeline: list) -> list[str]:
     return scope
 
 
+# REQ-2168: APOC's path expanders, compiled to the variable-length pattern they walk -- and so to
+# the same recursive SQL as a variable-length path -- not called as commands.
+_PATH_PROCEDURES = {"apoc.path.expand": "path", "apoc.path.subgraphnodes": "node"}
+
+
+def _literal_arg(call: ProcedureCall, position: int, what: str) -> Any:
+    from provisa.gql.expr_ast import Literal, MapLiteral, Unary
+
+    arg = call.args[position]
+    if isinstance(arg, Literal):
+        return arg.value
+    if isinstance(arg, Unary) and arg.op == "-" and isinstance(arg.operand, Literal):
+        return -arg.operand.value  # type: ignore[operator]
+    if isinstance(arg, MapLiteral) and all(isinstance(v, Literal) for _, v in arg.entries):
+        return {k: v.value for k, v in arg.entries}  # type: ignore[attr-defined]
+    raise CypherParseError(
+        f"CALL {call.name}: its {what} (argument {position + 1}) is written as a value"
+    )
+
+
+def _relationship_filter(call: ProcedureCall, spec: str) -> tuple[list[str], str]:
+    """``A>|<B|C`` as (types, direction): every type is walked one way, out (``>``), in (``<``)
+    or either (no mark)."""
+    types: list[str] = []
+    directions: set[str] = set()
+    for part in (p.strip() for p in spec.split("|")) if spec else ():
+        if part.endswith(">"):
+            directions.add("right")
+            part = part[:-1]
+        elif part.startswith("<"):
+            directions.add("left")
+            part = part[1:]
+        else:
+            directions.add("none")
+        if part:
+            types.append(part)
+    if len(directions) > 1:
+        raise CypherParseError(
+            f"CALL {call.name}: relationshipFilter {spec!r} walks its types in different "
+            "directions; one pattern walks every type one way"
+        )
+    return types, directions.pop() if directions else "none"
+
+
+def _label_filter(call: ProcedureCall, spec: str) -> list[str]:
+    """``+Label`` (or ``>Label``) as the label the walk ends at."""
+    spec = spec.strip()
+    if not spec:
+        raise CypherParseError(
+            f"CALL {call.name}: labelFilter names the label the walk ends at (+Label)"
+        )
+    label = spec[1:] if spec[0] in "+>" else spec
+    if not label.isidentifier():
+        raise CypherParseError(
+            f"CALL {call.name}: labelFilter {spec!r} is read as one label a walk ends at "
+            "(+Label); blacklists, termination filters and several labels are not"
+        )
+    return [label]
+
+
+def _start_labels(call: ProcedureCall, start: str, pipeline: list) -> list[str]:
+    """The labels the statement matched the walk's start node with."""
+    for step in pipeline:
+        for clause in getattr(step, "matches", ()):
+            for node in getattr(clause.pattern, "nodes", ()):
+                if node.variable == start and node.labels:
+                    return list(node.labels)
+    raise CypherParseError(
+        f"CALL {call.name}: its start {start!r} is a node the statement matches with a label "
+        f"before the call, as MATCH ({start}:Label)"
+    )
+
+
+def _path_procedure(call: ProcedureCall, serial: int, pipeline: list) -> MatchStep:
+    """``CALL apoc.path.expand(start, relFilter, labelFilter, min, max) YIELD path`` or
+    ``CALL apoc.path.subgraphNodes(start, {relationshipFilter, labelFilter, minLevel, maxLevel})
+    YIELD node`` as the variable-length MATCH it walks."""
+    from provisa.gql.expr_ast import Variable as _Var
+
+    column = _PATH_PROCEDURES[call.name.lower()]
+    expand = column == "path"
+    if len(call.args) != (5 if expand else 2) or not isinstance(call.args[0], _Var):
+        raise CypherParseError(
+            f"CALL {call.name} takes "
+            + (
+                "(startNode, relationshipFilter, labelFilter, minLevel, maxLevel)"
+                if expand
+                else "(startNode, config)"
+            )
+            + ", its start a node the statement has matched"
+        )
+    if [col for col, _ in call.yields] != [column]:
+        raise CypherParseError(f"CALL {call.name} yields {column}")
+    start = call.args[0].name
+    if expand:
+        rel_spec = _literal_arg(call, 1, "relationshipFilter") or ""
+        label_spec = _literal_arg(call, 2, "labelFilter") or ""
+        low, high = _literal_arg(call, 3, "minLevel"), _literal_arg(call, 4, "maxLevel")
+    else:
+        config = _literal_arg(call, 1, "config")
+        rel_spec = config.get("relationshipFilter", "")
+        label_spec = config.get("labelFilter", "")
+        low, high = config.get("minLevel", 0), config.get("maxLevel")
+    if not isinstance(high, int) or high < 0:
+        raise CypherParseError(
+            f"CALL {call.name}: maxLevel bounds the walk; an unbounded one is not read"
+        )
+    types, direction = _relationship_filter(call, rel_spec)
+    if direction == "none":
+        raise CypherParseError(
+            f"CALL {call.name}: relationshipFilter {rel_spec!r} walks each type one way: mark it "
+            "out (TYPE>) or in (<TYPE)"
+        )
+    labels = _label_filter(call, label_spec)
+    start_labels = _start_labels(call, start, pipeline)
+    variable = call.yields[0][1]
+    end = variable if not expand else f"_apoc_end{serial}"
+    left, right = ("<-", "-") if direction == "left" else ("-", "->")
+    rel = f"[{':' + '|'.join(types) if types else ''}*{low}..{high}]"
+    node = f"({end}{''.join(':' + label for label in labels)})"
+    head = f"({start}{''.join(':' + label for label in start_labels)})"
+    pattern = parse_pattern(f"{head}{left}{rel}{right}{node}")
+    return MatchStep(
+        matches=[MatchClause(pattern=pattern, variable=variable if expand else None)],
+        where=call.where,
+    )
+
+
 def _where(text: str | None) -> WhereClause | None:
     """The IR's WHERE: the text a statement writes, parsed into its expression tree."""
     return None if text is None else WhereClause(expression=parse_expression(text))
@@ -323,7 +451,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 if _next is not None and _next.type == "IDENT":
                     # REQ-2168: a procedure called in the statement, its rows a source.
                     _flush_match_step()
-                    pipeline.append(self._parse_procedure_call())
+                    pipeline.append(self._parse_procedure_call(pipeline))
                 else:
                     call_subqueries.append(self._parse_call_subquery())
 
@@ -803,7 +931,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     # --- CALL procedure ---
 
-    def _parse_procedure_call(self) -> "ProcedureCall":  # REQ-2168
+    def _parse_procedure_call(self, pipeline: list) -> "ProcedureCall | MatchStep":  # REQ-2168
         """Parse ``ns.name(args) YIELD col [AS var], … [WHERE …]`` after CALL. A call composed
         in a statement names what it yields: its rows are a source the rest of it reads."""
         name = [self._expect("IDENT").value]
@@ -852,12 +980,15 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 break
             self._advance()
         where = _where(self._parse_where()) if self._opt_keyword("WHERE") else None
-        return ProcedureCall(
+        call = ProcedureCall(
             name=proc,
             args=[parse_expression(a) for a in args],
             yields=yields,
             where=where,
         )
+        if proc.lower() in _PATH_PROCEDURES:
+            return _path_procedure(call, self._pos, pipeline)
+        return call
 
     # --- CALL subquery ---
 
