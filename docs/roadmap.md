@@ -20,15 +20,6 @@ This roadmap shows where Provisa is headed. Groupings and timing reflect current
 ### Catalog and discovery
 
 - State the business meaning of each data quality check in plain language, not just its technical predicate.
-- Define input expectations and output promises for a data product, with check results tracked over time.
-- Declare a versioned data contract per output port so consumers know exactly what they can rely on.
-- A product's owner sees health and expectations; a consumer sees the contract, SLA and latest check results.
-
-### Roles and capabilities
-
-- Start from built-in analyst, steward and operator roles and extend them, instead of building access from scratch.
-- See a role's effective rights—the composition of its scope, capabilities and grants—in one panel.
-- See every role that can read, write or mask a column, with the inheritance chain that gave each role access.
 
 ### Approvals and query limits
 
