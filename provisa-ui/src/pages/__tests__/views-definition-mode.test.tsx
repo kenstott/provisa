@@ -37,7 +37,7 @@ const METRICS: Metric[] = [
     datatype: "numeric",
     description: null,
     aiContext: null,
-    visibleTo: ["*"],
+    visibleTo: ["admin"],
     fromFact: null,
   },
 ];
@@ -296,8 +296,8 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     expect(input.viewSql).toBeUndefined();
     // View output columns = dimensions + one column per metric.
     expect(input.columns).toEqual([
-      { name: "region", visibleTo: ["*"] },
-      { name: "revenue", visibleTo: ["*"] },
+      { name: "region", visibleTo: [] },
+      { name: "revenue", visibleTo: [] },
     ]);
     expect(updateTable).not.toHaveBeenCalled();
   });

@@ -103,7 +103,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { PageLoading } from "../components/PageLoading";
 import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
-import { domainToSqlName } from "../naming";
+import { domainToSqlName, relationName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
 import { matchesQuery } from "../lib/searchItems";
 
@@ -1428,12 +1428,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   {translate("tablesPage.listedElsewhereHint")}
                 </Text>
                 {listedNames.map((n) => (
-                  <Text
-                    key={`${n.domainId}.${n.tableName}`}
-                    size="sm"
-                    style={{ fontFamily: "monospace" }}
-                  >
-                    {domainToSqlName(n.domainId)}.{n.tableName}: {n.columnNames.join(", ")}
+                  <Text key={relationName(n)} size="sm" style={{ fontFamily: "monospace" }}>
+                    {relationName(n)}: {n.columnNames.join(", ")}
                   </Text>
                 ))}
               </Stack>

@@ -215,7 +215,7 @@ describe("Ossie interchange panel (REQ-1316)", () => {
         {
           name: "id",
           alias: "order_key",
-          visibleTo: ["*"],
+          visibleTo: [],
           dataType: "bigint",
           description: undefined,
           isPrimaryKey: true,
@@ -223,7 +223,7 @@ describe("Ossie interchange panel (REQ-1316)", () => {
         {
           name: "amount",
           alias: undefined,
-          visibleTo: ["*"],
+          visibleTo: [],
           dataType: "decimal",
           description: "Line amount",
           isPrimaryKey: false,
