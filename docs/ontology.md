@@ -255,6 +255,7 @@ The ontology is a schema you can query, named `ontology`, beside the `meta` sche
 | `_domains` | Domain a term belongs to |
 | `_experts` | Expert or author assigned to a term |
 | `_axioms` | Statement of the ontology in RDFS, OWL and SKOS |
+| `_closure` | Term paired with each term it is a kind of, at any depth, and with itself |
 
 A binding links a term to a column in the `meta` schema, so you can join `ontology._term_refs` to `meta.table_columns` and `meta.registered_tables`. The ontology's tables are read-only. They change as you curate terms.
 
@@ -283,7 +284,21 @@ SELECT ?class ?parent ?label WHERE {
 }
 ```
 
-The same statements are rows of `ontology._axioms` in SQL. GraphQL, Cypher and the other query languages don't offer `_axioms`. Query a term's statements and its tables' rows in separate SPARQL queries.
+A query can join the ontology to the rows you read. The instances of a Class include those of every Class that is a kind of it, at any depth:
+
+```sparql
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX term: <https://your-provisa/vocab/term/>
+
+SELECT ?party ?class WHERE {
+  ?party a ?class .
+  ?class rdfs:subClassOf* term:Party .
+}
+```
+
+A Property works the same way: `?x ?p ?v . ?p rdfs:subPropertyOf* term:amount` reads the values of every Property that is a kind of `amount`. You get the instances of the tables you read, so a Class whose tables you can't read adds none.
+
+The same statements are rows of `ontology._axioms` in SQL, and the kind-of pairs, closed over every depth, are rows of `ontology._closure`. GraphQL, Cypher and the other query languages don't offer these two tables.
 
 ## See also
 

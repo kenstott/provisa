@@ -119,6 +119,22 @@ async def _seed(conn) -> None:
         )
 
 
+async def _rows(control_plane, sql: str) -> set[tuple]:
+    from provisa.api.startup_seed import _adapt_view_ddl
+
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _seed(conn)
+            await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS["table_columns"]))
+            for ddl in ONTOLOGY_TABLE_VIEWS.values():
+                await conn.execute(_adapt_view_ddl(ddl))
+            rows = (await conn.execute_core(text(sql))).fetchall()
+    finally:
+        await db.close()
+    return {tuple(r) for r in rows}
+
+
 async def _axioms(control_plane) -> set[tuple]:
     from provisa.api.startup_seed import _adapt_view_ddl
 
@@ -233,3 +249,20 @@ def test_sql_reaches_axioms_and_graphql_and_cypher_do_not():
     assert all(nm.table_name != "_axioms" for nm in lm.nodes.values())
     # SPARQL lowers to it through the map that holds the SQL-only tables too.
     assert any(nm.table_name == "_axioms" for nm in lm.with_sql_only().nodes.values())
+
+
+@pytest.mark.asyncio
+async def test_the_kind_of_closure_is_computed_in_sql(control_plane):
+    closure = await _rows(
+        control_plane, "SELECT subject, object, predicate, hops FROM _closure_ontology"
+    )
+    sub_class, sub_property = f"{RDFS}subClassOf", f"{RDFS}subPropertyOf"
+    assert closure == {
+        # Each term itself (the zero-length path): the Classes, the Properties, and the terms
+        # they are kinds of.
+        *((c, c, sub_class, 0) for c in ("Customer", "Order", "Party")),
+        *((p, p, sub_property, 0) for p in ("segment", "customer", "order total", "amount")),
+        ("Customer", "Party", sub_class, 1),
+        ("order total", "amount", sub_property, 1),
+        # The retired term's kind-of edge states nothing.
+    }

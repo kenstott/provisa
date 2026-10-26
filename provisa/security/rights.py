@@ -631,12 +631,15 @@ GLOSSARY_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "_domains_ontology": ("term_domains",),
     # A triple is read where both its terms are (an IRI or literal object names no term).
     "_axioms_ontology": ("subject_domains", "object_domains"),
+    "_closure_ontology": ("subject_domains", "object_domains"),
 }
 
 # REQ-2163: registered tables SQL alone serves: no GraphQL field and no Cypher label (other
 # languages reach them only where a language means to, as SPARQL lowers its RDFS/OWL/SKOS
 # patterns to ontology._axioms). Each is (domain id, table name).
-SQL_ONLY_TABLES: frozenset[tuple[str, str]] = frozenset({(ONTOLOGY_DOMAIN_ID, "_axioms")})
+SQL_ONLY_TABLES: frozenset[tuple[str, str]] = frozenset(
+    {(ONTOLOGY_DOMAIN_ID, "_axioms"), (ONTOLOGY_DOMAIN_ID, "_closure")}
+)
 
 
 def compute_meta_row_scope(

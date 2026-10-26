@@ -125,8 +125,26 @@ _AXIOM_OBJECTS = {
 _OWL_CLASSES = frozenset({f"{OWL}Class", f"{OWL}ObjectProperty", f"{OWL}DatatypeProperty"})
 
 
+_KIND_OF = frozenset({f"{RDFS}subClassOf", f"{RDFS}subPropertyOf"})
+
+
+def _closure_path(p: Any) -> tuple[str, bool] | None:
+    """``p`` as a read of ontology._closure -- rdfs:subClassOf or rdfs:subPropertyOf, zero or more
+    (``*``) or one or more (``+``) times -- as (its predicate, one or more); None for any other."""
+    if (
+        isinstance(p, MulPath)
+        and isinstance(p.path, URIRef)
+        and str(p.path) in _KIND_OF
+        and p.mod in ("*", "+")
+    ):
+        return str(p.path), p.mod == "+"
+    return None
+
+
 def _is_axiom(p: Any, o: Any) -> bool:
-    if isinstance(p, Path) or _is_var(p):
+    if isinstance(p, Path):
+        return _closure_path(p) is not None
+    if _is_var(p):
         return False
     iri = str(p)
     return iri in _AXIOM_OBJECTS or (
@@ -600,9 +618,14 @@ class _Lowering:
 
         for s, p, o in group.triples:
             if _is_axiom(p, o):
-                axiom = self._axiom_node(labels)
+                closure = _closure_path(p)
+                axiom = self._axiom_node(labels, "_closure" if closure else "_axioms")
                 nodes.append(axiom)
-                conditions.extend(self._axiom_conditions(axiom, s, p, o, bindings))
+                conditions.extend(
+                    self._closure_conditions(axiom, s, closure, o, bindings)
+                    if closure
+                    else self._axiom_conditions(axiom, s, p, o, bindings)
+                )
                 continue
             sv = node(s)
             if isinstance(p, Path):
@@ -674,7 +697,14 @@ class _Lowering:
 
     # -- the ontology's axioms (REQ-2163) -------------------------------------------------
 
-    def refuse_axioms_joined_to_data(self, group: _Group) -> None:
+    def expand_axiom_joins(self, group: _Group) -> list[_Group]:
+        """``group``, with each variable it shares between the ontology's axioms and instance data
+        -- a class an instance has (``?x a ?c``) or a predicate it has (``?x ?p ?v``) -- fixed to
+        each of the role's class terms or property terms in turn: one group each, which the axiom
+        patterns (read in SQL, from ontology._axioms and _closure) keep or answer nothing for. An
+        instance's classes and predicates are the role's vocabulary, so a table the role cannot
+        read gives none."""
+
         def names(*terms: Any) -> set[str]:
             return {str(t) for t in terms if _is_var(t)}
 
@@ -685,15 +715,47 @@ class _Lowering:
                 axiom_vars |= names(s, o)
             else:
                 data_vars |= names(s, o) | (set() if isinstance(p, Path) else names(p))
-        if axiom_vars & data_vars:
-            raise SparqlRefused(
-                "Joining the ontology's axioms to instance data is not supported yet; query "
-                "them apart"
+        shared = sorted(axiom_vars & data_vars)
+        if not shared:
+            return [group]
+        root = f"{self.vocab.base}/vocab/term/"
+        candidates: list[list[str]] = []
+        for var in shared:
+            as_class = any(
+                not _is_axiom(p, o) and str(p) == RDF_TYPE and _is_var(o) and str(o) == var
+                for _s, p, o in group.triples
             )
+            as_predicate = any(
+                not _is_axiom(p, o) and _is_var(p) and str(p) == var for _s, p, o in group.triples
+            )
+            if as_class == as_predicate:
+                raise SparqlRefused(
+                    f"?{var} joins the ontology's axioms to instance data, and is not a class an "
+                    "instance has (?x a ?c) or a predicate it has (?x ?p ?v)"
+                )
+            terms = self.vocab.classes if as_class else self.vocab.columns
+            candidates.append(sorted(iri for iri in terms if iri.startswith(root)))
+        expanded = []
+        for combo in itertools.product(*candidates):
+            fixed = {var: URIRef(iri) for var, iri in zip(shared, combo)}
 
-    def _axiom_node(self, labels: dict[str, str]) -> str:
-        """A fresh node of ontology._axioms, one row of which is one triple."""
-        label = self._lm.sql_only_tables.get((ONTOLOGY_DOMAIN_ID, "_axioms"))
+            def put(x: Any) -> Any:
+                return fixed.get(str(x), x) if _is_var(x) else x
+
+            expanded.append(
+                _Group(
+                    [(put(s), put(p), put(o)) for s, p, o in group.triples],
+                    list(group.filters),
+                    [*group.binds, *((var, iri) for var, iri in fixed.items())],
+                    list(group.optionals),
+                )
+            )
+        return expanded
+
+    def _axiom_node(self, labels: dict[str, str], table: str) -> str:
+        """A fresh node of ``table`` (ontology._axioms, one row of which is one triple, or
+        ontology._closure, one row of which is one kind-of pair)."""
+        label = self._lm.sql_only_tables.get((ONTOLOGY_DOMAIN_ID, table))
         if label is None:
             raise SparqlRefused("The ontology's axioms are not readable here")
         var = f"_ax{self._axioms}"
@@ -740,6 +802,28 @@ class _Lowering:
         )
         if objects[0] is not None:
             conditions += self._axiom_position(o, objects[0], objects[1], bindings)
+        return conditions
+
+    def _closure_conditions(
+        self,
+        var: str,
+        s: Any,
+        closure: tuple[str, bool],
+        o: Any,
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """The ontology._closure row ``var`` pairs ``s`` with ``o`` by ``closure``'s predicate,
+        through one or more kind-of steps when it is ``+``."""
+        predicate, one_or_more = closure
+        conditions: list[CypherExpr] = [
+            Binary("=", Property(Variable(var), "predicate"), Literal(predicate, "string"))
+        ]
+        if one_or_more:
+            conditions.append(Binary(">=", Property(Variable(var), "hops"), Literal(1, "number")))
+        for x, column in ((s, "subject"), (o, "object")):
+            conditions += self._axiom_position(
+                x, TermIri(Property(Variable(var), column)), _TERM, bindings
+            )
         return conditions
 
     def _axiom_position(
@@ -1399,9 +1483,11 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
     lowering = _Lowering(vocab, lm)
     parts: list[CypherAST] = []
     for group in _alternatives(pattern):
-        lowering.refuse_axioms_joined_to_data(group)
-        for labels in lowering.interpretations(group, {}):
-            parts.append(lowering.statement(group, labels, mods, form, template, aggregation))
+        for expanded in lowering.expand_axiom_joins(group):
+            for labels in lowering.interpretations(expanded, {}):
+                parts.append(
+                    lowering.statement(expanded, labels, mods, form, template, aggregation)
+                )
     if aggregation is not None and len(parts) > 1:
         raise SparqlRefused(
             "An aggregate over subjects of several classes (or a UNION) is not supported yet; "
