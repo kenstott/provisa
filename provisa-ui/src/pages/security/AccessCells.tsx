@@ -33,7 +33,15 @@ export function AccessCells({ access }: { access: ColumnAccess }) {
           ))}
         </Group>
       </Table.Td>
-      <Table.Td>{access.mask ? <Badge size="xs">{access.mask.type}</Badge> : "—"}</Table.Td>
+      <Table.Td>
+        {access.mask ? (
+          <Text size="xs" ff="monospace">
+            {access.mask.type}
+          </Text>
+        ) : (
+          "—"
+        )}
+      </Table.Td>
       <Table.Td>
         {access.row_rule ? (
           <Text size="xs" ff="monospace">
