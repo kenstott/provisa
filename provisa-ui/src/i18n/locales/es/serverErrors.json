@@ -553,7 +553,7 @@
       "undefined_variable_property": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tiene una propiedad {{variable}}.",
       "undefined_variable_properties": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestions}}? Cada una está vinculada a una etiqueta con una propiedad {{variable}}.",
       "non_finite_number": "La respuesta contiene un número que JSON no puede representar: {{column}} es {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat y toBoolean de un valor que quizá no se pueda convertir necesitan PostgreSQL 16 o posterior en este motor."
+      "try_cast_needs_postgres_16": "toInteger, toFloat y toBoolean de un valor que puede no convertirse requieren PostgreSQL 16 o posterior en este motor."
     },
     "requests": {
       "approver_outside_domains": "Su derecho a crear relaciones no alcanza ningún dominio que toque esta solicitud ({{domains}})",
@@ -567,7 +567,7 @@
     "statement": {
       "rows_cut": "La respuesta se cortó en {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}): coinciden más filas de las devueltas.",
       "rows_cut_unchecked": "La respuesta tiene {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}). No se pudo comprobar si coinciden más filas: {{reason}}",
-      "list_at_ceiling": "Una lista contiene el máximo de {{limit}} entradas que permite el límite de filas para esta lectura ({{kind}}); puede haber más.",
+      "list_at_ceiling": "Una lista contiene el máximo de {{limit}} entradas que permite el límite de filas para esta lectura ({{kind}}); puede tener más.",
       "approximate_index": "Las filas más similares se encontraron mediante un índice vectorial aproximado: puede faltar una fila algo más similar que la última devuelta.",
       "path_cut": "Una ruta sin límite superior se cortó en el límite de profundidad del grafo de {{limit}} saltos: faltan en la respuesta las rutas más largas."
     },

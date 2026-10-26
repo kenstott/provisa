@@ -553,7 +553,7 @@
       "undefined_variable_property": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestion}}? {{owner}} ist an :{{label}} gebunden, das eine Eigenschaft {{variable}} hat.",
       "undefined_variable_properties": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestions}}? Jede ist an ein Label mit einer Eigenschaft {{variable}} gebunden.",
       "non_finite_number": "Die Antwort enthält eine Zahl, die JSON nicht darstellen kann: {{column}} ist {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean eines Werts, der sich womöglich nicht umwandeln lässt, benötigen auf dieser Engine PostgreSQL 16 oder neuer."
+      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean für einen Wert, der sich möglicherweise nicht umwandeln lässt, erfordern auf dieser Engine PostgreSQL 16 oder neuer."
     },
     "requests": {
       "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",
@@ -567,7 +567,7 @@
     "statement": {
       "rows_cut": "Die Antwort wurde bei {{limit}} Zeilen abgeschnitten, dem für diese Abfrage geltenden Zeilenlimit ({{kind}}): Es passen mehr Zeilen, als zurückgegeben wurden.",
       "rows_cut_unchecked": "Die Antwort hat {{limit}} Zeilen, das für diese Abfrage geltende Zeilenlimit ({{kind}}). Ob mehr Zeilen passen, konnte nicht geprüft werden: {{reason}}",
-      "list_at_ceiling": "Eine Liste enthält das Maximum von {{limit}} Einträgen, das das Zeilenlimit für diese Abfrage erlaubt ({{kind}}); es kann mehr geben.",
+      "list_at_ceiling": "Eine Liste enthält das Maximum von {{limit}} Einträgen, das das Zeilenlimit für diesen Lesevorgang zulässt ({{kind}}); sie kann mehr haben.",
       "approximate_index": "Die ähnlichsten Zeilen wurden über einen näherungsweisen Vektorindex gefunden: Eine Zeile, die etwas ähnlicher ist als die zuletzt zurückgegebene, kann fehlen.",
       "path_cut": "Ein Pfad ohne Obergrenze wurde an der Graph-Tiefengrenze von {{limit}} Hops abgeschnitten: Längere Pfade fehlen in der Antwort."
     },

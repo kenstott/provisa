@@ -1106,6 +1106,7 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     output_columns JSONB,  -- REQ-1159: canonical IR-typed output dataset contract [{name,type}]
     requires_approval BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1924: each call approved by the hook
     writes_table  TEXT,  -- REQ-1924, REQ-871: "schema.table" of the registered table it writes
+    language_bindings JSONB NOT NULL DEFAULT '{}',  -- REQ-2168: the command's name per language
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

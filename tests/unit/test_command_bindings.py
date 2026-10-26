@@ -230,3 +230,44 @@ def test_a_stored_command_keeps_its_bindings():
         }
     )
     assert stored.language_bindings["cypher"].name == "apoc.text.join"
+
+
+# --- SQL expression functions written in SQL ---------------------------------------------------
+
+
+def _sql_state(**roles) -> SimpleNamespace:
+    fn = {**_function(), "language_bindings": {"sql": {"name": "join_text"}}, "visible_to": []}
+    return SimpleNamespace(
+        tracked_functions={"text_join": fn},
+        roles={rid: {"id": rid, "domain_access": access} for rid, access in roles.items()},
+    )
+
+
+def test_a_sql_statement_calls_a_function_by_its_sql_binding_and_reads_its_template():
+    from provisa.compiler.sql_expression_expand import expand
+
+    sql = "SELECT join_text(ARRAY[a, upper(join_text(b, '-'))], ', ') AS j FROM t"
+    tree = sqlglot.parse_one(sql, read="postgres")
+    assert expand(tree, sql, "seller", _sql_state(seller=["sales"]))
+    assert tree.sql(dialect="postgres") == (
+        "SELECT (ARRAY_TO_STRING(ARRAY[a, UPPER((ARRAY_TO_STRING(b, '-')))], ', ')) AS j FROM t"
+    )
+
+
+def test_a_statement_naming_no_function_is_not_walked(monkeypatch):
+    from provisa.compiler import sql_expression_expand
+
+    tree = sqlglot.parse_one("SELECT a FROM t", read="postgres")
+    monkeypatch.setattr(tree, "find_all", lambda *_a: pytest.fail("walked"))
+    assert not sql_expression_expand.expand(
+        tree, "SELECT a FROM t", "seller", _sql_state(seller=["*"])
+    )
+
+
+def test_a_function_the_role_may_not_use_is_left_as_written():
+    from provisa.compiler.sql_expression_expand import expand
+
+    sql = "SELECT join_text(b, '-') FROM t"
+    tree = sqlglot.parse_one(sql, read="postgres")
+    assert not expand(tree, sql, "outsider", _sql_state(outsider=["hr"]))
+    assert "JOIN_TEXT" in tree.sql(dialect="postgres").upper()

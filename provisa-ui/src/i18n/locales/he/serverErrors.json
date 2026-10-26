@@ -553,7 +553,7 @@
       "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
       "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
       "non_finite_number": "התשובה מכילה מספר ש-JSON אינו יכול לייצג: {{column}} הוא {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שייתכן שלא יומר דורשים PostgreSQL 16 ומעלה במנוע זה."
+      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה."
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם ליצור קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",
@@ -567,7 +567,7 @@
     "statement": {
       "rows_cut": "התשובה נחתכה ב-{{limit}} שורות, מגבלת השורות החלה על קריאה זו ({{kind}}): יש יותר שורות תואמות מאלה שהוחזרו.",
       "rows_cut_unchecked": "בתשובה יש {{limit}} שורות, מגבלת השורות החלה על קריאה זו ({{kind}}). לא ניתן היה לבדוק אם יש שורות תואמות נוספות: {{reason}}",
-      "list_at_ceiling": "רשימה מכילה את המקסימום של {{limit}} רשומות שמגבלת השורות מתירה לקריאה זו ({{kind}}); ייתכן שיש יותר.",
+      "list_at_ceiling": "רשימה מכילה את המקסימום של {{limit}} רשומות שמגבלת השורות מתירה לקריאה זו ({{kind}}); ייתכן שיש בה יותר.",
       "approximate_index": "השורות הדומות ביותר נמצאו באמצעות אינדקס וקטורי מקורב: ייתכן שחסרה שורה דומה מעט יותר מהשורה האחרונה שהוחזרה.",
       "path_cut": "נתיב ללא גבול עליון נקטע במגבלת עומק הגרף של {{limit}} קפיצות: נתיבים ארוכים יותר חסרים בתשובה."
     },

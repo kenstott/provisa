@@ -567,7 +567,7 @@
     "statement": {
       "rows_cut": "La réponse a été coupée à {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}) : plus de lignes correspondent que celles renvoyées.",
       "rows_cut_unchecked": "La réponse compte {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}). Impossible de vérifier si d'autres lignes correspondent : {{reason}}",
-      "list_at_ceiling": "Une liste contient le maximum de {{limit}} entrées que permet la limite de lignes pour cette lecture ({{kind}}) ; il peut y en avoir davantage.",
+      "list_at_ceiling": "Une liste contient le maximum de {{limit}} entrées que la limite de lignes autorise pour cette lecture ({{kind}}) ; elle peut en avoir davantage.",
       "approximate_index": "Les lignes les plus similaires ont été trouvées au moyen d'un index vectoriel approximatif : une ligne légèrement plus similaire que la dernière renvoyée peut manquer.",
       "path_cut": "Un chemin sans borne supérieure a été coupé à la limite de profondeur du graphe de {{limit}} sauts : les chemins plus longs manquent dans la réponse."
     },

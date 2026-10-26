@@ -552,7 +552,7 @@
       "no_variables": "{{clause}} legge {{variable}}, ma l'istruzione non vincola alcuna variabile: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL.",
       "undefined_variable_property": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestion}}? {{owner}} è vincolata a :{{label}}, che ha una proprietà {{variable}}.",
       "undefined_variable_properties": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestions}}? Ciascuna è vincolata a un'etichetta con una proprietà {{variable}}.",
-      "non_finite_number": "La risposta contiene un numero che JSON non può rappresentare: {{column}} è {{value}}.",
+      "non_finite_number": "La risposta contiene un numero che JSON non può rappresentare: {{column}} vale {{value}}.",
       "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean di un valore che potrebbe non convertirsi richiedono PostgreSQL 16 o successivo su questo motore."
     },
     "requests": {
@@ -567,7 +567,7 @@
     "statement": {
       "rows_cut": "La risposta è stata troncata a {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}): corrispondono più righe di quelle restituite.",
       "rows_cut_unchecked": "La risposta ha {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}). Non è stato possibile verificare se corrispondono altre righe: {{reason}}",
-      "list_at_ceiling": "Un elenco contiene il massimo di {{limit}} voci consentito dal limite di righe per questa lettura ({{kind}}); potrebbero essercene di più.",
+      "list_at_ceiling": "Un elenco contiene il massimo di {{limit}} voci consentito dal limite di righe per questa lettura ({{kind}}); potrebbe averne di più.",
       "approximate_index": "Le righe più simili sono state trovate tramite un indice vettoriale approssimato: potrebbe mancare una riga leggermente più simile dell'ultima restituita.",
       "path_cut": "Un percorso senza limite superiore è stato troncato al limite di profondità del grafo di {{limit}} salti: i percorsi più lunghi mancano dalla risposta."
     },

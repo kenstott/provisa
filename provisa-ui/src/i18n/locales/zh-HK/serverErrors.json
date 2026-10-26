@@ -552,8 +552,8 @@
       "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。",
       "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。",
-      "non_finite_number": "結果包含 JSON 無法表示的數字：{{column}} 為 {{value}}。",
-      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 和 toBoolean 時，此引擎需要 PostgreSQL 16 或以上版本。"
+      "non_finite_number": "答案包含 JSON 無法表示的數字：{{column}} 為 {{value}}。",
+      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 及 toBoolean，需要此引擎上的 PostgreSQL 16 或更新版本。"
     },
     "requests": {
       "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",
@@ -567,7 +567,7 @@
     "statement": {
       "rows_cut": "結果在 {{limit}} 行處被截斷，這是適用於此次讀取的行數限制（{{kind}}）：符合的行多於傳回的行。",
       "rows_cut_unchecked": "結果有 {{limit}} 行，即適用於此次讀取的行數限制（{{kind}}）。無法檢查是否還有更多符合的行：{{reason}}",
-      "list_at_ceiling": "列表包含此次讀取的行數限制所允許的最多 {{limit}} 個條目（{{kind}}）；可能還有更多。",
+      "list_at_ceiling": "清單包含列數上限允許此次讀取（{{kind}}）的最多 {{limit}} 個項目；可能還有更多。",
       "approximate_index": "最相似的行是透過近似向量索引找到的：可能缺少一行比最後傳回的行稍微更相似的行。",
       "path_cut": "一條沒有上限的路徑在圖深度上限 {{limit}} 跳處被截斷：更長的路徑未包含在結果中。"
     },

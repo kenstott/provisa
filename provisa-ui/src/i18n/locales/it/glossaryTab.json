@@ -161,6 +161,6 @@
     "moveManyUnnamed_one": "Spostare {{count}} colonna?",
     "moveManyUnnamed_other": "Spostare {{count}} colonne?",
     "moveCarryUnnamed": "Sposta e segna i loro nuovi termini con {{tags}}",
-    "termGraphTitle": "Grafo del termine"
+    "termGraphTitle": "Grafo dei termini"
   }
 }

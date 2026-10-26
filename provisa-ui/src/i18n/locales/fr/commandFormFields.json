@@ -64,6 +64,8 @@
     "outputColumnsTitle": "Colonnes du jeu de données de sortie",
     "addOutputColumn": "+ Ajouter une colonne de sortie",
     "removeOutputColumn": "retirer la colonne de sortie {{name}}",
-    "datasetColumnPlaceholder": "colonne"
+    "datasetColumnPlaceholder": "colonne",
+    "bindingTemplate": "Expression SQL",
+    "bindingTemplateHint": "Une expression SQL. Écrivez chaque argument sous la forme {{placeholder}} ; elle s'exécute dans la requête qui l'appelle."
   }
 }

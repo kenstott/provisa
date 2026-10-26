@@ -64,6 +64,8 @@
     "outputColumnsTitle": "Spalten des Ausgabe-Datasets",
     "addOutputColumn": "+ Ausgabespalte hinzufügen",
     "removeOutputColumn": "Ausgabespalte {{name}} entfernen",
-    "datasetColumnPlaceholder": "Spalte"
+    "datasetColumnPlaceholder": "Spalte",
+    "bindingTemplate": "SQL-Ausdruck",
+    "bindingTemplateHint": "Ein SQL-Ausdruck. Schreiben Sie jedes Argument als {{placeholder}}; er wird innerhalb der aufrufenden Abfrage ausgeführt."
   }
 }

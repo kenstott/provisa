@@ -553,7 +553,7 @@
       "undefined_variable_property": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestion}}? {{owner}} is gebonden aan :{{label}}, dat een eigenschap {{variable}} heeft.",
       "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}.",
       "non_finite_number": "Het antwoord bevat een getal dat JSON niet kan weergeven: {{column}} is {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat en toBoolean van een waarde die mogelijk niet omgezet kan worden, vereisen op deze engine PostgreSQL 16 of later."
+      "try_cast_needs_postgres_16": "toInteger, toFloat en toBoolean van een waarde die mogelijk niet converteert, vereisen PostgreSQL 16 of later op deze engine."
     },
     "requests": {
       "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",
@@ -567,7 +567,7 @@
     "statement": {
       "rows_cut": "Het antwoord is afgekapt op {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}): er komen meer rijen overeen dan er zijn teruggegeven.",
       "rows_cut_unchecked": "Het antwoord heeft {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}). Of er meer rijen overeenkomen, kon niet worden gecontroleerd: {{reason}}",
-      "list_at_ceiling": "Een lijst bevat het maximum van {{limit}} items dat de rijlimiet voor deze leesactie toestaat ({{kind}}); er kunnen er meer zijn.",
+      "list_at_ceiling": "Een lijst bevat het maximum van {{limit}} items dat de rijlimiet voor deze leesbewerking toestaat ({{kind}}); er kunnen er meer zijn.",
       "approximate_index": "De meest gelijkende rijen zijn gevonden via een benaderende vectorindex: een rij die iets meer lijkt dan de laatst teruggegeven rij kan ontbreken.",
       "path_cut": "Een pad zonder bovengrens is afgekapt op de dieptegrens van de graaf van {{limit}} hops: langere paden ontbreken in het antwoord."
     },
