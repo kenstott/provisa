@@ -241,6 +241,7 @@ def test_a_lane_script_fails_loud(script):
 # live sources' credentials, which ONLY the core UI workflow passes.
 _LANE_SECRETS = {
     "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
     "SPLUNKBASE_USERNAME",
     "SPLUNKBASE_PASSWORD",
     "SP_CERT_P12_BASE64",
