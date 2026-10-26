@@ -310,7 +310,8 @@ code:not(pre code) {
 }
 
 /* ── Interfaces: three languages, then protocols by workload ─ */
-.langs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.langs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+@media (max-width: 1100px) { .langs { grid-template-columns: repeat(2, 1fr); } }
 .lang {
   padding: 20px 22px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface);
