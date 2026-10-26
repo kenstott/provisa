@@ -165,6 +165,21 @@ async def test_describe_table(state):
             "references_column": "id",
         }
     ]
+    assert result["time_travel"] is None  # orders keeps no versions
+
+
+async def test_describe_table_says_how_a_bitemporal_table_travels_in_time(state, monkeypatch):
+    """REQ-1163: an agent is told the arguments the relation's reference takes."""
+    from provisa.api.mcp import tools as mcp_tools
+
+    monkeypatch.setattr(
+        "provisa.mv.time_travel.relation_kinds",
+        lambda _state, rows: {r["id"]: "bitemporal" for r in rows},
+    )
+    meta = mcp_tools._find_role_table(state.contexts["analyst"], "sales", "orders")
+    monkeypatch.setattr(state, "tables", [{"id": meta.table_id}], raising=False)
+    result = await tools.describe_table(state, "analyst", "sales", "orders")
+    assert result["time_travel"] == {"kind": "bitemporal", "arguments": ["as_of", "as_recorded"]}
 
 
 async def test_describe_table_not_found(state):

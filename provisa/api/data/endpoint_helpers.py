@@ -443,25 +443,3 @@ def _append_mermaid(
         root_source_id=_root_src_id,
     )
     qs.mermaid = f"{qs.mermaid}\n\n{new_mermaid}" if qs.mermaid else new_mermaid
-
-
-def request_time_travel(as_of: str | None, as_recorded: str | None) -> str | None:  # REQ-1163
-    """A request's time travel, the canonical value the pipeline carries (``AsOf.key``): its
-    ``X-Provisa-As-Of`` on the view's clock and its ``X-Provisa-As-Recorded``, each validated to a
-    safe SQL timestamp literal. None when it gives neither (an empty header gives nothing). A
-    malformed value is refused with 400, naming its header."""
-    from provisa.api.errors import ApiError
-    from provisa.mv.bitemporal import parse_as_of, parse_as_recorded, request_as_of
-
-    as_of, as_recorded = as_of or None, as_recorded or None
-    for value, parse, code, header in (
-        (as_of, parse_as_of, "data.invalid_as_of", "X-Provisa-As-Of"),
-        (as_recorded, parse_as_recorded, "data.invalid_as_recorded", "X-Provisa-As-Recorded"),
-    ):
-        if value is None:
-            continue
-        try:
-            parse(value)
-        except ValueError as exc:
-            raise ApiError(400, code, f"invalid {header}: {exc}", error=str(exc)) from exc
-    return request_as_of(as_of, as_recorded)

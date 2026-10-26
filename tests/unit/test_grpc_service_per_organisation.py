@@ -597,10 +597,10 @@ def test_the_generic_command_rpc_is_every_roles(meta_reach):
 
 
 def test_every_roles_service_resolves_a_semantic_address(meta_reach):
-    """REQ-1365, REQ-1929: resolve is in every role's GraphQL schema, so its RPC is in every
+    """REQ-1365, REQ-1929: _resolve is in every role's GraphQL schema, so its RPC is in every
     role's service, generated from the same rule."""
     for role in ("sales_reader", "cataloguer"):
-        assert "resolve" in meta_reach.schemas[role].query_type.fields
+        assert "_resolve" in meta_reach.schemas[role].query_type.fields
         assert "Resolve" in _rpcs(meta_reach.proto_files[role])
 
 

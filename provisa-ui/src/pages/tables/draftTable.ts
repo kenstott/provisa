@@ -118,6 +118,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     refreshPolicySummary: null,
     gqlNamingConvention: null,
     graphqlFieldName: null,
+    timeTravel: null,
     dqDataset: null,
     qualityCheckers: [],
     watermarkColumn: str(i.watermarkColumn),

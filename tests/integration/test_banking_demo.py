@@ -16,7 +16,7 @@ nodes load the demo's config.yaml as is over one model store, as start-ui-instal
 the ledger node headless, and the warehouse node a visitor uses. The demo's setup.yaml is run
 against the warehouse node as the launcher runs it: thirty business days loaded one at a time, each
 day's totals built sealed at its close. Then each reading step of tour.yaml is run as the tour runs
-it -- in order, as the reader and under the time travel the steps before it set -- and its answer
+it -- in order, as the reader -- and its answer
 checked: each day recorded at its own close, the two restatements recorded at the close of the day
 they arrived, the version reported at a close kept beside them, no posting in the warehouse's
 store, the drill-down under the ledger's row rules and masks, the same figure over GraphQL, SQL
@@ -167,12 +167,8 @@ def nodes(tmp_path_factory):
         ledger.down()
 
 
-def _sql(srv, sql: str, role: str, travel: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def _sql(srv, sql: str, role: str) -> list[dict[str, Any]]:
     headers = {"X-Provisa-Role": role}
-    if travel and travel.get("as_of"):
-        headers["X-Provisa-As-Of"] = travel["as_of"]
-    if travel and travel.get("as_recorded"):
-        headers["X-Provisa-As-Recorded"] = travel["as_recorded"]
     resp = httpx.post(
         f"{srv.base_url}/data/sql",
         json={"sql": sql},
@@ -188,20 +184,18 @@ def _sql(srv, sql: str, role: str, travel: dict[str, str] | None = None) -> list
 
 @pytest.fixture(scope="module")
 def answers(nodes) -> dict[str, list[dict[str, Any]]]:
-    """Every sql step of the tour, in order, as its reader and under the time travel the steps
-    before it set, as the tour runner runs it on the explorer (a role picked on another page is
-    the header's, not the explorer's)."""
-    role, travel = _ADMIN, {}
+    """Every sql step of the tour, in order, as its reader, as the tour runner runs it on the
+    explorer (a role picked on another page is the header's, not the explorer's). A statement's
+    time travel is its relation's arguments, in its text (REQ-1163)."""
+    role = _ADMIN
     out: dict[str, list[dict[str, Any]]] = {}
     page = None
     for step in _STEPS:
         page = step.get("route", page)
         if "role" in step and page == "/sql":
             role = _ADMIN if step["role"] == "all" else step["role"]
-        if "as_recorded" in step:
-            travel["as_recorded"] = step["as_recorded"]
         if "sql" in step:
-            out[step["key"]] = _sql(nodes["warehouse"], step["sql"], role, dict(travel))
+            out[step["key"]] = _sql(nodes["warehouse"], step["sql"], role)
     return out
 
 

@@ -255,6 +255,7 @@ query TablesQuery {
     }
     gqlNamingConvention
     graphqlFieldName
+    timeTravel
     dqDataset
     qualityCheckers {
       tableId

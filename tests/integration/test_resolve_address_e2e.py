@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1365, on a real server: resolve(uri, as_of) over GraphQL, REST and MCP.
+"""REQ-1365, on a real server: _resolve(uri, as_of) over GraphQL, REST and MCP.
 
 One server, one keyed table with two rows. The keyed_reader role is restricted three ways: an RLS
 rule leaves it one row, ``region`` is masked for it, and it has no ``full_results``. Each surface
@@ -108,7 +108,7 @@ def _http(boot, method: str, path: str, role: str, body: dict | None = None) -> 
 
 def _rest(boot, role: str, uri: str, **params: str) -> tuple[int, dict]:
     query = urllib.parse.urlencode({"uri": uri, **params})
-    return _http(boot, "GET", f"/data/rest/resolve?{query}", role)
+    return _http(boot, "GET", f"/data/rest/_resolve?{query}", role)
 
 
 def _graphql(boot, role: str, uri: str) -> tuple[int, dict]:
@@ -117,7 +117,7 @@ def _graphql(boot, role: str, uri: str) -> tuple[int, dict]:
         "POST",
         "/data/graphql",
         role,
-        {"query": "query($u: String!) { resolve(uri: $u) }", "variables": {"u": uri}},
+        {"query": "query($u: String!) { _resolve(uri: $u) }", "variables": {"u": uri}},
     )
 
 
@@ -130,7 +130,7 @@ def _mcp(boot, role: str, uri: str) -> tuple[bool, str]:
         async with streamablehttp_client(url) as (read, write, _):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                result = await session.call_tool("resolve", {"uri": uri, "role": role})
+                result = await session.call_tool("_resolve", {"uri": uri, "role": role})
                 return result.isError, "".join(getattr(c, "text", "") for c in result.content)
 
     return asyncio.run(_call())
@@ -172,10 +172,10 @@ def test_a_row_rls_hides_resolves_to_nothing(server):
 def test_graphql_answers_the_same_as_rest(server):
     status, body = _graphql(server, "keyed_reader", _ADDRESS.format(key=1))
     assert status == 200, body
-    assert body["data"]["resolve"]["row"] == {"id": 1, "region": "MASKED"}
+    assert body["data"]["_resolve"]["row"] == {"id": 1, "region": "MASKED"}
     status, body = _graphql(server, "keyed_reader", _ADDRESS.format(key=2))
     assert status == 200, body
-    assert body["data"]["resolve"]["row"] is None
+    assert body["data"]["_resolve"]["row"] is None
 
 
 def test_mcp_answers_the_same_as_rest(server):

@@ -27,6 +27,7 @@ import pytest
 
 from provisa.executor.result import QueryResult
 from provisa.pgwire import _pipeline
+from provisa.mv.time_travel import Travel
 from provisa.vector.embed_fn import Folded, RowEmbed
 
 _UPSERT = (
@@ -59,6 +60,7 @@ def _governed(sql: str = _UPSERT, table_ids=(1, 2), embed=None):
         governed_semantic=sql,
         schema_generation=(None, None),
         stamp="governed",
+        travel=Travel(),
         memo={"embed": embed} if embed is not None else {},
     )
 

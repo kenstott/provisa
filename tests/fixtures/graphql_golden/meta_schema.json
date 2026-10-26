@@ -413,7 +413,7 @@
        }
       },
       {
-       "name": "resolve",
+       "name": "_resolve",
        "type": {
         "kind": "SCALAR",
         "name": "JSON"

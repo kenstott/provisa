@@ -225,10 +225,10 @@ La vista lee los registros de refresco de `"ops"."traces"` y responde en todo mo
 
 ## Una vista tal como estaba y tal como se registró {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Una vista que asigna las columnas de su origen como `business_key`, `valid_time` y `recorded_time` conserva cada versión que ha tenido: cada actualización agrega, y ninguna versión se reescribe, en ningún almacén. Una lectura simple responde el estado actual. Dos cabeceras de solicitud leen su pasado:
+Una lectura simple responde el estado actual. Dos argumentos de la vista, escritos donde la sentencia la nombra, leen su pasado:
 
-- `X-Provisa-As-Of` lee la vista en un momento o en un rango.
-- `X-Provisa-As-Recorded` la lee tal como Provisa la tenía registrada en un momento. Las versiones registradas después quedan fuera, así que una corrección registrada más tarde no cambia la reproducción del pasado.
+- `as_of` lee la vista en un momento, o sobre un rango: `"reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00')`.
+- `as_recorded` la lee tal como Provisa la había registrado en un momento. Las versiones registradas después quedan fuera, así que una corrección registrada más tarde no cambia una reproducción del pasado.
 
 A 30 de septiembre y registrada el 1 de octubre da la cifra original; registrada el 5 de octubre da la corrección. El registro de auditoría de cada sentencia guarda ambos tiempos (`as_of`, `as_recorded`), de modo que un informe se puede reproducir tal como se produjo por primera vez. [Vistas con historial](configuration.md#views-with-history-time-travel) explica las tres declaraciones, con ejemplos, y cada superficie que acepta los dos valores.
 

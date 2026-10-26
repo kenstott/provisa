@@ -241,6 +241,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 ),
                 enable_group_by=bool(table.get("enable_group_by", False)),
                 read_only=bool(table.get("view_sql")),  # REQ-1157: MV/view → query-only
+                time_travel=si.time_travel.get(table_id),  # REQ-1163
                 write_ops=frozenset(table["write_ops"]),
                 write_returns_rows=table["write_returns_rows"],
                 write_refused_forms=frozenset(table["write_refused_forms"]),
@@ -318,14 +319,15 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                 t.type_name = to_type_name(t.field_name)
 
 
-#: REQ-1365: the root Query field that dereferences a semantic address.
-RESOLVE_FIELD = "resolve"
+#: REQ-1365: the root Query field that dereferences a semantic address: a system field, named
+#: like _meta and _domain_ so it does not sit among a role's domain roots.
+RESOLVE_FIELD = "_resolve"
 
 
 def _add_resolve_field(query_fields: dict) -> None:
-    """Add ``resolve(uri, as_of)`` to a role's Query type (REQ-1365). It is in every role's
+    """Add ``_resolve(uri, as_of, as_recorded)`` to a role's Query type (REQ-1365). It is in every role's
     schema, so REST and MCP offer it by the REQ-1929 rule. A table or command already named
-    ``resolve`` is refused by name rather than shadowed."""
+    ``_resolve`` is refused by name rather than shadowed."""
     if RESOLVE_FIELD in query_fields:
         raise ValueError(
             f"a table or command is exposed as the GraphQL field {RESOLVE_FIELD!r}, which is "
@@ -438,7 +440,23 @@ def _table_field_args(
     )
     _build_native_filter_args(t, args)
     _build_similar_arg(t, args)
+    _add_time_travel_args(t, args)
     return args
+
+
+def _add_time_travel_args(t: _TableInfo, args: dict[str, GraphQLArgument]) -> None:
+    """REQ-1163: time travel is an argument of the relation that has versions -- a bitemporal
+    table or view takes ``as_of`` (valid time) and ``as_recorded`` (recorded time); an Iceberg or
+    Delta table travels by its snapshots, ``as_recorded`` alone (REQ-372). Each is one ISO 8601
+    time, validated as the SQL arguments are (provisa.mv.time_travel)."""
+    if t.time_travel == "bitemporal":
+        args["as_of"] = GraphQLArgument(
+            GraphQLString, description="Read the versions in force at this valid time"
+        )
+    if t.time_travel in ("bitemporal", "snapshot"):
+        args["as_recorded"] = GraphQLArgument(
+            GraphQLString, description="Read what had been recorded by this time"
+        )
 
 
 def _dedup_tables(tables: list[_TableInfo]) -> list[_TableInfo]:
@@ -631,18 +649,24 @@ def _add_standard_relationship_field(
     else:
         field_name = rel_field_name(target.field_name, cardinality)
     if cardinality in ("many-to-one", "one-to-one"):
+        # REQ-1163: a related relation that has versions takes its time-travel arguments here too.
+        travel: dict[str, GraphQLArgument] = {}
+        _add_time_travel_args(target, travel)
         fields[field_name] = GraphQLField(
             target_type,
+            args=travel or None,
             deprecation_reason=rel.get("deprecation_reason"),  # REQ-1375
         )
     elif cardinality == "one-to-many":
+        many_args = _build_db_field_args(
+            where_types.get(target.table_id),
+            order_by_types.get(target.table_id),
+            distinct_enums.get(target.table_id),
+        )
+        _add_time_travel_args(target, many_args)
         fields[field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(target_type)),
-            args=_build_db_field_args(
-                where_types.get(target.table_id),
-                order_by_types.get(target.table_id),
-                distinct_enums.get(target.table_id),
-            ),
+            args=many_args,
             deprecation_reason=rel.get("deprecation_reason"),  # REQ-1375
         )
     else:

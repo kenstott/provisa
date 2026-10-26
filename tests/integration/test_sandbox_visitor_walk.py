@@ -255,8 +255,9 @@ def _answered(what: str, resp: httpx.Response, sql: str | None = None) -> tuple[
 
 class Walk:
     """The visitor's page state through the tour, as demoTour.ts keeps it: the page the tour is on,
-    the role the app acts as (the header's picker), the SQL explorer's run-as role and time travel,
-    and the environment every request after an ``env`` step is served from."""
+    the role the app acts as (the header's picker), the SQL explorer's run-as role, the value an
+    ``as_recorded_from`` step binds to the next statement's $1 (REQ-2083), and the environment
+    every request after an ``env`` step is served from."""
 
     def __init__(self, tier, token: dict[str, str]) -> None:
         self.tier = tier
@@ -266,8 +267,7 @@ class Walk:
         self.sql_role: str | None = None
         self.page: str | None = None
         self.env: str | None = None
-        self.as_of: str | None = None
-        self.as_recorded: str | None = None
+        self.bound: list[str] = []
         self.answers: dict[str, list[dict]] = {}
 
     def _role(self, chosen: str) -> str:
@@ -282,13 +282,9 @@ class Walk:
                 self.app_role = self._role(step["role"])
         if "env" in step:
             self.env = step["env"]
-        if "as_of" in step:
-            self.as_of = step["as_of"]
-        if "as_recorded" in step:
-            self.as_recorded = step["as_recorded"]
         if "as_recorded_from" in step:
             taken = step["as_recorded_from"]
-            self.as_recorded = str(self.answers[taken["step"]][taken["row"]][taken["column"]])
+            self.bound = [str(self.answers[taken["step"]][taken["row"]][taken["column"]])]
 
     def headers(self, *, sql: bool) -> dict[str, str]:
         sent = {
@@ -297,10 +293,6 @@ class Walk:
         }
         if self.env is not None:
             sent["x-provisa-env"] = self.env
-        if sql and self.as_of is not None:
-            sent["X-Provisa-As-Of"] = self.as_of
-        if sql and self.as_recorded is not None:
-            sent["X-Provisa-As-Recorded"] = self.as_recorded
         return sent
 
     def send(
@@ -336,9 +328,10 @@ class Walk:
             self.choose(step)
             key = step["key"]
             if "sql" in step:
-                answer = self.send(
-                    f"{key} (sql)", "POST", "/data/sql", {"sql": step["sql"]}, sql=step["sql"]
-                )
+                # A bound value goes with this statement alone, as the page sends it.
+                body = {"sql": step["sql"], **({"params": self.bound} if self.bound else {})}
+                self.bound = []
+                answer = self.send(f"{key} (sql)", "POST", "/data/sql", body, sql=step["sql"])
                 if answer is not None:  # None: refused outside a view's read window (_answered)
                     self.answers[key] = answer["sql"]
             if "cypher" in step:

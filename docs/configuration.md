@@ -952,25 +952,35 @@ Read as recorded on 3 Oct, the trade shows the wrong quantity. Read as known now
 
 A version is in force from its time to the next version's. A delete takes effect when Provisa records it.
 
-**Reading.** A plain read answers the version of each key in force now. The `X-Provisa-As-Of` header reads as of a time, or over a range given as an ISO 8601 interval `start/end`:
+**Reading.** A plain read answers the version of each key in force now. To read another time, give the relation its own `as_of` argument where the statement names it, a time or a range given as an ISO 8601 interval `start/end`:
 
-```
-X-Provisa-As-Of: 2026-03-01T00:00:00
-X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-03-01T00:00:00') AS e
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-01-01T00:00:00/2026-04-01T00:00:00') AS e
 ```
 
 A point answers the version of each key in force then. A range answers every version in force at any time within it, one row per version.
 
-**As recorded.** A correction recorded later changes what a view says about the past: the version in force on 30 September is the corrected one once the correction is recorded. To read the view as Provisa had recorded it at a time, before any later correction, add `X-Provisa-As-Recorded`, one ISO 8601 time:
+**As recorded.** A correction recorded later changes what a view says about the past: the version in force on 30 September is the corrected one once the correction is recorded. To read the view as Provisa had recorded it at a time, before any later correction, add `as_recorded`, one ISO 8601 time:
 
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_recorded => '2026-10-01T00:00:00') AS e
 ```
-X-Provisa-As-Of: 2026-09-30T12:00:00
-X-Provisa-As-Recorded: 2026-10-01T00:00:00
+
+Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `as_recorded` alone, the read answers the version of each key in force as recorded then. It takes one time, not a range.
+
+**Where the arguments go.** Each reference carries its own time, so one statement can read a view at two times through two references, and a reference with no arguments reads the current state. A time may also be a bound value, `(as_recorded => $1)`, with the value sent in the request's `params`. Only a relation that keeps its versions takes the arguments: a table or view with history, and an Iceberg or Delta table, which travels by its snapshots and so takes `as_recorded` alone (the snapshot current at that time). Any other relation, a malformed time, a range given to `as_recorded`, or `as_of` on an Iceberg or Delta table is refused with HTTP 400, naming the relation.
+
+The same two names are the arguments of the relation's field in GraphQL, on root fields and on a relationship field whose target keeps its versions, so two aliases can read one view at two times:
+
+```graphql
+{
+  reported: view_eod_totals(as_recorded: "2026-10-01T17:00:00") { branch net_movement }
+  restated: view_eod_totals(as_recorded: "2026-10-12T17:00:00") { branch net_movement }
+}
 ```
 
-Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `X-Provisa-As-Recorded` alone, the read answers the version of each key in force as recorded then. It takes one time, not a range; a range or a malformed value is refused with HTTP 400 (`data.invalid_as_recorded`).
-
-Both times also reach Provisa without the headers. The as-of time is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter and the `as_of` option of an Arrow Flight ticket, and a range given to `resolve` answers the row's `versions` in place of its `row`. The as-recorded time is the `as_recorded` argument of `resolve`, the REST `as_recorded` query parameter and the `as_recorded` option of an Arrow Flight ticket. The audit record of each statement keeps both times it read with, `as_of` and `as_recorded`. Rights, masks and row rules apply as to any read. A malformed as-of value, or a range whose end isn't after its start, is refused with HTTP 400 (`data.invalid_as_of`).
+REST takes them as the table endpoint's `as_of` and `as_recorded` query parameters, and the MCP `describe_table` tool says which arguments a table takes. The `_resolve` field (GraphQL, REST and MCP) takes `as_of` and `as_recorded` too, and a range given to it answers the row's `versions` in place of its `row`; so does the gRPC `Resolve` call. An Arrow Flight ticket takes them as its `as_of` and `as_recorded` options, and a pgwire session sets a default for the statements it runs with `SET provisa.as_of` and `SET provisa.as_recorded`, which a reference's own arguments override. The SQL explorer's "As of" and "As recorded at" pickers write the arguments into the statement. The audit record of each statement keeps the time it read at, `as_of` and `as_recorded`, when it read at one time. Rights, masks and row rules apply as to any read.
 
 Every view with history answers three more columns, granted as its source-time column (else its first key column) is:
 

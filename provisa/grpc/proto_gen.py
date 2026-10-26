@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.aggregate_gen import _classify_columns
 from provisa.compiler.schema_gen import (
-    RESOLVE_FIELD,
     SchemaInput,
     _IMPLICIT_TRAVERSAL_DOMAINS,
     _assign_names,
@@ -126,9 +125,10 @@ def _arg_proto_type(arg_type: str) -> str:
     return _ARG_PROTO_TYPE.get((arg_type or "").lower(), "string")
 
 
-#: REQ-1365: the RPC that dereferences a semantic address -- the GraphQL ``resolve`` root field,
-#: which every role's schema carries, so every role's service carries it too (REQ-1929).
-RESOLVE_RPC = RESOLVE_FIELD.capitalize()
+#: REQ-1365: the RPC that dereferences a semantic address -- the GraphQL ``_resolve`` root field,
+#: which every role's schema carries, so every role's service carries it too (REQ-1929). A proto
+#: identifier cannot start with an underscore, so the RPC is ``Resolve``.
+RESOLVE_RPC = "Resolve"
 
 
 def command_rpc_name(fn_name: str) -> str:

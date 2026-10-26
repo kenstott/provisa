@@ -405,8 +405,9 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             _check_notebook(home, relations)
         if "sql" in step:
             sql_steps[step["key"]] = step["sql"]
+            # A relation read at a time is named with its arguments (REQ-1163): its name is the call's.
             read = {
-                f"{t.db}.{t.name}"
+                f"{t.db}.{t.name or t.this.name}"
                 for t in sqlglot.parse_one(step["sql"], read="postgres").find_all(sqlglot.exp.Table)
             }
             assert read and read <= relations, f"{step['key']}: reads {read - relations}"

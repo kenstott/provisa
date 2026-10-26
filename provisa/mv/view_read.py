@@ -334,3 +334,34 @@ def unnarrowed_view_bodies(
             else:
                 bodies[view] = stored
     return bodies
+
+
+def read_views_at(sql: str, state: Any, travel: Any) -> str:
+    """``sql`` with each reference to a bitemporal view that says its own time (``travel``'s
+    per-alias times, REQ-1163) replaced by the view's read over its append log at that time,
+    under the reference's alias. A reference that says none is answered at the request's time by
+    :func:`unnarrowed_view_bodies`."""
+    from provisa.mv.bitemporal import AsOf, view_read_sql  # noqa: PLC0415
+    from provisa.mv.time_travel import as_travel  # noqa: PLC0415
+
+    travel = as_travel(travel)
+    reads = _bitemporal_reads(state)
+    if not travel.by_alias or not reads:
+        return sql
+    import sqlglot  # noqa: PLC0415
+    from sqlglot import exp  # noqa: PLC0415
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    changed = False
+    for node in list(tree.find_all(exp.Table)):
+        if node.name not in reads:
+            continue
+        alias = node.alias or node.name
+        at = travel.by_alias.get(alias.lower())
+        if at is None:
+            continue
+        mv_ref, spec = reads[node.name]
+        read = sqlglot.parse_one(view_read_sql(mv_ref, spec, AsOf.from_key(at)), read="postgres")
+        node.replace(exp.Subquery(this=read, alias=exp.TableAlias(this=exp.to_identifier(alias))))
+        changed = True
+    return tree.sql(dialect="postgres") if changed else sql
