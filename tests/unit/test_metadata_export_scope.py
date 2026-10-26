@@ -186,7 +186,7 @@ def test_a_role_is_published_only_the_columns_it_reads_and_what_rides_on_them():
     def _sales_reader(table: TableAsset) -> set[str] | None:
         return {"id"} if table.name == "orders" else set()
 
-    narrowed = for_role(_snapshot(), _sales_reader)
+    narrowed = for_role(_snapshot(), _sales_reader, lambda domain_id: False)
     assert [t.name for t in narrowed.tables] == ["orders"]
     assert [c.name for c in narrowed.tables[0].columns] == ["id"]
     assert [p.id for p in narrowed.data_products] == ["sales_360"]
@@ -202,11 +202,24 @@ def test_a_column_the_role_is_not_served_is_not_published():
     def _no_ids(table: TableAsset) -> set[str] | None:
         return set()
 
-    assert for_role(_snapshot(), _no_ids).tables == []
+    assert for_role(_snapshot(), _no_ids, lambda domain_id: False).tables == []
 
 
 def test_a_role_nothing_narrows_is_published_everything():
     from provisa.api.metadata_export.scope import for_role
 
     snapshot = _snapshot()
-    assert for_role(snapshot, lambda table: None) == snapshot
+    assert for_role(snapshot, lambda table: None, lambda domain_id: True) == snapshot
+
+
+def test_a_role_is_published_every_domain_it_reaches_empty_ones_included():
+    """A domain the role reaches is published though it holds nothing the role reads, as the
+    admin catalog lists it (CatalogScope.lists_domain); one it neither reaches nor holds a kept
+    table of is not."""
+    from provisa.api.metadata_export.scope import for_role
+
+    def _nothing(table: TableAsset) -> set[str] | None:
+        return set()
+
+    reached = for_role(_snapshot(), _nothing, lambda domain_id: domain_id == "finance")
+    assert reached.tables == [] and [d.id for d in reached.domains] == ["finance"]
