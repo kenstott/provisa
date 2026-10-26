@@ -998,6 +998,10 @@ class SourceInput:  # REQ-012
     cache_enabled: bool = True
     cache_ttl: int | None = None
     replicate: int | None = None  # REQ-826: None = Default; -1 never, N hot, 0 always
+    # REQ-2109's rule for a source: the naming convention, which also has a mutation of its own
+    # (updateSourceNaming), travels with the source, so the form's save is one mutation and one
+    # schema rebuild. Left out (UNSET), a create inherits and an update keeps the stored one.
+    gql_naming_convention: str | None = strawberry.UNSET
     # REQ-1921: the region the admin form starts this source's new tables in (None = the
     # connected one). Ignored by updateSource: it changes through setSourceRegion.
     region: str | None = None

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import date
-from provisa.compiler.naming import SqlAddressTaken
+from provisa.compiler.naming import SqlAddressTaken, stored_convention
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
@@ -2303,6 +2303,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
         if _load_mgmt_refusal is not None:
             return _load_mgmt_refusal
+        if carried(input.gql_naming_convention):
+            _naming_refusal = naming_refusal(input.gql_naming_convention)
+            if _naming_refusal is not None:
+                return _naming_refusal
 
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
@@ -2454,6 +2458,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             download_from=input.download_from,  # REQ-2113
             freshness_gate=input.freshness_gate,  # REQ-860
             cdc=await stored_cdc(info, input),  # REQ-1951
+            gql_naming_convention=(
+                stored_convention(input.gql_naming_convention)
+                if carried(input.gql_naming_convention)
+                else None
+            ),
         )
 
         # REQ-1531: a source with no allowed list is open to every domain, so opening it to a
@@ -2704,6 +2713,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
         if _load_mgmt_refusal is not None:
             return _load_mgmt_refusal
+        if carried(input.gql_naming_convention):
+            _naming_refusal = naming_refusal(input.gql_naming_convention)
+            if _naming_refusal is not None:
+                return _naming_refusal
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -2807,6 +2820,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 # writing a default over one would change it without anyone choosing to.
                 **{name: existing[name] for name in source_repo.KEPT_ON_FORM_EDIT},
             )
+            if carried(input.gql_naming_convention):
+                model.gql_naming_convention = stored_convention(input.gql_naming_convention)
             if input.allowed_domains is not None:
                 from provisa.api.admin.capabilities import require_reach_of_added_domains
 
