@@ -222,6 +222,26 @@ def _free_vars(expr: Any) -> set[str]:
     return set()
 
 
+def _expr_vars(e: Any) -> set[str]:
+    """The variables an expression names, wherever in it."""
+    if isinstance(e, RdfVariable):
+        return {str(e)}
+    if isinstance(e, (list, tuple)):
+        return {v for x in e for v in _expr_vars(x)}
+    if isinstance(e, CompValue):
+        return {v for x in e.values() for v in _expr_vars(x)}
+    return set()
+
+
+def _bound_vars(group: "_Group") -> set[str]:
+    """The variables ``group`` and the OPTIONALs in it bind."""
+    out = {str(t) for triple in group.triples for t in triple if _is_var(t)}
+    out |= {var for var, _ in group.binds}
+    for o in group.optionals:
+        out |= _bound_vars(o)
+    return out
+
+
 @dataclass
 class _Aggregation:
     """A query's GROUP BY: its keys (variables; empty for one group of every solution), its
@@ -1057,17 +1077,7 @@ class _Lowering:
         # bind: both are read once the OPTIONALs are lowered, on the group's own MATCH.
         deferred = _Deferred() if group.optionals else None
         steps = [self.lower_group(group, labels, bindings, optional=False, deferred=deferred)]
-        for opt in group.optionals:
-            opt_labels = self.interpretations(opt, labels)
-            if len(opt_labels) != 1:
-                raise SparqlRefused(
-                    "An OPTIONAL whose nodes could be of several classes is not supported; "
-                    "give them a class"
-                )
-            steps.append(
-                self.lower_group(opt, {**labels, **opt_labels[0]}, bindings, optional=True)
-            )
-            labels = {**labels, **opt_labels[0]}
+        labels = self._lower_optionals(group, labels, bindings, steps)
         if deferred is not None:
             conditions: list[CypherExpr] = []
             for var, expr in deferred.binds:
@@ -1147,6 +1157,35 @@ class _Lowering:
             items, distinct=bool(mods.get("distinct")), group_by=group_keys, having=having
         )
         return ast
+
+    def _lower_optionals(
+        self,
+        group: _Group,
+        labels: dict[str, str],
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+        steps: list[MatchStep],
+    ) -> dict[str, str]:
+        """``group``'s OPTIONALs, each an OPTIONAL MATCH after the steps it extends, and the
+        OPTIONALs nested in each after it: an inner OPTIONAL extends its outer one's solutions
+        (REQ-2135). Returns the labels with the OPTIONALs' nodes."""
+        for opt in group.optionals:
+            opt_labels = self.interpretations(opt, labels)
+            if len(opt_labels) != 1:
+                raise SparqlRefused(
+                    "An OPTIONAL whose nodes could be of several classes is not supported; "
+                    "give them a class"
+                )
+            inner = {v for o in opt.optionals for v in _bound_vars(o)}
+            if any(v in inner for f in opt.filters for v in _expr_vars(f)):
+                raise SparqlRefused(
+                    "A FILTER in an OPTIONAL naming a variable an OPTIONAL inside it binds is not "
+                    "supported"
+                )
+            steps.append(
+                self.lower_group(opt, {**labels, **opt_labels[0]}, bindings, optional=True)
+            )
+            labels = self._lower_optionals(opt, {**labels, **opt_labels[0]}, bindings, steps)
+        return labels
 
     def _template_term(self, x: Any, term) -> CypherExpr:
         if isinstance(x, RdfVariable):

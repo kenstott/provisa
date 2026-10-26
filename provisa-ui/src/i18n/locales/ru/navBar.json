@@ -75,6 +75,7 @@
     "sandboxExitLogOut": "Просто выйти",
     "itemPython": "Python",
     "itemNotebook": "Блокнот",
-    "itemContainerRegistries": "Реестры контейнеров"
+    "itemContainerRegistries": "Реестры контейнеров",
+    "itemCatalogs": "Каталоги"
   }
 }

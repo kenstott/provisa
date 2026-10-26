@@ -47,6 +47,7 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/system-health": "observability",
   "/admin/observability": "observability",
   "/admin/ai-models": "org_settings",
+  "/admin/catalogs": "org_settings", // REQ-2122: the org's own catalog connections
   "/admin/metadata-export": "org_settings",
   "/admin/import": "org_settings", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "org_settings",

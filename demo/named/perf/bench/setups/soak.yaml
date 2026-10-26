@@ -116,7 +116,9 @@ sources:
         base_column: order_id
         columns:
           - {name: order_id, domain: {kind: int_range, min: 1, max: 2000000}}
-          - {name: customer_id, domain: {kind: int_range, min: 1, max: 250000}}
+          # No domain, so never filtered: the table is row_materialize on Neo4j, which has no direct
+          # driver to apply a non-key filter, so only its key binds one (REQ-1915).
+          - {name: customer_id}
           - {name: region}
           - {name: status}
     joins: []
@@ -136,7 +138,7 @@ knobs:
   # Every knob on at a moderate share: a soak looks for what grows over hours of the mixed request,
   # not for the optimistic request's cost.
   fields: {probability: 0.5, distribution: {kind: uniform, min: 1, max: 3}}
-  filters: {probability: 0.5, distribution: {kind: uniform, min: 1, max: 2}}
+  filters: {probability: 0.5, distribution: {kind: constant, value: 1}}   # Neo4j filters on its key alone
   rows: {probability: 0.5, distribution: {kind: uniform, min: 1, max: 100}}
   joins_same_source: {probability: 0.2, distribution: {kind: constant, value: 1}}
   joins_cross_source: {probability: 0.2, distribution: {kind: constant, value: 1}}
@@ -151,10 +153,10 @@ knobs:
     derived_roles: 2
     telemetry: false
   source_weights:
-    bench-postgresql: 0.4
-    bench-clickhouse: 0.2
-    bench-mongodb: 0.2
-    bench-neo4j: 0.2
+    bench-postgresql: 0.5
+    bench-clickhouse: 0.25
+    bench-mongodb: 0.25
+    bench-neo4j: 0   # REQ-1915 refuses a non-key filter (row rules too) on row-level Neo4j; the bench-features lane covers it
   # The route a request asks for, per source (for a request whose own table is in that source):
   # auto: no hint, the deployment decides (the optimistic test); direct: `route=direct`, straight
   # to the source; federated: `route=federated`, through the engine; mixed: either, with
@@ -176,9 +178,10 @@ transports:
   pgwire: {}
   flight_sql: {}
   bolt: {}
-  grpc: {}
-  rest: {}
-  jsonapi: {}
+  # joins cannot be expressed on these three
+  grpc: {knobs: {joins_same_source: &nojoin {probability: 0, distribution: {kind: constant, value: 0}}, joins_cross_source: *nojoin}}
+  rest: {knobs: {joins_same_source: *nojoin, joins_cross_source: *nojoin}}
+  jsonapi: {knobs: {joins_same_source: *nojoin, joins_cross_source: *nojoin}}
   mcp: {}
 
 load:

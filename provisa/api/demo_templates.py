@@ -163,6 +163,21 @@ def published_demo(name: str) -> PublishedDemo:
     return demo
 
 
+def demo_visitor_attributes(directory: Path) -> dict[str, str]:
+    """The attributes demo ``directory``'s sandbox visitor carries (REQ-2151): demo.yaml's
+    ``visitor: attributes:``, each a name and its text value; none when it declares none. A
+    declaration that is not names to text refuses the demo by name."""
+    spec_file = directory / "demo.yaml"
+    declared = (yaml.safe_load(spec_file.read_text()).get("visitor") or {}).get("attributes")
+    if declared is None:
+        return {}
+    if not isinstance(declared, dict) or not all(
+        isinstance(name, str) and isinstance(value, str) for name, value in declared.items()
+    ):
+        raise ValueError(f"{spec_file}: visitor.attributes must map each name to a text value")
+    return dict(declared)
+
+
 def demo_profilers(directory: Path) -> list[str]:
     """The Data Profiler sources demo ``directory``'s setup.yaml profiles (REQ-2052): each
     ``profile`` step's profiler, in order; none when it has no setup.yaml."""
@@ -326,17 +341,29 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
         return parse_config_dict(raw)
 
 
-async def write_declared_vector_models(model_db: Any, seed: Any) -> None:  # REQ-2006
-    """The embedding models a demo's configuration declares (``vector_models``) are its template
-    org's own settings, and so, copied with the template's settings (``clone_model``), each of its
-    sandboxes': a demo whose queries embed text (the sonnets demo's ``lines_like``) is refused by
-    the model allowlist without them. Written at every build of the template, as the rest of its
-    model is rebuilt from its configuration (REQ-1919); a configuration that declares none clears
-    the setting."""
-    from provisa.core.org_settings import write_org_overrides
+async def write_declared_settings(model_db: Any, seed: Any) -> None:  # REQ-2006, REQ-2057
+    """Every org setting a sandbox is cloned with (``carries_setting``, by ``clone_model``) that the
+    demo's configuration declares, as its template org's own settings, in one write at every build
+    of the template: its embedding models (the sonnets demo's ``lines_like`` is refused by the model
+    allowlist without them), its derived roles (retail's region__eu, REQ-2151). A carried setting
+    the configuration does not declare is cleared, as the rest of the template's model is rebuilt
+    from its configuration (REQ-1919); a setting the configuration cannot declare is cleared too."""
+    from provisa.core.env_classes import carries_setting
+    from provisa.core.org_settings import NAMING_ORG_KEYS, ORG_OVERRIDABLE_KEYS, write_org_overrides
 
-    models = [m.model_dump() for m in seed.vector_models]
-    await write_org_overrides(model_db, {"vector_models": models or None}, updated_by="platform")
+    updates: dict[str, Any] = {}
+    for key in sorted(k for k in ORG_OVERRIDABLE_KEYS if carries_setting(k)):
+        declared = key in seed.model_fields_set
+        value = getattr(seed, key) if declared else None
+        if key == "naming" and value is not None:
+            # Only the naming keys an org owns; the rest configure the process (org_settings).
+            value = {k: getattr(value, k) for k in value.model_fields_set & NAMING_ORG_KEYS}
+        elif isinstance(value, list):
+            value = [v.model_dump() for v in value]
+        elif value is not None:
+            value = value.model_dump()
+        updates[key] = value or None
+    await write_org_overrides(model_db, updates, updated_by="platform")
 
 
 def connector_bundles() -> list[Any]:  # list[BundleSpec]

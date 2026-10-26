@@ -195,3 +195,34 @@ async def test_a_build_writes_no_name_already_stored(control_plane):
         conn.execute_core = _recording  # type: ignore[method-assign]
         await store_effective_names(conn)
     assert written == []
+
+
+async def test_names_a_change_of_convention_respells_are_written_in_a_model_change(
+    control_plane, monkeypatch
+):
+    """REQ-351, REQ-1524: a build that finds the stored names in another naming convention writes
+    them as a model change of its own -- or as part of the change it runs inside -- never outside
+    one, where the write is refused (ModelChangeOutsideScope: a schema build right after a change
+    of naming convention, run 40190966276). Names already stored open no change at all."""
+    from provisa.compiler import naming
+    from provisa.core import model_change
+    from provisa.core.relationship_names import store_effective_names
+
+    db = await _plane(control_plane)
+    flushed: list[str] = []
+    flush = model_change.flush
+
+    async def _flush(current):
+        flushed.append(current.label)
+        await flush(current)
+
+    monkeypatch.setattr(model_change, "flush", _flush)
+    try:
+        async with db.acquire() as conn:
+            await store_effective_names(conn)
+            assert flushed == []  # nothing to respell: no change opened
+            naming.configure(gql="hasura_graphql")
+            await store_effective_names(conn)
+        assert len(flushed) == 1
+    finally:
+        naming.configure()
