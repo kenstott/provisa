@@ -27,7 +27,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from tests.helpers import registered_id, release_mutation
+from tests.helpers import registered_id, release_mutation, write_grants_mutation
 from tests.integration.connector_source_harness import (
     _gql,
     create_domain,
@@ -99,7 +99,12 @@ async def _register(client: AsyncClient, table: str, columns: list[str]) -> None
         """,
         "registerTable",
     )
-    await _gql(client, release_mutation(registered_id(registered["message"])), "setTableDraft")
+    table_id = registered_id(registered["message"])
+    # REQ-2074: a registration grants no write; the administrator grants org_admin its writes.
+    await _gql(
+        client, write_grants_mutation(table_id, ["org_admin"], columns), "setTableWriteGrants"
+    )
+    await _gql(client, release_mutation(table_id), "setTableDraft")
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="module")
