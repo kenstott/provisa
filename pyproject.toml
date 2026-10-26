@@ -104,16 +104,16 @@ dependencies = [
     # (REQ-979) runs the DuckDB engine, not chdb, so gate it off win32 — the WSL2
     # container tier provides full ClickHouse compute on Windows.
     "chdb; sys_platform != 'win32'",
-    "snowflake-connector-python[pandas]",  # REQ-988: Snowflake federation engine (Arrow-native)
+    "snowflake-connector-python[pandas]",  # REQ-988: Snowflake engine driver (Arrow-native)
     "adbc-driver-snowflake",  # REQ-988: Arrow-native ADBC transport for the Snowflake direct driver
     "snowflake-sqlalchemy",  # REQ-988: SQLAlchemy dialect for the Snowflake SQLAlchemy fallback path
-    "databricks-sql-connector",  # REQ-987: Databricks federation engine (Arrow-native Cloud Fetch)
-    "google-cloud-bigquery",  # BigQuery federation engine
+    "databricks-sql-connector",  # REQ-987: Databricks engine driver (Arrow-native Cloud Fetch)
+    "google-cloud-bigquery",  # BigQuery engine driver
     "google-cloud-bigquery-storage",  # BigQuery Arrow-native reads (Storage Read API)
     "google-cloud-storage",  # GCS staging for BigQuery external-table links
     "protobuf>=6.33.5,<7",  # keep OTel/gRPC compatible while the google-cloud libs are present
     "grpcio-status<1.82",  # aligns with the pinned protobuf<7
-    "pyodbc",  # Azure Synapse / Microsoft Fabric federation engine (T-SQL over TDS/ODBC)
+    "pyodbc",  # Azure Synapse / Microsoft Fabric engine driver (T-SQL over TDS/ODBC)
     "azure-identity",  # Azure AD token auth for Fabric/Synapse (uses `az login` / managed identity)
     "impyla",  # REQ-1731: HiveServer2 direct driver (Thrift TCLIService)
     "pyexasol",  # REQ-1731: Exasol direct driver (Exasol's own WebSocket client)
@@ -197,7 +197,7 @@ provisa = "provisa.cli:main"
 # REQ-1126/REQ-1129: the pip-installable embedded tier. A fully functional, self-contained
 # system — embedded PostgreSQL control plane (pgserver, REQ-2014) + embedded DuckDB engine
 # + in-memory (fakeredis) cache — ready to `provisa run` immediately. The bundled Trino JVM is
-# omitted (PyPI carries no JVM server); full multi-engine federation stays available by pointing
+# omitted (PyPI carries no JVM server); full multi-engine query stays available by pointing
 # at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb is
 # already a base dep; this extra names the tier explicitly and adds fakeredis for the embedded cache.
 # provisa-duckdb-ext (the offline DuckDB extension blobs, REQ-1142) is now published on PyPI, so it is a

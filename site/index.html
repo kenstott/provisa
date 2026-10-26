@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Provisa — Connect your data. Query in 5 minutes.</title>
-  <meta name="description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher, from psql, Tableau, Neo4j Browser or an AI agent. Governance is compiled into every query plan, so there is no way in that goes around it. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync." />
+  <meta name="description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher, from psql, Tableau, Neo4j Browser or an AI agent. Governance is compiled into every query plan, so there is no way in that goes around it. Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync." />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -177,7 +177,7 @@
 
     <section class="positioning" aria-label="What Provisa is">
       <div class="container">
-        <p class="positioning-line">Federation, metrics, ontology and governance from a single model. Nothing to keep in sync.</p>
+        <p class="positioning-line">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync.</p>
       </div>
     </section>
 
@@ -273,7 +273,7 @@
           paths, the governance, and the audit trail. <em>There is no second place to keep
           in sync.</em>
         </p>
-        <p class="whatis-name">One model: federation, metrics, ontology and governance.</p>
+        <p class="whatis-name">One model: sources, metrics, ontology and governance.</p>
         <p class="whatis-def">
           Those are usually four tools, each holding its own description of the same data.
           Keep the ones you have, and Provisa keeps them in sync from one model: it publishes
@@ -292,7 +292,7 @@
       <article class="pillar">
         <h3>Three languages, one model</h3>
         <p>
-          GraphQL, Cypher, and SQL all query the same federated model and retarget to
+          GraphQL, Cypher, and SQL all query the same model and retarget to
           any source dialect. Domains carve it into namespaces (a domain is the schema a SQL client sees),
           and governance applies identically across all three languages: <em>one
           integration, not three</em>.
@@ -302,14 +302,14 @@
         <h3>Read and write</h3>
         <p>
           Analytical <em>and</em> transactional flows through the same governed API:
-          cross-source reads fan out through federation; writes and single-source reads
+          cross-source reads fan out through the engine; writes and single-source reads
           route direct to the driver, sub-100ms.
         </p>
       </article>
       <article class="pillar">
         <h3>Smart routing</h3>
         <p>
-          Single-source queries bypass federation entirely. Materialized views record the
+          Single-source queries bypass the engine entirely. Materialized views record the
           transform that built them, so queries rewrite transparently onto a fresh MV.
         </p>
       </article>
@@ -333,8 +333,8 @@
 
         <div class="langs">
           <div class="lang"><h4>GraphQL</h4><p>Per-role schemas with field-level visibility, constrained to registered relationships — valid by construction.</p></div>
-          <div class="lang"><h4>SQL</h4><p>Full SQL over federated data. Single-source queries bypass federation entirely for sub-100ms latency.</p></div>
-          <div class="lang"><h4>Cypher</h4><p>Graph traversals over the same federated model, under identical governance.</p></div>
+          <div class="lang"><h4>SQL</h4><p>Full SQL across all sources. Single-source queries route direct to the driver, under 100ms.</p></div>
+          <div class="lang"><h4>Cypher</h4><p>Graph traversals over the model, under identical governance.</p></div>
         </div>
 
         <details class="proto-expand">
@@ -357,7 +357,7 @@
                 <p class="iface-use">Neo4j Browser and Bloom, plus application-side traversals.</p>
               </div>
               <ul class="iface-list">
-                <li><strong>Bolt</strong> — the Neo4j tools and official drivers run Cypher against the federated graph.</li>
+                <li><strong>Bolt</strong> — the Neo4j tools and official drivers run Cypher over the registered schema.</li>
                 <li><strong>GraphQL over HTTP</strong> — the same per-role schema every other surface enforces.</li>
               </ul>
             </div>
@@ -460,7 +460,7 @@
           <h2>73 connectors reaching 85+ kinds of source.</h2>
           <p class="section-sub">
             Graph and RDF sources take part in the model like any other. Register REST,
-            GraphQL, gRPC, WebSocket or RSS endpoints as governed tables, and federated
+            GraphQL, gRPC, WebSocket or RSS endpoints as governed tables, and cross-source
             joins reach them like any table.
           </p>
         </header>
@@ -479,8 +479,8 @@
               <h3>Point it at a location. Get a catalog of the data hiding in it.</h3>
               <p class="spot-lead">
                 One of the 73 connectors behaves unlike the other seventy-two: you register a
-                <em>location</em>, not a table. It walks the tree recursively, introspects
-                every data file it finds, and catalogs each one as an available table —
+                <em>location</em>, not a table. It walks the tree recursively, finds
+                tabular files and the tables inside documents, and catalogs each table —
                 the shared drive nobody has mapped, the S3 prefix of extracts, the
                 SharePoint site a department has been running on for years.
               </p>
@@ -496,7 +496,7 @@
             <li>
               <span class="spot-step-n">2</span>
               <h4>Crawl</h4>
-              <p>It walks the tree to whatever depth you allow, converts documents that hold tables into data, and reads the schema out of each one.</p>
+              <p>It walks the tree to whatever depth you allow, converts documents that hold tables into data, and reads the schema out of each one. Over HTTP and HTML it follows links as well, down to the same depth limit.</p>
             </li>
             <li>
               <span class="spot-step-n">3</span>
@@ -530,9 +530,9 @@
           <div class="shot-frame">
             <div class="term-bar"><span></span><span></span><span></span></div>
             <img src="assets/graph-view.png" width="1440" height="900" loading="lazy"
-                 alt="The federated model explored as a live graph: domain and node labels, relationship types, and variable-length traversals across sources." />
+                 alt="The model explored as a live graph: domain and node labels, relationship types, and variable-length traversals across sources." />
           </div>
-          <figcaption>The same federated model, explorable as a live graph — domains, node labels, and relationships across every source.</figcaption>
+          <figcaption>The model, explorable as a live graph — domains, node labels, and relationships across every source.</figcaption>
         </figure>
       </div>
     </section>
@@ -651,7 +651,7 @@
             Desktop installers for every OS (the macOS app signed and notarized), or <code>pip install</code> the Sigstore-attested
             embedded runtime. The whole working system runs on your desktop in about five minutes, with no
             Docker, no JVM and no cluster. Launch it and pick the guided demo:
-            a sample federation is already bundled, so you can run SQL, GraphQL, and
+            a sample model is already bundled, so you can run SQL, GraphQL, and
             Cypher over it before you connect anything of your own.
             Prefer not to install anything? Connect your own sources in the browser at
             <a href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener">sandbox.provisa.dev</a>.
@@ -735,7 +735,7 @@
           <div class="card">
             <h4>Kubernetes · Helm</h4>
             <p>A production chart deploys the control plane, workers and engine, and the
-            federation tier scales horizontally.</p>
+            query tier scales horizontally.</p>
           </div>
           <div class="card">
             <h4>Cloud &amp; VM · Terraform</h4>
@@ -876,7 +876,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
