@@ -88964,16 +88964,29 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     before green because agent frameworks depend on them: LangChain''s Neo4j integration and similar tools
     call apoc.meta.data / apoc.meta.schema to learn the graph''s schema before writing Cypher. Four kinds,
     each mapped its own way. (1) Introspection procedures (apoc.meta.data, apoc.meta.schema and the like)
-    are predefined commands answered from the acting role''s label map, so a caller sees only what the
-    role may read. (2) Scalar functions (apoc.text.*, apoc.coll.*, apoc.date.*, apoc.convert.* and the
-    like) are translated to the engine''s own SQL functions so they push down with the query; they are
-    not commands. (3) Traversal procedures (apoc.path.expand, apoc.path.subgraphNodes) are predefined
-    commands compiled to the same recursive SQL as variable-length paths. (4) Procedures that act outside
-    the model (apoc.create.* dynamic labels, apoc.periodic.iterate, apoc.load.*) are listed on the Cypher
-    Conformance page (REQ-2167) with their workarounds. The predefined commands live in a built-in apoc
-    namespace, so CALL apoc.meta.data() YIELD ... works as written, and every one is governed like any
-    command. The set is chosen from what real tools and agent frameworks call (captured as REQ-2167 replays),
-    not all of APOC.'
+    are predefined commands answered from the acting role''s label map, so a caller sees only what the role
+    may read. (2) Scalar functions (apoc.text.*, apoc.coll.*, apoc.date.*, apoc.convert.* and the like)
+    are translated to the engine''s own SQL functions so they push down with the query; they are not commands.
+    (3) Traversal procedures (apoc.path.expand, apoc.path.subgraphNodes) are predefined commands compiled
+    to the same recursive SQL as variable-length paths. (4) Procedures that act outside the model (apoc.create.*
+    dynamic labels, apoc.periodic.iterate, apoc.load.*) are listed on the Cypher Conformance page (REQ-2167)
+    with their workarounds. The predefined commands live in a built-in apoc namespace, so CALL apoc.meta.data()
+    YIELD ... works as written, and every one is governed like any command. The set is chosen from what
+    real tools and agent frameworks call (captured as REQ-2167 replays), not all of APOC. (Amended 2026-10-25,
+    CALLING PATTERNS: NAMING ALIASES PER LANGUAGE:) Maintainer 2026-10-26: build a general mechanism first,
+    then ship the APOC set on it as declarations. A command declares a calling pattern per language, each
+    a naming alias with a generated default: SQL name(args) in FROM, Cypher CALL ns.name(args) YIELD, a
+    GraphQL field, a REST endpoint, an MCP tool, a SPARQL function or property-function IRI. Any can be
+    overridden (e.g. the Cypher name apoc.meta.data). A function is declared as a canonical SQL expression
+    template with the same per-language names (apoc.text.join(list, sep) -> array_to_string({list}, {sep}));
+    the transpiler renders it per engine so it pushes down, and the template is parsed and transpiled for
+    every engine in the deployment when it is saved, so a broken one fails at save. The calling pattern
+    is naming only: arguments, governance and grants are declared once on the command or function, and producing
+    results in the format the caller expects is the command developer''s responsibility. The prime use case
+    is emulating the calls real tools expect (APOC for Cypher tools and agent frameworks, and likewise catalog
+    functions or service descriptions on other surfaces), so end users extend it themselves. A declared
+    name that would shadow a built-in or another command is refused, naming both. The built-in APOC set
+    is shipped as declarations on this mechanism.'
   scenario: 'Given a role that reads Shelter:Employees but not Shelter:Payroll
 
     When LangChain''s Neo4j integration connects over Bolt as that role and loads the schema with apoc.meta.data
