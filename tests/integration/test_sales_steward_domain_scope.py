@@ -144,7 +144,7 @@ async def _masked(table_id: int) -> Any:
 
     edited = table_input(await read_table(table_id))
     column = next(c for c in edited.columns if c.name == "amount")
-    column.masks = [MaskEntryInput(to=["*"], mask=MaskSpecInput(type="constant", value=0))]
+    column.masks = [MaskEntryInput(mask=MaskSpecInput(type="constant", value=0))]
     return edited
 
 
@@ -168,7 +168,6 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
     assert set(why) == {"decided_by", "decided_at", "evidence"}, why
     assert orders["amount"]["masks"] == [
         {
-            "to": ["*"],
             "mask": {
                 "type": "constant",
                 "pattern": None,

@@ -61,7 +61,9 @@ _ROLES = {
     "platform": {"capabilities": ["cross_org"], "domain_access": ["*"]},
 }
 _METRICS = [
+    # REQ-2153: '*' names no role -- a metric for everyone names the roles it is for.
     {"name": "everyone", "visible_to": ["*"]},
+    {"name": "both", "visible_to": ["analyst", "masker"]},
     {"name": "analysts", "visible_to": ["analyst"]},
     {"name": "maskers", "visible_to": ["masker"]},
 ]
@@ -113,6 +115,10 @@ class _Conn:
 
     async def execute_core(self, stmt):
         sql = str(stmt)
+        if "table_columns.scope" in sql:
+            # REQ-2153: the listed columns, outside the domains the query names as reached.
+            reached = [v for v in stmt.compile().params.values() if isinstance(v, list)]
+            return _Rows([r for r in _LISTED if not any(r["domain_id"] in d for d in reached)])
         if "FROM relationships" in sql:
             return _Rows(_RELATIONSHIPS)
         if "FROM sources" in sql:
@@ -129,6 +135,12 @@ class _Conn:
                 ]
             )
         return _Rows(_TABLES)
+
+
+_LISTED = [
+    {"domain_id": "hr", "table_name": "staff", "column_name": "id"},
+    {"domain_id": "sales", "table_name": "orders", "column_name": "region"},
+]
 
 
 class _Pool:
@@ -169,7 +181,7 @@ def _model(monkeypatch):
                     visible_to=["analyst"],
                     masks=[
                         {"to": ["registrar"], "mask": None},
-                        {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                        {"mask": {"type": "constant", "value": "***"}},
                     ],
                 )
                 for c in _COLUMNS[row["id"]]
@@ -399,13 +411,29 @@ async def test_a_metric_is_listed_by_its_own_visibility():
     async def _names(info):
         return [m.name for m in await Query().metrics(info)]
 
-    assert await _names(_caller("analyst")) == ["everyone", "analysts"]
-    assert await _names(_caller("masker")) == ["everyone", "maskers"]
-    assert await _names(_caller("platform")) == []  # no data surface: not "everyone" either
-    assert await _names(_caller("registrar_all")) == ["everyone", "analysts", "maskers"]
+    assert await _names(_caller("analyst")) == ["both", "analysts"]
+    assert await _names(_caller("masker")) == ["both", "maskers"]
+    assert await _names(_caller("platform")) == []  # no data surface
+    assert await _names(_caller("registrar_all")) == ["everyone", "both", "analysts", "maskers"]
     # Who a metric is granted to is a grant list.
     assert all(m.visible_to is None for m in await Query().metrics(_caller("analyst")))
-    assert (await Query().metrics(_caller("registrar_all")))[1].visible_to == ["analyst"]
+    assert (await Query().metrics(_caller("registrar_all")))[2].visible_to == ["analyst"]
+
+
+# --- listed names (REQ-2153) ------------------------------------------------------------------------
+
+
+async def test_a_reader_outside_the_domain_is_answered_the_listed_names_and_nothing_more():
+    named = await Query().listed_names(_caller("analyst"))
+    assert [(n.domain_id, n.table_name, n.column_names) for n in named] == [
+        ("hr", "staff", ["id"])  # not sales.orders.region: the analyst reaches sales
+    ]
+    # names only: the listed table is not otherwise described to it.
+    assert "staff" not in await _tables(_caller("analyst"))
+
+
+async def test_a_reader_reaching_every_domain_has_no_listed_name_outside_its_reach():
+    assert await Query().listed_names(_caller("registrar_all")) == []
 
 
 # --- the rule itself ------------------------------------------------------------------------------

@@ -188,6 +188,21 @@
        }
       },
       {
+       "name": "m__listedNames",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__ListedNames"
+         }
+        }
+       }
+      },
+      {
        "name": "m__registeredTables",
        "type": {
         "kind": "LIST",
@@ -3761,6 +3776,68 @@
     {
      "fields": [
       {
+       "name": "columnName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "listedDomain",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tableName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      }
+     ],
+     "name": "M__ListedNames"
+    },
+    {
+     "fields": [
+      {
        "name": "accessedDomainId",
        "type": {
         "kind": "SCALAR",
@@ -4167,6 +4244,11 @@
    "domain_id": "meta",
    "graphql_field": "m__glossaryTerms",
    "table_name": "glossary_terms"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__listedNames",
+   "table_name": "listed_names"
   },
   {
    "domain_id": "meta",

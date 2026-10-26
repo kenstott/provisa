@@ -143,7 +143,6 @@ def _snapshot(*, tables: list[Table] | None = None, version: str | None = "1.2.0
                         visible_to=["admin"],
                         masks=[
                             {
-                                "to": ["*"],
                                 "mask": {"type": "regex", "pattern": "(.*)", "replace": "X"},
                             }
                         ],

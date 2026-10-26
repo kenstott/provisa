@@ -289,3 +289,55 @@ class TestREQ1132RowScope:
             }
         )
         assert gov.rls_rules[_RT_META_TID] == "id IN (-1)"
+
+
+# --- REQ-2153: listed names, for a reader outside the listed table's domain -----------------------
+
+_LN_META_TID = 102
+
+
+def _listed_ctx() -> CompilationContext:
+    ctx = _row_scope_ctx()
+    ctx.tables["listed_names"] = TableMeta(
+        table_id=_LN_META_TID,
+        field_name="listed_names",
+        type_name="ListedNames",
+        source_id="s",
+        catalog_name="main",
+        schema_name="public",
+        table_name="listed_names",
+        domain_id=META_DOMAIN_ID,
+    )
+    return ctx
+
+
+def _listed_gov(domain_access: list[str]):
+    role = {
+        "id": "sales",
+        "description": "Test role.",
+        "capabilities": [],
+        "domain_access": domain_access,
+    }
+    # finance's payroll lists its id: its name is in the catalog of every role.
+    payroll = {
+        "id": _FIN_HIDDEN,
+        "domain_id": "finance",
+        "columns": [{"column_name": "id", "visible_to": ["finance_reader"], "scope": "listed"}],
+    }
+    tables = [t for t in _data_tables() if t["id"] != _FIN_HIDDEN] + [payroll]
+    return build_governance_context(
+        role["id"], _FakeRLSContext({}), {}, _listed_ctx(), tables, role, relationships=[]
+    )
+
+
+def test_a_reader_outside_the_domain_sees_the_listed_name_and_nothing_about_it_in_table_columns():
+    gov = _listed_gov(["sales"])
+    # listed_names: the names of the domains it does not reach.
+    assert gov.rls_rules[_LN_META_TID] == "listed_domain NOT IN ('sales')"
+    # table_columns_meta: the listed table is not among the tables it is described.
+    assert str(_FIN_HIDDEN) not in gov.rls_rules[_TC_META_TID]
+    assert str(_FIN_HIDDEN) not in gov.rls_rules[_RT_META_TID]
+
+
+def test_a_reader_reaching_every_domain_has_no_listed_name_outside_its_reach():
+    assert _listed_gov(["*"]).rls_rules[_LN_META_TID] == "1 = 0"

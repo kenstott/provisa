@@ -90,7 +90,6 @@ def snapshot():
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
-                                "to": ["*"],
                                 "mask": {
                                     "type": "regex",
                                     "pattern": r"(\d{3})-(\d{2})-(\d{4})",

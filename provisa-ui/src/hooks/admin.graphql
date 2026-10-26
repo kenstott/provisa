@@ -164,6 +164,15 @@ query ResolveOwners($refs: [String!]!) {
   }
 }
 
+# REQ-2153: listed columns' names in domains the caller does not reach -- names only.
+query ListedNamesQuery {
+  listedNames {
+    domainId
+    tableName
+    columnNames
+  }
+}
+
 query DataProductsQuery {
   dataProducts {
     id

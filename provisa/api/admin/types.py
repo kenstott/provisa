@@ -173,6 +173,13 @@ class DomainType:  # REQ-533, REQ-609
 
 
 @strawberry.type
+class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
+    domain_id: str
+    table_name: str
+    column_names: list[str]
+
+
+@strawberry.type
 class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str

@@ -89,7 +89,6 @@ def governed_config() -> ProvisaConfig:
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
-                                "to": ["*"],
                                 "mask": {
                                     "type": "regex",
                                     "pattern": MASK_PATTERN,

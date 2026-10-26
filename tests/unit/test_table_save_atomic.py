@@ -241,6 +241,25 @@ async def test_a_registration_grants_read_to_the_registrant_and_viewer(plane):
     assert grants == []
 
 
+async def test_registering_a_stored_table_again_keeps_its_grants(plane):
+    """REQ-2154: the registration's grant is a new table's; saving a stored table again keeps a
+    column made sensitive (Viewer taken off it) as it is."""
+    first = await _register(columns=[ColumnInput(name="id", data_type="integer", visible_to=[])])
+    assert first.success, first.message
+    again = await _register(
+        columns=[ColumnInput(name="id", data_type="integer", visible_to=["support"])]
+    )
+    assert again.success, again.message
+    table, _cols, _grants = await _stored(plane)
+    async with plane.acquire() as conn:
+        (read,) = (
+            await conn.execute_core(
+                select(table_columns.c.visible_to).where(table_columns.c.table_id == table["id"])
+            )
+        ).fetchone()
+    assert sorted(read) == ["support"]
+
+
 async def test_left_out_a_registration_takes_a_new_tables_values(plane):
     result = await _register()
     assert result.success, result.message

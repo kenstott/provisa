@@ -18,6 +18,7 @@ declare module "*.graphql" {
   export const DomainsQuery: DocumentNode;
   export const GovdataSubjectsQuery: DocumentNode;
   export const DataProductsQuery: DocumentNode;
+  export const ListedNamesQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
@@ -148,6 +149,7 @@ declare module "*.gql" {
   export const DomainsQuery: DocumentNode;
   export const GovdataSubjectsQuery: DocumentNode;
   export const DataProductsQuery: DocumentNode;
+  export const ListedNamesQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;

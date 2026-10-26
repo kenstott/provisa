@@ -82,7 +82,6 @@ def test_masked_column_tagged_with_kind_and_exempt_roles():
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
-                                "to": ["*"],
                                 "mask": {
                                     "type": "regex",
                                     "pattern": MASK_PATTERN,
@@ -270,7 +269,6 @@ def test_rule_bodies_never_appear_anywhere_in_a_published_snapshot():
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
-                                "to": ["*"],
                                 "mask": {
                                     "type": "regex",
                                     "pattern": MASK_PATTERN,
@@ -284,7 +282,7 @@ def test_rule_bodies_never_appear_anywhere_in_a_published_snapshot():
                         data_type="text",
                         visible_to=["analyst", "admin"],
                         masks=[
-                            {"to": ["*"], "mask": {"type": "constant", "value": "REDACTED-TIER"}},
+                            {"mask": {"type": "constant", "value": "REDACTED-TIER"}},
                         ],
                     ),
                 ],
@@ -318,7 +316,6 @@ def test_build_snapshot_attaches_governance_tags():
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
-                                "to": ["*"],
                                 "mask": {
                                     "type": "regex",
                                     "pattern": MASK_PATTERN,

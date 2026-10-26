@@ -57,7 +57,6 @@ def _governed_config(shared_data):
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
-                                "to": ["*"],
                                 "mask": {
                                     "type": "regex",
                                     "pattern": MASK_PATTERN,

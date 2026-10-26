@@ -60,7 +60,14 @@ def _two_roles(monkeypatch):
         ("contexts", {}),
         (
             "tracked_functions",
-            {"do_it": {"name": "do_it", "kind": "query", "domain_id": "sales"}},
+            {
+                "do_it": {
+                    "name": "do_it",
+                    "kind": "query",
+                    "domain_id": "sales",
+                    "visible_to": [A, B],
+                }
+            },
         ),
         ("schema_build_cache", {}),
     ):

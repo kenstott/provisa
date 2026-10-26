@@ -86,6 +86,14 @@ export interface Domain {
 // Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
 // individuals via the existing role machinery, tags/authoritativeDefinitions/inputPorts/
 // outputPorts are derived from existing tag assignments/glossary/lineage rather than stored here.
+// REQ-2153: a listed table in a domain the caller does not reach: its name and its listed
+// columns' names, and nothing more.
+export interface ListedNames {
+  domainId: string;
+  tableName: string;
+  columnNames: string[];
+}
+
 export interface DataProduct {
   id: string;
   domainId: string;

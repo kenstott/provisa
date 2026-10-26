@@ -31,7 +31,7 @@ def _state():
         "domain_id": "pet-store",
         "kind": "query",
         "returns": "pet-store.users",  # set-returning / table-valued
-        "visible_to": [],  # empty = every role
+        "visible_to": ["admin", "guest"],  # REQ-2153: a grant names its roles
         "arguments": [{"name": "since", "type": "Int"}],
     }
     mutation_scalar = {
@@ -89,9 +89,9 @@ def test_list_visible_commands_projects_kind_and_set_returning():
     assert by_name["reset_cache"]["set_returning"] is False
 
 
-def test_public_role_sees_only_unrestricted_commands():
+def test_a_role_sees_only_the_commands_granted_to_it():
     names = {c["name"] for c in list_visible_commands(_state(), "guest")}
-    assert names == {"active_users"}  # only the empty-visible_to command
+    assert names == {"active_users"}  # the one command whose grant names guest
 
 
 # ---------------------------------------------------------------- MCP

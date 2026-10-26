@@ -605,6 +605,9 @@ GOVERNANCE_META_ROWS: dict[str, str] = {
 # terms its row is about. A row is read only when each of those terms is readable to the caller
 # by the glossary's own rule (provisa.core.glossary.readable_term): a term with no domains, an
 # enterprise ("*") term, or one sharing a domain with the caller.
+#: REQ-2153: the meta view of listed names; a reader sees those of domains it does not reach.
+LISTED_NAMES_VIEW = "listed_names"
+
 GLOSSARY_SCOPED_META_VIEWS: dict[str, tuple[str, ...]] = {
     "glossary_terms_meta": ("term_domains",),
     "glossary_term_refs_meta": ("term_domains",),

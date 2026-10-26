@@ -26,7 +26,7 @@ RULES = [
         _ALL,
         (
             {"to": ["auditor", "org_admin"], "mask": None},
-            {"to": ["*"], "mask": {"type": "constant", "value": None}},
+            {"mask": {"type": "constant", "value": None}},
         ),
         pii=False,
     ),
@@ -115,7 +115,7 @@ def test_the_columns_tables_value_fields_are_masked_to_readers_with_a_restricted
     defaults = prefill("columns", list(field_names("columns")), RULES)
     by = {c["name"]: c for c in defaults["columns"]}
     # Every reader sees a pii column, so the value fields are masked (to NULL) for all of them.
-    assert by["min_value"]["masks"] == [{"to": ["*"], "mask": {"type": "constant", "value": None}}]
+    assert by["min_value"]["masks"] == [{"to": None, "mask": {"type": "constant", "value": None}}]
     assert by["null_share"]["masks"] == []
     rules = {r["roleId"]: r["filter"] for r in defaults["rowRules"]}
     # The analyst does not see salary, so its description is withheld from the analyst.

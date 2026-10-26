@@ -68,6 +68,7 @@ from provisa.api.admin.types import (
     CrawledTableType,
     CrawlResultType,
     DataProductType,
+    ListedNamesType,
     DomainType,
     GovDataSubjectsType,
     GovDataSubjectType,
@@ -282,8 +283,6 @@ def _sees_metric(info: StrawberryInfo, row: Any) -> bool:
     if scope.whole or has_capability(info, "table_registration"):
         return True
     granted = list(row["visible_to"])
-    if "*" in granted:
-        return scope.role is not None and scope.role in state.contexts
     return scope.role is not None and any(r in granted for r in acting_roles(state, scope.role))
 
 
@@ -663,6 +662,49 @@ class Query:  # REQ-021, REQ-042
                 for r in rows
                 if scope.lists_domain(r["id"], r["id"] in holding)
             ]
+
+    @strawberry.field
+    async def listed_names(self, info: StrawberryInfo) -> list[ListedNamesType]:  # REQ-2153
+        """The names of the listed columns of domains the caller does not reach: each table's
+        name and its listed columns' names, and nothing more. What the caller reaches is in
+        ``tables``."""
+        _resolve_admin_context(info)
+        scope = catalog_scope(info)
+        if scope.whole or scope.reach is None:
+            return []  # nothing is outside the caller's reach
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.domain_id,
+                        registered_tables.c.table_name,
+                        table_columns.c.column_name,
+                    )
+                    .select_from(
+                        registered_tables.join(
+                            table_columns, table_columns.c.table_id == registered_tables.c.id
+                        )
+                    )
+                    .where(
+                        table_columns.c.scope == "listed",
+                        registered_tables.c.draft.is_(False),
+                        registered_tables.c.domain_id.not_in(sorted(scope.reach)),
+                    )
+                    .order_by(
+                        registered_tables.c.domain_id,
+                        registered_tables.c.table_name,
+                        table_columns.c.column_name,
+                    )
+                )
+            ).fetchall()
+        named: dict[tuple[str, str], list[str]] = {}
+        for r in rows:
+            named.setdefault((r.domain_id, r.table_name), []).append(r.column_name)
+        return [
+            ListedNamesType(domain_id=domain, table_name=table, column_names=columns)
+            for (domain, table), columns in named.items()
+        ]
 
     @strawberry.field
     async def data_products(self, info: StrawberryInfo) -> list[DataProductType]:  # REQ-1634

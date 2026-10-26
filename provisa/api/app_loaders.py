@@ -1948,6 +1948,7 @@ _META_TABLES = [
     "roles",
     "roles_domain_access",
     "roles_parents",  # REQ-2155: a role's parents; view-only, like roles_domain_access
+    "listed_names",  # REQ-2153: listed columns' names outside a reader's reach; view-only
     "tracked_webhooks",
     "tracked_functions",
     "tags",  # REQ-1373: the tag registry (system tags unioned in by the view)

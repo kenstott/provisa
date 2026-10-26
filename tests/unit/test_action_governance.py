@@ -55,7 +55,7 @@ CONTRACT = [
         "type": "varchar",
         "masks": [
             {"to": ["org_admin"], "mask": None},
-            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+            {"mask": {"type": "constant", "value": "***"}},
         ],
     },
     {"name": "amount", "type": "double", "visible_to": ["org_admin"]},

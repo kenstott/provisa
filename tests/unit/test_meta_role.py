@@ -34,7 +34,7 @@ def _tm(table_id: int) -> SimpleNamespace:
 
 _EMAIL_MASKS = [
     {"to": ["boss"], "mask": None},
-    {"to": ["*"], "mask": {"type": "constant", "value": None}},
+    {"mask": {"type": "constant", "value": None}},
 ]
 
 

@@ -319,7 +319,8 @@ def holds_mask_entry(to: list[str] | None, chain: list[str]) -> bool:
 
 def entry_for(masks: list[dict], chain: list[str]) -> int | None:
     """The index of the first entry of ``masks`` the reader holds, or None when it holds none."""
-    return next((i for i, e in enumerate(masks) if holds_mask_entry(e["to"], chain)), None)
+    # An entry with no "to" is the one for every other reader (REQ-2153).
+    return next((i for i, e in enumerate(masks) if holds_mask_entry(e.get("to"), chain)), None)
 
 
 def rule_of(mask: dict) -> MaskingRule:

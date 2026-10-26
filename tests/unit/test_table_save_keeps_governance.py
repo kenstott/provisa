@@ -53,7 +53,7 @@ def _stored_columns():
             visible_to=["analyst", "auditor"],
             masks=[
                 {"to": ["auditor"], "mask": None},
-                {"to": ["*"], "mask": {"type": "regex", "pattern": ".+@", "replace": "***@"}},
+                {"mask": {"type": "regex", "pattern": ".+@", "replace": "***@"}},
             ],
         ),
         _column("id"),
@@ -118,7 +118,7 @@ async def test_a_save_without_view_governance_leaves_every_stored_grant_and_mask
         ("visible_to", ["analyst"]),
         ("visible_to", ["analyst", "auditor"]),  # the stored value itself: no oracle
         ("masks", [{"to": ["analyst"], "mask": None}]),
-        ("masks", [{"to": ["*"], "mask": {"type": "constant", "value": "***"}}]),
+        ("masks", [{"mask": {"type": "constant", "value": "***"}}]),
     ],
 )
 async def test_an_attempt_to_set_one_is_refused_by_name(monkeypatch, field, value):

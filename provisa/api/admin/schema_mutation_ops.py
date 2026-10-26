@@ -577,18 +577,21 @@ async def register_table(
                     if isinstance(_paging, MutationResult):
                         raise TableSaveRefused(_paging)
                     model.pagination = _paging
-                from provisa.api.admin._hiding_guard import table_hiding_refusal
+                from provisa.api.admin._hiding_guard import stored_table, table_hiding_refusal
                 from provisa.api.admin.capabilities import acting_role_of
                 from provisa.security.default_grant import with_read_grant
 
-                # REQ-2154: registering grants read on every column to the registrant's role and
-                # to Viewer, written into each grant list where it can be seen and changed.
-                model = with_read_grant(model, acting_role_of(info))
                 _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
                     info, _conn, model, editor=True
                 )
                 if _hiding_refusal is not None:
                     raise TableSaveRefused(_hiding_refusal)
+                # REQ-2154: a new table grants read on every column to the registrant's role and to
+                # Viewer, written into each grant list where it can be seen and changed. It is the
+                # registration's own grant, not the registrant's edit, so no hiding right is asked
+                # for it; a table already stored keeps the grants it has.
+                if await stored_table(_conn, model) is None:
+                    model = with_read_grant(model, acting_role_of(info))
                 try:
                     _carried_grants = model.write_grants  # REQ-2074, REQ-2109
                     model = await table_repo.keep_unedited(_conn, model)  # REQ-1919

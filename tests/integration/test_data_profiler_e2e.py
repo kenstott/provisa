@@ -65,7 +65,7 @@ def server():
             _READERS,
             masks=[
                 {"to": ["org_admin", "auditor"], "mask": None},
-                {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                {"mask": {"type": "constant", "value": "***"}},
             ],
         ),
         # Masked even to the org admin, and seen by it alone: profiled as the mask.
@@ -73,7 +73,7 @@ def server():
             "secret",
             "varchar",
             ["org_admin"],
-            masks=[{"to": ["*"], "mask": {"type": "constant", "value": "***"}}],
+            masks=[{"mask": {"type": "constant", "value": "***"}}],
         ),
         _col("amount", "integer", _READERS),
     ]

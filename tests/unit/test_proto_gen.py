@@ -176,13 +176,13 @@ class TestGenerateProto:
                 "name": "active_users",
                 "kind": "query",
                 "returns": "pet-store.users",
-                "visible_to": [],
+                "visible_to": ["admin"],
                 "arguments": [{"name": "since", "type": "Int"}],
             },
             {
                 "name": "reset_cache",
                 "kind": "mutation",
-                "visible_to": [],
+                "visible_to": ["admin"],
                 "arguments": [],
             },
             {  # hidden from this role — must not appear

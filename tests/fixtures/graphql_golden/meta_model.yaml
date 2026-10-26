@@ -577,6 +577,31 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: listed_names
+  columns:
+  - name: column_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: domain_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: listed_domain
+    data_type: text
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: registered_tables
   columns:
   - name: alias

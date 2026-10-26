@@ -27,6 +27,7 @@ import {
   Button,
   Group,
   Modal,
+  Stack,
   Table,
   Text,
   TextInput,
@@ -52,6 +53,7 @@ import {
   useForceRegen,
   useAllRelationships,
   useDataProducts, // REQ-1634
+  useListedNames, // REQ-2153
 } from "../hooks/useAdminQueries";
 import { usePurgeCacheByTable, useReplicaBuilds } from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
@@ -120,6 +122,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634
+  const listedNames = useListedNames(); // REQ-2153
   const { relationships } = useAllRelationships();
   // The detail's section in view: the same in the read view and the edit form, so opening the
   // editor keeps the tab that was being read.
@@ -1414,6 +1417,27 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 </Group>
               );
             })()}
+
+            {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
+            {!viewsOnly && listedNames.length > 0 && (
+              <Stack gap="0.25rem" py="sm" data-testid="tables-listed-names">
+                <Text size="sm" fw={600}>
+                  {translate("tablesPage.listedElsewhere")}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {translate("tablesPage.listedElsewhereHint")}
+                </Text>
+                {listedNames.map((n) => (
+                  <Text
+                    key={`${n.domainId}.${n.tableName}`}
+                    size="sm"
+                    style={{ fontFamily: "monospace" }}
+                  >
+                    {domainToSqlName(n.domainId)}.{n.tableName}: {n.columnNames.join(", ")}
+                  </Text>
+                ))}
+              </Stack>
+            )}
           </>
         }
       >

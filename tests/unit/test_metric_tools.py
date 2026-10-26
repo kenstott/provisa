@@ -48,7 +48,7 @@ def _make_state():
         metrics=[
             _metric(
                 "net_revenue",
-                ["*"],
+                ["analyst", "hr"],  # REQ-2153: a grant names its roles
                 datatype="decimal",
                 description="Net revenue",
                 ai_context="Revenue after refunds.",
@@ -70,7 +70,7 @@ def state():
 # --- list_metrics -----------------------------------------------------------
 
 
-async def test_list_metrics_star_visible_to_all_roles(state):
+async def test_list_metrics_granted_to_the_role(state):
     result = tools.list_metrics(state, "analyst")
     assert result == [
         {
@@ -206,7 +206,7 @@ def test_catalog_metrics_namespace_relation_and_description():
     metrics = [
         _metric(
             "net_revenue",
-            ["*"],
+            ["testrole"],
             datatype="decimal",
             ai_context="Revenue after refunds.",
         )
@@ -235,7 +235,7 @@ def test_catalog_metrics_visible_to_filters_role():
     from provisa.pgwire.catalog_populate import _build_catalog_db
 
     metrics = [
-        _metric("net_revenue", ["*"]),
+        _metric("net_revenue", ["testrole"]),
         _metric("headcount", ["hr"]),
     ]
     db = _build_catalog_db("testrole", _catalog_state(metrics))
