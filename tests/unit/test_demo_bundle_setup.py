@@ -156,6 +156,10 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
     monkeypatch.setattr(
         builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
     )
+    # One set of region stores for the whole build: started after the demo's stores, stopped
+    # before them.
+    monkeypatch.setattr(builder._RegionStores, "start", lambda self: done.append("regions up"))
+    monkeypatch.setattr(builder._RegionStores, "stop", lambda self: done.append("regions down"))
 
     def _parsed(*_a):
         raise AssertionError("the config was parsed outside a region's node")
@@ -166,7 +170,16 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
         name="retail", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
     )
     assert builder.build(args) == 0
-    assert done == ["up", "bundles", "seed", "no empty replica", "dump", "down"]
+    assert done == [
+        "up",
+        "regions up",
+        "bundles",
+        "seed",
+        "no empty replica",
+        "dump",
+        "regions down",
+        "down",
+    ]
 
 
 def test_the_bundle_action_installs_a_demo_s_extras_before_it_builds():
@@ -492,7 +505,7 @@ def test_a_question_polly_does_not_answer_fails_the_build_naming_its_step(tmp_pa
 def test_a_tour_asking_polly_needs_the_openrouter_key(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(SystemExit, match="OPENROUTER_API_KEY is not set"):
-        builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, timeout=1)
+        builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, 1, None)
 
 
 def _stores_up(tmp_path: Path, services: str) -> list[tuple]:
@@ -1028,3 +1041,40 @@ def test_a_seeding_run_that_never_finished_names_the_tables_it_re_created_and_it
     con.execute('CREATE SCHEMA "r"; CREATE TABLE "r"."t" AS SELECT 1 AS a UNION ALL SELECT 2')
     con.close()
     assert builder._embedded_store(tmp_path, "retail") == "  r.t: 2 rows"
+
+
+def test_a_regions_demo_seeds_on_the_tier_shaped_config_of_its_own_regions():
+    """The seeding node's regions are the demo's: each region an address, an engine, a data store
+    and the shared cache, as the regions tier's config lays them out -- which, for the regions it
+    runs (eu, us), is exactly that config's."""
+    tier = yaml.safe_load(builder._REGIONS_TIER_CONFIG.read_text())
+    blocks = builder.tier_regions(["eu", "us"])
+    assert {key: blocks[key] for key in ("platform", "stores", "regions")} == {
+        key: tier[key] for key in ("platform", "stores", "regions")
+    }
+    banking = builder.tier_regions(["ledger", "warehouse"])
+    assert [r["id"] for r in banking["platform"]["regions"]] == ["ledger", "warehouse"]
+    assert banking["platform"]["regions"][0]["address"] == "${env:PROVISA_DEMO_LEDGER_ADDRESS}"
+    assert {"ledger_data", "warehouse_data", "cache"} <= {s["id"] for s in banking["stores"]}
+
+
+def test_a_regions_demo_s_setup_runs_on_a_node_per_region_against_the_visitor_s():
+    """Its views are built in their regions' stores, so its setup runs with every region's node
+    up, each on its region's address and its region's store, all on one model store; the setup
+    client talks to the visitor's node. The same region stores are then seeded from."""
+    region_env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_LEDGER_PG_URL": "postgresql://ledger",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+        "PROVISA_DEMO_WAREHOUSE_PG_URL": "postgresql://warehouse",
+    }
+    nodes = builder.setup_nodes(
+        ["ledger", "warehouse"], region_env, redis_url="redis://cache", work=Path("/w")
+    )
+    assert [(n.region, n.port) for n in nodes] == [("ledger", 41001), ("warehouse", 41002)]
+    for node in nodes:
+        assert node.env["PROVISA_REGION"] == node.region
+        assert node.env["REDIS_URL"] == "redis://cache"
+        assert node.env["PROVISA_DATA_DIR"] == f"/w/setup-data-{node.region}"
+        assert {k: node.env[k] for k in region_env} == region_env
+    assert nodes[-1].region == "warehouse"  # the visitor's: the setup client's server

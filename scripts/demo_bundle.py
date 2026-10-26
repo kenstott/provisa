@@ -73,7 +73,7 @@ import tarfile
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 import yaml
@@ -474,7 +474,8 @@ def _control_plane(work: Path, name: str = "cp") -> tuple[str, str, str]:
 
 
 #: REQ-2068: the regions sandbox tier's deployment config: its platform regions and its boot
-#: org's stores and regions, which a regions demo's seeding node runs with too.
+#: org's stores and regions, whose layout a regions demo's seeding node runs with for the demo's
+#: own regions (tier_regions).
 _REGIONS_TIER_CONFIG = _REPO / "config" / "provisa-sandbox-regions.yaml"
 
 
@@ -487,13 +488,50 @@ def _demo_regions(demo: Path) -> list[str]:
     return [*regions["headless"], regions["visitor"]]
 
 
-def _config(work: Path, *, regions: bool = False) -> Path:
+def tier_regions(regions: list[str]) -> dict[str, Any]:
+    """The regions tier's platform regions, stores and org regions, laid out as its config lays out
+    its own (eu, us) for the regions ``regions``: each an address, an engine, a data store, and the
+    one cache they share."""
+    return {
+        "platform": {
+            "regions": [
+                {"id": r, "address": f"${{env:PROVISA_DEMO_{r.upper()}_ADDRESS}}"} for r in regions
+            ]
+        },
+        "stores": [
+            *(
+                {
+                    "id": f"{r}_engine",
+                    "url": f"duckdb:///${{env:PROVISA_DATA_DIR}}/regions-tier-{r}-engine.duckdb",
+                    "kind": "duckdb",
+                }
+                for r in regions
+            ),
+            *(
+                {"id": f"{r}_data", "url": f"${{env:PROVISA_DEMO_{r.upper()}_PG_URL}}"}
+                for r in regions
+            ),
+            {"id": "cache", "url": "${env:REDIS_URL}"},
+        ],
+        "regions": [
+            {
+                "id": r,
+                "engine": f"{r}_engine",
+                **{use: f"{r}_data" for use in ("replicas", "views")},
+                "cache": "cache",
+                **{use: f"{r}_data" for use in ("state", "record")},
+            }
+            for r in regions
+        ],
+    }
+
+
+def _config(work: Path, *, regions: list[str] | None = None) -> Path:
     path = work / "config.yaml"
-    tier = yaml.safe_load(_REGIONS_TIER_CONFIG.read_text()) if regions else {}
     path.write_text(
         yaml.safe_dump(
             {
-                **{key: tier[key] for key in ("platform", "stores", "regions") if key in tier},
+                **(tier_regions(regions) if regions else {}),
                 "federation_engine": "duckdb",
                 "multitenancy": True,
                 "auth": {
@@ -588,12 +626,46 @@ def answer_tour(base: str, demo: Path, steps: list[dict]) -> dict[str, dict[str,
     return answers
 
 
-def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
+class SetupNode(NamedTuple):
+    """One server a demo's setup runs on: its region (None for a demo of one region), the port it
+    listens on, and what its environment adds to the setup's."""
+
+    region: str | None
+    port: int
+    env: dict[str, str]
+
+
+def setup_nodes(
+    regions: list[str], region_env: dict[str, str], *, redis_url: str, work: Path
+) -> list[SetupNode]:
+    """A regions demo's setup nodes: one per region, the visitor's last (_demo_regions' order),
+    each on its region's address and store, all sharing the cache (REQ-2068)."""
+    return [
+        SetupNode(
+            region,
+            int(region_env[f"PROVISA_DEMO_{region.upper()}_ADDRESS"].rsplit(":", 1)[1]),
+            {
+                **region_env,
+                "PROVISA_REGION": region,
+                "REDIS_URL": redis_url,
+                "PROVISA_DATA_DIR": str(work / f"setup-data-{region}"),
+            },
+        )
+        for region in regions
+    ]
+
+
+def _set_up(
+    work: Path, demo: Path, stores: Stores, timeout: float, regional: "_RegionStores | None"
+) -> None:
     """Run the demo's setup.yaml against its running stores (REQ-2016): a Provisa server on the
     demo's own config.yaml, with a throwaway control plane of its own, set up by
     scripts/run_demo_setup.py -- what its commands write is then in the stores the build dumps.
-    When its tour asks Polly anything, the same server then asks it, and the answers are stored
-    beside the tour (REQ-2012): a visitor is shown them, and nothing is asked live."""
+    A demo in regions runs it with a server per region up, on one control plane, each on its
+    region's address and store (``regional``), so what the setup builds lands in its region's
+    store; the setup talks to the visitor's. When its tour asks Polly anything, the same server
+    then asks it, and the answers are stored beside the tour (REQ-2012): a visitor is shown them,
+    and nothing is asked live."""
     asked = polly_steps(demo)
     if asked and not os.environ.get("OPENROUTER_API_KEY"):
         raise SystemExit(
@@ -601,20 +673,19 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
             "through OpenRouter, and OPENROUTER_API_KEY is not set"
         )
     host, port, url = _control_plane(work, "setup-cp")
-    http_port = _free_port()
-    # A client step of the setup (run_demo_setup.py) reads the server over Arrow Flight.
-    flight_port = _free_port()
-    server_env = {
+    nodes = (
+        setup_nodes(regional.regions, regional.env, redis_url=regional.redis_url, work=work)
+        if regional is not None
+        else [SetupNode(None, _free_port(), {"PROVISA_DATA_DIR": str(work / "setup-data")})]
+    )
+    common = {
         **_config_env(demo),
         **stores.addresses,
         **({"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]} if asked else {}),
         "PROVISA_CONFIG": str(answering_config(work, demo) if asked else demo / "config.yaml"),
         "PROVISA_ENGINE": "duckdb",
-        **_protocol_ports(),
         **_duckdb_env(work),
-        "FLIGHT_PORT": str(flight_port),
         "ORG_ID": _SETUP_ORG,
-        "PROVISA_DATA_DIR": str(work / "setup-data"),
         "PROVISA_REDIS_EMBEDDED": "1",
         "TENANT_DATABASE_URL": url,
         "PLATFORM_DATABASE_URL": url,
@@ -623,39 +694,57 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         # REQ-862: its refreshes are recorded, and the records of those that build a bitemporal
         # view's history are carried with it (_export_views): what each was built from.
         "OTEL_SDK_DISABLED": "false",
-        "PROVISA_TELEMETRY_DIR": str(work / "setup-telemetry"),
     }
-    server = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(http_port),
-        ],
-        cwd=_REPO,
-        env=server_env,
-    )
-    base = f"http://127.0.0.1:{http_port}"
+    servers: list[subprocess.Popen] = []
+    protocols: list[dict[str, str]] = []
     try:
+        for node in nodes:
+            # Each server its own protocol ports; a client step of the setup (run_demo_setup.py)
+            # reads the visitor's over Arrow Flight.
+            protocols.append(_protocol_ports())
+            servers.append(
+                subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
+                        "main:app",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(node.port),
+                    ],
+                    cwd=_REPO,
+                    env={
+                        **common,
+                        **protocols[-1],
+                        "PROVISA_TELEMETRY_DIR": str(
+                            work / f"setup-telemetry{'-' + node.region if node.region else ''}"
+                        ),
+                        **node.env,
+                    },
+                )
+            )
         deadline = time.monotonic() + timeout
-        while True:
-            if server.poll() is not None:
-                raise SystemExit(f"the setup server exited early ({server.returncode})")
-            try:
-                if httpx.get(f"{base}/health", timeout=5).status_code == 200:
-                    break
-            except httpx.HTTPError:
-                pass  # not listening yet; the deadline below bounds the wait
-            if time.monotonic() > deadline:
-                raise SystemExit(f"{demo.name}: the setup server was not up in {timeout:.0f}s")
-            time.sleep(2)
+        for node, server in zip(nodes, servers):
+            while True:
+                if server.poll() is not None:
+                    raise SystemExit(f"the setup server exited early ({server.returncode})")
+                try:
+                    if (
+                        httpx.get(f"http://127.0.0.1:{node.port}/health", timeout=5).status_code
+                        == 200
+                    ):
+                        break
+                except httpx.HTTPError:
+                    pass  # not listening yet; the deadline below bounds the wait
+                if time.monotonic() > deadline:
+                    raise SystemExit(f"{demo.name}: the setup server was not up in {timeout:.0f}s")
+                time.sleep(2)
+        base = f"http://127.0.0.1:{nodes[-1].port}"
         subprocess.run(
             [sys.executable, str(_REPO / "scripts" / "run_demo_setup.py"), str(demo)]
-            + ["--url", base, "--flight", f"grpc://127.0.0.1:{flight_port}"],
+            + ["--url", base, "--flight", f"grpc://127.0.0.1:{protocols[-1]['FLIGHT_PORT']}"],
             # A client step reaches the demo's stores where this build's compose put them.
             env=stores.env,
             check=True,
@@ -665,8 +754,10 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
             Path(demo_module.tour_answers_path(str(demo))).write_text(json.dumps(answers, indent=2))
         _export_profile_runs(url, demo)
     finally:
-        server.terminate()
-        server.wait(timeout=60)
+        for server in servers:
+            server.terminate()
+        for server in servers:
+            server.wait(timeout=60)
         subprocess.run(
             [sys.executable, "-m", "provisa.core.control_plane_pg", "stop", str(work / "setup-cp")],
             check=True,
@@ -689,46 +780,69 @@ def _export_profile_runs(url: str, demo: Path) -> None:
     print(f"{demo.name}: {written} profile result relations carried")
 
 
-def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
+def _seed(
+    work: Path, demo: Path, stores: Stores, timeout: float, regional: "_RegionStores | None"
+) -> None:
     """Land the demo's template from its running stores and write its seed into ``demo`` -- for a
-    demo in regions, a seeding node per region, each writing what its region keeps (REQ-2068)."""
-    regions = _demo_regions(demo)
-    if not regions:
+    demo in regions, a seeding node per region, each writing what its region keeps (REQ-2068),
+    on the region stores its setup ran on (``regional``)."""
+    if regional is None:
         _seed_node(work, demo, stores, timeout, record=demo / "seeded" / "replicas.json", env={})
         return
     from provisa.api.demo_region_seed import seed_dir
 
-    region_env: dict[str, str] = {}
-    for region in regions:
-        region_env[f"PROVISA_DEMO_{region.upper()}_PG_URL"] = _control_plane(
-            work, f"region-pg-{region}"
-        )[2]
-        region_env[f"PROVISA_DEMO_{region.upper()}_ADDRESS"] = f"http://127.0.0.1:{_free_port()}"
-    redis = _SharedRedis()
-    try:
-        for region in regions:
-            _seed_node(
-                work,
-                demo,
-                stores,
-                timeout,
-                record=seed_dir(demo, region) / "record.json",
-                control_plane=f"cp-{region}",
-                env={
-                    **region_env,
-                    "PROVISA_REGION": region,
-                    "REDIS_URL": redis.url,
-                    "PROVISA_DATA_DIR": str(work / f"data-{region}"),
-                },
-            )
-    finally:
-        redis.stop()
-        for region in regions:
-            subprocess.run(
-                [sys.executable, "-m", "provisa.core.control_plane_pg", "stop"]
-                + [str(work / f"region-pg-{region}")],
-                check=True,
-            )
+    for region in regional.regions:
+        _seed_node(
+            work,
+            demo,
+            stores,
+            timeout,
+            record=seed_dir(demo, region) / "record.json",
+            control_plane=f"cp-{region}",
+            env={
+                **regional.env,
+                "PROVISA_REGION": region,
+                "REDIS_URL": regional.redis_url,
+                "PROVISA_DATA_DIR": str(work / f"data-{region}"),
+            },
+            regions=regional.regions,
+        )
+
+
+class _RegionStores:
+    """A regions demo's region stores -- each region's PostgreSQL data store and the address its
+    node listens on -- and the cache they share: started once, its setup run and its seed both
+    written to them (REQ-2068)."""
+
+    def __init__(self, work: Path, regions: list[str]) -> None:
+        self.work = work
+        self.regions = regions
+        self.env: dict[str, str] = {}
+        self._redis: _SharedRedis | None = None
+
+    @property
+    def redis_url(self) -> str:
+        assert self._redis is not None  # start() runs first
+        return self._redis.url
+
+    def start(self) -> None:
+        for region in self.regions:
+            self.env[f"PROVISA_DEMO_{region.upper()}_PG_URL"] = _control_plane(
+                self.work, f"region-pg-{region}"
+            )[2]
+            self.env[f"PROVISA_DEMO_{region.upper()}_ADDRESS"] = f"http://127.0.0.1:{_free_port()}"
+        self._redis = _SharedRedis()
+
+    def stop(self) -> None:
+        if self._redis is not None:
+            self._redis.stop()
+        for region in self.regions:
+            if f"PROVISA_DEMO_{region.upper()}_PG_URL" in self.env:
+                subprocess.run(
+                    [sys.executable, "-m", "provisa.core.control_plane_pg", "stop"]
+                    + [str(self.work / f"region-pg-{region}")],
+                    check=True,
+                )
 
 
 class _SharedRedis:
@@ -873,9 +987,10 @@ def _seed_node(
     record: Path,
     env: dict[str, str],
     control_plane: str = "cp",
+    regions: list[str] | None = None,
 ) -> None:
     """Run one seeding node, on the control plane ``control_plane``, until it has written
-    ``record``."""
+    ``record``; a regions demo's on the regions ``regions``."""
     host, port, url = _control_plane(work, control_plane)
     http_port = _free_port()
     server_env = {
@@ -884,7 +999,7 @@ def _seed_node(
         **_protocol_ports(),
         **_duckdb_env(work),
         "ORG_ID": "demobundle",
-        "PROVISA_CONFIG": str(_config(work, regions="PROVISA_REGION" in env)),
+        "PROVISA_CONFIG": str(_config(work, regions=regions)),
         "PROVISA_ENGINE": "duckdb",
         "PROVISA_SANDBOX_TIER": "true",
         "PROVISA_DEMO_SEED_EXPORT": "true",
@@ -1070,20 +1185,28 @@ def build(args: argparse.Namespace) -> int:
         work = Path(scratch)
         demo = _copy(source, work)
         stores = Stores(demo)
+        regions = _demo_regions(demo)
+        # REQ-2068: a demo in regions has one set of region stores, its setup run on them and its
+        # seed written from them.
+        regional = _RegionStores(work, regions) if regions else None
         try:
             stores.up()
+            if regional is not None:
+                regional.start()
             _prefetch_connector_bundles(demo)
             if (demo / "setup.yaml").exists() or polly_steps(demo):
-                _set_up(work, demo, stores, args.timeout)
+                _set_up(work, demo, stores, args.timeout, regional)
                 _export_views(work, demo, stores)
             # REQ-2068: a demo in regions seeds each region's views as well as its replicas. Its
-            # config names each region's address and store, which only _seed's nodes are given,
-            # so it is not parsed here.
-            if _demo_regions(demo) or _replicates(demo, stores):
-                _seed(work, demo, stores, args.timeout)
+            # config names each region's address and store, which only its regions' nodes are
+            # given, so it is not parsed here.
+            if regional is not None or _replicates(demo, stores):
+                _seed(work, demo, stores, args.timeout, regional)
                 _refuse_empty_replicas(demo)
             dumped = stores.dump()
         finally:
+            if regional is not None:
+                regional.stop()
             stores.down()
         bundle = bundles.pack(demo, manifest)
     args.out.mkdir(parents=True, exist_ok=True)
