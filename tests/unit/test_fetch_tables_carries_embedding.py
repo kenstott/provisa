@@ -30,6 +30,19 @@ from provisa.compiler.stage2 import build_governance_context
 pytestmark = pytest.mark.asyncio
 
 
+_COLUMNS = [
+    defaultdict(lambda: None, table_id=1, column_name="id", data_type="integer", embedding=False),
+    defaultdict(
+        lambda: None,
+        table_id=1,
+        column_name="vec",
+        data_type="array(double)",
+        embedding=True,
+        embedding_model="mini",
+    ),
+]
+
+
 class _Conn:
     """Answers fetch_tables' two statements from one stored table with an embedding column."""
 
@@ -37,20 +50,13 @@ class _Conn:
         del args
         if "FROM table_write_grants" in sql:  # REQ-2074: no write grants
             return []
+        if "FROM table_columns" in sql:  # every table's columns, in one read
+            return _COLUMNS
         if "FROM registered_tables" in sql:
             row: defaultdict[str, object] = defaultdict(lambda: None)
             row.update(id=1, source_id="pg", domain_id="d", schema_name="public", table_name="docs")
             return [row]
-        return [
-            defaultdict(lambda: None, column_name="id", data_type="integer", embedding=False),
-            defaultdict(
-                lambda: None,
-                column_name="vec",
-                data_type="array(double)",
-                embedding=True,
-                embedding_model="mini",
-            ),
-        ]
+        raise AssertionError(f"unexpected statement: {sql}")
 
 
 async def test_each_column_is_fetched_with_its_embedding_declaration():

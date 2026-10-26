@@ -63,21 +63,27 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
     from provisa.core.repositories import write_grant as write_grant_repo
 
     grants = write_grant_repo.grouped(await conn.fetch(write_grant_repo.BY_TABLE_SQL))
+    # Every table's columns in one read, each table's in registration order: a rebuild reads
+    # every table, and a query per table was one for each (REQ-1882).
+    columns_of: dict[int, list] = {}
+    for r in await conn.fetch(
+        "SELECT table_id, column_name, data_type, visible_to, masks, "
+        "alias, description, path, is_primary_key, object_fields, native_filter_type, "
+        "native_filter_required, required_by_steward, "  # REQ-1986
+        "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
+        "fake_why, "  # REQ-2094
+        "array_depth, element_type, native_type, native_platform, "  # REQ-1965
+        "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
+        "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
+        "FROM table_columns WHERE table_id IN "
+        "(SELECT id FROM registered_tables WHERE draft = $1) ORDER BY table_id, id",
+        draft,
+    ):
+        columns_of.setdefault(r["table_id"], []).append(r)
     tables = []
     for row in rows:
         table = dict(row)
-        col_rows = await conn.fetch(
-            "SELECT column_name, data_type, visible_to, masks, "
-            "alias, description, path, is_primary_key, object_fields, native_filter_type, "
-            "native_filter_required, required_by_steward, "  # REQ-1986
-            "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
-            "fake_why, "  # REQ-2094
-            "array_depth, element_type, native_type, native_platform, "  # REQ-1965
-            "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
-            "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
-            "FROM table_columns WHERE table_id = $1 ORDER BY id",
-            row["id"],
-        )
+        col_rows = columns_of.get(row["id"], [])
         table["write_grants"] = grants.get(row["id"], [])  # REQ-2074
         table["unique_constraints"] = _as_list(row.get("unique_constraints"))  # REQ-1093
         table["live"] = _as_dict(row.get("live"))  # REQ-1733

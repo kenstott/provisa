@@ -857,11 +857,23 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
 
     result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
     rows = result.fetchall()
+    # Every table's columns in one read, each table's in registration order (as _load_columns
+    # reads one table's): a rebuild lists every table, and a query per table was a query for each.
+    columns: dict[int, list[dict]] = {}
+    for c in (
+        await conn.execute_core(
+            select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
+                table_columns.c.table_id, table_columns.c.id
+            )
+        )
+    ).fetchall():
+        column = dict(c._mapping)
+        columns.setdefault(column.pop("table_id"), []).append(column)
     grants = await write_grant_repo.by_table(conn)
     out = []
     for row in rows:
         r = dict(row._mapping)
-        r["columns"] = await _load_columns(conn, r["id"])
+        r["columns"] = columns.get(r["id"], [])
         r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
         out.append(r)
     return out
