@@ -22,6 +22,8 @@ from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.governance import build_governance_tags
 from provisa.api.metadata_export.model import GovernanceSignal, MetadataSnapshot
 from provisa.api.metadata_export.refs import UnknownTableError
+from provisa.core.db import STANDARD_ROLES
+from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from provisa.core.models import (
     Column,
     Domain,
@@ -37,6 +39,20 @@ from provisa.core.models import (
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
 MASK_REPLACE = "XXX-XX-\\3"
 RLS_FILTER = "region_id = current_setting('provisa.region')"
+
+# The org's data roles a tag names: the standard roles (REQ-2155) but org_admin and
+# platform_admin, and the config's own (clerk, admin, and any a test adds).
+_STANDARD = sorted(set(STANDARD_ROLES) - {ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
+# Every role: each standard role descends from viewer; the config's roles are named.
+_EVERYONE = ["viewer", "clerk", "admin"]
+
+
+def _roster(*extra: str) -> tuple[str, ...]:
+    return tuple(sorted({*_STANDARD, "clerk", "admin", *extra}))
+
+
+def _but(*left_out: str, extra: tuple[str, ...] = ()) -> tuple[str, ...]:
+    return tuple(r for r in _roster(*extra) if r not in left_out)
 
 
 def _table(name: str, columns: list[Column], domain_id: str = "sales") -> Table:
@@ -58,7 +74,7 @@ def _config(*, tables: list[Table], rls: list[RLSRule] | None = None) -> Provisa
         tables=tables,
         relationships=[],
         roles=[
-            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="clerk", description="Test role.", capabilities=[], domain_access=["*"]),
             Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
         rls_rules=rls or [],
@@ -78,7 +94,7 @@ def test_masked_column_tagged_with_kind_and_exempt_roles():
                     Column(
                         name="ssn",
                         data_type="text",
-                        visible_to=["analyst", "admin"],
+                        visible_to=_EVERYONE,
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
@@ -102,7 +118,7 @@ def test_masked_column_tagged_with_kind_and_exempt_roles():
     # REQ-2059: the entry (its place in the list) and its kind.
     assert tag.rule_id == "mask:provisa://acme/sales/tables/customers#field:ssn:1:regex"
     assert tag.exempt_roles == ("admin",)
-    assert tag.restricted_roles == ("analyst",)
+    assert tag.restricted_roles == _but("admin")
 
 
 def test_a_role_reads_the_mask_entry_its_ancestor_holds():
@@ -116,7 +132,7 @@ def test_a_role_reads_the_mask_entry_its_ancestor_holds():
                     Column(
                         name="ssn",
                         data_type="text",
-                        visible_to=["analyst", "admin"],
+                        visible_to=_EVERYONE,
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
@@ -132,21 +148,17 @@ def test_a_role_reads_the_mask_entry_its_ancestor_holds():
             description="Test role.",
             capabilities=[],
             domain_access=["*"],
-            parent_role_id="admin",
+            parents=["admin"],
         )
     )
     (tag,) = _tags(config, GovernanceSignal.MASKED)
     assert tag.exempt_roles == ("admin", "lead")
-    assert tag.restricted_roles == ("analyst",)
+    assert tag.restricted_roles == _but("admin", "lead", extra=("lead",))
 
 
 def test_unmasked_column_produces_no_mask_tag():
     config = _config(
-        tables=[
-            _table(
-                "customers", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]
-            )
-        ]
+        tables=[_table("customers", [Column(name="id", data_type="int", visible_to=_EVERYONE)])]
     )
     assert _tags(config, GovernanceSignal.MASKED) == []
 
@@ -157,7 +169,7 @@ def test_visibility_restriction_names_the_roles_that_cannot_see_the_column():
             _table(
                 "customers",
                 [
-                    Column(name="id", data_type="int", visible_to=["analyst", "admin"]),
+                    Column(name="id", data_type="int", visible_to=_EVERYONE),
                     Column(name="salary", data_type="numeric", visible_to=["admin"]),
                 ],
             )
@@ -165,18 +177,14 @@ def test_visibility_restriction_names_the_roles_that_cannot_see_the_column():
     )
     tags = _tags(config, GovernanceSignal.VISIBILITY_RESTRICTED)
     assert [t.asset.fqn() for t in tags] == ["wh.public.customers.salary"]
-    assert tags[0].restricted_roles == ("analyst",)
+    assert tags[0].restricted_roles == _but("admin")
     assert tags[0].exempt_roles == ("admin",)
 
 
 def test_column_visible_to_every_role_is_not_tagged():
     """Tagging a universally visible column would report a restriction the engine never applies."""
     config = _config(
-        tables=[
-            _table(
-                "customers", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]
-            )
-        ]
+        tables=[_table("customers", [Column(name="id", data_type="int", visible_to=_EVERYONE)])]
     )
     assert _tags(config, GovernanceSignal.VISIBILITY_RESTRICTED) == []
 
@@ -184,57 +192,47 @@ def test_column_visible_to_every_role_is_not_tagged():
 def test_table_scoped_rls_rule_tags_only_that_table():
     config = _config(
         tables=[
-            _table("orders", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]),
-            _table(
-                "regions", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]
-            ),
+            _table("orders", [Column(name="id", data_type="int", visible_to=_EVERYONE)]),
+            _table("regions", [Column(name="id", data_type="int", visible_to=_EVERYONE)]),
         ],
         rls=[
-            RLSRule(
-                table_id="orders", role_id="analyst", filter=RLS_FILTER, description="Test rule."
-            )
+            RLSRule(table_id="orders", role_id="clerk", filter=RLS_FILTER, description="Test rule.")
         ],
     )
     tags = _tags(config, GovernanceSignal.RLS_RESTRICTED)
     assert [t.asset.fqn() for t in tags] == ["wh.public.orders"]
-    assert tags[0].rule_id == "rls:provisa://acme/sales/tables/orders:analyst"
-    assert tags[0].restricted_roles == ("analyst",)
-    assert tags[0].exempt_roles == ("admin",)
+    assert tags[0].rule_id == "rls:provisa://acme/sales/tables/orders:clerk"
+    assert tags[0].restricted_roles == ("clerk",)
+    assert tags[0].exempt_roles == _but("clerk")
 
 
 def test_domain_scoped_rls_rule_tags_every_table_in_the_domain():
     config = _config(
         tables=[
-            _table("orders", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]),
-            _table(
-                "regions", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]
-            ),
+            _table("orders", [Column(name="id", data_type="int", visible_to=_EVERYONE)]),
+            _table("regions", [Column(name="id", data_type="int", visible_to=_EVERYONE)]),
             _table(
                 "lab_runs",
-                [Column(name="id", data_type="int", visible_to=["analyst", "admin"])],
+                [Column(name="id", data_type="int", visible_to=_EVERYONE)],
                 domain_id="lab",
             ),
         ],
         rls=[
-            RLSRule(
-                domain_id="sales", role_id="analyst", filter=RLS_FILTER, description="Test rule."
-            )
+            RLSRule(domain_id="sales", role_id="clerk", filter=RLS_FILTER, description="Test rule.")
         ],
     )
     tags = _tags(config, GovernanceSignal.RLS_RESTRICTED)
     assert {t.asset.fqn() for t in tags} == {"wh.public.orders", "wh.public.regions"}
-    assert all(t.rule_id == "rls:provisa://acme/sales:analyst" for t in tags)
+    assert all(t.rule_id == "rls:provisa://acme/sales:clerk" for t in tags)
 
 
 def test_tag_scoped_rls_rule_tags_every_table_carrying_the_tag():
     # REQ-1384: the rule's scope is the tag; a column-level assignment does not tag its table.
-    readable = [Column(name="id", data_type="int", visible_to=["analyst", "admin"])]
+    readable = [Column(name="id", data_type="int", visible_to=_EVERYONE)]
     config = _config(
         tables=[_table("orders", readable), _table("regions", readable), _table("staff", readable)],
         rls=[
-            RLSRule(
-                tag_id="regional", role_id="analyst", filter=RLS_FILTER, description="Test rule."
-            )
+            RLSRule(tag_id="regional", role_id="clerk", filter=RLS_FILTER, description="Test rule.")
         ],
     )
     config.tag_assignments = [
@@ -246,18 +244,14 @@ def test_tag_scoped_rls_rule_tags_every_table_carrying_the_tag():
     ]
     tags = _tags(config, GovernanceSignal.RLS_RESTRICTED)
     assert {t.asset.fqn() for t in tags} == {"wh.public.orders", "wh.public.regions"}
-    assert all(t.rule_id == "rls:provisa://acme/tags/regional:analyst" for t in tags)
+    assert all(t.rule_id == "rls:provisa://acme/tags/regional:clerk" for t in tags)
 
 
 def test_rls_rule_naming_an_unknown_table_is_refused():
     config = _config(
-        tables=[
-            _table("orders", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])])
-        ],
+        tables=[_table("orders", [Column(name="id", data_type="int", visible_to=_EVERYONE)])],
         rls=[
-            RLSRule(
-                table_id="ghost", role_id="analyst", filter=RLS_FILTER, description="Test rule."
-            )
+            RLSRule(table_id="ghost", role_id="clerk", filter=RLS_FILTER, description="Test rule.")
         ],
     )
     with pytest.raises(UnknownTableError):
@@ -266,10 +260,8 @@ def test_rls_rule_naming_an_unknown_table_is_refused():
 
 def test_rls_rule_with_no_scope_is_refused():
     config = _config(
-        tables=[
-            _table("orders", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])])
-        ],
-        rls=[RLSRule(role_id="analyst", filter=RLS_FILTER, description="Test rule.")],
+        tables=[_table("orders", [Column(name="id", data_type="int", visible_to=_EVERYONE)])],
+        rls=[RLSRule(role_id="clerk", filter=RLS_FILTER, description="Test rule.")],
     )
     with pytest.raises(ValueError, match="neither a table, a domain nor a tag"):
         build_governance_tags(config, "acme")
@@ -317,7 +309,7 @@ def test_rule_bodies_never_appear_anywhere_in_a_published_snapshot():
                     Column(
                         name="tier",
                         data_type="text",
-                        visible_to=["analyst", "admin"],
+                        visible_to=_EVERYONE,
                         masks=[
                             {"to": ["*"], "mask": {"type": "constant", "value": "REDACTED-TIER"}},
                         ],
@@ -327,7 +319,7 @@ def test_rule_bodies_never_appear_anywhere_in_a_published_snapshot():
         ],
         rls=[
             RLSRule(
-                table_id="customers", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+                table_id="customers", role_id="clerk", filter=RLS_FILTER, description="Test rule."
             )
         ],
     )
@@ -367,7 +359,7 @@ def test_build_snapshot_attaches_governance_tags():
         ],
         rls=[
             RLSRule(
-                table_id="customers", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+                table_id="customers", role_id="clerk", filter=RLS_FILTER, description="Test rule."
             )
         ],
     )
@@ -383,9 +375,7 @@ def test_build_snapshot_attaches_governance_tags():
 
 def test_ungoverned_config_publishes_no_tags():
     config = _config(
-        tables=[
-            _table("orders", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])])
-        ]
+        tables=[_table("orders", [Column(name="id", data_type="int", visible_to=_EVERYONE)])]
     )
     assert (
         build_snapshot(config, org_id="acme", dialect="postgres", contexts={}).governance_tags == []
@@ -405,4 +395,4 @@ def test_visibility_tags_say_what_the_one_column_rule_serves():
     tags = _tags(config, GovernanceSignal.VISIBILITY_RESTRICTED)
     assert [t.asset.fqn() for t in tags] == ["wh.public.customers.id"]
     assert tags[0].restricted_roles == ("hr_only",)
-    assert tags[0].exempt_roles == ("admin", "analyst")
+    assert tags[0].exempt_roles == _but("hr_only", extra=("hr_only",))

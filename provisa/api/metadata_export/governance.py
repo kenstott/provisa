@@ -83,7 +83,7 @@ def _visibility_tags(
 ) -> list[GovernanceTag]:
     # ``served``: the roles the engine serves the column to, by the one rule
     # (``rights.served_roles``, REQ-2152). The tag says exactly what the engine does.
-    visible = set(served)
+    visible = set(served) & set(all_roles)  # the roster's: org_admin is no data audience
     restricted = tuple(r for r in all_roles if r not in visible)
     if not restricted:
         return []
@@ -151,11 +151,22 @@ def build_governance_tags(
     config: ProvisaConfig, org_id: str | None
 ) -> list[GovernanceTag]:  # REQ-1071
     """Every enforcement fact in the config, as catalog tags."""
+    from provisa.core.db import STANDARD_ROLES, standard_role_dicts
     from provisa.security.inheritance import role_chains
-    from provisa.security.rights import served_roles
+    from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE, served_roles
 
-    all_roles = tuple(sorted(role.id for role in config.roles))
-    definitions = {role.id: role.model_dump() for role in config.roles}
+    # The org's data roles: the standard roles (REQ-2155), which a config may not declare, and
+    # the config's own; org_admin and platform_admin are no data audience.
+    standard = {
+        r["id"]: {**r, "domain_access": list(STANDARD_ROLES[r["id"]].domain_access)}
+        for r in standard_role_dicts()
+    }
+    definitions = {**standard, **{role.id: role.model_dump() for role in config.roles}}
+    all_roles = tuple(
+        sorted(r for r in definitions if r not in (ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE))
+    )
+    # Every role's chain through the standard roles too: a grant or mask entry reaching a role
+    # through a standard ancestor is that role's (REQ-1677).
     chains = role_chains(definitions.values())
     index = TableIndex(config.tables)
     tags: list[GovernanceTag] = []
