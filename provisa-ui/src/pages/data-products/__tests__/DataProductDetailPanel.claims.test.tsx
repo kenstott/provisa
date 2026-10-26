@@ -17,8 +17,8 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { dqStatus } from "../dataProductClaims";
-import type { ProductDq, ProductInput, ProductLineage } from "../../../api/lineage";
-import type { CoreCheck, CoreEdge, CoreTable, ProductCore } from "../productCore";
+import type { ProductDq, ProductDqEntry, ProductInput, ProductLineage } from "../../../api/lineage";
+import type { CoreEdge, CoreTable, ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
 vi.mock("../../../components/graph3d/GraphPanel", () => ({
@@ -49,41 +49,36 @@ const table = (id: number, name: string, over: Partial<CoreTable> = {}): CoreTab
 
 const check = (
   checker: number,
-  state: CoreCheck["state"],
   checked: [number, string],
-  over: Partial<NonNullable<CoreCheck["checker"]>> = {},
-  assigned: string | null = "c360",
-): CoreCheck => ({
-  id: `c360:${checker}`,
-  state,
+  over: Partial<ProductDqEntry> = {},
+  owner: string | null = "c360",
+): ProductDqEntry => ({
   checker_table_id: checker,
+  domain_id: "sales",
+  table_name: `check_${checker}`,
+  alias: null,
+  description: `Claim ${checker}`,
+  owner_product_id: owner,
   checked_table_id: checked[0],
-  assigned_product_id: assigned,
-  checker: {
-    id: checker,
-    domain_id: "sales",
-    table_name: `check_${checker}`,
-    alias: null,
-    description: `Claim ${checker}`,
-    latest_outcome: "pass",
-    latest_run_at: "2026-10-20T10:00:00Z",
-    ...over,
-  },
   checked_table: { id: checked[0], domain_id: "sales", table_name: checked[1], alias: null },
+  latest_outcome: "pass",
+  latest_run_at: "2026-10-20T10:00:00Z",
+  ...over,
 });
 
-const CHECKS: CoreCheck[] = [
-  check(11, "promise", [1, "customers"], {
-    description: "Customers are unique so counts reconcile",
-  }),
-  check(12, "promise", [2, "orders"], {
-    description: "Orders are complete so revenue reconciles",
-    latest_outcome: "fail",
-  }),
-  check(13, "expectation", [30, "raw_orders"], { latest_outcome: null, latest_run_at: null }),
-  check(14, "partner_dq", [31, "raw_customers"], {}, null),
-  check(15, "orphan", [99, "fx_rates"]),
-];
+// REQ-2157: the product lineage endpoint's lists.
+const DQ: ProductDq = {
+  promises: [
+    check(11, [1, "customers"], { description: "Customers are unique so counts reconcile" }),
+    check(12, [2, "orders"], {
+      description: "Orders are complete so revenue reconciles",
+      latest_outcome: "fail",
+    }),
+  ],
+  expectations: [check(13, [30, "raw_orders"], { latest_outcome: null, latest_run_at: null })],
+  related: [check(14, [31, "raw_customers"], {}, null)],
+  unattached: [check(15, [99, "fx_rates"])],
+};
 
 // REQ-2126: the product's nearest physical inputs, as the product lineage endpoint finds them.
 const input = (id: number, relation: string): ProductInput => ({
@@ -99,39 +94,15 @@ const input = (id: number, relation: string): ProductInput => ({
   source_schema: null,
   source_table: null,
 });
-// REQ-2157: the product lineage endpoint's lists, from the panel's states.
-const LIST_OF = {
-  expectation: "expectations",
-  promise: "promises",
-  partner_dq: "related",
-  orphan: "unattached",
-} as const;
-const dqOf = (checks: CoreCheck[]): ProductDq => {
-  const dq: ProductDq = { expectations: [], promises: [], related: [], unattached: [] };
-  for (const c of checks)
-    dq[LIST_OF[c.state]].push({
-      checker_table_id: c.checker_table_id,
-      domain_id: c.checker.domain_id,
-      table_name: c.checker.table_name,
-      alias: c.checker.alias,
-      description: c.checker.description,
-      owner_product_id: c.assigned_product_id,
-      checked_table_id: c.checked_table_id,
-      checked_table: c.checked_table,
-      latest_outcome: c.checker.latest_outcome ?? null,
-      latest_run_at: c.checker.latest_run_at,
-    });
-  return dq;
-};
-const lineage = (checks: CoreCheck[]): ProductLineage => ({
+const lineage = (dq: ProductDq): ProductLineage => ({
   nodes: [],
   edges: [],
   outputs: [],
   members: [],
   inputs: [input(30, "raw.raw_orders"), input(31, "raw.raw_customers")],
-  dq: dqOf(checks),
+  dq,
 });
-const LINEAGE = lineage(CHECKS);
+const LINEAGE = lineage(DQ);
 
 const CORE: ProductCore = {
   product: P,
@@ -206,9 +177,9 @@ describe("a data product's quality claims (REQ-2132)", () => {
     expect(screen.queryByTestId("data-product-detail-inputs-c360-dq-31")).toBeNull();
   });
 
-  it("lists partner DQ apart and warns of an orphan, naming the table it scans", () => {
+  it("lists related checks in their own row and warns of an unattached one, naming its table", () => {
     panel();
-    expect(screen.getByTestId("data-product-detail-dq-c360-partners")).toHaveTextContent(
+    expect(screen.getByTestId("data-product-detail-dq-related-c360")).toHaveTextContent(
       "assigned to no product",
     );
     expect(screen.getByTestId("data-product-detail-dq-c360-orphan-15")).toHaveTextContent(
@@ -216,8 +187,8 @@ describe("a data product's quality claims (REQ-2132)", () => {
     );
   });
 
-  it("shows an unassigned checker scanning a member as partner DQ, not as a member", () => {
-    const partner = check(16, "partner_dq", [1, "customers"], {}, null);
+  it("shows an unassigned checker scanning a member as related, not as a member", () => {
+    const partner = check(16, [1, "customers"], {}, null);
     render(
       <DataProductDetailPanel
         p={P}
@@ -226,19 +197,36 @@ describe("a data product's quality claims (REQ-2132)", () => {
         reader={null}
         lineageLoading={false}
         lineageError=""
-        lineageGraph={lineage([...CHECKS, partner])}
+        lineageGraph={lineage({ ...DQ, related: [...DQ.related, partner] })}
         canEdit={false}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
-    expect(screen.getByTestId("data-product-detail-dq-c360-partners")).toHaveTextContent(
-      "Claim 16",
-    );
-    expect(screen.getByTestId("data-product-detail-dq-tables-c360")).not.toHaveTextContent(
+    expect(screen.getByTestId("data-product-detail-dq-related-c360")).toHaveTextContent("Claim 16");
+    expect(screen.getByTestId("data-product-detail-dq-promises-c360")).not.toHaveTextContent(
       "check_16",
     );
     expect(screen.getByTestId("data-product-detail-tables-c360")).not.toHaveTextContent("check_16");
+  });
+
+  it("REQ-2157: the data quality section is three rows, Expectations, Promises and Related", () => {
+    panel();
+    const row = (name: string) => screen.getByTestId(`data-product-detail-dq-${name}-c360`);
+    const toggles = ["expectations", "promises", "related"].map((name) =>
+      screen.getByTestId(`data-product-detail-dq-${name}-c360-toggle`),
+    );
+    expect(toggles.map((t) => t.textContent)).toEqual([
+      expect.stringMatching(/^Expectations1not yet run/),
+      expect.stringMatching(/^Promises2some failing/),
+      expect.stringMatching(/^Related1all passing/),
+    ]);
+    // The product's check on its input, its checks on its members, another's (or no one's).
+    expect(row("expectations")).toHaveTextContent("scans sales.raw_orders");
+    expect(row("promises")).toHaveTextContent("Customers are unique so counts reconcile");
+    expect(row("promises")).toHaveTextContent("Orders are complete so revenue reconciles");
+    expect(row("related")).toHaveTextContent("scans sales.raw_customers");
+    expect(row("expectations")).not.toHaveTextContent("Claim 14");
   });
 
   it("headlines a checker's claim in the Data Quality section", () => {
@@ -250,12 +238,11 @@ describe("a data product's quality claims (REQ-2132)", () => {
 });
 
 describe("a set of checks' summary status", () => {
-  it("is some failing, else not yet run, else all passing; unknown when the runs are not read", () => {
-    expect(dqStatus(CHECKS.slice(0, 2))).toBe("failing");
-    expect(dqStatus([CHECKS[0], CHECKS[2]])).toBe("notRun");
-    expect(dqStatus([CHECKS[0]])).toBe("passing");
-    const unread = { ...CHECKS[0], checker: { ...CHECKS[0].checker!, latest_outcome: undefined } };
-    expect(dqStatus([unread])).toBeNull();
+  it("is some failing, else not yet run, else all passing; none when there are no checks", () => {
+    expect(dqStatus(DQ.promises)).toBe("failing");
+    expect(dqStatus([DQ.promises[0], DQ.expectations[0]])).toBe("notRun");
+    expect(dqStatus([DQ.promises[0]])).toBe("passing");
+    expect(dqStatus([])).toBeNull();
   });
 });
 

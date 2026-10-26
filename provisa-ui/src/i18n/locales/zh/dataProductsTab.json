@@ -101,7 +101,7 @@
         "dataQuality": "数据质量"
       },
       "dataQualityEmpty": "没有质量扫描",
-      "dataQualityHint": "其契约扫描此产品输出端口的检查器表。每次运行每项检查写入一行；成员关系跟随被扫描的表。",
+      "dataQualityHint": "产品的检查：对其输入的预期、对其成员表的承诺，以及其他方（或无人）对二者所做的相关检查。打开一项检查即可查看其结果。",
       "dqRulesAria": "显示 {{table}} 的质量规则",
       "dqRulesTitle": "质量规则 — {{table}}",
       "dqRulesEmpty": "该契约未定义任何检查",

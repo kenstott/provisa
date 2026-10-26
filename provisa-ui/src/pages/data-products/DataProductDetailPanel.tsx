@@ -18,7 +18,7 @@ import { DetailFields, type DetailField } from "../../components/detail/DetailFi
 import React, { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Alert, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
 import {
   Braces,
   Cable,
@@ -38,21 +38,23 @@ import { tableSqlRef } from "../../naming";
 import { Tip } from "../../components/Tip";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
-import type { ProductLineage } from "../../api/lineage";
+import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { GraphPanel } from "../../components/graph3d/GraphPanel";
 import { ClampedDetail } from "./ClampedDetail";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
-  checksOf,
   coreGraph,
   modelName,
   type CoreEdge,
   type CoreTable,
   type ProductCore,
 } from "./productCore";
-import { ClaimsCallout, DqIcon, InputsList, PartnersAndOrphans } from "./dataProductDq";
-import { checksIn } from "./dataProductClaims";
+import { ClaimsCallout, DqIcon, InputsList, OutcomeBadge } from "./dataProductDq";
+import { COLOR, dqStatus } from "./dataProductClaims";
+
+/** REQ-2157: the data quality section's rows, in order. */
+const DQ_ROWS = ["expectations", "promises", "related"] as const;
 
 interface TableRef {
   domain_id: string;
@@ -297,7 +299,7 @@ export function DataProductDetailPanel({
   // the indirect relationship rows are the product graph's, not the panel's.
   const related = core.edges?.filter((e) => e.kind === "related");
   // REQ-2157: the product's checks, from its lineage as its reader may read it (REQ-2156).
-  const checks = lineageGraph ? checksOf(lineageGraph.dq) : undefined;
+  const dq: ProductDq | undefined = lineageGraph?.dq;
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
 
   // Every value of the product, under the labels its form gives them.
@@ -345,6 +347,78 @@ export function DataProductDetailPanel({
       </ActionIcon>
     </Tip>
   );
+
+  // One check in a data quality row: its claim, the checker by its model name with its results
+  // in SQL and, where the product holds the checker, its rules; the table it scans; its latest run.
+  // A related check names the product owning it, or that none does.
+  const dqItem = (c: ProductDqEntry, related: boolean) => {
+    const checker = {
+      id: c.checker_table_id,
+      domain_id: c.domain_id,
+      table_name: c.table_name,
+      alias: c.alias,
+    };
+    const held = dqTables?.find((tb) => tb.id === c.checker_table_id);
+    return (
+      <List.Item key={c.checker_table_id} ff="monospace">
+        {c.description && (
+          <Text
+            size="sm"
+            fw={600}
+            ff="text"
+            data-testid={`data-product-detail-dq-claim-${c.checker_table_id}`}
+          >
+            {c.description}
+          </Text>
+        )}
+        <Group gap={4} wrap="nowrap">
+          <Text component="span" size="sm" ff="monospace">
+            {modelName(checker)}
+          </Text>
+          {/* The scan results are reached through SQL alone here — the other access patterns
+              belong to the output ports, not to the evidence. */}
+          {sqlDrill(checker, `data-product-detail-dq-sql-query-${c.checker_table_id}`)}
+          {held && (
+            <>
+              <Tip text={t("dataProductsTab.detail.dqRulesAria", { table: c.table_name })}>
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  aria-label={t("dataProductsTab.detail.dqRulesAria", { table: c.table_name })}
+                  data-testid={`data-product-detail-dq-rules-${c.checker_table_id}`}
+                  onClick={() => setRulesFor(c.checker_table_id)}
+                >
+                  <ListChecks size={14} />
+                </ActionIcon>
+              </Tip>
+              <DqRulesModal
+                opened={rulesFor === c.checker_table_id}
+                onClose={() => setRulesFor(null)}
+                rules={held.dq_rules ?? []}
+                scans={c.checked_table}
+                tableName={c.table_name}
+              />
+            </>
+          )}
+          <OutcomeBadge outcome={c.latest_outcome} />
+        </Group>
+        <Text
+          c="var(--text-muted)"
+          ff="text"
+          size="xs"
+          data-testid={`data-product-detail-dq-checks-${c.checker_table_id}`}
+        >
+          {t("dataProductCore.scans", { table: modelName(c.checked_table) })}
+          {related &&
+            ` · ${
+              c.owner_product_id
+                ? t("dataProductCore.assignedTo", { product: c.owner_product_id })
+                : t("dataProductCore.unassigned")
+            }`}
+        </Text>
+      </List.Item>
+    );
+  };
 
   const consumerRow = (tb: CoreTable) => {
     const field = rootOf(reader, tb);
@@ -479,10 +553,10 @@ export function DataProductDetailPanel({
             hint={t("dataProductsTab.detail.outputPortsHint")}
           >
             {/* REQ-2132: the product's promises, the checks it makes on its output ports. */}
-            {checks && (
+            {dq && (
               <ClaimsCallout
                 kind="promises"
-                checks={checksIn(checks, "promise")}
+                checks={dq.promises}
                 testId={`data-product-detail-promises-${p.id}`}
               />
             )}
@@ -495,9 +569,9 @@ export function DataProductDetailPanel({
                     {outputTables.map((tb) => (
                       <List.Item key={tb.id} ff="monospace">
                         {modelName(tb)}
-                        {checks && (
+                        {dq && (
                           <DqIcon
-                            checks={checksIn(checks, "promise")}
+                            checks={dq.promises}
                             tableId={tb.id}
                             testId={`data-product-detail-port-dq-${tb.id}`}
                           />
@@ -535,7 +609,7 @@ export function DataProductDetailPanel({
             )}
           </DetailCard>
         )}
-        {dqTables !== undefined && (
+        {dq && (
           <DetailCard
             section="dataQuality"
             testId={`data-product-card-dataQuality-${p.id}`}
@@ -543,74 +617,63 @@ export function DataProductDetailPanel({
             hint={t("dataProductsTab.detail.dataQualityHint")}
             tourId="data-product-dq"
           >
-            {dqTables.length === 0 ? (
+            {DQ_ROWS.every((row) => dq[row].length === 0) && dq.unattached.length === 0 ? (
               <Empty text={t("dataProductsTab.detail.dataQualityEmpty")} />
             ) : (
-              <List size="sm" data-testid={`data-product-detail-dq-tables-${p.id}`}>
-                {dqTables.map((tb) => {
-                  return (
-                    <List.Item key={tb.id} ff="monospace">
-                      {/* REQ-2132: the check's claim, why it exists, headlines it. */}
-                      {tb.description && (
-                        <Text
-                          size="sm"
-                          fw={600}
-                          ff="text"
-                          data-testid={`data-product-detail-dq-claim-${tb.id}`}
-                        >
-                          {tb.description}
-                        </Text>
-                      )}
-                      <Group gap={4} wrap="nowrap">
-                        <Text component="span" size="sm" ff="monospace">
-                          {modelName(tb)}
-                        </Text>
-                        {/* The scan results are reached through SQL alone here — the other
-                            access patterns belong to the output ports, not to the evidence. */}
-                        {sqlDrill(tb, `data-product-detail-dq-sql-query-${tb.id}`)}
-                        <Tip
-                          text={t("dataProductsTab.detail.dqRulesAria", { table: tb.table_name })}
-                        >
-                          <ActionIcon
-                            variant="subtle"
-                            size="sm"
-                            aria-label={t("dataProductsTab.detail.dqRulesAria", {
-                              table: tb.table_name,
-                            })}
-                            data-testid={`data-product-detail-dq-rules-${tb.id}`}
-                            onClick={() => setRulesFor(tb.id)}
-                          >
-                            <ListChecks size={14} />
-                          </ActionIcon>
-                        </Tip>
-                        <DqRulesModal
-                          opened={rulesFor === tb.id}
-                          onClose={() => setRulesFor(null)}
-                          rules={tb.dq_rules ?? []}
-                          scans={tb.checks ?? null}
-                          tableName={tb.table_name}
-                        />
-                      </Group>
-                      {tb.checks && (
-                        <Text
-                          c="var(--text-muted)"
-                          ff="text"
-                          size="xs"
-                          data-testid={`data-product-detail-dq-checks-${tb.id}`}
-                        >
-                          {t("dataProductCore.scans", {
-                            table: modelName(tb.checks),
-                          })}
-                        </Text>
-                      )}
-                    </List.Item>
-                  );
+              // REQ-2157: three expandable rows -- the product's expectations on its inputs, its
+              // promises on its members, and the related checks others make on either.
+              <div data-testid={`data-product-detail-dq-tables-${p.id}`}>
+                <Collapsibles id="data-product.dq-rows">
+                  {DQ_ROWS.map((row) => {
+                    const status = dqStatus(dq[row]);
+                    return (
+                      <CollapsibleItem
+                        key={row}
+                        value={row}
+                        testId={`data-product-detail-dq-${row}-${p.id}`}
+                        controlTestId={`data-product-detail-dq-${row}-${p.id}-toggle`}
+                        title={
+                          <Group gap={6} wrap="nowrap">
+                            <Text size="sm" fw={500}>
+                              {t(`dataProductCore.dqRow_${row}`)}
+                            </Text>
+                            <Badge size="sm" variant="light" color="gray">
+                              {dq[row].length}
+                            </Badge>
+                            {status && (
+                              <Badge size="sm" variant="light" color={COLOR[status]}>
+                                {t(`dataProductCore.status_${status}`)}
+                              </Badge>
+                            )}
+                          </Group>
+                        }
+                      >
+                        {dq[row].length === 0 ? (
+                          <Empty text={t("dataProductCore.dqRowEmpty")} />
+                        ) : (
+                          <List size="sm">{dq[row].map((c) => dqItem(c, row === "related"))}</List>
+                        )}
+                      </CollapsibleItem>
+                    );
+                  })}
+                </Collapsibles>
+              </div>
+            )}
+            {/* The product's own checks that scan neither an input nor a member. */}
+            {dq.unattached.map((c) => (
+              <Alert
+                key={c.checker_table_id}
+                color="yellow"
+                mt="xs"
+                title={t("dataProductCore.orphan")}
+                data-testid={`data-product-detail-dq-${p.id}-orphan-${c.checker_table_id}`}
+              >
+                {t("dataProductCore.orphanWarning", {
+                  checker: modelName(c),
+                  table: modelName(c.checked_table),
                 })}
-              </List>
-            )}
-            {checks && (
-              <PartnersAndOrphans checks={checks} testId={`data-product-detail-dq-${p.id}`} />
-            )}
+              </Alert>
+            ))}
           </DetailCard>
         )}
         {profiled !== undefined && outputTables?.some((tb) => tb.profile_results !== undefined) && (
@@ -789,16 +852,14 @@ export function DataProductDetailPanel({
             label={t("dataProductsTab.detail.field.inputPorts")}
             hint={t("dataProductCore.inputsHint")}
           >
-            {checks && (
-              <ClaimsCallout
-                kind="expectations"
-                checks={checksIn(checks, "expectation")}
-                testId={`data-product-detail-expectations-${p.id}`}
-              />
-            )}
+            <ClaimsCallout
+              kind="expectations"
+              checks={lineageGraph.dq.expectations}
+              testId={`data-product-detail-expectations-${p.id}`}
+            />
             <InputsList
               inputs={lineageGraph.inputs}
-              checks={checks ?? []}
+              expectations={lineageGraph.dq.expectations}
               testId={`data-product-detail-inputs-${p.id}`}
             />
           </DetailCard>

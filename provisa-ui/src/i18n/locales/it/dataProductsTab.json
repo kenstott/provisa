@@ -101,7 +101,7 @@
         "dataQuality": "Qualità dei dati"
       },
       "dataQualityEmpty": "Nessuna scansione di qualità",
-      "dataQualityHint": "Tabelle di controllo i cui contratti analizzano gli output port di questo prodotto. Ognuna registra una riga per controllo a ogni esecuzione; l'appartenenza segue la tabella analizzata.",
+      "dataQualityHint": "I controlli del prodotto: le sue aspettative sui suoi input, le sue promesse sulle sue tabelle membro e i controlli correlati che altri (o nessuno) fanno su entrambi. Apri un controllo per leggerne i risultati.",
       "dqRulesAria": "Mostra le regole di qualità per {{table}}",
       "dqRulesTitle": "Regole di qualità — {{table}}",
       "dqRulesEmpty": "Il contratto non definisce controlli",

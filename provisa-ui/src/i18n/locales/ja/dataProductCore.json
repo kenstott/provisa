@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "チェック: {{count}}、一部失敗",
     "dqIcon_notRun_one": "チェック: {{count}}、未実行",
     "dqIcon_notRun_other": "チェック: {{count}}、一部未実行",
-    "partnerDq": "パートナー DQ",
     "assignedTo": "{{product}} に割り当て",
     "unassigned": "どのプロダクトにも未割り当て",
     "orphan": "孤立したチェック",
     "orphanWarning": "{{checker}} はこのプロダクトに割り当てられていますが、入力でも出力ポートでもない {{table}} をチェックしています。",
-    "inProduct": "{{product}} 内"
+    "inProduct": "{{product}} 内",
+    "dqRow_expectations": "期待",
+    "dqRow_promises": "約束",
+    "dqRow_related": "関連",
+    "dqRowEmpty": "なし。"
   }
 }

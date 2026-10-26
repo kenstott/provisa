@@ -10,8 +10,9 @@
 
 // A data product's panel hydrates itself from the meta domain: one read of the product
 // (productCore.loadProductCore) is every card's content. That is the test of how well the meta
-// schema is defined. The decided exceptions are named below, never hidden: lineage and Input Ports
-// (the lineage API, scoped to the product) and the owner and team roles' people (resolveOwners).
+// schema is defined. The decided exceptions are named below, never hidden: lineage, Input Ports and
+// Data Quality (the product lineage endpoint, REQ-2156 and REQ-2157) and the owner and team roles'
+// people (resolveOwners).
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -29,7 +30,7 @@ vi.mock("../../../components/graph3d/GraphPanel", () => ({
 /** Each panel input, by where it comes from. */
 const META = ["p", "core", "coreError", "reader"]; // the meta domain: the product, its core, its schema
 const NOT_DATA = ["canEdit", "onEdit", "onDelete"]; // capabilities and callbacks
-/** Decided: the lineage DAG reads the lineage API, scoped to the product. */
+/** Decided: the lineage DAG, Input Ports and Data Quality read the product lineage endpoint. */
 const LINEAGE = [
   "lineageLoading",
   "lineageError",
@@ -160,7 +161,8 @@ describe("a data product's panel hydrates from the meta query", () => {
     expect(outputs).toHaveTextContent("pet-store.vets");
     expect(within(outputs).queryByText(/pets_quality/)).toBeNull();
     expect(part("data-product-detail-commands")).toHaveTextContent("add_pet");
-    expect(part("data-product-detail-dq-tables")).toHaveTextContent("pets_quality");
+    // Data Quality is the product lineage endpoint's (REQ-2157): nothing given, no card.
+    expect(screen.queryByTestId("data-product-card-dataQuality-pet_health")).toBeNull();
     expect(part("data-product-detail-profiles")).toHaveTextContent("pets");
     expect(part("data-product-detail-related-terms")).toHaveTextContent("Customer");
     expect(part("data-product-detail-related-tables")).toHaveTextContent("pet-store.owners");

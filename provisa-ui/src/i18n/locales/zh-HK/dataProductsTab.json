@@ -101,7 +101,7 @@
         "dataQuality": "數據質素"
       },
       "dataQualityEmpty": "沒有質素掃描",
-      "dataQualityHint": "其合約掃描此產品輸出埠的檢查表。每次執行每項檢查會寫入一行；成員資格跟隨被掃描的數據表。",
+      "dataQualityHint": "產品的檢查：對其輸入的預期、對其成員表的承諾，以及其他方（或無人）對兩者所做的相關檢查。開啟一項檢查即可查看其結果。",
       "dqRulesAria": "顯示 {{table}} 的質素規則",
       "dqRulesTitle": "質素規則 — {{table}}",
       "dqRulesEmpty": "合約未定義任何檢查",

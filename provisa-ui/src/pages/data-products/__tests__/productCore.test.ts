@@ -20,7 +20,7 @@ import {
   type Introspection,
   type MetaReader,
 } from "../../../api/metaGraph";
-import { checksOf, loadProductCore, panelQueries } from "../productCore";
+import { loadProductCore, panelQueries } from "../productCore";
 
 const s: GraphqlType = { kind: "SCALAR", name: "String" };
 const list = (name: string): GraphqlType => ({
@@ -194,35 +194,5 @@ describe("the panel's meta reads", () => {
     // Not in this role's schema: no section.
     expect(core?.tags).toBeUndefined();
     expect(core?.edges).toBeUndefined();
-  });
-});
-
-describe("a product's checks, from its lineage's data quality (REQ-2157)", () => {
-  it("are each list's entries, in the panel's states", () => {
-    const entry = (id: number) => ({
-      checker_table_id: id,
-      domain_id: "sales",
-      table_name: `check_${id}`,
-      alias: null,
-      description: null,
-      owner_product_id: id === 3 ? null : "c360",
-      checked_table_id: 1,
-      checked_table: { id: 1, domain_id: "sales", table_name: "customers", alias: null },
-      latest_outcome: null,
-      latest_run_at: null,
-    });
-    const checks = checksOf({
-      expectations: [entry(1)],
-      promises: [entry(2)],
-      related: [entry(3)],
-      unattached: [entry(4)],
-    });
-    expect(checks.map((c) => [c.checker_table_id, c.state, c.assigned_product_id])).toEqual([
-      [1, "expectation", "c360"],
-      [2, "promise", "c360"],
-      [3, "partner_dq", null],
-      [4, "orphan", "c360"],
-    ]);
-    expect(checks[0].checked_table.table_name).toBe("customers");
   });
 });

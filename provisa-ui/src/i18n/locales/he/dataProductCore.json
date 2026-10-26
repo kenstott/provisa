@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "בדיקות: {{count}}, חלק נכשלות",
     "dqIcon_notRun_one": "בדיקות: {{count}}, טרם הורצה",
     "dqIcon_notRun_other": "בדיקות: {{count}}, לא כולן הורצו",
-    "partnerDq": "DQ של שותפים",
     "assignedTo": "משויכת ל-{{product}}",
     "unassigned": "לא משויכת לאף מוצר",
     "orphan": "בדיקה יתומה",
     "orphanWarning": "{{checker}} משויכת למוצר הזה אבל בודקת את {{table}}, שאינה אחד הקלטים שלו ולא אחד מפורטי הפלט שלו.",
-    "inProduct": "ב-{{product}}"
+    "inProduct": "ב-{{product}}",
+    "dqRow_expectations": "ציפיות",
+    "dqRow_promises": "הבטחות",
+    "dqRow_related": "קשורות",
+    "dqRowEmpty": "אין."
   }
 }

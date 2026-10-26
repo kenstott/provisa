@@ -101,7 +101,7 @@
         "dataQuality": "Datakwaliteit"
       },
       "dataQualityEmpty": "Geen kwaliteitsscans",
-      "dataQualityHint": "Checkertabellen waarvan de contracten de uitvoerpoorten van dit product scannen. Elk legt per controle per run één rij vast; lidmaatschap volgt de gescande tabel.",
+      "dataQualityHint": "De controles van het product: zijn verwachtingen van zijn invoer, zijn beloften over zijn lidtabellen en gerelateerde controles die anderen (of niemand) op een van beide uitvoeren. Open een controle om de resultaten te lezen.",
       "dqRulesAria": "Kwaliteitsregels voor {{table}} tonen",
       "dqRulesTitle": "Kwaliteitsregels — {{table}}",
       "dqRulesEmpty": "Het contract definieert geen controles",

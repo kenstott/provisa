@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "{{count}} contrôles, certains en échec",
     "dqIcon_notRun_one": "{{count}} contrôle, pas encore exécuté",
     "dqIcon_notRun_other": "{{count}} contrôles, pas tous exécutés",
-    "partnerDq": "DQ des partenaires",
     "assignedTo": "attribué à {{product}}",
     "unassigned": "attribué à aucun produit",
     "orphan": "Contrôle orphelin",
     "orphanWarning": "{{checker}} est attribué à ce produit mais contrôle {{table}}, qui n'est ni une de ses entrées ni un de ses ports de sortie.",
-    "inProduct": "dans {{product}}"
+    "inProduct": "dans {{product}}",
+    "dqRow_expectations": "Attentes",
+    "dqRow_promises": "Promesses",
+    "dqRow_related": "Associées",
+    "dqRowEmpty": "Aucune."
   }
 }

@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "{{count}} जाँचें, कुछ विफल",
     "dqIcon_notRun_one": "{{count}} जाँच, अभी नहीं चली",
     "dqIcon_notRun_other": "{{count}} जाँचें, सभी नहीं चलीं",
-    "partnerDq": "पार्टनर DQ",
     "assignedTo": "{{product}} को सौंपी गई",
     "unassigned": "किसी प्रोडक्ट को नहीं सौंपी गई",
     "orphan": "अनाथ जाँच",
     "orphanWarning": "{{checker}} इस प्रोडक्ट को सौंपी गई है पर {{table}} की जाँच करती है, जो न इसका इनपुट है न आउटपुट पोर्ट।",
-    "inProduct": "{{product}} में"
+    "inProduct": "{{product}} में",
+    "dqRow_expectations": "अपेक्षाएँ",
+    "dqRow_promises": "वादे",
+    "dqRow_related": "संबंधित",
+    "dqRowEmpty": "कोई नहीं।"
   }
 }

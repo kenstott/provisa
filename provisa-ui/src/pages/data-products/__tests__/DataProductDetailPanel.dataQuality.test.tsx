@@ -16,6 +16,7 @@ import { render, screen, within, fireEvent } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { DataProduct } from "../../../types/admin";
 import type { CoreTable } from "../productCore";
+import type { ProductDq, ProductDqEntry } from "../../../api/lineage";
 import i18n from "../../../i18n";
 
 // The panel parses nothing: a checker table's rules come with it, as meta's dq_rules rows.
@@ -74,7 +75,23 @@ const VETS_SCAN = makeTable({
   ],
 });
 
-function renderPanel(tables: CoreTable[]) {
+// The product lineage endpoint's data quality (REQ-2157): vets_scan, the product's own check on its
+// member vets, is a promise.
+const VETS_PROMISE: ProductDqEntry = {
+  checker_table_id: 2,
+  domain_id: "pet-store",
+  table_name: "vets_scan",
+  alias: null,
+  description: "Soda contract over vets",
+  owner_product_id: "pet_health",
+  checked_table_id: 1,
+  checked_table: { id: 1, domain_id: "pet-store", table_name: "vets", alias: null },
+  latest_outcome: "pass",
+  latest_run_at: "2026-10-20T10:00:00Z",
+};
+const NO_DQ: ProductDq = { expectations: [], promises: [], related: [], unattached: [] };
+
+function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: [VETS_PROMISE] }) {
   render(
     <DataProductDetailPanel
       p={PRODUCT}
@@ -88,7 +105,7 @@ function renderPanel(tables: CoreTable[]) {
       canEdit={false}
       lineageLoading={false}
       lineageError=""
-      lineageGraph={null}
+      lineageGraph={{ nodes: [], edges: [], outputs: [], members: [], inputs: [], dq }}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,
@@ -126,7 +143,7 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
   });
 
   it("shows the empty state when no checker scans the product", () => {
-    renderPanel([VETS]);
+    renderPanel([VETS], NO_DQ);
     expect(screen.queryByTestId("data-product-detail-dq-tables-pet_health")).toBeNull();
     expect(screen.getByText(t("dataProductsTab.detail.dataQualityEmpty"))).toBeTruthy();
   });
@@ -157,10 +174,15 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
   });
 
   it("names a checker by its alias, as the model does", () => {
-    renderPanel([
-      VETS,
-      { ...VETS_SCAN, table_name: "vets_quality_dq_soda_dq", alias: "vets_quality" },
-    ]);
+    renderPanel(
+      [VETS, { ...VETS_SCAN, table_name: "vets_quality_dq_soda_dq", alias: "vets_quality" }],
+      {
+        ...NO_DQ,
+        promises: [
+          { ...VETS_PROMISE, table_name: "vets_quality_dq_soda_dq", alias: "vets_quality" },
+        ],
+      },
+    );
     const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
     expect(dq).toHaveTextContent("pet-store.vets_quality");
     expect(dq).not.toHaveTextContent("vets_quality_dq_soda_dq");

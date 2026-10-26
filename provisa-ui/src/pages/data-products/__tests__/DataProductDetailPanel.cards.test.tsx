@@ -98,9 +98,10 @@ describe("a data product's cards", () => {
     first.unmount();
     panel();
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
-    expect(
-      screen.getByTestId("data-product-card-graph-pet_health-toggle"),
-    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("data-product-card-graph-pet_health-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 
   it("keep their content inside them: what cannot wrap scrolls within the card", () => {

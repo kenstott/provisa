@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "{{count}} checks, some failing",
     "dqIcon_notRun_one": "{{count}} check, not yet run",
     "dqIcon_notRun_other": "{{count}} checks, not all run yet",
-    "partnerDq": "Partner DQ",
     "assignedTo": "assigned to {{product}}",
     "unassigned": "assigned to no product",
     "orphan": "Orphan check",
     "orphanWarning": "{{checker}} is assigned to this product but scans {{table}}, which is neither one of its inputs nor one of its output ports.",
-    "inProduct": "in {{product}}"
+    "inProduct": "in {{product}}",
+    "dqRow_expectations": "Expectations",
+    "dqRow_promises": "Promises",
+    "dqRow_related": "Related",
+    "dqRowEmpty": "None."
   }
 }

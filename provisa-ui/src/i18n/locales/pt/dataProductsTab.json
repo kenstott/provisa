@@ -101,7 +101,7 @@
         "dataQuality": "Qualidade de dados"
       },
       "dataQualityEmpty": "Nenhuma verificação de qualidade",
-      "dataQualityHint": "Tabelas verificadoras cujos contratos verificam as portas de saída deste produto. Cada uma grava uma linha por verificação por execução; a associação segue a tabela verificada.",
+      "dataQualityHint": "As verificações do produto: suas expectativas sobre suas entradas, suas promessas sobre suas tabelas membro e as verificações relacionadas que outros (ou ninguém) fazem em qualquer uma delas. Abra uma verificação para ler seus resultados.",
       "dqRulesAria": "Mostrar regras de qualidade de {{table}}",
       "dqRulesTitle": "Regras de qualidade — {{table}}",
       "dqRulesEmpty": "O contrato não define verificações",

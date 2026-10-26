@@ -101,7 +101,7 @@
         "dataQuality": "Qualité des données"
       },
       "dataQualityEmpty": "Aucune analyse de qualité",
-      "dataQualityHint": "Tables de vérification dont les contrats analysent les ports de sortie de ce produit. Chacune enregistre une ligne par contrôle et par exécution ; l'appartenance suit la table analysée.",
+      "dataQualityHint": "Les contrôles du produit : ses attentes sur ses entrées, ses promesses sur ses tables membres et les contrôles associés que d'autres (ou personne) font sur les unes ou les autres. Ouvrez un contrôle pour lire ses résultats.",
       "dqRulesAria": "Afficher les règles de qualité de {{table}}",
       "dqRulesTitle": "Règles de qualité : {{table}}",
       "dqRulesEmpty": "Le contrat ne définit aucun contrôle",

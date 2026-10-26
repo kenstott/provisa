@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "Проверок: {{count}}, некоторые не пройдены",
     "dqIcon_notRun_one": "Проверок: {{count}}, ещё не запускалась",
     "dqIcon_notRun_other": "Проверок: {{count}}, запущены не все",
-    "partnerDq": "DQ партнёров",
     "assignedTo": "назначена продукту {{product}}",
     "unassigned": "не назначена ни одному продукту",
     "orphan": "Осиротевшая проверка",
     "orphanWarning": "{{checker}} назначена этому продукту, но проверяет {{table}}, которая не является ни его входом, ни его выходным портом.",
-    "inProduct": "в {{product}}"
+    "inProduct": "в {{product}}",
+    "dqRow_expectations": "Ожидания",
+    "dqRow_promises": "Обещания",
+    "dqRow_related": "Связанные",
+    "dqRowEmpty": "Нет."
   }
 }

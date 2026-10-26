@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "{{count}} 項檢查，部分失敗",
     "dqIcon_notRun_one": "{{count}} 項檢查，尚未執行",
     "dqIcon_notRun_other": "{{count}} 項檢查，未全部執行",
-    "partnerDq": "合作方 DQ",
     "assignedTo": "已分配給 {{product}}",
     "unassigned": "未分配給任何產品",
     "orphan": "孤立檢查",
     "orphanWarning": "{{checker}} 已分配給本產品，但它檢查的 {{table}} 既不是本產品的輸入，也不是其輸出端口。",
-    "inProduct": "屬於 {{product}}"
+    "inProduct": "屬於 {{product}}",
+    "dqRow_expectations": "預期",
+    "dqRow_promises": "承諾",
+    "dqRow_related": "相關",
+    "dqRowEmpty": "無。"
   }
 }

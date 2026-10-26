@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "{{count}} 项检查，部分失败",
     "dqIcon_notRun_one": "{{count}} 项检查，尚未运行",
     "dqIcon_notRun_other": "{{count}} 项检查，未全部运行",
-    "partnerDq": "合作方 DQ",
     "assignedTo": "已分配给 {{product}}",
     "unassigned": "未分配给任何产品",
     "orphan": "孤立检查",
     "orphanWarning": "{{checker}} 已分配给本产品，但它检查的 {{table}} 既不是本产品的输入，也不是其输出端口。",
-    "inProduct": "属于 {{product}}"
+    "inProduct": "属于 {{product}}",
+    "dqRow_expectations": "预期",
+    "dqRow_promises": "承诺",
+    "dqRow_related": "相关",
+    "dqRowEmpty": "无。"
   }
 }

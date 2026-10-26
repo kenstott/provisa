@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "{{count}} verificações, algumas falhando",
     "dqIcon_notRun_one": "{{count}} verificação, ainda não executada",
     "dqIcon_notRun_other": "{{count}} verificações, nem todas executadas",
-    "partnerDq": "DQ de parceiros",
     "assignedTo": "atribuída a {{product}}",
     "unassigned": "atribuída a nenhum produto",
     "orphan": "Verificação órfã",
     "orphanWarning": "{{checker}} está atribuída a este produto, mas verifica {{table}}, que não é uma de suas entradas nem uma de suas portas de saída.",
-    "inProduct": "em {{product}}"
+    "inProduct": "em {{product}}",
+    "dqRow_expectations": "Expectativas",
+    "dqRow_promises": "Promessas",
+    "dqRow_related": "Relacionadas",
+    "dqRowEmpty": "Nenhuma."
   }
 }

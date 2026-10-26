@@ -9,24 +9,21 @@
 // permission from the copyright holder.
 
 // REQ-2132, REQ-2157: a data product's quality claims, as its lineage gives them (the product
-// lineage endpoint's dq: each checker table's description and latest run). Output Ports carry the product's Promises, Inputs
-// its Expectations: each a count, a summary status and a list one click away, every row opening the
-// checker's results. A dataset with checks shows a DQ icon coloured by their latest result; other
-// products' (or no product's) checks are listed as partner DQ, and the product's own checks that
-// scan neither an input nor an output port as orphans.
+// lineage endpoint's dq: each checker table's description and latest run). Output Ports carry the
+// product's Promises, Inputs its Expectations: each a count, a summary status and a list one click
+// away, every row opening the checker's results. A dataset with checks shows a DQ icon coloured by
+// their latest result.
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Alert, Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@mantine/core";
+import { Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@mantine/core";
 import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { tableSqlRef } from "../../naming";
-import type { ProductInput } from "../../api/lineage";
-import { modelName, type CoreCheck } from "./productCore";
-import { checksIn, dqStatus, type DqStatus } from "./dataProductClaims";
-
-const COLOR: Record<DqStatus, string> = { passing: "green", failing: "red", notRun: "gray" };
+import type { ProductDqEntry, ProductInput } from "../../api/lineage";
+import { modelName } from "./productCore";
+import { COLOR, dqStatus } from "./dataProductClaims";
 
 /** The DQ icon of a dataset: its checks' latest result. Nothing when it has no checks. */
 export function DqIcon({
@@ -34,7 +31,7 @@ export function DqIcon({
   tableId,
   testId,
 }: {
-  checks: CoreCheck[];
+  checks: ProductDqEntry[];
   tableId: number | null | undefined;
   testId: string;
 }) {
@@ -59,9 +56,9 @@ export function DqIcon({
   );
 }
 
-const datasetOf = (c: CoreCheck) => (c.checked_table ? modelName(c.checked_table) : "");
+const datasetOf = (c: ProductDqEntry) => modelName(c.checked_table);
 
-function ClaimRows({ checks, testId }: { checks: CoreCheck[]; testId: string }) {
+function ClaimRows({ checks, testId }: { checks: ProductDqEntry[]; testId: string }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   return (
@@ -76,49 +73,35 @@ function ClaimRows({ checks, testId }: { checks: CoreCheck[]; testId: string }) 
       </Table.Thead>
       <Table.Tbody>
         {checks.map((c) => {
-          const outcome = c.checker?.latest_outcome;
-          const ran = c.checker?.latest_run_at;
-          const results = c.checker
-            ? tableSqlRef({
-                domainId: c.checker.domain_id,
-                tableName: c.checker.table_name,
-                alias: c.checker.alias,
-              })
-            : null;
+          const outcome = c.latest_outcome;
+          const ran = c.latest_run_at;
+          const results = tableSqlRef({
+            domainId: c.domain_id,
+            tableName: c.table_name,
+            alias: c.alias,
+          });
           const open = () =>
-            results &&
             navigate("/sql", { state: { sql: `select * from ${results}`, autoRun: true } });
           return (
             <Table.Tr
-              key={c.id}
+              key={c.checker_table_id}
               onClick={open}
               style={{ cursor: "pointer" }}
               data-testid={`${testId}-row-${c.checker_table_id}`}
             >
               <Table.Td>
                 <Text size="sm" fw={500}>
-                  {c.checker?.description || (c.checker && modelName(c.checker))}
+                  {c.description || modelName(c)}
                 </Text>
                 <Text size="xs" c="var(--text-muted)" ff="monospace">
-                  {c.checker ? modelName(c.checker) : c.checker_table_id}
+                  {modelName(c)}
                 </Text>
               </Table.Td>
               <Table.Td ff="monospace">{datasetOf(c)}</Table.Td>
               <Table.Td>
-                {outcome === undefined ? (
-                  ""
-                ) : (
-                  <Badge
-                    size="sm"
-                    color={outcome === "pass" ? "green" : outcome === "fail" ? "red" : "gray"}
-                  >
-                    {t(`dataProductCore.outcome_${outcome ?? "none"}`)}
-                  </Badge>
-                )}
+                <OutcomeBadge outcome={outcome} />
               </Table.Td>
-              <Table.Td>
-                {ran ? new Date(ran).toLocaleString(i18n.language) : outcome === null ? "—" : ""}
-              </Table.Td>
+              <Table.Td>{ran ? new Date(ran).toLocaleString(i18n.language) : "—"}</Table.Td>
             </Table.Tr>
           );
         })}
@@ -135,7 +118,7 @@ export function ClaimsCallout({
   testId,
 }: {
   kind: "promises" | "expectations";
-  checks: CoreCheck[];
+  checks: ProductDqEntry[];
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -178,50 +161,13 @@ export function ClaimsCallout({
   );
 }
 
-/** Other products' checks (or no product's) on this product's ports and inputs, and this
- * product's own checks that scan neither: listed apart, so they never count as its claims. */
-export function PartnersAndOrphans({ checks, testId }: { checks: CoreCheck[]; testId: string }) {
+/** A check's latest run: passed, failed, or not yet run. */
+export function OutcomeBadge({ outcome }: { outcome: ProductDqEntry["latest_outcome"] }) {
   const { t } = useTranslation();
-  const partners = checksIn(checks, "partner_dq");
-  const orphans = checksIn(checks, "orphan");
   return (
-    <>
-      {partners.length > 0 && (
-        <div data-testid={`${testId}-partners`}>
-          <Text c="dimmed" fw={500} size="xs" tt="uppercase" mt="sm">
-            {t("dataProductCore.partnerDq")}
-          </Text>
-          <List size="sm">
-            {partners.map((c) => (
-              <List.Item key={c.id}>
-                {c.checker?.description || (c.checker && modelName(c.checker))}
-                <Text component="span" c="var(--text-muted)" size="xs" ff="monospace">
-                  {" "}
-                  {datasetOf(c)} ·{" "}
-                  {c.assigned_product_id
-                    ? t("dataProductCore.assignedTo", { product: c.assigned_product_id })
-                    : t("dataProductCore.unassigned")}
-                </Text>
-              </List.Item>
-            ))}
-          </List>
-        </div>
-      )}
-      {orphans.map((c) => (
-        <Alert
-          key={c.id}
-          color="yellow"
-          mt="xs"
-          title={t("dataProductCore.orphan")}
-          data-testid={`${testId}-orphan-${c.checker_table_id}`}
-        >
-          {t("dataProductCore.orphanWarning", {
-            checker: c.checker ? modelName(c.checker) : "",
-            table: datasetOf(c),
-          })}
-        </Alert>
-      ))}
-    </>
+    <Badge size="sm" color={outcome === "pass" ? "green" : outcome === "fail" ? "red" : "gray"}>
+      {t(`dataProductCore.outcome_${outcome ?? "none"}`)}
+    </Badge>
   );
 }
 
@@ -235,11 +181,12 @@ function inputName(input: ProductInput): string {
 /** REQ-2126: the product's nearest physical inputs, each with its expectations' DQ icon. */
 export function InputsList({
   inputs,
-  checks,
+  expectations,
   testId,
 }: {
   inputs: ProductInput[];
-  checks: CoreCheck[];
+  /** The product's expectations: the checks it makes on its inputs (REQ-2157). */
+  expectations: ProductDqEntry[];
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -250,7 +197,6 @@ export function InputsList({
       </Text>
     );
   }
-  const expectations = checksIn(checks, "expectation");
   return (
     <List size="sm" data-testid={testId}>
       {inputs.map((input) => (

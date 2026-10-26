@@ -44,11 +44,14 @@
     "dqIcon_failing_other": "{{count}} controles, enkele mislukt",
     "dqIcon_notRun_one": "{{count}} controle, nog niet uitgevoerd",
     "dqIcon_notRun_other": "{{count}} controles, niet alle uitgevoerd",
-    "partnerDq": "Partner-DQ",
     "assignedTo": "toegewezen aan {{product}}",
     "unassigned": "aan geen product toegewezen",
     "orphan": "Verweesde controle",
     "orphanWarning": "{{checker}} is aan dit product toegewezen maar controleert {{table}}, dat geen invoer en geen uitvoerpoort ervan is.",
-    "inProduct": "in {{product}}"
+    "inProduct": "in {{product}}",
+    "dqRow_expectations": "Verwachtingen",
+    "dqRow_promises": "Beloften",
+    "dqRow_related": "Gerelateerd",
+    "dqRowEmpty": "Geen."
   }
 }

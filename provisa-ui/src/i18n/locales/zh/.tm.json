@@ -1052,7 +1052,7 @@
   "zh/dataProductsTab.json::dataProductsTab.deleted": "Data product {{id}} deleted",
   "zh/dataProductsTab.json::dataProductsTab.detail.customPropertiesEmpty": "No custom properties",
   "zh/dataProductsTab.json::dataProductsTab.detail.dataQualityEmpty": "No quality scans",
-  "zh/dataProductsTab.json::dataProductsTab.detail.dataQualityHint": "Checker tables whose contracts scan this product's output ports. Each lands one row per check per run; membership follows the scanned table.",
+  "zh/dataProductsTab.json::dataProductsTab.detail.dataQualityHint": "The product's checks: its expectations on its inputs, its promises on its member tables, and related checks that others (or no one) make on either. Open a check to read its results.",
   "zh/dataProductsTab.json::dataProductsTab.detail.dqRulesAria": "Show quality rules for {{table}}",
   "zh/dataProductsTab.json::dataProductsTab.detail.dqRulesEmpty": "The contract defines no checks",
   "zh/dataProductsTab.json::dataProductsTab.detail.dqRulesTitle": "Quality rules — {{table}}",
@@ -8136,7 +8136,6 @@
   "zh/dataProductCore.json::dataProductCore.outcome_fail": "failed",
   "zh/dataProductCore.json::dataProductCore.outcome_none": "not yet run",
   "zh/dataProductCore.json::dataProductCore.outcome_pass": "passed",
-  "zh/dataProductCore.json::dataProductCore.partnerDq": "Partner DQ",
   "zh/dataProductCore.json::dataProductCore.promisesTitle": "Promises: the checks this product makes on its output ports",
   "zh/dataProductCore.json::dataProductCore.promises_one": "{{count}} promise",
   "zh/dataProductCore.json::dataProductCore.promises_other": "{{count}} promises",
@@ -8152,5 +8151,9 @@
   "zh/tableEditForm.json::tableEditForm.holdOnFailingChecksHelp": "Abort a refresh, keeping the previous copy, when the latest run of a checker table scanning one of this view's inputs failed. Runs before the preflight check above; both must continue.",
   "zh/tableEditForm.json::tableEditForm.holdOnFailingChecksHideCode": "Hide its code",
   "zh/tableEditForm.json::tableEditForm.holdOnFailingChecksLabel": "Hold on failing checks",
-  "zh/tableEditForm.json::tableEditForm.holdOnFailingChecksShowCode": "Show its code"
+  "zh/tableEditForm.json::tableEditForm.holdOnFailingChecksShowCode": "Show its code",
+  "zh/dataProductCore.json::dataProductCore.dqRow_expectations": "Expectations",
+  "zh/dataProductCore.json::dataProductCore.dqRow_promises": "Promises",
+  "zh/dataProductCore.json::dataProductCore.dqRow_related": "Related",
+  "zh/dataProductCore.json::dataProductCore.dqRowEmpty": "None."
 }

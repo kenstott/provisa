@@ -27,7 +27,6 @@ import {
   type ProductRow as GraphProductRow,
 } from "../../components/graph3d/productGraphData";
 import type { GraphData } from "../../components/graph3d/graphModel";
-import type { ProductDq } from "../../api/lineage";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataProduct } from "../../types/admin";
 
@@ -230,59 +229,6 @@ export interface CoreEdge {
     alias: string | null;
     description: string | null;
   } | null;
-}
-
-/** REQ-1443's states for a checker table touching a product. */
-export type CheckState = "promise" | "expectation" | "partner_dq" | "orphan";
-
-export interface CoreCheck {
-  id: string;
-  state: CheckState;
-  checker_table_id: number;
-  checked_table_id: number;
-  assigned_product_id: string | null;
-  checker: {
-    id: number;
-    domain_id: string;
-    table_name: string;
-    alias: string | null;
-    description: string | null;
-    /** null when the check has never run; absent when its run is not read. */
-    latest_outcome?: "pass" | "fail" | null;
-    latest_run_at: string | null;
-  };
-  checked_table: { id: number; domain_id: string; table_name: string; alias: string | null };
-}
-
-/** REQ-2157's lists as the panel's states, until its three rows read them directly. */
-const STATE_OF: Record<keyof ProductDq, CheckState> = {
-  expectations: "expectation",
-  promises: "promise",
-  related: "partner_dq",
-  unattached: "orphan",
-};
-
-/** The product's checks, from its lineage's data quality (the product lineage endpoint). */
-export function checksOf(dq: ProductDq): CoreCheck[] {
-  return (Object.keys(STATE_OF) as (keyof ProductDq)[]).flatMap((list) =>
-    dq[list].map((e) => ({
-      id: `${list}:${e.checker_table_id}`,
-      state: STATE_OF[list],
-      checker_table_id: e.checker_table_id,
-      checked_table_id: e.checked_table_id,
-      assigned_product_id: e.owner_product_id,
-      checker: {
-        id: e.checker_table_id,
-        domain_id: e.domain_id,
-        table_name: e.table_name,
-        alias: e.alias,
-        description: e.description,
-        latest_outcome: e.latest_outcome,
-        latest_run_at: e.latest_run_at,
-      },
-      checked_table: e.checked_table,
-    })),
-  );
 }
 
 /** A registered table as the model names it: its domain, then its alias where it has one. Every

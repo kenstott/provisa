@@ -10,20 +10,19 @@
 
 // REQ-2132: a product's checks summarised: which state each is in, and how their latest runs went.
 
-import type { CheckState, CoreCheck } from "./productCore";
+import type { ProductDqEntry } from "../../api/lineage";
 
 export type DqStatus = "passing" | "failing" | "notRun";
 
+/** The colour each summary status is drawn in. */
+export const COLOR: Record<DqStatus, string> = { passing: "green", failing: "red", notRun: "gray" };
+
 /** The summary of ``checks``' latest runs: some failing, else not yet run, else all passing; null
- * when the role's schema does not say how they ran. */
-export function dqStatus(checks: CoreCheck[]): DqStatus | null {
+ * when there are none. */
+export function dqStatus(checks: ProductDqEntry[]): DqStatus | null {
   if (checks.length === 0) return null;
-  const outcomes = checks.map((c) => c.checker?.latest_outcome);
-  if (outcomes.some((o) => o === undefined)) return null;
+  const outcomes = checks.map((c) => c.latest_outcome);
   if (outcomes.includes("fail")) return "failing";
   if (outcomes.includes(null)) return "notRun";
   return "passing";
 }
-
-export const checksIn = (checks: CoreCheck[] | undefined, state: CheckState) =>
-  (checks ?? []).filter((c) => c.state === state);
