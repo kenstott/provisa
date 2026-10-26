@@ -49,6 +49,7 @@ import { PageLoading } from "../components/PageLoading";
 import { FormFooter } from "../components/form/FormLayout";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { matchesQuery } from "../lib/searchItems";
+import { useAuth } from "../context/AuthContext";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
@@ -92,6 +93,10 @@ export function DataProductsPage() {
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
+  // REQ-2160: a product's owner is a reader acting as its owner or team role.
+  const { selectedRoles } = useAuth();
+  const ownsProduct = (p: DataProduct) =>
+    selectedRoles.some((r) => r.id === p.ownerRole || r.id === p.teamRole);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
@@ -515,6 +520,7 @@ export function DataProductsPage() {
                                 coreError={core.error}
                                 reader={reader}
                                 canEdit={canEdit}
+                                owner={ownsProduct(p)}
                                 lineageLoading={lineageLoading}
                                 lineageError={lineageError}
                                 lineageGraph={lineageGraph}

@@ -109,6 +109,10 @@ interface DataProductDetailPanelProps {
   reader: MetaReader | null;
   // REQ-1634: gates Edit/Delete.
   canEdit: boolean;
+  /** REQ-2160: the reader holds the product's owner or team role. The owner also sees its
+   *  expectations, related and unattached checks, and its input ports; any other reader sees its
+   *  promises. What either is shown is already cut to the reader's rights (REQ-2152). */
+  owner: boolean;
   lineageLoading: boolean;
   lineageError: string;
   // REQ-1640, REQ-2156: the product's member tables, their full upstream ancestry and one hop
@@ -220,6 +224,7 @@ export function DataProductDetailPanel({
   coreError,
   reader,
   canEdit,
+  owner,
   lineageLoading,
   lineageError,
   lineageGraph,
@@ -300,6 +305,8 @@ export function DataProductDetailPanel({
   const related = core.edges?.filter((e) => e.kind === "related");
   // REQ-2157: the product's checks, from its lineage as its reader may read it (REQ-2156).
   const dq: ProductDq | undefined = lineageGraph?.dq;
+  // REQ-2160: the owner sees every row; any other reader the product's promises.
+  const shownDqRows: readonly (typeof DQ_ROWS)[number][] = owner ? DQ_ROWS : ["promises"];
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
 
   // Every value of the product, under the labels its form gives them.
@@ -620,14 +627,15 @@ export function DataProductDetailPanel({
             hint={t("dataProductsTab.detail.dataQualityHint")}
             tourId="data-product-dq"
           >
-            {DQ_ROWS.every((row) => dq[row].length === 0) && dq.unattached.length === 0 ? (
+            {shownDqRows.every((row) => dq[row].length === 0) &&
+            (!owner || dq.unattached.length === 0) ? (
               <Empty text={t("dataProductsTab.detail.dataQualityEmpty")} />
             ) : (
               // REQ-2157: three expandable rows -- the product's expectations on its inputs, its
               // promises on its members, and the related checks others make on either.
               <div data-testid={`data-product-detail-dq-tables-${p.id}`}>
                 <Collapsibles id="data-product.dq-rows">
-                  {DQ_ROWS.map((row) => {
+                  {shownDqRows.map((row) => {
                     const status = dqStatus(dq[row]);
                     return (
                       <CollapsibleItem
@@ -662,8 +670,8 @@ export function DataProductDetailPanel({
                 </Collapsibles>
               </div>
             )}
-            {/* The product's own checks that scan neither an input nor a member. */}
-            {dq.unattached.map((c) => (
+            {/* The product's own checks that scan neither an input nor a member: the owner's. */}
+            {(owner ? dq.unattached : []).map((c) => (
               <Alert
                 key={c.checker_table_id}
                 color="yellow"
@@ -848,7 +856,7 @@ export function DataProductDetailPanel({
         </DetailCard>
         {/* REQ-2126, REQ-2132: the nearest physical inputs and the product's expectations of them,
             found on the product's lineage as its reader may read it (REQ-2156). */}
-        {lineageGraph && (
+        {lineageGraph && owner && (
           <DetailCard
             section="inputPorts"
             testId={`data-product-card-inputPorts-${p.id}`}
@@ -952,19 +960,22 @@ export function DataProductDetailPanel({
       </div>
       {canEdit && (
         <Group gap="xs" mt={4}>
-          <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
-            <ActionIcon
-              variant="subtle"
-              aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
-              data-testid={`data-product-detail-edit-${p.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit();
-              }}
-            >
-              <Pencil size={14} />
-            </ActionIcon>
-          </Tip>
+          {/* REQ-2160: its owner edits the product's contracts; any other reader does not. */}
+          {owner && (
+            <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
+              <ActionIcon
+                variant="subtle"
+                aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
+                data-testid={`data-product-detail-edit-${p.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+              >
+                <Pencil size={14} />
+              </ActionIcon>
+            </Tip>
+          )}
           <Tip text={t("dataProductsTab.deleteDataProduct", { id: p.id })} named>
             <ActionIcon
               variant="subtle"

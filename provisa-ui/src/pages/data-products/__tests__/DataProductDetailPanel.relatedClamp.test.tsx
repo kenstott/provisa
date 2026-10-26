@@ -68,6 +68,7 @@ function panel() {
       coreError={null}
       reader={null}
       canEdit={false}
+      owner
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}

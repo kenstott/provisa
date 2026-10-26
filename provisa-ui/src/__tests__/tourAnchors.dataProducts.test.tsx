@@ -41,7 +41,7 @@ vi.mock("../components/graph3d/GraphPanel", () => ({
   GraphPanel: () => null,
 }));
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
+  useAuth: () => ({ role: { id: "admin", capabilities: [] }, selectedRoles: [{ id: "admin" }] }),
 }));
 vi.mock("../hooks/useCapability", () => ({ useCapability: () => true }));
 vi.mock("../api/actions", () => ({

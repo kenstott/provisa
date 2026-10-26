@@ -128,6 +128,7 @@ function panel() {
       lineageError=""
       lineageGraph={LINEAGE}
       canEdit={false}
+      owner
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,
@@ -199,6 +200,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
         lineageError=""
         lineageGraph={lineage({ ...DQ, related: [...DQ.related, partner] })}
         canEdit={false}
+        owner
         onEdit={vi.fn()}
         onDelete={vi.fn()}
       />,
@@ -234,6 +236,46 @@ describe("a data product's quality claims (REQ-2132)", () => {
     expect(screen.getByTestId("data-product-detail-dq-claim-11")).toHaveTextContent(
       "Customers are unique so counts reconcile",
     );
+  });
+});
+
+describe("the owner's view and any other reader's (REQ-2160)", () => {
+  const view = (owner: boolean) =>
+    render(
+      <DataProductDetailPanel
+        p={P}
+        core={CORE}
+        coreError={null}
+        reader={null}
+        lineageLoading={false}
+        lineageError=""
+        lineageGraph={LINEAGE}
+        canEdit
+        owner={owner}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+  it("shows the owner its expectations, related and unattached checks, inputs and editing", () => {
+    view(true);
+    for (const row of ["expectations", "promises", "related"])
+      expect(screen.getByTestId(`data-product-detail-dq-${row}-c360`)).toBeInTheDocument();
+    expect(screen.getByTestId("data-product-detail-dq-c360-orphan-15")).toBeInTheDocument();
+    expect(screen.getByTestId("data-product-card-inputPorts-c360")).toBeInTheDocument();
+    expect(screen.getByTestId("data-product-detail-edit-c360")).toBeInTheDocument();
+  });
+
+  it("shows any other reader the product's promises, and none of the owner's part", () => {
+    view(false);
+    expect(screen.getByTestId("data-product-detail-dq-promises-c360")).toBeInTheDocument();
+    expect(screen.queryByTestId("data-product-detail-dq-expectations-c360")).toBeNull();
+    expect(screen.queryByTestId("data-product-detail-dq-related-c360")).toBeNull();
+    expect(screen.queryByTestId("data-product-detail-dq-c360-orphan-15")).toBeNull();
+    expect(screen.queryByTestId("data-product-card-inputPorts-c360")).toBeNull();
+    expect(screen.queryByTestId("data-product-detail-edit-c360")).toBeNull();
+    // Its promises on its output ports, as the owner sees them.
+    expect(screen.getByTestId("data-product-detail-promises-c360")).toHaveTextContent("2 promises");
   });
 });
 
@@ -302,6 +344,7 @@ describe("Related Tables (REQ-2126)", () => {
         lineageError=""
         lineageGraph={null}
         canEdit={false}
+        owner
         onEdit={vi.fn()}
         onDelete={vi.fn()}
       />,

@@ -29,7 +29,8 @@ vi.mock("../../../components/graph3d/GraphPanel", () => ({
 
 /** Each panel input, by where it comes from. */
 const META = ["p", "core", "coreError", "reader"]; // the meta domain: the product, its core, its schema
-const NOT_DATA = ["canEdit", "onEdit", "onDelete"]; // capabilities and callbacks
+// Capabilities, the reader's standing (REQ-2160: whether it acts as the owner), and callbacks.
+const NOT_DATA = ["canEdit", "owner", "onEdit", "onDelete"];
 /** Decided: the lineage DAG, Input Ports and Data Quality read the product lineage endpoint. */
 const LINEAGE = [
   "lineageLoading",
@@ -138,6 +139,7 @@ function panelFromMetaAlone() {
       reader={null}
       // Every input that is not the meta read is empty: what the cards show is the core's.
       canEdit={false}
+      owner
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
