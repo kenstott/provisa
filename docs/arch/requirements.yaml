@@ -88876,3 +88876,31 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And each email in the file is masked
 
     And an export with the same as_recorded later yields the same triples'
+- id: REQ-2166
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'A customer''s own graph store queries Provisa live, with no copy: we work with what you
+    have. RDF: a SPARQL 1.1 SERVICE clause in Jena, GraphDB or Stardog against Provisa''s SPARQL endpoint
+    is answered correctly, so a query in their store joins their triples with Provisa''s governed data.
+    Neo4j: apoc.bolt.load (and apoc.bolt.execute for reads) from a customer''s Neo4j against Provisa''s
+    Bolt endpoint is answered correctly. Each call runs as the Provisa role its credentials name, governed
+    through the one pipeline like any request, and a call without valid credentials is refused. Together
+    with direct tool access (SPARQL clients over the endpoint; Neo4j Browser and Bloom over Bolt) and
+    the exports (REQ-392, REQ-2165), this is the full graph story: use your tools on Provisa, query it
+    live from your store, or load the governed graph into it.'
+  scenario: 'Given a Jena Fuseki holding triples about accounts, and a Provisa role that reads Customer
+    with email masked
+
+    When a Fuseki query joins its accounts to Provisa''s customers through SERVICE with that role''s credentials
+
+    Then the joined rows come back and each email is masked
+
+    And given a Neo4j instance, when it calls apoc.bolt.load against Provisa''s Bolt endpoint as that
+    role
+
+    Then it receives the role''s governed rows'
