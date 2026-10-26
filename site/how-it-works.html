@@ -81,6 +81,26 @@
           It is built the way an operating system is built&#8202;&mdash;&#8202;the same philosophy as an OS kernel and its drivers. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling. Command bindings are the compatibility layer that answers other tools&#8217; calls: APOC for Neo4j tools, catalog functions for SQL clients, fields in GraphQL, tools in MCP. BI tools, notebooks, agents and apps are clients connecting over standard protocols. Provisa drives your systems; it does not run on them and never becomes their engine.
         </p>
 
+        <h2 id="one-compiler">Why one compiler can speak every language</h2>
+        <p>
+          Languages are ways of expressing logic, and the logic of data is bounded: select,
+          join, aggregate, traverse. Transports are bounded too: whatever the protocol, data
+          leaves through a socket as rows, nested documents, graphs, columnar batches or
+          streams. Programming languages have shared one compiler infrastructure for twenty
+          years; Provisa does the same for data.
+        </p>
+        <p>
+          Building a compiler front end has also become cheap: parser generators like ANTLR
+          and mature open-source parsers for SQL, GraphQL and SPARQL do most of the work, so a
+          new language is a translation into the IR, not a new system. Each request is
+          compiled when it arrives into one IR, governed there, handed to your engine as
+          native SQL, and shaped on the way out for the transport that asked.
+        </p>
+        <p>
+          Where languages or protocols differ at the edges, their public conformance suites
+          settle it: Provisa runs them and publishes the results.
+        </p>
+
         <h2 id="command-bindings">Command bindings</h2>
         <p>
           Does Provisa support the library or tool you already use? It can: create its command bindings. A command is written once, and every language can call it, each under the name that language's callers expect. That's <code>apoc.meta.data</code> for a Cypher tool, a catalog function for a SQL client, a field in GraphQL, a tool in MCP.
