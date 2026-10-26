@@ -81,6 +81,11 @@ export function SparqlVocabularyPanel({
       );
     const byName = <T,>(rows: T[], name: (r: T) => string) =>
       [...rows].sort((a, b) => name(a).localeCompare(name(b)));
+    // A Property term is listed once per column it grounds, and an edge type once per pair of
+    // labels it joins; a pill picks the IRI, so each IRI is one pill.
+    const oncePerIri = <T extends { iri: string }>(rows: T[]) => [
+      ...new Map(rows.map((r) => [r.iri, r])).values(),
+    ];
     return {
       classes: byName(
         vocabulary.classes.filter((x) => inDomain(x.iri) || x.kind === "term"),
@@ -92,7 +97,7 @@ export function SparqlVocabularyPanel({
         parents: x.superclasses.map(c),
       })),
       predicates: byName(
-        vocabulary.predicates.filter((x) => inDomain(x.iri) || x.kind === "term"),
+        oncePerIri(vocabulary.predicates.filter((x) => inDomain(x.iri) || x.kind === "term")),
         (x) => c(x.iri),
       ).map((x) => {
         const iri = c(x.iri);
@@ -104,8 +109,8 @@ export function SparqlVocabularyPanel({
         };
       }),
       edges: byName(
-        [...new Map(vocabulary.edges.map((e) => [e.iri, e])).values()].filter(
-          (e) => labelInDomain(e.source) || labelInDomain(e.target),
+        oncePerIri(
+          vocabulary.edges.filter((e) => labelInDomain(e.source) || labelInDomain(e.target)),
         ),
         (e) => c(e.iri),
       ).map((e) => ({ ...e, shown: c(e.iri) })),

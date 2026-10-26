@@ -49,12 +49,26 @@ test.describe("the SPARQL tab", () => {
   test("draws a CONSTRUCT's triples", async ({ page }) => {
     await page.goto("/sparql");
     await expect(page.getByTestId("sparql-vocabulary")).toBeVisible({ timeout: 60_000 });
-    // Typed into the bar: a CONSTRUCT of every triple, cut short.
+    // Typed into the bar: a CONSTRUCT of a subject's triples, cut short. Its subject is given a
+    // class by a table class's pill, as a reader builds it: untyped, ?s ranges over every class,
+    // past the graph union limit, and is refused.
     await page.locator(".graph-query-bar .gf-header-query-collapsed").click();
     const editor = page.locator(".graph-query-bar .cm-content");
     await editor.click();
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.insertText("CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o } LIMIT 10");
+    const tableClass = page
+      .getByTestId("sparql-vocabulary")
+      .locator('[data-testid^="sparql-class-"]:not([data-testid^="sparql-class-term:"])')
+      .first();
+    await expect(tableClass, "the role reads at least one table's class").toBeVisible({
+      timeout: 30_000,
+    });
+    const shown = (await tableClass.textContent())?.split("⊂")[0].trim() ?? "";
+    await tableClass.click();
+    await expect(page.locator(".gf-header-query-collapsed").first()).toContainText(
+      `?s a ${shown} .`,
+    );
     const asked = page.waitForRequest(
       (r: Request) => new URL(r.url()).pathname === "/data/sparql" && r.method() === "POST",
       { timeout: 60_000 },
