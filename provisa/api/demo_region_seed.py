@@ -330,6 +330,40 @@ async def export_seed(template_org: str, demo_directory: Path) -> None:
     )
 
 
+def carry_setup_history(
+    setup_org: str,
+    demo_directory: Path,
+    homes: dict[str, list[str]],
+    region_urls: dict[str, str],
+) -> None:
+    """Carry the setup's bitemporal views' history in their home regions' seeds (REQ-1162): the
+    bundle build, once each region's seeding node has written its seed. ``homes`` names each
+    region's bitemporal views' stored tables; ``region_urls`` each region's store, where the setup
+    built them as ``setup_org``. Each replaces the table the seeding node built in its region's
+    seed -- one build, where the setup's holds every close it recorded -- and the seed's record
+    names it. One the setup never built fails the build by name: the bundle would serve that view
+    with no history."""
+    for region, tables in homes.items():
+        directory = seed_dir(demo_directory, region)
+        copied = copy_tables(
+            region_urls[region],
+            views_schema(setup_org, region),
+            f"duckdb:///{directory / _STORE}",
+            _VIEWS,
+            tables,
+        )
+        missing = sorted(set(tables) - set(copied))
+        if missing:
+            raise RuntimeError(
+                f"region {region}: these bitemporal views were never built by the setup: "
+                + ", ".join(missing)
+            )
+        record_path = directory / _RECORD
+        record = json.loads(record_path.read_text())
+        record["views"] = sorted({*record["views"], *copied})
+        record_path.write_text(json.dumps(record, indent=2, default=str) + "\n")
+
+
 async def adopt_seed(template_org: str, demo_directory: Path) -> bool:
     """Land the template from its bundle's region seeds, each into its region's stores, and record
     each region's builds: this node's as built for its own store, another's as it wrote them.

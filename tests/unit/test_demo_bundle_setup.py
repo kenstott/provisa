@@ -1063,3 +1063,49 @@ def test_a_regions_demo_s_setup_runs_on_a_node_per_region_against_the_visitor_s(
         assert node.env["PROVISA_DATA_DIR"] == f"/w/setup-data-{node.region}"
         assert {k: node.env[k] for k in region_env} == region_env
     assert nodes[-1].region == "warehouse"  # the visitor's: the setup client's server
+
+
+def test_a_regions_demo_s_setup_history_is_carried_after_its_regions_are_seeded(
+    tmp_path, monkeypatch
+):
+    """REQ-1162, REQ-2068: set up on its region nodes, then seeded region by region, then each
+    bitemporal view's history carried into its home region's seed -- never through the
+    single-region export of the setup server's own store."""
+    named = tmp_path / "named"
+    demo = named / "banking"
+    demo.mkdir(parents=True)
+    (demo / "demo.yaml").write_text(
+        "requires_provisa: 0.1.0a483\nregions: {headless: [ledger], visitor: warehouse}\n"
+    )
+    (demo / "setup.yaml").write_text("steps: []\n")
+    done: list[str] = []
+    monkeypatch.setattr(builder.Stores, "up", lambda self: done.append("up"))
+    monkeypatch.setattr(builder.Stores, "dump", lambda self: done.append("dump") or [])
+    monkeypatch.setattr(builder.Stores, "down", lambda self: done.append("down"))
+    monkeypatch.setattr(builder._RegionStores, "start", lambda self: done.append("regions up"))
+    monkeypatch.setattr(builder._RegionStores, "stop", lambda self: done.append("regions down"))
+    monkeypatch.setattr(builder, "_set_up", lambda *_a: done.append("set up"))
+    monkeypatch.setattr(builder, "_export_views", lambda *_a: done.append("export views"))
+    monkeypatch.setattr(builder, "_seed", lambda *_a: done.append("seed"))
+    monkeypatch.setattr(builder, "_carry_region_views", lambda *_a: done.append("carry history"))
+    monkeypatch.setattr(builder, "_prefetch_connector_bundles", lambda *_a: done.append("bundles"))
+    monkeypatch.setattr(
+        builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
+    )
+    monkeypatch.setattr(builder.bundles, "pack", lambda _demo, _manifest: b"bundle")
+    args = argparse.Namespace(
+        name="banking", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
+    )
+    assert builder.build(args) == 0
+    assert done == [
+        "up",
+        "regions up",
+        "bundles",
+        "set up",
+        "seed",
+        "carry history",
+        "no empty replica",
+        "dump",
+        "regions down",
+        "down",
+    ]

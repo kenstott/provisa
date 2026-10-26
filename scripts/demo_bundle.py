@@ -1063,13 +1063,14 @@ def _seed_node(
         )
 
 
-def _demo_config(demo: Path, stores: Stores):
-    """The demo's config.yaml, parsed against its running stores."""
+def _demo_config(demo: Path, stores: Stores, env: dict[str, str] | None = None):
+    """The demo's config.yaml, parsed against its running stores (and, for a demo in regions, its
+    region stores' ``env``)."""
     from provisa.core.config_loader import parse_config_dict, read_config_with_includes
     from provisa.core.demo_secrets import resolving
 
     saved = dict(os.environ)
-    os.environ.update(stores.addresses)
+    os.environ.update({**stores.addresses, **(env or {})})
     try:
         # REQ-2095: the secrets it names, from its own secrets.yaml.
         with resolving(demo, demo.name):
@@ -1108,10 +1109,29 @@ def _prefetch_connector_bundles(demo: Path) -> None:
         print(f"connector bundle {spec.artifact_name} {spec.version}: {resolver.resolve(spec)}")
 
 
+def _carry_region_views(demo: Path, stores: Stores, regional: "_RegionStores") -> None:
+    """REQ-1162, REQ-2068: a regions demo's bitemporal views' history, as its setup built it in each
+    view's home region's store, carried in that region's seed (demo_region_seed
+    .carry_setup_history) -- which its template lands with the rest of the region's views."""
+    from provisa.api.demo_region_seed import carry_setup_history
+    from provisa.api.demo_replicas import bitemporal_view_homes
+
+    homes = bitemporal_view_homes(_demo_config(demo, stores, regional.env), regional.regions)
+    if not homes:
+        return
+    carry_setup_history(
+        _SETUP_ORG,
+        demo,
+        homes,
+        {r: regional.env[f"PROVISA_DEMO_{r.upper()}_PG_URL"] for r in regional.regions},
+    )
+
+
 def _export_views(work: Path, demo: Path, stores: Stores) -> None:
     """REQ-1162: the setup server's bitemporal views' append logs, written out beside the seed
     (demo_replicas.export_views) -- the history its steps gave them, which the demo's template and
-    each sandbox start from. Read from the setup server's store once it has stopped."""
+    each sandbox start from. Read from the setup server's store once it has stopped. A demo in
+    regions carries its views' history in its regions' seeds instead (_carry_region_views)."""
     from provisa.api.demo_replicas import bitemporal_view_tables
 
     tables = bitemporal_view_tables(_demo_config(demo, stores))
@@ -1175,14 +1195,18 @@ def build(args: argparse.Namespace) -> int:
             if regional is not None:
                 regional.start()
             _prefetch_connector_bundles(demo)
-            if (demo / "setup.yaml").exists() or polly_steps(demo):
+            set_up = (demo / "setup.yaml").exists() or bool(polly_steps(demo))
+            if set_up:
                 _set_up(work, demo, stores, args.timeout, regional)
-                _export_views(work, demo, stores)
+                if regional is None:
+                    _export_views(work, demo, stores)
             # REQ-2068: a demo in regions seeds each region's views as well as its replicas. Its
             # config names each region's address and store, which only its regions' nodes are
             # given, so it is not parsed here.
             if regional is not None or _replicates(demo, stores):
                 _seed(work, demo, stores, args.timeout, regional)
+                if regional is not None and set_up:
+                    _carry_region_views(demo, stores, regional)
                 _refuse_empty_replicas(demo)
             dumped = stores.dump()
         finally:
