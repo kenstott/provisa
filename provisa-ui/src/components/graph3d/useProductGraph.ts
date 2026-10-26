@@ -63,7 +63,11 @@ export async function loadProductGraph(
     product === null ? null : fetchProductLineage(product),
   ]);
   const data = productGraph(products);
-  return { data: lineage && product ? withProductLineage(data, product, lineage) : data, query };
+  const tables = products.flatMap((p) => p.member_tables ?? []);
+  return {
+    data: lineage && product ? withProductLineage(data, product, lineage, tables) : data,
+    query,
+  };
 }
 
 const EMPTY: GraphData = { nodes: [], edges: [] };

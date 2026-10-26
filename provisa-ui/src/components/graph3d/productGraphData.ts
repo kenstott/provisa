@@ -22,7 +22,7 @@ import {
 } from "../../api/metaGraph";
 import type { GraphData, GraphEdge, GraphNode, QueryScope } from "./graphModel";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
-import { catalogTableName } from "../../naming";
+import { catalogTableName, relationName } from "../../naming";
 
 /** What the product graph's query keeps (REQ-2136): its domain, tag, sensitivity and term edge
  * type filters, in its where. None of one is every one. A row the filters drop takes what hangs off
@@ -306,17 +306,19 @@ export const productNode = (id: string) => `p:${id}`;
 function inputLabel(i: ProductInput): string {
   if (i.kind !== "source")
     return catalogTableName({ domainId: i.domain_id, tableName: i.table_name });
-  const object = [i.source_schema, i.source_table].filter(Boolean).join(".");
-  return object ? `${i.source_id} · ${object}` : (i.source_id as string);
+  return sourceObject(i);
 }
 
 /** REQ-2156: ``product``'s graph with its lineage, from the product lineage endpoint (cut to what
  *  the reader can read): each input feeds the product; an input that is another product's member
- *  stands for that product, which the product is built from. */
+ *  stands for that product, which the product is built from. Its column lineage (REQ-2129) joins
+ *  the columns it names: a member's or an input's column by its table, any other by its relation.
+ *  ``tables`` gives the relation each of the product's member tables is served under. */
 export function withProductLineage(
   g: GraphData,
   product: string,
   lineage: ProductLineage,
+  tables: { id: number; domain_id: string; table_name: string }[],
 ): GraphData {
   const pid = productNode(product);
   const nodes = new Map(g.nodes.map((n) => [n.id, n]));
@@ -334,7 +336,54 @@ export function withProductLineage(
     const id = `lineage:${from}>${pid}`;
     if (!edges.has(id)) edges.set(id, { id, a: from, b: pid, kind: "lineage" });
   }
+  const tableOf = new Map<string, number>([
+    ...tables.map(
+      (t) =>
+        [relationName({ domainId: t.domain_id, tableName: t.table_name }), t.id] as [
+          string,
+          number,
+        ],
+    ),
+    ...lineage.inputs.map((i) => [i.relation, i.table_id] as [string, number]),
+  ]);
+  const columnOf = new Map<string, string>();
+  for (const n of lineage.nodes) {
+    const tid = n.relation === null ? undefined : tableOf.get(n.relation);
+    const id = tid === undefined ? `lc:${n.id}` : `c:${tid}:${n.column}`;
+    columnOf.set(n.id, id);
+    // A column the meta read did not draw stands alone, named by where it is read from.
+    if (!nodes.has(id))
+      nodes.set(id, {
+        id,
+        type: "column",
+        label:
+          n.kind === "native"
+            ? `${sourceObject(n)}.${n.column}`
+            : `${n.relation === null ? "" : `${n.relation}.`}${n.column}`,
+        inProduct: false,
+      });
+  }
+  for (const e of lineage.edges) {
+    const a = columnOf.get(e.source);
+    const b = columnOf.get(e.target);
+    // The endpoint sends every node its edges name.
+    if (a === undefined || b === undefined)
+      throw new Error(`lineage edge ${e.source} -> ${e.target} names a node the response lacks`);
+    const id = `column_lineage:${a}>${b}`;
+    if (!edges.has(id)) edges.set(id, { id, a, b, kind: "column_lineage" });
+  }
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
+}
+
+/** An object read straight from its source, by the names the source gives it: the source, then
+ *  its schema and table where it has them. */
+function sourceObject(n: {
+  source_id?: string | null;
+  source_schema?: string | null;
+  source_table?: string | null;
+}): string {
+  const object = [n.source_schema, n.source_table].filter(Boolean).join(".");
+  return object ? `${n.source_id} · ${object}` : (n.source_id as string);
 }
 export const tableNode = (id: number) => `t:${id}`;
 
