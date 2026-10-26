@@ -141,7 +141,11 @@ def require_capability(  # REQ-042, REQ-060
         raise PermissionError(f"Missing capability: {capability!r}")
 
     if domain_id is not None:
-        require_domain(info, domain_id)
+        # The domain the RIGHT reaches, read per role (REQ-1944): a role carrying the right in
+        # one domain and another role reaching a second domain do not make the right reach both.
+        refusal = right_domain_refusal(identity, state, capability, (domain_id,))
+        if refusal is not None:
+            raise PermissionError(refusal)
 
 
 def require_residency_change(  # REQ-1921
