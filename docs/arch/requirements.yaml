@@ -89062,3 +89062,27 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then it runs the same tests the built-in Postgres source driver passes
 
     And a driver that fails a test is reported by test name'
+- id: REQ-2170
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  feature: source-registration-introspection
+  priority: MUST
+  type: behavioral
+  description: 'Discovery records the keys a source declares: its primary key, unique (alternate) keys
+    and foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys
+    as relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres
+    and DuckDB and then each other connector that can. Today keys are marked only as a side effect of
+    registering a relationship, so a key the source declares is unknown until some relationship happens
+    to point at it; every key-dependent feature (relationship candidates, REQ-1385''s introspected primary
+    key, cardinality, row identity) reads the source''s own declaration instead. A source that declares
+    no keys records none, and nothing is guessed.'
+  scenario: 'Given a SQLite source whose pets table declares id INTEGER PRIMARY KEY and no relationship
+    points at pets
+
+    When the source is discovered
+
+    Then pets.id is recorded as the primary key
+
+    And a foreign key the source declares is offered as a relationship candidate'
