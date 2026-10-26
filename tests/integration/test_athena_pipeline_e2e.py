@@ -80,6 +80,11 @@ async def client():
             os.environ["PROVISA_ENGINE"] = prior_env
 
 
+# A table read from a replica refreshes on its ttl change signal, so it states the TTL its
+# replica is judged by (REQ-1907); the global response-cache default is not a landing TTL.
+_CACHE_TTL_S = 300
+
+
 async def _register(client: AsyncClient, table: str, columns: list[str]) -> None:
     cols = ", ".join(f'{{ name: "{c}", visibleTo: {_VISIBLE_TO} }}' for c in columns)
     registered = await _gql(
@@ -88,7 +93,7 @@ async def _register(client: AsyncClient, table: str, columns: list[str]) -> None
         mutation {{
             registerTable(input: {{
                 sourceId: "{_SOURCE_ID}", domainId: "{_DOMAIN}", schemaName: "{_DB}",
-                tableName: "{table}", alias: "{table}", columns: [{cols}]
+                tableName: "{table}", alias: "{table}", cacheTtl: {_CACHE_TTL_S}, columns: [{cols}]
             }}) {{ success message }}
         }}
         """,
