@@ -296,12 +296,25 @@ def test_a_pid_recorded_before_its_process_started_is_not_that_process(tmp_path)
     assert embedded_pg._running(os.getpid(), time.time()) is True
 
 
-def test_a_key_written_sign_extended_is_read_as_the_key_the_system_lists(tmp_path):
-    # A postmaster prints its 32-bit key_t as an unsigned long: a key with its high bit set is
-    # written as 2**64 minus its magnitude, while ipcs lists its 32 bits (0x80...).
-    from provisa.core.pg_shared_memory import recorded_segment
+def test_a_key_recorded_sign_extended_is_the_key_the_system_lists(monkeypatch):
+    """PostgreSQL writes a segment key whose top bit is set sign-extended to 64 bits
+    (18446744071564963621); ``ipcs`` lists the 32-bit key (0x802c2f25). Read as written, such a
+    segment was never found, so it was never released."""
+    from types import SimpleNamespace
 
-    (tmp_path / "postmaster.pid").write_text(
-        "123\n/data\n1\n5432\n/tmp\nlocalhost\n18446744071566854875    327694\nready\n"
+    from provisa.core import pg_shared_memory
+
+    listing = (
+        "IPC status from <running system> as of Sun Oct 25 2026\n"
+        "T     ID     KEY        MODE       OWNER    GROUP\n"
+        "Shared Memory:\n"
+        "m 4915208 0x802c2f25 --rw------- runner   staff\n"
     )
-    assert recorded_segment(tmp_path) == (0x80490ADB, 327694)
+    monkeypatch.setattr(
+        pg_shared_memory.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(stdout=listing),
+    )
+    assert pg_shared_memory._listed(18446744071564963621, 4915208)
+    assert pg_shared_memory._listed(0x802C2F25, 4915208)
+    assert not pg_shared_memory._listed(0x802C2F26, 4915208)

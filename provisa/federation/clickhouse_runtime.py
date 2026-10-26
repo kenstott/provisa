@@ -48,6 +48,7 @@ from urllib.parse import unquote, urlparse
 
 from provisa.core import request_deadline
 from provisa.federation.land_guard import LandGuard
+from provisa.executor.drivers.clickhouse import result_names
 from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
@@ -187,7 +188,8 @@ class _ServerBackend:
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
             res = self._client.query(sql, parameters=params or None, settings={"query_id": qid})
-        return [tuple(r) for r in res.result_rows], list(res.column_names)
+            names = result_names(self._client, sql, params or None, res.column_names)
+        return [tuple(r) for r in res.result_rows], names
 
     def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
         # clickhouse-connect requests FORMAT Arrow and returns a native pyarrow Table — no row

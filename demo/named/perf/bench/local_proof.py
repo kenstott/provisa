@@ -476,8 +476,8 @@ def credentials_phase(
 # --------------------------------------------------------------------------------------------
 
 
-def proof_contract(server: Any, project: str) -> dict[str, Any]:
-    raw = yaml.safe_load((HERE / "setups" / "perf-stack.yaml").read_text())
+def proof_contract(server: Any, project: str, contract: str = "perf-stack.yaml") -> dict[str, Any]:
+    raw = yaml.safe_load((HERE / "setups" / contract).read_text())
     ep = raw["deployment"]["endpoints"]
     ep["pgwire"]["port"], ep["bolt"]["port"] = server.pgwire_port, server.bolt_port
     ep["flight"]["port"], ep["grpc"]["port"] = server.flight_port, server.grpc_port

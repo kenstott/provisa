@@ -79,16 +79,16 @@ def recorded_segment(datadir: str | Path) -> tuple[int, int] | None:
     fields = lines[_SHMEM_LINE].split()
     if len(fields) != 2:
         return None
-    # The key is a 32-bit key_t the postmaster prints as an unsigned long, so a key with its high
-    # bit set is written sign-extended to 64 bits; the system lists it as its 32 bits.
-    return int(fields[0]) & 0xFFFFFFFF, int(fields[1])
+    return int(fields[0]), int(fields[1])
 
 
 def _listed(key: int, shmid: int) -> bool:
     """Whether the system lists segment ``shmid`` under ``key`` (``ipcs -m``; the columns differ
     between macOS and Linux, and both list a segment's id and its key in hexadecimal)."""
     listing = subprocess.run(["ipcs", "-m"], capture_output=True, text=True, check=True).stdout
-    hex_key = f"0x{key:08x}"
+    # A key is 32 bits; PostgreSQL writes one whose top bit is set sign-extended to 64, and the
+    # system lists the 32.
+    hex_key = f"0x{key & 0xFFFFFFFF:08x}"
     return any(
         str(shmid) in fields and hex_key in fields
         for fields in (line.split() for line in listing.splitlines())
