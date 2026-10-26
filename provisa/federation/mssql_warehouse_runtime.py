@@ -336,6 +336,26 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         finally:
             close_cursor(cur)
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether the table ``schema.table`` of the warehouse database exists (addressed as
+        ``land_table`` writes it, ``_store_parts``), from the database's own catalog
+        (``INFORMATION_SCHEMA.TABLES``). Absent is False; a catalog that cannot be read raises."""
+        store_schema, store_table = self._store_parts(schema, table)
+
+        def _run() -> bool:
+            cur = open_cursor(self._conn)
+            try:
+                cur.execute(
+                    "SELECT 1 FROM INFORMATION_SCHEMA.TABLES "
+                    "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+                    (store_schema, store_table),
+                )
+                return cur.fetchone() is not None
+            finally:
+                close_cursor(cur)
+
+        return await self._land_guard.run(_run)
+
     async def land_table(
         self,
         *,

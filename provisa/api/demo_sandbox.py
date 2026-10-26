@@ -207,6 +207,19 @@ async def named_sandbox_of(user_id: str, demo: str) -> str | None:
     return row[0] if row is not None else None
 
 
+async def record_visitor_attributes(conn: Any, person: str, directory: Path) -> dict:
+    """Record the attributes demo ``directory`` declares for its visitor as the org's attributes for
+    ``person`` (REQ-2151), as an administrator records any member's, and return the org's
+    attributes by user -- what the sandbox's runtime resolves requests against. A derived role the
+    tour acts as (REQ-2057) is then held from an attribute, as for any member."""
+    from provisa.api.demo_templates import demo_visitor_attributes
+    from provisa.core.repositories import user_attribute as attr_repo
+
+    for attr_name, value in demo_visitor_attributes(directory).items():
+        await attr_repo.upsert(conn, person, attr_name, value)
+    return await attr_repo.org_by_user(conn)
+
+
 async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> OpenedSandbox:
     """Open a sandbox of the published demo ``name``: a visitor's (``user_id`` None, minted here)
     or a named one for the signed-in ``user_id``."""
@@ -349,6 +362,11 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
             await grant_org_role(
                 rt.model_db, person, role_id, granter_capabilities=DEPLOYMENT_GRANTER
             )
+        if kind == VISITOR:
+            # REQ-2151: the attributes the demo's visitor carries, so a derived role its tour acts
+            # as is held from an attribute; the runtime resolves requests against them at once.
+            async with rt.model_db.acquire() as conn:
+                rt.user_attributes = await record_visitor_attributes(conn, person, demo.directory)
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
         ensure_repo(org_id)
         async with rt.model_db.acquire() as conn:

@@ -302,12 +302,14 @@ async def test_a_required_partition_key_left_out_is_refused_before_any_read():
     ran.assert_not_awaited()
 
 
-async def test_a_parameterized_cosmos_table_is_read_per_statement_and_landed():
+async def test_a_parameterized_cosmos_table_with_a_ttl_of_its_own_is_landed():
+    """A partition key is a parameter: the rows are kept only for a TTL the table sets itself,
+    under the arguments that read them (REQ-1986)."""
     from provisa.api.data.materialization import _materialize_api_to_engine_cache
     from provisa.api_source.engine_cache import CacheLocation
     from provisa.mongodb.pipeline_table import PipelineRead
 
-    table = _state_table(None, ("customerId", "partition_key", "text"))
+    table = {**_state_table(None, ("customerId", "partition_key", "text")), "cache_ttl": 300}
     engine = MagicMock()
     engine.land_source_table = AsyncMock()
     state = SimpleNamespace(
@@ -338,6 +340,37 @@ async def test_a_parameterized_cosmos_table_is_read_per_statement_and_landed():
     assert rewrites == {"orders": (loc, "c_1")}
     ran.assert_awaited_once()
     assert named.call_args.args == ("cosmos", "pipeline:orders", {"customerId": "c-7"})
+
+
+async def test_a_parameterized_cosmos_table_with_no_ttl_of_its_own_is_read_per_statement():
+    """REQ-1986: with no TTL of its own it is read for each statement and inlined into it --
+    nothing landed or reused, whatever the source keeps."""
+    from provisa.api.data.materialization import _materialize_api_to_engine_cache
+    from provisa.mongodb.pipeline_table import PipelineRead
+
+    table = _state_table(None, ("customerId", "partition_key", "text"))
+    engine = MagicMock()
+    engine.land_source_table = AsyncMock()
+    state = SimpleNamespace(
+        hot_manager=None,
+        api_endpoints={},
+        graphql_remote_sources={},
+        source_types={"cosmos": "cosmosdb"},
+        replica_routes=ReplicaRoutes(),
+        tables=[table],
+        federation_engine=engine,
+        source_cache={"cosmos": {"cache_ttl": 600}},
+        response_cache_default_ttl=300,
+    )
+    answer = PipelineRead(rows=[{"id": "o1"}], columns=[("id", "text")])
+    with patch("provisa.cosmosdb.table.read", AsyncMock(return_value=answer)) as ran:
+        for _ in range(2):
+            rewrites, inline, _ = await _materialize_api_to_engine_cache(
+                "SELECT * FROM orders", state, nf_args={"customerId": "c-7"}, table_ids=[3]
+            )
+            assert rewrites == {} and inline["orders"].rows == [{"id": "o1"}]
+    assert ran.await_count == 2
+    engine.land_source_table.assert_not_awaited()
 
 
 # --- loaders ---

@@ -191,7 +191,8 @@ PARTIAL: frozenset[str] = frozenset({"org_settings"})
 #: belonging to one environment. Prefixes rather than exact keys because these are namespaces
 #: (``metadata_export.endpoint``, ``cache.redis_url``), and an exact list would miss the next key
 #: added inside one.
-NEVER_SETTING_PREFIXES: tuple[str, ...] = ("metadata_export", "redirect", "cache")
+#: REQ-2122: ``catalogs`` names the external catalogs and how to sign in to them.
+NEVER_SETTING_PREFIXES: tuple[str, ...] = ("metadata_export", "catalogs", "redirect", "cache")
 
 #: Every table name this module classifies. The test asserts it equals ``schema_org``'s metadata.
 CLASSIFIED: frozenset[str] = CARRIED | IDENTITY_ONLY | NEVER_SENSITIVE | NEVER_RUNTIME | PARTIAL

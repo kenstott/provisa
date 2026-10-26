@@ -207,6 +207,23 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
 
         return active_org_schema(org_id, "_mv_cache")
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether the Delta table ``schema.table`` of the warehouse catalog exists, from the
+        catalog's own listing (``databricks_store.object_exists``). Absent is False; a catalog
+        that cannot be read raises."""
+        from provisa.federation.databricks_store import object_exists
+
+        parts = (self._catalog, schema, table)
+
+        def _run() -> bool:
+            cur = open_cursor(self._conn)
+            try:
+                return object_exists(cur, parts)
+            finally:
+                close_cursor(cur)
+
+        return await self._land_guard.run(_run)
+
     async def land_table(
         self,
         *,

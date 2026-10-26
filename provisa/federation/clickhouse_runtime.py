@@ -48,6 +48,7 @@ from urllib.parse import unquote, urlparse
 
 from provisa.core import request_deadline
 from provisa.federation.land_guard import LandGuard
+from provisa.executor.drivers.clickhouse import result_names
 from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
@@ -187,7 +188,8 @@ class _ServerBackend:
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
             res = self._client.query(sql, parameters=params or None, settings={"query_id": qid})
-        return [tuple(r) for r in res.result_rows], list(res.column_names)
+            names = result_names(self._client, sql, params or None, res.column_names)
+        return [tuple(r) for r in res.result_rows], names
 
     def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
         # clickhouse-connect requests FORMAT Arrow and returns a native pyarrow Table — no row
@@ -591,6 +593,20 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
                 self._backend, parts=parts, columns=columns, pk_columns=pk_columns
             ),
         )
+
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` (``schema`` is the database) exists, from ClickHouse's own
+        listing (``system.tables``). Absent is False; a listing that cannot be read raises."""
+        from provisa.federation.clickhouse_store import _lit
+
+        def _run() -> bool:
+            rows, _ = self._backend.query(
+                f"SELECT 1 FROM system.tables WHERE database = {_lit(schema)} "
+                f"AND name = {_lit(table)}"
+            )
+            return bool(rows)
+
+        return await self._land_guard.run(_run)
 
     async def land_table(
         self,

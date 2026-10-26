@@ -187,6 +187,7 @@ async def _hydrate_api_tables_before_engine(
     Returns (dataloader_sources, hydration_times_ms, hydration_rows, cache_hit_sources).
     """
     from provisa.api_source import fill_cache
+    from provisa.api.data.materialization import landing_ttl, registration_of
     from provisa.api_source.models import ParamType
 
     dataloader_sources: set = set()
@@ -221,7 +222,13 @@ async def _hydrate_api_tables_before_engine(
                 continue
             if table_name in _row_level_tables:
                 continue
-            ttl = endpoint.ttl
+            # REQ-1986: the one resolver. A parameterized endpoint with no TTL of its own is 0:
+            # every fill is fetched again for each statement, and its read takes only those.
+            ttl = landing_ttl(
+                registration_of(state, source_id, endpoint.table_name),
+                state,
+                endpoint_ttl=endpoint.ttl,
+            )
             _min_ttl = ttl if _min_ttl is None else min(_min_ttl, ttl)
 
             path_cols = [c for c in endpoint.columns if c.param_type == ParamType.path]

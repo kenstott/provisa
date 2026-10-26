@@ -639,6 +639,11 @@ class EngineRuntime:  # REQ-825, REQ-840
             self._state, source_id=source_id, schema_name=schema_name, table_name=table_name
         )
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed, from the catalog of the store it lands in
+        (REQ-318) -- delegated to the backend. Absent is False; a failed read raises."""
+        return await self._backend.landed_table_exists(self._state, schema=schema, table=table)
+
     async def analyze_landed_table(self, *, catalog: str | None, schema: str, table: str) -> None:
         """Planner statistics on a landed table, collected where the table lives (REQ-1688) —
         delegated to the backend."""

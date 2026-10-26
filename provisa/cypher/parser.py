@@ -276,6 +276,10 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             elif kw == "MATCH":
                 self._advance()
                 current_matches.append(self._parse_match(optional=False))
+                # MATCH a, b: each comma-separated pattern is a clause of the same step.
+                while (_comma := self._peek()) and _comma.type == "COMMA":
+                    self._advance()
+                    current_matches.append(self._parse_match(optional=False))
 
             elif kw == "WHERE":
                 self._advance()

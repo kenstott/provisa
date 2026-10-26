@@ -647,6 +647,25 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         if not require_pg_replica_table(cur, schema, table, action="write the replica"):
             cur.execute(self._create_table_ddl(schema, table, columns, pk_columns))
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` of THIS engine's own store exists, from its catalog
+        (``information_schema.tables``). Absent is False; a catalog that cannot be read
+        raises."""
+
+        def _run() -> bool:
+            cur = self._con.cursor()
+            try:
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = %s AND table_name = %s",
+                    (schema, table),
+                )
+                return cur.fetchone() is not None
+            finally:
+                cur.close()
+
+        return await self._land_guard.run(_run)
+
     async def land_table(
         self,
         *,
