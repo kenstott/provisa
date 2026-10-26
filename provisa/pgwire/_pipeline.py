@@ -1685,14 +1685,6 @@ async def govern_statement(
             normalized_sql, _view_map, state, gov_ctx
         )
         _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
-    # REQ-2109: a table whose rows are its versions is read as of the request's time travel.
-    from provisa.mv.bitemporal_tables import read_versions
-
-    _versioned = read_versions(normalized_sql, state, gov_ctx, as_of)
-    if _versioned != normalized_sql:
-        normalized_sql = _versioned
-        _validated_sql = read_versions(_validated_sql, state, gov_ctx, as_of)
-        _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
     _bypass_guard = product_statement or relationship_guard_bypassed(
@@ -1786,6 +1778,13 @@ async def govern_statement(
     governed_semantic = await _off_loop(
         apply_governance, normalized_sql, gov_ctx, _session_vars, embedded_params or None
     )
+    # REQ-2109: a table whose rows are its versions is read as of the request's time travel. The
+    # versions read is Provisa's own, like a row rule or a view's internals: it is applied to the
+    # governed statement, so its reads of the recorded time are not judged against the caller's
+    # grants -- the caller is governed on the statement it wrote.
+    from provisa.mv.bitemporal_tables import read_versions
+
+    governed_semantic = read_versions(governed_semantic, state, gov_ctx, as_of)
     if _registry is not None:
         # REQ-430: a text the statement searches for is embedded once, with the statement.
         governed_semantic = await _similarity.embed_text_queries(governed_semantic, _registry)

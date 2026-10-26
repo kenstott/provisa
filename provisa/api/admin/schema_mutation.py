@@ -768,6 +768,12 @@ async def _save_metric(
     from provisa.core.repositories import metric as metric_repo
 
     require_capability(info, "table_registration")
+    from provisa.api.admin.capabilities import acting_role_of
+    from provisa.security.default_grant import default_read_grant
+
+    # REQ-1317: a metric created naming no role is read by the acting role and Viewer; an update
+    # naming none keeps the roles it has (filled in below, from the stored definition).
+    named = None if input.visible_to is None else list(input.visible_to)
     try:
         model = MetricModel(
             name=input.name,
@@ -775,7 +781,9 @@ async def _save_metric(
             datatype=input.datatype,
             description=input.description,
             ai_context=input.ai_context,
-            visible_to=list(input.visible_to),
+            visible_to=named
+            if named is not None
+            else (default_read_grant(acting_role_of(info)) if creating else []),
         )
     except ValueError as e:  # pydantic name validation (snake_case)
         return MutationResult(success=False, message=str(e))
@@ -810,6 +818,10 @@ async def _save_metric(
                     params={"metric": input.name},
                 )
             require_domains(info, reads | (replaced or set()))
+            if named is None and not creating:
+                stored = await metric_repo.get(cast("Connection", conn), input.name)
+                assert stored is not None  # replaced is not None: the metric exists
+                model = model.model_copy(update={"visible_to": list(stored["visible_to"])})
             await metric_repo.upsert(cast("Connection", conn), model)
             # REQ-1318: every registered view whose view_metrics spec references this
             # metric regenerates its stored view_sql against the UPDATED definition.
@@ -4076,6 +4088,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"id": table_id},
                 )
             await require_table_domain(info, c, table_id)
+            # REQ-2154: neither the acting role's own read nor a column's last reader is taken.
+            from types import SimpleNamespace
+
+            from provisa.api.admin._hiding_guard import grant_edit_refusal
+            from provisa.api.admin.capabilities import acting_role_of
+            from provisa.core.repositories.table import load_columns
+
+            stored_columns = {col["column_name"]: col for col in await load_columns(c, table_id)}
+            left = SimpleNamespace(
+                columns=[
+                    SimpleNamespace(
+                        name=name,
+                        visible_to=[r for r in col.get("visible_to") or () if r != role_id],
+                    )
+                    for name, col in stored_columns.items()
+                ]
+            )
+            kept = grant_edit_refusal(stored_columns, left, acting_role_of(info))
+            if kept is not None:
+                return MutationResult(success=False, message=kept, code="schema.read_grant_kept")
             changed = await grants.revoke_from_table(c, table_id, role_id)
         if changed:
             await _rebuild_schemas()

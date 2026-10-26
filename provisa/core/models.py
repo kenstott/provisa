@@ -1010,16 +1010,27 @@ class Mask(BaseModel):  # REQ-038, REQ-040, REQ-2059
         return self
 
 
-class MaskEntry(BaseModel):  # REQ-2059
+class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
     """One entry of a column's ordered mask list: the readers it is for (grant entries, as
-    ``visible_to`` takes them, composites included; ``"*"`` is everyone) and the mask they read
-    the column through, or none (``mask`` None: unmasked). A reader reads the column through the
-    first entry it holds; a reader holding none reads it unmasked."""
+    ``visible_to`` takes them, composites included) and the mask they read the column through, or
+    none (``mask`` None: unmasked). A reader reads the column through the first entry it holds; a
+    reader holding none reads it unmasked. An entry with no ``to`` (None) is for every other
+    reader: it is the list's last entry, at most one per list."""
 
-    to: list[str]
+    to: list[str] | None = None
     mask: Mask | None = None
     # REQ-2094: why this entry is what it is (provisa.judgments.why); optional.
     why: dict[str, Any] | None = None
+
+    @field_validator("to")
+    @classmethod
+    def _star_is_no_reader(cls, value: list[str] | None) -> list[str] | None:  # REQ-2153
+        if value is not None and "*" in value:
+            raise ValueError(
+                "'*' names no reader; the last entry of a mask list, with no 'to', is for every "
+                "other reader"
+            )
+        return value
 
 
 class ObjectField(BaseModel):
@@ -1083,6 +1094,18 @@ class Column(
                 "'write_grants' (role, operation, columns, rows, check, presets)"
             )
         return data
+
+    @model_validator(mode="after")
+    def _every_other_reader_is_last(self) -> "Column":  # REQ-2153
+        # The entry for every other reader matches any reader, so one before the end would leave
+        # every entry after it unreached.
+        open_ended = [i for i, e in enumerate(self.masks) if e.to is None]
+        if open_ended and open_ended != [len(self.masks) - 1]:
+            raise ValueError(
+                f"column {self.name!r}: the mask entry with no 'to' is for every other reader, "
+                "so it is the list's last entry, and the only one"
+            )
+        return self
 
     @model_validator(mode="after")
     def _embedding_is_not_masked(self) -> "Column":  # REQ-652
@@ -1373,7 +1396,8 @@ class Metric(BaseModel):  # REQ-1317
     # REQ-1319: definition text written for AI consumers; projected into MCP tool output,
     # GraphQL introspection docs, pg_description, and Ossie ai_context.
     ai_context: str | None = None
-    visible_to: list[str] = Field(default_factory=lambda: ["*"])
+    # REQ-1317: the roles that read the metric; none named is no role.
+    visible_to: list[str] = Field(default_factory=list)
     # REQ-1320: set when this metric was auto-registered from a fact spec's measure.
     from_fact: str | None = None
 

@@ -474,7 +474,11 @@ def build_mcp_server(state: Any):
             identity = SimpleNamespace(
                 user_id=identity.user_id, roles=list(identity.roles), acting_roles=[resolved_role]
             )
-        return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org_id))
+        # REQ-2154: the role the call acts as, as the HTTP middleware binds it on a request (a
+        # registration's default grant names it).
+        return SimpleNamespace(
+            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role)
+        )
 
     @_tool
     async def describe_role(role: str | None = None) -> dict:  # REQ-2082

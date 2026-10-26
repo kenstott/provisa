@@ -296,7 +296,7 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
     """Commands (tracked functions) visible to this role, deduped by name (REQ-1156).
 
     The commands the role may call (``mutation_authz.command_reachable``): assigned to it
-    (``visible_to`` empty = every role) and in a domain it reaches, as on every other surface."""
+    (``visible_to`` names it) and in a domain it reaches, as on every other surface."""
     from provisa.security.mutation_authz import command_reachable
 
     out: list[dict] = []

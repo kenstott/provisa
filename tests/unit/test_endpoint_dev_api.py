@@ -139,8 +139,16 @@ async def sql_client(monkeypatch):
             "schema_name": "public",
             "table_name": "orders",
             "columns": [
-                {"column_name": "id", "data_type": "integer"},
-                {"column_name": "status", "data_type": "varchar"},
+                {
+                    "column_name": "id",
+                    "data_type": "integer",
+                    "visible_to": ["org_admin", "scoped"],
+                },
+                {
+                    "column_name": "status",
+                    "data_type": "varchar",
+                    "visible_to": ["org_admin", "scoped"],
+                },
             ],
         }
     ]

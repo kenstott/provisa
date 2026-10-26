@@ -939,21 +939,24 @@ async def upsert_metric(  # REQ-1856
     references (e.g. "SUM(orders.amount) - SUM(orders.refunds)") — must parse under sqlglot and
     contain at least one aggregate function, or this raises. `ai_context` is definition text
     written for AI consumers (yourself and other agents) — fill it in with what the metric means
-    and when to use it, not just a repeat of the expression. `visible_to` defaults to every role
-    (["*"]) if omitted."""
+    and when to use it, not just a repeat of the expression. `visible_to` defaults to the acting
+    role and the standard Viewer role (every role built on Viewer) if omitted."""
     require_role(role, state)
     from provisa.api.admin.capabilities import require_capability_request
     from provisa.core.models import Metric as MetricModel
     from provisa.core.repositories import metric as metric_repo
 
     require_capability_request(request, "table_registration")
+    from provisa.security.default_grant import default_read_grant as _default_read_grant
+
     model = MetricModel(
         name=name,
         expression=expression,
         datatype=datatype,
         description=description,
         ai_context=ai_context,
-        visible_to=list(visible_to) if visible_to else ["*"],
+        # REQ-1317: one created with no roles named is read by the acting role and Viewer.
+        visible_to=list(visible_to) if visible_to else _default_read_grant(role),
     )
     pool = state.model_db
     assert pool is not None
@@ -1248,14 +1251,14 @@ async def explain_sql(state: Any, role: str, sql: str) -> dict:
 
 
 def _visible_metrics(state: Any, role: str) -> list[Any]:
-    """Config metrics whose ``visible_to`` contains "*" or ``role`` (REQ-1319).
+    """Config metrics whose ``visible_to`` names ``role`` (REQ-1319, REQ-1317).
 
     Sourced from the loaded config (``state.config.metrics``) — the same reachable
     config object _domain_descriptions reads domains from.
     """
     config = getattr(state, "config", None)
     metrics = getattr(config, "metrics", None) or []
-    return [m for m in metrics if "*" in m.visible_to or role in m.visible_to]
+    return [m for m in metrics if role in m.visible_to]
 
 
 def list_metrics(state: Any, role: str) -> list[dict]:

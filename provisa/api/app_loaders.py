@@ -1856,11 +1856,15 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # The catalog's governance columns are part of the model a view may read.
         "capabilities": [Capability.VIEW_GOVERNANCE.value],
     }
+    # REQ-2154: every column and metric granted to this one role, by name -- the whole model.
     _model_tables = [
-        {**t, "columns": [{**c, "visible_to": ["*"]} for c in t["columns"]]} for t in tables
+        {**t, "columns": [{**c, "visible_to": [_model_role["id"]]} for c in t["columns"]]}
+        for t in tables
     ]
     state.view_context = build_context(
-        _schema_input(_model_role, _model_tables, [{**m, "visible_to": []} for m in metrics])
+        _schema_input(
+            _model_role, _model_tables, [{**m, "visible_to": [_model_role["id"]]} for m in metrics]
+        )
     )
 
     _wire_role = {
@@ -1869,11 +1873,13 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         "capabilities": sorted({c for r in roles for c in (r.get("capabilities") or [])}),
     }
     _wire_tables = [
-        {**t, "columns": [{**c, "visible_to": []} for c in t["columns"]]} for t in tables
+        {**t, "columns": [{**c, "visible_to": [_wire_role["id"]]} for c in t["columns"]]}
+        for t in tables
     ]
-    _wire_metrics = [{**m, "visible_to": []} for m in metrics]
+    _wire_metrics = [{**m, "visible_to": [_wire_role["id"]]} for m in metrics]
     # REQ-1903: authoritative=True — this is the only call in the build that sees every column of
-    # every table (visible_to=[]), so it's the only one allowed to retire a field number.
+    # every table (each granted to the wire role, REQ-2154), so it's the only one allowed to retire
+    # a field number.
     state.wire_proto = generate_proto(
         _schema_input(_wire_role, _wire_tables, _wire_metrics),
         field_numbers=field_numbers,

@@ -65,7 +65,10 @@ async def _revoke(
 
 
 def _without(entry: dict, role_id: str) -> dict:
-    """A mask entry (REQ-2059) with ``role_id`` taken off its ``to``; the entry keeps its place."""
+    """A mask entry (REQ-2059) with ``role_id`` taken off its ``to``; the entry keeps its place.
+    The entry for every other reader names no role, so it is kept as it is."""
+    if entry.get("to") is None:
+        return entry
     return {**entry, "to": [r for r in entry["to"] if r != role_id]}
 
 

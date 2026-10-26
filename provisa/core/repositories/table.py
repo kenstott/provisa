@@ -670,7 +670,9 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 column_name=col.name,
                 visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
                 masks=[
-                    {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
+                    e
+                    if e.get("to") is None  # every other reader: names no role (REQ-2153)
+                    else {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
                     for e in _whys[col.name][1]
                 ],
                 alias=getattr(col, "alias", None),

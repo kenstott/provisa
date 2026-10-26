@@ -216,3 +216,17 @@ async def test_a_role_that_does_not_see_the_recorded_time_still_reads_the_latest
     does not see; the role is answered only the columns it sees."""
     governed = await _governed(monkeypatch, None, hidden=frozenset({"updated_at"}))
     assert dict(ledger.execute(governed).fetchall()) == {"p1": 120, "p2": 50}
+
+
+async def test_a_role_that_does_not_see_the_recorded_time_cannot_select_it(monkeypatch):
+    """The versions read reads the recorded time for itself; the caller's own statement is still
+    governed: naming the column it is not granted is refused (V003)."""
+    import provisa.api.app as app_mod
+    from provisa.compiler.sql_validator import GovernanceRefused
+    from provisa.pgwire import _pipeline
+
+    monkeypatch.setattr(app_mod, "state", _state(frozenset({"updated_at"})), raising=False)
+    with pytest.raises(GovernanceRefused, match="updated_at"):
+        await _pipeline._govern_and_route(
+            "SELECT payment_id, updated_at FROM fin.payments", "analyst", as_of=None
+        )

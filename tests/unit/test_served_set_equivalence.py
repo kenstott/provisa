@@ -49,7 +49,6 @@ from provisa.compiler.stage2 import build_governance_context
 from provisa.security.rights import compute_meta_row_scope
 from provisa.security.visibility import visible_tables
 
-_LOCKDOWN = {"ops"}
 _IMPLICIT = {"meta"}
 
 
@@ -57,9 +56,10 @@ _IMPLICIT = {"meta"}
 
 
 def _old_grant(role_id: str, domain: str, column: dict) -> bool:
-    """The column rule the schema build and SQL governance each spelled out."""
-    granted = column["visible_to"]
-    return (not granted and domain not in _LOCKDOWN) or "*" in granted or role_id in granted
+    """The column rule the schema build and SQL governance each spelled out, as REQ-2154 states
+    it for all of them: the grant names the role; an empty grant is no role, in every domain."""
+    del domain  # no domain decides a grant (REQ-2159: no lockdown domain)
+    return role_id in column["visible_to"]
 
 
 def _old_schema_served(role: dict, tables: list[dict]) -> dict[int, list[str]]:
@@ -208,8 +208,10 @@ def _multi_domain_model() -> tuple[list[dict], list[dict]]:
 _MODELS = {"demo config": _demo_model(), "multi-domain": _multi_domain_model()}
 # In the demo config every column carries an explicit grant, so the two roles this file adds
 # that reach one domain and are named in no grant lose that domain's tables (18 + 9). No role
-# the demo config itself declares loses a table.
-_REMOVED_PAIRS = {"demo config": 27, "multi-domain": 0}
+# the demo config itself declares loses a table. In the multi-domain model, ``*`` names no role
+# (REQ-2153), so the seller and its meta-role lose ``lookup``, whose one data column only ``*``
+# was granted.
+_REMOVED_PAIRS = {"demo config": 27, "multi-domain": 2}
 _CASES = [
     pytest.param(tables, role, id=f"{model}/{role['id']}")
     for model, (tables, roles) in _MODELS.items()
@@ -349,8 +351,6 @@ def test_the_visibility_helper_now_answers_as_the_schema_build(tables, role):
     }
     assert {i: c for i, c in data.items() if c} == expected
     for table_id, columns in _old_literal_visible(role, tables).items():
-        if by_table[table_id]["domain_id"] in _LOCKDOWN:
-            continue
         assert set(columns) <= listed.get(table_id, set()), by_table[table_id]["table_name"]
 
 
@@ -359,7 +359,7 @@ def test_a_table_granted_wholly_to_other_roles_is_not_in_a_reaching_roles_catalo
     ``payroll`` has its catalog rows. A 1-hop neighbour is still discovered through a
     relationship from a table the role is served."""
     tables = [
-        _table(1, "hr", "staff", [_column("id")]),
+        _table(1, "hr", "staff", [_column("id", ["hr_reader", "payroll_clerk"])]),
         _table(2, "hr", "payroll", [_column("amount", ["payroll_clerk"])]),
     ]
     reader = {"id": "hr_reader", "domain_access": ["hr"], "capabilities": []}

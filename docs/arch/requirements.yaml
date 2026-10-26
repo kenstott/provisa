@@ -66418,7 +66418,7 @@
   feature: row-security-and-masking-two-layers
   priority: MUST
   type: constraint
-  description: '"*" is the codebase''s established "visible to everyone" sentinel for visible_to grants: Metric.visible_to (provisa/core/models.py) defaults to ["*"], and schema_gen.py''s metrics-visibility
+  description: '[SUPERSEDED by REQ-2153, 2026-10-26 -- ''*'' names no role; a grant to every role is a grant to Viewer (REQ-2154). Kept here for history; do not implement against it.] "*" is the codebase''s established "visible to everyone" sentinel for visible_to grants: Metric.visible_to (provisa/core/models.py) defaults to ["*"], and schema_gen.py''s metrics-visibility
     branch (~line 109) already special-cased "*" not in vt correctly, but the COLUMN-visibility checks
     never got the same treatment. provisa/compiler/stage2.py''s build_governance_context (~line 174-184)
     computed each role''s visible-columns set via a literal `role_id in visible_to` membership test with
@@ -66429,7 +66429,10 @@
     in c["visible_to"]` with no "*" case, so a ["*"]-granted column was silently omitted from the generated
     schema for every role. Both are fixed by adding "*" in visible_to (or "*" in c["visible_to"]) as an
     additional short-circuit alongside the existing membership check, mirroring the already-correct metrics-visibility
-    pattern.'
+    pattern. [END SUPERSEDED BLOCK] (Amended 2026-10-26, ''*'' NAMES NO ROLE:) A grant list names the roles that
+    read a column, a metric, a function, a webhook or a command, and ''*'' names none (REQ-2153); a grant to every
+    role is a grant to the standard Viewer role, which every role built on it holds (REQ-2154). The read checks
+    test membership of the role alone.'
   use_case: 'Found via the grpc_remote e2e test (REQ-1742): grpc_remote_router.py''s auto-registered columns
     start with visible_to: [] (zero-trust default) and the UI''s own grant flow (updateTable mutation)
     sets visible_to: ["*"]. The grant call itself succeeded and persisted ["*"] correctly (table_repo.upsert
@@ -66447,7 +66450,8 @@
   unit_test_reason: 'No dedicated regression test yet asserts visible_to: ["*"] is treated as visible
     to every role in either build_governance_context (stage2.py) or the per-role schema projection (schema_gen.py);
     coverage is currently incidental via e2e only.'
-  scenario: 'Given a column has visible_to: ["*"] persisted via the UI grant flow (updateTable mutation)
+  scenario: '[SUPERSEDED by REQ-2153, 2026-10-26 -- ''*'' names no role. Kept here for history; do not implement
+    against it.] Given a column has visible_to: ["*"] persisted via the UI grant flow (updateTable mutation)
 
     When a role other than a role literally named "*" queries that column
 
@@ -66461,6 +66465,7 @@
     When schema_gen.py builds the per-role GraphQL/other-surface schema projection for any role
 
     Then the column is included in that role''s generated schema instead of being silently omitted
+    [END SUPERSEDED BLOCK]
 
     '
 - id: REQ-1779

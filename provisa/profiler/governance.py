@@ -224,10 +224,10 @@ def _involved_filter(kind: str, rules: list[ColumnRule], role: str) -> str | Non
 
 def _prefill_masks(readers: list[str], restricted: set[str]) -> list[dict]:
     """A value field's mask list (REQ-2059): unmasked to the readers it is not restricted for,
-    then NULL to everyone else."""
+    then NULL to every other reader (the last entry, with no ``to``, REQ-2153)."""
     open_to = [r for r in readers if r not in restricted]
     return ([{"to": open_to, "mask": None}] if open_to else []) + [
-        {"to": ["*"], "mask": {"type": "constant", "value": None}}
+        {"to": None, "mask": {"type": "constant", "value": None}}
     ]
 
 

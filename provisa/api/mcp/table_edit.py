@@ -109,7 +109,7 @@ def _column_input(c: Any) -> Any:
         visible_to=list(c.visible_to),
         masks=[
             MaskEntryInput(
-                to=list(e.to),
+                to=None if e.to is None else list(e.to),
                 mask=None if e.mask is None else MaskSpecInput(**vars(e.mask)),
             )
             for e in c.masks

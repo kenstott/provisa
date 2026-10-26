@@ -45,8 +45,10 @@ def _meta_ctx(table_id: int = 1) -> CompilationContext:
 
 
 def _meta_tables(table_id: int = 1) -> list[dict]:
-    cols = [{"column_name": _CORE_COL, "data_type": "varchar"}]
-    cols += [{"column_name": c, "data_type": "varchar"} for c in _GOV_COLS]
+    # REQ-2154: the catalog is granted to the roles these tests read it as.
+    readers = ["analyst", "steward", "admin", "meta_reader", "sales"]
+    cols = [{"column_name": _CORE_COL, "data_type": "varchar", "visible_to": readers}]
+    cols += [{"column_name": c, "data_type": "varchar", "visible_to": readers} for c in _GOV_COLS]
     return [{"id": table_id, "columns": cols}]
 
 
@@ -190,9 +192,9 @@ def _data_tables() -> list[dict]:
     ]
 
 
-# One column open to its domain: a role's own tables are those it is served a column of
-# (REQ-1132 as narrowed with REQ-1959), so a described table needs one to be anyone's.
-_OPEN = [{"column_name": "id", "visible_to": []}]
+# One column granted to the roles that read it: a role's own tables are those it is served a
+# column of (REQ-1132 as narrowed with REQ-1959; REQ-2154: a grant names its readers).
+_OPEN = [{"column_name": "id", "visible_to": ["sales", "cataloger", "analyst", "admin", "empty"]}]
 
 
 def _relationships() -> list[dict]:

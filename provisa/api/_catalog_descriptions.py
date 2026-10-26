@@ -276,8 +276,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "is_alternate_key": "Whether the column uniquely identifies a row without being the "
         "primary key",
         "object_fields": "Field definitions for a structured (object) column",
-        "visible_to": "Roles that may select this column; empty means unrestricted outside "
-        "lockdown domains",
+        "visible_to": "Roles that may select this column; empty means no role",
         "tenant_id": _TENANT,
     },
     "domains": {

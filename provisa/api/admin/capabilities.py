@@ -45,6 +45,23 @@ def _identity_from_info(info: "strawberry.types.Info") -> object | None:
     return getattr(request.state, "identity", None)
 
 
+def acting_role_of(info: "strawberry.types.Info") -> str:  # REQ-2154
+    """The role this admin request acts as: what the auth middleware bound on the request
+    (``request.state.role``), which a registration's default grant names."""
+    request = (
+        info.context.get("request")
+        if isinstance(info.context, dict)
+        else getattr(info.context, "request", None)
+    )
+    role = getattr(getattr(request, "state", None), "role", None)
+    if not role:
+        raise RuntimeError(
+            "this admin request carries no acting role; the auth middleware binds one on every "
+            "request (request.state.role)"
+        )
+    return str(role)
+
+
 def _resolved_capabilities(identity, state) -> set[str]:
     """Return the union of capabilities across all of the identity's role assignments."""
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:

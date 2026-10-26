@@ -319,8 +319,7 @@ views:
     visible_to: [data_steward, reviewer]
     masks:
     - to: [reviewer+region__eu]
-    - to: ['*']
-      mask: {type: constant, value: withheld}
+    - mask: {type: constant, value: withheld}
   - {name: recipient_domain, data_type: varchar, description: The recipient's mail domain, visible_to: [data_steward, reviewer]}
   - {name: score, data_type: integer, description: How likely the message moves customer data out (0 to 100), visible_to: [data_steward, reviewer]}
   - {name: signals, data_type: varchar, description: What raised the score, visible_to: [data_steward, reviewer]}

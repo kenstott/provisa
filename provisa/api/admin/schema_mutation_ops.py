@@ -578,7 +578,12 @@ async def register_table(
                         raise TableSaveRefused(_paging)
                     model.pagination = _paging
                 from provisa.api.admin._hiding_guard import table_hiding_refusal
+                from provisa.api.admin.capabilities import acting_role_of
+                from provisa.security.default_grant import with_read_grant
 
+                # REQ-2154: registering grants read on every column to the registrant's role and
+                # to Viewer, written into each grant list where it can be seen and changed.
+                model = with_read_grant(model, acting_role_of(info))
                 _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
                     info, _conn, model, editor=True
                 )

@@ -580,7 +580,7 @@ class MaskSpecType:  # REQ-2059: how a mask entry masks the value
 
 @strawberry.type
 class MaskEntryType:  # REQ-2059: one entry of a column's ordered mask list
-    to: list[str]  # grant entries, composites included; "*" is everyone
+    to: list[str] | None = None  # grant entries, composites included; None: every other reader
     mask: MaskSpecType | None = None  # None: the readers it is for read the column unmasked
     why: JsonScalar | None = None  # REQ-2094: why the entry is what it is
 
@@ -596,7 +596,7 @@ class MaskSpecInput:  # REQ-2059
 
 @strawberry.input
 class MaskEntryInput:  # REQ-2059
-    to: list[str]
+    to: list[str] | None = None  # None: every other reader, the list's last entry (REQ-2153)
     mask: MaskSpecInput | None = None
     why: JsonScalar | None = None  # REQ-2094: the reason, purpose, bases and review-by date given
 
@@ -605,7 +605,7 @@ def mask_entry_types(masks: list[dict]) -> list[MaskEntryType]:
     """A stored mask list (REQ-2059) as the admin API answers it."""
     return [
         MaskEntryType(
-            to=list(e["to"]),
+            to=None if e.get("to") is None else list(e["to"]),
             mask=None if e["mask"] is None else MaskSpecType(**e["mask"]),
             why=e.get("why"),
         )
@@ -617,7 +617,7 @@ def mask_entries_of(masks: list[MaskEntryInput]) -> list[dict]:
     """A mask list as sent (REQ-2059), as the model takes it."""
     return [
         {
-            "to": list(e.to),
+            "to": None if e.to is None else list(e.to),
             "mask": None
             if e.mask is None
             else {
@@ -1539,7 +1539,7 @@ class MetricType:  # REQ-1317: a governed, named aggregate definition (grain bou
     description: str | None = None
     ai_context: str | None = None  # REQ-1319: definition text for AI consumers
     # Null for a caller without view_governance (REQ-1134, REQ-1958).
-    visible_to: list[str] | None = strawberry.field(default_factory=lambda: ["*"])
+    visible_to: list[str] | None = None
     from_fact: str | None = None  # REQ-1320: set when auto-registered from a fact measure
 
 
@@ -1550,7 +1550,8 @@ class MetricInput:  # REQ-1317
     datatype: str | None = None
     description: str | None = None
     ai_context: str | None = None  # REQ-1319
-    visible_to: list[str] = strawberry.field(default_factory=lambda: ["*"])
+    # REQ-1317: None at create is the acting role and Viewer; the roles named otherwise.
+    visible_to: list[str] | None = None
 
 
 @strawberry.input

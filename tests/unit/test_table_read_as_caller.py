@@ -50,13 +50,13 @@ def _refunds(**over) -> dict:
             {
                 "column_name": "id",
                 "data_type": "integer",
-                "visible_to": [],
+                "visible_to": ["r"],
                 "native_filter_type": None,
             },
             {
                 "column_name": "note",
                 "data_type": "varchar",
-                "visible_to": [],
+                "visible_to": ["r"],
                 "native_filter_type": None,
             },
         ],

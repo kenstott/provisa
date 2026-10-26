@@ -666,24 +666,21 @@ tables:
         visible_to: [admin, analyst]
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
-          - to: ["*"]             # everyone else sees it masked
-            mask: {type: regex, pattern: "^(.{2}).*(@.*)$", replace: "$1***$2"}
+          - mask: {type: regex, pattern: "^(.{2}).*(@.*)$", replace: "$1***$2"}  # every other reader sees it masked
         alias: email_address      # optional: override GraphQL field name
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
         masks:
           - to: [admin]
-          - to: ["*"]
-            mask: {type: constant, value: 0}
+          - mask: {type: constant, value: 0}
       - name: created_by
         visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
         masks:
           - to: [admin]
-          - to: ["*"]
-            mask: {type: truncate, precision: month}
+          - mask: {type: truncate, precision: month}
     write_grants:                 # who may write this table, per role and operation
       - role: admin
         operation: insert

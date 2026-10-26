@@ -348,6 +348,35 @@ async def require_table_save(info: Any, input_: Any) -> tuple[bool, Any]:  # REQ
     return False, saved
 
 
+def grant_edit_refusal(stored_columns: dict[str, dict], model: Any, acting_role: str) -> str | None:
+    """Why this save may not change who reads its columns, or None (REQ-2154). A role cannot
+    remove its own read on a column -- it adds a mask rule for itself instead, which keeps the
+    column's name so it can still administer it -- and the last role holding read on a column
+    cannot lose it, so every column keeps a reader. Each role of a set acting together keeps its
+    own read."""
+    from provisa.security.default_grant import VIEWER_ROLE, default_read_grant
+
+    # Viewer is not the acting role: removing it is how a column is made sensitive.
+    acting = set(default_read_grant(acting_role)) - {VIEWER_ROLE}
+    refusals: list[str] = []
+    for column in model.columns:
+        before = stored_columns.get(column.name)
+        if before is None:
+            continue
+        had, has = set(before.get("visible_to") or ()), set(column.visible_to)
+        own = sorted((had - has) & acting)
+        if own:
+            refusals.append(
+                f"{column.name}: {', '.join(repr(r) for r in own)} cannot remove its own read; "
+                "add a mask rule for it to keep the values from it"
+            )
+        if had and not has:
+            refusals.append(f"{column.name}: the last role holding read on it cannot lose it")
+    if not refusals:
+        return None
+    return "changing who reads a column is refused -- " + "; ".join(refusals)
+
+
 async def table_hiding_refusal(
     info: Any,
     conn: "Connection",
@@ -356,10 +385,17 @@ async def table_hiding_refusal(
     editor: bool,
 ) -> Any:  # REQ-1943, REQ-1944
     """:func:`hiding_refusal` for a GraphQL save, as the ``MutationResult`` it answers with."""
-    from provisa.api.admin.capabilities import _identity_from_info
+    from provisa.api.admin.capabilities import _identity_from_info, acting_role_of
     from provisa.api.admin.types import MutationResult
     from provisa.api.app import state
+    from provisa.core.repositories.table import load_columns
 
+    stored = await stored_table(conn, model)
+    if stored is not None:
+        stored_columns = {c["column_name"]: c for c in await load_columns(conn, stored["id"])}
+        kept = grant_edit_refusal(stored_columns, model, acting_role_of(info))
+        if kept is not None:
+            return MutationResult(success=False, message=kept, code="schema.read_grant_kept")
     refusal = await hiding_refusal(
         conn,
         model,

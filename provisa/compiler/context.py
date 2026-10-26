@@ -674,7 +674,7 @@ def _register_draft_names(  # REQ-1921
         domain = row["domain_id"]
         if not every and domain not in reach:
             continue
-        if not any(not c["visible_to"] or role["id"] in c["visible_to"] for c in row["columns"]):
+        if not any(role["id"] in c["visible_to"] for c in row["columns"]):
             continue
         name, alias = row["table_name"], row["alias"]
         dp = f"{domain_to_sql_name(domain)}__"

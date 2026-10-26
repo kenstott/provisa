@@ -17,6 +17,8 @@ which is how a column is granted to every role; removing Viewer is how it is mad
 
 from __future__ import annotations
 
+from typing import Any
+
 from provisa.security.meta_role import META_PREFIX
 
 #: The standard role every role builds on (provisa/core/standard_roles.yaml).
@@ -31,3 +33,21 @@ def default_read_grant(acting_role: str) -> list[str]:
     else:
         members = [acting_role]
     return sorted({*members, VIEWER_ROLE})
+
+
+def with_read_grant(table: Any, acting_role: str) -> Any:
+    """``table`` (a Table model being registered) with every column's grant list also naming the
+    registrant's role and Viewer, beside what the registration names (REQ-2154)."""
+    grant = default_read_grant(acting_role)
+    return table.model_copy(
+        update={
+            "columns": [
+                c.model_copy(
+                    update={
+                        "visible_to": [*c.visible_to, *(g for g in grant if g not in c.visible_to)]
+                    }
+                )
+                for c in table.columns
+            ]
+        }
+    )
