@@ -78,6 +78,7 @@ import setup_contract as sc  # noqa: E402
 # work exposes the bench tables over SPARQL (until then the deployment exposes none there).
 UNGATED = ("sparql",)
 TRANSPORTS = tuple(t for t in ol.TRANSPORTS if t not in UNGATED)
+JOIN_TRANSPORTS = tuple(t for t in cm.JOIN_TRANSPORTS if t in TRANSPORTS)
 SOURCES = tuple(lp.SOURCES)
 LATENCY_OUT = REPO / "results" / "bench_features" / "latency.json"
 READER = "bench_feat_reader"  # the second contract role: a child of org_admin
@@ -636,7 +637,7 @@ _CROSS = {
 }
 
 
-@pytest.mark.parametrize("transport", cm.JOIN_TRANSPORTS)
+@pytest.mark.parametrize("transport", JOIN_TRANSPORTS)
 @pytest.mark.parametrize("knob", ["joins_same_source", "joins_cross_source"])
 def test_joins_answer_pairs_that_join(stack, transport, knob):
     weights = _CROSS if knob == "joins_cross_source" else None
@@ -726,7 +727,7 @@ def test_a_route_hint_answers_the_same_rows_and_is_the_route_taken(stack, transp
     assert routes == {"engine" if mode == "federated" else "direct"}, routes
 
 
-@pytest.mark.parametrize("transport", cm.JOIN_TRANSPORTS)
+@pytest.mark.parametrize("transport", JOIN_TRANSPORTS)
 def test_join_replication_answers_the_same_pairs(stack, transport):
     def replicated(c: dict[str, Any]) -> None:
         # both ends of every cross-source join read from replicas, and only such joins drawn
