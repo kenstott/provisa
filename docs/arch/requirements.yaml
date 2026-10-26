@@ -89173,7 +89173,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the source''s native type has one (a Postgres inet, a Trino ipaddress, a ClickHouse IPv4 registers as
     inet), never the bare base type. Each source driver''s type mapping maps its native types to subtypes
     the same way engines and surfaces map subtypes outward. Whether a subtype is used afterwards is then
-    each engine''s and surface''s own choice.'
+    each engine''s and surface''s own choice. (Amended 2026-10-25, CROSS-SOURCE TYPE AUDIT:) Maintainer
+    2026-10-26: equivalent ideas exist under different names across source types, so every source driver''s
+    type mapping is audited against the subtypes: each native type equivalent to a subtype maps to it on
+    registration (inet: Postgres/CockroachDB/YugabyteDB inet and cidr, Trino ipaddress, ClickHouse IPv4/IPv6,
+    Elasticsearch ip, Cassandra inet, DuckDB INET; money: SQL Server money and smallmoney; xml: SQL Server
+    and Oracle XML types; point: MySQL POINT, Elasticsearch geo_point; and so on). The audit also lists
+    native types that suggest a new subtype; those are proposed to the maintainer, not added unasked.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
