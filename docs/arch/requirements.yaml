@@ -89159,7 +89159,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     aliased type, it uses the alias''s native form: a Postgres or Trino engine keeps inet/ipaddress, a replica
     into a store with the type lands it natively, pgwire reports the alias''s OID, GraphQL names the alias''s
     scalar. Where it does not, it uses the canonical base type. Each engine driver and surface declares
-    which aliases it supports; nothing is guessed.'
+    which aliases it supports; nothing is guessed. (Amended 2026-10-25, TYPE MAPPINGS KEY ON ALIASES:) Maintainer
+    2026-10-26, the simpler rule: every engine''s and surface''s type mapping simply includes the aliases.
+    An alias maps to that engine''s or surface''s equivalent type where one exists (Trino ipaddress, Postgres
+    inet, ClickHouse IPv6, DuckDB''s inet; pgwire OID 869; GraphQL IPAddress), and a mapping with no entry
+    for an alias maps it as its base type. Declaring support is just adding the alias to the mapping; there
+    is no separate support list.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
