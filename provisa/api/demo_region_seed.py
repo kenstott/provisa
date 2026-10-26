@@ -34,6 +34,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 #: Where the bundle carries each region's seed, under the demo's ``seeded`` directory.
@@ -497,3 +498,27 @@ async def views_waiting_here(template_org: str) -> str:
         if b["region"] == here() and b["last_refresh_at"] is None
     ]
     return "; ".join(recorded) or "views with no build recorded"
+
+
+async def unanswered_regions(
+    addresses: dict[str, str], *, probe: Callable[[str], Awaitable[bool]] | None = None
+) -> list[tuple[str, str]]:
+    """Every other region whose node does not answer at its ``addresses`` entry (the platform's
+    regions, as the deployment config declares them): ``probe`` an address, by default its
+    /health."""
+    probe = probe or _answers
+    return [
+        (region, address)
+        for region, address in sorted(addresses.items())
+        if region != here() and not await probe(address)
+    ]
+
+
+async def _answers(address: str) -> bool:
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            return (await client.get(f"{address}/health")).status_code == 200
+    except httpx.HTTPError:
+        return False

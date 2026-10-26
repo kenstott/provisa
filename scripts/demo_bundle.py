@@ -1041,7 +1041,15 @@ def _seed_node(
         )
     try:
         deadline = time.monotonic() + timeout
+        failure = record.parent / "failed"
         while not (until() if until is not None else record.exists()):
+            if failure.exists():
+                # Its template could not be seeded, and the node said why (demo_templates
+                # ._prepare_seeding): ended now, by name, not at the end of the budget.
+                raise SystemExit(
+                    f"{demo.name}: its seeding node failed: {failure.read_text()}\n"
+                    + _tail(node_log, _NODE_LOG_TAIL)
+                )
             if server.poll() is not None:
                 raise SystemExit(
                     f"the seeding run exited early ({server.returncode}):\n"

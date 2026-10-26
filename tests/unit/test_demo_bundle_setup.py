@@ -1191,3 +1191,38 @@ def test_a_failing_seeding_node_stops_the_others_and_fails_the_build(tmp_path, m
     monkeypatch.setattr(builder, "_seed_node", _node)
     with pytest.raises(SystemExit, match="exited early"):
         builder._seed(tmp_path, tmp_path / "banking", None, 60.0, regional)
+
+
+def test_a_seeding_node_that_marks_its_template_failed_ends_the_build_at_once(
+    tmp_path, monkeypatch
+):
+    """A seeding node whose template fails writes why beside the record the build waits for; the
+    build stops on it at once, naming the reason, instead of waiting out its whole budget."""
+    record = tmp_path / "demo" / "seeded" / "replicas.json"
+    record.parent.mkdir(parents=True)
+    (record.parent / "failed").write_text("replicas failed to land: shop.orders")
+    stopped: list[str] = []
+
+    class _Server:
+        returncode = None
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            stopped.append("terminate")
+
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(builder, "_control_plane", lambda *_a: ("h", "1", "postgresql://cp"))
+    monkeypatch.setattr(builder, "_config_env", lambda _demo: {})
+    monkeypatch.setattr(builder, "_duckdb_env", lambda _work: {})
+    monkeypatch.setattr(builder.subprocess, "Popen", lambda *_a, **_k: _Server())
+    monkeypatch.setattr(builder.subprocess, "run", lambda *_a, **_k: None)
+    stores = argparse.Namespace(addresses={})
+    started = time.monotonic()
+    with pytest.raises(SystemExit, match="replicas failed to land: shop.orders"):
+        builder._seed_node(tmp_path, tmp_path / "demo", stores, 600.0, record=record, env={})
+    assert time.monotonic() - started < 30
+    assert stopped == ["terminate"]
