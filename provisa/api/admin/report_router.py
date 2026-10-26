@@ -194,7 +194,11 @@ async def _as_served(
     async with state.model_db.acquire() as conn:
         ids = [r.id for r in (await conn.execute_core(select(rt.c.id))).fetchall()]
         served = {i: await served_columns_of(conn, caller, i) for i in ids}
-    narrowed = for_role(snapshot, await snapshot_reader(state, lambda i: served.get(i, set())))
+    narrowed = for_role(
+        snapshot,
+        await snapshot_reader(state, lambda i: served.get(i, set())),
+        lambda domain_id: caller.lists_domain(domain_id, False),
+    )
     role = caller.role
     metrics = [m for m in config.metrics if role is not None and role_sees_metric(state, role, m)]
     return narrowed, config.model_copy(update={"metrics": metrics})

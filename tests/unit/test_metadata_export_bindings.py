@@ -532,6 +532,7 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
 
     monkeypatch.setattr(publishing, "_export_config", _export_config)
     monkeypatch.setattr(publishing, "role_reader", _reads_everything)
+    monkeypatch.setattr(publishing, "role_reach", lambda state, role: lambda domain_id: True)
     monkeypatch.setattr(publishing, "_model_for_export", _model)
     monkeypatch.setattr(
         publishing,

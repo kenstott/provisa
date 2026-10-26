@@ -42,12 +42,16 @@ def for_domains(snapshot: MetadataSnapshot, domains: Iterable[str]) -> MetadataS
 
 
 def for_role(
-    snapshot: MetadataSnapshot, served: Callable[[TableAsset], set[str] | None]
+    snapshot: MetadataSnapshot,
+    served: Callable[[TableAsset], set[str] | None],
+    reaches: Callable[[str], bool],
 ) -> MetadataSnapshot:
     """``snapshot`` as a target naming a role is published it (REQ-2152, ruling Q1): exactly
     what the role reads. ``served(table)`` is the columns of ``table`` the role is served (None:
     all of them); a table it is served none of is not published, nor a product with no member
-    left, and every other fact goes only with the assets kept."""
+    left, and every other fact goes only with the assets kept. A domain is published when the
+    role reaches it (``reaches``), empty or not, or holds a kept table or product -- the admin
+    catalog's rule (CatalogScope.lists_domain)."""
     tables = []
     for table in snapshot.tables:
         columns = served(table)
@@ -63,12 +67,15 @@ def for_role(
         for p in snapshot.data_products
         if any(m in members for m in p.members)
     ]
-    domain_ids = {t.domain_id for t in tables} | {p.domain_id for p in products}
-    if tables == snapshot.tables and products == snapshot.data_products:
+    holding = {t.domain_id for t in tables} | {p.domain_id for p in products}
+    domains = [d for d in snapshot.domains if d.id in holding or reaches(d.id)]
+    if (
+        tables == snapshot.tables
+        and products == snapshot.data_products
+        and domains == snapshot.domains
+    ):
         return snapshot
-    return _with_assets(
-        snapshot, tables, products, [d for d in snapshot.domains if d.id in domain_ids]
-    )
+    return _with_assets(snapshot, tables, products, domains)
 
 
 def _with_assets(

@@ -271,6 +271,15 @@ async def role_reader(state: Any, role: str) -> "Callable[[TableAsset], set[str]
     return await snapshot_reader(state, lambda table_id: served.get(table_id, set()))
 
 
+def role_reach(state: Any, role: str) -> "Callable[[str], bool]":
+    """Whether ``role`` reaches a domain, by its definition: a target's role is one the org
+    defines, checked when the target is saved."""
+    from provisa.security.rights import reaches_domain
+
+    reach = state.roles[role]["domain_access"]
+    return lambda domain_id: reaches_domain(reach, domain_id)
+
+
 async def snapshot_reader(
     state: Any, served_of: "Callable[[int], set[str] | None]"
 ) -> "Callable[[TableAsset], set[str] | None]":
@@ -338,7 +347,9 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
             # REQ-2122: a catalog is published its domains' tables and data products alone;
             # REQ-2152 (Q1): and only what the role it is published as reads.
             published = for_role(
-                for_domains(snapshot, target.domains), await role_reader(state, target.role)
+                for_domains(snapshot, target.domains),
+                await role_reader(state, target.role),
+                role_reach(state, target.role),
             )
             async with model_db.acquire() as conn:
                 # REQ-1389: hand the provider the vendor ids captured by its earlier publishes,

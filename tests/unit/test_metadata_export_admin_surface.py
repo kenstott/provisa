@@ -372,6 +372,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
         return lambda table: None  # what a role is sent is test_metadata_export_scope
 
     monkeypatch.setattr(sync_mod, "role_reader", _reads_everything)
+    monkeypatch.setattr(sync_mod, "role_reach", lambda state, role: lambda domain_id: True)
     body = await publish_metadata_export(_request())
 
     assert body["ok"] is False
