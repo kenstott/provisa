@@ -329,7 +329,7 @@ the stored one. The file travels in the demo's bundle with the rest of its direc
 ## setup.yaml — run once, on first start and at bundle build
 
 `setup.yaml` names what the demo needs run after the server is up. The launcher runs it on a
-demo's first start (a new control plane). The bundle build runs it before dumping the stores, so
+demo's first start (a new model store). The bundle build runs it before dumping the stores, so
 the setup's effects are in the dumps from the start.
 
 The file is a list of steps, each one `command`, `refresh`, `profile`, `environment` or `client`
@@ -382,8 +382,8 @@ plane.
 
 A bundled demo's `command`, `refresh` and `client` steps do not run again where it runs: what they wrote is
 already in the bundle's dumps. Its `environment` steps do run there (`--environments-only`),
-because an environment is a branch of the model in the control plane, and every start builds the
-control plane anew.
+because an environment is a branch of the model in the model store, and every start builds the
+model store anew.
 
 ## docker-compose.run.yml — the run-time stores
 

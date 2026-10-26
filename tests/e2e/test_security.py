@@ -57,7 +57,7 @@ class TestColumnVisibility:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__orders { id amount } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         # amount is not in analyst's schema — GraphQL validation rejects it
         assert resp.status_code == 400
@@ -67,7 +67,7 @@ class TestColumnVisibility:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__customers { id name } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__customers"]
@@ -80,7 +80,7 @@ class TestColumnVisibility:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__orders { id product_id } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         assert resp.status_code == 400  # product_id not in analyst schema
 
@@ -133,7 +133,7 @@ class TestRLSEnforcement:
         default — never the unfiltered table."""
         read = _READS[transport]
         assert len(await read(client, "org_admin")) >= 25
-        assert await read(client, "analyst") == []
+        assert await read(client, "sales_analytics_analyst") == []
 
     @pytest.mark.parametrize("transport", sorted(_READS))
     async def test_analyst_sees_exactly_the_orders_of_the_bound_region(self, client, transport):
@@ -142,7 +142,7 @@ class TestRLSEnforcement:
         expected = sorted(r["id"] for r in everything if r["region"] == "us-east")
         assert expected and len(expected) < len(everything)  # the filter has something to remove
 
-        rows = await read(client, "analyst", _SESSION_REGION)
+        rows = await read(client, "sales_analytics_analyst", _SESSION_REGION)
         assert sorted(r["id"] for r in rows) == expected
         assert {r["region"] for r in rows} == {"us-east"}
 
@@ -151,14 +151,14 @@ class TestRLSEnforcement:
         """The same read with no region bound, right after one that bound it, is empty again:
         neither a kept plan nor a cached result carries one request's rows to the next."""
         read = _READS[transport]
-        assert await read(client, "analyst", _SESSION_REGION) != []
-        assert await read(client, "analyst") == []
+        assert await read(client, "sales_analytics_analyst", _SESSION_REGION) != []
+        assert await read(client, "sales_analytics_analyst") == []
 
     async def test_the_governed_sql_carries_the_analysts_filter(self, client):
         resp = await client.post(
             "/data/compile",
             json={"query": "{ sa__orders { id region } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         assert resp.status_code == 200, resp.text
         compiled = resp.json()["compiled"][0]
@@ -188,7 +188,7 @@ class TestDomainAccess:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ product_catalog__products { id name } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         # products is in product-catalog domain — not in analyst's schema
         assert resp.status_code == 400

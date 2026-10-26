@@ -42,7 +42,7 @@ steps:
 - key: churnAnalyst
   route: /query
   capability: query_development
-  role: analyst
+  role: churn_analyst
 - key: churnFeatures
   route: /sql
   capability: query_development

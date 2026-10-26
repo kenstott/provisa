@@ -391,8 +391,22 @@ async def register_table(
                     if is_checker_source_type(_reg_state.source_types.get(input.source_id)):
                         require_scan_interval(model)  # REQ-1443: the interval it scans on
                     # REQ-1934: a profile result table's derivation, and a table's profiler membership.
-                    from provisa.profiler.registration import apply_registration
+                    from provisa.profiler.registration import (
+                        apply_registration,
+                        profile_reach_refusal,
+                    )
+                    from provisa.api.admin.catalog_scope import catalog_scope
+                    from provisa.api.admin.read_rights import serves_every_column
 
+                    _scope = catalog_scope(info)
+
+                    async def _serves_all(table_id: int) -> bool:
+                        return await serves_every_column(_conn, _scope, table_id)
+
+                    # REQ-2152 (Q6a): profiling a table takes reading all of it.
+                    _reach = await profile_reach_refusal(_conn, model, _serves_all)
+                    if _reach is not None:
+                        raise ValueError(_reach)
                     await apply_registration(_conn, model)
                 except ValueError as _dq_err:
                     raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))
@@ -591,13 +605,17 @@ async def register_table(
                         model = model.model_copy(update={"write_grants": _carried_grants})
                     table_id = await table_repo.upsert(_conn, model)
                 except glossary_repo.TermIsClass as _class:
-                    # REQ-2141: a column named for a class term is not claimed by it.
+                    # REQ-2141: a column named for a class term is not claimed by it; REQ-2152: only
+                    # the tables the caller reads are named.
+                    from provisa.api.admin.read_rights import reader_for, told_glossary_refusal
+
+                    _said, _tables = await told_glossary_refusal(_conn, reader_for(info), _class)
                     raise TableSaveRefused(
                         MutationResult(
                             success=False,
-                            message=str(_class),
+                            message=_said,
                             code="glossary.term_is_class",
-                            params={"term": _class.term, "tables": ", ".join(_class.tables)},
+                            params={"term": _class.term, "tables": _tables},
                         )
                     )
                 except table_repo.ViewLoopRefused as _loop:
@@ -625,13 +643,21 @@ async def register_table(
                         )
                     )
                 except table_repo.ColumnDropRefused as _drop:
-                    # REQ-1918: a column something still refers to is not dropped; each is named.
+                    # REQ-1918: a column something still refers to is not dropped; each is named,
+                    # with only the dependents the caller may read (REQ-2152).
+                    from provisa.api.admin.read_rights import (
+                        column_drop_text,
+                        reader_for,
+                        readable_columns_report,
+                    )
+
+                    _report = await readable_columns_report(_conn, reader_for(info), _drop.columns)
                     raise TableSaveRefused(
                         MutationResult(
                             success=False,
-                            message=str(_drop),
+                            message=column_drop_text(_drop.table_name, _report),
                             code="schema.column_has_dependents",
-                            params={"table": _drop.table_name, "columns": _drop.report()},
+                            params={"table": _drop.table_name, "columns": _report},
                         )
                     )
                 except SqlAddressTaken as _taken:

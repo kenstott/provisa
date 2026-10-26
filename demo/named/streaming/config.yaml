@@ -35,7 +35,8 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: shop_analyst
+  parents: [analyst]
   description: "Queries the shop's streams and tables."
   capabilities:
   - query_development
@@ -68,18 +69,18 @@ tables:
   table: products
   description: What the shop sells, and for how much
   columns:
-  - {name: product_id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: The product's name, visible_to: [org_admin, analyst]}
-  - {name: category, data_type: varchar, description: 'coffee, tea, equipment or supplies', visible_to: [org_admin, analyst]}
-  - {name: unit_price, data_type: decimal, description: The price of one in USD, visible_to: [org_admin, analyst]}
+  - {name: product_id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [data_steward, shop_analyst]}
+  - {name: name, data_type: varchar, description: The product's name, visible_to: [data_steward, shop_analyst]}
+  - {name: category, data_type: varchar, description: 'coffee, tea, equipment or supplies', visible_to: [data_steward, shop_analyst]}
+  - {name: unit_price, data_type: decimal, description: The price of one in USD, visible_to: [data_steward, shop_analyst]}
 - source_id: catalog
   domain_id: shop
   schema: public
   table: regions
   description: The regions the shop sells in
   columns:
-  - {name: region_id, data_type: varchar, is_primary_key: true, description: 'The region''s code, such as eu-west', visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: The region's name, visible_to: [org_admin, analyst]}
+  - {name: region_id, data_type: varchar, is_primary_key: true, description: 'The region''s code, such as eu-west', visible_to: [data_steward, shop_analyst]}
+  - {name: name, data_type: varchar, description: The region's name, visible_to: [data_steward, shop_analyst]}
 - source_id: orders
   domain_id: shop
   schema: default
@@ -96,11 +97,11 @@ tables:
   enable_aggregates: true
   enable_group_by: true
   columns:
-  - {name: order_id, data_type: varchar, is_primary_key: true, description: The order's id, visible_to: [org_admin, analyst]}
-  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [org_admin, analyst]}
-  - {name: region_id, data_type: varchar, description: The region it was placed in, visible_to: [org_admin, analyst]}
-  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [org_admin, analyst]}
-  - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: varchar, is_primary_key: true, description: The order's id, visible_to: [data_steward, shop_analyst]}
+  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [data_steward, shop_analyst]}
+  - {name: region_id, data_type: varchar, description: The region it was placed in, visible_to: [data_steward, shop_analyst]}
+  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [data_steward, shop_analyst]}
+  - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [data_steward, shop_analyst]}
 views:
 # The answer: each region's orders and revenue over the last five minutes, refreshed by every batch
 # of orders that lands.
@@ -120,11 +121,11 @@ views:
     WHERE o.ordered_at >= CURRENT_TIMESTAMP - INTERVAL '5' MINUTE
     GROUP BY r.name
   columns:
-  - {name: region, data_type: varchar, description: The region's name, visible_to: [org_admin, analyst]}
-  - {name: orders, data_type: bigint, description: Orders placed in it in the last five minutes, visible_to: [org_admin, analyst]}
-  - {name: items, data_type: bigint, description: Items those orders came to, visible_to: [org_admin, analyst]}
-  - {name: revenue, data_type: decimal, description: What they came to in USD, visible_to: [org_admin, analyst]}
-  - {name: last_order_at, data_type: timestamp, description: When its latest order was placed (UTC), visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, description: The region's name, visible_to: [data_steward, shop_analyst]}
+  - {name: orders, data_type: bigint, description: Orders placed in it in the last five minutes, visible_to: [data_steward, shop_analyst]}
+  - {name: items, data_type: bigint, description: Items those orders came to, visible_to: [data_steward, shop_analyst]}
+  - {name: revenue, data_type: decimal, description: What they came to in USD, visible_to: [data_steward, shop_analyst]}
+  - {name: last_order_at, data_type: timestamp, description: When its latest order was placed (UTC), visible_to: [data_steward, shop_analyst]}
 relationships:
 - {id: order-to-product, alias: ORDERED, cardinality: many-to-one, source_table_id: orders, source_column: product_id, target_table_id: products, target_column: product_id}
 - {id: order-to-region, alias: PLACED_IN, cardinality: many-to-one, source_table_id: orders, source_column: region_id, target_table_id: regions, target_column: region_id}

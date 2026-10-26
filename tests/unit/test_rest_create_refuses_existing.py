@@ -52,8 +52,9 @@ async def test_a_role_id_that_exists_is_refused_by_name(monkeypatch, control_pla
 
     # The definition is valid and the caller may grant it (its checks are tested where they are
     # made): what is left to refuse is the id.
-    for check in ("_check_parent", "_check_definition", "_require_reach_of_added"):
+    for check in ("_check_parents", "_check_definition"):
         monkeypatch.setattr(roles_router, check, _valid)
+    monkeypatch.setattr(roles_router, "require_reach_of_added_domains_request", lambda *_a: None)
     monkeypatch.setattr(roles_router.role_repo, "require_residency_grant_saved", _valid)
     before = await _count(plane, roles)
     body = roles_router.CreateRoleBody(

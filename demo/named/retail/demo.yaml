@@ -8,7 +8,7 @@
 # permission from the copyright holder.
 #
 # The retail demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
-# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# by scripts/gen-site-demos.mjs. published: true
 # Provisa, is beside it.
 title: One retail group, two regions
 description: >-
@@ -18,6 +18,7 @@ description: >-
   audit are each one query.
 screenshot: card.png
 published: true
+group: compliance
 # REQ-2035: the regions the demo runs in. start-ui-install.sh starts a headless node for each
 # region in headless -- it lands that region's tables and builds its views in its own store -- and
 # the node the visitor uses in visitor's region; both on one model store.

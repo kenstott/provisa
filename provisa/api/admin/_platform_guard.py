@@ -207,17 +207,16 @@ def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
     *,
     role_id: str,
     domain_access: Iterable[str] | None,
-    inherited_domain_access: Iterable[str] | None = None,
 ) -> ApiError | None:
     """Why a role may not be DEFINED this way, or None when it may.
 
     Three refusals, asked of every surface that writes a role's definition:
 
     * a ``domain_access`` that lists no domain — a role is always one or more domains, or
-      ``"*"`` (``rights.role_domain_problem``; the role's own list plus ``inherited_domain_access``
-      from its parent chain). The one exception is a role carrying only platform rights;
+      ``"*"`` (``rights.role_domain_problem``; the role's own list alone, as reach is never
+      inherited, REQ-2155). The one exception is a role carrying only platform rights;
     * a string naming no right — the vocabulary is closed (``rights.unknown_capabilities``);
-    * a platform right, held directly or through ``inherited`` (the parent chain's capabilities),
+    * a platform right, held directly or through ``inherited`` (its ancestors' capabilities),
       unless the caller is a platform administrator. Defining a role is ``user_management``'s act,
       and that right is over an org's people — it does not reach authority over the deployment.
 
@@ -234,7 +233,7 @@ def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
     domain_problem = role_domain_problem(
         role_id,
         [*(capabilities or ()), *(inherited or ())],
-        [*(domain_access or ()), *(inherited_domain_access or ())],
+        list(domain_access or ()),
     )
     if domain_problem is not None:
         return ApiError(422, "roles.domain_required", domain_problem, role=role_id)

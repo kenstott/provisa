@@ -30,8 +30,8 @@ from tests.integration.worker_boot_harness import WorkerBoot
 
 PASSWORD = "correct horse battery"
 _BREAK_GLASS = ("breakglass", "open sesame, operator")
-# The role an auto-joining member receives. It carries no platform right (an auto-join role may
-# not: provisa/api/admin/orgs_router.py, _validate_org_policy).
+# The role an auto-joining member receives: the standard analyst (REQ-2155). It carries no
+# platform right (an auto-join role may not: provisa/api/admin/orgs_router.py, _validate_org_policy).
 MEMBER_ROLE = "analyst"
 
 
@@ -54,14 +54,6 @@ def boot_server() -> WorkerBoot:
                 "assignments_source": "provisa",
                 "superuser": {"username": _BREAK_GLASS[0], "password": _BREAK_GLASS[1]},
             },
-            "roles": [
-                {
-                    "id": MEMBER_ROLE,
-                    "description": "Test role.",
-                    "capabilities": ["query_development"],
-                    "domain_access": ["*"],
-                }
-            ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},
     )

@@ -16,6 +16,7 @@ description: >-
   sources become one governed graph, with West Germany's titles counted as Germany's.
 screenshot: card.png
 published: true
+group: data-science
 # The oldest Provisa this demo's bundle runs on (REQ-2049): the first release carrying the demo.
 requires_provisa: 0.1.0a493
 # The demo's video: its tagline names what the demo shows Provisa being.

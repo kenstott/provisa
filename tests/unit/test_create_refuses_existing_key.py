@@ -51,6 +51,8 @@ async def plane(monkeypatch, control_plane) -> Database:
 
     monkeypatch.setattr(capabilities, "require_capability", lambda _info, _cap: None)
     monkeypatch.setattr(capabilities, "require_right_in_domains", lambda _i, _r, _d: None)
+    # REQ-2155: the data product gate reads the caller from the resolver info; none is dev mode.
+    monkeypatch.setattr(capabilities, "_identity_from_info", lambda _info: None)
     return db
 
 

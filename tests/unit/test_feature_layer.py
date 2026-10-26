@@ -207,6 +207,8 @@ def _run(script: str, model, tmp_path, monkeypatch) -> Path:
     module = _script(script)
     out = tmp_path / script
     monkeypatch.setattr(module, "OUT_PATH", out)
+    if hasattr(module, "PUBLIC_OUT_PATH"):
+        monkeypatch.setattr(module, "PUBLIC_OUT_PATH", tmp_path / (script + "_public"))
     monkeypatch.setattr(module.RequirementsFile, "load", classmethod(lambda _cls, _p: rf))
     monkeypatch.setattr(module.FeaturesFile, "load", classmethod(lambda _cls, *_a: ff))
     assert module.main() == 0

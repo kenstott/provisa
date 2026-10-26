@@ -67,6 +67,8 @@ def full_mix(raw: dict[str, Any]) -> None:
     k["route"]["bench-mongodb"] = {"mode": "mixed", "federated_probability": 0.5}
     pg_only = {s: 1.0 if s == "bench-postgresql" else 0.0 for s in SOURCES}
     auto = {s: {"mode": "auto", "federated_probability": 0} for s in SOURCES}
+    # SPARQL joins but has no route hint: it reads every source, each left on auto
+    raw["transports"]["sparql"] = {"knobs": {"route": auto}}
     for t in HINT_FREE:
         raw["transports"][t] = {
             "knobs": {

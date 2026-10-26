@@ -445,7 +445,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `api_source/` | REST/GraphQL/gRPC API sources with PG cache |
 | `kafka/` | Kafka topic sources, sink, Schema Registry |
 | `auth/` | Pluggable auth providers, middleware, role mapping |
-| `core/` | Config, models, DB, repositories, secrets; role model supports `parent_role_id` and `flatten_roles()` for recursive role inheritance |
+| `core/` | Config, models, DB, repositories, secrets; role model supports `parents` and `flatten_roles()` for role inheritance; `standard_roles.yaml` defines the standard roles |
 | `hasura_v2/` | Hasura v2 metadata → Provisa config converter |
 | `ddn/` | Hasura DDN supergraph → Provisa config converter |
 | `mongodb/` | MongoDB source connector |
@@ -593,7 +593,9 @@ Every registered table gets an auto-generated `{table}_aggregate` root field (`c
 
 ## Inherited Roles
 
-A role names at most one parent through `parent_role_id`. At runtime build, `security/inheritance.py` walks each role's chain from the child up and folds it into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. Capabilities and domain access are the union of the chain. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. A table's write grants resolve per operation the same way: a role without a grant for an operation takes the nearest ancestor's, its own first. RLS resolves per table with the child taking precedence: the nearest role in the chain that has a rule for the table, its own table rule before its domain rule, supplies the one predicate that runs; an ancestor's rule is never combined with it. A role inherits its parent's rate limit when it sets none. A parent must exist, may not be the role itself and may not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
+A role names the roles it inherits from in `parents`, in order. At runtime build, `security/inheritance.py` walks each role's ancestors depth-first in that order, each once, and folds them into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. Capabilities are the union over the ancestors; `domain_access` is the role's own and is not inherited. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table: the role's own rule (its table rule before its domain rule) stands; otherwise the rules its parents resolve are combined with OR into one predicate, and a parent that resolves none adds nothing. With one parent this is the nearest rule in the chain. Write grants resolve per operation the same way: their columns are unioned and their row and check conditions combined with OR. A property (rate limit, `max_rows`, a session value) comes from the role, else the first ancestor that sets it. A parent must exist, be named once, not be the role itself and not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
+
+The standard roles are defined in `core/standard_roles.yaml`, written into every model schema on each `init_schema` (`db.assert_standard_roles`) and refused by the admin surfaces and the config loader. The sandbox role a "Try it Out" visitor holds is a union of standard roles; the visitor reads a copied demo's columns through the grants that name `viewer` or `data_steward`, which the sandbox inherits.
 
 ## ABAC Approval Hook
 

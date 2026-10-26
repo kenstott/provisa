@@ -2012,7 +2012,9 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimit | None = None  # REQ-369
-    parent_role_id: str | None = None  # inherit capabilities + domain_access from parent
+    # REQ-2155: the roles this one inherits from, in order; its capabilities are the union of its
+    # own and every ancestor's (security.inheritance).
+    parents: list[str] = Field(default_factory=list)
     relationship_guard: bool = (
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
     )
@@ -2049,59 +2051,17 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
         return out
 
 
-def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
-    """Flatten inherited role hierarchy: merge parent capabilities + domain_access.
+def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042, REQ-2155
+    """Flatten the inherited role hierarchy: each role with its ancestors' capabilities and
+    domain_access unioned in, and each property (max_rows, session values) set by the nearest
+    ancestor that declares it -- the one resolution the runtime build applies
+    (security.inheritance.flatten_role_dicts). Refuses an inheritance cycle by name (REQ-1677).
 
     Returns new Role objects with inherited permissions merged in.
     """
-    by_id = {r.id: r for r in roles}
-    cache: dict[str, tuple[set[str], set[str], int | None, dict[str, str]]] = {}
-    # REQ-1677: a cycle would recurse forever; refuse it by name.
-    from provisa.security.inheritance import role_chain
+    from provisa.security.inheritance import flatten_role_dicts
 
-    parents = {r.id: r.parent_role_id for r in roles}
-    for r in roles:
-        role_chain(r.id, parents)
-
-    def _resolve(role_id: str) -> tuple[set[str], set[str], int | None, dict[str, str]]:
-        if role_id in cache:
-            return cache[role_id]
-        role = by_id[role_id]
-        caps = set(role.capabilities)
-        domains = set(role.domain_access)
-        max_rows = role.max_rows
-        session_vars = dict(role.session_vars)
-        if role.parent_role_id and role.parent_role_id in by_id:
-            p_caps, p_domains, p_max_rows, p_session_vars = _resolve(role.parent_role_id)
-            caps.update(p_caps)
-            domains.update(p_domains)
-            # Ceiling: child inherits parent's when unset; most restrictive wins when both set.
-            if max_rows is None:
-                max_rows = p_max_rows
-            elif p_max_rows is not None:
-                max_rows = min(max_rows, p_max_rows)
-            # REQ-1682: the ancestors' constants underneath, the role's own over them.
-            session_vars = {**p_session_vars, **session_vars}
-        cache[role_id] = (caps, domains, max_rows, session_vars)
-        return caps, domains, max_rows, session_vars
-
-    result: list[Role] = []
-    for r in roles:
-        caps, domains, max_rows, session_vars = _resolve(r.id)
-        result.append(
-            Role(
-                id=r.id,
-                description=r.description,
-                capabilities=sorted(caps),
-                domain_access=["*"] if "*" in domains else sorted(domains),
-                parent_role_id=r.parent_role_id,
-                relationship_guard=r.relationship_guard,
-                max_rows=max_rows,
-                rate_limit=r.rate_limit,
-                session_vars=session_vars,  # REQ-1682
-            )
-        )
-    return result
+    return [Role(**r) for r in flatten_role_dicts([r.model_dump() for r in roles])]
 
 
 class DerivedRole(BaseModel):  # REQ-2057, REQ-2078, REQ-2080
@@ -2693,6 +2653,8 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
     delta_share: whether a unity_catalog target also publishes each product as a Delta Share
         (REQ-2117).
     domains: the domains whose tables and data products this catalog is published (REQ-2122).
+    role: the role the catalog is published as: it is sent exactly what that role reads
+        (REQ-2152, ruling Q1). None until the export names one, and then nothing is published to it.
     """
 
     id: str
@@ -2716,6 +2678,7 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
     delta_share: bool = False
     timeout_seconds: int = 30
     domains: list[str] = Field(default_factory=list)
+    role: str | None = None
 
     @field_validator("id")
     @classmethod
@@ -2806,6 +2769,7 @@ class CatalogConnection(BaseModel):  # REQ-2122
             datazone_project_id=export.datazone_project_id,
             delta_share=export.delta_share,
             domains=list(self.domains),
+            role=export.role,
         )
 
 
@@ -2832,11 +2796,14 @@ class CatalogExport(BaseModel):  # REQ-2118, REQ-2122
     datazone_project_id: the DataZone project that owns the org's data products (REQ-2118).
     delta_share: whether a unity_catalog catalog also gets each product as a Delta Share
         (REQ-2117).
+    role: the role the catalog is published as -- it is sent exactly what that role reads
+        (REQ-2152, ruling Q1); a publish refuses an export that names none.
     """
 
     catalog: str
     datazone_project_id: str = ""
     delta_share: bool = False
+    role: str | None = None
 
 
 class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118, REQ-2122
@@ -3470,19 +3437,21 @@ class ProvisaConfig(BaseModel):
 
         by_id = {r.id: r for r in self.roles}
         for role in self.roles:
-            # Walk the parent chain here rather than through flatten_roles: that refuses an
+            # Walk the ancestors here rather than through flatten_roles: that refuses an
             # inheritance cycle, which is its own rule with its own error (REQ-1677), raised
             # where the roles are flattened. A cycle simply ends this walk.
+            # REQ-2155: capabilities are inherited, reach is the role's own.
             capabilities: set[str] = set()
-            domains: set[str] = set()
             seen: set[str] = set()
-            current: Role | None = role
-            while current is not None and current.id not in seen:
+            pending: list[Role] = [role]
+            while pending:
+                current = pending.pop()
+                if current.id in seen:
+                    continue
                 seen.add(current.id)
                 capabilities.update(current.capabilities)
-                domains.update(current.domain_access)
-                current = by_id.get(current.parent_role_id) if current.parent_role_id else None
-            problem = role_domain_problem(role.id, capabilities, domains)
+                pending.extend(by_id[p] for p in current.parents if p in by_id)
+            problem = role_domain_problem(role.id, capabilities, set(role.domain_access))
             if problem is not None:
                 raise ValueError(problem)
         return self

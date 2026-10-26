@@ -11,6 +11,7 @@
 """Control-plane org/tenant bootstrap: role hardening and schema seeding."""
 
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.schema import CreateSchema
@@ -59,205 +60,99 @@ _SEED_DOMAINS: tuple[tuple[str, str, str | None], ...] = (
     ("ops", "Operational telemetry", "org_admin"),
 )
 
-# REQ-1266/REQ-1297/REQ-1597: the six system template roles, mirrored from schema.sql's seed (lines
-# 623-712) so non-PostgreSQL (SQLite/portable) deployments reach parity with PostgreSQL/SaaS
-# deployments on role seeding. schema.sql is PG-only DDL and cannot be shared verbatim, so this is
-# a second literal by necessity, not by choice; keep the two in sync on any capability change.
-# platform_settings/cross_org are intentionally absent from org_admin here — those are
-# tenancy-conditional and asserted by apply_tenancy_role_grants after seeding, on every dialect.
-# Named rather than inlined below because REQ-1597's sandbox role is defined by SUBTRACTING from it,
-# and a second copy of the list is a second thing to remember on every capability change.
-_ORG_ADMIN_CAPABILITIES: list[str] = [
-    "source_registration",
-    "table_registration",
-    "create_relationship",
-    "create_view",
-    "approve_view",
-    "approve_relationship",
-    "access_config",
-    "user_management",
-    "masking_config",
-    "column_grant",
-    "view_governance",
-    "query_development",
-    "full_results",
-    "write",
-    "usage",
-    "org_settings",
-    "observability",
-    # REQ-1573: the two environment rights. Creating and deleting an environment spends the
-    # org's plan ceiling and drops a schema; being served by one other than prod is working
-    # somewhere that is not production. org_admin and developer hold both; analyst and
-    # modeler hold neither.
-    "environment_management",
-    "environment_switch",
-    # REQ-1942: changing an environment's data choices -- its data mode, its sources' bindings,
-    # read-only or read-write, its synthetic settings -- including creating it reading real data.
-    # org_admin ALONE: a developer switching an environment to Test (fake) with no fakes declared
-    # would expose real data.
-    "environment_data",
-    # REQ-1943: revealing or hiding a sensitive column -- its sensitive tags, the Sensitive data
-    # option on a tag, its role masks, fake, synthetic rule and column grants. org_admin by
-    # default, meant to be granted to a data steward; no developer holds it.
-    "sensitive_data",
-    # REQ-1590: the glossary's two rights. Reading a term is not administering the org, so
-    # every seeded role reads; curation stays with the roles that own the model.
-    "glossary_read",
-    "glossary_rw",
-    # REQ-1592: the org's glossary owner — curates any term whatever its domains and
-    # whoever authored it. org_admin ALONE: it is the override that makes the enterprise
-    # scope and the author lock safe, so a term whose authors have all left, or one scoped
-    # to the whole org, still has someone who can maintain it.
-    "org_glossary_rw",
-    # REQ-1634: data products' two rights. Curating the catalog (create/delete) stays with
-    # org_admin, on the same footing as table_registration; reading it is granted separately
-    # below to analyst/developer/modeler.
-    "data_product_read",
-    "data_product_rw",
-]
+# REQ-2155: Provisa's standard roles, as provisa/core/standard_roles.yaml defines them (the one
+# source; the file says what each is and why). Standard roles are LOCKED: init_schema re-asserts every
+# one on each run (assert_standard_roles), and the admin surfaces refuse to edit or delete one
+# (roles.standard_locked); an organisation extends a standard role only with a child role.
 
-# REQ-1597: the rights sandbox does NOT inherit from org_admin -- see the seed entry below.
-# REQ-1602 originally denied org_settings/observability wholesale, on the theory that they were
-# narrow org-wide surfaces. In practice REQ-1349 made org_settings the single right nearly every
-# org-scoped admin page is gated on (cache, AI models, import, tags, secrets, scheduler, requests,
-# org-engine, billing, domains -- see adminNavCapabilities.test.ts), so denying it took out most of
-# the Admin tab, not the few surfaces this list intended. The design (per REQ-1597/REQ-1598) is that
-# a sandbox visitor can do everything the product does except reach past the environment it was
-# minted in and write back to the shared sample sources it points at -- so the denylist narrows to
-# exactly that: managing environments, conferring roles, and overriding the org's own glossary
-# terms. Viewing settings and telemetry is no longer withheld. Switching between the environments
-# that exist is not withheld either (REQ-2053): a demo sandbox is an org of its own, so its
-# environments are the visitor's, and a membership pinned to one environment (REQ-1596) is
-# confined by the pin, which env_routing checks before the right.
-_SANDBOX_DENIED: frozenset[str] = frozenset(
-    {
-        "environment_management",
-        "user_management",
-        "org_glossary_rw",
+
+@dataclass(frozen=True)
+class StandardRole:  # REQ-2155
+    parents: tuple[str, ...]
+    capabilities: tuple[str, ...]
+    #: REQ-2080: what the role is for, as an access review reads it.
+    description: str
+    #: Where its capabilities apply; the role's own, never inherited.
+    domain_access: tuple[str, ...]
+
+
+def _load_standard_roles() -> dict[str, StandardRole]:
+    from pathlib import Path
+
+    import yaml
+
+    raw = yaml.safe_load((Path(__file__).parent / "standard_roles.yaml").read_text())
+    return {
+        role_id: StandardRole(
+            tuple(spec["parents"]),
+            tuple(spec["capabilities"]),
+            spec["description"],
+            tuple(spec["domain_access"]),
+        )
+        for role_id, spec in raw.items()
     }
-)
-#: The rights a sandbox's person never holds, by any role (a demo's own roles included).
-SANDBOX_DENIED = _SANDBOX_DENIED
 
-# What the reconcile seam subtracts when it re-derives ``sandbox`` from the org_admin row it has
-# just re-asserted: REQ-1597's denylist, plus ``platform_settings``, which is not an org_admin
-# right but the tenancy answer the seam writes onto org_admin afterwards (single-tenant only) and
-# which a visitor never holds.
-_SANDBOX_REDERIVE_DENIED: frozenset[str] = _SANDBOX_DENIED | {"platform_settings"}
 
-_SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
-    ("org_admin", _ORG_ADMIN_CAPABILITIES),
-    (
-        "analyst",
-        ["usage", "query_development", "glossary_read", "data_product_read"],
-    ),  # REQ-1590, REQ-1634
-    (
-        "developer",
-        [
-            "query_development",
-            "create_view",
-            "create_relationship",
-            "full_results",
-            "write",
-            "usage",
-            "environment_management",  # REQ-1573
-            "environment_switch",  # REQ-1573
-            "glossary_read",  # REQ-1590
-            "data_product_read",  # REQ-1634
-        ],
-    ),
-    # REQ-1297: modeler is the only system role holding ignore_relationships — the discovery role
-    # that determines the model by joining across relations the catalog does not yet cover.
-    (
-        "modeler",
-        [
-            "query_development",
-            "create_relationship",
-            "create_view",
-            "ignore_relationships",
-            "full_results",
-            "usage",
-            # REQ-1590: modeler is the model-curation role, so it curates the glossary too.
-            "glossary_read",
-            "glossary_rw",
-            "data_product_read",  # REQ-1634
-        ],
-    ),
-    # REQ-1944: data_steward owns a domain's governance and nothing operational; its edits are
-    # checked against the domain of what they change. Must match schema.sql's seed row.
-    (
-        "data_steward",
-        [
-            "access_config",
-            "column_grant",
-            "masking_config",
-            "sensitive_data",
-            "glossary_read",
-            "glossary_rw",
-            "data_product_read",
-            "data_product_rw",
-            "usage",
-            "query_development",
-            "full_results",
-            "view_governance",
-        ],
-    ),
-    # REQ-1597: sandbox is what a "Try it Out" invitation confers. It is org_admin's capability list
-    # minus a DENYLIST, rather than a list built up from analyst, because the point of the sandbox is
-    # that a stranger can do everything the product does — register a source, model it, govern it,
-    # query it, write to it — inside an environment that expires. Enumerating what they may do would
-    # make every new capability invisible to them until someone remembered to add it here; taking
-    # away is the direction that stays correct.
-    #
-    # Three rights are withheld, each because it reaches something the environment does not contain:
-    # environment_management would spend the org's plan ceiling and can drop another environment's
-    # schemas; user_management would let a visitor confer roles or admit more people;
-    # org_glossary_rw is the override over terms the org's own people authored. environment_switch
-    # is held (REQ-2053): it moves between environments that exist, and a pinned membership
-    # (REQ-1596) stays confined by its pin.
-    ("sandbox", sorted(set(_ORG_ADMIN_CAPABILITIES) - _SANDBOX_DENIED)),
-    # REQ-1327/REQ-1337: the two platform rights and nothing else — no data capability, and no
-    # capability that stands in for one.
-    ("platform_admin", ["platform_settings", "cross_org"]),
-)
+STANDARD_ROLES: dict[str, StandardRole] = _load_standard_roles()
 
-# REQ-1602/REQ-1608: rights a role is SHOWN but does not hold. Three of the sandbox's four withheld
-# rights stay on the page, disabled and badged as belonging to the production system -- hiding them
-# would make the sandbox look like a smaller product rather than the same one with the org's controls
-# held back. `user_management` is the exception (REQ-1608): letting a sandbox visitor see a page that
-# implies they could confer roles or admit people, even inertly, misrepresents what the role can ever
-# do here, so /team stays a hard NotAuthorized instead of a demonstration.
-# Every other role's absence of a right means the same thing it always did -- nothing to show.
-# REQ-2080: what each seeded role is for, mirrored from schema.sql's seed (its UPDATE ... SET
-# description statements), which writes each to a seeded row that has none on every init_schema.
-SEEDED_ROLE_DESCRIPTIONS: dict[str, str] = {
-    "org_admin": "Administers the organization: its sources, model, governance, members and "
-    "settings, in every domain.",
-    "analyst": "Reads and queries the governed data of the domains it is granted. The "
-    "least-privileged role, and what an invitation gives when it names none.",
-    "developer": "Builds queries, views and relationships, writes data and manages environments, "
-    "in the domains it is granted.",
-    "modeler": "Works out the model: the one seeded role that may join across relations no "
-    "approved relationship covers yet. Every other rule still applies to it.",
-    "data_steward": "Governs a domain: column visibility, row rules, grants, masks, sensitive "
-    "columns, the glossary and data products. Nothing operational.",
-    "sandbox": "A Try it Out visitor: what the organization administrator does, inside an "
-    "environment that expires, but not members, environments or the organization glossary.",
-    "platform_admin": "Runs the platform: organizations, infrastructure and deployment settings. "
-    "Holds no right to any organization's data.",
+
+def _standard_rights(role_id: str) -> frozenset[str]:
+    spec = STANDARD_ROLES[role_id]
+    return frozenset(spec.capabilities).union(*(_standard_rights(p) for p in spec.parents))
+
+
+#: Each standard role's rights once its ancestors' are folded in, by id.
+STANDARD_ROLE_RIGHTS: dict[str, frozenset[str]] = {
+    rid: _standard_rights(rid) for rid in STANDARD_ROLES
 }
 
-_DEMONSTRATED_ROLES: dict[str, list[str]] = {
-    "sandbox": sorted(_SANDBOX_DENIED - {"user_management"})
-}
 
-# REQ-1919: what the deployment seeds into every model store. A seeded role is a system role and
+def sandbox_demonstrated() -> list[str]:  # REQ-1602, REQ-1608
+    """The rights the sandbox is SHOWN but does not hold: what org_admin holds that it does not,
+    so its surfaces stay on the page, disabled and badged -- all but user_management, whose page
+    would imply a visitor could confer roles or admit people (REQ-1608)."""
+    return sorted(
+        STANDARD_ROLE_RIGHTS["org_admin"] - STANDARD_ROLE_RIGHTS["sandbox"] - {"user_management"}
+    )
+
+
+#: What org_admin holds and the sandbox never does (REQ-2155): managing environments or their data,
+#: conferring roles, and the org glossary's override. A demo role carrying one is refused.
+SANDBOX_WITHHELD: frozenset[str] = (
+    STANDARD_ROLE_RIGHTS["org_admin"] - STANDARD_ROLE_RIGHTS["sandbox"]
+)
+
+
+def standard_role_dicts() -> list[dict]:
+    """The standard roles as role rows (id, capabilities, parents), for resolving a role defined
+    outside a model store -- a demo's -- whose parents are standard roles."""
+    return [
+        {"id": rid, "capabilities": list(spec.capabilities), "parents": list(spec.parents)}
+        for rid, spec in STANDARD_ROLES.items()
+    ]
+
+
+def fold_config_grants(tables: list[dict], config_roles: list[dict]) -> None:
+    """Fold the column grants of ``tables`` over each role's ancestors -- the standard roles and
+    ``config_roles``, a configuration's own -- as the runtime build does
+    (security.inheritance.expand_column_grants): a column granted to data_steward is org_admin's.
+    For a schema built from a configuration file, outside a model store (REQ-2155)."""
+    from provisa.security.inheritance import expand_column_grants, role_chains
+
+    own = [
+        {
+            "id": r["id"],
+            "capabilities": r.get("capabilities") or [],
+            "parents": r.get("parents") or [],
+        }
+        for r in config_roles
+    ]
+    expand_column_grants(tables, role_chains([*standard_role_dicts(), *own]))
+
+
+# REQ-1919: what the deployment seeds into every model store. A seeded role is a standard role and
 # is never deleted; none of these counts as the org's own catalog.
-SEEDED_ROLE_IDS: frozenset[str] = frozenset(role_id for role_id, _caps in _SEED_ROLES)
-#: Each seeded role's rights, by id.
-SEEDED_ROLE_RIGHTS: dict[str, frozenset[str]] = {
-    role_id: frozenset(caps) for role_id, caps in _SEED_ROLES
-}
+SEEDED_ROLE_IDS: frozenset[str] = frozenset(STANDARD_ROLES)
 SEEDED_DOMAIN_IDS: frozenset[str] = frozenset(domain_id for domain_id, _d, _s in _SEED_DOMAINS)
 #: The built-in sources and the demo's GraphQL source (provisa.api.app_startup).
 SEEDED_SOURCE_IDS: frozenset[str] = BUILT_IN_SOURCE_IDS | {"graphql-demo"}
@@ -369,6 +264,43 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
             )
 
 
+def assert_standard_roles(sync_conn, schema: str) -> None:  # REQ-2155
+    """Write every standard role into ``schema`` exactly as :data:`STANDARD_ROLES` defines it, on
+    every init_schema: a standard role is Provisa's and locked, so its row is re-asserted rather
+    than seeded once -- a right Provisa adds reaches every org and environment on its next start.
+    The sandbox's demonstrated list is part of its definition (REQ-1602)."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from provisa.core.schema_org import roles
+
+    sync_conn.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
+    rows = [
+        {
+            "id": role_id,
+            "description": spec.description,
+            "capabilities": list(spec.capabilities),
+            "parents": list(spec.parents),
+            "demonstrated": sandbox_demonstrated() if role_id == "sandbox" else [],
+            "domain_access": list(spec.domain_access),
+            "org_id": None,
+        }
+        for role_id, spec in STANDARD_ROLES.items()
+    ]
+    stmt = pg_insert(roles).values(rows)
+    sync_conn.execute(
+        stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                c: stmt.excluded[c]
+                for c in ("description", "capabilities", "parents", "demonstrated", "domain_access")
+            },
+        )
+    )
+    from provisa.core.repositories.retired_roles import drop_retired_role_ids
+
+    drop_retired_role_ids(sync_conn)  # REQ-1297, after platform_admin is written above
+
+
 async def init_schema(
     pool: "Database",
     schema_sql: str,
@@ -410,6 +342,7 @@ async def init_schema(
 
         with engine.begin() as sa_conn:
             add_missing_columns(sa_conn, schema_org.metadata.sorted_tables, schema_name)
+            assert_standard_roles(sa_conn, schema_name)  # REQ-2155
             # REQ-1914: the stamp rows and the triggers that advance them, once every table exists.
             from provisa.core import config_stamp
 
@@ -426,85 +359,31 @@ async def apply_tenancy_role_grants(  # REQ-1337
 ) -> None:
     """Assert the tenancy-dependent role grants: ``platform_settings`` and ``cross_org``.
 
-    Also re-asserts the two tenancy-INDEPENDENT org_admin rights (``org_settings``,
-    ``observability``, REQ-1349). The schema.sql seed uses ``ON CONFLICT (id) DO NOTHING`` and so
-    cannot add a right to an org_admin row an earlier release already created; this is the seam
-    where an existing deployment picks them up, on the next ``init_schema``.
+    Every other right of a standard role is its definition, re-asserted by init_schema
+    (:func:`assert_standard_roles`, REQ-2155). The deployment-wide settings surface (federation
+    engine, cache storage, encryption, auth provider, the config file, query-engine lifecycle) is
+    gated by the ``platform_settings`` RIGHT, never by a role name. Which roles hold that right is
+    the only thing tenancy decides:
 
-    The deployment-wide settings surface (federation engine, cache storage, encryption, auth
-    provider, the config file, query-engine lifecycle) is gated by the ``platform_settings`` RIGHT,
-    never by a role name. Which roles hold that right is the only thing tenancy decides:
-
-    * single-tenant — the org administrator IS the deployment operator, so org_admin holds it;
-    * multitenant — an org administers only its own data plane, so org_admin must NOT hold it and
+    * single-tenant -- the org administrator IS the deployment operator, so org_admin holds it;
+    * multitenant -- an org administers only its own data plane, so org_admin must NOT hold it and
       the grant is withdrawn (a deployment flipped to multitenant keeps no stale right).
 
-    Runs on every ``init_schema``, so the seed re-asserts the mode's grant rather than depending on
-    when the schema was first created. platform_admin always holds it (seeded in schema.sql).
-
     REQ-1623: ``env`` names the environment whose roles are being asserted, because an environment
-    is a schema holding its OWN copy of the roles table (REQ-1488). Fixed at ``org_<id>`` this
-    re-asserted prod's rights every time a non-prod environment's runtime was built — a write into
-    prod from an environment, leaving the environment's own roles carrying whatever the copy held.
+    is a schema holding its OWN copy of the roles table (REQ-1488).
     """
     _validate_org_id(org_id)
     async with pool.acquire() as conn:
         await conn.execute(f'SET search_path TO "{org_schema(org_id, env)}"')  # REQ-1623
-        # REQ-1337: cross_org is withdrawn in BOTH modes — org authority is confined to the org
-        # being acted in, so org_admin never holds it however the deployment is configured. Only
-        # platform_admin carries it (schema.sql), and holding it is what marks a role control-plane.
+        # REQ-1337: cross_org is withdrawn in BOTH modes -- org authority is confined to the org
+        # being acted in, so no role but platform_admin holds it however the deployment is
+        # configured, and holding it is what marks a role control-plane.
         await conn.execute(
             "UPDATE roles SET capabilities = COALESCE("
             "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
             "   WHERE v <> '\"cross_org\"'::jsonb), '[]'::jsonb)"
             " WHERE id <> 'platform_admin' AND capabilities ? 'cross_org'"
         )
-        # REQ-1349: org-scoped admin rights, granted to org_admin in BOTH tenancy modes. They name
-        # surfaces that are always the org's own — its AI/NL provider overrides, domains, scheduled
-        # tasks, creation requests, and its read-only performance views — so no tenancy condition
-        # applies. Re-asserted here because the seed cannot update a pre-existing role row.
-        for right in ("org_settings", "observability"):
-            await conn.execute(
-                "UPDATE roles SET capabilities = capabilities || "
-                f"'[\"{right}\"]'::jsonb"
-                f" WHERE id = 'org_admin' AND NOT capabilities ? '{right}'"
-            )
-        # REQ-1573: environments are their own right rather than a facet of org_settings — a
-        # developer manages and switches them while holding no org settings at all, and an analyst
-        # holds neither. Both roles carry both rights; nothing here names analyst or modeler.
-        for right in ("environment_management", "environment_switch"):
-            await conn.execute(
-                "UPDATE roles SET capabilities = capabilities || "
-                f"'[\"{right}\"]'::jsonb"
-                f" WHERE id IN ('org_admin', 'developer') AND NOT capabilities ? '{right}'"
-            )
-        # REQ-1942, REQ-1943: an environment's data choices and a sensitive column's hiding are
-        # org_admin's by default.
-        for right in ("environment_data", "sensitive_data"):
-            await conn.execute(
-                "UPDATE roles SET capabilities = capabilities || "
-                f"'[\"{right}\"]'::jsonb"
-                f" WHERE id = 'org_admin' AND NOT capabilities ? '{right}'"
-            )
-        # REQ-1590: the glossary's two rights, on the same terms as the seed — every system role
-        # reads, and curation stays with the roles that own the model. Re-asserted for the same
-        # reason as the rights above: an org whose role rows predate REQ-1590 keeps them otherwise,
-        # which hides the glossary nav link and 403s the surface for its own org_admin.
-        for role_ids, right in (
-            (("org_admin", "analyst", "developer", "modeler"), "glossary_read"),
-            (("org_admin", "modeler"), "glossary_rw"),
-            # REQ-1592: org_admin alone owns the org's glossary — see the seed table above.
-            (("org_admin",), "org_glossary_rw"),
-            # REQ-1634: data products' two rights — same seam as the glossary pair above.
-            (("org_admin", "analyst", "developer", "modeler"), "data_product_read"),
-            (("org_admin",), "data_product_rw"),
-        ):
-            id_list = ", ".join(f"'{r}'" for r in role_ids)
-            await conn.execute(
-                "UPDATE roles SET capabilities = capabilities || "
-                f"'[\"{right}\"]'::jsonb"
-                f" WHERE id IN ({id_list}) AND NOT capabilities ? '{right}'"
-            )
         if multitenancy:
             await conn.execute(
                 "UPDATE roles SET capabilities = COALESCE("
@@ -517,27 +396,3 @@ async def apply_tenancy_role_grants(  # REQ-1337
                 "UPDATE roles SET capabilities = capabilities || '[\"platform_settings\"]'::jsonb"
                 " WHERE id = 'org_admin' AND NOT capabilities ? 'platform_settings'"
             )
-        # REQ-1597: sandbox is org_admin minus a denylist, and the seed's ON CONFLICT DO NOTHING
-        # cannot reach a sandbox row an earlier release created -- so every right the blocks above
-        # add to org_admin (data_product_read among them) was missing from an existing sandbox row,
-        # and the visitor's derived org_admin (re-read below) inherited the stale list. Re-derived
-        # here, from org_admin as just re-asserted, so the subtraction stays the only author.
-        denied = ", ".join(f"'\"{r}\"'::jsonb" for r in sorted(_SANDBOX_REDERIVE_DENIED))
-        await conn.execute(
-            "UPDATE roles t SET capabilities = COALESCE("
-            "  (SELECT jsonb_agg(v ORDER BY v) FROM jsonb_array_elements(s.capabilities) v"
-            f"   WHERE v NOT IN ({denied})), '[]'::jsonb)"
-            " FROM roles s WHERE s.id = 'org_admin' AND t.id = 'sandbox'"
-        )
-        # REQ-1624: LAST, and after every re-assertion above. A role whose `defined_from` names
-        # another is DERIVED from it in this schema -- the sandbox visitor's `org_admin`, which
-        # REQ-1597 defines by subtraction from org_admin and env_copy.adopt_role_definition applies
-        # in the visitor's own environment. Every block above re-asserts org_admin's rights into
-        # whatever schema is being asserted, environment schemas included, so the subtraction was
-        # given back on the visitor's next runtime build: a sandbox visitor recovered
-        # environment_management and reached the org's environments surface, other visitors'
-        # environments and all. Re-reading the definition here is what makes the withholding hold.
-        await conn.execute(
-            "UPDATE roles t SET capabilities = s.capabilities, demonstrated = s.demonstrated"
-            " FROM roles s WHERE t.defined_from = s.id AND t.id <> s.id"
-        )

@@ -281,9 +281,10 @@ def test_a_sandbox_is_shown_the_example_queries_of_the_bundle_it_was_opened_from
 def test_a_visitor_reads_what_the_demo_shows_its_admin_and_runs_as_its_own_roles(
     tmp_path_factory, registry
 ):
-    """A demo names its own roles (org_admin, a keeper), never the sandbox role. Its visitor holds
-    the sandbox role, which sees what org_admin sees (REQ-1597), and the demo's own roles, so its
-    tour can run as each (weblogs: analyst; test_weblogs_bundle_e2e, run 38596957161)."""
+    """A demo names its own roles (data_steward, a keeper), never the sandbox role. Its visitor
+    holds the sandbox role, which inherits what data_steward is granted (REQ-2155), and the demo's
+    own roles, so its tour can run as each (weblogs: its analyst; test_weblogs_bundle_e2e, run
+    38596957161)."""
     import yaml
 
     work = tmp_path_factory.mktemp("bundle_roles")
@@ -300,7 +301,7 @@ def test_a_visitor_reads_what_the_demo_shows_its_admin_and_runs_as_its_own_roles
     ]
     for column in config["tables"][0]["columns"]:
         column["visible_to"] = (
-            ["org_admin", "keeper"] if column["name"] == "name" else ["org_admin"]
+            ["data_steward", "keeper"] if column["name"] == "name" else ["data_steward"]
         )
     (demo / "config.yaml").write_text(yaml.safe_dump(config))
     _publish(registry, named, work / "out", "e" * 40, ["ant", "ape"])

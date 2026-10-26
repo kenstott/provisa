@@ -36,7 +36,7 @@ import threading
 import time
 from dataclasses import dataclass
 from dataclasses import field as _dc_field
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple, cast
 
 from provisa.federation.execution_auth import plan_authorization
 
@@ -168,10 +168,11 @@ def _redirect_row(handle: dict | None, delivery: Any):
 class _Said:
     """An error's text, redacted (REQ-2087), as what the base handler writes with ``str()``."""
 
-    def __init__(self, text: str) -> None:
-        from provisa.security.redaction import redact
+    def __init__(self, text: str, org_id: str | None) -> None:
+        # What the client is told: redacted, in the model's names (REQ-2152).
+        from provisa.api.engine_error_names import client_text
 
-        self._text = redact(text)
+        self._text = client_text(text, org_id)
 
     def __str__(self) -> str:
         return self._text
@@ -1610,7 +1611,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         refusal = definition_refusal(exception)
         if refusal is None:
             # REQ-2087: the base class writes str(exception); it is given the redacted text.
-            super().send_error(_Said(str(exception)), ctx)
+            # The session's org names its tables; an error before a session has none.
+            org_id = cast(ProvisaSession, ctx.session).org_id if ctx is not None else None
+            super().send_error(_Said(str(exception), org_id), ctx)
             return
         self._send_pg_error("ERROR", "0A000", str(refusal))
         if ctx:
@@ -1703,9 +1706,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.wfile = self._meter
 
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
-        from provisa.security.redaction import redact
+        from provisa.api.engine_error_names import client_text
 
-        message = redact(message)  # REQ-2087: every message a client is sent
+        # REQ-2087, REQ-2152: every message a client is sent, redacted and in the model's names.
+        message = client_text(message)
         buf = BVBuffer()
         for field, value in (
             (b"S", severity),

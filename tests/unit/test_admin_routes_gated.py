@@ -44,12 +44,15 @@ GATE_NAMES = frozenset(
         # provisa.api.admin.capabilities
         "require_capability",
         "require_capability_request",
+        "require_dq_read_request",  # REQ-2155
         "require_domain",
         "require_domain_request",
         # REQ-1944: a governance right paired with the domains of the roles carrying it
         "require_right_in_domains",
         "require_right_in_domains_request",
         "holds_right_in_domains",
+        # REQ-2155: data_product_rw, or data_product_owned_rw on the product the caller owns
+        "data_product_edit_refusal",
         # provisa.api.admin._hiding_guard (REQ-1944)
         "require_table_save",
         "require_hiding_editor_request",

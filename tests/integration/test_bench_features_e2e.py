@@ -74,7 +74,10 @@ import request_mix  # noqa: E402
 import request_render  # noqa: E402
 import setup_contract as sc  # noqa: E402
 
-TRANSPORTS = tuple(ol.TRANSPORTS)  # all ten: graphql ... mcp
+# The gated transports: every one but sparql, which rejoins as a separate run once the ontology
+# work exposes the bench tables over SPARQL (until then the deployment exposes none there).
+UNGATED = ("sparql",)
+TRANSPORTS = tuple(t for t in ol.TRANSPORTS if t not in UNGATED)
 SOURCES = tuple(lp.SOURCES)
 LATENCY_OUT = REPO / "results" / "bench_features" / "latency.json"
 READER = "bench_feat_reader"  # the second contract role: a child of org_admin
@@ -366,6 +369,8 @@ def stack() -> Iterator[Stack]:
         server = start_server(ports)
         raw = lp.proof_contract(server, project)
         raw["deployment"]["roles"] = [{"role": "org_admin", "weight": 1.0}]
+        for transport in UNGATED:
+            raw["transports"].pop(transport)
         raw["deployment"]["endpoints"]["mcp"]["url"] = f"http://127.0.0.1:{ports['mcp']}/mcp"
         contract = tmp / "contract.yaml"
         contract.write_text(yaml.safe_dump(raw, sort_keys=False))
@@ -411,7 +416,7 @@ def start_server(ports: dict[str, int], **env: str) -> Any:
         await_grpc=True,
         config=str(lp.PERF / "config.yaml"),
         env={
-            **lp._source_env(ports),  # noqa: SLF001
+            **lp._server_env(ports),  # noqa: SLF001
             "PROVISA_MCP_PORT": str(ports["mcp"]),
             # loopback: the harness's pinned roles apply to a call with no bearer (mcp_pin); off
             # loopback a bearer is required
@@ -664,7 +669,7 @@ def _audit_baseline(stack: Stack) -> int:
 
 # The surface each transport's statements are recorded under (query_audit_log.source).
 SURFACE = {
-    **{t: "http" for t in ("data_sql", "graphql", "rest", "jsonapi", "cypher_http")},
+    **{t: "http" for t in ("data_sql", "graphql", "rest", "jsonapi", "cypher_http", "sparql")},
     "pgwire": "pgwire",
     "flight_sql": "flight",
     "bolt": "bolt",
@@ -809,7 +814,7 @@ def reader(stack) -> str:
                     "description": "The features test's second reader.",
                     "capabilities": list(top["capabilities"]),
                     "domainAccess": list(top["domainAccess"]),
-                    "parentRoleId": "org_admin",
+                    "parents": ["org_admin"],
                 }
             },
         )

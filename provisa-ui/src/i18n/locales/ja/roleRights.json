@@ -1,0 +1,14 @@
+{
+  "roleRights": {
+    "tabs": "ロールのセクション",
+    "tab_details": "詳細",
+    "tab_capabilities": "権限",
+    "kind_standard": "標準ロール",
+    "kind_custom": "ロール",
+    "kind_meta": "メタロール",
+    "lineageHint": "標準ロールからこのロールまで: 各ロールは追加する権限を示し、このロールは保持するすべての権限を示します。",
+    "capability": "権限",
+    "from": "付与元",
+    "own": "自身"
+  }
+}

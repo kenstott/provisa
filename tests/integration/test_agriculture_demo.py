@@ -325,7 +325,10 @@ def _capture_answer(server, out: Path) -> None:
     resp = httpx.post(
         f"{server.base_url}/data/query",
         json={"query": sql},
-        headers={"X-Provisa-Role": "analyst", "Accept": "application/vnd.apache.arrow.stream"},
+        headers={
+            "X-Provisa-Role": "agriculture_analyst",
+            "Accept": "application/vnd.apache.arrow.stream",
+        },
         timeout=900,
     )
     assert resp.status_code == 200, resp.text[:2000]

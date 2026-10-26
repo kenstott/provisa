@@ -106,12 +106,12 @@ class TestCompileBasic:
 
     async def test_compile_schema_scope_reflects_role(self, client):
         """schema_scope in enforcement reflects the requested role."""
-        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="sales_analytics_analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
         scope = body["data"]["compileQuery"][0]["enforcement"]["schemaScope"]
-        assert "analyst" in scope
+        assert "sales_analytics_analyst" in scope
 
     async def test_compile_returns_route_decision(self, client):
         """Compile includes route and routeReason fields."""
@@ -171,7 +171,7 @@ class TestCompileMultiRoot:
 class TestCompileRLSEnforcement:
     async def test_compile_rls_filters_shown_in_enforcement(self, client):
         """When a role has RLS configured, compile lists the filters applied."""
-        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="sales_analytics_analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -180,7 +180,7 @@ class TestCompileRLSEnforcement:
 
     async def test_compile_excluded_columns_shown(self, client):
         """Columns not requested appear in columnsExcluded."""
-        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="sales_analytics_analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")

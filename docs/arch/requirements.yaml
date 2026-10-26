@@ -33887,6 +33887,7 @@
   - REQ-1056
   superseded_by: REQ-1240
 - id: REQ-1058
+  value: 'Publish selected tables and views to unauthenticated visitors, with no account required.'
   status: proposed
   group: 1. Access Governance & Security
   category: Public Data Publishing
@@ -33928,6 +33929,7 @@
     The text predates the current terms: the org is named by its provisa.dev subdomain and there is no
     tenant_id claim (REQ-1276).'
 - id: REQ-1059
+  value: 'Control public access through the same role and grant model as private access—no separate publishing system.'
   status: proposed
   group: 1. Access Governance & Security
   category: Public Data Publishing
@@ -36985,7 +36987,52 @@
   priority: SHOULD
   type: behavioral
   since: 2026-07
-  description: "A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized view's inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta), never the raw log. (2) Time travel: a request-level `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to the whole query: _prepare_compiled overlays each bitemporal view's expansion entry with an as-of reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every substrate. A whole-query as-of context (like a bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema. Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES). [SUPERSEDED by REQ-2109, 2026-10-20 -- as_of filters valid time and as_recorded filters recorded time; all three declarations are required. Kept here for history; do not implement against it.] Amended 2026-10-16 (maintainer): the clock of time travel is the SOURCE's time, not Provisa's load time. A bitemporal table or view declares its source-time column (the source's own change timestamp such as updated_at, or the commit timestamp a CDC landing carries); X-Provisa-As-Of and its range (REQ-2064) measure against that time, so \"as of last Tuesday\" means as of last Tuesday in the source. Provisa's own recorded (load) time is kept beside it as the audit answer to when Provisa knew, and is not the default clock. Declaring a source-time column is optional: a view that declares none uses Provisa's load time as its clock (maintainer 2026-10-16), and the docs and the view's editor state the implication: versions are then ordered and read as of when Provisa landed each change, which depends on refresh timing, not when it happened in the source. [END SUPERSEDED BLOCK] Amended 2026-10-17 (maintainer): a SECOND axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one ISO 8601 point, validated by parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded) reads each bitemporal view as Provisa had recorded it then: its append log is cut to rows recorded at or before that time before any version span is drawn, then the as-of picks the version in force at its time. So a correction recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the original; as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query endpoints' headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight ticket option as_recorded. The audit row records both (query_audit_log.as_of, as_recorded). The SQL explorer offers both pickers and a demo tour can set each (step kinds as_of, as_recorded). (Amended 2026-10-20, VALID TIME AND RECORDED TIME, REQ-2109:) as_of means valid_time <= X: the latest version per business_key among rows whose valid time is at or before X. as_recorded means what was known at Y: only versions whose recorded_time is at or before Y. Every surface that takes them (the GraphQL and SQL headers, Flight options, the gRPC and MCP resolve arguments, and a pgwire session's SET provisa.as_of / provisa.as_recorded, REQ-2110) applies the same meaning."
+  description: 'A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers
+    get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized
+    view''s inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over
+    the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed
+    state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta),
+    never the raw log. [SUPERSEDED by REQ-1163, 2026-10-25 -- time travel is an argument on each bitemporal
+    view, not a request header (amendment 2026-10-26). Kept here for history; do not implement against it.]
+    (2) Time travel: a request-level `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal
+    by parse_as_of; malformed → HTTP 400) applies to the whole query: [END SUPERSEDED BLOCK] _prepare_compiled
+    overlays each bitemporal view''s expansion entry with an as-of reconstruction over its append log (as_of_view_map
+    + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every substrate. [SUPERSEDED
+    by REQ-1163, 2026-10-25 -- the arguments are in the schema, where they apply. Kept here for history;
+    do not implement against it.] A whole-query as-of context (like a bitemporal system time) rather than
+    a per-field arg keeps it out of the GraphQL schema. [END SUPERSEDED BLOCK] Analogous to REQ-372 (`as_of`
+    for Iceberg/Delta SOURCES). [SUPERSEDED by REQ-2109, 2026-10-20 -- as_of filters valid time and as_recorded
+    filters recorded time; all three declarations are required. Kept here for history; do not implement
+    against it.] Amended 2026-10-16 (maintainer): the clock of time travel is the SOURCE''s time, not Provisa''s
+    load time. A bitemporal table or view declares its source-time column (the source''s own change timestamp
+    such as updated_at, or the commit timestamp a CDC landing carries); X-Provisa-As-Of and its range (REQ-2064)
+    measure against that time, so "as of last Tuesday" means as of last Tuesday in the source. Provisa''s
+    own recorded (load) time is kept beside it as the audit answer to when Provisa knew, and is not the
+    default clock. Declaring a source-time column is optional: a view that declares none uses Provisa''s
+    load time as its clock (maintainer 2026-10-16), and the docs and the view''s editor state the implication:
+    versions are then ordered and read as of when Provisa landed each change, which depends on refresh timing,
+    not when it happened in the source. [END SUPERSEDED BLOCK] Amended 2026-10-17 (maintainer): a SECOND
+    axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one ISO 8601 point, validated by
+    parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded) reads each bitemporal
+    view as Provisa had recorded it then: its append log is cut to rows recorded at or before that time
+    before any version span is drawn, then the as-of picks the version in force at its time. So a correction
+    recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the original;
+    as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical
+    value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query
+    endpoints'' headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight
+    ticket option as_recorded. The audit row records both (query_audit_log.as_of, as_recorded). The SQL
+    explorer offers both pickers and a demo tour can set each (step kinds as_of, as_recorded). (Amended
+    2026-10-20, VALID TIME AND RECORDED TIME, REQ-2109:) as_of means valid_time <= X: the latest version
+    per business_key among rows whose valid time is at or before X. as_recorded means what was known at
+    Y: only versions whose recorded_time is at or before Y. Every surface that takes them (the GraphQL and
+    SQL headers, Flight options, the gRPC and MCP resolve arguments, and a pgwire session''s SET provisa.as_of
+    / provisa.as_recorded, REQ-2110) applies the same meaning. (Amended 2026-10-25, TIME TRAVEL IS AN ARGUMENT
+    OF THE VIEW:) Time travel is written where it applies: each bitemporal view''s GraphQL field takes optional
+    as_of (valid time) and as_recorded (recorded time) arguments, validated as before, and only bitemporal
+    views have them. REST and MCP carry the same arguments through their generation from the schema (REQ-1929),
+    and Cypher and SPARQL use the same names. Arguments are per field, so one GraphQL request may read a
+    view at two times through aliases. The X-Provisa-As-Of request header is removed; there is one way to
+    say it.'
   use_case: Without routing reads through reconstruction a bitemporal MV read would surface all historical
     versions instead of current state. Current-by-default makes bitemporal MVs usable; the X-Provisa-As-Of
     header adds opt-in, whole-query time travel.
@@ -45980,10 +46027,13 @@
   priority: SHOULD
   type: behavioral
   description: 'Governed dereference API for semantic data-location URIs: REST and MCP tool `resolve(uri,
-    as_of?)` that takes a Provisa semantic-address URI and returns the governed value(s) it addresses,
-    optionally at a point in time. For relational sources, the canonical address shape is `<table>/pk=<value>/<column>`,
+    as_of?)` that takes a Provisa semantic-address URI and returns the governed value(s) it addresses, optionally
+    at a point in time. For relational sources, the canonical address shape is `<table>/pk=<value>/<column>`,
     addressing a single value as table → primary-key predicate → column. Only semantic addresses (provisa://<org>/<domain_schema>/...)
-    are dereferenceable; physical URIs are refused.'
+    are dereferenceable; physical URIs are refused. (Amended 2026-10-25, A SYSTEM FIELD:) In the GraphQL
+    schema the resolver is the system field _resolve(uri, as_of, as_recorded), named like the other system
+    fields (_meta, _domain_) so it does not sit among a role''s domain roots; REST and MCP offer it under
+    the same name through REQ-1929.'
   use_case: Exported documents, lineage nodes, audit records, and agent citations carry resolvable links
     to live or historical governed values, giving dereferenceable provenance. Complements REQ-1364 (export addressing).
   code:
@@ -47693,6 +47743,7 @@
   - tests/unit/test_tag_params.py
   - tests/unit/test_derived_tags.py
 - id: REQ-1414
+  value: 'Query tag assignments as a SQL view and join them with any other data in your model.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -51508,6 +51559,7 @@
   docs:
   - sources.md
 - id: REQ-1492
+  value: 'Write operations are locked to the environment they were granted in, so a promotion cannot mutate production.'
   status: proposed
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
@@ -52655,6 +52707,7 @@
   - REQ-1490
   since: 2026-08
 - id: REQ-1506
+  value: 'Promote a single corrected metric to production without pulling along every other pending change.'
   status: accepted
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
@@ -56909,9 +56962,9 @@
     is the right to CREATE and DELETE environments; ``environment_switch`` is the right to BE SERVED BY
     one other than prod: to send x-provisa-env and have it honoured. They are separate because they
     answer different questions: the first is who may spend the org''s plan ceiling and drop a schema,
-    the second is who may work anywhere but production. The seed grants BOTH to org_admin and to developer,
+    the second is who may work anywhere but production. [SUPERSEDED by REQ-2155, 2026-10-25 -- environment_management is org_admin''s alone; developer and modeler hold environment_switch and manage only the environments they own. Kept here for history; do not implement against it.] The seed grants BOTH to org_admin and to developer,
     and NEITHER to analyst or modeler: an analyst reads production, and an environment they cannot create
-    is not one they should be able to switch into. WHICH environment a holder may delete is unchanged
+    is not one they should be able to switch into. [END SUPERSEDED BLOCK] WHICH environment a holder may delete is unchanged
     (REQ-1488 keeps deletion an org_admin act); the right decides who may make one at all and who may
     reach the environments surface. This AMENDS REQ-1528, which left creation open to any member on the
     argument that the authority is useless without bindings. That argument holds against an attacker and
@@ -56923,7 +56976,12 @@
     is bound in the org-routing middleware, before a route is reached. prod needs no right, since it is
     what a request naming nothing is served by. The platform bypass and dev/no-auth mode are exempt exactly
     as they are for every other capability gate, and an environment''s OWNER still holds their REQ-1528 authority inside it. Ownership decides what may be done to a model, these two rights decide who
-    may make an environment and be served by one.'
+    may make an environment and be served by one. (Amended 2026-10-25, REQ-2155 STANDARD ROLES:) The rights are
+    carried by the standard roles: ``environment_management`` (manage any environment) by org_admin alone;
+    ``environment_switch`` and ``environment_owned_management`` (manage the environments it owns: create one,
+    becoming its owner, and delete one it owns, never another''s) by developer, and so by modeler, sandbox and
+    org_admin, which inherit them. analyst holds none, and the sandbox role never holds
+    ``environment_management``.'
   use_case: An org_admin grants a contractor the analyst role; the contractor can query production and
     neither sees the environment switcher nor can create or delete an environment.
   scenario: 'Given a member holding only the analyst role
@@ -60982,6 +61040,7 @@
   e2e_reason: The derived name and the checker badge on the registered row depend on the live dataset
     resolution against the compiled schema and on the register mutation's checker derivation.
 - id: REQ-1664
+  value: 'Extend Great Expectations checks with your own Python logic, registered and governed as a command.'
   status: accepted
   target: 2026-Q4
   group: 4. Source Connectors
@@ -66767,6 +66826,7 @@
   docs:
   - admin-graphql.md
 - id: REQ-1786
+  value: 'Adding a new source immediately discovers its tables, with no separate crawl step needed.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -75544,6 +75604,7 @@
   - tests/unit/test_admin_routes_gated.py
   - tests/unit/test_admin_read_gates.py
 - id: REQ-1928
+  value: 'Pass typed parameters and column references to commands from SQL, so queries stay parameterised.'
   status: proposed
   group: 5. Query Languages, Compilation & Operations
   category: Extensible Functions
@@ -77097,6 +77158,7 @@
     Current GovData contract is REQ-540/541.'
   superseded_by: REQ-540
 - id: REQ-493
+  value: 'Connect Apache Accumulo tables as governed relational sources and query them alongside your other data.'
   status: accepted
   group: 4. Source Connectors
   category: Source Connectors
@@ -81599,6 +81661,7 @@
   docs:
   - sources.md
 - id: REQ-1995
+  value: 'Refer a pending data registration to another domain steward for confirmation, keeping the request live.'
   status: proposed
   since: 2026-10
   target: 2027-Q1
@@ -86916,6 +86979,7 @@ Then it updates the linked asset rather than creating another"
   - REQ-1389
   notes: "Maintainer 2026-10-21, through the lead: pull descriptions and references from the customer's catalog when describing a table; a human pick list rather than LLM matching; catalogs as their own admin panel reused by export and import; store each pick; an export records the reference in the catalog too, so the catalog can later become the authority by importing. Maintainer: a catalog import, useful once a table is linked by an export or a pick in the table editor. Maintainer: a scheduled import, so for certain tables the catalog is the authority and they are updated on a stated schedule. Maintainer: authority can't be known for sure, so show when descriptions were last imported from which catalog, and let a steward elect to lock a table to a catalog. Maintainer: the table editor lets you refresh descriptions from the catalog. Maintainer: different domains can use their own catalogs."
 - id: REQ-2123
+  value: 'Explore column profiles as a rotatable 3D terrain, making shape anomalies visible at a glance.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -86933,6 +86997,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2026-Q4"
   notes: '2026-10-21, the maintainer via the lead: the profiling demo''s tour shows its graphs, each step opening the customers table''s View Profile Runs and picking the graph itself, then explaining it once drawn (a stage carries data-ready): the terrain, and the drift strata on postal_code. Relationships and Joint cloud are left out: this run''s correlations and dependencies are all below the map''s lowest strength (0.1), and customers has no joint counts.'
 - id: REQ-2124
+  value: 'Compare column distributions, completeness and outliers in three additional 3D views from the same profile.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87087,6 +87152,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - tests/unit/test_statement_contract.py
   - tests/integration/test_data_product_edges_e2e.py
 - id: REQ-2127
+  value: 'Browse and inspect your data products in a dedicated page, with metadata drawn live from the governed model.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87127,6 +87193,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1634
   target: "2026-Q4"
 - id: REQ-2128
+  value: 'See a data product''s member tables, contracts and linked glossary terms as an interactive knowledge graph.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87307,6 +87374,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1592
   target: "2026-Q4"
 - id: REQ-2131
+  value: 'Process columns in batch with a Python or Node function, reducing round-trip overhead on large tables.'
   status: proposed
   since: 2026-10
   group: 4. Source Connectors
@@ -87345,6 +87413,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2105
   target: "2027-Q1"
 - id: REQ-2132
+  value: 'State the business meaning of each data quality check in plain language, not just its technical predicate.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87391,6 +87460,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2127
   target: "2027-Q1"
 - id: REQ-2133
+  value: 'A preflight check can call Provisa''s own services—LLM, vectors, cache, data quality—before a source refresh.'
   status: proposed
   since: 2026-10
   group: 9. Live Data & Events
@@ -87644,6 +87714,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - tests/unit/test_graphql_front_answers.py
     - tests/integration/test_sparql_endpoint.py
 - id: REQ-2136
+  value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87694,6 +87765,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2125
   target: "2027-Q1"
 - id: REQ-2137
+  value: 'Write back to your model through SPARQL Update, with governance enforced on every triple change.'
   status: proposed
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
@@ -87713,6 +87785,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-885
   target: "2027-Q2"
 - id: REQ-2138
+  value: 'Attach an OWL reasoner to a SPARQL source so Provisa reads inferred triples alongside the asserted ones.'
   status: proposed
   since: 2026-10
   group: 4. Source Connectors
@@ -87777,6 +87850,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2056
   target: "2027-Q1"
 - id: REQ-2141
+  value: 'Glossary terms derive their OWL type automatically from what they are grounded in—no manual classification.'
   status: proposed
   docs:
   - admin-graphql.md
@@ -88272,6 +88346,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     '
 - id: REQ-2150
+  value: 'See a glossary term''s related terms and column bindings as a small interactive graph in its detail view.'
   status: proposed
   target: "2027-Q1"
   group: 10. UI & Admin Surfaces
@@ -88324,7 +88399,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2068
 - id: REQ-2152
   status: proposed
-  target: "2027-Q1"
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Authorization
   feature: roles-and-capabilities-capabilities
@@ -88366,7 +88441,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then the change is refused, and the refusal names nothing the role cannot read
 - id: REQ-2153
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Governance Column Visibility
   feature: public-data-publishing-all-domains
@@ -88397,7 +88472,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And a query reading customer_id is refused while currency is served per its grants'
 - id: REQ-2154
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-domain-access
@@ -88427,8 +88502,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then only data_steward and roles it delegates to can read diagnosis'
 - id: REQ-2155
+  value: 'Start from built-in analyst, steward and operator roles and extend them, instead of building access from scratch.'
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-domain-access
@@ -88496,7 +88572,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And it reads only the columns its grants name'
 - id: REQ-2156
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Federation-Wide Provenance Graph
   feature: lineage-and-provenance-column-lineage
@@ -88527,8 +88603,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then it sees raw.orders feeding orders_v directly, with no transform and no sign of a hidden step'
 - id: REQ-2157
+  value: 'Define input expectations and output promises for a data product, with check results tracked over time.'
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Data Products
   feature: catalog-and-discovery-data-products
@@ -88556,8 +88633,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And Related holds fulfilment''s check on orders'
 - id: REQ-2158
+  value: 'Declare a versioned data contract per output port so consumers know exactly what they can rely on.'
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Data Catalog Integration
   feature: catalog-and-discovery-warehouse-listings
@@ -88588,7 +88666,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And its input port orders names fulfilment''s contract for orders'
 - id: REQ-2159
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-domain-access
@@ -88619,8 +88697,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     column without its values is a mask, whose unmasking is a grant; and only some rows is a row rule, which
     adding a parent never lifts (REQ-2155).'
 - id: REQ-2160
+  value: 'A product''s owner sees health and expectations; a consumer sees the contract, SLA and latest check results.'
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Data Catalog Integration
   feature: catalog-and-discovery-data-products
@@ -88651,8 +88730,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then the panel shows Promises, access, support and lineage only'
 - id: REQ-2161
+  value: 'See a role''s effective rights—the composition of its scope, capabilities and grants—in one panel.'
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-domain-access
@@ -88697,8 +88777,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And each readable column with its scope and the grant that serves it to dq_lead'
 - id: REQ-2162
+  value: 'See every role that can read, write or mask a column, with the inheritance chain that gave each role access.'
   status: proposed
-  target: 2027-Q1
+  target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-domain-access
@@ -88718,3 +88799,421 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then the panel lists data_steward and clinical_reviewer with the grant, inheritance and reach behind
     each'
+- id: REQ-2163
+  value: 'Query your business glossary as a live SQL, GraphQL or Cypher table, with row-level governance applied.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'A third generated system schema, ontology, holds the model''s meaning, as meta holds its
+    structure. Two parts. Definitions: the glossary views move from meta to ontology (terms, their bindings
+    to columns, the edges between terms, their domains and experts), and every reader of them (the Ontology
+    page, the product Graph''s ontology layer, the SPARQL vocabulary, the meta goldens) reads them there;
+    a binding links a term to a column in meta across the two system schemas. Instances: each Class term
+    is a table and each Property term bound to one of its columns is a column of it, generated as a view
+    over the tables the Class is bound to and governed through the one pipeline like any view, so a query
+    can be written in the ontology''s terms on every surface (SQL, GraphQL, Cypher, REST, MCP), as SPARQL
+    already is. The schema is read-only and regenerated with the model. Read rights apply throughout: a
+    term is shown only to a reader who reaches one of its domains (the glossary API''s readable_term rule,
+    one rule for both), a term with no domain is shown to every reader, a binding only when its column is
+    also served to the reader, an edge only when both its terms are shown, and an instance column only when
+    its underlying column is served. [SUPERSEDED by REQ-2163, 2026-10-25 -- settled 2026-10-26, see amendment.
+    Kept here for history; do not implement against it.] Open points to settle before building: a Class
+    bound to several tables (joined as one entity on the Class key, or not offered until curated), a Property
+    bound to several columns, and the naming of definition views against Class tables in the one schema.
+    [END SUPERSEDED BLOCK] (Amended 2026-10-25, OPEN POINTS SETTLED; SPARQL SERVES THE ONTOLOGY:) Maintainer
+    2026-10-26, scheduled before green, in parallel with the benchmark. (1) A Class bound to several tables
+    is their union, no join: each row an instance from one table, with a column naming that table; a Property
+    column a table does not bind is null for its rows. Identity across tables is a later curation step (owl:sameAs),
+    never inferred. (2) A Property bound to several columns of one table is a list column (SQL array, GraphQL
+    list); SPARQL answers each value. A steward who wants them apart binds narrower properties, each rdfs:subPropertyOf
+    the broader one. (3) The definition views carry a leading underscore (_terms, _term_refs, _term_edges,
+    _domains, _experts), as system fields do, so they never collide with a generated Class table. (4) SPARQL
+    serves the ontology schema as standard RDFS/OWL/SKOS: Class terms as owl:Class, kind-of edges as rdfs:subClassOf,
+    Property terms as owl:DatatypeProperty or owl:ObjectProperty with rdfs:domain and rdfs:range, sub-properties
+    as rdfs:subPropertyOf, names as skos:prefLabel, definitions as skos:definition, all under the same read
+    rights as the views.'
+  scenario: 'Given Class term Customer bound to sales.customers (key id) with Property terms name and
+    segment bound to its columns
+
+    And a role that reaches sales and is served customers.name but not customers.segment
+
+    When it queries SELECT name FROM ontology.Customer
+
+    Then the rows are the governed rows of sales.customers
+
+    And ontology.Customer offers no segment column to that role
+
+    And a term none of whose domains the role reaches is absent from ontology.terms'
+- id: REQ-2164
+  value: 'Export server logs with secrets and physical addresses redacted, ready to attach to a support email.'
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Operations
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: behavioral
+  description: 'Redacted log export: an operator can export the server''s recent logs as one plain-text
+    file with redaction applied, to attach to a support email. Support is by email only; the customer
+    owns what it sends, and this feature helps it redact. The export runs the same redaction the server
+    already applies (provisa/security/redaction.py: secrets, credentials) plus the client-facing naming
+    rule (physical source addresses written as model names), and it is offered from the admin UI and as
+    a command. The file is readable as written so the operator can review it before sending; the product
+    never sends it anywhere (no upload, no support portal, no phone-home), so an air-gapped install exports
+    the same way.'
+  scenario: 'Given server logs containing a source password, a physical address pet_store_sqlite.pet_store.pets
+    and a query error
+
+    When an operator exports logs for support
+
+    Then the file contains the error
+
+    And the password does not appear in it
+
+    And the table appears as pet_store.pets, not by its physical address
+
+    And no network request is made'
+- id: REQ-2165
+  value: 'Export your governed graph as Turtle or N-Triples and load it into any triple store you already run.'
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'Bulk RDF export of the governed graph, the counterpart of the Neo4j export (REQ-392),
+    so a customer who already runs a triple store (Jena, GraphDB, Stardog or another) uses it with Provisa''s
+    data: we work with what you have. Scope is the whole graph, a domain or a class. The export carries
+    the ontology schema (REQ-2163''s RDFS/OWL/SKOS: classes, sub-classes, properties with domain and range,
+    labels and definitions) together with the instances, so the receiving store''s reasoner and tools
+    work from the first load. It is governed: it contains exactly what the exporting role may read, masks
+    applied, through the one pipeline. Two forms: a file (Turtle, or N-Triples streamed for large exports)
+    and a direct load into a running store over the SPARQL 1.1 Graph Store HTTP Protocol, reporting triples
+    loaded and failures as the Neo4j export does. It accepts as_recorded (and as_of where a valid time
+    is mapped), so an export can be reproduced exactly later.'
+  scenario: 'Given a role that reads the Customer class with email masked
+
+    When it exports class Customer as Turtle
+
+    Then the file declares Customer as an owl:Class with its properties'' domains and ranges
+
+    And every instance the role reads is in the file
+
+    And each email in the file is masked
+
+    And an export with the same as_recorded later yields the same triples'
+- id: REQ-2166
+  value: 'Join your Jena, GraphDB or Stardog triples with Provisa''s governed data live, with no copy needed.'
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'A customer''s own graph store queries Provisa live, with no copy: we work with what you
+    have. RDF: a SPARQL 1.1 SERVICE clause in Jena, GraphDB or Stardog against Provisa''s SPARQL endpoint
+    is answered correctly, so a query in their store joins their triples with Provisa''s governed data.
+    Neo4j: apoc.bolt.load (and apoc.bolt.execute for reads) from a customer''s Neo4j against Provisa''s
+    Bolt endpoint is answered correctly. Each call runs as the Provisa role its credentials name, governed
+    through the one pipeline like any request, and a call without valid credentials is refused. Together
+    with direct tool access (SPARQL clients over the endpoint; Neo4j Browser and Bloom over Bolt) and
+    the exports (REQ-392, REQ-2165), this is the full graph story: use your tools on Provisa, query it
+    live from your store, or load the governed graph into it.'
+  scenario: 'Given a Jena Fuseki holding triples about accounts, and a Provisa role that reads Customer
+    with email masked
+
+    When a Fuseki query joins its accounts to Provisa''s customers through SERVICE with that role''s credentials
+
+    Then the joined rows come back and each email is masked
+
+    And given a Neo4j instance, when it calls apoc.bolt.load against Provisa''s Bolt endpoint as that
+    role
+
+    Then it receives the role''s governed rows'
+- id: REQ-2167
+  value: 'Every protocol surface publishes its conformance pass rate and deliberate differences, so you know what works.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Protocol Conformance
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: constraint
+  description: 'Every protocol and language Provisa serves is checked against its public conformance suite,
+    run in CI against a test instance, scheduled after green. Suites: SPARQL 1.1 (W3C test suite: query,
+    update, result formats) and RDF 1.1 syntax (Turtle, N-Triples) from w3c/rdf-tests; Cypher (openCypher
+    TCK); Bolt (the Neo4j driver test kit); GraphQL over HTTP (the graphql-http compliance audit); pgwire
+    (the Postgres conformance suite plus the psycopg and JDBC drivers'' own test suites); Arrow Flight SQL
+    (Apache Arrow''s Flight SQL integration scenarios); and the equivalent public suite for every other
+    served surface (REST/OpenAPI, JSON:API, gRPC, MCP) where one exists. Each run reports a pass rate per
+    surface. Every failing case is either fixed or listed as a deliberate difference with its reason (for
+    example, transaction statements are a no-op by design); none is skipped silently. The deliberate differences
+    are published as a compatibility page per surface. (Amended 2026-10-25, RESULTS IN THE DOCS:) Maintainer
+    2026-10-26: the results are published in the docs under a Conformance section, one page per surface,
+    each giving the suite and its version, the pass rate, and every deliberate difference with its reason.
+    The pages are generated from the CI run''s results, never typed by hand, so they cannot drift from what
+    the suite last reported. (Amended 2026-10-25, DIFFERENCES WITH WORKAROUNDS:) Maintainer 2026-10-26:
+    the suites are what gives customers comfort, so each Conformance page lists every difference in detail
+    with its workaround, grouped by cause: writes (supported where they map onto the model through governed
+    table writes; a write needing structure the model lacks is refused by name; transactions are a no-op
+    by design), vocabulary fixed by the model (new vocabulary is defined in the model as a table, column
+    or ontology term, not written into the data; unbounded patterns answer within named limits), and add-ins
+    such as APOC, GDS, custom SPARQL functions or Postgres extensions (offered as commands where commonly
+    needed; otherwise run in the customer''s own store by querying Provisa live or loading the governed
+    graph into it, REQ-2165/2166). Each page also lists the real tools verified to work over that surface
+    (e.g. psql, DBeaver and Tableau over pgwire; Neo4j Browser and Bloom over Bolt; Protege and Stardog
+    Studio over SPARQL), which stays the priority when ordering fixes. (Amended 2026-10-25, HOW TOOLS ARE
+    VERIFIED:) Maintainer 2026-10-26: GUI tools are hard to automate and sometimes to acquire, so a tool
+    is verified in one of three ways, and its Conformance entry says which, with the tool''s version and
+    the date: (a) covered by its driver: the open-source driver the tool sits on (Postgres JDBC/ODBC under
+    Tableau and DBeaver, the Neo4j JavaScript driver under Bloom and Browser, SPARQL over HTTP under Protege
+    and Stardog Studio) runs in CI, with the driver''s own test suite where it has one; (b) verified by
+    replay: the real tool is run once by hand against a test instance, its protocol conversation (pgwire,
+    Bolt or HTTP: introspection queries, catalog calls, procedures) is captured, and the capture is replayed
+    in CI so a change that breaks what the tool relies on fails; a licence is needed only at capture time;
+    (c) verified manually. (Amended 2026-10-25, PGWIRE CATALOG AND TYPES:) Maintainer 2026-10-26: pgwire
+    is already verified with DBeaver and DataGrip, and the gaps found there were always metadata functions
+    and tables, and some data type conversions. So the pgwire conformance job adds, against a real Postgres
+    of a pinned version started in the same job: (1) a catalog shape diff: for every pg_catalog and information_schema
+    relation Provisa serves, column names, order and types compared with Postgres''s own definitions, and
+    for every catalog function tools call (format_type, pg_get_constraintdef, pg_get_expr, col_description,
+    has_table_privilege, current_schema and the like) signature and return type compared with pg_proc; (2)
+    coverage: the catalog relations and functions Postgres has that Provisa does not serve, each added or
+    listed with its reason; (3) type conversions: for every type Provisa returns, the result column''s type
+    OID and typmod, and its text and binary encodings, compared with what Postgres sends for the same value,
+    plus the casts tools issue. Catalog content stays the role''s governed view of the model, stated once
+    as a deliberate difference. Keys shown in pg_constraint and pg_index come from the source''s declarations
+    once discovery records them (REQ-2170).'
+  scenario: 'Given the openCypher TCK run against a test instance
+
+    When a scenario fails
+
+    Then it is either fixed or listed on the Cypher compatibility page with its reason
+
+    And the CI report shows the Cypher pass rate'
+- id: REQ-2168
+  value: 'LangChain, Neo4j Browser and other Cypher tools connect and learn your graph''s schema without any changes.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Graph Query
+  feature: cypher-and-graph-analytics-translation
+  priority: SHOULD
+  type: behavioral
+  description: 'Common APOC calls work unchanged against Provisa''s Cypher surface (HTTP and Bolt), scheduled
+    before green because agent frameworks depend on them: LangChain''s Neo4j integration and similar tools
+    call apoc.meta.data / apoc.meta.schema to learn the graph''s schema before writing Cypher. Four kinds,
+    each mapped its own way. (1) Introspection procedures (apoc.meta.data, apoc.meta.schema and the like)
+    are predefined commands answered from the acting role''s label map, so a caller sees only what the role
+    may read. (2) Scalar functions (apoc.text.*, apoc.coll.*, apoc.date.*, apoc.convert.* and the like)
+    are translated to the engine''s own SQL functions so they push down with the query; they are not commands.
+    (3) Traversal procedures (apoc.path.expand, apoc.path.subgraphNodes) are predefined commands compiled
+    to the same recursive SQL as variable-length paths. (4) Procedures that act outside the model (apoc.create.*
+    dynamic labels, apoc.periodic.iterate, apoc.load.*) are listed on the Cypher Conformance page (REQ-2167)
+    with their workarounds. The predefined commands live in a built-in apoc namespace, so CALL apoc.meta.data()
+    YIELD ... works as written, and every one is governed like any command. The set is chosen from what
+    real tools and agent frameworks call (captured as REQ-2167 replays), not all of APOC. (Amended 2026-10-25,
+    CALLING PATTERNS: NAMING ALIASES PER LANGUAGE:) Maintainer 2026-10-26: build a general mechanism first,
+    then ship the APOC set on it as declarations. A command declares a calling pattern per language, each
+    a naming alias with a generated default: SQL name(args) in FROM, Cypher CALL ns.name(args) YIELD, a
+    GraphQL field, a REST endpoint, an MCP tool, a SPARQL function or property-function IRI. Any can be
+    overridden (e.g. the Cypher name apoc.meta.data). A function is declared as a canonical SQL expression
+    template with the same per-language names (apoc.text.join(list, sep) -> array_to_string({list}, {sep}));
+    the transpiler renders it per engine so it pushes down, and the template is parsed and transpiled for
+    every engine in the deployment when it is saved, so a broken one fails at save. The calling pattern
+    is naming only: arguments, governance and grants are declared once on the command or function, and producing
+    results in the format the caller expects is the command developer''s responsibility. The prime use case
+    is emulating the calls real tools expect (APOC for Cypher tools and agent frameworks, and likewise catalog
+    functions or service descriptions on other surfaces), so end users extend it themselves. A declared
+    name that would shadow a built-in or another command is refused, naming both. The built-in APOC set
+    is shipped as declarations on this mechanism. (Amended 2026-10-25, TARGETED LANGUAGES:) Maintainer 2026-10-26:
+    a command or function may be targeted to specific languages. When it lists its languages it is offered
+    only in those (an APOC emulation only in Cypher, [SUPERSEDED by REQ-2168, 2026-10-25 -- SQL is always
+    offered (amendment SQL ALWAYS). Kept here for history; do not implement against it.] [SUPERSEDED by
+    REQ-2168, 2026-10-25 -- SQL is always offered (amendment SQL ALWAYS; VARIANTS ARE COMMANDS). Kept here
+    for history; do not implement against it.] a catalog-function emulation only in SQL) [END SUPERSEDED
+    BLOCK] [END SUPERSEDED BLOCK], so tool-emulation shims do not appear in GraphQL, REST or MCP. When it
+    lists none it is offered in every language with the generated default names. A call in a language it
+    is not offered in is refused by name like any unknown command. (Amended 2026-10-25, SQL ALWAYS:) Maintainer
+    2026-10-26: SQL is always offered, because every language compiles to it. A targeted command or function
+    lists the other languages it is offered in, and SQL is implied and cannot be excluded. The APOC set
+    is offered in Cypher and SQL. (Amended 2026-10-25, SQL ALWAYS; VARIANTS ARE COMMANDS:) Maintainer 2026-10-26:
+    SQL is always offered, because every language compiles to it; [SUPERSEDED by REQ-2168, 2026-10-25 --
+    targeting is opt-out (amendment OPT-OUT). Kept here for history; do not implement against it.] targeting
+    lists the other languages a command or function is offered in, and SQL cannot be excluded. [END SUPERSEDED
+    BLOCK] Not everything is exposed in GraphQL, Cypher or SPARQL. Where a language expects a different
+    result shape, the variant is a separate command with its own implementation and its own targeting, not
+    an overload: e.g. meta_schema is the general command, and apoc.meta.data is a Cypher-targeted command
+    that may call it and reshape its result into APOC''s format. Calling patterns stay naming aliases. The
+    APOC set is Cypher-targeted commands and functions (offered in SQL as always). (Amended 2026-10-25,
+    OPT-OUT:) Maintainer 2026-10-26: language targeting is opt-out. A command or function is offered in
+    every language under its generated default name; excluding it from a language, or renaming it there,
+    is an explicit declaration, so leaving it out is always an active choice. SQL cannot be excluded. The
+    APOC set''s commands declare their exclusions from GraphQL, REST, MCP and SPARQL. (Amended 2026-10-25,
+    TERM: COMMAND BINDINGS:) Maintainer 2026-10-26: the mechanism is named command bindings. A command (or
+    function) has a binding per language; each binding has a name, defaulting to the generated one, and
+    may be renamed or excluded; the SQL binding cannot be excluded. Always written in full as ''command
+    binding'', never a bare ''binding'', since a term binding (a term bound to a column, REQ-2163) is a
+    different thing; in the UI a command''s tab is Bindings and a term shows Bound columns. It is the answer
+    to ''does it support this library or tool we use?'': it can, by creating command bindings for it.'
+  scenario: 'Given a role that reads Shelter:Employees but not Shelter:Payroll
+
+    When LangChain''s Neo4j integration connects over Bolt as that role and loads the schema with apoc.meta.data
+
+    Then it receives Employees and its relationships
+
+    And Payroll is absent
+
+    And a Cypher query it then writes with apoc.text.join runs and pushes the function down'
+- id: REQ-2169
+  value: 'Add a new data source, query engine or secrets vault by writing a driver, using the same kit the built-ins use.'
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Extensibility
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: behavioral
+  description: 'Provisa is extended through drivers, one kind per core contract: source drivers, engine
+    drivers and secrets drivers, alongside command bindings (REQ-2168) for commands and functions. Every
+    built-in implementation is itself a driver of its kind, and each kind ships with the kit the built-ins
+    use: (1) a scaffold (provisa new source-driver / engine-driver / secrets-driver); (2) the contract test
+    kit, the same tests every built-in driver must pass, so a third-party driver is held to the same standard
+    and the kit is also the gate for Provisa''s own drivers; (3) a docs guide with an effort table by case.
+    Source drivers cover schema discovery, filter and limit pushdown, reachability methods and write operations;
+    a code data source (a Python or Node function as a governed table) remains the quick path for rows only.
+    Engine drivers cover the SQL dialect, connection, live-attach methods for reachability and the materialize
+    store. Secrets drivers resolve credentials from a vault the customer already runs. Security is not a
+    driver kind: the model (scope, capabilities, grants) is the governance, and its extension point is the
+    external policy hook (the ABAC approval hook). Always written in full (''source driver'', ''engine driver''),
+    distinct from a database''s client driver such as psycopg or JDBC. (Amended 2026-10-25, UI DETAILS:)
+    Maintainer 2026-10-26: a driver carries its UI details, so a new driver appears on every UI surface
+    with no UI code change: its name, category and mark for the source (or engine, or secrets) picker; its
+    setup form (fields, types, which are credentials, defaults, hints, validation), following the shared
+    form layout and the rule that a credential field holds what was entered; its connection test; the capabilities
+    it reports (pushdown, reachability methods, writes) as the UI shows them; and its strings for every
+    UI locale (English required, others translated as for any UI string). The UI renders all of this generically
+    from the driver''s declaration, and the generated site source picker reads the same declaration. The
+    contract test kit checks the UI details too (required fields present, hints within the length limit,
+    strings for every locale).'
+  scenario: 'Given a third-party source driver scaffolded with provisa new source-driver
+
+    When its author runs the source driver contract test kit
+
+    Then it runs the same tests the built-in Postgres source driver passes
+
+    And a driver that fails a test is reported by test name'
+- id: REQ-2170
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  feature: source-registration-introspection
+  priority: MUST
+  type: behavioral
+  description: 'Discovery records the keys a source declares: its primary key, unique (alternate) keys
+    and foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys
+    as relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres
+    and DuckDB and then each other connector that can. Today keys are marked only as a side effect of
+    registering a relationship, so a key the source declares is unknown until some relationship happens
+    to point at it; every key-dependent feature (relationship candidates, REQ-1385''s introspected primary
+    key, cardinality, row identity) reads the source''s own declaration instead. A source that declares
+    no keys records none, and nothing is guessed.'
+  scenario: 'Given a SQLite source whose pets table declares id INTEGER PRIMARY KEY and no relationship
+    points at pets
+
+    When the source is discovered
+
+    Then pets.id is recorded as the primary key
+
+    And a foreign key the source declares is offered as a relationship candidate'
+- id: REQ-2171
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  feature: source-registration-introspection
+  priority: MUST
+  type: behavioral
+  description: 'The canonical IR has type aliases. An alias is declared once in the IR vocabulary: a name,
+    a canonical base type, and per-surface details (the pgwire type OID and text format, the GraphQL scalar
+    name, the RDF datatype, the Arrow extension name). A source column whose native type is an aliased type
+    registers as its canonical base type carrying the alias: a Postgres inet column is canonical text with
+    alias inet. Every surface that needs only the canonical type treats it as the base type (filters, joins,
+    aggregation, the engines); surfaces that care read the alias: pgwire reports the alias''s type OID and
+    sends the value in Postgres''s text form, GraphQL names the alias''s scalar (serialized as its base),
+    RDF uses its datatype. [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded by SUBTYPE SEMANTICS ON EVERY
+    ENGINE. Kept here for history; do not implement against it.] An alias adds names and wire details only,
+    never new comparison or arithmetic rules; [END SUPERSEDED BLOCK] a type needing its own operators is
+    a real IR type. First set: inet (text, pgwire 869, GraphQL IPAddress; Trino ipaddress and ClickHouse
+    IPv4/IPv6 map to it), cidr (text, 650, CIDR), macaddr (text, 829, MACAddress), xml (text, 142), point
+    (text, 600), oid (bigint, 26), money (numeric, 790, Postgres money text format). Binary pgwire encoding
+    of an alias is listed as a difference on the pgwire Conformance page unless a tool needs it. Source
+    drivers (REQ-2169) can declare aliases for their own types. (Amended 2026-10-25, ALIAS WHERE SUPPORTED,
+    BASE ELSEWHERE:) Maintainer 2026-10-26: the rule is uniform for engines and language surfaces alike.
+    Where the native engine (or store) or the downstream surface supports the aliased type, it uses the
+    alias''s native form: a Postgres or Trino engine keeps inet/ipaddress, a replica into a store with the
+    type lands it natively, pgwire reports the alias''s OID, GraphQL names the alias''s scalar. Where it
+    does not, it uses the canonical base type. Each engine driver and surface declares which aliases it
+    supports; nothing is guessed. (Amended 2026-10-25, TYPE MAPPINGS KEY ON ALIASES:) Maintainer 2026-10-26,
+    the simpler rule: every engine''s and surface''s type mapping simply includes the aliases. An alias
+    maps to that engine''s or surface''s equivalent type where one exists (Trino ipaddress, Postgres inet,
+    ClickHouse IPv6, DuckDB''s inet; pgwire OID 869; GraphQL IPAddress), and a mapping with no entry for
+    an alias maps it as its base type. Declaring support is just adding the alias to the mapping; there
+    is no separate support list. (Amended 2026-10-25, TERM: SUBTYPE:) Maintainer 2026-10-26: the term is
+    subtype, not alias. Some IR types are subtypes of another IR type: inet is a subtype of text, oid of
+    bigint, money of numeric. [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded by SUBTYPE SEMANTICS ON
+    EVERY ENGINE. Kept here for history; do not implement against it.] A subtype has its base type''s semantics
+    everywhere [END SUPERSEDED BLOCK] (comparison, ordering, filters, joins, governance); a type mapping
+    that has no entry for a subtype maps it as its base type. Every ''alias'' above reads as ''subtype'',
+    in code, UI and docs. (Amended 2026-10-25, REGISTRATION ALWAYS RECORDS THE SUBTYPE:) Maintainer 2026-10-26:
+    table registration always records the subtype when the source''s native type has one (a Postgres inet,
+    a Trino ipaddress, a ClickHouse IPv4 registers as inet), never the bare base type. Each source driver''s
+    type mapping maps its native types to subtypes the same way engines and surfaces map subtypes outward.
+    Whether a subtype is used afterwards is then each engine''s and surface''s own choice. (Amended 2026-10-25,
+    CROSS-SOURCE TYPE AUDIT:) Maintainer 2026-10-26: equivalent ideas exist under different names across
+    source types, so every source driver''s type mapping is audited against the subtypes: each native type
+    equivalent to a subtype maps to it on registration (inet: Postgres/CockroachDB/YugabyteDB inet and cidr,
+    Trino ipaddress, ClickHouse IPv4/IPv6, Elasticsearch ip, Cassandra inet, DuckDB INET; money: SQL Server
+    money and smallmoney; xml: SQL Server and Oracle XML types; point: MySQL POINT, Elasticsearch geo_point;
+    and so on). The audit also lists native types that suggest a new subtype; those are proposed to the
+    maintainer, not added unasked. (Amended 2026-10-25, SUBTYPE SEMANTICS ON EVERY ENGINE:) Maintainer 2026-10-26:
+    engine mapping is not low stakes; engines make every effort to map types correctly. Each subtype states
+    its semantics (ordering, equality, comparison); where it states none, its base type''s apply. inet orders
+    numerically and compares as an address (10.0.0.1 equals 10.0.0.1/32); money behaves as numeric; xml,
+    macaddr and point as text. Every engine driver maps each subtype to an equivalent with those semantics
+    (Postgres inet, Trino ipaddress, ClickHouse IPv6), and [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded
+    by KNOWN ANOMALY WHERE AN ENGINE LACKS THE TYPE. Kept here for history; do not implement against it.]
+    an engine with no native equivalent delivers the semantics on the base type itself [END SUPERSEDED BLOCK]
+    (a sortable normalised form for ordering, normalised comparison for equality), never plain base-type
+    behaviour. The engine driver contract test kit (REQ-2169) checks every subtype''s semantics on every
+    engine, so moving between engines never changes an answer. (Amended 2026-10-25, KNOWN ANOMALY WHERE
+    AN ENGINE LACKS THE TYPE:) Maintainer 2026-10-26: emulating a subtype''s semantics on an engine without
+    the type is more challenging than it is worth. Engines map every subtype to a native equivalent wherever
+    one exists (every effort); an engine with no equivalent treats the subtype as its base type, and that
+    difference is a known anomaly, listed per engine and subtype (e.g. ''inet orders as text on engine X'')
+    on the engine''s compatibility page, not emulated. The engine contract test kit checks native mappings
+    and asserts the listed anomalies, so an undocumented difference fails. (Amended 2026-10-25, PUSHDOWN
+    REWRITES WHERE STRAIGHTFORWARD:) Maintainer 2026-10-26: an exception to the known-anomaly rule. Where
+    a subtype''s predicate or ordering has a straightforward rewrite into an expression the engine evaluates
+    natively, so it still pushes down (e.g. normalising both sides of an inet equality with the engine''s
+    own string functions, or ordering by an engine-native sortable expression), the engine driver uses it,
+    and the case is not an anomaly. Only what has no straightforward pushdown rewrite is listed as a known
+    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used.'
+  scenario: 'Given a Postgres source table with an inet column ip
+
+    When it is registered
+
+    Then ip is canonical text with alias inet
+
+    And a pgwire query of ip reports type OID 869 and the value as Postgres''s text form
+
+    And GraphQL types ip as IPAddress
+
+    And a SQL filter ip = ''10.0.0.1'' compares it as text'

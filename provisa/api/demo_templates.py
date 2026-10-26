@@ -42,6 +42,7 @@ import asyncio
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -333,7 +334,6 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
         from provisa.core.demo_bundles import store_namespaces
 
         raw = _with_stores(raw, store_namespaces(demo.directory))
-    _sandbox_sees_what_its_rights_cover(raw, _role_rights(raw))
     from provisa.core.demo_secrets import resolving
 
     # REQ-2095: the secrets it names, from its own secrets.yaml, wherever it is parsed.
@@ -462,58 +462,51 @@ def _with_stores(node: Any, values: dict[str, str]) -> Any:
     return node
 
 
-def _role_rights(raw: dict) -> dict[str, frozenset[str]]:
-    """Each role a demo's configuration can name, with its rights: the seeded roles, and the
-    demo's own (flattened, inheritance included), which stand in for a seeded one of the same id."""
-    from provisa.core.db import SEEDED_ROLE_RIGHTS
-    from provisa.core.models import Role, flatten_roles
+def tour_standard_roles(directory: Path) -> list[str]:  # REQ-2155
+    """The standard roles the demo's tour acts as (its steps' ``role``), in tour order: a role is
+    acted as only when it is held, so a sandbox's person is granted them with the demo's own. One
+    the sandbox withholds (what org_admin holds and sandbox does not) refuses the demo by name."""
+    from provisa.core.db import SANDBOX_WITHHELD, STANDARD_ROLE_RIGHTS
 
-    rights = dict(SEEDED_ROLE_RIGHTS)
-    own = flatten_roles([Role(**role) for role in raw.get("roles", [])])
-    rights.update({role.id: frozenset(role.capabilities) for role in own})
-    return rights
-
-
-def _sandbox_sees_what_its_rights_cover(node: Any, rights: dict[str, frozenset[str]]) -> None:
-    """A demo names who sees each column and table as it would anywhere (its admin, its own
-    roles). Its sandbox's person holds the sandbox role (REQ-1597): wherever a role holding every
-    right the sandbox role holds is named, the sandbox role is named with it."""
-    from provisa.api.demo_sandbox import SANDBOX_ROLE
-
-    covered = rights[SANDBOX_ROLE]
-    if isinstance(node, list):
-        for item in node:
-            _sandbox_sees_what_its_rights_cover(item, rights)
-    elif isinstance(node, dict):
-        visible = node.get("visible_to")
-        if (
-            isinstance(visible, list)
-            and SANDBOX_ROLE not in visible
-            and any(covered <= rights.get(role_id, frozenset()) for role_id in visible)
-        ):
-            visible.append(SANDBOX_ROLE)
-        for value in node.values():
-            _sandbox_sees_what_its_rights_cover(value, rights)
+    tour = directory / "tour.yaml"
+    if not tour.is_file():
+        return []
+    named = [s["role"] for s in yaml.safe_load(tour.read_text())["steps"] if "role" in s]
+    out = []
+    for role_id in dict.fromkeys(named):
+        if role_id not in STANDARD_ROLE_RIGHTS:
+            continue
+        withheld = sorted(STANDARD_ROLE_RIGHTS[role_id] & SANDBOX_WITHHELD)
+        if withheld:
+            raise ValueError(
+                f"{directory.name}: its tour acts as {role_id!r}, which holds "
+                f"{', '.join(withheld)}, which a sandbox's person may not"
+            )
+        out.append(role_id)
+    return out
 
 
 def demo_roles(template_org: str) -> list[str]:
-    """The roles a demo's configuration defines for itself (its analyst, say), which a sandbox's
-    person also holds so the demo's tour can run as each. One that would carry a right the sandbox
-    role withholds (REQ-1597), on its own or by inheritance, is refused by name rather than
-    granted."""
-    from provisa.core.db import SANDBOX_DENIED
-    from provisa.core.models import flatten_roles
+    """The roles a demo's configuration defines for itself (its shop analyst, say), and the standard
+    roles its tour acts as (:func:`tour_standard_roles`), which a sandbox's person also holds so the
+    demo's tour can run as each. One that would carry a right the sandbox role withholds (REQ-2155:
+    what org_admin holds and sandbox does not), on its own or through a standard role it inherits
+    from, is refused by name rather than granted."""
+    from provisa.core.db import SANDBOX_WITHHELD, standard_role_dicts
+    from provisa.security.inheritance import flatten_role_dicts
 
+    own = [role.model_dump() for role in template_seed(template_org).roles]
+    flattened = {r["id"]: r for r in flatten_role_dicts([*standard_role_dicts(), *own])}
     out = []
-    for role in flatten_roles(list(template_seed(template_org).roles)):
-        withheld = sorted(set(role.capabilities) & SANDBOX_DENIED)
+    for role in own:
+        withheld = sorted(set(flattened[role["id"]]["capabilities"]) & SANDBOX_WITHHELD)
         if withheld:
             raise ValueError(
-                f"demo role {role.id!r} of {template_org} holds {', '.join(withheld)}, which a "
+                f"demo role {role['id']!r} of {template_org} holds {', '.join(withheld)}, which a "
                 "sandbox's person may not"
-            )  # REQ-1597
-        out.append(role.id)
-    return out
+            )
+        out.append(role["id"])
+    return [*out, *tour_standard_roles(demo_of_template(template_org).directory)]
 
 
 def replicated_tables(config: Any) -> list[Any]:
@@ -702,7 +695,8 @@ def _start_builds() -> None:
     # A few at a time (sandbox.template_builds_at_once): all at once, a small tier's machine was
     # too busy to serve the visitors it was preparing for.
     at_once = int(settings_registry.value("sandbox.template_builds_at_once"))
-    task = spawn_background(template_builds.run(at_once, _prepare), name="demo-templates")
+    prepare = _prepare_seeding if seeding_release() else _prepare
+    task = spawn_background(template_builds.run(at_once, prepare), name="demo-templates")
     _build_tasks.add(task)
     task.add_done_callback(_build_tasks.discard)
 
@@ -1038,6 +1032,78 @@ async def _template_row(pool, demo: PublishedDemo) -> bool:
     return build
 
 
+#: How long another region's node may go unanswered while a seeding region waits on its views
+#: (its nodes start together, and one may still be starting).
+_REGION_ANSWER_GRACE_S = 60.0
+
+
+async def _build_view(org_id: str, mv_id: str) -> None:
+    """Build the template's materialized view ``mv_id`` now (a seeding run's view nothing else
+    builds); a failed build is recorded on the view (mv.refresh.refresh_mv), where the wait reads
+    it."""
+    from provisa.api.app import state
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.mv.refresh import refresh_mv
+
+    token = set_current_org(org_id)
+    try:
+        assert state.federation_engine is not None
+        mv = state.mv_registry.get(mv_id)
+        if mv is None:
+            raise LookupError(f"view {mv_id!r} is kept in this region and not registered")
+        await refresh_mv(
+            state.federation_engine,
+            mv,
+            state.mv_registry,
+            store=state.model_db,
+            ledger=state.tenant_db,
+        )
+    finally:
+        reset_current_org(token)
+
+
+def silent_regions(
+    down: dict[str, str], since: dict[str, float], now: float
+) -> tuple[list[tuple[str, str]], dict[str, float]]:
+    """Of the regions not answering now (``down``: region -> address), those that have not answered
+    for _REGION_ANSWER_GRACE_S, given when each was first found not answering (``since``); and the
+    record to carry to the next poll. A region that answers again starts over."""
+    since = {region: since.get(region, now) for region in down}
+    return [
+        (region, down[region])
+        for region, first in sorted(since.items())
+        if now - first >= _REGION_ANSWER_GRACE_S
+    ], since
+
+
+#: Why a seeding run's template was not ready, by demo (_prepare_seeding writes it out).
+_seeding_failures: dict[str, str] = {}
+
+
+async def _prepare_seeding(demo: PublishedDemo, build: bool) -> bool:
+    """:func:`_prepare` in a bundle build's seeding run: a template that is not ready, or cannot be
+    prepared, says why beside the record the build waits for (demo_replicas.seed_failure_path),
+    which ends the build at once by name instead of at the end of its budget."""
+    from provisa.api.demo_replicas import seed_failure_path
+
+    try:
+        ready = await _prepare(demo, build)
+    except Exception as exc:  # allow-ble: re-raised; its reason is written out first
+        _write_seeding_failure(seed_failure_path(demo.directory), f"{type(exc).__name__}: {exc}")
+        raise
+    if not ready:
+        _write_seeding_failure(
+            seed_failure_path(demo.directory),
+            _seeding_failures.get(demo.name, "the template was not ready"),
+        )
+    return ready
+
+
+def _write_seeding_failure(path: Path, reason: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(reason)
+
+
 async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     """Build (or only load) the template, wait until every replica it declares has landed, then
     run the ready hooks. A replica whose build failed stops the wait: the template is not ready,
@@ -1063,6 +1129,7 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         landed, failed, declared, waiting = await _replica_progress(rt)
         if failed:
             log.error("demo template %s: replicas failed to land: %s", demo.name, failed)
+            _seeding_failures[demo.name] = f"replicas failed to land: {failed}"
             return False
         # Every table of a demo is replicated always (template_seed): its template is ready when
         # each one has a landed replica, whether or not convergence has asked for all yet.
@@ -1095,18 +1162,47 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         reset_current_org(token)
     from provisa.api.demo_region_seed import (
         regional,
+        unanswered_regions,
+        view_records_here,
         views_built_here,
         views_kept_here,
+        views_unrecorded_here,
         views_waiting_here,
     )
 
     if exporting and regional():
         # REQ-2068: a region's seed carries its views too; no node of it builds them after.
         said = None
+        unanswered_since: dict[str, float] = {}
+        asked: set[str] = set()
         while (built := await views_built_here(org_id)) < (
             kept := views_kept_here(template_seed(org_id))
         ):
             waiting = await views_waiting_here(org_id)
+            # A view nothing builds -- its inputs all read in place, its refresh periodic -- is
+            # asked for once, as an operator's refresh asks (schema_mutation.refresh_mv).
+            for mv_id in views_unrecorded_here(
+                template_seed(org_id), await view_records_here(org_id)
+            ):
+                if mv_id not in asked:
+                    asked.add(mv_id)
+                    await _build_view(org_id, mv_id)
+            # A view may read a table another region keeps in place: that region's node answers
+            # at the address the deployment config declares for it, or the view never builds.
+            from provisa.api.app import state
+
+            down = dict(
+                await unanswered_regions({r.id: r.address for r in state.config.platform.regions})
+            )
+            dead, unanswered_since = silent_regions(down, unanswered_since, time.monotonic())
+            if dead:
+                reason = "views wait on " + ", ".join(
+                    f"region {region}, whose node at {address} does not answer"
+                    for region, address in dead
+                )
+                log.error("demo template %s: %s", demo.name, reason)
+                _seeding_failures[demo.name] = reason
+                return False
             if waiting != said:
                 said = waiting
                 log.warning(

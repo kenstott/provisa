@@ -150,7 +150,7 @@ def test_an_inherited_role_of_several_roles_holds_the_union_of_their_rights(conv
     rows are the OR of theirs -- none here, support reading orders unfiltered."""
     config, collector = converted
     lead = next(r for r in config.roles if r.id == "support_lead")
-    assert lead.parent_role_id is None
+    assert lead.parents == ["viewer"]  # written out as the union; builds on viewer (REQ-2155)
     customers = _table(config, "customers")
     visible = {c.name for c in customers.columns if "support_lead" in c.visible_to}
     assert {"email", "sf_account_id", "created_at"} <= visible

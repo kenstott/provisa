@@ -513,8 +513,7 @@ async def expired(now: datetime | None = None) -> list[str]:
     this tier's: the regions sandbox tier reaps its own (REQ-2068), whose stores the other cannot
     reach, and the other tier the rest."""
     from provisa.api.admin.orgs_router import _admin_pool
-    from provisa.api.demo_region_seed import regional
-    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
+    from provisa.api.sandbox_tier import is_this_nodes_sandbox
 
     at = now if now is not None else datetime.now(UTC)
     idle = timedelta(seconds=int(settings_registry.value("sandbox.idle_ttl")))
@@ -529,7 +528,7 @@ async def expired(now: datetime | None = None) -> list[str]:
                 .order_by(demo_sandboxes.c.last_active_at)
             )
         ).fetchall()
-    return [r[0] for r in rows if r[0].startswith(REGIONS_SANDBOX_PREFIX) == regional()]
+    return [r[0] for r in rows if is_this_nodes_sandbox(r[0])]
 
 
 async def last_active() -> datetime | None:
@@ -577,7 +576,8 @@ async def reap(org_id: str) -> None:
 
 def _release_mark() -> Path:
     """Where this tier records the Provisa release its open sandboxes were provisioned by: one
-    mark for the sandbox tier, one for the regions tier, which reaps its own (REQ-2068)."""
+    mark for the sandbox tier, one for each node of the regions tier, which reaps its own (REQ-2068;
+    each node has a data directory of its own)."""
     from provisa.api.demo_region_seed import regional
     from provisa.core.org_files import data_dir
 
@@ -590,9 +590,8 @@ async def reap_visitors_of_another_release() -> list[str]:
     its reads. Each is reaped; its tab opens a fresh one from the rebuilt template. A named
     sandbox, a signed-in person's, is kept. This release is then recorded. The sandboxes reaped."""
     from provisa.api.admin.orgs_router import _admin_pool
-    from provisa.api.demo_region_seed import regional
+    from provisa.api.sandbox_tier import is_this_nodes_sandbox
     from provisa.core.demo_bundles import running_provisa
-    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
 
     mark = _release_mark()
     running = running_provisa()
@@ -606,8 +605,8 @@ async def reap_visitors_of_another_release() -> list[str]:
         ).fetchall()
     reaped = []
     for (org_id,) in rows:
-        if org_id.startswith(REGIONS_SANDBOX_PREFIX) != regional():
-            continue  # the other tier's
+        if not is_this_nodes_sandbox(org_id):
+            continue  # another node's
         try:
             await reap(org_id)
         except Exception:  # allow-ble: one sandbox that cannot be removed must not keep the others; logged with its cause, and its idle expiry reaps it

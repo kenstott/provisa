@@ -1,0 +1,14 @@
+{
+  "roleRights": {
+    "tabs": "Sezioni del ruolo",
+    "tab_details": "Dettagli",
+    "tab_capabilities": "Capacità",
+    "kind_standard": "ruolo standard",
+    "kind_custom": "ruolo",
+    "kind_meta": "meta-ruolo",
+    "lineageHint": "Dai ruoli standard fino a questo: ogni ruolo elenca le capacità che aggiunge; questo ruolo elenca tutte quelle che possiede.",
+    "capability": "Capacità",
+    "from": "Proviene da",
+    "own": "propria"
+  }
+}

@@ -815,10 +815,10 @@ roles:
     description: A new analyst, with the analyst's access and nothing more.
     capabilities: []
     domain_access: [sales-analytics]
-    parent_role_id: analyst      # inherits query_development + sales-analytics
+    parents: [analyst]           # inherits query_development and the analyst's grants
 ```
 
-Roles with `parent_role_id` inherit capabilities, domain access, column and object grants, and RLS rules from the parent, with the child's own RLS rule for a table taking precedence. The chain is flattened at startup.
+Roles with `parents` inherit capabilities, column and object grants, and RLS rules from every parent, with the child's own RLS rule for a table taking precedence. A role's `domain_access` is its own and is not inherited. See [Inherited Roles](#inherited-roles).
 
 ### Capabilities
 
@@ -1101,8 +1101,9 @@ The response cache is off for every request that does not ask for it. A request 
 | GraphQL (`/data/graphql`, Arrow Flight) | `@cached` on the operation, optionally `@cached(ttl: 60)` |
 | SQL (pgwire, Flight SQL, `/data/sql`) | a `-- @provisa cache=true` or `-- @provisa cache_ttl=60` comment line in the statement |
 | Cypher (`/data/cypher`, the Neo4j Query API, Bolt, Arrow Flight) | a `// @provisa cache=true` or `// @provisa cache_ttl=60` comment line in the query |
+| SPARQL (`/data/sparql`) | a `# @provisa cache=true` or `# @provisa cache_ttl=60` comment line in the query |
 | gRPC (and the HTTP gRPC proxy) | call metadata (headers on the proxy) `x-provisa-cache: true` or `x-provisa-cache-ttl: 60` |
-| REST, JSON:API, and as an alternative to the hint in the text: GraphQL over HTTP, `/data/cypher`, the Neo4j Query API | the request header `Cache-Control: max-age=60` (or `max-stale=60`), or `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
+| REST, JSON:API, and as an alternative to the hint in the text: GraphQL over HTTP, `/data/cypher`, `/data/sparql`, the Neo4j Query API | the request header `Cache-Control: max-age=60` (or `max-stale=60`), or `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
 
 A `ttl` that is not an integer fails the request. A request that states the opt-in twice (in its text and a header, or in two headers) with different values fails with `400`; neither is picked. `Cache-Control: no-cache` or `no-store` means no cache, the same as no header.
 
@@ -1365,7 +1366,11 @@ Presets are added to the statement during compilation, before SQL generation. Th
 
 ## Inherited Roles
 
-Roles can inherit from one parent role via `parent_role_id`. The chain is flattened at startup. A child holds the union of its ancestors' capabilities and domain access; a column, metric, function or webhook granted to an ancestor is granted to the child; and an ancestor's RLS rules apply to the child per table, nearest role first, with the child's own rule for a table replacing the parent's.
+A role names the roles it inherits from in `parents`, in order. The inheritance is flattened at startup. A role holds the union of its own capabilities and every ancestor's; a column, metric, function or webhook granted to an ancestor is granted to it. Its `domain_access` is its own: reach says where the role's capabilities apply, so a child of a role that reaches every domain reaches only the domains it lists.
+
+RLS resolves per table. A role's own rule for a table stands. Without one, the rules its parents resolve are combined with OR, and a parent with no rule adds nothing, so adding a parent never lifts a row rule. A role with no rule anywhere among its ancestors reads every row its grants allow. Write grants resolve the same way per operation. A property such as `max_rows`, `rate_limit` or a session value comes from the role itself, else from the first ancestor that sets it, ancestors walked depth-first in the order `parents` lists them.
+
+Provisa ships standard roles (`viewer`, `analyst`, `developer`, `modeler`, `data_steward`, `security_admin`, `data_product_owner`, `dq_reader`, `dq_steward`, `source_admin`, `org_operator`, `org_admin`, `sandbox`, `platform_admin`). They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
 
 ```yaml
 roles:
@@ -1380,16 +1385,21 @@ roles:
   - id: junior_analyst
     description: A new analyst, with the analyst's access and nothing more.
     capabilities: []
-    domain_access: []
-    parent_role_id: analyst      # inherits query_development + sales-analytics
-  - id: intern
-    description: An intern, with the junior analyst's access.
+    domain_access: [sales-analytics]
+    parents: [analyst]           # inherits query_development and the analyst's grants
+  - id: auditor
+    description: Reads the sales analytics domain's records for audit.
     capabilities: []
-    domain_access: []
-    parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
+    domain_access: [sales-analytics]
+    parents: [viewer]
+  - id: audit_lead
+    description: Leads audits; holds both roles' capabilities and grants.
+    capabilities: []
+    domain_access: [sales-analytics]
+    parents: [junior_analyst, auditor]
 ```
 
-Multi-level inheritance is supported. The child role's explicit capabilities and domain_access are merged with the parent's. A parent must be an existing role, may not be the role itself and may not close a cycle; each is refused at save.
+Each parent must be an existing role, named once, not the role itself, and may not close a cycle; each is refused at save.
 
 ## Scheduled Triggers
 

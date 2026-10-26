@@ -36,16 +36,17 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: amount
         data_type: numeric
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
 
 roles:
   # REQ-1297: platform_admin is absent by design. schema.sql seeds it with the control-plane bypass
   # and nothing else, role_repo.upsert refuses any config redefinition of that row, and it names no
   # column grant in any org. The data-plane administrator of this org is org_admin.
-  - id: analyst
+  - id: sales_analytics_analyst
+    parents: [analyst]
     description: "Queries the sales analytics domain."
     capabilities: [query_development]
     domain_access: [sales-analytics]

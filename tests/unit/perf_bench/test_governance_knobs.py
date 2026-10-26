@@ -281,7 +281,7 @@ class _Admin:
                 "id": "org_admin",
                 "capabilities": ["query_development"],
                 "domainAccess": ["*"],
-                "parentRoleId": None,
+                "parents": [],
             }
         }
         self.derived: list[str] = []
@@ -352,9 +352,9 @@ def test_roles_are_created_parent_first_and_removed_leaf_first(tmp_path: Path) -
     ) as report:
         assert report["request_roles"] == ["bench_gov_org_admin_d2"]
         created = [v["input"] for n, v in admin.calls if n == "createRole"]
-        assert [(r["id"], r["parentRoleId"]) for r in created] == [
-            ("bench_gov_org_admin_d1", "org_admin"),
-            ("bench_gov_org_admin_d2", "bench_gov_org_admin_d1"),
+        assert [(r["id"], r["parents"]) for r in created] == [
+            ("bench_gov_org_admin_d1", ["org_admin"]),
+            ("bench_gov_org_admin_d2", ["bench_gov_org_admin_d1"]),
         ]
         assert all(r["capabilities"] == ["query_development"] for r in created)
     deleted = [v["id"] for n, v in admin.calls if n == "deleteRole"]

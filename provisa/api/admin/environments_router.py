@@ -134,6 +134,11 @@ async def _guard(request: Request, org_id: str) -> str | None:
 
 #: The right to create an environment and to reach the environments surface at all (REQ-1573).
 MANAGE_CAPABILITY = "environment_management"
+#: REQ-2155: the right to manage the environments the caller owns -- create one (becoming its
+#: owner) and delete one it owns. MANAGE_CAPABILITY manages any.
+OWNED_CAPABILITY = "environment_owned_management"
+#: Either right creates an environment; the creator owns it.
+CREATE_RIGHTS = (MANAGE_CAPABILITY, OWNED_CAPABILITY)
 #: The right to change an environment's data choices (REQ-1942).
 DATA_CAPABILITY = "environment_data"
 
@@ -287,6 +292,30 @@ async def _guard_within(request: Request, org_id: str, name: str) -> str | None:
     return await _guard(request, org_id)
 
 
+def _caller_capabilities(request: Request) -> set[str]:
+    """The rights the request's caller holds (its acting roles' resolved capabilities)."""
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state as _app_state
+
+    return _resolved_capabilities(request.state.identity, _app_state)
+
+
+async def _guard_owned(request: Request, org_id: str, name: str) -> str | None:  # REQ-2155
+    """Managing ONE environment -- deleting it. Held by an org_admin, or by its owner when the
+    owner holds environment_owned_management: a developer manages the branches it made, never
+    another's. The pin is asked first, as in :func:`_guard_within`."""
+    await _confined(request, org_id, name)
+    user_id = _caller_user_id(request)
+    if (
+        user_id is not None
+        and OWNED_CAPABILITY in _caller_capabilities(request)
+        and await owns_environment(_admin_pool(), org_id, name, user_id)
+    ):
+        await _org_ready_on_this_node(org_id)
+        return user_id
+    return await _guard(request, org_id)
+
+
 async def _member_count(org_id: str) -> int:
     """How many members the org has — the condition REQ-1504 reads prod's protection from."""
     async with _admin_pool().acquire() as conn:
@@ -434,7 +463,7 @@ async def list_environments(request: Request, org_id: str) -> dict:
     # A member sees the org's environments: they cannot decide which one to create theirs from, or
     # which to propose into, without seeing them (REQ-1528). REQ-1573: either environment right
     # answers — the switcher lists them to choose one, the admin surface to manage them.
-    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
+    await _member(request, org_id, MANAGE_CAPABILITY, OWNED_CAPABILITY, SWITCH_CAPABILITY)
     rows = await list_envs(_admin_pool(), org_id)
     # REQ-1624: a membership confined to one environment is shown that one and nothing else. The
     # listing is what a sandbox visitor read to learn that other visitors exist and what their
@@ -521,7 +550,7 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     # REQ-1528/REQ-1573: creating an environment is a member's act under environment_management;
     # REQ-1942: choosing data for it that reads real data is environment_data's, and reading the
     # parent's real rows needs the right to read them there.
-    actor = await _member(request, org_id, MANAGE_CAPABILITY)
+    actor = await _member(request, org_id, *CREATE_RIGHTS)
     await _known(org_id, body.from_env)  # the source has to exist before anything is reserved
     if body.data_mode != UNBOUND_MODE or body.mutation_handling != REFUSED:
         await _member(request, org_id, DATA_CAPABILITY)
@@ -665,8 +694,7 @@ async def delete_environment(
     redeemer from it, or an environment is branched from it; each is named. A visitor's own
     environment takes the visitor's membership with it (``env_retire``'s inventory says so).
     """
-    await _confined(request, org_id, name)
-    actor = await _guard(request, org_id)
+    actor = await _guard_owned(request, org_id, name)  # REQ-2155
     await _known(org_id, name)
     try:
         outcome = await retire_environment(
@@ -1307,7 +1335,7 @@ async def list_merge_requests(request: Request, org_id: str, open_only: bool = F
     """
     from provisa.api.admin.orgs_router import _org_model_db
 
-    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
+    await _member(request, org_id, MANAGE_CAPABILITY, OWNED_CAPABILITY, SWITCH_CAPABILITY)
     db = await _org_model_db(org_id)
     rows = await env_approvals.list_requests(_admin_pool(), org_id, open_only=open_only)
     # REQ-1624: a confined membership sees only the proposals its own environment is party to --
@@ -1327,7 +1355,7 @@ async def get_merge_request(request: Request, org_id: str, request_id: int) -> d
     """One request, with the report as it was produced — which is what the approver reviews."""
     from provisa.api.admin.orgs_router import _org_model_db
 
-    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
+    await _member(request, org_id, MANAGE_CAPABILITY, OWNED_CAPABILITY, SWITCH_CAPABILITY)
     row = await _request_or_404(org_id, request_id)
     await _confined(request, org_id, row["source_env"], row["target_env"])
     state = await env_approvals.effective_state(await _org_model_db(org_id), org_id, row)
@@ -1726,7 +1754,7 @@ async def repo_sync_state(request: Request, org_id: str) -> dict:
     # REQ-1552: read by MEMBERS, not just org_admins. A member owning an environment can push it,
     # and somebody who can push has to be able to see that a push is owed -- an admin-only badge
     # would leave the person who made the change as the one person who cannot see its state.
-    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
+    await _member(request, org_id, MANAGE_CAPABILITY, OWNED_CAPABILITY, SWITCH_CAPABILITY)
     names = sorted({*branches(org_id), *remote_branches(org_id)})
     integration = await env_ci.read_integration(_admin_pool(), org_id)
     return {
@@ -2076,7 +2104,7 @@ async def list_repo_branches(request: Request, org_id: str) -> dict:
     """
     from provisa.core.env_repo import branches
 
-    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
+    await _member(request, org_id, MANAGE_CAPABILITY, OWNED_CAPABILITY, SWITCH_CAPABILITY)
     return {"branches": branches(org_id)}
 
 

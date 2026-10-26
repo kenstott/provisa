@@ -222,7 +222,11 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     sources = {s["id"] for s in config["sources"]}
     aliases = {r["alias"] for r in config["relationships"] if r.get("alias")}
     examples = {q.stem for q in (home / "queries").glob("*.graphql")}
-    roles = {r["id"] for r in config["roles"]} | {"all"}
+    # The demo's own roles, and the standard roles its tour acts as, which a visitor is granted too
+    # (REQ-2155: demo_templates.tour_standard_roles refuses one the sandbox withholds).
+    from provisa.api.demo_templates import tour_standard_roles
+
+    roles = {r["id"] for r in config["roles"]} | {"all"} | set(tour_standard_roles(home))
     # prod, and each environment the demo's setup makes (REQ-2053).
     setup = home / "setup.yaml"
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []

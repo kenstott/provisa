@@ -71,10 +71,9 @@ def _flight_state(**extra) -> SimpleNamespace:
         flight_global_cap=None,
         roles={"analyst": {}},
         response_cache_store=NoopCacheStore(),
-        # the bound org's settings and config, as every org runtime carries them: none declares
-        # a derived role (REQ-2078)
-        settings_overrides={},
-        config=None,
+        # As the real state of an org that has named no derived role (REQ-2057): an unsecured
+        # Flight call resolves the role it names through the declared ones.
+        settings_overrides={"derived_roles": []},
     )
     base.update(extra)
     return SimpleNamespace(**base)

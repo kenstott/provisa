@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import importlib.util
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -156,6 +157,10 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
     monkeypatch.setattr(
         builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
     )
+    # One set of region stores for the whole build: started after the demo's stores, stopped
+    # before them.
+    monkeypatch.setattr(builder._RegionStores, "start", lambda self: done.append("regions up"))
+    monkeypatch.setattr(builder._RegionStores, "stop", lambda self: done.append("regions down"))
 
     def _parsed(*_a):
         raise AssertionError("the config was parsed outside a region's node")
@@ -166,7 +171,33 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
         name="retail", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
     )
     assert builder.build(args) == 0
-    assert done == ["up", "bundles", "seed", "no empty replica", "dump", "down"]
+    assert done == [
+        "up",
+        "regions up",
+        "bundles",
+        "seed",
+        "no empty replica",
+        "dump",
+        "regions down",
+        "down",
+    ]
+
+
+def test_a_published_demo_in_regions_no_regions_tier_serves_is_not_built(tmp_path, monkeypatch):
+    """The regions sandbox tier serves only the demos PROVISA_SANDBOX_REGIONS_DEMOS names; a
+    published demo in regions it does not name is refused before its stores come up."""
+    named = tmp_path / "named"
+    demo = named / "zoo"
+    demo.mkdir(parents=True)
+    (demo / "demo.yaml").write_text(
+        "requires_provisa: 0.1.0a483\npublished: true\nregions: {headless: [eu], visitor: us}\n"
+    )
+    monkeypatch.setattr(builder.Stores, "up", lambda self: pytest.fail("its stores came up"))
+    args = argparse.Namespace(
+        name="zoo", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
+    )
+    with pytest.raises(SystemExit, match="PROVISA_SANDBOX_REGIONS_DEMOS"):
+        builder.build(args)
 
 
 def test_the_bundle_action_installs_a_demo_s_extras_before_it_builds():
@@ -492,7 +523,7 @@ def test_a_question_polly_does_not_answer_fails_the_build_naming_its_step(tmp_pa
 def test_a_tour_asking_polly_needs_the_openrouter_key(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(SystemExit, match="OPENROUTER_API_KEY is not set"):
-        builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, timeout=1)
+        builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, 1, None)
 
 
 def _stores_up(tmp_path: Path, services: str) -> list[tuple]:
@@ -1028,3 +1059,170 @@ def test_a_seeding_run_that_never_finished_names_the_tables_it_re_created_and_it
     con.execute('CREATE SCHEMA "r"; CREATE TABLE "r"."t" AS SELECT 1 AS a UNION ALL SELECT 2')
     con.close()
     assert builder._embedded_store(tmp_path, "retail") == "  r.t: 2 rows"
+
+
+def test_a_regions_demo_s_setup_runs_on_a_node_per_region_against_the_visitor_s():
+    """Its views are built in their regions' stores, so its setup runs with every region's node
+    up, each on its region's address and its region's store, all on one model store; the setup
+    client talks to the visitor's node. The same region stores are then seeded from."""
+    region_env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_LEDGER_PG_URL": "postgresql://ledger",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+        "PROVISA_DEMO_WAREHOUSE_PG_URL": "postgresql://warehouse",
+    }
+    nodes = builder.setup_nodes(
+        ["ledger", "warehouse"], region_env, redis_url="redis://cache", work=Path("/w")
+    )
+    assert [(n.region, n.port) for n in nodes] == [("ledger", 41001), ("warehouse", 41002)]
+    for node in nodes:
+        assert node.env["PROVISA_REGION"] == node.region
+        assert node.env["REDIS_URL"] == "redis://cache"
+        assert node.env["PROVISA_DATA_DIR"] == f"/w/setup-data-{node.region}"
+        assert {k: node.env[k] for k in region_env} == region_env
+    assert nodes[-1].region == "warehouse"  # the visitor's: the setup client's server
+
+
+def test_a_regions_demo_s_setup_history_is_carried_after_its_regions_are_seeded(
+    tmp_path, monkeypatch
+):
+    """REQ-1162, REQ-2068: set up on its region nodes, then seeded region by region, then each
+    bitemporal view's history carried into its home region's seed -- never through the
+    single-region export of the setup server's own store."""
+    named = tmp_path / "named"
+    demo = named / "banking"
+    demo.mkdir(parents=True)
+    (demo / "demo.yaml").write_text(
+        "requires_provisa: 0.1.0a483\nregions: {headless: [ledger], visitor: warehouse}\n"
+    )
+    (demo / "setup.yaml").write_text("steps: []\n")
+    done: list[str] = []
+    monkeypatch.setattr(builder.Stores, "up", lambda self: done.append("up"))
+    monkeypatch.setattr(builder.Stores, "dump", lambda self: done.append("dump") or [])
+    monkeypatch.setattr(builder.Stores, "down", lambda self: done.append("down"))
+    monkeypatch.setattr(builder._RegionStores, "start", lambda self: done.append("regions up"))
+    monkeypatch.setattr(builder._RegionStores, "stop", lambda self: done.append("regions down"))
+    monkeypatch.setattr(builder, "_set_up", lambda *_a: done.append("set up"))
+    monkeypatch.setattr(builder, "_export_views", lambda *_a: done.append("export views"))
+    monkeypatch.setattr(builder, "_seed", lambda *_a: done.append("seed"))
+    monkeypatch.setattr(builder, "_carry_region_views", lambda *_a: done.append("carry history"))
+    monkeypatch.setattr(builder, "_prefetch_connector_bundles", lambda *_a: done.append("bundles"))
+    monkeypatch.setattr(
+        builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
+    )
+    monkeypatch.setattr(builder.bundles, "pack", lambda _demo, _manifest: b"bundle")
+    args = argparse.Namespace(
+        name="banking", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
+    )
+    assert builder.build(args) == 0
+    assert done == [
+        "up",
+        "regions up",
+        "bundles",
+        "set up",
+        "seed",
+        "carry history",
+        "no empty replica",
+        "dump",
+        "regions down",
+        "down",
+    ]
+
+
+def test_a_regions_demo_s_seeding_nodes_run_together_until_every_region_is_seeded(
+    tmp_path, monkeypatch
+):
+    """A view one region builds may read a table another region keeps in place (banking's
+    end-of-day totals, built at the ledger): every region's seeding node runs at once, on its
+    region's address, and none stops before every region has written its seed (CI run
+    40271353724: the ledger's node had stopped, and the warehouse's view never built)."""
+    import threading
+
+    from provisa.api.demo_region_seed import seed_dir
+
+    demo = tmp_path / "banking"
+    regional = builder._RegionStores(tmp_path, ["ledger", "warehouse"])
+    regional.env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+    }
+    monkeypatch.setattr(builder._RegionStores, "redis_url", "redis://cache")
+    running: set[str] = set()
+    both_up = threading.Event()
+    stopped_before_all: list[str] = []
+
+    def _node(*_a, record, env, port, until, **_k):
+        region = env["PROVISA_REGION"]
+        running.add(region)
+        if running == {"ledger", "warehouse"}:
+            both_up.set()
+        assert both_up.wait(10), f"{region}'s node ran alone"
+        assert port == {"ledger": 41001, "warehouse": 41002}[region]
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text("{}")
+        deadline = time.monotonic() + 10
+        while not until():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        if not all(seed_dir(demo, r).joinpath("record.json").exists() for r in running):
+            stopped_before_all.append(region)
+
+    monkeypatch.setattr(builder, "_seed_node", _node)
+    builder._seed(tmp_path, demo, None, 60.0, regional)
+    assert both_up.is_set() and stopped_before_all == []
+
+
+def test_a_failing_seeding_node_stops_the_others_and_fails_the_build(tmp_path, monkeypatch):
+    regional = builder._RegionStores(tmp_path, ["ledger", "warehouse"])
+    regional.env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+    }
+    monkeypatch.setattr(builder._RegionStores, "redis_url", "redis://cache")
+
+    def _node(*_a, env, until, **_k):
+        if env["PROVISA_REGION"] == "ledger":
+            raise SystemExit("the seeding run exited early (3)")
+        deadline = time.monotonic() + 10
+        while not until():
+            assert time.monotonic() < deadline, "the warehouse's node waited past the failure"
+            time.sleep(0.01)
+
+    monkeypatch.setattr(builder, "_seed_node", _node)
+    with pytest.raises(SystemExit, match="exited early"):
+        builder._seed(tmp_path, tmp_path / "banking", None, 60.0, regional)
+
+
+def test_a_seeding_node_that_marks_its_template_failed_ends_the_build_at_once(
+    tmp_path, monkeypatch
+):
+    """A seeding node whose template fails writes why beside the record the build waits for; the
+    build stops on it at once, naming the reason, instead of waiting out its whole budget."""
+    record = tmp_path / "demo" / "seeded" / "replicas.json"
+    record.parent.mkdir(parents=True)
+    (record.parent / "failed").write_text("replicas failed to land: shop.orders")
+    stopped: list[str] = []
+
+    class _Server:
+        returncode = None
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            stopped.append("terminate")
+
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(builder, "_control_plane", lambda *_a: ("h", "1", "postgresql://cp"))
+    monkeypatch.setattr(builder, "_config_env", lambda _demo: {})
+    monkeypatch.setattr(builder, "_duckdb_env", lambda _work: {})
+    monkeypatch.setattr(builder.subprocess, "Popen", lambda *_a, **_k: _Server())
+    monkeypatch.setattr(builder.subprocess, "run", lambda *_a, **_k: None)
+    stores = argparse.Namespace(addresses={})
+    started = time.monotonic()
+    with pytest.raises(SystemExit, match="replicas failed to land: shop.orders"):
+        builder._seed_node(tmp_path, tmp_path / "demo", stores, 600.0, record=record, env={})
+    assert time.monotonic() - started < 30
+    assert stopped == ["terminate"]

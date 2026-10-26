@@ -341,3 +341,176 @@ For the full flag reference, auth options, multitenancy host naming, and a cron 
 [Metadata Export — From the command line](metadata-export.md#from-the-command-line).
 
 Commands appear in each environment's git projection. See [Environments](environments.md) for how a command and its tag assignments survive merge and pull.
+
+## Creating command bindings for a library you already use
+
+### What a command binding is
+
+A command binding is the name a command or function uses in a specific language. Every command gets a generated default binding in each surface Provisa exposes: SQL, Cypher, GraphQL, REST, MCP, SPARQL and the others. Rename a binding in one language, or exclude the command from a language entirely, and you are making an explicit declaration. Omit a language from the declaration, and the command appears there under its generated name.
+
+SQL is the one language you cannot exclude. Every other surface compiles to SQL, so a command targeted only to Cypher still has a SQL binding.
+
+A variant that returns a different result shape is its own command. When APOC's `apoc.text.join` returns a plain string but your general `text_join` command returns a row set, those are two commands with two implementations. Producing results in the shape the caller expects is the command developer's responsibility. A command binding is a name. Arguments, governance and grants are declared once on the command, and every binding shares them.
+
+One term to keep separate: a term binding attaches an ontology term to a column, visible on the column's **Bound columns** tab. That is a different mechanism. Always write "command binding" in full.
+
+### How much work is it?
+
+That depends on where the library runs.
+
+| Library | Command kind | Effort |
+| --- | --- | --- |
+| A pure SQL scalar expression | SQL expression template | Minutes |
+| A Python library | `python` command | Small |
+| Anything callable from the command line | `script` command | Small |
+| An existing service in another language | `http` or `grpc` command | Moderate — you run the service |
+| A plugin tied to another runtime (e.g., a Neo4j extension in Java) | Register that system as a Provisa source and query it in place | Depends |
+
+One worked example per row.
+
+**SQL expression template.** APOC's `apoc.text.join(list, sep)` joins a list to a string. The SQL equivalent is `array_to_string`. Declare it as a function with a SQL expression template, give the Cypher command binding its APOC name, and let the transpiler handle the rest:
+
+```yaml
+functions:
+  - name: text_join
+    kind: query
+    impl_kind: sql_expression
+    binding:
+      sql: "array_to_string({list}, {sep})"
+    arguments:
+      - name: list
+        type: String
+      - name: sep
+        type: String
+    language_bindings:
+      cypher:
+        name: apoc.text.join
+```
+
+The transpiler rewrites `{list}` and `{sep}` to each engine's dialect when the function is saved. A broken template fails at save, not at call time.
+
+**Python library.** Suppose you want `langdetect` accessible as a governed function. Point a `python` command at a callable in your codebase:
+
+```yaml
+functions:
+  - name: detect_language
+    kind: query
+    impl_kind: python
+    binding:
+      callable: myapp.text_functions:detect_language
+    arguments:
+      - name: text
+        type: String
+    output_columns:
+      - {name: language, type: text}
+      - {name: confidence, type: double}
+```
+
+`python` commands run in-process on the server host. The operator must turn host code on first (see [Host code](#host-code)).
+
+**Script command.** `pdfinfo` is a CLI tool. A `script` command wraps it:
+
+```yaml
+functions:
+  - name: pdf_info
+    kind: query
+    impl_kind: script
+    binding:
+      argv: ["pdfinfo", "/mnt/files/{file_path}"]
+    arguments:
+      - name: file_path
+        type: String
+    output_columns:
+      - {name: pages, type: integer}
+      - {name: title, type: text}
+```
+
+Like `python`, `script` commands require the operator's `allow_host_code` setting.
+
+**HTTP or gRPC service.** A sentiment scoring model sits behind an HTTP endpoint. Register it as an `http` command and add its host to the egress allowlist:
+
+```yaml
+functions:
+  - name: score_sentiment
+    kind: query
+    impl_kind: http
+    binding:
+      url: https://ml.internal/sentiment
+      method: POST
+    arguments:
+      - name: reviews
+        type: String
+        arg_kind: result_set
+        columns:
+          - {name: id, type: integer}
+          - {name: body, type: text}
+    output_columns:
+      - {name: id, type: integer}
+      - {name: sentiment, type: text}
+      - {name: score, type: double}
+```
+
+**Another runtime.** When a procedure is embedded in another system — for example, a graph traversal written as a Neo4j extension in Java — the straightforward path is to register that system as a Provisa source and query it in place. Provisa federates the results with the rest of your model without copying data.
+
+### Governance
+
+Every command runs under its own grants. The caller must hold rights to both the domain and the command. A function declared as a SQL expression template is different: it runs inside the governed query rather than as a separate call, carrying exactly the same row-level security as the rest of the statement. Either way, a third-party library calling an emulated function never reads rows the caller's role cannot see.
+
+### APOC example end to end
+
+LangChain's Neo4j integration calls `apoc.meta.data()` before it generates Cypher. It expects a specific map format listing node labels, their properties and relationships. Register two commands: a general `meta_schema` command that answers from the acting role's label map, and a Cypher-targeted `apoc.meta.data` command that calls it and reshapes the result into the format APOC callers expect.
+
+The general command:
+
+```yaml
+functions:
+  - name: meta_schema
+    description: Returns the acting role's label map — node labels, properties and relationships
+    kind: query
+    impl_kind: python
+    binding:
+      callable: provisa.apoc:meta_schema
+    visible_to: []
+    output_columns:
+      - {name: label, type: text}
+      - {name: property_keys, type: json}
+      - {name: relationships, type: json}
+```
+
+`visible_to: []` makes the command available to every role that can reach its domain.
+
+The Cypher-targeted variant:
+
+```yaml
+  - name: apoc_meta_data
+    description: Reshapes meta_schema output into the apoc.meta.data format for Cypher tools
+    kind: query
+    impl_kind: python
+    binding:
+      callable: provisa.apoc:meta_data_compat
+    visible_to: []
+    language_bindings:
+      cypher:
+        name: apoc.meta.data
+      graphql:
+        exclude: true
+      rest:
+        exclude: true
+      mcp:
+        exclude: true
+    output_columns:
+      - {name: label, type: text}
+      - {name: type, type: text}
+      - {name: elementType, type: text}
+      - {name: array, type: boolean}
+      - {name: count, type: bigint}
+```
+
+From a LangChain session over Bolt:
+
+```cypher
+CALL apoc.meta.data() YIELD label, type, count
+RETURN label, type, count
+```
+
+The governance model does the filtering. A role that can read `Employees` but not `Payroll` sees `Employees` and its relationships in the result. `Payroll` is absent, and any Cypher LangChain generates next cannot reference it.

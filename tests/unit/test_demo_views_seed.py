@@ -271,3 +271,32 @@ def test_a_bundle_carrying_no_refresh_records_lands_none(data_dir, tmp_path):
     demo_replicas.export_views("default", demo, ["mv_view_sat_customer"])
     assert not (demo / "seeded" / "refresh_lineage.parquet").exists()
     assert demo_replicas.land_refreshes(demo, "sbx0a1b") == 0
+
+
+def test_a_regions_demo_s_append_logs_are_each_its_home_region_s():
+    """REQ-2068: a bitemporal view naming a region is kept there; one naming none in every region
+    (demo_region_seed.kept_here)."""
+    from types import SimpleNamespace
+
+    from provisa.core.models import DERIVED_SOURCE_ID
+
+    def view(name, region, bitemporal=True):
+        return SimpleNamespace(
+            source_id=DERIVED_SOURCE_ID,
+            materialize=True,
+            is_bitemporal=bitemporal,
+            table_name=name,
+            region=region,
+        )
+
+    config = SimpleNamespace(
+        tables=[
+            view("view_eod_totals", "warehouse"),
+            view("view_everywhere", None),
+            view("view_plain", "ledger", bitemporal=False),
+        ]
+    )
+    assert demo_replicas.bitemporal_view_homes(config, ["ledger", "warehouse"]) == {
+        "ledger": ["mv_view_everywhere"],
+        "warehouse": ["mv_view_eod_totals", "mv_view_everywhere"],
+    }

@@ -15,7 +15,13 @@ import { REGION_ALL } from "../../hooks/regionFilter";
 describe("RegionSelector", () => {
   it("renders nothing when the deployment genuinely declares no regions", () => {
     render(
-      <RegionSelector regions={[]} connected={null} value={REGION_ALL} onChange={vi.fn()} hidden={0} />,
+      <RegionSelector
+        regions={[]}
+        connected={null}
+        value={REGION_ALL}
+        onChange={vi.fn()}
+        hidden={0}
+      />,
     );
     // No control, no error, no count — the component returned null (the harness still injects Mantine
     // <style>, so assert on the component's own output rather than an empty container).

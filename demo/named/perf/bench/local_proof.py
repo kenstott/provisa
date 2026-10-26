@@ -199,6 +199,16 @@ def _source_env(ports: dict[str, int]) -> dict[str, str]:
     }
 
 
+#: The bench server's public address: SPARQL names its classes and predicates by IRI, which start
+#: at it (server.public_url), and the lookup reads that vocabulary.
+BENCH_PUBLIC_URL = "https://bench.provisa.example"
+
+
+def _server_env(ports: dict[str, int]) -> dict[str, str]:
+    """A bench server's environment: its sources' addresses and its public address."""
+    return {**_source_env(ports), "PROVISA_PUBLIC_URL": BENCH_PUBLIC_URL}
+
+
 def control_plane_on_stack(ports: dict[str, int]) -> None:
     """Each server's control plane is a database of its own on the stack's Postgres: the test
     helpers clone one on the PostgreSQL PG_* names (tests/pg_control_plane.py). The container is
@@ -221,7 +231,7 @@ def start_server(ports: dict[str, int], tmp: Path) -> Any:
         await_flight=True,
         await_grpc=True,
         config=str(PERF / "config.yaml"),
-        env=_source_env(ports),
+        env=_server_env(ports),
     )
     server.start(timeout=600)
     return server
@@ -271,7 +281,7 @@ def start_auth_server(ports: dict[str, int], tmp: Path) -> Any:
         await_flight=True,
         await_grpc=True,
         config=str(path),
-        env=_source_env(ports),
+        env=_server_env(ports),
     )
     server.start(timeout=600)
     return server
@@ -296,7 +306,7 @@ def start_replica_server(ports: dict[str, int], tmp: Path) -> Any:
         await_flight=True,
         await_grpc=True,
         config=str(config_path),
-        env=_source_env(ports),
+        env=_server_env(ports),
     )
     server.start(timeout=600)
     return server

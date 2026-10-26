@@ -161,16 +161,16 @@ class TestRoleInheritance:  # REQ-1677
             """
             mutation {
                 createRole(input: {
-                    id: "junior_analyst_1677", description: "Test role.", capabilities: [], domainAccess: [],
-                    parentRoleId: "analyst"
+                    id: "junior_analyst_1677", description: "Test role.", capabilities: [], domainAccess: ["*"],
+                    parents: ["analyst"]
                 }) { success message }
             }
             """,
         )
         assert created["data"]["createRole"]["success"] is True
-        listed = await _gql(client, "{ roles { id parentRoleId } }")
+        listed = await _gql(client, "{ roles { id parents } }")
         by_id = {r["id"]: r for r in listed["data"]["roles"]}
-        assert by_id["junior_analyst_1677"]["parentRoleId"] == "analyst"
+        assert by_id["junior_analyst_1677"]["parents"] == ["analyst"]
 
     async def test_delete_parent_with_heirs_refused(self, client):
         # A role an administrator created, with an heir: refused naming the heir until it is gone.
@@ -180,8 +180,8 @@ class TestRoleInheritance:  # REQ-1677
                 f"""
                 mutation {{
                     createRole(input: {{ description: "Test role.",
-                        id: "{role_id}", capabilities: [], domainAccess: [],
-                        parentRoleId: "{parent}"
+                        id: "{role_id}", capabilities: [], domainAccess: ["*"],
+                        parents: ["{parent}"]
                     }}) {{ success message }}
                 }}
                 """,
@@ -203,7 +203,7 @@ class TestRoleInheritance:  # REQ-1677
             client, 'mutation { deleteRole(id: "analyst") { success message code } }'
         )
         res = result["data"]["deleteRole"]
-        assert (res["success"], res["code"]) == (False, "schema.role_is_system")
+        assert (res["success"], res["code"]) == (False, "schema.role_standard_locked")
         listed = await _gql(client, "{ roles { id } }")
         assert "analyst" in {r["id"] for r in listed["data"]["roles"]}
 
@@ -213,7 +213,7 @@ class TestRoleInheritance:  # REQ-1677
             """
             mutation {
                 createRole(input: {
-                    id: "orphan_1677", description: "Test role.", capabilities: [], domainAccess: [], parentRoleId: "ghost"
+                    id: "orphan_1677", description: "Test role.", capabilities: [], domainAccess: ["*"], parents: ["ghost"]
                 }) { success message code }
             }
             """,
@@ -229,14 +229,14 @@ class TestRoleInheritance:  # REQ-1677
             """
             mutation {
                 createRole(input: {
-                    id: "analyst", description: "Test role.", capabilities: [], domainAccess: [], parentRoleId: "analyst"
+                    id: "loop_1677", description: "Test role.", capabilities: [], domainAccess: [], parents: ["loop_1677"]
                 }) { success message code }
             }
             """,
         )
         res = result["data"]["createRole"]
         assert res["success"] is False
-        assert res["message"] == "Role 'analyst' cannot inherit from itself"
+        assert res["message"] == "Role 'loop_1677' cannot inherit from itself"
 
 
 class TestRlsRule:

@@ -16,6 +16,7 @@ description: >-
   database, the customers who were served an error, and the products viewed but never bought.
 screenshot: card.png
 published: true
+group: bi
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. A placeholder for the first release carrying the bundle code; set when that is cut.
 requires_provisa: 0.1.0a483

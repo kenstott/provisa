@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.api.admin import glossary_router
 from provisa.api.errors import ApiError
-from provisa.core.env_deploy import _decompose, _existing_ids
+from provisa.core.env_deploy import _decompose, _existing_ids, _roles_after
 from provisa.core.env_merge import requirements
 from provisa.core.env_project import project
 from provisa.core.models import Column, Table
@@ -45,8 +45,16 @@ from provisa.core.schema_org import (
     registered_tables,
     sources,
 )
+from tests.unit.gate_identity import serve_every_column
 
 SCHEMA = "org_default"
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which columns a caller may read is REQ-2152's own tests
+    (test_glossary_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 def _request() -> "Request":
@@ -312,11 +320,13 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
         async with db.acquire() as conn:
             tree = await project(conn, SCHEMA)
             existing = await _existing_ids(conn, SCHEMA)
+            # The roles the tree holds, as a deploy reads them (REQ-2155: they name their parents).
+            roles = await _roles_after(conn, SCHEMA, tree)
         [path] = [p for p, b in tree.items() if b.get("table_name") == "customers"]
         term_path = next(p for p, b in tree.items() if b.get("name") == "party")
         assert tree[path]["class_term"] == [{"term": term_path}]
         assert term_path in requirements(path, tree[path], tree)
-        rows = _decompose(tree, existing, frozenset())
+        rows = _decompose(tree, existing, roles)
         [row] = [r for r in rows["registered_tables"] if r["id"] == ids["customers"]]
         assert (row["class_term_id"], row["class_term_derived"]) == (ids["party"], False)
 
