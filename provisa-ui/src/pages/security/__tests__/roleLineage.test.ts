@@ -34,10 +34,10 @@ const VIEW: RoleEffective = {
   },
   standards: ["dq_steward", "viewer", "dp_owner"],
   capabilities: [
-    { right: "data_product_owned_rw", from: "dp_owner" },
-    { right: "dq_rw", from: "dq_steward" },
-    { right: "export", from: "dq_lead" },
-    { right: "read", from: "viewer" },
+    { right: "data_product_owned_rw", from: ["dp_owner"] },
+    { right: "dq_rw", from: ["dq_steward"] },
+    { right: "export", from: ["dq_lead"] },
+    { right: "read", from: ["viewer"] },
   ],
 };
 

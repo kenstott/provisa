@@ -34,10 +34,11 @@ const VIEW: RoleEffective = {
   },
   standards: ["dq_steward", "viewer", "dp_owner"],
   capabilities: [
-    { right: "data_product_owned_rw", from: "dp_owner" },
-    { right: "dq_rw", from: "dq_steward" },
-    { right: "export", from: "dq_lead" },
-    { right: "read", from: "viewer" },
+    // Entering in two branches, it comes from both.
+    { right: "data_product_owned_rw", from: ["dp_owner", "dq_steward"] },
+    { right: "dq_rw", from: ["dq_steward"] },
+    { right: "export", from: ["dq_lead"] },
+    { right: "read", from: ["viewer"] },
   ],
 };
 
@@ -64,6 +65,7 @@ describe("a role's Capabilities tab (REQ-2161)", () => {
     expect(row("dq_rw")).toHaveTextContent("dq_steward");
     expect(row("dq_rw")).toHaveTextContent("standard role");
     expect(row("data_product_owned_rw")).toHaveTextContent("dp_owner");
+    expect(row("data_product_owned_rw")).toHaveTextContent("dq_steward");
     expect(row("export")).toHaveTextContent("its own");
     expect(row("export")).not.toHaveTextContent("standard role");
     // The lineage: a box per role, a kind row each plus what each adds and the accumulated set.

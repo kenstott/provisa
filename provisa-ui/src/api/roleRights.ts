@@ -26,8 +26,9 @@ export interface RoleEffective {
   adds: Record<string, string[]>;
   /** The standard roles in the chain. */
   standards: string[];
-  /** Every capability the role holds, with the role it enters at. */
-  capabilities: { right: string; from: string }[];
+  /** Every capability the role holds, with the roles it enters at: more than one when it enters
+   *  in several branches. */
+  capabilities: { right: string; from: string[] }[];
 }
 
 export async function fetchRoleEffective(roleId: string): Promise<RoleEffective> {
