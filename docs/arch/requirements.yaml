@@ -88629,7 +88629,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the reader cannot read. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the data
     product requirements, not a feature: the earlier rules left expectations and promises undistinguished,
     contracts generated rather than declared, one view for owner and consumer, and two lineage views. It
-    is resolved before the product is declared green.'
+    is resolved before the product is declared green. (Amended 2026-10-25, ONLY THE OWNER-ONLY ITEMS ARE
+    HIDDEN:) A consumer''s view hides only what is owner-only: expectations, related checks, unattached
+    checks, input ports, downstream consumers and contract editing. Every other part of the panel (fields,
+    Graph, terms, tags, related tables, commands, promises, lineage, support) is shown to owner and consumer
+    alike, capped by the reader''s read rights. The owner is a reader whose acting roles include the product''s
+    owner or team role.'
   scenario: 'Given product revenue owned by role revenue_team
 
     When a member of revenue_team opens revenue
