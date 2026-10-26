@@ -107,8 +107,10 @@ interface DataProductDetailPanelProps {
   coreError: string | null;
   /** The acting role's schema and root fields, for the member tables' drill-down queries. */
   reader: MetaReader | null;
-  // REQ-1634: gates Edit/Delete.
+  // REQ-1634, REQ-2155: gates Edit (data_product_rw, or data_product_owned_rw on a product whose
+  // owner role the caller holds) and Delete (data_product_rw alone).
   canEdit: boolean;
+  canDelete: boolean;
   /** REQ-2160: the reader holds the product's owner or team role. The owner also sees its
    *  expectations, related and unattached checks, and its input ports; any other reader sees its
    *  promises. The split hides lists and cards only, never a right: Edit and Delete follow
@@ -225,6 +227,7 @@ export function DataProductDetailPanel({
   coreError,
   reader,
   canEdit,
+  canDelete,
   owner,
   lineageLoading,
   lineageError,
@@ -974,35 +977,39 @@ export function DataProductDetailPanel({
           </CollapsibleItem>
         </Collapsibles>
       </div>
-      {canEdit && (
+      {(canEdit || canDelete) && (
         <Group gap="xs" mt={4}>
-          <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
-            <ActionIcon
-              variant="subtle"
-              aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
-              data-testid={`data-product-detail-edit-${p.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit();
-              }}
-            >
-              <Pencil size={14} />
-            </ActionIcon>
-          </Tip>
-          <Tip text={t("dataProductsTab.deleteDataProduct", { id: p.id })} named>
-            <ActionIcon
-              variant="subtle"
-              color="red"
-              aria-label={t("dataProductsTab.deleteDataProduct", { id: p.id })}
-              data-testid={`data-product-detail-delete-${p.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              <Trash2 size={14} />
-            </ActionIcon>
-          </Tip>
+          {canEdit && (
+            <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
+              <ActionIcon
+                variant="subtle"
+                aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
+                data-testid={`data-product-detail-edit-${p.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+              >
+                <Pencil size={14} />
+              </ActionIcon>
+            </Tip>
+          )}
+          {canDelete && (
+            <Tip text={t("dataProductsTab.deleteDataProduct", { id: p.id })} named>
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                aria-label={t("dataProductsTab.deleteDataProduct", { id: p.id })}
+                data-testid={`data-product-detail-delete-${p.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <Trash2 size={14} />
+              </ActionIcon>
+            </Tip>
+          )}
         </Group>
       )}
     </Stack>

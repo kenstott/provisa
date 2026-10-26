@@ -149,6 +149,7 @@ function panel() {
       lineageError=""
       lineageGraph={LINEAGE}
       canEdit={false}
+      canDelete={false}
       owner
       onEdit={vi.fn()}
       onDelete={vi.fn()}
@@ -221,6 +222,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
         lineageError=""
         lineageGraph={lineage({ ...DQ, related: [...DQ.related, partner] })}
         canEdit={false}
+        canDelete={false}
         owner
         onEdit={vi.fn()}
         onDelete={vi.fn()}
@@ -272,6 +274,7 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
         lineageError=""
         lineageGraph={LINEAGE}
         canEdit={canEdit}
+        canDelete={canEdit}
         owner={owner}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
@@ -315,6 +318,7 @@ describe("editing a data product follows the right to edit it, not the view (REQ
         lineageError=""
         lineageGraph={LINEAGE}
         canEdit={canEdit}
+        canDelete={canEdit}
         owner={owner}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
@@ -401,6 +405,7 @@ describe("Related Tables (REQ-2126)", () => {
         lineageError=""
         lineageGraph={null}
         canEdit={false}
+        canDelete={false}
         owner
         onEdit={vi.fn()}
         onDelete={vi.fn()}

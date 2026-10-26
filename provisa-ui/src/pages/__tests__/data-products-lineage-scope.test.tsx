@@ -25,7 +25,11 @@ import type { DataProduct } from "../../types/admin";
 import type { ProductCore } from "../data-products/productCore";
 
 vi.mock("../../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "admin", capabilities: [] }, selectedRoles: [{ id: "admin" }] }),
+  useAuth: () => ({
+    role: { id: "admin", capabilities: [] },
+    selectedRoles: [{ id: "admin" }],
+    availableRoles: [],
+  }),
 }));
 // Every right but view_governance: the product's lineage asks none.
 vi.mock("../../hooks/useCapability", () => ({
@@ -230,6 +234,7 @@ const panel = (lineage: ProductLineage | null) =>
       coreError={null}
       reader={null}
       canEdit={false}
+      canDelete={false}
       owner
       lineageLoading={false}
       lineageError=""

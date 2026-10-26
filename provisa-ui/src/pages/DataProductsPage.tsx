@@ -50,6 +50,7 @@ import { FormFooter } from "../components/form/FormLayout";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { matchesQuery } from "../lib/searchItems";
 import { useAuth } from "../context/AuthContext";
+import { heldRoles } from "../lib/roles";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
@@ -93,10 +94,19 @@ export function DataProductsPage() {
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
-  // REQ-2160: a product's owner is a reader acting as its owner or team role.
-  const { selectedRoles } = useAuth();
+  // REQ-2155: data_product_owned_rw edits the products whose owner role the caller holds, itself
+  // or through an ancestor; creating and deleting stay data_product_rw's.
+  const canEditOwned = useCapability("data_product_owned_rw");
+  // REQ-2160: a product's owner is a reader holding its owner or team role.
+  const { selectedRoles, availableRoles } = useAuth();
+  const held = useMemo(
+    () => heldRoles(selectedRoles, availableRoles),
+    [selectedRoles, availableRoles],
+  );
   const ownsProduct = (p: DataProduct) =>
-    selectedRoles.some((r) => r.id === p.ownerRole || r.id === p.teamRole);
+    (p.ownerRole != null && held.has(p.ownerRole)) || (p.teamRole != null && held.has(p.teamRole));
+  const mayEdit = (p: DataProduct) =>
+    canEdit || (canEditOwned && p.ownerRole != null && held.has(p.ownerRole));
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
@@ -519,7 +529,8 @@ export function DataProductsPage() {
                                 core={core.data}
                                 coreError={core.error}
                                 reader={reader}
-                                canEdit={canEdit}
+                                canEdit={mayEdit(p)}
+                                canDelete={canEdit}
                                 owner={ownsProduct(p)}
                                 lineageLoading={lineageLoading}
                                 lineageError={lineageError}

@@ -61,6 +61,7 @@ function panel() {
       coreError={null}
       reader={null}
       canEdit={false}
+      canDelete={false}
       owner
       lineageLoading={false}
       lineageError=""

@@ -103,6 +103,7 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
       coreError={null}
       reader={null}
       canEdit={false}
+      canDelete={false}
       owner
       lineageLoading={false}
       lineageError=""
