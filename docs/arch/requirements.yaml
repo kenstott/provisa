@@ -89148,38 +89148,50 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     alias inet. Every surface that needs only the canonical type treats it as the base type (filters, joins,
     aggregation, the engines); surfaces that care read the alias: pgwire reports the alias''s type OID and
     sends the value in Postgres''s text form, GraphQL names the alias''s scalar (serialized as its base),
-    RDF uses its datatype. An alias adds names and wire details only, never new comparison or arithmetic
-    rules; a type needing its own operators is a real IR type. First set: inet (text, pgwire 869, GraphQL
-    IPAddress; Trino ipaddress and ClickHouse IPv4/IPv6 map to it), cidr (text, 650, CIDR), macaddr (text,
-    829, MACAddress), xml (text, 142), point (text, 600), oid (bigint, 26), money (numeric, 790, Postgres
-    money text format). Binary pgwire encoding of an alias is listed as a difference on the pgwire Conformance
-    page unless a tool needs it. Source drivers (REQ-2169) can declare aliases for their own types. (Amended
-    2026-10-25, ALIAS WHERE SUPPORTED, BASE ELSEWHERE:) Maintainer 2026-10-26: the rule is uniform for engines
-    and language surfaces alike. Where the native engine (or store) or the downstream surface supports the
-    aliased type, it uses the alias''s native form: a Postgres or Trino engine keeps inet/ipaddress, a replica
-    into a store with the type lands it natively, pgwire reports the alias''s OID, GraphQL names the alias''s
-    scalar. Where it does not, it uses the canonical base type. Each engine driver and surface declares
-    which aliases it supports; nothing is guessed. (Amended 2026-10-25, TYPE MAPPINGS KEY ON ALIASES:) Maintainer
-    2026-10-26, the simpler rule: every engine''s and surface''s type mapping simply includes the aliases.
-    An alias maps to that engine''s or surface''s equivalent type where one exists (Trino ipaddress, Postgres
-    inet, ClickHouse IPv6, DuckDB''s inet; pgwire OID 869; GraphQL IPAddress), and a mapping with no entry
-    for an alias maps it as its base type. Declaring support is just adding the alias to the mapping; there
+    RDF uses its datatype. [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded by SUBTYPE SEMANTICS ON EVERY
+    ENGINE. Kept here for history; do not implement against it.] An alias adds names and wire details only,
+    never new comparison or arithmetic rules; [END SUPERSEDED BLOCK] a type needing its own operators is
+    a real IR type. First set: inet (text, pgwire 869, GraphQL IPAddress; Trino ipaddress and ClickHouse
+    IPv4/IPv6 map to it), cidr (text, 650, CIDR), macaddr (text, 829, MACAddress), xml (text, 142), point
+    (text, 600), oid (bigint, 26), money (numeric, 790, Postgres money text format). Binary pgwire encoding
+    of an alias is listed as a difference on the pgwire Conformance page unless a tool needs it. Source
+    drivers (REQ-2169) can declare aliases for their own types. (Amended 2026-10-25, ALIAS WHERE SUPPORTED,
+    BASE ELSEWHERE:) Maintainer 2026-10-26: the rule is uniform for engines and language surfaces alike.
+    Where the native engine (or store) or the downstream surface supports the aliased type, it uses the
+    alias''s native form: a Postgres or Trino engine keeps inet/ipaddress, a replica into a store with the
+    type lands it natively, pgwire reports the alias''s OID, GraphQL names the alias''s scalar. Where it
+    does not, it uses the canonical base type. Each engine driver and surface declares which aliases it
+    supports; nothing is guessed. (Amended 2026-10-25, TYPE MAPPINGS KEY ON ALIASES:) Maintainer 2026-10-26,
+    the simpler rule: every engine''s and surface''s type mapping simply includes the aliases. An alias
+    maps to that engine''s or surface''s equivalent type where one exists (Trino ipaddress, Postgres inet,
+    ClickHouse IPv6, DuckDB''s inet; pgwire OID 869; GraphQL IPAddress), and a mapping with no entry for
+    an alias maps it as its base type. Declaring support is just adding the alias to the mapping; there
     is no separate support list. (Amended 2026-10-25, TERM: SUBTYPE:) Maintainer 2026-10-26: the term is
     subtype, not alias. Some IR types are subtypes of another IR type: inet is a subtype of text, oid of
-    bigint, money of numeric. A subtype has its base type''s semantics everywhere (comparison, ordering,
-    filters, joins, governance); a type mapping that has no entry for a subtype maps it as its base type.
-    Every ''alias'' above reads as ''subtype'', in code, UI and docs. (Amended 2026-10-25, REGISTRATION
-    ALWAYS RECORDS THE SUBTYPE:) Maintainer 2026-10-26: table registration always records the subtype when
-    the source''s native type has one (a Postgres inet, a Trino ipaddress, a ClickHouse IPv4 registers as
-    inet), never the bare base type. Each source driver''s type mapping maps its native types to subtypes
-    the same way engines and surfaces map subtypes outward. Whether a subtype is used afterwards is then
-    each engine''s and surface''s own choice. (Amended 2026-10-25, CROSS-SOURCE TYPE AUDIT:) Maintainer
-    2026-10-26: equivalent ideas exist under different names across source types, so every source driver''s
-    type mapping is audited against the subtypes: each native type equivalent to a subtype maps to it on
-    registration (inet: Postgres/CockroachDB/YugabyteDB inet and cidr, Trino ipaddress, ClickHouse IPv4/IPv6,
-    Elasticsearch ip, Cassandra inet, DuckDB INET; money: SQL Server money and smallmoney; xml: SQL Server
-    and Oracle XML types; point: MySQL POINT, Elasticsearch geo_point; and so on). The audit also lists
-    native types that suggest a new subtype; those are proposed to the maintainer, not added unasked.'
+    bigint, money of numeric. [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded by SUBTYPE SEMANTICS ON
+    EVERY ENGINE. Kept here for history; do not implement against it.] A subtype has its base type''s semantics
+    everywhere [END SUPERSEDED BLOCK] (comparison, ordering, filters, joins, governance); a type mapping
+    that has no entry for a subtype maps it as its base type. Every ''alias'' above reads as ''subtype'',
+    in code, UI and docs. (Amended 2026-10-25, REGISTRATION ALWAYS RECORDS THE SUBTYPE:) Maintainer 2026-10-26:
+    table registration always records the subtype when the source''s native type has one (a Postgres inet,
+    a Trino ipaddress, a ClickHouse IPv4 registers as inet), never the bare base type. Each source driver''s
+    type mapping maps its native types to subtypes the same way engines and surfaces map subtypes outward.
+    Whether a subtype is used afterwards is then each engine''s and surface''s own choice. (Amended 2026-10-25,
+    CROSS-SOURCE TYPE AUDIT:) Maintainer 2026-10-26: equivalent ideas exist under different names across
+    source types, so every source driver''s type mapping is audited against the subtypes: each native type
+    equivalent to a subtype maps to it on registration (inet: Postgres/CockroachDB/YugabyteDB inet and cidr,
+    Trino ipaddress, ClickHouse IPv4/IPv6, Elasticsearch ip, Cassandra inet, DuckDB INET; money: SQL Server
+    money and smallmoney; xml: SQL Server and Oracle XML types; point: MySQL POINT, Elasticsearch geo_point;
+    and so on). The audit also lists native types that suggest a new subtype; those are proposed to the
+    maintainer, not added unasked. (Amended 2026-10-25, SUBTYPE SEMANTICS ON EVERY ENGINE:) Maintainer 2026-10-26:
+    engine mapping is not low stakes; engines make every effort to map types correctly. Each subtype states
+    its semantics (ordering, equality, comparison); where it states none, its base type''s apply. inet orders
+    numerically and compares as an address (10.0.0.1 equals 10.0.0.1/32); money behaves as numeric; xml,
+    macaddr and point as text. Every engine driver maps each subtype to an equivalent with those semantics
+    (Postgres inet, Trino ipaddress, ClickHouse IPv6), and an engine with no native equivalent delivers
+    the semantics on the base type itself (a sortable normalised form for ordering, normalised comparison
+    for equality), never plain base-type behaviour. The engine driver contract test kit (REQ-2169) checks
+    every subtype''s semantics on every engine, so moving between engines never changes an answer.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
