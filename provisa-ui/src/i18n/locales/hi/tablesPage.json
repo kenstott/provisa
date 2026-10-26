@@ -46,6 +46,8 @@
     "nextPage": "अगला पेज",
     "firstPage": "पहला पेज",
     "lastPage": "अंतिम पेज",
+    "listedElsewhere": "अन्य डोमेन में सूचीबद्ध",
+    "listedElsewhereHint": "वे नाम जो अन्य डोमेन सूचीबद्ध करते हैं। उन्हें पढ़ने के लिए उस डोमेन से पहुँच माँगें।",
     "pageOf": "पेज {{page}} / {{totalPages}}",
     "loadFailed": "पंजीकृत टेबलें लोड नहीं हो सकीं: {{message}}",
     "editViewDefinitionTitle": "व्यू परिभाषा संपादित करें",

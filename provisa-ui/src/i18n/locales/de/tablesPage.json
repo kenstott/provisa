@@ -46,6 +46,8 @@
     "nextPage": "Nächste Seite",
     "firstPage": "Erste Seite",
     "lastPage": "Letzte Seite",
+    "listedElsewhere": "In anderen Domänen gelistet",
+    "listedElsewhereHint": "Namen, die andere Domänen listen. Bitten Sie diese Domäne um Zugriff, um sie zu lesen.",
     "pageOf": "Seite {{page}} / {{totalPages}}",
     "loadFailed": "Registrierte Tabellen konnten nicht geladen werden: {{message}}",
     "editViewDefinitionTitle": "Sichtdefinition bearbeiten",
