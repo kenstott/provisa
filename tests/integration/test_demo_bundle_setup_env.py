@@ -88,7 +88,7 @@ def test_the_setup_server_runs_on_the_builds_own_environment(tmp_path, monkeypat
     stores = _stores(builder, demo, book.port)
     # Raises SystemExit naming an early exit (the server did not start), a timeout, or a store
     # not where the views are exported from.
-    builder._set_up(tmp_path, demo, stores, 300)
+    builder._set_up(tmp_path, demo, stores, 300, None)
     builder._export_views(tmp_path, demo, stores)
     record = json.loads((demo / "seeded" / "views.json").read_text())
     assert record["tables"] == ["mv_view_exposure"]
