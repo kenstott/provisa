@@ -261,7 +261,7 @@ async def test_the_workbook_shows_only_what_its_caller_reads(monkeypatch):
         tables=[],
         roles=[],
         metrics=[
-            Metric(name="open", expression="COUNT(*)", visible_to=["*"]),
+            Metric(name="open", expression="COUNT(*)", visible_to=["analyst"]),
             Metric(name="hr_only", expression="COUNT(*)", visible_to=["hr"]),
         ],
     )

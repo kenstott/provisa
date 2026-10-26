@@ -133,7 +133,7 @@ def test_a_role_reads_the_mask_entry_its_ancestor_holds():
                         visible_to=_EVERYONE,
                         masks=[
                             {"to": ["admin"], "mask": None},
-                            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                            {"mask": {"type": "constant", "value": "***"}},
                         ],
                     )
                 ],
@@ -379,11 +379,12 @@ def test_ungoverned_config_publishes_no_tags():
 
 
 def test_visibility_tags_say_what_the_one_column_rule_serves():
-    """REQ-2152: the tag reads column_served -- an empty grant serves every role reaching the
-    table's domain, so only a role outside it is restricted (a literal reading of the empty list
-    used to restrict every role)."""
+    """REQ-2152: the tag reads column_served -- a grant naming every role serves each of them
+    that reaches the table's domain, so only a role outside it is restricted."""
     config = _config(
-        tables=[_table("customers", [Column(name="id", data_type="int", visible_to=[])])]
+        tables=[
+            _table("customers", [Column(name="id", data_type="int", visible_to=list(_roster()))])
+        ]
     )
     config.roles.append(
         Role(id="hr_only", description="Test role.", capabilities=[], domain_access=["hr"])

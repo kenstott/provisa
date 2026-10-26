@@ -206,7 +206,7 @@ def _command(name: str, domain: str) -> dict:
         "function_name": name,
         "returns": "",
         "arguments": [],
-        "visible_to": [],
+        "visible_to": ["r"],  # REQ-2153: a command's list names its roles
         "writable_by": [],
         "domain_id": domain,
         "kind": "mutation",

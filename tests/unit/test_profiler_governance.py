@@ -236,9 +236,9 @@ def test_dependence_rows_follow_every_column_they_speak_of_parents_included():
 
 
 def test_a_profiled_column_is_seen_by_the_roles_column_served_serves_it():
-    """A profile's column is seen by exactly the roles the schema serves it to: an empty grant is
-    everyone in the domain's reach (not nobody), a named grant its roles, and a role out of
-    reach sees a column only where it is published."""
+    """A profile's column is seen by exactly the roles the schema serves it to: a named grant its
+    roles in the domain's reach, an empty grant no role (REQ-2153), and a role out of reach a
+    column only where it is published."""
     from provisa.security.rights import served_roles
 
     roles = {
@@ -247,10 +247,16 @@ def test_a_profiled_column_is_seen_by_the_roles_column_served_serves_it():
         "everywhere": {"domain_access": ["*"]},
     }
     open_column = {"column_name": "id", "visible_to": [], "scope": "domain"}
-    assert served_roles(roles, {}, "sales", open_column) == {"seller", "everywhere"}
+    assert served_roles(roles, {}, "sales", open_column) == set()
+    every = {"column_name": "id", "visible_to": ["seller", "hr", "everywhere"], "scope": "domain"}
+    assert served_roles(roles, {}, "sales", every) == {"seller", "everywhere"}
     named = {"column_name": "margin", "visible_to": ["seller", "hr"], "scope": "domain"}
     assert served_roles(roles, {}, "sales", named) == {"seller"}
-    published = {"column_name": "region", "visible_to": [], "scope": "public"}
+    published = {
+        "column_name": "region",
+        "visible_to": ["seller", "hr", "everywhere"],
+        "scope": "public",
+    }
     assert served_roles(roles, {}, "sales", published) == {"seller", "hr", "everywhere"}
     # A grant to a parent serves the roles inheriting it, as the schema build expands it.
     chains = {"junior": ["junior", "seller"]}

@@ -53,7 +53,7 @@ async def model(control_plane):
                     domain_id="sales",
                     schema_name="public",
                     table_name=name,
-                    columns=[Column(name="id", visible_to=[], data_type="integer")],
+                    columns=[Column(name="id", visible_to=["seller"], data_type="integer")],
                 ),
             )
             assert table_id is not None

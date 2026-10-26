@@ -65,7 +65,13 @@ ROWS = [
     {"id": 2, "region": "west", "ssn": "222", "amount": 20.0},
     {"id": 3, "region": "east", "ssn": "333", "amount": 30.0},
 ]
-FN = {"name": "customer_lookup", "domain_id": "sales", "output_columns": CONTRACT}
+# The roles the command is assigned to: a contract column that declares no grant is theirs.
+FN = {
+    "name": "customer_lookup",
+    "domain_id": "sales",
+    "output_columns": CONTRACT,
+    "visible_to": ["analyst", "org_admin"],
+}
 
 
 def _state(rls_by_role: dict[str, RLSContext] | None = None, roles: dict | None = None):
