@@ -72,10 +72,11 @@
           for any other source.
         </p>
         <p>
-          Besides CSV and Parquet, it reads <strong>Excel workbooks</strong> and
-          <strong>Word, PowerPoint, HTML, XML and Markdown documents</strong>, each
-          converted to tables on the way in. Over HTTP and HTML it follows links from
-          each start URL, down to a configurable depth, so it works well over websites
+          A CSV or Parquet file is a table. In an <strong>Excel workbook</strong> it looks
+          through each sheet, finds the regions that look like tables, and extracts each one.
+          In <strong>HTML, Markdown, Word and PowerPoint documents</strong> it extracts the
+          tables the document marks as tables. In documents with links it follows them too,
+          from each start URL down to a configurable depth, so it works well over websites
           and documentation portals.
         </p>
 

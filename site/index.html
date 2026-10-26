@@ -496,7 +496,7 @@
             <li>
               <span class="spot-step-n">2</span>
               <h4>Crawl</h4>
-              <p>It walks the tree to whatever depth you allow, converts documents that hold tables into data, and reads the schema out of each one. Over HTTP and HTML it follows links as well, down to the same depth limit.</p>
+              <p>It walks the tree to whatever depth you allow and searches every file for tables: a CSV or Parquet file is one; in an Excel workbook it finds the regions of each sheet that look like tables and extracts each; in HTML, Markdown, Word and PowerPoint it extracts the tables the document marks as tables. In documents with links it follows them too, down to the same depth limit.</p>
             </li>
             <li>
               <span class="spot-step-n">3</span>
