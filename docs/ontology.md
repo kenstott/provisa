@@ -209,7 +209,7 @@ Findings report; they change nothing until you act.
 
 ## Metadata export
 
-The ontology publishes to external data catalogs as part of metadata export. Only live terms publish, judged on the columns and tables that actually publish. A term whose columns are all withheld from export, because their tables aren't data products or because technical filters exclude them, isn't grounded for export, even if it holds columns in the control plane.
+The ontology publishes to external data catalogs as part of metadata export. Only live terms publish, judged on the columns and tables that actually publish. A term whose columns are all withheld from export, because their tables aren't data products or because technical filters exclude them, isn't grounded for export, even if it holds columns in the model store.
 
 A deprecated term publishes with its status, its reason and its planned retirement date, so each catalog can map it to its own deprecation marker.
 

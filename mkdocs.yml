@@ -118,6 +118,7 @@ nav:
       - Quick Start: quickstart.md
       - Configuration: configuration.md
       - Deployment: deployment.md
+      - Architecture Review: architecture-review.md
       - Sizing and Tuning: sizing.md
       - Demos for Sales Engineers: sales-engineer-demos.md
       - The Hosted Demo Sandbox: hosted-sandbox.md

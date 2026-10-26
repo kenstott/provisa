@@ -15,6 +15,7 @@ description: >-
   what else did their buyers buy?
 screenshot: card.png
 published: true
+group: backend
 # The oldest Provisa this demo's bundle runs on (REQ-2049): the first release carrying its
 # document, search and graph stores and the fixes it relies on.
 requires_provisa: 0.1.0a489

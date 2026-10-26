@@ -535,7 +535,7 @@ A derived table can be tied to a calendar instead of a fixed interval. Calendars
 The console is where you run Provisa: register sources and tables, define relationships, set security, review creation requests and read reports. What a person sees depends on the roles they hold. Destructive actions ask for confirmation and say what will happen, and the test tools show the effect of row filters, hidden columns and schema scope as the role would see them. When the deployment stops answering, the whole application says so in one place, and a query waiting for a stopped engine to start tells you that. A user without the right to create something can file a request that an administrator approves or rejects with a reason.
 { #admin-console-surface }
 
-Platform settings are edited in the console and persisted to the control plane. You can download and upload the configuration, or turn on live export that shows exactly what has changed since startup. AI model endpoints, including any provider reachable through an OpenAI-compatible or custom API, are assigned here for chat and embedding.
+Platform settings are edited in the console and persisted to the model store. You can download and upload the configuration, or turn on live export that shows exactly what has changed since startup. AI model endpoints, including any provider reachable through an OpenAI-compatible or custom API, are assigned here for chat and embedding.
 { #admin-console-settings }
 
 Everything the console does goes through an admin GraphQL API at its own endpoint, with an interactive GraphiQL page. Scripts and CI pipelines can call it directly.
@@ -651,7 +651,7 @@ What cannot be mapped is reported, not hidden. Event triggers, cron triggers, bo
 
 ### Installation
 
-The desktop installer is a single download that extracts into a hidden Provisa directory and is driven by start, stop, status and open commands. By default it runs everything natively with no Docker: DuckDB as the federation engine, an embedded PostgreSQL control plane and an in-memory cache. Trino on Docker or an external engine are opt-in choices in the setup wizard, and Docker or a VM is provisioned only when one of those, or the demo, needs it. The demo is optional and off by default; when it is installed the launcher opens the guided tour.
+The desktop installer is a single download that extracts into a hidden Provisa directory and is driven by start, stop, status and open commands. By default it runs everything natively with no Docker: DuckDB as the federation engine, an embedded PostgreSQL model store and an in-memory cache. Trino on Docker or an external engine are opt-in choices in the setup wizard, and Docker or a VM is provisioned only when one of those, or the demo, needs it. The demo is optional and off by default; when it is installed the launcher opens the guided tour.
 { #installation-desktop }
 
 On first launch the native installers show what is happening instead of running hidden. The Windows launcher puts up a startup window with breadcrumbs for each stage, waits for the demo mock servers to answer before starting the API, kills every process holding the runtime before an upgrade, and leaves opening the browser to the startup window when it is in charge. Afterwards it tells the user which optional pieces, such as the federation engine, still need Docker.
