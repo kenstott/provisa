@@ -153,3 +153,20 @@ def _reads_check(checker: dict, served: dict[int, set[str]]) -> bool:
     readable = served.get(checker["checked_table_id"], set())
     named = {c for c in checker["rule_columns"] if c}
     return named <= readable if named else bool(readable)
+
+
+def nearest_consumers(graph: LineageGraph, members: set[str]) -> list[str]:
+    """The relations one hop downstream of the product's ``members`` over ``graph`` (REQ-2160):
+    those reading a member column directly, the members themselves left out."""
+    down: dict[str, list[str]] = {}
+    for e in graph.edges:
+        down.setdefault(e.source, []).append(e.target)
+    found = {
+        graph.nodes[child].relation
+        for nid, node in graph.nodes.items()
+        if node.relation in members
+        for child in down.get(nid, [])
+        if child in graph.nodes and graph.nodes[child].relation not in members
+    }
+    found.discard(None)
+    return sorted(r for r in found if r is not None)
