@@ -24,7 +24,6 @@ const ALL_CAPABILITIES: Capability[] = [
   "approve_view",
   "full_results",
   "usage",
-  "read_restricted",
   "approve_relationship",
   "create_view",
   "column_grant",

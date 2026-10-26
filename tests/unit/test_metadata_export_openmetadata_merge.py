@@ -82,7 +82,7 @@ def snapshot():
                 table_name="orders",
                 product_id="prod",
                 columns=[
-                    Column(name="id", data_type="integer", visible_to=["analyst", "admin"]),
+                    Column(name="id", data_type="integer", visible_to=["viewer", "clerk", "admin"]),
                     Column(
                         name="ssn",
                         data_type="text",
@@ -102,13 +102,13 @@ def snapshot():
             )
         ],
         roles=[
-            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="clerk", description="Test role.", capabilities=[], domain_access=["*"]),
             Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
         rls_rules=[
             RLSRule(
                 table_id="orders",
-                role_id="analyst",
+                role_id="clerk",
                 filter="region_id = 'us'",
                 description="Test rule.",
             )

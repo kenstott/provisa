@@ -217,6 +217,9 @@ class TableDeleteRefused(Exception):
         self.table_id = table_id
         self.name = name
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Table {name!r} is still referred to by"
         named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
         super().__init__(f"Table {name!r} is still referred to by: {named}")
 
@@ -953,26 +956,6 @@ async def retire_generated(  # REQ-1918
         except TableDeleteRefused as refused:
             kept.append(refused)
     return kept
-
-
-def kept_columns_report(refused: ColumnDropRefused, table_id: int | None) -> dict:
-    """A generated table whose re-registration would have dropped columns something refers to,
-    as a row of what the re-registration returns: the table was left as it was, and each such
-    column is listed with what refers to it."""
-    return {"id": table_id, "name": refused.table_name, "columns": refused.report()}
-
-
-def kept_report(kept: list[TableDeleteRefused]) -> list[dict]:
-    """:func:`retire_generated`'s refusals as the rows a re-registration returns: the table
-    kept, and what still refers to it."""
-    return [
-        {
-            "id": refused.table_id,
-            "name": refused.name,
-            "dependents": [d.as_dict() for d in refused.dependents],
-        }
-        for refused in kept
-    ]
 
 
 async def remove_registrations(conn: "Connection", *where) -> None:

@@ -50,6 +50,11 @@ class RoleState(SimpleNamespace):
         attrs.setdefault("meta_qualifiers", {})
         # As the real state of a generation no request has acted as a set of roles in yet.
         attrs.setdefault("meta_roles", {})
+        if "org_registry" not in attrs:
+            # As the real state: it always holds a registry, empty until an org's runtime is built.
+            from provisa.api.org_runtime import OrgRegistry
+
+            attrs["org_registry"] = OrgRegistry()
         super().__init__(surfaces=surfaces, **attrs)
         for name, values in parts.items():
             set_part(self, _PARTS[name], values)

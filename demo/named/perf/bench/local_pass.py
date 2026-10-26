@@ -179,7 +179,7 @@ def start_server(ports: dict[str, int], tmp: Path, receiver_port: int, mcp_port:
         await_grpc=True,
         config=str(config),
         env={
-            **local_proof._source_env(ports),
+            **local_proof._server_env(ports),
             "OTEL_SDK_DISABLED": "false",
             "PROVISA_MCP_PORT": str(mcp_port),
             "PROVISA_MCP_HOST": "127.0.0.1",

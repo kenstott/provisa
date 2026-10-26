@@ -63,6 +63,9 @@ class Query:
     description: str
     sql: str | None = None
     cypher: str | None = None
+    # SPARQL 1.1 query text (POST /data/sparql): its own dialect, rendered from the same request
+    # as every other transport's (REQ-2135).
+    sparql: str | None = None
     # GraphQL query text (POST /data/graphql) — same HTTP transport as `cypher`'s http surface,
     # GraphQL-JSON encoding instead of Cypher-JSON. See module docstring for field-naming/filter
     # verification.

@@ -53,6 +53,7 @@ const blankTarget = (): MetadataExportTarget => ({
   catalog: "",
   datazone_project_id: "",
   delta_share: false,
+  role: null,
 });
 
 export function MetadataExportTab() {
@@ -195,6 +196,19 @@ export function MetadataExportTab() {
               }))}
               value={target.catalog || null}
               onChange={(v) => patchRow(i, { catalog: v ?? "" })}
+            />
+          </FormField>
+          {/* REQ-2152: a catalog is sent exactly what the role it is published as reads. */}
+          <FormField help={t("metadataExportTab.roleHelp")} size="medium">
+            <Select
+              label={t("metadataExportTab.role")}
+              data-testid={tid("role")}
+              // REQ-2152: only roles whose reads the caller holds; a role saved by someone else
+              // stays shown so the field says what the target is published as.
+              data={[...new Set([...s.publishable_roles, ...(target.role ? [target.role] : [])])]}
+              value={target.role}
+              onChange={(v) => patchRow(i, { role: v })}
+              required
             />
           </FormField>
           {provider === DATAZONE && (

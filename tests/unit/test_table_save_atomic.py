@@ -48,6 +48,7 @@ from provisa.core.schema_org import (
     sources,
     table_columns,
 )
+from tests.unit.gate_identity import serve_every_column
 
 
 @pytest.fixture
@@ -107,6 +108,12 @@ async def plane(monkeypatch, control_plane) -> Database:
     monkeypatch.setattr(schema_mutation_ops, "_sync_view_mv", _nothing)
     monkeypatch.setattr("provisa.api.admin.schema_common.activate_view_mv", _nothing)
     return db
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 def _info() -> Any:

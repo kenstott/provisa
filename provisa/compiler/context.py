@@ -664,17 +664,15 @@ def _register_draft_names(  # REQ-1921
         stored_relation_names,
     )
     from provisa.compiler.schema_gen import SchemaInput
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.visibility import visible_tables
 
     assert isinstance(si, SchemaInput)
     role = si.role
-    reach = set(role["domain_access"])
-    every = reaches_all_domains(role["domain_access"])
     for row in si.draft_tables:
         domain = row["domain_id"]
-        if not every and domain not in reach:
-            continue
-        if not any(role["id"] in c["visible_to"] for c in row["columns"]):
+        # REQ-2152: a draft is listed to a role served one of its columns, by the one rule
+        # (its domain reach included).
+        if not visible_tables([row], role):
             continue
         name, alias = row["table_name"], row["alias"]
         dp = f"{domain_to_sql_name(domain)}__"

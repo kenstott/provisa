@@ -54,7 +54,8 @@ class ErrorRedactionMiddleware:
             assert start is not None
             body = b"".join(chunks)
             if not message.get("more_body", False):
-                body = _redacted(body)
+                # The org the request acted in, as the auth middleware bound it on its state.
+                body = _redacted(body, (scope.get("state") or {}).get("active_org_id"))
             headers = [
                 (k, v) for k, v in start.get("headers", []) if k.lower() != b"content-length"
             ]
@@ -73,11 +74,11 @@ class ErrorRedactionMiddleware:
         await self.app(scope, receive, _send)
 
 
-def _redacted(body: bytes) -> bytes:
-    from provisa.security.redaction import redact
+def _redacted(body: bytes, org_id: str | None) -> bytes:
+    from provisa.api.engine_error_names import client_text
 
     try:
         text = body.decode("utf-8")
     except UnicodeDecodeError:
         return body  # not text: an error body is text, and a binary one carries no message
-    return redact(text).encode("utf-8")
+    return client_text(text, org_id).encode("utf-8")

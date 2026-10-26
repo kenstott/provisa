@@ -29,8 +29,15 @@ from provisa.api.admin._landing_ttl import SourceTtl, TableTtl
 from provisa.api.admin.types import ColumnInput, MutationResult, SourceInput, TableInput
 from provisa.core.database import Database
 from provisa.core.schema_org import registered_tables, sources
+from tests.unit.gate_identity import serve_every_column
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 class _Pool:

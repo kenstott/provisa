@@ -271,10 +271,20 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             if kw in ("OPTIONAL",):
                 self._advance()
                 self._consume_keyword("MATCH")
+                # An OPTIONAL MATCH is a step of its own: its inline properties and its WHERE are
+                # its condition, apart from the steps before it (REQ-345).
+                _flush_match_step()
                 current_matches.append(self._parse_match(optional=True))
+                # OPTIONAL MATCH a, b: one pattern, matched whole or not at all (REQ-345).
+                while (_comma := self._peek()) and _comma.type == "COMMA":
+                    self._advance()
+                    current_matches.append(self._parse_match(optional=True))
 
             elif kw == "MATCH":
                 self._advance()
+                # A MATCH after an OPTIONAL MATCH starts a step: its conditions filter the rows.
+                if any(m.optional for m in current_matches):
+                    _flush_match_step()
                 current_matches.append(self._parse_match(optional=False))
                 # MATCH a, b: each comma-separated pattern is a clause of the same step.
                 while (_comma := self._peek()) and _comma.type == "COMMA":

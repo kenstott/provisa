@@ -36,8 +36,8 @@ from typing import Any
 import httpx
 import yaml
 
-from provisa.core.db import SEEDED_ROLE_IDS
-from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
+from provisa.core.db import SEEDED_ROLE_IDS, STANDARD_ROLES
+from provisa.security.rights import ORG_ADMIN_ROLE
 
 SCHEMA = "mdx_e2e"
 SOURCE = "mdx-wh"
@@ -71,10 +71,11 @@ GLOSSARY_DEFINITION = "A person or company that has placed at least one order."
 CLASS_TERM = "order"
 CLASS_DEFINITION = "A customer's request to buy, placed once."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.
-# The org's data roles: the model's, and the ones every org schema is seeded with. A column read
-# by the model's roles alone is visibility-restricted for the seeded ones.
+# The roles a catalog's governance tags name: the model's, and every standard role (REQ-2155) that
+# reaches a domain -- org_admin among them, platform_admin (which reaches none) not. A column read
+# by the model's roles alone is visibility-restricted for the standard ones.
 MODEL_ROLES = ["analyst", "data_owner", "admin"]
-AUDIENCE = sorted({*MODEL_ROLES, *SEEDED_ROLE_IDS} - {ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
+AUDIENCE = sorted({*MODEL_ROLES, *(r for r in SEEDED_ROLE_IDS if STANDARD_ROLES[r].domain_access)})
 
 VIEW = "order_totals"
 VIEW_SQL = f'SELECT o.id AS id, o.amount * 2 AS net FROM "{DOMAIN}"."orders" o'
@@ -129,9 +130,9 @@ def model_config(
     under a domain of its own name (Purview) is given the one that exists there. ``product_name``
     is its name: a catalog read back by name is given the run's own."""
     roles = MODEL_ROLES
-    # The org's own admin reads every member as well: the tests read as org_admin, the role the
+    # Every role, the org's own admin among them: the tests read as org_admin, the role the
     # server's default assignment gives.
-    everyone = [*AUDIENCE, ORG_ADMIN_ROLE]
+    everyone = AUDIENCE
     config = {
         "federation_engine": engine,
         "auth": {
@@ -218,8 +219,10 @@ def model_config(
                         "name": "ssn",
                         "data_type": "text",
                         # The masked column's audience is the org's roles: masked for all but
-                        # admin, as the catalogs' restricted and exempt roles show it.
-                        "visible_to": AUDIENCE,
+                        # admin, as the catalogs' restricted and exempt roles show it. The org's
+                        # admin reads it too, so a catalog published as it receives the column
+                        # (REQ-2152).
+                        "visible_to": everyone,
                         "masks": [
                             {"to": ["admin"], "mask": None},
                             {
@@ -231,7 +234,13 @@ def model_config(
                             },
                         ],
                     },
-                    {"name": "margin", "data_type": "numeric", "visible_to": ["admin"]},
+                    # Restricted: the seeded roles do not read it. The org's admin does, so a
+                    # catalog published as it receives the column (REQ-2152).
+                    {
+                        "name": "margin",
+                        "data_type": "numeric",
+                        "visible_to": ["admin", ORG_ADMIN_ROLE],
+                    },
                 ],
             },
             {
@@ -324,7 +333,10 @@ async def published_server(
 
 
 # A target's settings that are the export's own; the rest are its catalog's (REQ-2122).
-EXPORT_SETTINGS = ("datazone_project_id", "delta_share")
+EXPORT_SETTINGS = ("datazone_project_id", "delta_share", "role")
+#: The role each catalog is published as (REQ-2152): what it is sent is what that role reads. The
+#: org's admin reads every column of the model, so every catalog receives all of it.
+PUBLISH_ROLE = ORG_ADMIN_ROLE
 
 
 async def org_domains(client: httpx.AsyncClient) -> list[str]:
@@ -347,7 +359,8 @@ async def save_targets(client: httpx.AsyncClient, targets: list[dict[str, Any]])
     connected = await client.put("/admin/catalogs", json={"catalogs": catalogs})
     assert connected.status_code == 200, connected.text
     exports = [
-        {"catalog": t["id"], **{k: t[k] for k in EXPORT_SETTINGS if k in t}} for t in targets
+        {"catalog": t["id"], "role": PUBLISH_ROLE, **{k: t[k] for k in EXPORT_SETTINGS if k in t}}
+        for t in targets
     ]
     saved = await client.put("/admin/metadata-export", json={"enabled": True, "targets": exports})
     assert saved.status_code == 200, saved.text

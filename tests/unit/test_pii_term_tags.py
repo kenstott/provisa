@@ -37,6 +37,7 @@ from provisa.core.schema_org import glossary_terms
 from provisa.core.term_tags import TermTagRefused, effective_column_tags, refuse_term_tag
 from provisa.security.sensitive import sensitive_columns
 from tests.unit.test_pii_term_moves import _define, _model, _move, _table_id, _tbl
+from tests.unit.gate_identity import serve_every_column
 
 _STATUSES = {
     # status: (definition, deprecated, retired)
@@ -45,6 +46,13 @@ _STATUSES = {
     "deprecated": ("Where a person lives", True, False),
     "retired": ("Where a person lives", False, True),
 }
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which columns a caller may read is REQ-2152's own tests
+    (test_glossary_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 async def _set_status(conn, term_id: int, status: str) -> None:
@@ -384,7 +392,7 @@ async def test_a_column_pii_through_its_term_is_masked_and_held_to_its_fake(
             rule = ColumnRule(
                 physical="home_address",
                 exposed="home_address",
-                visible_to=frozenset({"analyst"}),
+                served_to=frozenset({"analyst"}),
                 masks=(),
                 pii="pii" in tags["home_address"],
             )

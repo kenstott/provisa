@@ -31,8 +31,16 @@ from tests.unit.test_glossary_class_grounding import (
     cfg_db,  # noqa: F401  (a fixture)
     _config,
 )
+from tests.unit.gate_identity import serve_every_column
 
 TODAY = datetime.date.today()
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which columns a caller may read is REQ-2152's own tests
+    (test_glossary_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 async def _status(db, term_id: int) -> str:

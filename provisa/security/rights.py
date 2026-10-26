@@ -50,7 +50,6 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     APPROVE_VIEW = "approve_view"
     FULL_RESULTS = "full_results"  # bypass sampling mode
     USAGE = "usage"
-    READ_RESTRICTED = "read_restricted"
     APPROVE_RELATIONSHIP = "approve_relationship"
     CREATE_VIEW = "create_view"
     COLUMN_GRANT = "column_grant"
@@ -356,6 +355,28 @@ def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: b
     if reaches:
         return True
     return column.get("scope") == SCOPE_PUBLIC and not column.get("native_filter_type")
+
+
+def served_roles(  # REQ-2152
+    roles: dict[str, dict], chains: dict[str, list[str]], domain_id: str, column: dict
+) -> frozenset[str]:
+    """The roles of ``roles`` (id → definition) a column of a table in ``domain_id`` is served to,
+    by :func:`column_served`: its stored grant expanded down ``chains`` as the schema build
+    expands it (``inheritance.expand_grants``), each role's reach its own ``domain_access``."""
+    from provisa.security.inheritance import expand_grants
+
+    granted = {**column, "visible_to": list(column.get("visible_to") or [])}
+    expand_grants([granted], chains)
+    return frozenset(
+        role_id
+        for role_id, definition in roles.items()
+        if column_served(
+            {"id": role_id},
+            domain_id,
+            granted,
+            reaches=reaches_domain(definition["domain_access"], domain_id),
+        )
+    )
 
 
 def served_across_domains(role: dict, table: dict) -> bool:

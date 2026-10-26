@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
     tags,
     tracked_functions,
 )
+from tests.unit.gate_identity import serve_every_column
 
 STEWARD_RIGHTS = [
     "access_config",
@@ -57,6 +58,12 @@ STEWARD_RIGHTS = [
     "view_governance",
     "create_relationship",  # REQ-2155: meaning plus access -- relationships are meaning
 ]
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 def _roles(steward_id: str) -> dict[str, dict]:

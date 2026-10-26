@@ -326,10 +326,11 @@ async def _within_request(make_coro: Any, label: str) -> Any:
 
 def _redacted_error(exc: BaseException) -> RuntimeError | None:
     """The error to send in place of ``exc`` when redaction changes its text (REQ-2087); None
-    when nothing in it matched, and ``exc`` goes out as it is."""
-    from provisa.security.redaction import redact
+    when nothing in it matched, and ``exc`` goes out as it is. Told in the model's names too
+    (REQ-2152)."""
+    from provisa.api.engine_error_names import client_text
 
-    said = redact(str(exc))
+    said = client_text(str(exc))
     return None if said == str(exc) else RuntimeError(said)
 
 
@@ -474,8 +475,8 @@ def build_mcp_server(state: Any):
             identity = SimpleNamespace(
                 user_id=identity.user_id, roles=list(identity.roles), acting_roles=[resolved_role]
             )
-        # REQ-2154: the role the call acts as, as the HTTP middleware binds it on a request (a
-        # registration's default grant names it).
+        # The acting role too, as the HTTP middleware sets it: the catalog a tool reads and edits
+        # is that role's (REQ-2152, catalog_scope).
         return SimpleNamespace(
             state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role)
         )
