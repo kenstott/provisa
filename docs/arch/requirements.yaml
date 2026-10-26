@@ -88977,7 +88977,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     replay: the real tool is run once by hand against a test instance, its protocol conversation (pgwire,
     Bolt or HTTP: introspection queries, catalog calls, procedures) is captured, and the capture is replayed
     in CI so a change that breaks what the tool relies on fails; a licence is needed only at capture time;
-    (c) verified manually.'
+    (c) verified manually. (Amended 2026-10-25, PGWIRE CATALOG AND TYPES:) Maintainer 2026-10-26: pgwire
+    is already verified with DBeaver and DataGrip, and the gaps found there were always metadata functions
+    and tables, and some data type conversions. So the pgwire conformance job adds, against a real Postgres
+    of a pinned version started in the same job: (1) a catalog shape diff: for every pg_catalog and information_schema
+    relation Provisa serves, column names, order and types compared with Postgres''s own definitions, and
+    for every catalog function tools call (format_type, pg_get_constraintdef, pg_get_expr, col_description,
+    has_table_privilege, current_schema and the like) signature and return type compared with pg_proc; (2)
+    coverage: the catalog relations and functions Postgres has that Provisa does not serve, each added or
+    listed with its reason; (3) type conversions: for every type Provisa returns, the result column''s type
+    OID and typmod, and its text and binary encodings, compared with what Postgres sends for the same value,
+    plus the casts tools issue. Catalog content stays the role''s governed view of the model, stated once
+    as a deliberate difference. Keys shown in pg_constraint and pg_index come from the source''s declarations
+    once discovery records them (REQ-2170).'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
