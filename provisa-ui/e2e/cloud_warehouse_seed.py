@@ -16,7 +16,7 @@ tests/integration/test_snowflake_source_e2e.py, test_databricks_source_e2e.py,
 test_bigquery_federation_engine_e2e.py, test_fabric_federation_engine_e2e.py) so this is not a new,
 unverified way of reaching them.
 
-Usage: python cloud_warehouse_seed.py <snowflake|databricks|bigquery|fabric> <up|down>
+Usage: python cloud_warehouse_seed.py <snowflake|databricks|bigquery|fabric> <up|down> <schema>
 """
 
 from __future__ import annotations
@@ -31,7 +31,9 @@ if str(_ROOT) not in sys.path:
     # `provisa` package and the `tests.integration` helpers this reuses — isn't on sys.path yet.
     sys.path.insert(0, str(_ROOT))
 
-_SCHEMA = "provisa_ui_e2e"
+# The run's own schema (e2e/cloud-warehouse.ts WAREHOUSE_SCHEMA), set from argv in main(): the
+# warehouses are shared by concurrent CI runs, which must not seed or drop each other's.
+_SCHEMA = ""
 _TABLE = "widgets"
 
 
@@ -67,7 +69,7 @@ def _snowflake(action: str) -> None:
     # silently lands with no current database at all (CURRENT_DATABASE() reads NULL) rather than
     # erroring. Reproduced live; filed as a bug (see spec header). A plain uppercase-safe database
     # name sidesteps it for this e2e without masking the finding.
-    db = _SCHEMA.upper()  # "PROVISA_UI_E2E" — also used as the schema name's database here
+    db = _SCHEMA.upper()  # the run's schema, upper-cased — also used as its database here
     table = _TABLE.upper()
     cur = conn.cursor()
     try:
@@ -192,7 +194,12 @@ _ENGINES = {
 
 def main() -> None:
     _load_root_env()
-    engine, action = sys.argv[1], sys.argv[2]
+    global _SCHEMA
+    if len(sys.argv) != 4:
+        raise SystemExit(
+            f"usage: python cloud_warehouse_seed.py <{'|'.join(_ENGINES)}> <up|down> <schema>"
+        )
+    engine, action, _SCHEMA = sys.argv[1], sys.argv[2], sys.argv[3]
     if engine not in _ENGINES or action not in ("up", "down"):
         raise SystemExit(f"usage: python cloud_warehouse_seed.py <{'|'.join(_ENGINES)}> <up|down>")
     _ENGINES[engine](action)
