@@ -66,6 +66,8 @@
     "removeOutputColumn": "удалить выходной столбец {{name}}",
     "datasetColumnPlaceholder": "столбец",
     "bindingTemplate": "SQL-выражение",
-    "bindingTemplateHint": "Одно SQL-выражение. Записывайте каждый аргумент как {{placeholder}}; оно выполняется внутри вызывающего запроса."
+    "bindingTemplateHint": "Одно SQL-выражение. Записывайте каждый аргумент как {{placeholder}}; оно выполняется внутри вызывающего запроса.",
+    "argDefault": "Значение по умолчанию аргумента {{name}}",
+    "argDefaultPlaceholder": "По умолчанию (оставьте пустым, если обязателен)"
   }
 }

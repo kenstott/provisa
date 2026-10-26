@@ -123,3 +123,17 @@ def test_the_grpc_proto_follows_the_graphql_binding():
     from provisa.grpc.proto_gen import _visible_commands
 
     assert [f["name"] for f in _visible_commands(_schema_input([_SCHEMA, _ENRICH]))] == ["enrich"]
+
+
+def test_every_role_reaches_the_meta_domain_and_only_the_domains_it_lists_besides():
+    from provisa.security.mutation_authz import command_reachable
+    from provisa.security.rights import reaches_domain
+
+    assert reaches_domain(["shelter"], "meta")
+    assert reaches_domain([], "meta")
+    assert not reaches_domain(["shelter"], "ops")
+    assert not reaches_domain(["shelter"], "hr")
+    apoc = {"name": "apoc_meta_data", "domain_id": "meta", "visible_to": ["reader"]}
+    assert command_reachable(apoc, {"id": "reader", "domain_access": ["shelter"]})
+    # Grants still decide: reach alone assigns nothing.
+    assert not command_reachable(apoc, {"id": "outsider", "domain_access": ["shelter"]})

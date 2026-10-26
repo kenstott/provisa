@@ -588,7 +588,12 @@ def generate_proto(
         cmd = command_rpc_name(command_bindings.offered_name(fn, "graphql"))
         lines.append(f"message {cmd}Request {{")
         for i, arg in enumerate([a for a in (fn.get("arguments") or []) if a.get("name")], start=1):
-            lines.append(f"  {_arg_proto_type(arg.get('type', 'String'))} {arg['name']} = {i};")
+            # REQ-2168: an argument with a default is optional, so a call that leaves it out is told
+            # from one that sends its type's zero value.
+            optional = "optional " if "default" in arg else ""
+            lines.append(
+                f"  {optional}{_arg_proto_type(arg.get('type', 'String'))} {arg['name']} = {i};"
+            )
         lines.append("}")
         lines.append("")
 

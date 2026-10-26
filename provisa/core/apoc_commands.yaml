@@ -6,7 +6,8 @@
 # The APOC calls Cypher tools and agent frameworks make, shipped as command declarations on the
 # command-binding mechanism (REQ-2168). Each is bound in Cypher to its APOC name and offered in SQL
 # under its own name (SQL cannot be excluded); it is excluded from GraphQL, REST, MCP and SPARQL.
-# The introspection procedures are built-ins answered from the acting role's label map; the
+# Each is granted to viewer, the standard role every data role inherits (REQ-2155), and sits in the
+# meta domain every role reaches; an operator changes the grant as any other. The introspection procedures are built-ins answered from the acting role's label map; the
 # functions are SQL expression templates, transpiled per engine so they push down with the query.
 functions:
 - name: apoc_meta_data
@@ -23,7 +24,9 @@ functions:
   arguments:
   - name: config
     type: json
-  visible_to: []
+    default: {}
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.meta.data
@@ -49,7 +52,9 @@ functions:
   arguments:
   - name: config
     type: json
-  visible_to: []
+    default: {}
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.meta.schema
@@ -73,7 +78,8 @@ functions:
   binding:
     callable: apoc.schema.nodes
   arguments: []
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.schema.nodes
@@ -100,7 +106,8 @@ functions:
     type: json
   - name: delimiter
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.text.join
@@ -125,7 +132,8 @@ functions:
   arguments:
   - name: text
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.text.capitalize
@@ -150,7 +158,8 @@ functions:
   arguments:
   - name: text
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.text.decapitalize
@@ -179,7 +188,8 @@ functions:
     type: json
   - name: delim
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.text.lpad
@@ -208,7 +218,8 @@ functions:
     type: json
   - name: delim
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.text.rpad
@@ -235,7 +246,8 @@ functions:
     type: json
   - name: lookup
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.text.indexOf
@@ -260,7 +272,8 @@ functions:
   arguments:
   - name: coll
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.coll.sum
@@ -285,7 +298,8 @@ functions:
   arguments:
   - name: values
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.coll.max
@@ -310,7 +324,8 @@ functions:
   arguments:
   - name: values
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.coll.min
@@ -337,7 +352,8 @@ functions:
     type: json
   - name: value
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.coll.contains
@@ -362,7 +378,8 @@ functions:
   arguments:
   - name: coll
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.coll.toSet
@@ -389,7 +406,8 @@ functions:
     type: json
   - name: second
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.coll.union
@@ -414,7 +432,8 @@ functions:
   arguments:
   - name: coll
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.coll.flatten
@@ -441,7 +460,8 @@ functions:
     type: json
   - name: values
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.map.fromLists
@@ -464,7 +484,8 @@ functions:
   binding:
     sql: CAST(extract(epoch FROM current_timestamp) * 1000 AS BIGINT)
   arguments: []
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.date.currentTimestamp
@@ -489,7 +510,8 @@ functions:
   arguments:
   - name: value
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.convert.toString
@@ -514,7 +536,8 @@ functions:
   arguments:
   - name: value
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.convert.toInteger
@@ -539,7 +562,8 @@ functions:
   arguments:
   - name: value
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.convert.toFloat
@@ -564,7 +588,8 @@ functions:
   arguments:
   - name: value
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.convert.toBoolean
@@ -589,7 +614,8 @@ functions:
   arguments:
   - name: value
     type: json
-  visible_to: []
+  visible_to:
+  - viewer
   language_bindings:
     cypher:
       name: apoc.convert.toJson

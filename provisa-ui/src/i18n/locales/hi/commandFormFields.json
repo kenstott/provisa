@@ -66,6 +66,8 @@
     "removeOutputColumn": "आउटपुट कॉलम {{name}} हटाएँ",
     "datasetColumnPlaceholder": "कॉलम",
     "bindingTemplate": "SQL व्यंजक",
-    "bindingTemplateHint": "एक SQL व्यंजक। हर आर्ग्युमेंट को {{placeholder}} के रूप में लिखें; यह बुलाने वाली क्वेरी के भीतर चलता है।"
+    "bindingTemplateHint": "एक SQL व्यंजक। हर आर्ग्युमेंट को {{placeholder}} के रूप में लिखें; यह बुलाने वाली क्वेरी के भीतर चलता है।",
+    "argDefault": "आर्ग्युमेंट {{name}} का डिफ़ॉल्ट",
+    "argDefaultPlaceholder": "डिफ़ॉल्ट (आवश्यक हो तो खाली छोड़ें)"
   }
 }

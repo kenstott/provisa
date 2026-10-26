@@ -103,23 +103,32 @@ def _graph() -> CypherLabelMap:
 
 @pytest.fixture
 def state(monkeypatch):
+    from provisa.security.inheritance import expand_grants
+
     graph = _graph()
     monkeypatch.setattr("provisa.bolt.apoc_meta._graph", lambda _state, _role: graph)
+    shipped = declared()
+    # The runtime build widens each grant to the roles inheriting it: reader inherits viewer, to
+    # which the APOC set is granted; outsider inherits nothing.
+    expand_grants(shipped, {"reader": ["reader", "viewer"], "outsider": ["outsider"]})
     return SimpleNamespace(
-        roles={"reader": {"id": "reader", "capabilities": [], "domain_access": ["meta", "hr"]}},
-        tracked_functions={f["name"]: f for f in declared()},
+        roles={
+            "reader": {"id": "reader", "capabilities": [], "domain_access": ["shelter"]},
+            "outsider": {"id": "outsider", "capabilities": [], "domain_access": ["shelter"]},
+        },
+        tracked_functions={f["name"]: f for f in shipped},
         tracked_webhooks={},
         undefined_commands={},
         graph=graph,
     )
 
 
-async def _rows(query: str, state) -> list:
+async def _rows(query: str, state, role: str = "reader") -> list:
     """The statement's rows: translated, bound for the role, its command rows put in place, and
     run on DuckDB with its list parameter written in."""
     sql_ast, ordered, _ = cypher_to_sql(parse_cypher(query), state.graph, _PARAMS)
-    sql_ast = expand_functions(sql_ast, "reader", state)
-    sql = await put_command_rows(sql_ast.sql(dialect="postgres"), "reader", state)
+    sql_ast = expand_functions(sql_ast, role, state)
+    sql = await put_command_rows(sql_ast.sql(dialect="postgres"), role, state)
     assert ordered == ["EXCLUDED_LABELS"]
     engine_sql = sqlglot.transpile(sql, read="postgres", write="duckdb")[0]
     excluded = ", ".join(f"'{label}'" for label in _EXCLUDED)
@@ -150,10 +159,15 @@ async def test_what_the_role_does_not_read_is_absent(state):
     assert "Payroll" not in repr(rows)
 
 
-async def test_a_role_not_assigned_the_apoc_set_cannot_call_it(state):
-    state.roles["reader"]["domain_access"] = ["hr"]
+async def test_a_role_reaching_only_its_own_domain_calls_the_apoc_set_by_its_grant(state):
+    # reader lists only shelter: every role reaches the meta domain the APOC set sits in, and
+    # reader inherits viewer, to which it is granted.
+    assert await _rows(REL_QUERY, state)
+
+
+async def test_a_role_without_the_grant_cannot_call_it(state):
     with pytest.raises(ApiError) as refused:
-        await _rows(NODE_PROPERTIES_QUERY, state)
+        await _rows(NODE_PROPERTIES_QUERY, state, role="outsider")
     assert refused.value.code == "functions.unknown_command"
 
 
@@ -272,3 +286,16 @@ async def test_expand_binds_the_path_it_yields():
 async def test_a_walk_a_pattern_cannot_express_is_refused_naming_why(call, refusal):
     with pytest.raises(CypherParseError, match=refusal):
         parse_cypher(f"MATCH (n:Person) MATCH (m) CALL {call} RETURN 1 AS one")
+
+
+async def test_apoc_meta_data_without_its_config_takes_the_default(state):
+    # Older LangChain (langchain_community) calls apoc.meta.data() with no argument.
+    query = (
+        "CALL apoc.meta.data() YIELD label, other, elementType, type, property "
+        "WHERE type = 'RELATIONSHIP' AND elementType = 'node' "
+        "RETURN label, property"
+    )
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), state.graph, {})
+    sql = await put_command_rows(sql_ast.sql(dialect="postgres"), "reader", state)
+    engine_sql = sqlglot.transpile(sql, read="postgres", write="duckdb")[0]
+    assert duckdb.sql(engine_sql).fetchall() == [("Employees", "WORKS_IN")]

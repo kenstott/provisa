@@ -22,6 +22,26 @@ export const GRAPHQL_TYPES = [
 ];
 
 export const EMPTY_ARG: ActionArg = { name: "", type: "String" };
+
+/** REQ-2168: an argument's default as the form writes it: its text, empty for none. */
+export function defaultText(arg: ActionArg): string {
+  if (!("default" in arg)) return "";
+  return typeof arg.default === "string" ? arg.default : JSON.stringify(arg.default);
+}
+
+/** REQ-2168: the argument with the default its text writes for its type; empty text, none. A
+ *  number, boolean or JSON text that does not read as one is kept as written, and the server
+ *  refuses it naming the argument. */
+export function withDefaultText(arg: ActionArg, text: string): ActionArg {
+  const { default: _old, ...rest } = arg;
+  if (text === "") return rest;
+  if (["String", "DateTime", "Date"].includes(arg.type)) return { ...rest, default: text };
+  try {
+    return { ...rest, default: JSON.parse(text) };
+  } catch {
+    return { ...rest, default: text };
+  }
+}
 export const EMPTY_INLINE: InlineField = { name: "", type: "String" };
 
 export type ActionType = "function" | "webhook";

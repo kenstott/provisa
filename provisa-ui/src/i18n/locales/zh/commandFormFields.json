@@ -66,6 +66,8 @@
     "removeOutputColumn": "移除输出列 {{name}}",
     "datasetColumnPlaceholder": "列",
     "bindingTemplate": "SQL 表达式",
-    "bindingTemplateHint": "一个 SQL 表达式。将每个参数写为 {{placeholder}}；它在调用它的查询中运行。"
+    "bindingTemplateHint": "一个 SQL 表达式。将每个参数写为 {{placeholder}}；它在调用它的查询中运行。",
+    "argDefault": "参数 {{name}} 的默认值",
+    "argDefaultPlaceholder": "默认值（必填则留空）"
   }
 }

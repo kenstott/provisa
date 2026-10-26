@@ -66,6 +66,8 @@
     "removeOutputColumn": "retirer la colonne de sortie {{name}}",
     "datasetColumnPlaceholder": "colonne",
     "bindingTemplate": "Expression SQL",
-    "bindingTemplateHint": "Une expression SQL. Écrivez chaque argument sous la forme {{placeholder}} ; elle s'exécute dans la requête qui l'appelle."
+    "bindingTemplateHint": "Une expression SQL. Écrivez chaque argument sous la forme {{placeholder}} ; elle s'exécute dans la requête qui l'appelle.",
+    "argDefault": "Valeur par défaut de l'argument {{name}}",
+    "argDefaultPlaceholder": "Valeur par défaut (vide si obligatoire)"
   }
 }

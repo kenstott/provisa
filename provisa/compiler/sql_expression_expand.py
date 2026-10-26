@@ -32,7 +32,7 @@ def _functions(state: object) -> dict[str, dict]:  # object-ok: AppState lives a
     """The SQL expression functions by their SQL name, read once per registry."""
     from provisa.core.command_bindings import offered_name
 
-    registry = getattr(state, "tracked_functions")
+    registry = getattr(state, "tracked_functions", None) or {}
     held = _BY_REGISTRY.get(id(registry))
     if held is not None and held[0] is registry:
         return held[1]

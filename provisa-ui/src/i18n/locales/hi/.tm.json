@@ -8165,5 +8165,7 @@
   "hi/glossaryTab.json::glossaryTab.termGraphTitle": "Term graph",
   "hi/serverErrors.json::serverErrors.cypher.non_finite_number": "The answer holds a number JSON cannot carry: {{column}} is {{value}}.",
   "hi/serverErrors.json::serverErrors.cypher.try_cast_needs_postgres_16": "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 or later on this engine.",
-  "hi/serverErrors.json::serverErrors.statement.list_at_ceiling": "A list holds the maximum of {{limit}} entries the row limit allows for this read ({{kind}}); it may have more."
+  "hi/serverErrors.json::serverErrors.statement.list_at_ceiling": "A list holds the maximum of {{limit}} entries the row limit allows for this read ({{kind}}); it may have more.",
+  "hi/commandFormFields.json::commandFormFields.argDefault": "Default of argument {{name}}",
+  "hi/commandFormFields.json::commandFormFields.argDefaultPlaceholder": "Default (leave empty if required)"
 }

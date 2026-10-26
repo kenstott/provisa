@@ -322,9 +322,19 @@ def reaches_all_domains(domain_access: Iterable[str] | None) -> bool:  # REQ-039
     return domain_policy.single_domain() or ALL_DOMAINS in domain_access
 
 
+# The catalog every role reaches, whatever its list (REQ-1132): its tables are traversed to from any
+# domain, and its commands (the APOC set, REQ-2168) are called as any command is, by their grants.
+IMPLICIT_DOMAINS: frozenset[str] = frozenset({META_DOMAIN_ID})
+
+
 def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
-    """Whether a role's ``domain_access`` reaches ``domain_id`` (see :func:`reaches_all_domains`)."""
-    return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
+    """Whether a role's ``domain_access`` reaches ``domain_id`` (see :func:`reaches_all_domains`):
+    a domain it lists, every domain for ``"*"``, and the catalog (IMPLICIT_DOMAINS) for any role."""
+    return (
+        reaches_all_domains(domain_access)
+        or domain_id in IMPLICIT_DOMAINS
+        or domain_id in (domain_access or ())
+    )
 
 
 # --- which columns a role is served (REQ-039, REQ-1133, REQ-1959) --------------------------------

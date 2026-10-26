@@ -66,6 +66,8 @@
     "removeOutputColumn": "出力列 {{name}} を削除",
     "datasetColumnPlaceholder": "列",
     "bindingTemplate": "SQL 式",
-    "bindingTemplateHint": "1 つの SQL 式。各引数を {{placeholder}} と書きます。呼び出し元のクエリ内で実行されます。"
+    "bindingTemplateHint": "1 つの SQL 式。各引数を {{placeholder}} と書きます。呼び出し元のクエリ内で実行されます。",
+    "argDefault": "引数 {{name}} の既定値",
+    "argDefaultPlaceholder": "既定値（必須の場合は空欄）"
   }
 }

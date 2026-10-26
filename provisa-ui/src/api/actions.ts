@@ -32,6 +32,8 @@ export interface ActionArg {
   // REQ-1159: for a dataset arg (table_ref/result_set), the declared IR-typed column contract of
   // the input relation, validated on the way in. Absent for a column_value scalar.
   columns?: DatasetColumn[];
+  // REQ-2168: the value a call that leaves the argument out passes; absent, it is required.
+  default?: unknown;
 }
 
 export interface InlineField {

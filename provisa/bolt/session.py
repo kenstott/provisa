@@ -1505,8 +1505,14 @@ def _list_commands(app_state, role_id: str | None) -> list[dict]:
 
 def _command_signature(cmd: dict) -> str:
     """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1156)."""
+    import json
+
     args = ", ".join(
-        f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"]
+        f"{a['name']}"
+        # REQ-2168: an argument that declares a default, written as Neo4j writes one.
+        + (f" = {json.dumps(a['default'], default=str)}" if "default" in a else "")
+        + f" :: {str(a.get('type', 'String')).upper()}"
+        for a in cmd["arguments"]
     )
     ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
     return f"{cmd['name']}({args}) :: ({ret})"

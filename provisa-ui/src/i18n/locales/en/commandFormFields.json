@@ -66,6 +66,8 @@
     "removeInputColumn": "remove input column {{name}}",
     "datasetColumnPlaceholder": "column",
     "bindingTemplate": "SQL expression",
-    "bindingTemplateHint": "One SQL expression. Write each argument as {{placeholder}}; it runs inside the calling query."
+    "bindingTemplateHint": "One SQL expression. Write each argument as {{placeholder}}; it runs inside the calling query.",
+    "argDefault": "Default of argument {{name}}",
+    "argDefaultPlaceholder": "Default (leave empty if required)"
   }
 }

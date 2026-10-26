@@ -12,8 +12,9 @@
 schema with apoc.meta.data (REQ-2168).
 
 One real server over a PostgreSQL source holding employees, departments and payroll, each
-related to the next. The role ``reader`` reads employees and departments but no column of
-payroll. LangChain's Neo4jGraph, connected as ``reader``, loads the schema: it holds Employees,
+related to the next. The role ``reader`` (inheriting the standard analyst, so viewer, to which
+the APOC set is granted) reaches only the shelter domain and reads employees and departments but no
+column of payroll. LangChain's Neo4jGraph, connected as ``reader``, loads the schema: it holds Employees,
 Departments and the relationship between them, and nothing of Payroll. A Cypher query it then
 writes with apoc.text.join runs and pushes the function down.
 """
@@ -109,7 +110,8 @@ def server():
                     "id": "reader",
                     "description": "Reads the shelter's staff, not its payroll.",
                     "capabilities": ["query_development", "full_results"],
-                    "domain_access": ["shelter", "meta"],
+                    "parents": ["analyst"],
+                    "domain_access": ["shelter"],
                 }
             ],
         },
@@ -155,6 +157,16 @@ def test_langchain_loads_the_schema_the_role_reads(graph):
 def test_what_the_role_does_not_read_is_absent(graph):
     assert "Payroll" not in graph.get_schema
     assert "PAID_TO" not in graph.get_schema
+
+
+def test_apoc_meta_data_without_its_config_takes_the_default(graph):
+    # Older LangChain (langchain_community's Neo4jGraph) calls apoc.meta.data() with no argument.
+    rows = graph.query(
+        "CALL apoc.meta.data() YIELD label, other, elementType, type, property "
+        "WHERE type = 'RELATIONSHIP' AND elementType = 'node' "
+        "RETURN label, property AS type, other"
+    )
+    assert rows == [{"label": "Employees", "type": "WORKS_IN", "other": ["Departments"]}]
 
 
 def test_a_query_written_with_an_apoc_function_runs_and_pushes_it_down(graph):

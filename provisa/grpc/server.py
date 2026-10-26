@@ -773,10 +773,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
             if fn is None or cmd_name is None:
                 await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command: {rpc!r}")
                 return
+            # REQ-2168: an optional argument the call left out takes its default (the executor's).
             args = {
                 a_name: getattr(request, a_name)
                 for arg in (fn.get("arguments") or [])
                 if (a_name := arg.get("name"))
+                and ("default" not in arg or request.HasField(a_name))
             }
             try:
                 rows = await invoke_tracked_function(cmd_name, args, state, role_id)

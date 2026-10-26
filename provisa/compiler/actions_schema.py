@@ -156,7 +156,11 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
         """Each declared argument under its own name: a field's arguments and its return type's
         fields are separate namespaces, so nothing needs renaming."""
         return {
-            a["name"]: GraphQLArgument(_gql_scalar(a.get("type", "String")))
+            a["name"]: GraphQLArgument(
+                _gql_scalar(a.get("type", "String")),
+                # REQ-2168: left out, the argument takes its default.
+                **({"default_value": a["default"]} if "default" in a else {}),
+            )
             for a in arguments
             if a.get("name")
         }

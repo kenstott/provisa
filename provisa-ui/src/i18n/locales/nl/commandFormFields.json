@@ -66,6 +66,8 @@
     "removeOutputColumn": "uitvoerkolom {{name}} verwijderen",
     "datasetColumnPlaceholder": "kolom",
     "bindingTemplate": "SQL-expressie",
-    "bindingTemplateHint": "Eén SQL-expressie. Schrijf elk argument als {{placeholder}}; ze wordt uitgevoerd binnen de aanroepende query."
+    "bindingTemplateHint": "Eén SQL-expressie. Schrijf elk argument als {{placeholder}}; ze wordt uitgevoerd binnen de aanroepende query.",
+    "argDefault": "Standaardwaarde van argument {{name}}",
+    "argDefaultPlaceholder": "Standaardwaarde (leeg laten als verplicht)"
   }
 }

@@ -2158,6 +2158,22 @@ class FunctionArgument(BaseModel):
     # a column_value scalar. This is the per-DATASET contract; the output dataset's contract is
     # Function.return_schema. The dataset is what carries the contract, not the command.
     columns: list[DatasetColumn] | None = None
+    # REQ-2168: the value a call that omits the argument passes. Declared or not, as written:
+    # an argument that declares none is required (``default`` absent from the stored argument);
+    # ``default: null`` is a declared default of null.
+    default: Any = None
+
+    @model_validator(mode="after")
+    def _default_fits_the_type(self) -> "FunctionArgument":  # REQ-2168
+        if "default" in self.model_fields_set:
+            from provisa.core.argument_defaults import check_default
+
+            check_default(self.name, self.type, self.default)
+        return self
+
+    def stored(self) -> dict:
+        """The argument as stored: ``default`` only when it declares one."""
+        return self.model_dump(exclude=None if "default" in self.model_fields_set else {"default"})
 
 
 class InlineType(BaseModel):
@@ -2290,7 +2306,7 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
             raise ValueError(f"command {self.name!r}: a source_query command is a query")
         from provisa.mongodb.native_query import check_command
 
-        check_command(self.name, self.binding, [a.model_dump() for a in self.arguments])
+        check_command(self.name, self.binding, [a.stored() for a in self.arguments])
         return self
 
     @model_validator(mode="after")

@@ -63,7 +63,9 @@ from provisa.security.rights import (
     Capability,
     column_served,
     has_capability,
+    IMPLICIT_DOMAINS,
     reaches_all_domains,
+    reaches_domain,
     served_across_domains,
 )
 from provisa.compiler.actions_schema import (
@@ -96,7 +98,7 @@ from provisa.compiler.schema_inputs import (
 # Only the meta (catalog) domain is implicitly discoverable by every role (REQ-1132). Ops is a normal
 # domain a role must be explicitly GRANTED (REQ-1133) — it is NOT implicit, so an ungranted role's
 # schema never exposes ops tables/columns to any query surface.
-_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta"})
+_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = IMPLICIT_DOMAINS
 
 # Domains where an empty visible_to=[] means visible to NO role (not unrestricted),
 # matching stage2.py::build_governance_context's interpretation for the same seeded
@@ -108,11 +110,10 @@ _LOCKDOWN_DOMAINS: frozenset[str] = LOCKDOWN_DOMAINS
 def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
     """Filter tables by role's domain access. Build per-table metadata."""
     role = si.role
-    accessible = set(role["domain_access"])
-    # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, and
-    # an empty list is no domains (rights.reaches_all_domains — the one place that is decided).
-    # Not to be confused with a COLUMN's visible_to below, where an empty list means every role.
-    all_access = reaches_all_domains(role["domain_access"])
+    # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, an
+    # empty list is no domains, and every role reaches the catalog (rights.reaches_domain — the
+    # one place that is decided). Not to be confused with a COLUMN's visible_to below, where an
+    # empty list means every role.
 
     # REQ-1319: role-visible metrics keyed by the single semantic table their expression
     # references. The aggregate compiler selects from exactly one table (no join builder),
@@ -132,11 +133,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         # The role reaches the table's domain: one it lists, "*", or the catalog every role may
         # traverse. A table outside reach is still served when it publishes a column to the role
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
-        reaches = (
-            all_access
-            or table["domain_id"] in accessible
-            or table["domain_id"] in _IMPLICIT_TRAVERSAL_DOMAINS
-        )
+        reaches = reaches_domain(role["domain_access"], table["domain_id"])
         if not reaches and not served_across_domains(role, table):
             continue
 

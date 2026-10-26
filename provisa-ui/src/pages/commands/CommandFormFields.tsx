@@ -32,6 +32,8 @@ import {
   ARG_KINDS,
   DATASET_ARG_KINDS,
   EMPTY_ARG,
+  defaultText,
+  withDefaultText,
   EMPTY_INLINE,
   EMPTY_DATASET_COLUMN,
   OPERATION_SCHEMA,
@@ -407,18 +409,20 @@ export function CommandFormFields({
               {!essential && (
                 <>
                   <FormChecks>
-                    {form.implKind !== "source_procedure" && !isSourceOperation && !declaresItsShape && (
-                      <FormField help={t("commandFormFields.materializeHint")} size="long">
-                        <Switch
-                          label={t("commandFormFields.materialize")}
-                          checked={form.materialize}
-                          onChange={(e) =>
-                            setForm({ ...form, materialize: e.currentTarget.checked })
-                          }
-                          data-testid="command-materialize-switch"
-                        />
-                      </FormField>
-                    )}
+                    {form.implKind !== "source_procedure" &&
+                      !isSourceOperation &&
+                      !declaresItsShape && (
+                        <FormField help={t("commandFormFields.materializeHint")} size="long">
+                          <Switch
+                            label={t("commandFormFields.materialize")}
+                            checked={form.materialize}
+                            onChange={(e) =>
+                              setForm({ ...form, materialize: e.currentTarget.checked })
+                            }
+                            data-testid="command-materialize-switch"
+                          />
+                        </FormField>
+                      )}
                   </FormChecks>
                   {!isSourceOperation && !declaresItsShape && (
                     <FormField size="medium">
@@ -710,6 +714,21 @@ export function CommandFormFields({
                           onChange={(val) => handleArgChange(i, "type", val ?? "String")}
                           data={GRAPHQL_TYPES}
                           allowDeselect={false}
+                        />
+                      </FormField>
+                      <FormField size="medium">
+                        <TextInput
+                          aria-label={t("commandFormFields.argDefault", {
+                            name: arg.name || i + 1,
+                          })}
+                          value={defaultText(arg)}
+                          onChange={(e) => {
+                            const args = [...form.arguments];
+                            args[i] = withDefaultText(arg, e.currentTarget.value);
+                            setForm({ ...form, arguments: args });
+                          }}
+                          placeholder={t("commandFormFields.argDefaultPlaceholder")}
+                          data-testid={`command-arg-default-${i}`}
                         />
                       </FormField>
                       {form.actionType === "function" &&

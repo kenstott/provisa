@@ -23,7 +23,6 @@ import {
   type LanguageBindings,
 } from "./bindingLanguages";
 
-
 /** The command's sections, one tab each, the same in its read view and its form. */
 export function CommandSectionTabs({
   value,

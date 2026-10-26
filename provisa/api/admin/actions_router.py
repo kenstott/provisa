@@ -36,6 +36,8 @@ def _args_to_ui(raw: list[dict] | None) -> list[dict]:
         arg = {"name": a["name"], "type": a["type"], "argKind": a.get("arg_kind", "column_value")}
         if a.get("columns"):  # REQ-1159: per-dataset input column contract
             arg["columns"] = a["columns"]
+        if "default" in a:  # REQ-2168: left out of a call, the argument takes it
+            arg["default"] = a["default"]
         out.append(arg)
     return out
 
@@ -52,6 +54,8 @@ def _args_from_ui(raw: list[dict]) -> list[dict]:
         cols = a.get("columns")  # REQ-1159: per-dataset input column contract [{name,type}]
         if cols:
             norm["columns"] = cols
+        if "default" in a:  # REQ-2168
+            norm["default"] = a["default"]
         out.append(norm)
     return out
 
@@ -296,6 +300,19 @@ def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
         for c in pool.values()
         if c["name"] != body.name
     }
+    from pydantic import ValidationError
+
+    from provisa.core.models import FunctionArgument
+
+    try:
+        # REQ-2168: each argument's default is a value of its type (the update path writes the
+        # arguments as sent, so they are read through the model here).
+        for a in _args_from_ui(body.arguments):
+            FunctionArgument(**a)
+    except ValidationError as exc:
+        raise ApiError(
+            422, "actions.argument_default_refused", str(exc.errors()[0]["msg"]), name=body.name
+        ) from exc
     try:
         check_declared(body.name, body.languageBindings)
         check_names([*served.values(), saved])

@@ -66,6 +66,8 @@
     "removeOutputColumn": "Ausgabespalte {{name}} entfernen",
     "datasetColumnPlaceholder": "Spalte",
     "bindingTemplate": "SQL-Ausdruck",
-    "bindingTemplateHint": "Ein SQL-Ausdruck. Schreiben Sie jedes Argument als {{placeholder}}; er wird innerhalb der aufrufenden Abfrage ausgeführt."
+    "bindingTemplateHint": "Ein SQL-Ausdruck. Schreiben Sie jedes Argument als {{placeholder}}; er wird innerhalb der aufrufenden Abfrage ausgeführt.",
+    "argDefault": "Standardwert des Arguments {{name}}",
+    "argDefaultPlaceholder": "Standardwert (leer lassen, wenn erforderlich)"
   }
 }

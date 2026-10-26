@@ -62,14 +62,20 @@ def _declared() -> tuple[dict, ...]:
     from provisa.core.models import Function
 
     text = resources.files("provisa.core").joinpath("apoc_commands.yaml").read_text()
-    return tuple(Function.model_validate(f).model_dump() for f in yaml.safe_load(text)["functions"])
+    functions = [Function.model_validate(f) for f in yaml.safe_load(text)["functions"]]
+    return tuple(
+        {**f.model_dump(), "arguments": [a.stored() for a in f.arguments]} for f in functions
+    )
 
 
 def declared() -> list[dict]:
-    """The commands Provisa ships, each as a registered command's row reads."""
+    """The commands Provisa ships, each as a registered command's row reads: a copy of its own,
+    as the runtime build widens a command's grant list in place (security/inheritance)."""
+    import copy
+
     return [
         {
-            **f,
+            **copy.deepcopy(f),
             "language_bindings": {
                 k: {kk: vv for kk, vv in v.items() if vv not in (None, False)}
                 for k, v in f["language_bindings"].items()

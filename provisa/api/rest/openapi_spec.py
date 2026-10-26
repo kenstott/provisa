@@ -448,6 +448,8 @@ def generate_rest_openapi_spec(
             if not a_name:
                 continue
             arg_props[a_name] = _arg_type_to_openapi(a.get("type", "String"))
+            if "default" in a:  # REQ-2168: left out, it takes its default
+                arg_props[a_name] = {**arg_props[a_name], "default": a["default"]}
 
         cmd_path = f"/{cmd_domain}/commands/{cmd_name}"
         domain_tag_descriptions.setdefault(cmd_domain, fn.get("domain_description"))

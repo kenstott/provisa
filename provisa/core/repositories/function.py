@@ -58,7 +58,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "function_name": func.function_name,
         "returns": func.returns,
         # JSON columns take Python objects directly.
-        "arguments": [a.model_dump() for a in func.arguments],
+        "arguments": [a.stored() for a in func.arguments],
         "visible_to": func.visible_to,
         "domain_id": domain_id,
         "description": func.description,
@@ -182,7 +182,7 @@ async def upsert_webhook(
         "returns": wh.returns,
         # JSON columns take Python objects directly.
         "inline_return_type": [t.model_dump() for t in wh.inline_return_type],
-        "arguments": [a.model_dump() for a in wh.arguments],
+        "arguments": [a.stored() for a in wh.arguments],
         "visible_to": wh.visible_to,
         "domain_id": domain_policy.command_domain_id(wh.domain_id, wh.name),  # REQ-1531
         "description": wh.description,
