@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Provisa and Denodo — Provisa</title>
-  <meta name="description" content="Both are data virtualization with unified semantics and governance. Provisa differs on the way in — GraphQL, Cypher, and nine wire protocols — on engine choice, and on how small the smallest deployment is." />
+  <meta name="description" content="Denodo and Provisa share the data virtualization premise. They differ on the execution engine, query languages, and how small the smallest deployment is." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -48,83 +48,97 @@
   <main id="main" class="doc">
     <div class="container">
       <div class="doc-head">
-        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>vs Denodo</span></p>
-        <h1>Same category. Different center of gravity.</h1>
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Provisa and Denodo</span></p>
+        <h1>Same premise. Different engine story.</h1>
         <p class="lead">
-          Denodo and Provisa agree on the premise: unified semantics and governed access
-          over distributed data, without duplicating it. They differ on how you get in,
-          what runs the query, and how small the smallest useful deployment is.
+          Denodo is centred on its own virtualization platform — a mature SQL engine
+          with two decades of enterprise connectors and a support organization behind
+          it. Provisa shares the underlying premise: governed access over distributed
+          data without duplicating it. Where they diverge is on which engine runs the
+          query, which languages reach the model, and how small you can go.
         </p>
       </div>
 
       <div class="doc-body">
-        <h2>Where they agree</h2>
-        <p>
-          Both are data virtualization rather than another warehouse. Both put a semantic
-          layer over heterogeneous sources, govern access centrally, and optimize queries
-          so that leaving data in place doesn't mean paying for it in latency. If you are
-          evaluating Denodo, you have already accepted the argument Provisa makes.
-        </p>
-
-        <h2>Where they differ</h2>
+        <h2>Where each fits</h2>
         <div class="cmp-wrap">
           <table class="cmp">
             <thead>
-              <tr><th>&nbsp;</th><th>Denodo</th><th>Provisa</th></tr>
+              <tr><th>You need to&hellip;</th><th>Denodo</th><th>Provisa</th></tr>
             </thead>
             <tbody>
               <tr>
-                <th>Query languages</th>
-                <td>SQL, with REST and GraphQL publication</td>
-                <td class="is-us">GraphQL, SQL, and Cypher as peers over one model — Cypher and graph traversal are first-class, not published views</td>
+                <th>Run BI over many distributed sources without a warehouse</th>
+                <td>&#10003; Mature data virtualization; commercial optimizer; broad enterprise connector library</td>
+                <td class="is-us">&#10003; Same premise; execution runs in the engine you choose — embedded, Trino, DuckDB, Snowflake and others</td>
               </tr>
               <tr>
-                <th>Ways in</th>
-                <td>JDBC/ODBC, REST, OData, GraphQL</td>
-                <td class="is-us">pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, and MCP</td>
+                <th>Publish a unified API over distributed data</th>
+                <td>&#10003; REST, OData and GraphQL published over virtual SQL views</td>
+                <td class="is-us">&#10003; GraphQL, SQL and Cypher as peers over one model — GraphQL is first-class, not a published view</td>
               </tr>
               <tr>
-                <th>Execution</th>
-                <td>Its own optimizer and execution engine</td>
-                <td class="is-us">The engine is yours to choose — Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks, BigQuery, or the embedded engine</td>
+                <th>Give AI agents governed access</th>
+                <td>Platform AI features and an AI chatbot over Denodo's API</td>
+                <td class="is-us">&#10003; MCP server; the OAuth token maps to a role and inherits the same six access-control layers as any human user</td>
               </tr>
               <tr>
-                <th>Graph and RDF sources</th>
-                <td>Available as sources</td>
-                <td class="is-us">First-class in the model — Neo4j and SPARQL participate in the same relationship registry and traversals</td>
+                <th>Ask graph or path questions over relationships</th>
+                <td>Graph databases available as sources; SQL queries against them</td>
+                <td class="is-us">&#10003; Cypher first-class; relationships are registered and governed in the model — not just foreign keys</td>
               </tr>
               <tr>
-                <th>AI access</th>
-                <td>Platform AI features</td>
-                <td class="is-us">An MCP server where the OAuth token maps to a role, so agents get the same six access-control layers and no bypass</td>
+                <th>Connect governance to external catalogs and lineage tools</th>
+                <td>Catalogs can connect to Denodo; platform-native metadata management</td>
+                <td class="is-us">&#10003; Publishes to external catalogs; imports from your semantic layer; keeps them in sync or runs standalone</td>
               </tr>
               <tr>
-                <th>Smallest deployment</th>
-                <td>Platform install or managed cloud</td>
-                <td class="is-us"><code>pip install "provisa[embedded]"</code> — one wheel, no Docker, no JVM, no root</td>
+                <th>Change the execution engine later</th>
+                <td>Denodo's own optimizer and engine</td>
+                <td class="is-us">&#10003; Engine is a swappable component — Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks, BigQuery</td>
               </tr>
               <tr>
-                <th>Model portability</th>
-                <td>Platform-native modeling</td>
-                <td class="is-us">Declarative config in git, promoted through environments and approved
-                merges; the compiled SQL is yours to read and export</td>
+                <th>Run on-premises or air-gapped</th>
+                <td>&#10003; Enterprise on-premises install; regulated-industry track record</td>
+                <td class="is-us">&#10003; <code>pip install "provisa[embedded]"</code> — one wheel, no Docker, no JVM, no root</td>
+              </tr>
+              <tr>
+                <th>Deploy on a single laptop or a developer machine</th>
+                <td>Platform install or managed cloud trial</td>
+                <td class="is-us">&#10003; Works from a wheel; desktop installer for macOS, Linux and Windows</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <h2>The evaluation that separates them</h2>
+        <h2>Use them together</h2>
         <p>
-          Ask what happens on a Tuesday afternoon. Can an analyst point psql at it and get
-          a governed answer? Can a developer query the same model in GraphQL without a
-          publication step? Can an agent connect and inherit the analyst's policy rather
-          than a service account's? Can you run the whole thing on a laptop to try
-          something, and in an airgap without mirroring a container registry?
+          If Denodo already handles SQL virtualization over your sources, Provisa connects
+          over JDBC and registers those views as governed tables. SQL requests pass through
+          Denodo's optimizer as they always have.
         </p>
         <p>
-          Those are the questions Provisa is built to answer yes to. On the classic enterprise virtualization checklist (breadth of connectors,
-          optimizer maturity, a support organization with two decades behind it) Denodo
-          is the incumbent, and that deserves real weight in your evaluation.
+          What changes is that the same model now answers in GraphQL and Cypher too,
+          enforces the same rules on an MCP connection, and publishes metadata to the
+          catalog tools you may already run. You can extend incrementally rather than
+          replacing what works.
+        </p>
+
+        <h2>If you only need Denodo</h2>
+        <p>
+          Your evaluation weighs connector breadth, optimizer maturity, and an enterprise
+          support organization with decades of regulated-industry track record. Your primary
+          consumers speak SQL, REST, or OData. Denodo is the strong choice on its own for
+          that profile.
+        </p>
+
+        <h2>If you only need Provisa</h2>
+        <p>
+          You need graph queries as a first-class language — not a SQL workaround over a
+          graph source. You want governance that holds identically on every protocol,
+          agents included. You need to connect your existing catalog and lineage tools
+          rather than operate everything inside one platform. Or you need the smallest
+          possible deployment: a single wheel, a developer machine, no JVM required.
         </p>
       </div>
 
@@ -151,12 +165,21 @@
       </div>
       <p class="footer-note">Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/hasura">Coming from Hasura</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">Provisa and Starburst</a>
+        <a href="/vs/hasura">Provisa and Hasura</a>
+        <a href="/vs/denodo">Provisa and Denodo</a>
         <a href="/docs">Docs</a>
       </nav>
     </div>
   </footer>
 </body>
 </html>
+<!-- Sources verified 2026-10-26:
+  Denodo data virtualization (SQL, REST, OData, GraphQL publication, JDBC/ODBC):
+    https://community.denodo.com/docs/html/browse/9.0/en/VDP/Administration/REST_API/REST_API.htm
+    https://community.denodo.com/docs/html/browse/9.0/en/VDP/Administration/Data_Sources/Data_Sources.htm
+  Denodo graph sources: documented in Denodo 9.0 custom data sources and SPARQL endpoint support.
+  Denodo AI chatbot: visible on https://community.denodo.com/docs/ (2026-10-26).
+  Denodo on-premises / enterprise install: https://www.denodo.com/en/denodo-platform/installation-guide
+  Denodo GraphQL / OData: https://community.denodo.com/docs/html/browse/9.0/en/VDP/Administration/REST_API/REST_API.htm
+-->
