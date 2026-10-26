@@ -77,37 +77,48 @@ def _build_stubs(monkeypatch, generation: str, looked: list):
 def test_a_request_during_a_rebuild_never_sees_the_schema_of_one_build_and_the_context_of_another(
     monkeypatch,
 ):
-    """THE DEFECT. A reader that looks while a role's surface is being rebuilt — after any one
+    """THE DEFECT. A reader that looks while a role's surface is being built — after any one
     part is built, before the next — sees one build's parts, never a mix. (Before: the schema
     was installed, then the path map and context built, then the context installed; a reader in
-    between got the new schema with the old context.)"""
+    between got the new schema with the old context.) A surface is built when first read
+    (role_surface.LazySurface): a reader arriving mid-build waits for the whole of it."""
+    import threading
+
     from provisa.api.app_loaders import register_role_surface
 
     state = _State()
     role = {"id": "analyst"}
     seen: list[tuple[str, str]] = []
+    readers: list[threading.Thread] = []
 
     def _nothing() -> None:
         return None
 
     def _a_request_reads_the_pair() -> None:
-        # As the GraphQL endpoint read them: the schema, then the context.
-        seen.append((state.schemas["analyst"].generation, state.contexts["analyst"].generation))
+        # As the GraphQL endpoint read them, on a request thread of its own: the schema, then the
+        # context.
+        def _read() -> None:
+            seen.append((state.schemas["analyst"].generation, state.contexts["analyst"].generation))
+
+        reader = threading.Thread(target=_read)
+        readers.append(reader)
+        reader.start()
 
     looked = [_nothing]
     _build_stubs(monkeypatch, "v1", looked)
     register_role_surface(state, role, rls="rls-v1")
+    assert role_surface(state, "analyst").schema.generation == "v1"
 
     looked[0] = _a_request_reads_the_pair
     _build_stubs(monkeypatch, "v2", looked)
     register_role_surface(state, role, rls="rls-v2")
+    built = role_surface(state, "analyst")  # the first read builds v2, the readers look meanwhile
+    for reader in readers:
+        reader.join(5)
 
     assert len(seen) == 4  # once from inside each of the four builders
-    assert set(seen) == {("v1", "v1")}, f"a request saw parts of two builds: {seen}"
-    assert (state.schemas["analyst"].generation, state.contexts["analyst"].generation) == (
-        "v2",
-        "v2",
-    )
+    assert set(seen) == {("v2", "v2")}, f"a request saw parts of two builds: {seen}"
+    assert (built.schema.generation, built.context.generation) == ("v2", "v2")
 
 
 def test_a_build_installs_every_part_in_one_object(monkeypatch):
@@ -399,10 +410,13 @@ def test_two_organisations_roles_of_the_same_name_each_have_their_own_surface(mo
     from provisa.api.app_loaders import _drop_data_surface, register_role_surface
 
     first, second = _State(), _State()
+    # Each is read once it is registered: a surface is built when first read.
     _build_stubs(monkeypatch, "first-org", [lambda: None])
     register_role_surface(first, {"id": "org_admin"}, rls="first-rls")
+    role_surface(first, "org_admin")
     _build_stubs(monkeypatch, "second-org", [lambda: None])
     register_role_surface(second, {"id": "org_admin"}, rls="second-rls")
+    role_surface(second, "org_admin")
 
     for state, org in ((first, "first-org"), (second, "second-org")):
         surface = role_surface(state, "org_admin")

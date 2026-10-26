@@ -35,7 +35,7 @@ from provisa.federation.colocation import colocation_key
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
-from provisa.api.role_surface import RoleSurface
+from provisa.api.role_surface import LazySurface, RoleSurface
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_file import router as redirect_file_router
 from provisa.api.data.signal import router as signal_router
@@ -881,7 +881,7 @@ class AppState:
         self._active_runtime().user_attributes = value
 
     @property
-    def surfaces(self) -> dict[str, RoleSurface]:
+    def surfaces(self) -> dict[str, RoleSurface | LazySurface]:
         """role id -> the role's whole data surface, from one build (api/role_surface.py)."""
         return self._active_runtime().surfaces
 
@@ -1063,6 +1063,15 @@ class AppState:
     @view_context.setter
     def view_context(self, value: CompilationContext | None) -> None:
         self._active_runtime().view_context = value
+
+    @property
+    def view_path_map(self) -> dict | None:
+        """The model-wide path map (OrgRuntime.view_path_map)."""
+        return self._active_runtime().view_path_map
+
+    @view_path_map.setter
+    def view_path_map(self, value: dict | None) -> None:
+        self._active_runtime().view_path_map = value
 
     @property
     def rls_contexts(self) -> MutableMapping[str, RLSContext]:
