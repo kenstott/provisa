@@ -51,9 +51,11 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>vs Starburst</span></p>
         <h1>Provisa and Starburst solve different halves.</h1>
         <p class="lead">
-          Starburst is a Trino-based query engine and lakehouse platform. Provisa is a
-          governed semantic layer that sits <em>above</em> an engine, including
-          Starburst. The question is which layer you're missing.
+          Starburst is a Trino-based lakehouse platform that has grown its own governance,
+          data products and agent access, all centred on SQL analytics in Starburst. Provisa
+          is a governed model that sits <em>above</em> the systems you already run, Starburst
+          included, and keeps them in sync across analytical and operational work, in every
+          language. The question is which centre you want.
         </p>
       </div>
 
@@ -62,8 +64,10 @@
         <p>
           Both federate queries across heterogeneous sources without moving the data, and
           both make a strong argument against copying everything into one warehouse first.
-          If your problem is "SQL analytics over many systems at scale," Starburst solves
-          it well, and Provisa is happy to use it as the execution engine.
+          Both now offer governance (Starburst's Gravity: tags and attribute-based access),
+          curated data products, and agent access over MCP. If your problem is "SQL
+          analytics over many systems at scale," Starburst solves it well, and Provisa is
+          happy to use it as the execution engine.
         </p>
 
         <h2>Where they differ</h2>
@@ -75,17 +79,17 @@
             <tbody>
               <tr>
                 <th>What it is</th>
-                <td>A query engine and lakehouse platform</td>
-                <td class="is-us">A semantic and governance layer over an engine you choose</td>
+                <td>A lakehouse platform: the engine, with governance, data products and agent access built around it</td>
+                <td class="is-us">One governed model over the engine and tools you choose</td>
               </tr>
               <tr>
                 <th>Query languages</th>
                 <td>SQL</td>
-                <td class="is-us">SQL, GraphQL, and Cypher over one model</td>
+                <td class="is-us">SQL, GraphQL, Cypher and SPARQL over one model</td>
               </tr>
               <tr>
                 <th>Ways in</th>
-                <td>JDBC/ODBC, REST, client drivers</td>
+                <td>JDBC/ODBC, REST, client drivers, MCP (read-only SQL)</td>
                 <td class="is-us">pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, MCP</td>
               </tr>
               <tr>
@@ -99,6 +103,11 @@
                 <td class="is-us">Is a swappable component — Trino, Starburst, DuckDB, ClickHouse, Postgres, Snowflake, Databricks, BigQuery</td>
               </tr>
               <tr>
+                <th>Your other tools</th>
+                <td>Catalogs crawl Starburst (Alation, Atlan, Collibra), with community utilities for data products</td>
+                <td class="is-us">Publishes to the catalog and lineage tools you have and imports from your semantic layer, so they stay in sync; or run it alone</td>
+              </tr>
+              <tr>
                 <th>Smallest deployment</th>
                 <td>Cloud service or a cluster</td>
                 <td class="is-us"><code>pip install "provisa[embedded]"</code> — no Docker, no JVM, no root</td>
@@ -110,10 +119,11 @@
         <h2>Use both</h2>
         <p>
           If you already run Starburst, Provisa registers it as the federation engine and
-          adds what an engine does not provide: per-role GraphQL schemas, Cypher over the
-          same model, governed relationships that constrain which joins are legal, six
-          layers of query-time access control on every transport, and an MCP server that gives AI agents the same governed access as a person,
-          with no bypass.
+          adds what it does not cover: GraphQL, Cypher and SPARQL over the same model,
+          transactional writes, governed relationships that constrain which joins are legal,
+          the same access control on every transport, and agents that read and write under
+          the same governance as a person. Starburst's data products and Gravity stay where
+          they are.
         </p>
         <p>
           The engine keeps doing what it is good at. What changes is that your semantics
@@ -132,9 +142,9 @@
 
         <h2>Choose Starburst alone when</h2>
         <ul>
-          <li>Your workload is large-scale SQL analytics and nothing else.</li>
-          <li>You want a managed lakehouse with its own storage architecture and support contract.</li>
-          <li>Your governance needs are met by engine-level access control.</li>
+          <li>Your consumers are SQL and BI tools, and you want a managed Trino lakehouse with governance (Gravity), data products, and agent access over SQL from one vendor.</li>
+          <li>Your applications don't need GraphQL, graph queries, or transactional writes through the same governed layer.</li>
+          <li>You're committed to Trino as the engine for the long term.</li>
         </ul>
       </div>
 
