@@ -27,6 +27,9 @@ from typing import Any, cast
 # are structural (names/types/keys) and drive discovery; GOVERNANCE columns expose the security posture
 # (visible_to, masking secrets, view SQL) and require the view_governance capability.
 META_DOMAIN_ID = "meta"
+# REQ-2163: the ontology system schema -- the glossary's definitions (and the Class tables
+# generated from them), as meta holds the model's structure.
+ONTOLOGY_DOMAIN_ID = "ontology"
 GOVERNANCE_META_COLUMNS: frozenset[str] = frozenset(
     {
         "visible_to",
@@ -617,15 +620,15 @@ GOVERNANCE_META_ROWS: dict[str, str] = {
 }
 
 
-# REQ-1593: the glossary meta views, each with the columns holding the domains (as |a|b|) of the
-# terms its row is about. A row is read only when each of those terms is readable to the caller
-# by the glossary's own rule (provisa.core.glossary.readable_term): a term with no domains, an
-# enterprise ("*") term, or one sharing a domain with the caller.
-GLOSSARY_SCOPED_META_VIEWS: dict[str, tuple[str, ...]] = {
-    "glossary_terms_meta": ("term_domains",),
-    "glossary_term_refs_meta": ("term_domains",),
-    "glossary_term_edges_meta": ("from_term_domains", "to_term_domains"),
-    "glossary_term_domains_meta": ("term_domains",),
+# REQ-1593, REQ-2163: the ontology schema's definition views, each with the columns holding the
+# domains (as |a|b|) of the terms its row is about. A row is read only when each of those terms is
+# readable to the caller by the glossary's own rule (provisa.core.glossary.readable_term): a term
+# with no domains, an enterprise ("*") term, or one sharing a domain with the caller.
+GLOSSARY_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
+    "_terms_ontology": ("term_domains",),
+    "_term_refs_ontology": ("term_domains",),
+    "_term_edges_ontology": ("from_term_domains", "to_term_domains"),
+    "_domains_ontology": ("term_domains",),
 }
 
 

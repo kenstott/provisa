@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from fastapi import Request
 
 from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.admin import glossary_router
 from provisa.api.errors import ApiError
 from provisa.core.env_deploy import _decompose, _existing_ids, _roles_after
@@ -264,8 +265,8 @@ async def test_the_meta_view_names_each_tables_class_term(control_plane, monkeyp
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:
-            for name in ("glossary_term_domains", "registered_tables"):
-                await conn.execute(_META_TABLE_VIEWS[name])
+            await conn.execute(ONTOLOGY_TABLE_VIEWS["_domains"])
+            await conn.execute(_META_TABLE_VIEWS["registered_tables"])
             classes = dict(
                 tuple(r)
                 for r in await conn.fetch(
@@ -283,9 +284,9 @@ def test_the_meta_schema_reaches_a_terms_tables_and_a_tables_class_term():
     from provisa.api._meta_seed import META_RELATIONSHIPS
 
     edges = {r[0]: r for r in META_RELATIONSHIPS}
-    tables = edges["meta:glossary_terms:tables"]
+    tables = edges["ontology:_terms:tables"]
     assert (tables[2], tables[4], tables[5], tables[7], tables[9]) == (
-        "glossary_terms",
+        "_terms",
         "class_term_id",
         "one-to-many",
         "registered_tables",
@@ -295,7 +296,7 @@ def test_the_meta_schema_reaches_a_terms_tables_and_a_tables_class_term():
     assert (class_term[3], class_term[5], class_term[7], class_term[9]) == (
         "class_term_id",
         "many-to-one",
-        "glossary_terms",
+        "_terms",
         "classTerm",
     )
 
@@ -373,9 +374,9 @@ async def test_a_class_terms_domains_derive_from_the_tables_it_grounds(control_p
             assert await glossary_repo.unground_table(conn, proposed, staff.id)
             await glossary_repo.ground_table(conn, ids["party"], staff.id)
             assert (await glossary_repo.term_domains(conn))[ids["party"]] == {"hr"}
-            await conn.execute(_META_TABLE_VIEWS["glossary_term_domains"])
+            await conn.execute(ONTOLOGY_TABLE_VIEWS["_domains"])
             rows = await conn.fetch(
-                "SELECT domain_id FROM glossary_term_domains_meta WHERE term_id = $1",
+                "SELECT domain_id FROM _domains_ontology WHERE term_id = $1",
                 ids["party"],
             )
             assert [r[0] for r in rows] == ["hr"]
@@ -388,10 +389,10 @@ async def test_the_meta_terms_view_counts_a_table_as_grounding(control_plane, mo
             await glossary_repo.set_definition(conn, ids["party"], "Someone we deal with.")
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:
-            for name in ("glossary_term_domains", "glossary_terms"):
-                await conn.execute(_META_TABLE_VIEWS[name])
+            for name in ("_domains", "_terms"):
+                await conn.execute(ONTOLOGY_TABLE_VIEWS[name])
             rows = await conn.fetch(
-                "SELECT name, is_rooted, grounded, live FROM glossary_terms_meta"
+                "SELECT name, is_rooted, grounded, live FROM _terms_ontology"
                 " WHERE name IN ('party', 'ledger') ORDER BY name"
             )
             assert [tuple(r) for r in rows] == [

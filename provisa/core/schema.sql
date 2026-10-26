@@ -113,6 +113,11 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO domains (id, description, steward) VALUES ('ops', 'Operational telemetry', 'org_admin')
 ON CONFLICT (id) DO NOTHING;
 
+-- REQ-2163: the ontology system schema (the glossary's definitions). Its GraphQL alias is stored:
+-- the computed one, "o", is ops's.
+INSERT INTO domains (id, description, graphql_alias) VALUES ('ontology', 'System ontology', 'ont')
+ON CONFLICT (id) DO NOTHING;
+
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
 -- REQ-1660: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa

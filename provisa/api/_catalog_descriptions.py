@@ -73,16 +73,15 @@ _META: dict[str, str] = {
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
     # REQ-1584: the business glossary as queryable metadata.
-    "glossary_terms": "The business vocabulary — one row per term, with the ref count and the "
+    "_terms": "The business vocabulary — one row per term, with the ref count and the "
     "live flag the export's admission rule computes",
     # REQ-1591
-    "glossary_term_domains": "Each glossary term's domains, by the one rule: its refs' domains "
+    "_domains": "Each glossary term's domains, by the one rule: its refs' domains "
     "while it holds refs, the domains declared for it otherwise",
-    "glossary_term_refs": "Each binding of a term to a physical column, resolved to that "
+    "_term_refs": "Each binding of a term to a physical column, resolved to that "
     "column's source, schema, table and domain",
-    "glossary_term_edges": "The term graph — how terms relate to one another, with both "
-    "endpoint names",
-    "glossary_term_experts": "Who owns or authored each term, for routing a definition question",
+    "_term_edges": "The term graph — how terms relate to one another, with both endpoint names",
+    "_experts": "Who owns or authored each term, for routing a definition question",
 }
 
 _OPS: dict[str, str] = {
@@ -261,7 +260,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "column node without joining to registered_tables",
         # REQ-1584: the stable column identity the glossary binds to.
         "column_key": "Synthesized column identity (table_id:column_name), the join key from "
-        "glossary_term_refs",
+        "ontology._term_refs",
         "data_type": "Physical type as reflected from the source",
         "is_primary_key": "Whether the column is part of the table's primary key",
         "alias": "Name the column is exposed under, when it differs from the source name",
@@ -420,7 +419,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object_key": "Canonical key of the tagged object, unique across kinds",
         "reason": "Justification recorded with the assignment",
         "expires_on": "Planned end date of the assignment",
-        # REQ-1585: the join key to table_columns and glossary_term_refs; null unless the
+        # REQ-1585: the join key to table_columns and ontology._term_refs; null unless the
         # assignment is on a column.
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
@@ -497,7 +496,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "tenant_id": _TENANT,
     },
     # REQ-1584
-    "glossary_terms": {
+    "_terms": {
         "id": "Term identifier",
         "name": "The term phrase, unique across the glossary",
         "definition": "What the term means; a term without one is a draft, never live",
@@ -523,9 +522,12 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "relationships do not all join: a curation gap",
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
+        # REQ-2163
+        "is_class": "True when the term is a Class: a table is grounded in it",
+        "is_property": "True when the term is a Property: it is bound to a column",
     },
     # REQ-1591
-    "glossary_term_domains": {
+    "_domains": {
         "id": "Term and domain",
         "term_id": "The term",
         "domain_id": "A domain the term belongs to: the domains of the tables its refs point at "
@@ -534,7 +536,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_refs": {
+    "_term_refs": {
         "id": "Ref identifier",
         "term_id": "Term bound by this ref",
         "table_id": "Table owning the bound column",
@@ -549,7 +551,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_edges": {
+    "_term_edges": {
         "id": "Edge identifier",
         "from_term_id": "Term the edge starts at",
         "to_term_id": "Term the edge ends at",
@@ -562,7 +564,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "to_term_domains": "Synthesized: the to term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_experts": {
+    "_experts": {
         "id": "Assignment identifier",
         "term_id": "Term this person owns or authored",
         "term_name": "Name of that term",

@@ -38,6 +38,9 @@ if TYPE_CHECKING:
 # Catalog domain id — local constant (kept in sync with provisa.security.rights.META_DOMAIN_ID) to
 # avoid importing a higher layer into the cypher package.
 _META_DOMAIN_ID = "meta"
+# The domains every role may traverse but only a role granted them may root a MATCH in: meta and
+# the ontology schema (provisa.compiler.schema_gen._IMPLICIT_TRAVERSAL_DOMAINS).
+_IMPLICIT_DOMAINS = frozenset({_META_DOMAIN_ID, "ontology"})
 
 # REQ-1320: star-schema modeling role → the additional node label Neo4j clients see.
 _ROLE_LABELS = {"fact": "Fact", "dimension": "Dimension"}
@@ -394,9 +397,10 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         # — it may not be a bare MATCH (n) root (which would emit a direct meta FROM and be V001-blocked,
         # the same rule SQL enforces). Mark meta nodes traversal_only so MATCH (mine)-[]->(meta) still
         # works while MATCH (n) roots on the role's own domains only. A meta grant / "*" keeps it direct.
-        if not _all_access and _META_DOMAIN_ID not in domain_access:
+        # REQ-2163: the ontology schema (the glossary's definitions moved from meta) likewise.
+        if not _all_access:
             for nm in nodes.values():
-                if nm.domain_id == _META_DOMAIN_ID:
+                if nm.domain_id in _IMPLICIT_DOMAINS and nm.domain_id not in domain_access:
                     nm.traversal_only = True
 
         return cls(

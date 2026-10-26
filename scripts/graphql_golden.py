@@ -90,12 +90,17 @@ META_MODEL = GOLDEN / "meta_model.yaml"
 
 
 async def meta_model_config(db: Any) -> dict:
-    """The meta domain as the server registers it (startup_seed), read back from ``db`` -- a
-    fresh control plane -- as a model config: its tables with their columns, and their
-    relationships. The Ontology View's queries are reads of it."""
+    """The meta domain and the ontology schema (REQ-2163) as the server registers them
+    (startup_seed), read back from ``db`` -- a fresh control plane -- as a model config: their
+    tables with their columns, and their relationships. The Ontology View's queries are reads of
+    it."""
     from sqlalchemy import select
 
-    from provisa.api.startup_seed import _seed_meta_domain, _seed_meta_relationships
+    from provisa.api.startup_seed import (
+        _seed_meta_domain,
+        _seed_meta_relationships,
+        _seed_ontology_domain,
+    )
     from provisa.core.schema_org import relationships, registered_tables, sources, table_columns
 
     async with db.acquire() as conn:
@@ -113,10 +118,13 @@ async def meta_model_config(db: Any) -> dict:
             update_columns=[],
         )
         await _seed_meta_domain(conn, "default")
+        await _seed_ontology_domain(conn, "default")
         await _seed_meta_relationships(conn)
         tables = (
             await conn.execute_core(
-                select(registered_tables).where(registered_tables.c.domain_id == "meta")
+                select(registered_tables).where(
+                    registered_tables.c.domain_id.in_(["meta", "ontology"])
+                )
             )
         ).fetchall()
         names = {t.id: str(t.table_name) for t in tables}
@@ -131,7 +139,7 @@ async def meta_model_config(db: Any) -> dict:
         out_tables.append(
             {
                 "source_id": str(t.source_id),
-                "domain_id": "meta",
+                "domain_id": str(t.domain_id),
                 "schema": str(t.schema_name),
                 "table": str(t.table_name),
                 "columns": [
@@ -148,7 +156,7 @@ async def meta_model_config(db: Any) -> dict:
     out_rels = []
     for r in sorted(rels, key=lambda r: r.id):
         if r.source_table_id not in names or r.target_table_id not in names:
-            continue  # an edge to the ops domain: not the meta model's
+            continue  # an edge to the ops domain: not the system catalog's
         row = {
             str(k): (str(v) if isinstance(v, str) else v)
             for k, v in r._asdict().items()
@@ -161,7 +169,10 @@ async def meta_model_config(db: Any) -> dict:
         out_rels.append(row)
     return {
         "naming": {"domain_prefix": True},
-        "domains": [{"id": "meta", "description": "System metadata"}],
+        "domains": [
+            {"id": "meta", "description": "System metadata"},
+            {"id": "ontology", "description": "System ontology", "graphql_alias": "ont"},
+        ],
         "sources": [{"id": "provisa-admin", "type": "postgresql"}],
         "tables": out_tables,
         "relationships": out_rels,

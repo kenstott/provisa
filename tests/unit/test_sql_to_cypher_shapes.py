@@ -235,6 +235,7 @@ def terms():
                 field_name="meta__glossary_terms",
                 table_name="glossary_terms_meta",
                 original_table_name="glossary_terms",
+                display_name=None,
             ),
             "meta__glossary_term_edges": SimpleNamespace(
                 type_name="GlossaryTermEdge",
@@ -242,6 +243,7 @@ def terms():
                 field_name="meta__glossary_term_edges",
                 table_name="glossary_term_edges_meta",
                 original_table_name="glossary_term_edges",
+                display_name=None,
             ),
         }
     )
@@ -315,11 +317,22 @@ def test_a_junction_root_with_an_order_across_its_types_has_no_cypher_form(terms
     assert semantic_sql_to_cypher(sql, lm, ctx) is None
 
 
-# --- (4): the meta domain's own model: terms, their junction-backed edges, their tables --------
+# --- (4): the system catalog's own model: terms and their junction-backed edges (the ontology
+# schema's, REQ-2163), and their tables (meta's) -----------------------------------------------
+
+_DOMAIN_OF = {"_terms": "ontology", "_term_edges": "ontology", "registered_tables": "meta"}
+_VIEW_OF = {"_terms": "_terms_ontology", "_term_edges": "_term_edges_ontology"}
+#: Each table as semantic SQL names it (domain.field): an ontology table's leading underscore is
+#: not in its field.
+_SEMANTIC = {
+    "_terms": "ontology.terms",
+    "_term_edges": "ontology.term_edges",
+    "registered_tables": "meta.registered_tables",
+}
 
 _META_COLUMNS = {
-    "glossary_terms": [("id", "integer"), ("name", "varchar"), ("retired", "boolean")],
-    "glossary_term_edges": [
+    "_terms": [("id", "integer"), ("name", "varchar"), ("retired", "boolean")],
+    "_term_edges": [
         ("id", "integer"),
         ("from_term_id", "integer"),
         ("to_term_id", "integer"),
@@ -347,7 +360,7 @@ def meta():
         {
             "id": ids[name],
             "source_id": "provisa-admin",
-            "domain_id": "meta",
+            "domain_id": _DOMAIN_OF[name],
             "schema_name": "public",
             "table_name": name,
             "columns": [{"column_name": c, "visible_to": []} for c, _ in cols],
@@ -401,26 +414,30 @@ def meta():
         },
         naming_rules=[],
         role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
-        domains=[{"id": "meta", "description": "Meta"}],
-        # As the server registers them: each meta table read through its *_meta view, its
-        # fields domain-prefixed.
+        domains=[
+            {"id": "meta", "description": "Meta"},
+            {"id": "ontology", "description": "Ontology", "graphql_alias": "ont"},
+        ],
+        # As the server registers them: each table read through its system view, its fields
+        # domain-prefixed.
         domain_prefix=True,
-        physical_table_map={name: f"{name}_meta" for name in _META_COLUMNS},
+        physical_table_map={name: _VIEW_OF.get(name, f"{name}_meta") for name in _META_COLUMNS},
     )
     ctx = build_context(si)
     c = duckdb.connect()
     c.execute("CREATE SCHEMA meta")
-    c.execute("CREATE TABLE meta.glossary_terms (id INTEGER, name VARCHAR, retired BOOLEAN)")
+    c.execute("CREATE SCHEMA ontology")
+    c.execute("CREATE TABLE ontology.terms (id INTEGER, name VARCHAR, retired BOOLEAN)")
     c.execute(
-        "INSERT INTO meta.glossary_terms VALUES (1,'party',false),(2,'customer',false),"
+        "INSERT INTO ontology.terms VALUES (1,'party',false),(2,'customer',false),"
         "(3,'ledger',false),(4,'old',true),(5,'lonely',false)"
     )
     c.execute(
-        "CREATE TABLE meta.glossary_term_edges (id INTEGER, from_term_id INTEGER, "
+        "CREATE TABLE ontology.term_edges (id INTEGER, from_term_id INTEGER, "
         "to_term_id INTEGER, rel_type VARCHAR)"
     )
     c.execute(
-        "INSERT INTO meta.glossary_term_edges VALUES (7,2,1,'KIND_OF'),(8,3,1,'PART_OF'),"
+        "INSERT INTO ontology.term_edges VALUES (7,2,1,'KIND_OF'),(8,3,1,'PART_OF'),"
         "(9,3,2,'KIND_OF'),(10,2,4,'KIND_OF'),(11,5,1,'ANTONYM_OF')"
     )
     c.execute(
@@ -433,7 +450,8 @@ def meta():
     c.execute("CREATE SCHEMA provisa_admin.public")
     for name in _META_COLUMNS:
         c.execute(
-            f"CREATE VIEW provisa_admin.public.{name}_meta AS SELECT * FROM memory.meta.{name}"
+            f"CREATE VIEW provisa_admin.public.{_VIEW_OF.get(name, f'{name}_meta')} AS "
+            f"SELECT * FROM memory.{_SEMANTIC[name]}"
         )
     return (generate_schema(si), ctx, CypherLabelMap.from_schema(ctx, domain_access=["*"])), c
 
@@ -442,7 +460,7 @@ _KEPT = 'relType: { in: ["KIND_OF", "PART_OF"] }'
 #: The Ontology View's one query: live terms with an edge of a kept type to a live term, either
 #: way, or a table; each with its edges out of those types, each edge's target, and its tables.
 _ONTOLOGY = (
-    "{ m__glossaryTerms(where: { retired: { eq: false }, _or: ["
+    "{ ont__terms(where: { retired: { eq: false }, _or: ["
     f"{{ edgesOut: {{ {_KEPT}, targetTerm: {{ retired: {{ eq: false }} }} }} }}, "
     f"{{ edgesIn: {{ {_KEPT}, sourceTerm: {{ retired: {{ eq: false }} }} }} }}, "
     "{ tables: {} } ] }) { id name "
@@ -454,7 +472,7 @@ _ONTOLOGY = (
 def test_the_ontology_view_s_one_query_is_its_cypher(meta):
     model, con = meta
     cypher = _same_rows(model, con, _ONTOLOGY)
-    assert "OPTIONAL MATCH (a)-[jr0:KIND_OF|PART_OF]->(j0:GlossaryTerms)" in cypher
+    assert "OPTIONAL MATCH (a)-[jr0:KIND_OF|PART_OF]->(j0:Terms)" in cypher
     assert "EXISTS { MATCH (a)<-[" in cypher and "-[:GROUNDS]->" in cypher
     assert "t1." not in cypher and "-[]-" not in cypher
 
@@ -463,14 +481,14 @@ def test_the_ontology_view_s_one_query_is_its_cypher(meta):
     "query",
     [
         # A filtered root with a to-many junction field: the filter is the root's, not dropped.
-        '{ m__glossaryTerms(where: { name: { eq: "ledger" } }) { id '
+        '{ ont__terms(where: { name: { eq: "ledger" } }) { id '
         f"edgesOut(where: {{ {_KEPT} }}) {{ id toTermId }} }} }}",
         # One kept type, and the edges into a term.
-        '{ m__glossaryTerms { id edgesIn(where: { relType: { eq: "KIND_OF" } }) { id fromTermId } } }',
+        '{ ont__terms { id edgesIn(where: { relType: { eq: "KIND_OF" } }) { id fromTermId } } }',
         # A relationship's condition over the junction, either way, with its far term's own.
-        f"{{ m__glossaryTerms(where: {{ edgesIn: {{ {_KEPT}, sourceTerm: {{ name: {{ eq: "
+        f"{{ ont__terms(where: {{ edgesIn: {{ {_KEPT}, sourceTerm: {{ name: {{ eq: "
         '"ledger" } } } }) { id } }',
-        "{ m__glossaryTerms(where: { tables: {} }) { id tables { tableName } } }",
+        "{ ont__terms(where: { tables: {} }) { id tables { tableName } } }",
     ],
 )
 def test_a_junction_field_or_condition_is_its_relationships(meta, query):
@@ -482,7 +500,7 @@ def test_a_junction_field_or_condition_is_its_relationships(meta, query):
 def test_a_junction_field_not_kept_to_declared_types_has_no_cypher_form(meta):
     # Every edge row, ANTONYM_OF's included: it has the declared types' rows and others'.
     (schema, ctx, lm), _con = meta
-    (root,) = compile_query(parse("{ m__glossaryTerms { id edgesOut { id } } }"), ctx)
+    (root,) = compile_query(parse("{ ont__terms { id edgesOut { id } } }"), ctx)
     semantic = make_semantic_sql(root.sql, ctx)
     assert semantic_sql_to_cypher(semantic, lm, ctx, params=root.params) is None
 
@@ -490,8 +508,8 @@ def test_a_junction_field_not_kept_to_declared_types_has_no_cypher_form(meta):
 @pytest.mark.parametrize(
     "wrapper",
     [
-        'SELECT * FROM "meta"."glossary_terms" AS "t0" WHERE "t0"."name" = \'ledger\' LIMIT 100',
-        'SELECT "t0"."id", "t0"."name" FROM "meta"."glossary_terms" AS "t0" '
+        'SELECT * FROM "ontology"."terms" AS "t0" WHERE "t0"."name" = \'ledger\' LIMIT 100',
+        'SELECT "t0"."id", "t0"."name" FROM "ontology"."terms" AS "t0" '
         'WHERE ("t0"."name" = \'ledger\') LIMIT 100',
     ],
 )
@@ -507,7 +525,7 @@ def test_a_limit_wrapper_keeps_its_condition(meta, wrapper):
 def test_a_join_with_no_cypher_form_is_not_returned_unbound(meta):
     (_schema, ctx, lm), _con = meta
     sql = (
-        'SELECT "t0"."id" AS "id", "t1"."x" AS "x" FROM "meta"."glossary_terms" AS "t0" '
+        'SELECT "t0"."id" AS "id", "t1"."x" AS "x" FROM "ontology"."terms" AS "t0" '
         'LEFT JOIN LATERAL (SELECT * FROM "meta"."unregistered" WHERE "k" = "t0"."id") AS "t1" '
         "ON TRUE"
     )

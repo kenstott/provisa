@@ -36,6 +36,7 @@ class _TableMeta:
     column_presets: list = field(default_factory=list)
     source_type: str = ""
     original_table_name: str = ""  # as TableMeta: the name before a physical alias
+    display_name: str | None = None  # as TableMeta
 
 
 @dataclass

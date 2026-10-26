@@ -30,8 +30,8 @@ from provisa.compiler.sql_rewrite import make_semantic_sql
 from provisa.executor.serialize import serialize_rows
 
 _COLUMNS = {
-    "glossary_terms": [("id", "integer"), ("name", "varchar")],
-    "glossary_term_edges": [
+    "_terms": [("id", "integer"), ("name", "varchar")],
+    "_term_edges": [
         ("id", "integer"),
         ("from_term_id", "integer"),
         ("to_term_id", "integer"),
@@ -60,7 +60,7 @@ def meta():
             {
                 "id": ids[name],
                 "source_id": "provisa-admin",
-                "domain_id": "meta",
+                "domain_id": "ontology",
                 "schema_name": "public",
                 "table_name": name,
                 "columns": [{"column_name": c, "visible_to": []} for c, _ in cols],
@@ -92,17 +92,17 @@ def meta():
         },
         naming_rules=[],
         role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
-        domains=[{"id": "meta", "description": "Meta"}],
+        domains=[{"id": "ontology", "description": "Ontology"}],
     )
     con = duckdb.connect()
-    con.execute("CREATE SCHEMA meta")
-    con.execute("CREATE TABLE meta.glossary_terms (id INTEGER, name VARCHAR)")
-    con.executemany("INSERT INTO meta.glossary_terms VALUES (?, ?)", _TERMS)
+    con.execute("CREATE SCHEMA ontology")
+    con.execute("CREATE TABLE ontology.terms (id INTEGER, name VARCHAR)")
+    con.executemany("INSERT INTO ontology.terms VALUES (?, ?)", _TERMS)
     con.execute(
-        "CREATE TABLE meta.glossary_term_edges (id INTEGER, from_term_id INTEGER, "
+        "CREATE TABLE ontology.term_edges (id INTEGER, from_term_id INTEGER, "
         "to_term_id INTEGER, rel_type VARCHAR)"
     )
-    con.executemany("INSERT INTO meta.glossary_term_edges VALUES (?, ?, ?, ?)", _EDGES)
+    con.executemany("INSERT INTO ontology.term_edges VALUES (?, ?, ?, ?)", _EDGES)
     return generate_schema(si), build_context(si), con
 
 
@@ -122,7 +122,7 @@ def _answer(meta, query: str) -> list[dict]:
         agg.replace(_duckdb(agg))
     sql = tree.sql(dialect="duckdb")
     rows = con.execute(sql, root.params).fetchall()
-    return serialize_rows(rows, root.columns, "glossaryTerms")["data"]["glossaryTerms"]
+    return serialize_rows(rows, root.columns, "terms")["data"]["terms"]
 
 
 def _duckdb(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
@@ -137,7 +137,7 @@ def _depth(args: str, depth: int, leaf: str = "id relType") -> str:
     body = f"edgesOut{args} {{ {leaf} }}"
     for _ in range(depth - 1):
         body = f"edgesOut {{ id targetTerm {{ id {body} }} }}"
-    return f'{{ glossaryTerms(where: {{ name: {{ eq: "ledger" }} }}) {{ id {body} }} }}'
+    return f'{{ terms(where: {{ name: {{ eq: "ledger" }} }}) {{ id {body} }} }}'
 
 
 _KEPT = '(where: { relType: { in: ["KIND_OF", "PART_OF"] } })'
@@ -146,7 +146,7 @@ _KEPT = '(where: { relType: { in: ["KIND_OF", "PART_OF"] } })'
 def test_a_depth_two_field_s_where_keeps_its_rows(meta):
     answer = _answer(
         meta,
-        '{ glossaryTerms(where: { name: { eq: "ledger" } }) { id '
+        '{ terms(where: { name: { eq: "ledger" } }) { id '
         f"edgesOut{_KEPT} {{ id targetTerm {{ id edgesOut{_KEPT} {{ id relType }} }} }} }} }}",
     )
     assert len(answer) == 1
@@ -207,7 +207,7 @@ def test_a_nested_limit_holds_at_depth(meta, depth):
 def test_a_depth_two_order_and_limit_pick_each_parent_s_rows(meta):
     answer = _answer(
         meta,
-        '{ glossaryTerms(where: { name: { eq: "ledger" } }) { id '
+        '{ terms(where: { name: { eq: "ledger" } }) { id '
         "edgesOut(order_by: [{ id: asc }]) { id targetTerm { id "
         "edgesOut(order_by: [{ id: desc }], limit: 1) { id } } } } }",
     )
@@ -223,7 +223,7 @@ def test_a_nested_field_with_arguments_is_answered_under_its_alias(meta):
     # field read through its own join is answered under it, at every depth.
     answer = _answer(
         meta,
-        '{ glossaryTerms(where: { name: { eq: "ledger" } }) { id '
+        '{ terms(where: { name: { eq: "ledger" } }) { id '
         f"eo: edgesOut{_KEPT} {{ id tt: targetTerm {{ id e2: edgesOut{_KEPT} {{ id }} }} }} }} }}",
     )
     assert [sorted(e) for e in answer[0]["eo"]] == [["id", "tt"], ["id", "tt"]]
@@ -233,7 +233,7 @@ def test_a_nested_field_with_arguments_is_answered_under_its_alias(meta):
 def test_one_field_read_twice_under_two_aliases_answers_each(meta):
     answer = _answer(
         meta,
-        '{ glossaryTerms(where: { name: { eq: "ledger" } }) { id '
+        '{ terms(where: { name: { eq: "ledger" } }) { id '
         'kinds: edgesOut(where: { relType: { eq: "KIND_OF" } }) { relType } '
         'parts: edgesOut(where: { relType: { eq: "PART_OF" } }) { relType } } }',
     )

@@ -93,10 +93,11 @@ from provisa.compiler.schema_inputs import (
 # Domains implicitly reachable via JOIN from any data domain (traversal only).
 # Tables in these domains are included in all role contexts so SQL JOINs
 # can reference them, but V001 still blocks direct FROM-clause access.
-# Only the meta (catalog) domain is implicitly discoverable by every role (REQ-1132). Ops is a normal
-# domain a role must be explicitly GRANTED (REQ-1133) — it is NOT implicit, so an ungranted role's
-# schema never exposes ops tables/columns to any query surface.
-_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta"})
+# The meta (catalog) domain is implicitly discoverable by every role (REQ-1132), and so is the
+# ontology schema, the glossary's definitions moved from meta (REQ-2163), whose rows the glossary's
+# own rule scopes. Ops is a normal domain a role must be explicitly GRANTED (REQ-1133) — it is NOT
+# implicit, so an ungranted role's schema never exposes ops tables/columns to any query surface.
+_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta", "ontology"})
 
 # Domains where an empty visible_to=[] means visible to NO role (not unrestricted),
 # matching stage2.py::build_governance_context's interpretation for the same seeded

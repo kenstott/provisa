@@ -43,6 +43,7 @@ from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
 from provisa.api.data.endpoint_dev import router as dev_router
 from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
+from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
 from provisa.api.app_loaders import (
     _META_TABLE_ALIAS,
     _apply_server_and_engine_config,
@@ -3200,7 +3201,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         # Introspect the engine metadata
         col_types_converted: dict[int, list[ColumnMetadata]] = introspect_tables(
-            state.engine_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})}
+            state.engine_conn,
+            tables,
+            sources,
+            {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **(kafka_physical or {})},
         )
 
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
@@ -3389,7 +3393,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
-        "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
+        "physical_table_map": {
+            **_META_TABLE_ALIAS,
+            **ONTOLOGY_TABLE_ALIAS,
+            **(kafka_physical or {}),
+        },
         "metrics": _metric_dicts,  # REQ-1319
     }
     state.schema_version += 1

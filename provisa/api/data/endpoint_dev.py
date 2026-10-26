@@ -624,7 +624,9 @@ def _collect_nl_user_tables(
         _user_nodes = {tn: nm for tn, nm in _lm.nodes.items() if not nm.traversal_only}
     else:
         _user_domains = {
-            d for d in (n.domain_id for n in _lm.nodes.values()) if d not in (None, "ops", "meta")
+            d
+            for d in (n.domain_id for n in _lm.nodes.values())
+            if d not in (None, "ops", "meta", "ontology")
         }
         _user_nodes = {
             tn: nm

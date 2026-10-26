@@ -27,6 +27,7 @@ import pytest
 
 from provisa.api._meta_seed import META_RELATIONSHIPS
 from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS, ONTOLOGY_TABLE_VIEWS
 from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES
 from provisa.dq.registration import write_checker_targets
 from provisa.security.rights import GOVERNANCE_META_COLUMNS
@@ -56,14 +57,18 @@ _VIEWS = (
     "table_columns",
     "tracked_functions",
     "tag_assignments",
-    "glossary_term_domains",  # glossary_term_refs_meta reads each term's domains from it
-    "glossary_term_refs",
+    "_domains",  # _term_refs_ontology reads each term's domains from it
+    "_term_refs",
 )
+
+
+# REQ-2163: the glossary's views are the ontology schema's.
+_VIEW_DDL = {**_META_TABLE_VIEWS, **ONTOLOGY_TABLE_VIEWS}
 
 
 def _relation(name: str) -> str:
     """The relation a meta table is read from: its curated view, else the table itself."""
-    return _META_TABLE_ALIAS.get(name, name)
+    return {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS}.get(name, name)
 
 
 def _edge(rel_id: str) -> tuple[str, str, str, str]:
@@ -184,7 +189,7 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
         async with db.acquire() as conn:
             await _seed(conn)
             for name in _VIEWS:
-                await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
+                await conn.execute(_adapt_view_ddl(_VIEW_DDL[name]))
             # The model build's own step: the checker's contract scans customers (id 1).
             await write_checker_targets(conn, {2: 1})
 
@@ -233,7 +238,7 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
             columns = await _follow(conn, "meta:registered_tables:table_columns", member_ids)
             refs = await _follow(
                 conn,
-                "meta:table_columns:glossary_term_refs",
+                "meta:table_columns:_term_refs",
                 [c["column_key"] for c in columns],
                 column="column_key",
             )

@@ -326,23 +326,19 @@ async function termClosure(m: MetaReader, role: string, bound: CoreTerm[]): Prom
     const eq = rootQuery(
       m,
       "TermEdges",
-      "glossary_term_edges",
+      "_term_edges",
       { fields: ["to_term_id"] },
       { from_term_id: { in: frontier } },
     );
     if (eq === null) break;
-    const { glossary_term_edges: out } = await dataGraphql<{
-      glossary_term_edges: { to_term_id: number }[];
+    const { _term_edges: out } = await dataGraphql<{
+      _term_edges: { to_term_id: number }[];
     }>(eq, {}, role);
     const fresh = [...new Set(out.map((e) => e.to_term_id))].filter((id) => !terms.has(id));
     if (fresh.length === 0) break;
-    const tq = rootQuery(m, "Terms", "glossary_terms", TERM, { id: { in: fresh } });
+    const tq = rootQuery(m, "Terms", "_terms", TERM, { id: { in: fresh } });
     if (tq === null) break;
-    const { glossary_terms: found } = await dataGraphql<{ glossary_terms: CoreTerm[] }>(
-      tq,
-      {},
-      role,
-    );
+    const { _terms: found } = await dataGraphql<{ _terms: CoreTerm[] }>(tq, {}, role);
     const abstract = found.filter((t) => t.is_abstract);
     for (const t of abstract) terms.set(t.id, t);
     frontier = abstract.map((t) => t.id);

@@ -8,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The meta graph's glossary associations are edges, not nodes (REQ-1586, REQ-2130): a term's
-columns and domains are reached over their junctions (glossary_term_refs, glossary_term_domains),
-a table's class term over registered_tables.class_term_id, each in one hop -- and none of those
-associations is a label. Read off the meta model the server registers (meta_model.yaml)."""
+"""The system catalog's glossary associations are edges, not nodes (REQ-1586, REQ-2130): a term's
+columns and domains are reached over their junctions (ontology._term_refs, ontology._domains), a
+table's class term over registered_tables.class_term_id, each in one hop -- and none of those
+associations is a label. The terms are the ontology schema's, the columns, domains and tables
+meta's (REQ-2163). Read off the catalog the server registers (meta_model.yaml)."""
 
 # Requirements: REQ-1586, REQ-2130
 
@@ -41,9 +42,7 @@ def label_map():
     )
 
 
-@pytest.mark.parametrize(
-    "table", ["glossary_term_refs", "glossary_term_domains", "glossary_term_table_refs"]
-)
+@pytest.mark.parametrize("table", ["_term_refs", "_domains", "_term_edges"])
 def test_no_glossary_association_is_a_label(label_map, table):
     assert table not in label_map.nodes_by_table
     assert all(node.table_name != table for node in label_map.nodes.values())
@@ -52,9 +51,9 @@ def test_no_glossary_association_is_a_label(label_map, table):
 @pytest.mark.parametrize(
     ("rel_type", "source", "target", "via"),
     [
-        ("REFERENCED_BY", "M__GlossaryTerms", "M__TableColumns", "glossary_term_refs"),
-        ("IN_DOMAIN", "M__GlossaryTerms", "M__Domains", "glossary_term_domains"),
-        ("CLASS_TERM", "M__RegisteredTables", "M__GlossaryTerms", None),
+        ("REFERENCED_BY", "ONT__Terms", "M__TableColumns", "_term_refs"),
+        ("IN_DOMAIN", "ONT__Terms", "M__Domains", "_domains"),
+        ("CLASS_TERM", "M__RegisteredTables", "ONT__Terms", None),
     ],
 )
 def test_a_glossary_association_is_one_direct_edge(label_map, rel_type, source, target, via):

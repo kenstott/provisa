@@ -66,7 +66,7 @@ async function filteredView(page: Page) {
   );
   expect(viewed.query).toContain('relType: { in: ["KIND_OF","PART_OF"] }');
   // One root: the edges are read with their terms.
-  expect(viewed.query).not.toContain("m__glossaryTermEdges");
+  expect(viewed.query).not.toContain("ont__termEdges");
   return viewed;
 }
 
@@ -121,7 +121,7 @@ test.describe("Open as query", () => {
       () => page.getByTestId("glossary-search").fill("species"),
     );
     expect(viewed.query).toContain('ilike: "%species%"');
-    const terms = (viewed.data as { glossary_terms: { name: string }[] }).glossary_terms;
+    const terms = (viewed.data as { _terms: { name: string }[] })._terms;
     expect(terms.map((t) => t.name)).toContain("species");
 
     await page.getByTestId("ontology-open-as-query").click();
@@ -147,9 +147,9 @@ test.describe("Open as query", () => {
     const viewed = await filteredView(page);
     const terms = (
       viewed.data as {
-        glossary_terms: { name: string; edges_out?: { rel_type: string }[] | null }[];
+        _terms: { name: string; edges_out?: { rel_type: string }[] | null }[];
       }
-    ).glossary_terms;
+    )._terms;
 
     await page.getByTestId("ontology-open-as-query").click();
     const cypher = page.getByTestId("ontology-open-as-cypher");

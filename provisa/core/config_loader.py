@@ -1949,7 +1949,7 @@ async def _validate_existing_domains(conn: "Connection", default_domain: str) ->
             registered_tables.c.domain_id,
         ).where(
             registered_tables.c.domain_id != "",
-            registered_tables.c.domain_id.not_in([default_domain, "meta", "ops"]),
+            registered_tables.c.domain_id.not_in([default_domain, "meta", "ops", "ontology"]),
         )
     )
     rows = [dict(r._mapping) for r in result.fetchall()]
@@ -2016,7 +2016,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     seeded_sources = SEEDED_SOURCE_IDS - {DERIVED_SOURCE_ID}
     internal = select(registered_tables.c.id).where(
         registered_tables.c.source_id.in_(sorted(seeded_sources))
-        | registered_tables.c.domain_id.in_(["meta", "ops"])
+        | registered_tables.c.domain_id.in_(["meta", "ops", "ontology"])
     )
     internal_ids = set(await _ids(internal))
     model_tables = [
@@ -2041,7 +2041,8 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
             await _ids(
                 select(rls_rules.c.id).where(
                     _off_internal(rls_rules.c.table_id),
-                    rls_rules.c.domain_id.is_(None) | rls_rules.c.domain_id.not_in(["meta", "ops"]),
+                    rls_rules.c.domain_id.is_(None)
+                    | rls_rules.c.domain_id.not_in(["meta", "ops", "ontology"]),
                 )
             ),
         ),
@@ -2068,7 +2069,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         (
             "data_product",
             await _ids(
-                select(data_products.c.id).where(data_products.c.domain_id.not_in(["meta", "ops"]))
+                select(data_products.c.id).where(
+                    data_products.c.domain_id.not_in(["meta", "ops", "ontology"])
+                )
             ),
         ),
         (
