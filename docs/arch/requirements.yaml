@@ -88935,7 +88935,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     needed; otherwise run in the customer''s own store by querying Provisa live or loading the governed
     graph into it, REQ-2165/2166). Each page also lists the real tools verified to work over that surface
     (e.g. psql, DBeaver and Tableau over pgwire; Neo4j Browser and Bloom over Bolt; Protege and Stardog
-    Studio over SPARQL), which stays the priority when ordering fixes.'
+    Studio over SPARQL), which stays the priority when ordering fixes. (Amended 2026-10-25, HOW TOOLS ARE
+    VERIFIED:) Maintainer 2026-10-26: GUI tools are hard to automate and sometimes to acquire, so a tool
+    is verified in one of three ways, and its Conformance entry says which, with the tool''s version and
+    the date: (a) covered by its driver: the open-source driver the tool sits on (Postgres JDBC/ODBC under
+    Tableau and DBeaver, the Neo4j JavaScript driver under Bloom and Browser, SPARQL over HTTP under Protege
+    and Stardog Studio) runs in CI, with the driver''s own test suite where it has one; (b) verified by
+    replay: the real tool is run once by hand against a test instance, its protocol conversation (pgwire,
+    Bolt or HTTP: introspection queries, catalog calls, procedures) is captured, and the capture is replayed
+    in CI so a change that breaks what the tool relies on fails; a licence is needed only at capture time;
+    (c) verified manually.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
