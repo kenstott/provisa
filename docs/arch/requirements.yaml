@@ -89164,7 +89164,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     An alias maps to that engine''s or surface''s equivalent type where one exists (Trino ipaddress, Postgres
     inet, ClickHouse IPv6, DuckDB''s inet; pgwire OID 869; GraphQL IPAddress), and a mapping with no entry
     for an alias maps it as its base type. Declaring support is just adding the alias to the mapping; there
-    is no separate support list.'
+    is no separate support list. (Amended 2026-10-25, TERM: SUBTYPE:) Maintainer 2026-10-26: the term is
+    subtype, not alias. Some IR types are subtypes of another IR type: inet is a subtype of text, oid of
+    bigint, money of numeric. A subtype has its base type''s semantics everywhere (comparison, ordering,
+    filters, joins, governance); a type mapping that has no entry for a subtype maps it as its base type.
+    Every ''alias'' above reads as ''subtype'', in code, UI and docs.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
