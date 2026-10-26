@@ -88847,3 +88847,32 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And the table appears as pet_store.pets, not by its physical address
 
     And no network request is made'
+- id: REQ-2165
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'Bulk RDF export of the governed graph, the counterpart of the Neo4j export (REQ-392),
+    so a customer who already runs a triple store (Jena, GraphDB, Stardog or another) uses it with Provisa''s
+    data: we work with what you have. Scope is the whole graph, a domain or a class. The export carries
+    the ontology schema (REQ-2163''s RDFS/OWL/SKOS: classes, sub-classes, properties with domain and range,
+    labels and definitions) together with the instances, so the receiving store''s reasoner and tools
+    work from the first load. It is governed: it contains exactly what the exporting role may read, masks
+    applied, through the one pipeline. Two forms: a file (Turtle, or N-Triples streamed for large exports)
+    and a direct load into a running store over the SPARQL 1.1 Graph Store HTTP Protocol, reporting triples
+    loaded and failures as the Neo4j export does. It accepts as_recorded (and as_of where a valid time
+    is mapped), so an export can be reproduced exactly later.'
+  scenario: 'Given a role that reads the Customer class with email masked
+
+    When it exports class Customer as Turtle
+
+    Then the file declares Customer as an owl:Class with its properties'' domains and ranges
+
+    And every instance the role reads is in the file
+
+    And each email in the file is masked
+
+    And an export with the same as_recorded later yields the same triples'
