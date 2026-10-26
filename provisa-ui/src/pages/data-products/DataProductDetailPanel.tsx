@@ -400,22 +400,25 @@ export function DataProductDetailPanel({
               />
             </>
           )}
-          <OutcomeBadge outcome={c.latest_outcome} />
         </Group>
-        <Text
-          c="var(--text-muted)"
-          ff="text"
-          size="xs"
-          data-testid={`data-product-detail-dq-checks-${c.checker_table_id}`}
-        >
-          {t("dataProductCore.scans", { table: modelName(c.checked_table) })}
-          {related &&
-            ` · ${
-              c.owner_product_id
-                ? t("dataProductCore.assignedTo", { product: c.owner_product_id })
-                : t("dataProductCore.unassigned")
-            }`}
-        </Text>
+        {/* Its latest run beside what it scans, on a line that wraps rather than clip either. */}
+        <Group gap={6}>
+          <OutcomeBadge outcome={c.latest_outcome} />
+          <Text
+            c="var(--text-muted)"
+            ff="text"
+            size="xs"
+            data-testid={`data-product-detail-dq-checks-${c.checker_table_id}`}
+          >
+            {t("dataProductCore.scans", { table: modelName(c.checked_table) })}
+            {related &&
+              ` · ${
+                c.owner_product_id
+                  ? t("dataProductCore.assignedTo", { product: c.owner_product_id })
+                  : t("dataProductCore.unassigned")
+              }`}
+          </Text>
+        </Group>
       </List.Item>
     );
   };
