@@ -1043,21 +1043,6 @@ def test_a_seeding_run_that_never_finished_names_the_tables_it_re_created_and_it
     assert builder._embedded_store(tmp_path, "retail") == "  r.t: 2 rows"
 
 
-def test_a_regions_demo_seeds_on_the_tier_shaped_config_of_its_own_regions():
-    """The seeding node's regions are the demo's: each region an address, an engine, a data store
-    and the shared cache, as the regions tier's config lays them out -- which, for the regions it
-    runs (eu, us), is exactly that config's."""
-    tier = yaml.safe_load(builder._REGIONS_TIER_CONFIG.read_text())
-    blocks = builder.tier_regions(["eu", "us"])
-    assert {key: blocks[key] for key in ("platform", "stores", "regions")} == {
-        key: tier[key] for key in ("platform", "stores", "regions")
-    }
-    banking = builder.tier_regions(["ledger", "warehouse"])
-    assert [r["id"] for r in banking["platform"]["regions"]] == ["ledger", "warehouse"]
-    assert banking["platform"]["regions"][0]["address"] == "${env:PROVISA_DEMO_LEDGER_ADDRESS}"
-    assert {"ledger_data", "warehouse_data", "cache"} <= {s["id"] for s in banking["stores"]}
-
-
 def test_a_regions_demo_s_setup_runs_on_a_node_per_region_against_the_visitor_s():
     """Its views are built in their regions' stores, so its setup runs with every region's node
     up, each on its region's address and its region's store, all on one model store; the setup

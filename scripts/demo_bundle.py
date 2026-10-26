@@ -474,8 +474,8 @@ def _control_plane(work: Path, name: str = "cp") -> tuple[str, str, str]:
 
 
 #: REQ-2068: the regions sandbox tier's deployment config: its platform regions and its boot
-#: org's stores and regions, whose layout a regions demo's seeding node runs with for the demo's
-#: own regions (tier_regions).
+#: org's stores and regions, which a regions demo's seeding node runs with for the demo's own
+#: regions (_tier_for).
 _REGIONS_TIER_CONFIG = _REPO / "config" / "provisa-sandbox-regions.yaml"
 
 
@@ -488,50 +488,31 @@ def _demo_regions(demo: Path) -> list[str]:
     return [*regions["headless"], regions["visitor"]]
 
 
-def tier_regions(regions: list[str]) -> dict[str, Any]:
-    """The regions tier's platform regions, stores and org regions, laid out as its config lays out
-    its own (eu, us) for the regions ``regions``: each an address, an engine, a data store, and the
-    one cache they share."""
+def _tier_for(regions: list[str]) -> dict:
+    """The regions tier's platform regions, stores and regions, those of ``regions`` alone: a
+    demo's seeding node runs in the demo's regions and is given their stores and addresses only."""
+    tier = yaml.safe_load(_REGIONS_TIER_CONFIG.read_text())
+    selected = [r for r in tier["regions"] if r["id"] in regions]
+    used = {
+        r[k] for r in selected for k in ("engine", "replicas", "views", "cache", "state", "record")
+    }
     return {
         "platform": {
-            "regions": [
-                {"id": r, "address": f"${{env:PROVISA_DEMO_{r.upper()}_ADDRESS}}"} for r in regions
-            ]
+            **tier["platform"],
+            "regions": [r for r in tier["platform"]["regions"] if r["id"] in regions],
         },
-        "stores": [
-            *(
-                {
-                    "id": f"{r}_engine",
-                    "url": f"duckdb:///${{env:PROVISA_DATA_DIR}}/regions-tier-{r}-engine.duckdb",
-                    "kind": "duckdb",
-                }
-                for r in regions
-            ),
-            *(
-                {"id": f"{r}_data", "url": f"${{env:PROVISA_DEMO_{r.upper()}_PG_URL}}"}
-                for r in regions
-            ),
-            {"id": "cache", "url": "${env:REDIS_URL}"},
-        ],
-        "regions": [
-            {
-                "id": r,
-                "engine": f"{r}_engine",
-                **{use: f"{r}_data" for use in ("replicas", "views")},
-                "cache": "cache",
-                **{use: f"{r}_data" for use in ("state", "record")},
-            }
-            for r in regions
-        ],
+        "stores": [s for s in tier["stores"] if s["id"] in used],
+        "regions": selected,
     }
 
 
 def _config(work: Path, *, regions: list[str] | None = None) -> Path:
     path = work / "config.yaml"
+    tier = _tier_for(regions) if regions else {}
     path.write_text(
         yaml.safe_dump(
             {
-                **(tier_regions(regions) if regions else {}),
+                **tier,
                 "federation_engine": "duckdb",
                 "multitenancy": True,
                 "auth": {
