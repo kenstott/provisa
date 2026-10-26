@@ -195,6 +195,7 @@ transports:
   rest: {}
   jsonapi: {}
   mcp: {}
+  sparql: {}
 
 load:
   mode: closed_loop

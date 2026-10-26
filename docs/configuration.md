@@ -1101,8 +1101,9 @@ The response cache is off for every request that does not ask for it. A request 
 | GraphQL (`/data/graphql`, Arrow Flight) | `@cached` on the operation, optionally `@cached(ttl: 60)` |
 | SQL (pgwire, Flight SQL, `/data/sql`) | a `-- @provisa cache=true` or `-- @provisa cache_ttl=60` comment line in the statement |
 | Cypher (`/data/cypher`, the Neo4j Query API, Bolt, Arrow Flight) | a `// @provisa cache=true` or `// @provisa cache_ttl=60` comment line in the query |
+| SPARQL (`/data/sparql`) | a `# @provisa cache=true` or `# @provisa cache_ttl=60` comment line in the query |
 | gRPC (and the HTTP gRPC proxy) | call metadata (headers on the proxy) `x-provisa-cache: true` or `x-provisa-cache-ttl: 60` |
-| REST, JSON:API, and as an alternative to the hint in the text: GraphQL over HTTP, `/data/cypher`, the Neo4j Query API | the request header `Cache-Control: max-age=60` (or `max-stale=60`), or `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
+| REST, JSON:API, and as an alternative to the hint in the text: GraphQL over HTTP, `/data/cypher`, `/data/sparql`, the Neo4j Query API | the request header `Cache-Control: max-age=60` (or `max-stale=60`), or `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
 
 A `ttl` that is not an integer fails the request. A request that states the opt-in twice (in its text and a header, or in two headers) with different values fails with `400`; neither is picked. `Cache-Control: no-cache` or `no-store` means no cache, the same as no header.
 

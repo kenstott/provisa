@@ -183,6 +183,7 @@ transports:
   rest: {knobs: {joins_same_source: *nojoin, joins_cross_source: *nojoin}}
   jsonapi: {knobs: {joins_same_source: *nojoin, joins_cross_source: *nojoin}}
   mcp: {}
+  sparql: {}
 
 load:
   # One moderate closed-loop step per transport per round; soak.py repeats rounds for its duration

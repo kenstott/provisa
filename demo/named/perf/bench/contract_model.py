@@ -52,7 +52,7 @@ CREDENTIAL_KINDS = ("password", "token")
 LOAD_MODES = ("closed_loop", "open_loop")
 
 
-TRANSPORT_NAME_FIELDS = ("cypher", "graphql", "grpc", "rest", "jsonapi")
+TRANSPORT_NAME_FIELDS = ("cypher", "sparql", "graphql", "grpc", "rest", "jsonapi")
 
 
 class SetupError(ValueError):
@@ -163,13 +163,15 @@ class Table:
     jsonapi_type: str | None
     columns: tuple[Column, ...]
     replication: Replication | None = None  # None: the source's
+    sparql_class: str | None = None  # the table's SPARQL class IRI, resolved like the others
 
     def has(self, language: str) -> bool:
-        """Whether the deployment exposes the table in ``language`` (sql, cypher, graphql, grpc,
-        rest or jsonapi)."""
+        """Whether the deployment exposes the table in ``language`` (sql, cypher, sparql, graphql,
+        grpc, rest or jsonapi)."""
         return {
             "sql": self.sql is not None,
             "cypher": self.cypher_label is not None,
+            "sparql": self.sparql_class is not None,
             "graphql": self.graphql_field is not None,
             "grpc": self.grpc_type_name is not None,
             "rest": self.rest_path is not None,
@@ -188,10 +190,11 @@ class Join:
     right_source: str
     right_table: str
     right_column: str
-    # How GraphQL and Cypher traverse the registered relationship left -> right, resolved from the
-    # deployment; None: that language does not expose it (SQL joins either way round).
+    # How GraphQL, Cypher and SPARQL traverse the registered relationship left -> right, resolved
+    # from the deployment; None: that language does not expose it (SQL joins either way round).
     graphql_field: str | None
     cypher_rel: str | None
+    sparql_rel: str | None = None  # the edge type's predicate IRI
 
 
 @dataclass(frozen=True)
@@ -210,6 +213,7 @@ class JoinStep:
     cypher_rel: str | None
     # a cross-source join: how its two ends are read (JOIN_REPLICATION_CLASSES); None: same-source
     replication: str | None = None
+    sparql_rel: str | None = None  # the edge type's predicate IRI
 
 
 @dataclass(frozen=True)
@@ -425,11 +429,25 @@ TRANSPORT_LANGUAGE = {
     "rest": "rest",
     "jsonapi": "jsonapi",
     "mcp": "sql",  # the run_sql tool: the same SQL /data/sql takes
+    "sparql": "sparql",  # the SPARQL 1.1 Protocol endpoint: its own dialect, never Cypher's
 }
 
 
+# Request languages with no route hint: a transport speaking one reads only sources left on `auto`.
+NO_ROUTE_HINT_LANGUAGES = ("grpc", "rest", "jsonapi", "sparql")
+
+
 # Transports whose request language can express a join (gRPC, REST and JSON:API read one table).
-JOIN_TRANSPORTS = ("graphql", "data_sql", "cypher_http", "pgwire", "flight_sql", "bolt", "mcp")
+JOIN_TRANSPORTS = (
+    "graphql",
+    "data_sql",
+    "cypher_http",
+    "pgwire",
+    "flight_sql",
+    "bolt",
+    "mcp",
+    "sparql",
+)
 
 
 def chain_role(role: str, level: int) -> str:

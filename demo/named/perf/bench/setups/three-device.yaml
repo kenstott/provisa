@@ -195,6 +195,7 @@ transports:
   grpc: {}
   rest: {}
   jsonapi: {}
+  sparql: {}
 
 load:
   mode: closed_loop

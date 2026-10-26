@@ -45,6 +45,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,8 @@ TRANSPORTS: dict[str, tuple[str, str | None]] = {
     "rest": ("GET /data/rest/{domain}/{table}", "x-provisa-cache: true header"),
     "jsonapi": ("GET /data/jsonapi/{domain}/{table}", "x-provisa-cache: true header"),
     "mcp": ("MCP tools/call run_sql, Streamable HTTP", "-- @provisa cache=true"),
+    # The SPARQL 1.1 Protocol endpoint: no route hint exists there.
+    "sparql": ("POST /data/sparql, SPARQL 1.1 Protocol", "# @provisa cache=true"),
 }
 
 DEFAULT_STEPS = (1, 16, 64, 256)
@@ -218,6 +221,51 @@ class CypherHttpClient(_HttpClient):
     def rows(self, query: Query, role: str) -> Answer:
         body = self._send(query, role)
         return list(body["columns"]), body["rows"], None
+
+
+_XSD = "http://www.w3.org/2001/XMLSchema#"
+_XSD_INTEGERS = {f"{_XSD}{t}" for t in ("integer", "int", "long", "short", "byte")}
+
+
+def _sparql_value(term: Mapping[str, Any] | None) -> Any:
+    """A SPARQL JSON result term as the value it is: a typed literal by its datatype, an unbound
+    variable as None."""
+    if term is None:
+        return None
+    value, datatype = term["value"], term.get("datatype")
+    if datatype in _XSD_INTEGERS:
+        return int(value)
+    if datatype == f"{_XSD}decimal":
+        return Decimal(value)
+    if datatype in (f"{_XSD}double", f"{_XSD}float"):
+        return float(value)
+    if datatype == f"{_XSD}boolean":
+        return value == "true"
+    return value
+
+
+class SparqlHttpClient(_HttpClient):
+    """POST /data/sparql as an RDF client sends it: the query as a form field, the answer asked
+    for as SPARQL JSON results (REQ-2135)."""
+
+    def _send(self, query: Query, role: str) -> tuple[dict[str, Any], bool | None]:
+        resp = self._http.post(
+            "/data/sparql",
+            data={"query": query.sparql},
+            headers=self._headers(role, {"Accept": "application/sparql-results+json"}),
+        )
+        resp.raise_for_status()
+        return resp.json(), self._hit(resp)
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        body, hit = self._send(query, role)
+        return len(body["results"]["bindings"]), len(body["head"]["vars"]), hit
+
+    def rows(self, query: Query, role: str) -> Answer:
+        body, hit = self._send(query, role)
+        names = list(body["head"]["vars"])
+        rows = [{n: _sparql_value(b.get(n)) for n in names} for b in body["results"]["bindings"]]
+        return names, rows, hit
 
 
 class McpClient:
@@ -580,6 +628,7 @@ CLIENTS: dict[str, Any] = {
     "rest": RestClient,
     "jsonapi": JsonApiClient,
     "mcp": McpClient,
+    "sparql": SparqlHttpClient,
 }
 
 
