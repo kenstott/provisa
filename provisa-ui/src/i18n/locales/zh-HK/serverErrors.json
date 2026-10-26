@@ -295,7 +295,7 @@
       "calendar_deleted": "行事曆「{{calendar}}」已刪除",
       "calendar_in_use": "行事曆「{{calendar}}」正被 {{count}} 個具體化檢視使用——請先清除其快照排程再刪除",
       "calendar_not_found": "找不到行事曆「{{calendar}}」",
-      "calendar_saved": "行事曆「{{calendar}}」v{{version}} 已儲存",
+      "calendar_saved": "行事曆「{{calendar}}」{{version}} 已儲存",
       "column_natively_nested": "無法註冊：欄位 {{column}} 在其數據來源中的原生類型為 {{native_type}}，因此其類型為 json，而不是 {{type}}。",
       "column_types_unresolved": "無法註冊：以下欄位無法從數據來源解析出數據類型：{{columns}}。請先內省資料表（探索結構描述）或為每個欄位設定數據類型，然後再註冊。",
       "config_not_found": "找不到設定檔",

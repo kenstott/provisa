@@ -295,7 +295,7 @@
       "calendar_deleted": "日历 '{{calendar}}' 已删除",
       "calendar_in_use": "日历 '{{calendar}}' 正被 {{count}} 个物化视图使用——删除前请先清除它们的快照计划",
       "calendar_not_found": "未找到日历 '{{calendar}}'",
-      "calendar_saved": "日历 '{{calendar}}' v{{version}} 已保存",
+      "calendar_saved": "日历 '{{calendar}}' {{version}} 已保存",
       "column_natively_nested": "无法注册：列 {{column}} 在其数据源中的原生类型为 {{native_type}}，因此其类型为 json，而不是 {{type}}。",
       "column_types_unresolved": "无法注册：无法从数据源解析以下列的数据类型：{{columns}}。请对表进行内省（发现架构），或在注册前为每列设置数据类型。",
       "config_not_found": "未找到配置文件",

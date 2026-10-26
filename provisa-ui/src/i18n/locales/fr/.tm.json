@@ -4252,7 +4252,7 @@
   "fr/serverErrors.json::serverErrors.schema.calendar_deleted": "calendar '{{calendar}}' deleted",
   "fr/serverErrors.json::serverErrors.schema.calendar_in_use": "calendar '{{calendar}}' is in use by {{count}} materialized view(s) — clear their snapshot schedule before deleting",
   "fr/serverErrors.json::serverErrors.schema.calendar_not_found": "calendar '{{calendar}}' not found",
-  "fr/serverErrors.json::serverErrors.schema.calendar_saved": "calendar '{{calendar}}' v{{version}} saved",
+  "fr/serverErrors.json::serverErrors.schema.calendar_saved": "calendar '{{calendar}}' {{version}} saved",
   "fr/serverErrors.json::serverErrors.schema.change_signal_no_receiver": "Provisa does not receive the {{signal}} change signal from a {{type}} source, so a table of source '{{source}}' would never be refreshed by it. Capture the source with Debezium and use debezium.",
   "fr/serverErrors.json::serverErrors.schema.change_signal_no_topic": "Table '{{table}}' of source '{{source}}' is on the kafka change signal but names no topic in its live.kafka.topic, so nothing would refresh it.",
   "fr/serverErrors.json::serverErrors.schema.change_signal_not_honoured": "A {{type}} source cannot yet be checked for changes, so the {{signal}} change signal would never be asked. Use ttl for source '{{source}}'.",

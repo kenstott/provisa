@@ -295,7 +295,7 @@
       "calendar_deleted": "Kalender '{{calendar}}' gelöscht",
       "calendar_in_use": "Kalender '{{calendar}}' wird von {{count}} materialisierten Sicht(en) verwendet — entfernen Sie deren Snapshot-Zeitplan vor dem Löschen",
       "calendar_not_found": "Kalender '{{calendar}}' nicht gefunden",
-      "calendar_saved": "Kalender '{{calendar}}' v{{version}} gespeichert",
+      "calendar_saved": "Kalender '{{calendar}}' {{version}} gespeichert",
       "column_natively_nested": "Registrierung nicht möglich: Die Spalte {{column}} ist in ihrer Quelle nativ {{native_type}}, ihr Typ ist daher json, nicht {{type}}.",
       "column_types_unresolved": "Registrierung nicht möglich: Für folgende Spalte(n) konnte kein Datentyp aus der Quelle ermittelt werden: {{columns}}. Introspizieren Sie die Tabelle (Schema erkennen) oder legen Sie vor der Registrierung für jede Spalte einen Datentyp fest.",
       "config_not_found": "Konfigurationsdatei nicht gefunden",
