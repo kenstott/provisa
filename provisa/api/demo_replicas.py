@@ -132,20 +132,6 @@ def bitemporal_view_tables(config: Any) -> list[str]:
     )
 
 
-def bitemporal_view_homes(config: Any, regions: list[str]) -> dict[str, list[str]]:
-    """Of a regions demo's bitemporal views' stored tables (:func:`bitemporal_view_tables`), those
-    each region keeps, by region: a view that names a region is that region's, one that names none
-    every region's (demo_region_seed.kept_here)."""
-    from provisa.core.models import DERIVED_SOURCE_ID
-
-    homes: dict[str, list[str]] = {region: [] for region in regions}
-    for table in config.tables:
-        if table.source_id == DERIVED_SOURCE_ID and table.materialize and table.is_bitemporal:
-            for region in [table.region] if table.region else regions:
-                homes[region].append(f"mv_{table.table_name}")
-    return {region: sorted(tables) for region, tables in homes.items() if tables}
-
-
 def view_mv_id(table: str) -> str:
     """The materialized view whose append log is the stored table ``table`` (``mv_<table name>``)."""
     return "view-" + table.removeprefix("mv_")
