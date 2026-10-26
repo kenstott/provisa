@@ -226,16 +226,47 @@ def seed(pg_dsn: str) -> None:
     print(f"seeded {FIXTURE_SCHEMA}.{FIXTURE_TABLE}: {len(FIXTURE)} columns, one row")
 
 
+def registered_type(pg_type: str) -> str:
+    """The type a PostgreSQL source column of ``pg_type`` registers as, decided as registration
+    decides it (provisa/api/admin/introspect.py ``_pg_column_typing``): an array by
+    ``column_typing`` (JSON, REQ-1965), a sized decimal keeping its size (REQ-1961), any other
+    scalar by ``to_ir``. Raises ValueError for a type registration refuses."""
+    from provisa.core.ir_types import column_typing, to_ir
+    from provisa.core.numeric_type import numeric_size_of
+
+    typing = column_typing(pg_type, "postgresql")
+    if typing.native_type or numeric_size_of(typing.data_type) is not None:
+        return typing.data_type
+    return to_ir(pg_type)
+
+
+def registrable_columns() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
+    """The fixture's columns as ``[(column, pg type, registered type)]``, and those registration
+    refuses, each with why. A refused column stays in PostgreSQL's fixture but not in the model:
+    the type report names it rather than the boot failing on it."""
+    registered: list[tuple[str, str, str]] = []
+    refused: dict[str, str] = {}
+    for name, typ, _ in FIXTURE:
+        try:
+            registered.append((name, typ, registered_type(typ)))
+        except ValueError as exc:
+            refused[name] = str(exc).split(":")[0]
+    return registered, refused
+
+
 def provisa_config(pg_port: int) -> dict[str, Any]:
     """The model the conformance instance boots with.
 
     No auth provider, so pgwire is in trust mode and the startup user names the role
     (``org_admin``). One domain, ``conformance``, which pgwire presents as the schema; one
     PostgreSQL source over the job's real PostgreSQL; one table, ``types_fixture``, registered from
-    that source's ``conformance`` schema under its own name and alias, every column visible to
-    ``org_admin``. So ``conformance.types_fixture`` names the same relation on both servers.
+    that source's ``conformance`` schema under its own name and alias, every registrable column
+    typed as registration types a PostgreSQL column (``registered_type``) and visible to
+    ``org_admin``. So ``conformance.types_fixture`` names the same relation on both servers. A
+    column whose type registration refuses is left out of the model and named in the report.
     pgspec needs nothing here: every table it touches it creates itself as a session temporary
     table."""
+    registered, _refused = registrable_columns()
     return {
         "federation_engine": "duckdb",
         "auth": {
@@ -265,7 +296,16 @@ def provisa_config(pg_port: int) -> dict[str, Any]:
                 "table": FIXTURE_TABLE,
                 "alias": FIXTURE_TABLE,
                 "domain_id": FIXTURE_SCHEMA,
-                "columns": [{"name": name, "visible_to": ["org_admin"]} for name, _, _ in FIXTURE],
+                "columns": [
+                    {
+                        "name": name,
+                        # A column is registered with its type (REQ-1426), as registration
+                        # types a PostgreSQL source's column.
+                        "data_type": ir_type,
+                        "visible_to": ["org_admin"],
+                    }
+                    for name, _typ, ir_type in registered
+                ],
             }
         ],
     }
@@ -479,13 +519,25 @@ def type_conversions(pg: Server, provisa: Server, names: dict[int, str]) -> dict
         server.run("SET DateStyle TO 'ISO, MDY'")
         server.run("SET IntervalStyle TO 'postgres'")
         server.run("SET extra_float_digits TO 1")
-    fixture = [
-        _compare_statement(
-            pg, provisa, f"SELECT {col} FROM {FIXTURE_SCHEMA}.{FIXTURE_TABLE}", names
+    registered, refused = registrable_columns()
+    model_type = {col: ir for col, _, ir in registered}
+    fixture = []
+    for col, typ, _ in FIXTURE:
+        sql = f"SELECT {col} FROM {FIXTURE_SCHEMA}.{FIXTURE_TABLE}"
+        if col in refused:
+            fixture.append(
+                {
+                    "statement": sql,
+                    "column": col,
+                    "declared": typ,
+                    "differences": [f"not registrable as a source column: {refused[col]}"],
+                }
+            )
+            continue
+        fixture.append(
+            _compare_statement(pg, provisa, sql, names)
+            | {"column": col, "declared": typ, "registered_as": model_type[col]}
         )
-        | {"column": col, "declared": typ}
-        for col, typ, _ in FIXTURE
-    ]
     casts = [_compare_statement(pg, provisa, f"SELECT {expr} AS v", names) for expr in CASTS]
     rows = fixture + casts
     return {

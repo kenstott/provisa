@@ -221,6 +221,18 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
     (table,) = cfg.tables
     assert domain_to_sql_name(table.domain_id) == m.FIXTURE_SCHEMA == table.schema_name
     assert table.table_name == m.FIXTURE_TABLE == table.alias
-    assert [c.name for c in table.columns] == [name for name, _, _ in m.FIXTURE]
     assert all(c.visible_to == ["org_admin"] for c in table.columns)
+    # REQ-1426: an untyped column cannot be persisted (run 40358436057 failed its boot on it).
+    # Each registrable column is typed as registration types the PostgreSQL column it reads; a
+    # type registration refuses is left out of the model, never registered unmappable.
+    from provisa.compiler.type_map import column_type_to_graphql
+
+    registered, refused = m.registrable_columns()
+    assert [(c.name, c.data_type) for c in table.columns] == [(n, ir) for n, _, ir in registered]
+    for column in table.columns:
+        column_type_to_graphql(column.data_type)  # every registered type maps
+    assert {n for n, _, _ in registered} | set(refused) == {n for n, _, _ in m.FIXTURE}
+    assert dict((n, ir) for n, _, ir in registered)["c_numeric_10_2"] == "numeric(10,2)"
+    assert dict((n, ir) for n, _, ir in registered)["c_int4_array"] == "json"
+    assert "c_inet" in refused
     assert cfg.sources[0].port == 55432
