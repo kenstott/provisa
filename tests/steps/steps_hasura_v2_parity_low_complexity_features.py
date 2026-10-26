@@ -17,7 +17,7 @@ REQ-213 — ``distinct_on`` query argument deduplicates results via ``DISTINCT O
 REQ-214 — column presets auto-set audit columns on insert/update from session
           variables (headers) or built-in functions (``now``), removing those
           columns from user input before SQL generation.
-REQ-215 — inherited roles: a child role declares ``parent_role_id`` and inherits
+REQ-215 — inherited roles: a child role declares ``parents`` and inherits
           (merges up the chain) the parent's capabilities and domain_access. The
           hierarchy is flattened at startup into per-role dicts so authorization
           lookups remain O(1).
@@ -254,37 +254,11 @@ def _run_compile_query(doc_and_field, ctx: CompilationContext, table: TableMeta)
 
 
 def _flatten_roles_from_dicts(role_definitions: list[dict]) -> dict[str, dict]:
-    """Flatten a role hierarchy into per-role dicts with merged capabilities/domain_access."""
-    by_id: dict[str, dict] = {r["id"]: r for r in role_definitions}
-    resolved: dict[str, dict] = {}
+    """The dict path the runtime build flattens roles by (security.inheritance.flatten_role_dicts):
+    capabilities merged down the chain, each role's domain_access its own (REQ-2155)."""
+    from provisa.security.inheritance import flatten_role_dicts
 
-    def _resolve(role_id: str, visiting: set[str]) -> dict:
-        if role_id in resolved:
-            return resolved[role_id]
-        if role_id in visiting:
-            raise ValueError(f"Cycle detected in role hierarchy at role '{role_id}'")
-        visiting = visiting | {role_id}
-        role = by_id[role_id]
-        caps: set[str] = set(role.get("capabilities") or [])
-        domains: set[str] = set(role.get("domain_access") or [])
-        parent_id = role.get("parent_role_id")
-        if parent_id:
-            parent_resolved = _resolve(parent_id, visiting)
-            caps |= set(parent_resolved["capabilities"])
-            domains |= set(parent_resolved["domain_access"])
-        merged = {
-            "id": role_id,
-            "description": "Test role.",
-            "capabilities": sorted(caps),
-            "domain_access": sorted(domains),
-        }
-        resolved[role_id] = merged
-        return merged
-
-    for role in role_definitions:
-        _resolve(role["id"], set())
-
-    return resolved
+    return {r["id"]: r for r in flatten_role_dicts(role_definitions)}
 
 
 def _role(
@@ -299,7 +273,7 @@ def _role(
         description="Test role.",
         capabilities=caps,
         domain_access=domains,
-        parent_role_id=parent,
+        parents=[parent] if parent else [],
     )
 
 
@@ -537,21 +511,21 @@ def _given_roles_with_parent_role_id(shared_data: dict) -> None:
             "description": "Test role.",
             "capabilities": ["read"],
             "domain_access": ["public"],
-            "parent_role_id": None,
+            "parents": [],
         },
         {
             "id": "analyst",
             "description": "Test role.",
             "capabilities": ["aggregate"],
             "domain_access": ["analytics"],
-            "parent_role_id": "base_viewer",
+            "parents": ["base_viewer"],
         },
         {
             "id": "senior_analyst",
             "description": "Test role.",
             "capabilities": ["export"],
             "domain_access": ["finance"],
-            "parent_role_id": "analyst",
+            "parents": ["analyst"],
         },
     ]
 
@@ -580,7 +554,8 @@ def _when_system_starts_up(shared_data: dict) -> None:
 
 @then("capabilities and domain_access are flattened up the chain so lookups remain O(1)")
 def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
-    """Assert that flattening produced correct merged capabilities and domain_access."""
+    """Assert that flattening merged capabilities down the chain and kept each role's own
+    domain_access (REQ-2155)."""
     flattened_models: dict[str, Role] = shared_data["flattened_models"]
     flattened_dicts: dict[str, dict] = shared_data["flattened_dicts"]
 
@@ -627,15 +602,15 @@ def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     assert _caps(an_model) >= {"aggregate", "read"}, (
         f"analyst (model) capabilities must include {{'aggregate','read'}}; got {_caps(an_model)}"
     )
-    assert _domains(an_model) >= {"analytics", "public"}, (
-        f"analyst (model) domain_access must include {{'analytics','public'}}; "
-        f"got {_domains(an_model)}"
+    # REQ-2155 (superseding REQ-215's merge): a role's domain_access is its own, never inherited.
+    assert _domains(an_model) == {"analytics"}, (
+        f"analyst (model) domain_access must be its own {{'analytics'}}; got {_domains(an_model)}"
     )
     assert _caps(an_dict) >= {"aggregate", "read"}, (
         f"analyst (dict) capabilities must include {{'aggregate','read'}}; got {_caps(an_dict)}"
     )
-    assert _domains(an_dict) >= {"analytics", "public"}, (
-        f"analyst (dict) domain_access must include {{'analytics','public'}}; got {_domains(an_dict)}"
+    assert _domains(an_dict) == {"analytics"}, (
+        f"analyst (dict) domain_access must be its own {{'analytics'}}; got {_domains(an_dict)}"
     )
 
     sa_model = flattened_models["senior_analyst"]
@@ -645,15 +620,14 @@ def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     assert _caps(sa_model) >= {"export", "aggregate", "read"}, (
         f"senior_analyst (model) capabilities must include the whole chain; got {_caps(sa_model)}"
     )
-    assert _domains(sa_model) >= {"finance", "analytics", "public"}, (
-        f"senior_analyst (model) domain_access must include the whole chain; "
-        f"got {_domains(sa_model)}"
+    assert _domains(sa_model) == {"finance"}, (
+        f"senior_analyst (model) domain_access must be its own; got {_domains(sa_model)}"
     )
     assert _caps(sa_dict) >= {"export", "aggregate", "read"}, (
         f"senior_analyst (dict) capabilities must include the whole chain; got {_caps(sa_dict)}"
     )
-    assert _domains(sa_dict) >= {"finance", "analytics", "public"}, (
-        f"senior_analyst (dict) domain_access must include the whole chain; got {_domains(sa_dict)}"
+    assert _domains(sa_dict) == {"finance"}, (
+        f"senior_analyst (dict) domain_access must be its own; got {_domains(sa_dict)}"
     )
 
 

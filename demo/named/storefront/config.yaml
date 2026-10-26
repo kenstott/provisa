@@ -40,13 +40,15 @@ roles:
 # The signed-in customer of the order-history screen: their own orders and nothing else (the row
 # filters below name customer 42, the demo's signed-in customer).
 - id: customer
+  parents: [viewer]
   description: "The signed-in customer of the order-history screen: their own orders and nothing else."
   capabilities:
   - query_development
   domain_access:
   - shop
 # The BI analyst: every order, and no customer's email.
-- id: analyst
+- id: shop_analyst
+  parents: [analyst]
   description: "The BI analyst: every order, and no customer's email."
   capabilities:
   - query_development
@@ -88,42 +90,42 @@ tables:
   table: customers
   description: The storefront's customers
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, customer, analyst]}
-  - {name: name, data_type: varchar, description: The customer's name, visible_to: [org_admin, customer, analyst]}
-  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [org_admin, customer, analyst], masks: [{to: [analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: region, data_type: varchar, description: 'The customer''s sales region: North, South, East, West or Central', visible_to: [org_admin, customer, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [data_steward, customer, shop_analyst], masks: [{to: [shop_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: region, data_type: varchar, description: 'The customer''s sales region: North, South, East, West or Central', visible_to: [data_steward, customer, shop_analyst]}
 - source_id: orders-db
   domain_id: shop
   schema: public
   table: orders
   description: Each order a customer placed
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [org_admin, customer, analyst]}
-  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [org_admin, customer, analyst]}
-  - {name: placed_at, data_type: timestamp, description: When it was placed, visible_to: [org_admin, customer, analyst]}
-  - {name: status, data_type: varchar, description: 'processing, shipped or cancelled', visible_to: [org_admin, customer, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: placed_at, data_type: timestamp, description: When it was placed, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: status, data_type: varchar, description: 'processing, shipped or cancelled', visible_to: [data_steward, customer, shop_analyst]}
 - source_id: orders-db
   domain_id: shop
   schema: public
   table: order_items
   description: Each line of an order -- a product and how many
   columns:
-  - {name: order_id, data_type: integer, is_primary_key: true, description: The order the line is on, visible_to: [org_admin, customer, analyst]}
-  - {name: line, data_type: integer, is_primary_key: true, description: The line's number on its order, visible_to: [org_admin, customer, analyst]}
-  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [org_admin, customer, analyst]}
-  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [org_admin, customer, analyst]}
-  - {name: unit_price, data_type: decimal, description: The price of one in USD, visible_to: [org_admin, customer, analyst]}
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order the line is on, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: line, data_type: integer, is_primary_key: true, description: The line's number on its order, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: unit_price, data_type: decimal, description: The price of one in USD, visible_to: [data_steward, customer, shop_analyst]}
 - source_id: catalog
   domain_id: shop
   schema: catalog${env:STOREFRONT_MONGO_NS}
   table: products
   description: What the storefront sells, one MongoDB document a product
   columns:
-  - {name: product_id, data_type: integer, path: _id, is_primary_key: true, description: The product's id, visible_to: [org_admin, customer, analyst]}
-  - {name: name, data_type: varchar, description: The product's name, visible_to: [org_admin, customer, analyst]}
-  - {name: category, data_type: varchar, description: 'Its category: brewing, coffee, drinkware, equipment, gifts or merchandise', visible_to: [org_admin, customer, analyst]}
-  - {name: price, data_type: double, description: Its price in USD, visible_to: [org_admin, customer, analyst]}
-  - {name: image_url, data_type: varchar, description: Where its picture is, visible_to: [org_admin, customer, analyst]}
+  - {name: product_id, data_type: integer, path: _id, is_primary_key: true, description: The product's id, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: name, data_type: varchar, description: The product's name, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: category, data_type: varchar, description: 'Its category: brewing, coffee, drinkware, equipment, gifts or merchandise', visible_to: [data_steward, customer, shop_analyst]}
+  - {name: price, data_type: double, description: Its price in USD, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: image_url, data_type: varchar, description: Where its picture is, visible_to: [data_steward, customer, shop_analyst]}
 - source_id: shipping
   domain_id: shop
   schema: default
@@ -131,13 +133,13 @@ tables:
   alias: shipments
   description: Each order's shipment, from the shipping service
   columns:
-  - {name: order_id, data_type: integer, is_primary_key: true, description: The order shipped, visible_to: [org_admin, customer, analyst]}
-  - {name: carrier, data_type: varchar, description: The carrier that delivers it, visible_to: [org_admin, customer, analyst]}
-  - {name: tracking, data_type: varchar, description: The carrier's tracking number, visible_to: [org_admin, customer, analyst]}
-  - {name: status, data_type: varchar, description: Where the shipment is, visible_to: [org_admin, customer, analyst]}
-  - {name: shipped_at, data_type: timestamp, description: When it left the warehouse, visible_to: [org_admin, customer, analyst]}
-  - {name: promised_at, data_type: timestamp, description: When the customer was promised it, visible_to: [org_admin, customer, analyst]}
-  - {name: delivered_at, data_type: timestamp, description: When it was delivered, visible_to: [org_admin, customer, analyst]}
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order shipped, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: carrier, data_type: varchar, description: The carrier that delivers it, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: tracking, data_type: varchar, description: The carrier's tracking number, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: status, data_type: varchar, description: Where the shipment is, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: shipped_at, data_type: timestamp, description: When it left the warehouse, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: promised_at, data_type: timestamp, description: When the customer was promised it, visible_to: [data_steward, customer, shop_analyst]}
+  - {name: delivered_at, data_type: timestamp, description: When it was delivered, visible_to: [data_steward, customer, shop_analyst]}
 views:
 # BI: what each region's orders came to, by month.
 - id: revenue_by_region
@@ -154,10 +156,10 @@ views:
     WHERE o.status <> 'cancelled'
     GROUP BY c.region, DATE_TRUNC('month', o.placed_at)
   columns:
-  - {name: region, data_type: varchar, description: The customers' region, visible_to: [org_admin, analyst]}
-  - {name: month, data_type: timestamp, description: The month the orders were placed in, visible_to: [org_admin, analyst]}
-  - {name: orders, data_type: bigint, description: The orders placed, visible_to: [org_admin, analyst]}
-  - {name: revenue, data_type: decimal, description: What they came to in USD, visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, description: The customers' region, visible_to: [data_steward, shop_analyst]}
+  - {name: month, data_type: timestamp, description: The month the orders were placed in, visible_to: [data_steward, shop_analyst]}
+  - {name: orders, data_type: bigint, description: The orders placed, visible_to: [data_steward, shop_analyst]}
+  - {name: revenue, data_type: decimal, description: What they came to in USD, visible_to: [data_steward, shop_analyst]}
 # BI: each carrier's shipments, and how many it delivered after the date it promised.
 - id: late_shipments_by_carrier
   domain_id: shop
@@ -170,9 +172,9 @@ views:
     FROM "shop"."shipments" AS s
     GROUP BY s.carrier
   columns:
-  - {name: carrier, data_type: varchar, description: The carrier, visible_to: [org_admin, analyst]}
-  - {name: shipments, data_type: bigint, description: Its shipments, visible_to: [org_admin, analyst]}
-  - {name: late, data_type: bigint, description: Those delivered after the date promised, visible_to: [org_admin, analyst]}
+  - {name: carrier, data_type: varchar, description: The carrier, visible_to: [data_steward, shop_analyst]}
+  - {name: shipments, data_type: bigint, description: Its shipments, visible_to: [data_steward, shop_analyst]}
+  - {name: late, data_type: bigint, description: Those delivered after the date promised, visible_to: [data_steward, shop_analyst]}
 relationships:
 - {id: order-to-customer, alias: PLACED_BY, cardinality: many-to-one, source_table_id: orders, source_column: customer_id, target_table_id: customers, target_column: id}
 - {id: order-to-items, alias: HAS_ITEM, cardinality: one-to-many, source_table_id: orders, source_column: id, target_table_id: order_items, target_column: order_id}

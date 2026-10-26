@@ -28,7 +28,7 @@ from tests.integration.worker_boot_harness import WorkerBoot, _config
 
 pytestmark = [pytest.mark.integration]
 
-_ROLES = ["org_admin", "analyst"]
+_ROLES = ["org_admin", "itest_analyst"]
 _ROWS = 60
 
 
@@ -85,7 +85,8 @@ def server(request):
         ],
         "roles": [
             {
-                "id": "analyst",
+                "id": "itest_analyst",
+                "parents": ["analyst"],
                 "description": "Test role.",
                 "capabilities": ["query_development", "full_results"],
                 "domain_access": ["*"],
@@ -172,7 +173,7 @@ def _sql(boot, sql: str, role: str, env: str | None = _QA) -> list[dict]:
 def test_every_role_reads_fakes_in_test_fake_and_prod_never_fakes(server):
     real = {f"p{i}@real.example" for i in range(40)}
     query = "SELECT id, email FROM sales.people ORDER BY id"
-    for role in ("analyst", "org_admin"):
+    for role in ("itest_analyst", "org_admin"):
         faked = _sql(server, query, role)
         assert not {r["email"] for r in faked} & real, role
         by_id = {r["id"]: r["email"] for r in faked}
@@ -182,12 +183,16 @@ def test_every_role_reads_fakes_in_test_fake_and_prod_never_fakes(server):
 
 
 def test_filters_grouping_and_matching_work_on_the_fakes(server):
-    (row,) = _sql(server, "SELECT email FROM sales.people WHERE id = 3", "analyst")
+    (row,) = _sql(server, "SELECT email FROM sales.people WHERE id = 3", "itest_analyst")
     ids = _sql(
-        server, f"SELECT id FROM sales.people WHERE email = '{row['email']}' ORDER BY id", "analyst"
+        server,
+        f"SELECT id FROM sales.people WHERE email = '{row['email']}' ORDER BY id",
+        "itest_analyst",
     )
     assert [r["id"] for r in ids] == [3, 43]
-    tiers = _sql(server, "SELECT tier, COUNT(*) AS n FROM sales.people GROUP BY tier", "analyst")
+    tiers = _sql(
+        server, "SELECT tier, COUNT(*) AS n FROM sales.people GROUP BY tier", "itest_analyst"
+    )
     assert {r["tier"] for r in tiers} <= {"gold", "silver"}
     # Matching through the fake: rows 41..60 hold the real emails of rows 1..20, so their fakes
     # match those 20 rows and themselves.
@@ -195,7 +200,7 @@ def test_filters_grouping_and_matching_work_on_the_fakes(server):
         server,
         "SELECT COUNT(*) AS n FROM sales.people WHERE email IN "
         "(SELECT email FROM sales.people WHERE id > 40)",
-        "analyst",
+        "itest_analyst",
     )
     assert matched[0]["n"] == 40
 
@@ -203,7 +208,7 @@ def test_filters_grouping_and_matching_work_on_the_fakes(server):
 def test_a_relative_fake_follows_the_faked_column(server):
     import datetime as dt
 
-    rows = _sql(server, "SELECT joined, renewed FROM sales.people", "analyst")
+    rows = _sql(server, "SELECT joined, renewed FROM sales.people", "itest_analyst")
     for r in rows:
         joined = dt.datetime.fromisoformat(str(r["joined"]).replace("Z", ""))
         renewed = dt.datetime.fromisoformat(str(r["renewed"]).replace("Z", ""))
@@ -214,7 +219,7 @@ def test_a_relative_fake_follows_the_faked_column(server):
 def test_measured_fakes_read_from_the_table_at_model_build(server):
     import datetime as dt
 
-    rows = _sql(server, "SELECT status, vip, opened, closed FROM sales.people", "analyst")
+    rows = _sql(server, "SELECT status, vip, opened, closed FROM sales.people", "itest_analyst")
     assert {r["status"] for r in rows} <= {"open", "closed"}
     assert {r["vip"] for r in rows} <= {True, False}
     for r in rows:

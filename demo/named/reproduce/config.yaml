@@ -33,6 +33,7 @@ naming:
   rules: []
 roles:
 - id: regulator
+  parents: [viewer]
   description: The regulator's examiner. Reads the exposure report and the trading book it is built
     from, as filed and as it stands now.
   capabilities:
@@ -60,14 +61,14 @@ tables:
   table: positions
   description: Every position of the trading book, valued at the rate in force on its business date
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The position's id, visible_to: [org_admin, regulator]}
-  - {name: desk, data_type: varchar, description: The trading desk that holds it, visible_to: [org_admin, regulator]}
-  - {name: instrument, data_type: varchar, description: What is held, visible_to: [org_admin, regulator]}
-  - {name: currency, data_type: varchar, description: The currency of its notional, visible_to: [org_admin, regulator]}
-  - {name: notional, data_type: decimal, description: Its notional in its own currency, visible_to: [org_admin, regulator]}
-  - {name: fx_rate, data_type: decimal, description: The rate its notional converts to USD at, visible_to: [org_admin, regulator]}
-  - {name: valid_from, data_type: timestamp, description: The business date the position and its rate are for, visible_to: [org_admin, regulator]}
-  - {name: entered_at, data_type: timestamp, description: When the position or its rate was last entered or changed, visible_to: [org_admin, regulator]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The position's id, visible_to: [data_steward, regulator]}
+  - {name: desk, data_type: varchar, description: The trading desk that holds it, visible_to: [data_steward, regulator]}
+  - {name: instrument, data_type: varchar, description: What is held, visible_to: [data_steward, regulator]}
+  - {name: currency, data_type: varchar, description: The currency of its notional, visible_to: [data_steward, regulator]}
+  - {name: notional, data_type: decimal, description: Its notional in its own currency, visible_to: [data_steward, regulator]}
+  - {name: fx_rate, data_type: decimal, description: The rate its notional converts to USD at, visible_to: [data_steward, regulator]}
+  - {name: valid_from, data_type: timestamp, description: The business date the position and its rate are for, visible_to: [data_steward, regulator]}
+  - {name: entered_at, data_type: timestamp, description: When the position or its rate was last entered or changed, visible_to: [data_steward, regulator]}
   write_grants:
   # The back office's rate corrections: the rate alone, through the governed write path.
   - {role: org_admin, operation: update, columns: [fx_rate, entered_at]}
@@ -89,10 +90,10 @@ views:
     FROM "reproduce"."positions" AS p
     GROUP BY p.desk
   columns:
-  - {name: desk, data_type: varchar, description: The trading desk, visible_to: [org_admin, regulator]}
-  - {name: exposure, data_type: decimal, description: 'Its exposure in USD -- each position''s notional at its rate, summed', visible_to: [org_admin, regulator]}
-  - {name: valid_from, data_type: timestamp, description: The business date the figure is for, visible_to: [org_admin, regulator]}
-  - {name: entered_at, data_type: timestamp, description: When the book last entered or changed a position or rate behind the figure, visible_to: [org_admin, regulator]}
+  - {name: desk, data_type: varchar, description: The trading desk, visible_to: [data_steward, regulator]}
+  - {name: exposure, data_type: decimal, description: 'Its exposure in USD -- each position''s notional at its rate, summed', visible_to: [data_steward, regulator]}
+  - {name: valid_from, data_type: timestamp, description: The business date the figure is for, visible_to: [data_steward, regulator]}
+  - {name: entered_at, data_type: timestamp, description: When the book last entered or changed a position or rate behind the figure, visible_to: [data_steward, regulator]}
 relationships: []
 functions:
 # The demo's setup files the report, then corrects a rate (REQ-2016, setup.yaml). Each a governed
@@ -104,7 +105,7 @@ functions:
   description: The Bund's EUR rate as first booked for 30 September, 1.08
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       UPDATE "reproduce"."positions" SET fx_rate = 1.08, entered_at = TIMESTAMP '2026-09-30 08:00' WHERE id = 2
@@ -115,7 +116,7 @@ functions:
   description: The back office corrects the Bund's EUR rate for 30 September to 1.10, days later
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       UPDATE "reproduce"."positions" SET fx_rate = 1.10, entered_at = now() WHERE id = 2

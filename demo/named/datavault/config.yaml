@@ -52,6 +52,7 @@ naming:
 roles:
 # Reads the vault: the satellites of European customers, their personal data masked.
 - id: analyst_eu
+  parents: [viewer]
   description: "An analyst in the EU: queries orders, the CRM and the vault, and sees only European customers."
   capabilities: [query_development]
   domain_access: [orders, crm, vault]
@@ -89,17 +90,17 @@ tables:
   cache_ttl: 10
   description: 'The order system''s customers, insert-only: every version received, by its load date'
   columns:
-  - {name: customer_id, data_type: varchar, is_primary_key: true, description: 'The customer''s code, such as ALFKI', visible_to: [org_admin, analyst_eu]}
-  - {name: company_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_title, data_type: varchar, description: Their title, visible_to: [org_admin, analyst_eu]}
-  - {name: address, data_type: varchar, description: The street address, visible_to: [org_admin, analyst_eu]}
-  - {name: city, data_type: varchar, description: The city, visible_to: [org_admin, analyst_eu]}
-  - {name: region, data_type: varchar, description: 'The region, where the country has them', visible_to: [org_admin, analyst_eu]}
-  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [org_admin, analyst_eu]}
-  - {name: country, data_type: varchar, description: The country, visible_to: [org_admin, analyst_eu]}
-  - {name: phone, data_type: varchar, description: The phone number, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
-  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the customer was received, visible_to: [org_admin, analyst_eu]}
+  - {name: customer_id, data_type: varchar, is_primary_key: true, description: 'The customer''s code, such as ALFKI', visible_to: [data_steward, analyst_eu]}
+  - {name: company_name, data_type: varchar, description: The customer's name, visible_to: [data_steward, analyst_eu]}
+  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_title, data_type: varchar, description: Their title, visible_to: [data_steward, analyst_eu]}
+  - {name: address, data_type: varchar, description: The street address, visible_to: [data_steward, analyst_eu]}
+  - {name: city, data_type: varchar, description: The city, visible_to: [data_steward, analyst_eu]}
+  - {name: region, data_type: varchar, description: 'The region, where the country has them', visible_to: [data_steward, analyst_eu]}
+  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [data_steward, analyst_eu]}
+  - {name: country, data_type: varchar, description: The country, visible_to: [data_steward, analyst_eu]}
+  - {name: phone, data_type: varchar, description: The phone number, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the customer was received, visible_to: [data_steward, analyst_eu]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [customer_id, company_name, contact_name, contact_title, address, city, region, postal_code, country, phone, load_date]}
   - {role: org_admin, operation: update, columns: [customer_id, company_name, contact_name, contact_title, address, city, region, postal_code, country, phone, load_date]}
@@ -113,14 +114,14 @@ tables:
   cache_ttl: 10
   description: 'The products the order system sells, insert-only: every version received, by its load date'
   columns:
-  - {name: product_id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [org_admin, analyst_eu]}
-  - {name: product_name, data_type: varchar, description: The product's name, visible_to: [org_admin, analyst_eu]}
-  - {name: supplier_id, data_type: integer, description: Who supplies it, visible_to: [org_admin, analyst_eu]}
-  - {name: category_id, data_type: integer, description: Its category, visible_to: [org_admin, analyst_eu]}
-  - {name: quantity_per_unit, data_type: varchar, description: 'What one unit holds, such as 10 boxes x 20 bags', visible_to: [org_admin, analyst_eu]}
-  - {name: unit_price, data_type: 'decimal(10,2)', description: The list price of one unit, visible_to: [org_admin, analyst_eu]}
-  - {name: discontinued, data_type: boolean, description: Whether it is no longer sold, visible_to: [org_admin, analyst_eu]}
-  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the product was received, visible_to: [org_admin, analyst_eu]}
+  - {name: product_id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [data_steward, analyst_eu]}
+  - {name: product_name, data_type: varchar, description: The product's name, visible_to: [data_steward, analyst_eu]}
+  - {name: supplier_id, data_type: integer, description: Who supplies it, visible_to: [data_steward, analyst_eu]}
+  - {name: category_id, data_type: integer, description: Its category, visible_to: [data_steward, analyst_eu]}
+  - {name: quantity_per_unit, data_type: varchar, description: 'What one unit holds, such as 10 boxes x 20 bags', visible_to: [data_steward, analyst_eu]}
+  - {name: unit_price, data_type: 'decimal(10,2)', description: The list price of one unit, visible_to: [data_steward, analyst_eu]}
+  - {name: discontinued, data_type: boolean, description: Whether it is no longer sold, visible_to: [data_steward, analyst_eu]}
+  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the product was received, visible_to: [data_steward, analyst_eu]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [product_id, product_name, supplier_id, category_id, quantity_per_unit, unit_price, discontinued, load_date]}
   - {role: org_admin, operation: update, columns: [product_id, product_name, supplier_id, category_id, quantity_per_unit, unit_price, discontinued, load_date]}
@@ -134,26 +135,26 @@ tables:
   cache_ttl: 10
   description: The orders customers placed
   columns:
-  - {name: order_id, data_type: integer, is_primary_key: true, description: The order's number, visible_to: [org_admin, analyst_eu]}
-  - {name: customer_id, data_type: varchar, description: The customer who placed it, visible_to: [org_admin, analyst_eu]}
-  - {name: order_date, data_type: date, description: When it was placed, visible_to: [org_admin, analyst_eu]}
-  - {name: required_date, data_type: date, description: When it was wanted by, visible_to: [org_admin, analyst_eu]}
-  - {name: shipped_date, data_type: date, description: When it was shipped, visible_to: [org_admin, analyst_eu]}
-  - {name: freight, data_type: 'decimal(10,2)', description: What shipping it cost, visible_to: [org_admin, analyst_eu]}
-  - {name: ship_city, data_type: varchar, description: The city it was shipped to, visible_to: [org_admin, analyst_eu]}
-  - {name: ship_country, data_type: varchar, description: The country it was shipped to, visible_to: [org_admin, analyst_eu]}
-  - {name: load_date, data_type: timestamp, description: When this row of the order was received, visible_to: [org_admin, analyst_eu]}
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order's number, visible_to: [data_steward, analyst_eu]}
+  - {name: customer_id, data_type: varchar, description: The customer who placed it, visible_to: [data_steward, analyst_eu]}
+  - {name: order_date, data_type: date, description: When it was placed, visible_to: [data_steward, analyst_eu]}
+  - {name: required_date, data_type: date, description: When it was wanted by, visible_to: [data_steward, analyst_eu]}
+  - {name: shipped_date, data_type: date, description: When it was shipped, visible_to: [data_steward, analyst_eu]}
+  - {name: freight, data_type: 'decimal(10,2)', description: What shipping it cost, visible_to: [data_steward, analyst_eu]}
+  - {name: ship_city, data_type: varchar, description: The city it was shipped to, visible_to: [data_steward, analyst_eu]}
+  - {name: ship_country, data_type: varchar, description: The country it was shipped to, visible_to: [data_steward, analyst_eu]}
+  - {name: load_date, data_type: timestamp, description: When this row of the order was received, visible_to: [data_steward, analyst_eu]}
 - source_id: orders
   domain_id: orders
   schema: orders
   table: order_line
   description: What each order contains
   columns:
-  - {name: order_id, data_type: integer, is_primary_key: true, description: The order, visible_to: [org_admin, analyst_eu]}
-  - {name: product_id, data_type: integer, is_primary_key: true, description: The product, visible_to: [org_admin, analyst_eu]}
-  - {name: unit_price, data_type: 'decimal(10,2)', description: The price of one when ordered, visible_to: [org_admin, analyst_eu]}
-  - {name: quantity, data_type: integer, description: How many, visible_to: [org_admin, analyst_eu]}
-  - {name: discount, data_type: real, description: 'The discount, as a fraction', visible_to: [org_admin, analyst_eu]}
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order, visible_to: [data_steward, analyst_eu]}
+  - {name: product_id, data_type: integer, is_primary_key: true, description: The product, visible_to: [data_steward, analyst_eu]}
+  - {name: unit_price, data_type: 'decimal(10,2)', description: The price of one when ordered, visible_to: [data_steward, analyst_eu]}
+  - {name: quantity, data_type: integer, description: How many, visible_to: [data_steward, analyst_eu]}
+  - {name: discount, data_type: real, description: 'The discount, as a fraction', visible_to: [data_steward, analyst_eu]}
 - source_id: crm
   domain_id: crm
   schema: crm
@@ -164,17 +165,17 @@ tables:
   description: 'The CRM''s accounts: its own copy of the customers, with their contacts; insert-only,
     every version received, by its load date'
   columns:
-  - {name: account_code, data_type: varchar, is_primary_key: true, description: 'The customer''s code, as the order system has it', visible_to: [org_admin, analyst_eu]}
-  - {name: account_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_title, data_type: varchar, description: Their title, visible_to: [org_admin, analyst_eu]}
-  - {name: contact_email, data_type: varchar, description: Their email address, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: phone, data_type: varchar, description: The phone number, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
-  - {name: address, data_type: varchar, description: The street address, visible_to: [org_admin, analyst_eu]}
-  - {name: city, data_type: varchar, description: The city, visible_to: [org_admin, analyst_eu]}
-  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [org_admin, analyst_eu]}
-  - {name: country, data_type: varchar, description: The country, visible_to: [org_admin, analyst_eu]}
-  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the account was received, visible_to: [org_admin, analyst_eu]}
+  - {name: account_code, data_type: varchar, is_primary_key: true, description: 'The customer''s code, as the order system has it', visible_to: [data_steward, analyst_eu]}
+  - {name: account_name, data_type: varchar, description: The customer's name, visible_to: [data_steward, analyst_eu]}
+  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_title, data_type: varchar, description: Their title, visible_to: [data_steward, analyst_eu]}
+  - {name: contact_email, data_type: varchar, description: Their email address, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: phone, data_type: varchar, description: The phone number, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: address, data_type: varchar, description: The street address, visible_to: [data_steward, analyst_eu]}
+  - {name: city, data_type: varchar, description: The city, visible_to: [data_steward, analyst_eu]}
+  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [data_steward, analyst_eu]}
+  - {name: country, data_type: varchar, description: The country, visible_to: [data_steward, analyst_eu]}
+  - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the account was received, visible_to: [data_steward, analyst_eu]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [account_code, account_name, contact_name, contact_title, contact_email, phone, address, city, postal_code, country, load_date]}
   - {role: org_admin, operation: update, columns: [account_code, account_name, contact_name, contact_title, contact_email, phone, address, city, postal_code, country, load_date]}
@@ -203,10 +204,10 @@ views:
     ) AS h
     WHERE seen = 1
   columns:
-  - {name: customer_hk, data_type: varchar, description: 'The hash key: md5 of the customer''s code', visible_to: [org_admin, analyst_eu]}
-  - {name: customer_id, data_type: varchar, description: 'The business key: the customer''s code', visible_to: [org_admin, analyst_eu]}
-  - {name: record_source, data_type: varchar, description: The system the customer was first seen in, visible_to: [org_admin, analyst_eu]}
-  - {name: first_seen, data_type: timestamp, description: When it was first seen there, visible_to: [org_admin, analyst_eu]}
+  - {name: customer_hk, data_type: varchar, description: 'The hash key: md5 of the customer''s code', visible_to: [data_steward, analyst_eu]}
+  - {name: customer_id, data_type: varchar, description: 'The business key: the customer''s code', visible_to: [data_steward, analyst_eu]}
+  - {name: record_source, data_type: varchar, description: The system the customer was first seen in, visible_to: [data_steward, analyst_eu]}
+  - {name: first_seen, data_type: timestamp, description: When it was first seen there, visible_to: [data_steward, analyst_eu]}
 - id: hub_product
   domain_id: vault
   materialize: true
@@ -217,10 +218,10 @@ views:
     FROM "orders"."product"
     GROUP BY product_id
   columns:
-  - {name: product_hk, data_type: varchar, description: 'The hash key: md5 of the product''s id', visible_to: [org_admin, analyst_eu]}
-  - {name: product_id, data_type: integer, description: 'The business key: the product''s id', visible_to: [org_admin, analyst_eu]}
-  - {name: record_source, data_type: varchar, description: The system the product was first seen in, visible_to: [org_admin, analyst_eu]}
-  - {name: first_seen, data_type: timestamp, description: When it was first seen there, visible_to: [org_admin, analyst_eu]}
+  - {name: product_hk, data_type: varchar, description: 'The hash key: md5 of the product''s id', visible_to: [data_steward, analyst_eu]}
+  - {name: product_id, data_type: integer, description: 'The business key: the product''s id', visible_to: [data_steward, analyst_eu]}
+  - {name: record_source, data_type: varchar, description: The system the product was first seen in, visible_to: [data_steward, analyst_eu]}
+  - {name: first_seen, data_type: timestamp, description: When it was first seen there, visible_to: [data_steward, analyst_eu]}
 - id: hub_order
   domain_id: vault
   materialize: true
@@ -230,10 +231,10 @@ views:
       load_date AS first_seen
     FROM "orders"."sales_order"
   columns:
-  - {name: order_hk, data_type: varchar, description: 'The hash key: md5 of the order''s number', visible_to: [org_admin, analyst_eu]}
-  - {name: order_id, data_type: integer, description: 'The business key: the order''s number', visible_to: [org_admin, analyst_eu]}
-  - {name: record_source, data_type: varchar, description: The system the order was first seen in, visible_to: [org_admin, analyst_eu]}
-  - {name: first_seen, data_type: timestamp, description: When it was first seen there, visible_to: [org_admin, analyst_eu]}
+  - {name: order_hk, data_type: varchar, description: 'The hash key: md5 of the order''s number', visible_to: [data_steward, analyst_eu]}
+  - {name: order_id, data_type: integer, description: 'The business key: the order''s number', visible_to: [data_steward, analyst_eu]}
+  - {name: record_source, data_type: varchar, description: The system the order was first seen in, visible_to: [data_steward, analyst_eu]}
+  - {name: first_seen, data_type: timestamp, description: When it was first seen there, visible_to: [data_steward, analyst_eu]}
 # Links: the hash keys of the hubs a relationship pairs.
 - id: link_customer_order
   domain_id: vault
@@ -245,11 +246,11 @@ views:
       'orders' AS record_source, load_date AS first_seen
     FROM "orders"."sales_order"
   columns:
-  - {name: link_hk, data_type: varchar, description: 'The link''s hash key: md5 of the customer''s code and the order''s number', visible_to: [org_admin, analyst_eu]}
-  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: order_hk, data_type: varchar, description: The order's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: record_source, data_type: varchar, description: The system the pairing was seen in, visible_to: [org_admin, analyst_eu]}
-  - {name: first_seen, data_type: timestamp, description: When it was first seen there, visible_to: [org_admin, analyst_eu]}
+  - {name: link_hk, data_type: varchar, description: 'The link''s hash key: md5 of the customer''s code and the order''s number', visible_to: [data_steward, analyst_eu]}
+  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: order_hk, data_type: varchar, description: The order's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: record_source, data_type: varchar, description: The system the pairing was seen in, visible_to: [data_steward, analyst_eu]}
+  - {name: first_seen, data_type: timestamp, description: When it was first seen there, visible_to: [data_steward, analyst_eu]}
 - id: link_order_product
   domain_id: vault
   materialize: true
@@ -260,10 +261,10 @@ views:
       'orders' AS record_source
     FROM "orders"."order_line"
   columns:
-  - {name: link_hk, data_type: varchar, description: 'The link''s hash key: md5 of the order''s number and the product''s id', visible_to: [org_admin, analyst_eu]}
-  - {name: order_hk, data_type: varchar, description: The order's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: product_hk, data_type: varchar, description: The product's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: record_source, data_type: varchar, description: The system the pairing was seen in, visible_to: [org_admin, analyst_eu]}
+  - {name: link_hk, data_type: varchar, description: 'The link''s hash key: md5 of the order''s number and the product''s id', visible_to: [data_steward, analyst_eu]}
+  - {name: order_hk, data_type: varchar, description: The order's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: product_hk, data_type: varchar, description: The product's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: record_source, data_type: varchar, description: The system the pairing was seen in, visible_to: [data_steward, analyst_eu]}
 # Satellites: a hub's attributes from one source, every version a row with its load date. A row
 # whose hashdiff is the same as the row before it for the key changed nothing, and is left out.
 - id: sat_customer_orders
@@ -284,17 +285,17 @@ views:
     ) AS v
     WHERE previous IS NULL OR previous <> hashdiff
   columns:
-  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: record_source, data_type: varchar, description: 'The system these values came from: the order system', visible_to: [org_admin, analyst_eu]}
-  - {name: load_date, data_type: timestamp, description: When the vault received this version, visible_to: [org_admin, analyst_eu]}
-  - {name: hashdiff, data_type: varchar, description: 'md5 of the attributes: a new one is a real change', visible_to: [org_admin, analyst_eu]}
-  - {name: company_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact; withheld from an analyst, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: address, data_type: varchar, description: The street address, visible_to: [org_admin, analyst_eu]}
-  - {name: city, data_type: varchar, description: The city, visible_to: [org_admin, analyst_eu]}
-  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [org_admin, analyst_eu]}
-  - {name: country, data_type: varchar, description: The country, visible_to: [org_admin, analyst_eu]}
-  - {name: phone, data_type: varchar, description: The phone number; its digits hidden from an analyst, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: record_source, data_type: varchar, description: 'The system these values came from: the order system', visible_to: [data_steward, analyst_eu]}
+  - {name: load_date, data_type: timestamp, description: When the vault received this version, visible_to: [data_steward, analyst_eu]}
+  - {name: hashdiff, data_type: varchar, description: 'md5 of the attributes: a new one is a real change', visible_to: [data_steward, analyst_eu]}
+  - {name: company_name, data_type: varchar, description: The customer's name, visible_to: [data_steward, analyst_eu]}
+  - {name: contact_name, data_type: varchar, description: The person to contact; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: address, data_type: varchar, description: The street address, visible_to: [data_steward, analyst_eu]}
+  - {name: city, data_type: varchar, description: The city, visible_to: [data_steward, analyst_eu]}
+  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [data_steward, analyst_eu]}
+  - {name: country, data_type: varchar, description: The country, visible_to: [data_steward, analyst_eu]}
+  - {name: phone, data_type: varchar, description: The phone number; its digits hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
 - id: sat_customer_crm
   domain_id: vault
   materialize: true
@@ -313,18 +314,18 @@ views:
     ) AS v
     WHERE previous IS NULL OR previous <> hashdiff
   columns:
-  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: record_source, data_type: varchar, description: 'The system these values came from: the CRM', visible_to: [org_admin, analyst_eu]}
-  - {name: load_date, data_type: timestamp, description: When the vault received this version, visible_to: [org_admin, analyst_eu]}
-  - {name: hashdiff, data_type: varchar, description: 'md5 of the attributes: a new one is a real change', visible_to: [org_admin, analyst_eu]}
-  - {name: account_name, data_type: varchar, description: The customer's name, visible_to: [org_admin, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact; withheld from an analyst, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_email, data_type: varchar, description: Their email address; its name hidden from an analyst, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: address, data_type: varchar, description: The street address, visible_to: [org_admin, analyst_eu]}
-  - {name: city, data_type: varchar, description: The city, visible_to: [org_admin, analyst_eu]}
-  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [org_admin, analyst_eu]}
-  - {name: country, data_type: varchar, description: The country, visible_to: [org_admin, analyst_eu]}
-  - {name: phone, data_type: varchar, description: The phone number; its digits hidden from an analyst, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: record_source, data_type: varchar, description: 'The system these values came from: the CRM', visible_to: [data_steward, analyst_eu]}
+  - {name: load_date, data_type: timestamp, description: When the vault received this version, visible_to: [data_steward, analyst_eu]}
+  - {name: hashdiff, data_type: varchar, description: 'md5 of the attributes: a new one is a real change', visible_to: [data_steward, analyst_eu]}
+  - {name: account_name, data_type: varchar, description: The customer's name, visible_to: [data_steward, analyst_eu]}
+  - {name: contact_name, data_type: varchar, description: The person to contact; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_email, data_type: varchar, description: Their email address; its name hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: address, data_type: varchar, description: The street address, visible_to: [data_steward, analyst_eu]}
+  - {name: city, data_type: varchar, description: The city, visible_to: [data_steward, analyst_eu]}
+  - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [data_steward, analyst_eu]}
+  - {name: country, data_type: varchar, description: The country, visible_to: [data_steward, analyst_eu]}
+  - {name: phone, data_type: varchar, description: The phone number; its digits hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
 - id: sat_product
   domain_id: vault
   materialize: true
@@ -342,14 +343,14 @@ views:
     ) AS v
     WHERE previous IS NULL OR previous <> hashdiff
   columns:
-  - {name: product_hk, data_type: varchar, description: The product's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: record_source, data_type: varchar, description: 'The system these values came from: the order system', visible_to: [org_admin, analyst_eu]}
-  - {name: load_date, data_type: timestamp, description: When the vault received this version, visible_to: [org_admin, analyst_eu]}
-  - {name: hashdiff, data_type: varchar, description: 'md5 of the attributes: a new one is a real change', visible_to: [org_admin, analyst_eu]}
-  - {name: product_name, data_type: varchar, description: The product's name, visible_to: [org_admin, analyst_eu]}
-  - {name: quantity_per_unit, data_type: varchar, description: What one unit holds, visible_to: [org_admin, analyst_eu]}
-  - {name: unit_price, data_type: 'decimal(10,2)', description: The list price of one unit, visible_to: [org_admin, analyst_eu]}
-  - {name: discontinued, data_type: boolean, description: Whether it is no longer sold, visible_to: [org_admin, analyst_eu]}
+  - {name: product_hk, data_type: varchar, description: The product's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: record_source, data_type: varchar, description: 'The system these values came from: the order system', visible_to: [data_steward, analyst_eu]}
+  - {name: load_date, data_type: timestamp, description: When the vault received this version, visible_to: [data_steward, analyst_eu]}
+  - {name: hashdiff, data_type: varchar, description: 'md5 of the attributes: a new one is a real change', visible_to: [data_steward, analyst_eu]}
+  - {name: product_name, data_type: varchar, description: The product's name, visible_to: [data_steward, analyst_eu]}
+  - {name: quantity_per_unit, data_type: varchar, description: What one unit holds, visible_to: [data_steward, analyst_eu]}
+  - {name: unit_price, data_type: 'decimal(10,2)', description: The list price of one unit, visible_to: [data_steward, analyst_eu]}
+  - {name: discontinued, data_type: boolean, description: Whether it is no longer sold, visible_to: [data_steward, analyst_eu]}
 # Point in time: per customer and per date anything about it was loaded, the version of each
 # satellite in force then -- the latest loaded on or before it -- with its values. One view over the
 # satellites' rows: each source's latest load date carried forward per customer, and that version's
@@ -406,22 +407,22 @@ views:
       ) AS e
     ) AS w
   columns:
-  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: as_of, data_type: timestamp, description: 'The time asked about: a date something about the customer was loaded', visible_to: [org_admin, analyst_eu]}
-  - {name: orders_source, data_type: varchar, description: 'The source of the next six: the order system', visible_to: [org_admin, analyst_eu]}
-  - {name: orders_load_date, data_type: timestamp, description: Since when the order system's values were known, visible_to: [org_admin, analyst_eu]}
-  - {name: company_name, data_type: varchar, description: The customer's name the order system had then, visible_to: [org_admin, analyst_eu]}
-  - {name: orders_address, data_type: varchar, description: The street address the order system had then, visible_to: [org_admin, analyst_eu]}
-  - {name: orders_postal_code, data_type: varchar, description: The postal code the order system had then, visible_to: [org_admin, analyst_eu]}
-  - {name: orders_city, data_type: varchar, description: The city the order system had then, visible_to: [org_admin, analyst_eu]}
-  - {name: country, data_type: varchar, description: The country the order system had then, visible_to: [org_admin, analyst_eu]}
-  - {name: crm_source, data_type: varchar, description: 'The source of the rest: the CRM', visible_to: [org_admin, analyst_eu]}
-  - {name: crm_load_date, data_type: timestamp, description: Since when the CRM's values were known, visible_to: [org_admin, analyst_eu]}
-  - {name: crm_address, data_type: varchar, description: The street address the CRM had then, visible_to: [org_admin, analyst_eu]}
-  - {name: crm_postal_code, data_type: varchar, description: The postal code the CRM had then, visible_to: [org_admin, analyst_eu]}
-  - {name: crm_city, data_type: varchar, description: The city the CRM had then, visible_to: [org_admin, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact the CRM had then; withheld from an analyst, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_email, data_type: varchar, description: Their email address the CRM had then; its name hidden from an analyst, visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: as_of, data_type: timestamp, description: 'The time asked about: a date something about the customer was loaded', visible_to: [data_steward, analyst_eu]}
+  - {name: orders_source, data_type: varchar, description: 'The source of the next six: the order system', visible_to: [data_steward, analyst_eu]}
+  - {name: orders_load_date, data_type: timestamp, description: Since when the order system's values were known, visible_to: [data_steward, analyst_eu]}
+  - {name: company_name, data_type: varchar, description: The customer's name the order system had then, visible_to: [data_steward, analyst_eu]}
+  - {name: orders_address, data_type: varchar, description: The street address the order system had then, visible_to: [data_steward, analyst_eu]}
+  - {name: orders_postal_code, data_type: varchar, description: The postal code the order system had then, visible_to: [data_steward, analyst_eu]}
+  - {name: orders_city, data_type: varchar, description: The city the order system had then, visible_to: [data_steward, analyst_eu]}
+  - {name: country, data_type: varchar, description: The country the order system had then, visible_to: [data_steward, analyst_eu]}
+  - {name: crm_source, data_type: varchar, description: 'The source of the rest: the CRM', visible_to: [data_steward, analyst_eu]}
+  - {name: crm_load_date, data_type: timestamp, description: Since when the CRM's values were known, visible_to: [data_steward, analyst_eu]}
+  - {name: crm_address, data_type: varchar, description: The street address the CRM had then, visible_to: [data_steward, analyst_eu]}
+  - {name: crm_postal_code, data_type: varchar, description: The postal code the CRM had then, visible_to: [data_steward, analyst_eu]}
+  - {name: crm_city, data_type: varchar, description: The city the CRM had then, visible_to: [data_steward, analyst_eu]}
+  - {name: contact_name, data_type: varchar, description: The person to contact the CRM had then; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_email, data_type: varchar, description: Their email address the CRM had then; its name hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
 # Mart: the customer as it stands now -- its latest point in time.
 - id: dim_customer
   domain_id: vault
@@ -437,14 +438,14 @@ views:
     ) AS k
     WHERE latest = 1
   columns:
-  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [org_admin, analyst_eu]}
-  - {name: company_name, data_type: varchar, description: 'The customer''s name, as the order system has it', visible_to: [org_admin, analyst_eu]}
-  - {name: address, data_type: varchar, description: 'The street address, as the order system has it', visible_to: [org_admin, analyst_eu]}
-  - {name: city, data_type: varchar, description: 'The city, as the order system has it', visible_to: [org_admin, analyst_eu]}
-  - {name: postal_code, data_type: varchar, description: 'The postal code, as the order system has it', visible_to: [org_admin, analyst_eu]}
-  - {name: country, data_type: varchar, description: 'The country, as the order system has it', visible_to: [org_admin, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: 'The person to contact, as the CRM has it; withheld from an analyst', visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_email, data_type: varchar, description: 'Their email address, as the CRM has it; its name hidden from an analyst', visible_to: [org_admin, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: customer_hk, data_type: varchar, description: The customer's hash key, visible_to: [data_steward, analyst_eu]}
+  - {name: company_name, data_type: varchar, description: 'The customer''s name, as the order system has it', visible_to: [data_steward, analyst_eu]}
+  - {name: address, data_type: varchar, description: 'The street address, as the order system has it', visible_to: [data_steward, analyst_eu]}
+  - {name: city, data_type: varchar, description: 'The city, as the order system has it', visible_to: [data_steward, analyst_eu]}
+  - {name: postal_code, data_type: varchar, description: 'The postal code, as the order system has it', visible_to: [data_steward, analyst_eu]}
+  - {name: country, data_type: varchar, description: 'The country, as the order system has it', visible_to: [data_steward, analyst_eu]}
+  - {name: contact_name, data_type: varchar, description: 'The person to contact, as the CRM has it; withheld from an analyst', visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_email, data_type: varchar, description: 'Their email address, as the CRM has it; its name hidden from an analyst', visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
 # The scripted changes that give the satellites their history (setup.yaml sends each once). Each
 # arrives as a new row with its own load date: Alfreds Futterkiste moves, the order system hearing
 # of it before the CRM; the CRM resends the account unchanged in between, which is no change; Chai is
@@ -457,7 +458,7 @@ functions:
   description: 'The order system receives Alfreds Futterkiste''s move, on 1 September 1997'
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "orders"."customer" (customer_id, company_name, contact_name, contact_title, address, city, region, postal_code, country, phone, load_date)
@@ -469,7 +470,7 @@ functions:
   description: 'The CRM receives Alfreds Futterkiste''s account again, unchanged, on 1 October 1997'
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "crm"."account" (account_code, account_name, contact_name, contact_title, contact_email, phone, address, city, postal_code, country, load_date)
@@ -481,7 +482,7 @@ functions:
   description: 'The CRM receives the same move, on 15 November 1997'
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "crm"."account" (account_code, account_name, contact_name, contact_title, contact_email, phone, address, city, postal_code, country, load_date)
@@ -493,7 +494,7 @@ functions:
   description: 'Chai is renamed Chai Tea, on 10 January 1998'
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "orders"."product" (product_id, product_name, supplier_id, category_id, quantity_per_unit, unit_price, discontinued, load_date)
@@ -505,7 +506,7 @@ functions:
   description: 'Chang''s list price is corrected from 19.00 to 18.00, on 1 February 1998'
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "orders"."product" (product_id, product_name, supplier_id, category_id, quantity_per_unit, unit_price, discontinued, load_date)

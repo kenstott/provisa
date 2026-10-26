@@ -456,10 +456,10 @@ class TestTheSandboxRoleGoesNowhereElse:
         _check_env_policy(self._body(env_policy=ENV_POLICY_PER_VISITOR, env_ttl_seconds=3600))
 
 
-class TestTheVisitorAlsoHoldsTheNameTheGrantsCarry:
-    """REQ-1597: `sandbox` is named by no authored model's `table_columns.visible_to`, so on its own
-    it is shown no column and `schema_gen` drops every table left with none. The second assignment
-    is what makes the copied model visible; `define_role_from` is what keeps it from widening."""
+class TestTheVisitorHoldsWhatTheInvitationNamed:
+    """REQ-2155 (superseding REQ-1597's second assignment): a sandbox visitor holds `sandbox` alone.
+    It reads the copied model through the grants naming viewer or data_steward, which `sandbox`
+    inherits like any role -- no org_admin row is redefined for it."""
 
     class _Recorder:
         def __init__(self):
@@ -487,11 +487,8 @@ class TestTheVisitorAlsoHoldsTheNameTheGrantsCarry:
         return rec.granted
 
     @pytest.mark.asyncio
-    async def test_a_sandbox_redemption_is_seated_under_both_names(self):
-        assert await self._seat(SANDBOX_ROLE) == [
-            ("visitor", SANDBOX_ROLE),
-            ("visitor", "org_admin"),
-        ]
+    async def test_a_sandbox_redemption_is_seated_under_sandbox_alone(self):
+        assert await self._seat(SANDBOX_ROLE) == [("visitor", SANDBOX_ROLE)]
 
     @pytest.mark.asyncio
     async def test_every_other_invitation_confers_exactly_what_it_named(self):

@@ -32,7 +32,7 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-_ROLES = ["org_admin", "analyst"]
+_ROLES = ["org_admin", "itest_analyst"]
 _ROWS = [
     (1, "east", 10.0),
     (2, "west", 30.0),
@@ -74,7 +74,8 @@ def server():
             "tables": [orders],
             "roles": [
                 {
-                    "id": "analyst",
+                    "id": "itest_analyst",
+                    "parents": ["analyst"],
                     "description": "Test role.",
                     "capabilities": ["query_development", "full_results"],
                     "domain_access": ["*"],
@@ -84,7 +85,7 @@ def server():
                 {
                     "description": "Test rule.",
                     "table_id": "orders",
-                    "role_id": "analyst",
+                    "role_id": "itest_analyst",
                     "filter": "region = 'east'",
                 }
             ],
@@ -138,13 +139,13 @@ def _column(answer: dict, name: str) -> dict:
 
 def test_a_row_rule_narrows_n(server):
     every = _call(server, "describe", {"sql": _SQL, "role": "org_admin"})
-    east = _call(server, "describe", {"sql": _SQL, "role": "analyst"})
+    east = _call(server, "describe", {"sql": _SQL, "role": "itest_analyst"})
     assert every["n"] == len(_ROWS) and east["n"] == 3
     assert _column(east, "amount")["mean"] == pytest.approx(11.0)
 
 
 def test_a_masked_column_is_described_as_the_role_reads_it(server):
-    east = _call(server, "describe", {"sql": _SQL, "role": "analyst"})
+    east = _call(server, "describe", {"sql": _SQL, "role": "itest_analyst"})
     email = _column(east, "email")
     assert email["top_values"] == [{"value": "***", "count": 3}] and email["distinct"] == 1
     admin = _call(server, "describe", {"sql": _SQL, "role": "org_admin"})
@@ -160,7 +161,7 @@ def test_a_comparison_counts_only_the_rows_the_role_reads(server):
         _call(
             server,
             "compare",
-            {"sql": _SQL, "value": "amount", "group": "region", "role": "analyst"},
+            {"sql": _SQL, "value": "amount", "group": "region", "role": "itest_analyst"},
         )
 
 
@@ -175,4 +176,6 @@ def test_a_model_reports_the_row_cap(server):
 
 def test_sql_the_role_may_not_run_is_refused_as_run_sql_refuses_it(server):
     with pytest.raises(AssertionError):
-        _call(server, "describe", {"sql": "SELECT * FROM sales.nothing_here", "role": "analyst"})
+        _call(
+            server, "describe", {"sql": "SELECT * FROM sales.nothing_here", "role": "itest_analyst"}
+        )

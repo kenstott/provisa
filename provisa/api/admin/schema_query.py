@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 from provisa.core.repositories import rls as rls_repo
+from provisa.security.inheritance import effective_capabilities
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import (
@@ -947,7 +948,12 @@ class Query:  # REQ-021, REQ-042
             identity = getattr(request.state, "identity", None)
             full = role_definitions_visible(request, getattr(identity, "roles", []))
             rows = [dict(r._mapping) for r in _res.fetchall()]
-            return [_role_from_row(r, detail=full(r["id"])) for r in rows]
+            return [
+                _role_from_row(
+                    r, detail=full(r["id"]), effective=effective_capabilities(r["id"], rows)
+                )
+                for r in rows
+            ]
 
     @strawberry.field
     async def rls_rules(

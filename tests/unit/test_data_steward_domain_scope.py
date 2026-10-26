@@ -21,8 +21,6 @@ collection of rights within domains: the same rights under another name behave i
 
 from __future__ import annotations
 
-import os
-import re
 import types
 from typing import Any
 
@@ -33,7 +31,7 @@ import provisa.api.app as appmod
 from provisa.api.admin import actions_router, roles_router, schema_mutation
 from provisa.api.errors import ApiError
 from provisa.core.database import Database
-from provisa.core.db import _SEED_ROLES
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from provisa.core.schema_org import (
     data_products,
     domains,
@@ -57,6 +55,7 @@ STEWARD_RIGHTS = [
     "query_development",
     "full_results",
     "view_governance",
+    "create_relationship",  # REQ-2155: meaning plus access -- relationships are meaning
 ]
 
 
@@ -210,24 +209,13 @@ M = schema_mutation.Mutation
 # --- the seed ------------------------------------------------------------------------------------
 
 
-def _schema_sql_caps(role_id: str) -> set[str]:
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "provisa", "core", "schema.sql")
-    sql = open(path, encoding="utf-8").read()
-    match = re.search(rf"'{role_id}',\s*'(\[.*?\])'::jsonb,\s*'(\[.*?\])'::jsonb", sql, re.S)
-    assert match is not None, role_id
-    import json
-
-    return set(json.loads(match.group(1))) | {"__domains__:" + match.group(2)}
-
-
-def test_data_steward_is_seeded_with_the_governance_rights_in_both_seeds():
-    caps = set(dict(_SEED_ROLES)["data_steward"])
-    assert caps == set(STEWARD_RIGHTS)
-    assert _schema_sql_caps("data_steward") == caps | {'__domains__:["*"]'}
+def test_data_steward_holds_the_governance_rights():
+    """REQ-1944, REQ-2155: its own and its ancestors' (security_admin, analyst)."""
+    assert set(STANDARD_ROLE_RIGHTS["data_steward"]) == set(STEWARD_RIGHTS)
 
 
 def test_data_steward_holds_nothing_operational():
-    caps = set(dict(_SEED_ROLES)["data_steward"])
+    caps = set(STANDARD_ROLE_RIGHTS["data_steward"])
     for right in (
         "write",
         "source_registration",

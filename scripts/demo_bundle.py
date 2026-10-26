@@ -1179,6 +1179,12 @@ def build(args: argparse.Namespace) -> int:
     if not (source / "demo.yaml").exists():
         raise SystemExit(f"no named demo {args.name} in {args.named_dir}")
     requires = _requires_provisa(source)
+    # A published demo in regions is served only by a regions tier that names it.
+    from scripts.check_demo import check_regions
+
+    refused = check_regions(args.name, source)
+    if refused:
+        raise SystemExit(f"{args.name}: {refused[0]}")
     commit = args.commit or _commit()
     stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d%H%M")
     manifest = bundles.BundleManifest(args.name, f"{stamp}-{commit[:9]}", commit, requires)

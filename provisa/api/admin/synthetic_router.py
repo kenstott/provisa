@@ -71,6 +71,27 @@ def _db() -> Any:
     return state.model_db
 
 
+async def _require_read(request: Request) -> None:  # REQ-2155
+    """Reading the datasets: environment_management, or environment_switch held by the owner of the
+    environment the request acts in -- a sandbox visitor reads its own environment's generation
+    report. Generating and changing them stay environment_management's."""
+    from provisa.api.admin.capabilities import has_capability_request
+    from provisa.api.admin.environments_router import _admin_pool, _caller_user_id
+    from provisa.core.env_authority import owns_environment
+    from provisa.core.request_context import active_env
+
+    user_id = _caller_user_id(request)
+    if (
+        user_id is not None
+        and has_capability_request(request, "environment_switch")
+        and await owns_environment(
+            _admin_pool(), request.state.active_org_id, active_env(), user_id
+        )
+    ):
+        return
+    require_capability_request(request, _RIGHT)
+
+
 def _refused(exc: Exception, dataset: str | None = None) -> ApiError:
     return ApiError(422, "synthetic.refused", str(exc), dataset=dataset)
 
@@ -81,7 +102,7 @@ def _jsonable(v: Any) -> Any:
 
 @router.get("")
 async def list_datasets(request: Request) -> list[dict]:
-    require_capability_request(request, _RIGHT)
+    await _require_read(request)
     from provisa.synthetic.datasets import list_datasets as _list
 
     async with _db().acquire() as conn:
@@ -121,7 +142,7 @@ async def list_datasets(request: Request) -> list[dict]:
 async def profile_runs(request: Request, env: str) -> list[dict]:
     """``[{tableId, tableName, runs: [{runId, runTime, rowCount}]}]`` for each table of this
     environment that environment ``env`` has a succeeded profile run of, newest run first."""
-    require_capability_request(request, _RIGHT)
+    await _require_read(request)
     from provisa.api.admin.db_queries import fetch_tables
     from provisa.synthetic.run import profile_runs_in
 
@@ -134,7 +155,7 @@ async def profile_runs(request: Request, env: str) -> list[dict]:
 async def relationships(request: Request) -> list[dict]:
     """``[{id, parentTableId, parentTable, childTableId, childTable}]``: the relationships whose
     child's rows a dataset may generate by, which a conditional fan-out names (REQ-1939)."""
-    require_capability_request(request, _RIGHT)
+    await _require_read(request)
     from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
     from provisa.synthetic.plan import edges_of
 
@@ -204,7 +225,7 @@ async def generate_dataset(request: Request, dataset_id: str) -> dict:
 
 @router.get("/{dataset_id}/report")
 async def dataset_report(request: Request, dataset_id: str) -> list[dict]:
-    require_capability_request(request, _RIGHT)
+    await _require_read(request)
     from provisa.core.schema_org import synthetic_datasets as sd
     from provisa.core.schema_org import synthetic_report as sr
 

@@ -118,7 +118,7 @@ def _role(members: list[dict], meta_id: str) -> dict:
         "rate_limit": _least_restrictive([m.get("rate_limit") for m in members]),
         # Each member's constants are inlined into its own filter term (_inlined), not merged here.
         "session_vars": {},
-        "parent_role_id": None,
+        "parents": [],
     }
 
 

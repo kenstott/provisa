@@ -180,7 +180,7 @@ def test_the_environments_are_prod_preprod_and_dev(set_up):
     assert modes["dev"] == ("test_synthetic", "ready")
 
 
-@pytest.mark.parametrize("role", ["org_admin", "analyst"])
+@pytest.mark.parametrize("role", ["org_admin", "shop_analyst"])
 def test_no_real_identity_appears_in_any_preprod_answer(set_up, role):
     real = query(set_up, _CUSTOMERS)
     faked = query(set_up, _CUSTOMERS, "preprod", role)

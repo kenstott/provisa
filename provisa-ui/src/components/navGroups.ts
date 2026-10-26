@@ -133,11 +133,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/overview", labelKey: "navBar.itemDashboard", capability: "observability" },
       { to: "/admin/domains", labelKey: "navBar.itemDomains", capability: "org_settings" },
       {
-        // REQ-1573: environments have their own right rather than riding on org_settings — a
-        // developer manages them and holds no org settings, and an analyst holds neither.
+        // REQ-1573: environments have their own right rather than riding on org_settings. REQ-2155:
+        // org_admin manages any; a developer manages the ones it owns; an analyst neither.
         to: "/admin/environments",
         labelKey: "navBar.itemEnvironments",
         capability: "environment_management",
+        orCapability: "environment_owned_management",
       },
       // REQ-1337: cache storage, the federation engine and the encryption/auth providers are
       // DEPLOYMENT-WIDE settings, so each is gated on the `platform_settings` RIGHT rather than on a

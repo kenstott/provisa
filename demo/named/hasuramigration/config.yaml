@@ -74,12 +74,12 @@ tables:
   table: customers
   description: The store's customers; a business customer names its Salesforce account
   columns:
-  - {name: email, data_type: text, description: Email address, visible_to: [customer, org_admin, support, support_lead]}
-  - {name: first_name, data_type: text, alias: givenName, description: First name, visible_to: [customer, org_admin, support, support_lead]}
-  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id -- the app's user key, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: last_name, data_type: text, alias: familyName, description: Last name, visible_to: [customer, org_admin, support, support_lead]}
-  - {name: created_at, data_type: timestamptz, description: When the customer signed up, visible_to: [analyst, org_admin, support, support_lead]}
-  - {name: sf_account_id, data_type: varchar, description: The Salesforce account a business customer buys for, visible_to: [analyst, org_admin, support, support_lead]}
+  - {name: email, data_type: text, description: Email address, visible_to: [customer, data_steward, support, support_lead]}
+  - {name: first_name, data_type: text, alias: givenName, description: First name, visible_to: [customer, data_steward, support, support_lead]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id -- the app's user key, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: last_name, data_type: text, alias: familyName, description: Last name, visible_to: [customer, data_steward, support, support_lead]}
+  - {name: created_at, data_type: timestamptz, description: When the customer signed up, visible_to: [analyst, data_steward, support, support_lead]}
+  - {name: sf_account_id, data_type: varchar, description: The Salesforce account a business customer buys for, visible_to: [analyst, data_steward, support, support_lead]}
   write_grants:
   - role: customer
     operation: update
@@ -104,11 +104,11 @@ tables:
   table: order_items
   description: The lines of each order
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The line's id, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: order_id, data_type: integer, description: The order it belongs to, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: quantity, data_type: integer, description: How many, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: unit_price_cents, data_type: integer, description: Price per unit in cents, visible_to: [analyst, customer, org_admin, support, support_lead]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The line's id, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: order_id, data_type: integer, description: The order it belongs to, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: quantity, data_type: integer, description: How many, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: unit_price_cents, data_type: integer, description: Price per unit in cents, visible_to: [analyst, customer, data_steward, support, support_lead]}
   write_grants:
   - role: org_admin
     operation: insert
@@ -128,12 +128,12 @@ tables:
   table: orders
   description: Each order a customer placed, its status and total
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: placed_at, data_type: timestamptz, description: When it was placed, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: ship_to, data_type: text, description: Delivery address, visible_to: [customer, org_admin, support, support_lead]}
-  - {name: status, data_type: text, description: "placed, packed, shipped, delivered or cancelled", visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: total_cents, data_type: integer, description: Order total in cents, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [analyst, org_admin, support, support_lead]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: placed_at, data_type: timestamptz, description: When it was placed, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: ship_to, data_type: text, description: Delivery address, visible_to: [customer, data_steward, support, support_lead]}
+  - {name: status, data_type: text, description: "placed, packed, shipped, delivered or cancelled", visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: total_cents, data_type: integer, description: Order total in cents, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [analyst, data_steward, support, support_lead]}
   write_grants:
   - role: customer
     operation: insert
@@ -171,11 +171,11 @@ tables:
   alias: catalog
   description: The catalog the store sells
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: name, data_type: text, description: Product name, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: price_cents, data_type: integer, description: List price in cents, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: sku, data_type: text, description: Stock-keeping unit, visible_to: [analyst, customer, org_admin, support, support_lead]}
-  - {name: active, data_type: boolean, description: Still sold, visible_to: [analyst, org_admin, support, support_lead]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The product's id, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: name, data_type: text, description: Product name, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: price_cents, data_type: integer, description: List price in cents, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: sku, data_type: text, description: Stock-keeping unit, visible_to: [analyst, customer, data_steward, support, support_lead]}
+  - {name: active, data_type: boolean, description: Still sold, visible_to: [analyst, data_steward, support, support_lead]}
   write_grants:
   - role: org_admin
     operation: insert
@@ -196,11 +196,11 @@ tables:
   alias: accounts
   description: The sales team's accounts in Salesforce -- who owns the relationship with each business
   columns:
-  - {name: Id, data_type: varchar, is_primary_key: true, description: The account's Salesforce id, visible_to: [analyst, org_admin, support, support_lead]}
-  - {name: Name, data_type: varchar, description: The business, visible_to: [analyst, org_admin, support, support_lead]}
-  - {name: Industry, data_type: varchar, description: Its industry, visible_to: [analyst, org_admin, support, support_lead]}
-  - {name: Type, data_type: varchar, description: "Customer - Direct or Customer - Channel", visible_to: [analyst, org_admin, support, support_lead]}
-  - {name: BillingCity, data_type: varchar, description: Where it is billed, visible_to: [analyst, org_admin, support, support_lead]}
+  - {name: Id, data_type: varchar, is_primary_key: true, description: The account's Salesforce id, visible_to: [analyst, data_steward, support, support_lead]}
+  - {name: Name, data_type: varchar, description: The business, visible_to: [analyst, data_steward, support, support_lead]}
+  - {name: Industry, data_type: varchar, description: Its industry, visible_to: [analyst, data_steward, support, support_lead]}
+  - {name: Type, data_type: varchar, description: "Customer - Direct or Customer - Channel", visible_to: [analyst, data_steward, support, support_lead]}
+  - {name: BillingCity, data_type: varchar, description: Where it is billed, visible_to: [analyst, data_steward, support, support_lead]}
 relationships:
 - {id: customers.orders, source_table_id: customers, target_table_id: orders, source_column: id, target_column: customer_id, cardinality: one-to-many, graphql_alias: orders}
 - {id: order_items.order, source_table_id: order_items, target_table_id: orders, source_column: order_id, target_column: id, cardinality: many-to-one, graphql_alias: order}
@@ -232,19 +232,18 @@ rls_rules:
   description: "A customer sees only the products on sale."
   filter: "active = TRUE"
 roles:
-- id: analyst
-  description: "Reports on the shop: reads orders and the catalog, without cancelled orders."
-  capabilities: [query_development]
-  domain_access: ["*"]
 - id: customer
+  parents: [viewer]
   description: "A shop customer as the app signs one in: their own record, orders and order lines, and the active catalog."
   capabilities: [query_development, write]
   domain_access: ["*"]
 - id: support
+  parents: [viewer]
   description: "Customer support: reads and updates customers and their orders to resolve requests."
   capabilities: [query_development, write]
   domain_access: ["*"]
 - id: support_lead
+  parents: [viewer]
   description: "Leads customer support: what support does, for the requests support escalates."
   capabilities: [query_development, write]
   domain_access: ["*"]
@@ -254,7 +253,7 @@ roles:
   description: "Ana, customer 1, as the app signs her in: the customer role with her user id set."
   capabilities: [query_development, write]
   domain_access: ["*"]
-  parent_role_id: customer
+  parents: [customer]
   session_vars: {hasura_user_id: "1"}
 webhooks:
 - name: refund_order

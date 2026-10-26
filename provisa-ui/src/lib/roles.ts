@@ -18,11 +18,13 @@ export interface RawRole {
   id: string;
   description: string; // REQ-2080
   capabilities?: string[] | null;
+  effectiveCapabilities?: string[] | null; // REQ-2155: sent with the definition, as capabilities is
   demonstrated?: string[] | null;
   domain_access?: string[] | null;
   domainAccess?: string[] | null;
   rateLimit?: Role["rateLimit"];
-  parentRoleId?: string | null;
+  parents?: string[] | null; // REQ-2155
+  standard: boolean; // REQ-2155: the server names it for every role
   residencyValues?: string[] | null; // REQ-1921
   sessionVars?: Role["sessionVars"] | null; // REQ-1682
   inactivityDays?: number | null; // REQ-2077
@@ -36,13 +38,15 @@ export interface RawRole {
  */
 export function normalizeRole(raw: RawRole): Role {
   const domainAccess = raw.domainAccess ?? raw.domain_access;
-  if (raw.capabilities == null || domainAccess == null) {
+  if (raw.capabilities == null || raw.effectiveCapabilities == null || domainAccess == null) {
     return {
       id: raw.id,
       description: raw.description,
       capabilities: [],
+      effectiveCapabilities: [],
       demonstrated: [],
       domain_access: [],
+      standard: raw.standard,
       detailsHidden: true,
     };
   }
@@ -50,11 +54,15 @@ export function normalizeRole(raw: RawRole): Role {
     id: raw.id,
     description: raw.description,
     capabilities: raw.capabilities as Capability[],
+    // REQ-2155: the role's own capabilities and every ancestor's; the server sends it with the
+    // definition.
+    effectiveCapabilities: raw.effectiveCapabilities as Capability[],
     // REQ-1602: rights the role is shown but does not hold.
     demonstrated: (raw.demonstrated ?? []) as Capability[],
     domain_access: domainAccess,
     rateLimit: raw.rateLimit,
-    parentRoleId: raw.parentRoleId,
+    parents: raw.parents ?? [],
+    standard: raw.standard,
     residencyValues: raw.residencyValues ?? [],
     sessionVars: raw.sessionVars ?? [],
     inactivityDays: raw.inactivityDays ?? null,

@@ -158,9 +158,11 @@ def model_config(
                 "password": "${env:PG_PASSWORD}",
             }
         ],
+        # REQ-2155: a standard role (analyst) is every org's already; a config declares only its own.
         "roles": [
             {"id": r, "description": f"{r} role.", "capabilities": [], "domain_access": ["*"]}
             for r in roles
+            if r not in SEEDED_ROLE_IDS
         ],
         "data_products": [
             {**PRODUCT_FIELDS, "id": product, "domain_id": domain, "name": product_name}

@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1297: every org schema seeds exactly the system roles, and the retired ids are gone.
+"""REQ-1297, REQ-2155: every org schema seeds exactly the standard roles, and the retired ids are
+gone.
 
-The ids — platform_admin, org_admin, developer, analyst, modeler, sandbox (REQ-1597) and data_steward (REQ-1944) — are the
-whole role vocabulary.
+The ids are provisa/core/standard_roles.yaml's.
 'admin' and 'superadmin' survive only as CAPABILITY strings; as ROLE ids they are retired, and an
 assignment naming one is rewritten to platform_admin the next time the seed runs over the schema.
 
@@ -26,7 +26,8 @@ import pytest
 from sqlalchemy import text
 
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.db import init_schema
+from provisa.core.db import STANDARD_ROLES, init_schema
+from provisa.security.inheritance import effective_capabilities
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -63,31 +64,20 @@ async def tenant_db():
 
 
 async def _system_roles(db: Database) -> dict[str, list[str]]:
+    """Each seeded role's rights: its own and every ancestor's (REQ-2155)."""
     async with db.acquire() as conn:
         result = await conn.execute_core(
-            text("SELECT id, capabilities FROM roles WHERE org_id IS NULL ORDER BY id")
+            text("SELECT id, capabilities, parents FROM roles WHERE org_id IS NULL ORDER BY id")
         )
-        rows = result.fetchall()
-    out: dict[str, list[str]] = {}
-    for row in rows:
-        caps = row[1]
-        out[row[0]] = list(caps) if isinstance(caps, list) else []
-    return out
+        rows = [{"id": r[0], "capabilities": r[1] or [], "parents": r[2] or []} for r in result]
+    return {r["id"]: effective_capabilities(r["id"], rows) for r in rows}
 
 
 async def test_the_system_roles_and_nothing_else_are_seeded(tenant_db):
     seeded = await _system_roles(tenant_db)
 
-    # REQ-1597: sandbox joins the vocabulary as what a "Try it Out" invitation confers.
-    assert set(seeded) == {
-        "platform_admin",
-        "org_admin",
-        "developer",
-        "analyst",
-        "modeler",
-        "sandbox",
-        "data_steward",  # REQ-1944
-    }
+    # REQ-2155: the standard roles, as provisa/core/standard_roles.yaml defines them.
+    assert set(seeded) == set(STANDARD_ROLES)
 
 
 async def test_no_seeded_role_carries_the_bypass_capabilities(tenant_db):

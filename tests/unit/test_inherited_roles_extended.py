@@ -61,7 +61,7 @@ def _role(
         description="Test role.",
         capabilities=caps,
         domain_access=domains,
-        parent_role_id=parent,
+        parents=[parent] if parent else [],
     )
 
 
@@ -102,8 +102,8 @@ class TestDeepInheritanceChain:
         for cap in ["cap-a", "cap-b", "cap-c", "cap-d", "cap-e"]:
             assert cap in by_id["e"].capabilities, f"Missing {cap} in E after deep flatten"
 
-        for dom in ["dom-a", "dom-b", "dom-c", "dom-d", "dom-e"]:
-            assert dom in by_id["e"].domain_access, f"Missing {dom} in E after deep flatten"
+        # REQ-2155: reach is the role's own, never its ancestors'.
+        assert by_id["e"].domain_access == ["dom-e"]
 
     def test_intermediate_roles_have_correct_caps(self):
         """Intermediate roles in a chain should only inherit from their ancestor subtree."""
@@ -164,16 +164,15 @@ class TestConflictResolution:
             "Duplicate capability 'shared' must be deduplicated after flatten"
         )
 
-    def test_union_of_domains_from_parent_and_child(self):
-        """Effective domain_access is the union of all ancestors' domains."""
+    def test_reach_is_the_childs_own(self):
+        """REQ-2155: a role's domain_access is its own; its parent's domains are not added."""
         parent = _role("p", caps=["read"], domains=["finance", "hr"])
         child = _role("c", caps=["write"], domains=["ops"], parent="p")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
-        for dom in ["finance", "hr", "ops"]:
-            assert dom in by_id["c"].domain_access
+        assert by_id["c"].domain_access == ["ops"]
 
     def test_sibling_roles_do_not_share_caps(self):
         """Two children of the same parent must not gain each other's capabilities."""
@@ -187,16 +186,15 @@ class TestConflictResolution:
         assert "aggregate" not in by_id["child-a"].capabilities
         assert "export" not in by_id["child-b"].capabilities
 
-    def test_wildcard_domain_from_parent_swallows_child_domains(self):
-        """When a parent has domain_access=['*'], child's effective access is ['*']."""
+    def test_wildcard_domain_from_parent_does_not_reach_the_child(self):
+        """REQ-2155: a parent reaching every domain leaves its child's own list as it is."""
         parent = _role("super", caps=["read"], domains=["*"])
         child = _role("restricted", caps=["read"], domains=["sales"], parent="super")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
-        # flatten_roles preserves ['*'] when wildcard is present
-        assert "*" in by_id["restricted"].domain_access
+        assert by_id["restricted"].domain_access == ["sales"]
 
     def test_role_without_parent_not_affected_by_other_roles(self):
         """A standalone role must not accumulate capabilities from unrelated roles."""
@@ -282,7 +280,11 @@ class TestRLSAccumulationThroughInheritance:
             },
         ]
         resolved = resolve_table_rules(
-            materialize_rls(rules, tables, chains), tables, chains, [], {}
+            materialize_rls(rules, tables, {"parent": [], "child": ["parent"]}),
+            tables,
+            chains,
+            [],
+            {},
         )
         inherited_rls = build_rls_context(resolved, "child")
         ctx = _make_ctx(
@@ -324,7 +326,11 @@ class TestRLSAccumulationThroughInheritance:
             },
         ]
         resolved = resolve_table_rules(
-            materialize_rls(rules, tables, chains), tables, chains, [], {}
+            materialize_rls(rules, tables, {"parent": [], "child": ["parent"]}),
+            tables,
+            chains,
+            [],
+            {},
         )
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
         sql = 'SELECT "id" FROM "public"."orders"'

@@ -24,9 +24,10 @@
 * ``GET  /admin/tables/{table_id}/profile-runs/{run_id}/history`` — one measure across the run's
   drift window, with the run's drift row (REQ-1934 DRIFT ACROSS RUNS), safe for its viewer.
 
-The run history and results are shown only to those who may edit the table (the
-``table_registration`` capability); they are read straight from the result relations, as the
-profiler wrote them.
+The profilers, run history and results are data quality's to read (REQ-2155: ``dq_read``, which
+``dq_rw`` implies); running a profile, storing a declared one and the registration catalog stay with
+those who may edit the table (``table_registration``). Results are read straight from the result
+relations, as the profiler wrote them.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import require_capability_request, require_dq_read_request
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import registered_tables
@@ -57,7 +58,7 @@ def _jsonable(row: dict) -> dict:
 
 @router.get("/profilers")
 async def list_profilers(request: Request) -> list[dict]:
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.profiler.source import members, profiler_sources
 
     async with _db().acquire() as conn:
@@ -193,7 +194,7 @@ def _viewer_roles(request: Request, x_provisa_role: str | None) -> frozenset[str
 
 @router.get("/tables/{table_id}/profile-runs")
 async def list_profile_runs(request: Request, table_id: int) -> list[dict]:
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     async with _db().acquire() as conn:
         member = await _member(conn, table_id)
         runs = await _relation(conn, member["table_name"], table_id, "runs")
@@ -210,7 +211,7 @@ async def get_profile_run(
 ) -> dict:
     """One run's results, safe for the viewer: read off the profiled table's current column rules
     and the viewer's roles (governance.safe_run), here on the server and never in the browser."""
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.profiler.governance import column_rules, safe_run
     from provisa.profiler.schema import RESULT_KINDS
 
@@ -246,7 +247,7 @@ async def get_measure_history(
     """One measure of a run across the run's drift window (REQ-1934 DRIFT ACROSS RUNS): the run's
     drift row for it, and the measure's value in each window run and in the run, oldest first --
     shown only when the viewer may see the drift row (governance.safe_run)."""
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.profiler import compare
     from provisa.profiler.governance import column_rules, safe_run
     from provisa.profiler.history import MEASURE_KINDS, as_utc, previous_runs, run_results

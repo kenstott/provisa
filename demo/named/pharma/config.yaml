@@ -40,7 +40,8 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: pharma_analyst
+  parents: [analyst]
   description: "Queries the pharma domain's data."
   capabilities:
   - query_development
@@ -77,33 +78,33 @@ tables:
   table: manufacturers
   description: The manufacturers the pharmacy buys from, with the name FDA's recall records give each
   columns:
-  - {name: manufacturer_id, data_type: integer, is_primary_key: true, description: The manufacturer's number in the vendor master, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: The manufacturer's name, visible_to: [org_admin, analyst]}
-  - {name: fda_firm_name, data_type: varchar, description: The firm's name as FDA's enforcement reports give it, visible_to: [org_admin, analyst]}
+  - {name: manufacturer_id, data_type: integer, is_primary_key: true, description: The manufacturer's number in the vendor master, visible_to: [data_steward, pharma_analyst]}
+  - {name: name, data_type: varchar, description: The manufacturer's name, visible_to: [data_steward, pharma_analyst]}
+  - {name: fda_firm_name, data_type: varchar, description: The firm's name as FDA's enforcement reports give it, visible_to: [data_steward, pharma_analyst]}
 - source_id: pharmacy
   domain_id: pharma
   schema: public
   table: products
   description: The pharmacy's formulary, one row a product by its NDC product code
   columns:
-  - {name: product_ndc, data_type: varchar, is_primary_key: true, description: 'The NDC product code, labeler-product', visible_to: [org_admin, analyst]}
-  - {name: product_ndc9, data_type: varchar, description: 'The same code as 9 digits, as Medicaid reports it', visible_to: [org_admin, analyst]}
-  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [org_admin, analyst]}
-  - {name: manufacturer_id, data_type: integer, description: Who makes it, visible_to: [org_admin, analyst]}
-  - {name: dosage_form, data_type: varchar, description: 'Its dosage form: tablet, injection...', visible_to: [org_admin, analyst]}
-  - {name: route, data_type: varchar, description: How it is given, visible_to: [org_admin, analyst]}
-  - {name: therapeutic_class, data_type: varchar, description: The therapeutic class the formulary files it under, visible_to: [org_admin, analyst]}
-  - {name: critical, data_type: boolean, description: 'Whether the formulary lists it as critical, with no stock-out tolerated', visible_to: [org_admin, analyst]}
+  - {name: product_ndc, data_type: varchar, is_primary_key: true, description: 'The NDC product code, labeler-product', visible_to: [data_steward, pharma_analyst]}
+  - {name: product_ndc9, data_type: varchar, description: 'The same code as 9 digits, as Medicaid reports it', visible_to: [data_steward, pharma_analyst]}
+  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [data_steward, pharma_analyst]}
+  - {name: manufacturer_id, data_type: integer, description: Who makes it, visible_to: [data_steward, pharma_analyst]}
+  - {name: dosage_form, data_type: varchar, description: 'Its dosage form: tablet, injection...', visible_to: [data_steward, pharma_analyst]}
+  - {name: route, data_type: varchar, description: How it is given, visible_to: [data_steward, pharma_analyst]}
+  - {name: therapeutic_class, data_type: varchar, description: The therapeutic class the formulary files it under, visible_to: [data_steward, pharma_analyst]}
+  - {name: critical, data_type: boolean, description: 'Whether the formulary lists it as critical, with no stock-out tolerated', visible_to: [data_steward, pharma_analyst]}
 - source_id: pharmacy
   domain_id: pharma
   schema: public
   table: stock
   description: The stock of each product at each of the pharmacy's sites
   columns:
-  - {name: product_ndc, data_type: varchar, is_primary_key: true, description: The product's NDC product code, visible_to: [org_admin, analyst]}
-  - {name: site, data_type: varchar, is_primary_key: true, description: The hospital the stock is held at, visible_to: [org_admin, analyst]}
-  - {name: on_hand_units, data_type: integer, description: The units on hand, visible_to: [org_admin, analyst]}
-  - {name: daily_use_units, data_type: integer, description: The units the site uses a day, visible_to: [org_admin, analyst]}
+  - {name: product_ndc, data_type: varchar, is_primary_key: true, description: The product's NDC product code, visible_to: [data_steward, pharma_analyst]}
+  - {name: site, data_type: varchar, is_primary_key: true, description: The hospital the stock is held at, visible_to: [data_steward, pharma_analyst]}
+  - {name: on_hand_units, data_type: integer, description: The units on hand, visible_to: [data_steward, pharma_analyst]}
+  - {name: daily_use_units, data_type: integer, description: The units the site uses a day, visible_to: [data_steward, pharma_analyst]}
 - source_id: govdata
   domain_id: pharma
   schema: health
@@ -114,15 +115,15 @@ tables:
   description: FDA's drug shortages, one row a shortage episode of a package -- its status and the
     product's availability
   columns:
-  - {name: package_ndc, data_type: varchar, is_primary_key: true, description: The package's NDC, visible_to: [org_admin, analyst]}
-  - {name: initial_posting_date, data_type: date, is_primary_key: true, description: When FDA first posted the shortage, visible_to: [org_admin, analyst]}
-  - {name: product_ndc, data_type: varchar, description: The NDC product code of the package, visible_to: [org_admin, analyst]}
-  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [org_admin, analyst]}
-  - {name: status, data_type: varchar, description: 'Current, To Be Discontinued or Resolved', visible_to: [org_admin, analyst]}
-  - {name: availability, data_type: varchar, description: 'Available, Limited Availability or Unavailable', visible_to: [org_admin, analyst]}
-  - {name: therapeutic_category, data_type: varchar, description: FDA's therapeutic category of the drug, visible_to: [org_admin, analyst]}
-  - {name: company_name, data_type: varchar, description: The company that reported the shortage, visible_to: [org_admin, analyst]}
-  - {name: update_date, data_type: date, description: When FDA last updated it, visible_to: [org_admin, analyst]}
+  - {name: package_ndc, data_type: varchar, is_primary_key: true, description: The package's NDC, visible_to: [data_steward, pharma_analyst]}
+  - {name: initial_posting_date, data_type: date, is_primary_key: true, description: When FDA first posted the shortage, visible_to: [data_steward, pharma_analyst]}
+  - {name: product_ndc, data_type: varchar, description: The NDC product code of the package, visible_to: [data_steward, pharma_analyst]}
+  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [data_steward, pharma_analyst]}
+  - {name: status, data_type: varchar, description: 'Current, To Be Discontinued or Resolved', visible_to: [data_steward, pharma_analyst]}
+  - {name: availability, data_type: varchar, description: 'Available, Limited Availability or Unavailable', visible_to: [data_steward, pharma_analyst]}
+  - {name: therapeutic_category, data_type: varchar, description: FDA's therapeutic category of the drug, visible_to: [data_steward, pharma_analyst]}
+  - {name: company_name, data_type: varchar, description: The company that reported the shortage, visible_to: [data_steward, pharma_analyst]}
+  - {name: update_date, data_type: date, description: When FDA last updated it, visible_to: [data_steward, pharma_analyst]}
 - source_id: govdata
   domain_id: pharma
   schema: health
@@ -135,13 +136,13 @@ tables:
   description: FDA's ongoing drug recalls (enforcement reports) -- the recalling firm, the class and
     the reason
   columns:
-  - {name: recall_number, data_type: varchar, is_primary_key: true, description: 'FDA''s recall number, e.g. D-0850-2026', visible_to: [org_admin, analyst]}
-  - {name: status, data_type: varchar, description: The recall's status, visible_to: [org_admin, analyst]}
-  - {name: classification, data_type: varchar, description: 'Class I (most severe), Class II or Class III', visible_to: [org_admin, analyst]}
-  - {name: recalling_firm, data_type: varchar, description: The firm recalling the product, visible_to: [org_admin, analyst]}
-  - {name: product_description, data_type: varchar, description: The product recalled, visible_to: [org_admin, analyst]}
-  - {name: reason_for_recall, data_type: varchar, description: Why it is recalled, visible_to: [org_admin, analyst]}
-  - {name: recall_initiation_date, data_type: varchar, description: When the recall began (YYYYMMDD), visible_to: [org_admin, analyst]}
+  - {name: recall_number, data_type: varchar, is_primary_key: true, description: 'FDA''s recall number, e.g. D-0850-2026', visible_to: [data_steward, pharma_analyst]}
+  - {name: status, data_type: varchar, description: The recall's status, visible_to: [data_steward, pharma_analyst]}
+  - {name: classification, data_type: varchar, description: 'Class I (most severe), Class II or Class III', visible_to: [data_steward, pharma_analyst]}
+  - {name: recalling_firm, data_type: varchar, description: The firm recalling the product, visible_to: [data_steward, pharma_analyst]}
+  - {name: product_description, data_type: varchar, description: The product recalled, visible_to: [data_steward, pharma_analyst]}
+  - {name: reason_for_recall, data_type: varchar, description: Why it is recalled, visible_to: [data_steward, pharma_analyst]}
+  - {name: recall_initiation_date, data_type: varchar, description: When the recall began (YYYYMMDD), visible_to: [data_steward, pharma_analyst]}
 - source_id: govdata
   domain_id: pharma
   schema: health
@@ -160,15 +161,15 @@ tables:
   description: CMS's 2023 Medicaid drug utilization of the formulary's products, by state, NDC,
     quarter and program
   columns:
-  - {name: state, data_type: varchar, is_primary_key: true, description: The state, visible_to: [org_admin, analyst]}
-  - {name: ndc, data_type: varchar, is_primary_key: true, description: The 11-digit package NDC, visible_to: [org_admin, analyst]}
-  - {name: year, data_type: varchar, is_primary_key: true, description: The year, visible_to: [org_admin, analyst]}
-  - {name: quarter, data_type: varchar, is_primary_key: true, description: 'The quarter, Q1 to Q4', visible_to: [org_admin, analyst]}
-  - {name: utilization_type, data_type: varchar, is_primary_key: true, description: 'FFSU (fee for service) or MCOU (managed care)', visible_to: [org_admin, analyst]}
-  - {name: product_ndc9, data_type: varchar, description: The NDC product code as 9 digits, visible_to: [org_admin, analyst]}
-  - {name: product_name, data_type: varchar, description: The product's name as FDA lists it, visible_to: [org_admin, analyst]}
-  - {name: number_of_prescriptions, data_type: varchar, description: The prescriptions Medicaid paid for, visible_to: [org_admin, analyst]}
-  - {name: total_amount_reimbursed, data_type: varchar, description: What was paid for them in USD, visible_to: [org_admin, analyst]}
+  - {name: state, data_type: varchar, is_primary_key: true, description: The state, visible_to: [data_steward, pharma_analyst]}
+  - {name: ndc, data_type: varchar, is_primary_key: true, description: The 11-digit package NDC, visible_to: [data_steward, pharma_analyst]}
+  - {name: year, data_type: varchar, is_primary_key: true, description: The year, visible_to: [data_steward, pharma_analyst]}
+  - {name: quarter, data_type: varchar, is_primary_key: true, description: 'The quarter, Q1 to Q4', visible_to: [data_steward, pharma_analyst]}
+  - {name: utilization_type, data_type: varchar, is_primary_key: true, description: 'FFSU (fee for service) or MCOU (managed care)', visible_to: [data_steward, pharma_analyst]}
+  - {name: product_ndc9, data_type: varchar, description: The NDC product code as 9 digits, visible_to: [data_steward, pharma_analyst]}
+  - {name: product_name, data_type: varchar, description: The product's name as FDA lists it, visible_to: [data_steward, pharma_analyst]}
+  - {name: number_of_prescriptions, data_type: varchar, description: The prescriptions Medicaid paid for, visible_to: [data_steward, pharma_analyst]}
+  - {name: total_amount_reimbursed, data_type: varchar, description: What was paid for them in USD, visible_to: [data_steward, pharma_analyst]}
 views:
 # The answer: each product of the formulary, its stock beside its shortage, its manufacturer's
 # recalls and its Medicaid prescriptions. Stored, and built again when its inputs change.
@@ -218,18 +219,18 @@ views:
       GROUP BY x.product_ndc9
     ) AS u ON u.product_ndc9 = p.product_ndc9
   columns:
-  - {name: product_ndc, data_type: varchar, description: The NDC product code, visible_to: [org_admin, analyst]}
-  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [org_admin, analyst]}
-  - {name: manufacturer, data_type: varchar, description: Who makes it, visible_to: [org_admin, analyst]}
-  - {name: therapeutic_class, data_type: varchar, description: The therapeutic class the formulary files it under, visible_to: [org_admin, analyst]}
-  - {name: critical, data_type: boolean, description: Whether the formulary lists it as critical, visible_to: [org_admin, analyst]}
-  - {name: on_hand_units, data_type: bigint, description: The units on hand across the sites, visible_to: [org_admin, analyst]}
-  - {name: days_of_supply, data_type: double, description: How many days the stock lasts at the sites' daily use, visible_to: [org_admin, analyst]}
-  - {name: shortage_availability, data_type: varchar, description: 'Its availability in FDA''s current shortage of it, or empty when there is none', visible_to: [org_admin, analyst]}
-  - {name: open_recalls, data_type: bigint, description: Its manufacturer's ongoing Class I and II recalls, visible_to: [org_admin, analyst]}
-  - {name: worst_recall_class, data_type: varchar, description: The most severe class among them, visible_to: [org_admin, analyst]}
-  - {name: prescriptions_2023, data_type: double, description: The prescriptions of it Medicaid paid for in 2023, visible_to: [org_admin, analyst]}
-  - {name: risk, data_type: varchar, description: 'shortage and recall, shortage, recall or none', visible_to: [org_admin, analyst]}
+  - {name: product_ndc, data_type: varchar, description: The NDC product code, visible_to: [data_steward, pharma_analyst]}
+  - {name: generic_name, data_type: varchar, description: The drug's generic name, visible_to: [data_steward, pharma_analyst]}
+  - {name: manufacturer, data_type: varchar, description: Who makes it, visible_to: [data_steward, pharma_analyst]}
+  - {name: therapeutic_class, data_type: varchar, description: The therapeutic class the formulary files it under, visible_to: [data_steward, pharma_analyst]}
+  - {name: critical, data_type: boolean, description: Whether the formulary lists it as critical, visible_to: [data_steward, pharma_analyst]}
+  - {name: on_hand_units, data_type: bigint, description: The units on hand across the sites, visible_to: [data_steward, pharma_analyst]}
+  - {name: days_of_supply, data_type: double, description: How many days the stock lasts at the sites' daily use, visible_to: [data_steward, pharma_analyst]}
+  - {name: shortage_availability, data_type: varchar, description: 'Its availability in FDA''s current shortage of it, or empty when there is none', visible_to: [data_steward, pharma_analyst]}
+  - {name: open_recalls, data_type: bigint, description: Its manufacturer's ongoing Class I and II recalls, visible_to: [data_steward, pharma_analyst]}
+  - {name: worst_recall_class, data_type: varchar, description: The most severe class among them, visible_to: [data_steward, pharma_analyst]}
+  - {name: prescriptions_2023, data_type: double, description: The prescriptions of it Medicaid paid for in 2023, visible_to: [data_steward, pharma_analyst]}
+  - {name: risk, data_type: varchar, description: 'shortage and recall, shortage, recall or none', visible_to: [data_steward, pharma_analyst]}
 relationships:
 - {id: product-to-manufacturer, alias: MADE_BY, cardinality: many-to-one, source_table_id: products, source_column: manufacturer_id, target_table_id: manufacturers, target_column: manufacturer_id}
 - {id: stock-of-product, alias: STOCK_OF, cardinality: many-to-one, source_table_id: stock, source_column: product_ndc, target_table_id: products, target_column: product_ndc}

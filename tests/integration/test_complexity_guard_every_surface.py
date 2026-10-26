@@ -10,7 +10,7 @@
 
 """The query complexity guard holds on every surface -- on a real server (REQ-1174).
 
-One server, one table, two roles. ``analyst`` carries ``max_query_complexity``; ``org_admin``
+One server, one table, two roles. ``limited`` (an analyst) carries ``max_query_complexity``; ``org_admin``
 carries none. The same over-limit statement is sent through each surface a client can send a
 statement through -- SQL over HTTP, GraphQL, pgwire, Arrow Flight and MCP -- and each answers
 the one refusal, with the score and the limit, in its own error shape. A statement within the
@@ -33,7 +33,7 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-_LIMITED, _UNLIMITED = "analyst", "org_admin"
+_LIMITED, _UNLIMITED = "limited", "org_admin"
 _LIMIT = 4
 
 # 1 relation + 2 columns = 3: within the limit.
@@ -45,10 +45,18 @@ _REFUSAL = f"query complexity 6 exceeds the role limit of {_LIMIT}"
 
 @pytest.fixture(scope="module")
 def server():
-    roles = _config(_PG_HOST, _PG_PORT, "unused")["roles"]
-    for role in roles:
-        if role["id"] == _LIMITED:
-            role["rate_limit"] = {"max_query_complexity": _LIMIT}
+    # REQ-2155: the limit is a role of the test's own, a child of the standard analyst (whose
+    # grants on the harness's table it inherits); a standard role is never redefined.
+    roles = _config(_PG_HOST, _PG_PORT, "unused")["roles"] + [
+        {
+            "id": _LIMITED,
+            "description": "Test role.",
+            "parents": ["analyst"],
+            "capabilities": [],
+            "domain_access": ["*"],
+            "rate_limit": {"max_query_complexity": _LIMIT},
+        }
+    ]
     boot = WorkerBoot(
         1,
         pg_host=_PG_HOST,

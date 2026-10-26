@@ -33,7 +33,8 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: churn_analyst
+  parents: [analyst]
   description: "The data scientist: reads the customers and their usage, with email addresses masked."
   capabilities:
   - query_development
@@ -61,22 +62,22 @@ tables:
   table: customers
   description: Every customer, their plan and region, and the date they cancelled if they have
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, analyst]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analyst, visible_to: [org_admin, analyst], masks: [{to: [analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: region, data_type: varchar, description: 'Where the customer is billed: NA, EU or APAC', visible_to: [org_admin, analyst]}
-  - {name: plan, data_type: varchar, description: 'The plan they are on: basic, pro or team', visible_to: [org_admin, analyst]}
-  - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [org_admin, analyst]}
-  - {name: cancelled_on, data_type: date, description: The day they cancelled; empty while they are a customer, visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, churn_analyst]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analyst, visible_to: [data_steward, churn_analyst], masks: [{to: [churn_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: region, data_type: varchar, description: 'Where the customer is billed: NA, EU or APAC', visible_to: [data_steward, churn_analyst]}
+  - {name: plan, data_type: varchar, description: 'The plan they are on: basic, pro or team', visible_to: [data_steward, churn_analyst]}
+  - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [data_steward, churn_analyst]}
+  - {name: cancelled_on, data_type: date, description: The day they cancelled; empty while they are a customer, visible_to: [data_steward, churn_analyst]}
 - source_id: churn-db
   domain_id: churn
   schema: public
   table: usage
   description: Each customer's use of the product, month by month, for the last twelve months
   columns:
-  - {name: customer_id, data_type: integer, is_primary_key: true, description: The customer, visible_to: [org_admin, analyst]}
-  - {name: month, data_type: date, is_primary_key: true, description: The first day of the month, visible_to: [org_admin, analyst]}
-  - {name: logins, data_type: integer, description: How many times they signed in that month, visible_to: [org_admin, analyst]}
-  - {name: support_tickets, data_type: integer, description: How many support tickets they opened that month, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, is_primary_key: true, description: The customer, visible_to: [data_steward, churn_analyst]}
+  - {name: month, data_type: date, is_primary_key: true, description: The first day of the month, visible_to: [data_steward, churn_analyst]}
+  - {name: logins, data_type: integer, description: How many times they signed in that month, visible_to: [data_steward, churn_analyst]}
+  - {name: support_tickets, data_type: integer, description: How many support tickets they opened that month, visible_to: [data_steward, churn_analyst]}
 views:
 # What the model is trained on: one row a customer, their year of usage summed up, and whether they
 # cancelled. Materialized, built when the demo is set up; the email mask is the analyst's here too.
@@ -93,13 +94,13 @@ views:
     JOIN "churn"."usage" AS u ON u.customer_id = c.id
     GROUP BY c.id, c.email, c.region, c.plan, c.tenure_months, c.cancelled_on
   columns:
-  - {name: customer_id, data_type: integer, description: The customer's id, visible_to: [org_admin, analyst]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analyst, visible_to: [org_admin, analyst], masks: [{to: [analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [org_admin, analyst]}
-  - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [org_admin, analyst]}
-  - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [org_admin, analyst]}
-  - {name: logins_per_month, data_type: double, description: Their average sign-ins a month over the year, visible_to: [org_admin, analyst]}
-  - {name: tickets, data_type: bigint, description: The support tickets they opened in the year, visible_to: [org_admin, analyst]}
-  - {name: churned, data_type: integer, description: '1 if they have cancelled, 0 if not', visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, description: The customer's id, visible_to: [data_steward, churn_analyst]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analyst, visible_to: [data_steward, churn_analyst], masks: [{to: [churn_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [data_steward, churn_analyst]}
+  - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [data_steward, churn_analyst]}
+  - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [data_steward, churn_analyst]}
+  - {name: logins_per_month, data_type: double, description: Their average sign-ins a month over the year, visible_to: [data_steward, churn_analyst]}
+  - {name: tickets, data_type: bigint, description: The support tickets they opened in the year, visible_to: [data_steward, churn_analyst]}
+  - {name: churned, data_type: integer, description: '1 if they have cancelled, 0 if not', visible_to: [data_steward, churn_analyst]}
 relationships:
 - {id: usage-to-customer, alias: USED_BY, cardinality: many-to-one, source_table_id: usage, source_column: customer_id, target_table_id: customers, target_column: id}
