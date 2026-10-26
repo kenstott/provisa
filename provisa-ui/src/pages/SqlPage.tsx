@@ -37,6 +37,7 @@ import type { RegisteredTable } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
+import { kept, restored, type KeptResult } from "../lib/resultWithQuery";
 import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./sql/types";
 import { useScreenEditor } from "../mcp/screenState";
 import { useResultsGrid } from "./sql/useResultsGrid";
@@ -212,13 +213,20 @@ export function SqlPage() {
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
   const resultsHydrated = useRef(false);
+  // Each tab's query that produced the results it holds: kept with them, so they are restored
+  // only beside it.
+  const resultQueries = useRef(new Map<string, string>());
 
   // Hydrate each tab's last-run results from IndexedDB on mount.
   useEffect(() => {
     let cancelled = false;
     Promise.all(
       initialTabs.tabs.map((t) =>
-        idbGet<SqlResults>(tabResultsKey(t.id)).then((r) => ({ id: t.id, r })),
+        idbGet<KeptResult<SqlResults>>(tabResultsKey(t.id)).then((k) => {
+          const r = restored(k, t.sqlText);
+          if (r && k) resultQueries.current.set(t.id, k.query);
+          return { id: t.id, r };
+        }),
       ),
     ).then((loaded) => {
       if (cancelled) return;
@@ -725,7 +733,7 @@ export function SqlPage() {
 
   // One statement's result, of the batch's, into the result shown (grid, profile, export).
   const showStatement = useCallback(
-    (list: StatementResult[], index: number) => {
+    (list: StatementResult[], index: number, query: string) => {
       const r = list[index];
       setStatementIndex(index);
       setResultColumns(r.columns);
@@ -735,14 +743,18 @@ export function SqlPage() {
       setResultRedirect(r.redirect);
       setResultPartial(r.partial);
       resetGrid();
-      idbSet(tabResultsKey(activeTabId), {
-        columns: r.columns,
-        rows: r.rows,
-        error: r.error,
-        partial: r.partial,
-        statements: list,
-        statementIndex: index,
-      });
+      resultQueries.current.set(activeTabId, query);
+      idbSet(
+        tabResultsKey(activeTabId),
+        kept<SqlResults>(query, {
+          columns: r.columns,
+          rows: r.rows,
+          error: r.error,
+          partial: r.partial,
+          statements: list,
+          statementIndex: index,
+        }),
+      );
     },
     [activeTabId, resetGrid],
   );
@@ -772,7 +784,7 @@ export function SqlPage() {
     setQueryStats(run.provisa_stats ?? null);
     const results = run.answers.map(toStatementResult);
     setStatements(results);
-    if (results.length > 0) showStatement(results, 0);
+    if (results.length > 0) showStatement(results, 0, aliased);
     else {
       // Refused as a whole, or a batch of no statements (comments alone).
       setStatementIndex(0);
@@ -782,7 +794,11 @@ export function SqlPage() {
       setResultRows([]);
       setResultPartial(false);
       resetGrid();
-      idbSet(tabResultsKey(activeTabId), { columns: [], rows: [], error: run.error ?? "" });
+      resultQueries.current.set(activeTabId, aliased);
+      idbSet(
+        tabResultsKey(activeTabId),
+        kept<SqlResults>(aliased, { columns: [], rows: [], error: run.error ?? "" }),
+      );
     }
     setResultTab("results");
     const failed = run.error ?? results.find((r) => r.error)?.error ?? "";
@@ -1053,7 +1069,11 @@ export function SqlPage() {
               rowsPartial={resultPartial}
               statements={statements}
               statementIndex={statementIndex}
-              onStatement={(i) => showStatement(statements, i)}
+              // A batch's statements are held only after a run or a restore, each of which keeps
+              // the tab's query.
+              onStatement={(i) =>
+                showStatement(statements, i, resultQueries.current.get(activeTabId)!)
+              }
               grid={grid}
               errors={errors}
               history={history}

@@ -68,6 +68,7 @@ import {
   TOUR_TOPICS_DONE_KEY,
 } from "./tourKeys";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { kept } from "../lib/resultWithQuery";
 import { runUiActions } from "../mcp/uiActions";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
@@ -251,7 +252,7 @@ const PREP_ACTIONS: Record<string, () => void> = {
       );
     }
     setStored(NL_QUESTION_KEY, NL_DEMO_QUESTION);
-    setStored(NL_BRANCHES_KEY, JSON.stringify(NL_DEMO_BRANCHES));
+    setStored(NL_BRANCHES_KEY, JSON.stringify(kept(NL_DEMO_QUESTION, NL_DEMO_BRANCHES)));
   },
 };
 
