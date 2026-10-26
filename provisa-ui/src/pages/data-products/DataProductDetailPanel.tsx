@@ -111,7 +111,8 @@ interface DataProductDetailPanelProps {
   canEdit: boolean;
   /** REQ-2160: the reader holds the product's owner or team role. The owner also sees its
    *  expectations, related and unattached checks, and its input ports; any other reader sees its
-   *  promises. What either is shown is already cut to the reader's rights (REQ-2152). */
+   *  promises. The split hides lists and cards only, never a right: Edit and Delete follow
+   *  canEdit. What either view is shown is already cut to the reader's rights (REQ-2152). */
   owner: boolean;
   lineageLoading: boolean;
   lineageError: string;
@@ -960,22 +961,19 @@ export function DataProductDetailPanel({
       </div>
       {canEdit && (
         <Group gap="xs" mt={4}>
-          {/* REQ-2160: its owner edits the product's contracts; any other reader does not. */}
-          {owner && (
-            <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
-              <ActionIcon
-                variant="subtle"
-                aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
-                data-testid={`data-product-detail-edit-${p.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-              >
-                <Pencil size={14} />
-              </ActionIcon>
-            </Tip>
-          )}
+          <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
+            <ActionIcon
+              variant="subtle"
+              aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
+              data-testid={`data-product-detail-edit-${p.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+            >
+              <Pencil size={14} />
+            </ActionIcon>
+          </Tip>
           <Tip text={t("dataProductsTab.deleteDataProduct", { id: p.id })} named>
             <ActionIcon
               variant="subtle"

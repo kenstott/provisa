@@ -240,7 +240,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
 });
 
 describe("the owner's view and any other reader's (REQ-2160)", () => {
-  const view = (owner: boolean) =>
+  const view = (owner: boolean, canEdit = true) =>
     render(
       <DataProductDetailPanel
         p={P}
@@ -250,20 +250,19 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
         lineageLoading={false}
         lineageError=""
         lineageGraph={LINEAGE}
-        canEdit
+        canEdit={canEdit}
         owner={owner}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
 
-  it("shows the owner its expectations, related and unattached checks, inputs and editing", () => {
+  it("shows the owner its expectations, related and unattached checks and its inputs", () => {
     view(true);
     for (const row of ["expectations", "promises", "related"])
       expect(screen.getByTestId(`data-product-detail-dq-${row}-c360`)).toBeInTheDocument();
     expect(screen.getByTestId("data-product-detail-dq-c360-orphan-15")).toBeInTheDocument();
     expect(screen.getByTestId("data-product-card-inputPorts-c360")).toBeInTheDocument();
-    expect(screen.getByTestId("data-product-detail-edit-c360")).toBeInTheDocument();
   });
 
   it("shows any other reader the product's promises, and none of the owner's part", () => {
@@ -273,9 +272,41 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     expect(screen.queryByTestId("data-product-detail-dq-related-c360")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-dq-c360-orphan-15")).toBeNull();
     expect(screen.queryByTestId("data-product-card-inputPorts-c360")).toBeNull();
-    expect(screen.queryByTestId("data-product-detail-edit-c360")).toBeNull();
     // Its promises on its output ports, as the owner sees them.
     expect(screen.getByTestId("data-product-detail-promises-c360")).toHaveTextContent("2 promises");
+  });
+});
+
+describe("editing a data product follows the right to edit it, not the view (REQ-2160)", () => {
+  const view = (owner: boolean, canEdit: boolean) =>
+    render(
+      <DataProductDetailPanel
+        p={P}
+        core={CORE}
+        coreError={null}
+        reader={null}
+        lineageLoading={false}
+        lineageError=""
+        lineageGraph={LINEAGE}
+        canEdit={canEdit}
+        owner={owner}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+  it("offers Edit and Delete to a steward holding data_product_rw who does not own the product", () => {
+    view(false, true);
+    expect(screen.getByTestId("data-product-detail-edit-c360")).toBeInTheDocument();
+    expect(screen.getByTestId("data-product-detail-delete-c360")).toBeInTheDocument();
+    // The view is still the reader's, not the owner's.
+    expect(screen.queryByTestId("data-product-detail-dq-expectations-c360")).toBeNull();
+  });
+
+  it("offers neither to an owner without the right", () => {
+    view(true, false);
+    expect(screen.queryByTestId("data-product-detail-edit-c360")).toBeNull();
+    expect(screen.queryByTestId("data-product-detail-delete-c360")).toBeNull();
   });
 });
 
