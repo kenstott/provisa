@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
+import { LIVE_MODEL_YAML } from "./liveModel";
 import { startNeo4jContainer } from "./neo4j-container";
 import { startDemoSources } from "./demo-source-containers";
 import { resolveNeededSources } from "./resolve-needed-sources";
@@ -215,8 +216,11 @@ export default async function globalSetup() {
     startDemoSources(needed.sources);
   }
 
-  const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
-  fs.writeFileSync(SNAPSHOT_PATH, yaml);
+  const installYaml = fs.readFileSync(CONFIG_PATH, "utf8");
+  // What teardown puts back: the install config as it is, never the e2e additions below.
+  fs.writeFileSync(SNAPSHOT_PATH, installYaml);
+  // The install config, with the live model the e2e chat reaches (liveModel.ts).
+  const yaml = installYaml + LIVE_MODEL_YAML;
   // In parallel: the bootstrap is dominated by each backend's cold DuckDB warm-up queries
   // (30-90 s apiece), and they are separate processes on separate data dirs with nothing to
   // serialise on. Serially this would add minutes to every run's fixed cost.

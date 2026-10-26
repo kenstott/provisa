@@ -13,6 +13,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { LIVE_MODEL_YAML } from "./e2e/liveModel";
 
 // Load root .env so live-backend tests receive AWS credentials
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -290,6 +291,7 @@ if (IS_RUNNER) {
   for (const b of CORE_BACKENDS) {
     fs.mkdirSync(path.dirname(b.configPath), { recursive: true });
     fs.copyFileSync(path.resolve(__dirname, "../config/provisa-install.yaml"), b.configPath);
+    fs.appendFileSync(b.configPath, LIVE_MODEL_YAML);
   }
 }
 // Trino backend uses a minimal config (domains only, no pre-registered sources) so the
