@@ -88986,7 +88986,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     is emulating the calls real tools expect (APOC for Cypher tools and agent frameworks, and likewise catalog
     functions or service descriptions on other surfaces), so end users extend it themselves. A declared
     name that would shadow a built-in or another command is refused, naming both. The built-in APOC set
-    is shipped as declarations on this mechanism.'
+    is shipped as declarations on this mechanism. (Amended 2026-10-25, TARGETED LANGUAGES:) Maintainer 2026-10-26:
+    a command or function may be targeted to specific languages. When it lists its languages it is offered
+    only in those (an APOC emulation only in Cypher, a catalog-function emulation only in SQL), so tool-emulation
+    shims do not appear in GraphQL, REST or MCP. When it lists none it is offered in every language with
+    the generated default names. A call in a language it is not offered in is refused by name like any unknown
+    command.'
   scenario: 'Given a role that reads Shelter:Employees but not Shelter:Payroll
 
     When LangChain''s Neo4j integration connects over Bolt as that role and loads the schema with apoc.meta.data
