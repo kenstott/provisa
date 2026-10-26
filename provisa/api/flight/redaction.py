@@ -35,7 +35,8 @@ RPCS = (
 def _redacted(method: Any) -> Any:
     import pyarrow.flight as flight
 
-    from provisa.security.redaction import redact
+    # What the client is told: redacted, in the model's names (REQ-2087, REQ-2152).
+    from provisa.api.engine_error_names import client_text as redact
 
     @functools.wraps(method)
     def call(*args: Any, **kwargs: Any) -> Any:

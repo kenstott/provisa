@@ -19,7 +19,8 @@ from typing import Any
 
 import grpc
 
-from provisa.security.redaction import redact
+# What the client is told: redacted, in the model's names (REQ-2087, REQ-2152).
+from provisa.api.engine_error_names import client_text as redact
 
 
 class _RedactingContext:
