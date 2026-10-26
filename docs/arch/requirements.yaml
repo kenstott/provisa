@@ -88476,7 +88476,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Environment data stays Org admin''s alone (REQ-1942). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This
     corrects a defect in the access model''s requirements, not a feature: the earlier rules let a capability
     or a default reveal or reach more than a role''s grants. It is resolved before the product is declared
-    green.'
+    green. (Amended 2026-10-25, SANDBOX DOES NOT INHERIT DEVELOPER:) The sandbox role does not inherit Developer,
+    because Developer carries the right to manage environments it owns and a sandbox visitor never manages
+    environments (REQ-2053). Sandbox inherits Analyst, Data product owner, Data quality steward, Source
+    admin, Security admin, Data steward and Org operator, and holds creating views, creating relationships,
+    full results, write and environment switching as its own capabilities. Reading an environment''s synthetic-data
+    report, profile runs and relationships is admitted to the owner of that environment who can switch into
+    it; creating or deleting an environment stays with managing environments (own or any).'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
