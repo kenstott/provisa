@@ -88998,13 +88998,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-10-26: SQL is always offered, because every language compiles to it. A targeted command or function
     lists the other languages it is offered in, and SQL is implied and cannot be excluded. The APOC set
     is offered in Cypher and SQL. (Amended 2026-10-25, SQL ALWAYS; VARIANTS ARE COMMANDS:) Maintainer 2026-10-26:
-    SQL is always offered, because every language compiles to it; targeting lists the other languages a
-    command or function is offered in, and SQL cannot be excluded. Not everything is exposed in GraphQL,
-    Cypher or SPARQL. Where a language expects a different result shape, the variant is a separate command
-    with its own implementation and its own targeting, not an overload: e.g. meta_schema is the general
-    command, and apoc.meta.data is a Cypher-targeted command that may call it and reshape its result into
-    APOC''s format. Calling patterns stay naming aliases. The APOC set is Cypher-targeted commands and functions
-    (offered in SQL as always).'
+    SQL is always offered, because every language compiles to it; [SUPERSEDED by REQ-2168, 2026-10-25 --
+    targeting is opt-out (amendment OPT-OUT). Kept here for history; do not implement against it.] targeting
+    lists the other languages a command or function is offered in, and SQL cannot be excluded. [END SUPERSEDED
+    BLOCK] Not everything is exposed in GraphQL, Cypher or SPARQL. Where a language expects a different
+    result shape, the variant is a separate command with its own implementation and its own targeting, not
+    an overload: e.g. meta_schema is the general command, and apoc.meta.data is a Cypher-targeted command
+    that may call it and reshape its result into APOC''s format. Calling patterns stay naming aliases. The
+    APOC set is Cypher-targeted commands and functions (offered in SQL as always). (Amended 2026-10-25,
+    OPT-OUT:) Maintainer 2026-10-26: language targeting is opt-out. A command or function is offered in
+    every language under its generated default name; excluding it from a language, or renaming it there,
+    is an explicit declaration, so leaving it out is always an active choice. SQL cannot be excluded. The
+    APOC set''s commands declare their exclusions from GraphQL, REST, MCP and SPARQL.'
   scenario: 'Given a role that reads Shelter:Employees but not Shelter:Payroll
 
     When LangChain''s Neo4j integration connects over Bolt as that role and loads the schema with apoc.meta.data
