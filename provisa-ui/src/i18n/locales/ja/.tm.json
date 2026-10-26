@@ -8130,5 +8130,15 @@
   "ja/serverErrors.json::serverErrors.profile.classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
   "ja/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads",
   "ja/securityPage.json::securityPage.standardRole": "Standard role",
-  "ja/securityPage.json::securityPage.standardRoleNote": "Provisa's own, kept up to date by Provisa. Extend it with a role of your own that inherits from it."
+  "ja/securityPage.json::securityPage.standardRoleNote": "Provisa's own, kept up to date by Provisa. Extend it with a role of your own that inherits from it.",
+  "ja/roleRights.json::roleRights.tabs": "Role sections",
+  "ja/roleRights.json::roleRights.tab_details": "Details",
+  "ja/roleRights.json::roleRights.tab_capabilities": "Capabilities",
+  "ja/roleRights.json::roleRights.kind_standard": "standard role",
+  "ja/roleRights.json::roleRights.kind_custom": "role",
+  "ja/roleRights.json::roleRights.kind_meta": "meta-role",
+  "ja/roleRights.json::roleRights.lineageHint": "From the standard roles to this one: each role lists the capabilities it adds; this role lists all it holds.",
+  "ja/roleRights.json::roleRights.capability": "Capability",
+  "ja/roleRights.json::roleRights.from": "Comes from",
+  "ja/roleRights.json::roleRights.own": "its own"
 }
