@@ -89025,3 +89025,32 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And Payroll is absent
 
     And a Cypher query it then writes with apoc.text.join runs and pushes the function down'
+- id: REQ-2169
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Extensibility
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: behavioral
+  description: 'Provisa is extended through drivers, one kind per core contract: source drivers, engine
+    drivers and secrets drivers, alongside command bindings (REQ-2168) for commands and functions. Every
+    built-in implementation is itself a driver of its kind, and each kind ships with the kit the built-ins
+    use: (1) a scaffold (provisa new source-driver / engine-driver / secrets-driver); (2) the contract
+    test kit, the same tests every built-in driver must pass, so a third-party driver is held to the same
+    standard and the kit is also the gate for Provisa''s own drivers; (3) a docs guide with an effort
+    table by case. Source drivers cover schema discovery, filter and limit pushdown, reachability methods
+    and write operations; a code data source (a Python or Node function as a governed table) remains the
+    quick path for rows only. Engine drivers cover the SQL dialect, connection, live-attach methods for
+    reachability and the materialize store. Secrets drivers resolve credentials from a vault the customer
+    already runs. Security is not a driver kind: the model (scope, capabilities, grants) is the governance,
+    and its extension point is the external policy hook (the ABAC approval hook). Always written in full
+    (''source driver'', ''engine driver''), distinct from a database''s client driver such as psycopg
+    or JDBC.'
+  scenario: 'Given a third-party source driver scaffolded with provisa new source-driver
+
+    When its author runs the source driver contract test kit
+
+    Then it runs the same tests the built-in Postgres source driver passes
+
+    And a driver that fails a test is reported by test name'
