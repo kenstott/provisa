@@ -306,3 +306,124 @@ async def test_a_table_the_caller_reads_nothing_of_is_not_found(wired):
     with pytest.raises(ApiError) as refused:
         await table_access_router.table_access_endpoint(1, _request())
     assert refused.value.code == "schema.table_not_found"
+
+
+def test_a_write_grant_outside_the_role_s_reach_is_not_its_write():
+    tables = [
+        {
+            "id": 9,
+            "domain_id": "billing",
+            "table_name": "ledger",
+            "alias": None,
+            "columns": [_col("entry", []), _col("total", [], "public")],
+            "write_grants": [
+                {"role": "clinical_reviewer", "operation": "update", "columns": ["entry", "total"]}
+            ],
+        }
+    ]
+    view = data_view(
+        "clinical_reviewer",
+        reach=["claims"],
+        chain=CHAIN,
+        parents=PARENTS,
+        tables=tables,
+        stored={},
+        masks={},
+        row_rule=lambda _t, _d: None,
+        readable=lambda _t, _c: True,
+    )
+    # Only the public column, read across domains, and no write.
+    [table] = view
+    assert [(c["name"], c["read"], c["write"], c["reach"]) for c in table["columns"]] == [
+        ("total", True, [], "public")
+    ]
+
+
+# --- a meta-role's data access is what serving builds for it ---------------------------------------
+
+from provisa.compiler.rls import RLSContext as _RLS  # noqa: E402
+from provisa.security.masking import MaskingRule, MaskType  # noqa: E402
+from tests.role_state import RoleState  # noqa: E402
+
+
+@pytest.fixture
+def _no_surface_build(monkeypatch):
+    def _register(state, role, rls):
+        state.rls_contexts[role["id"]] = rls
+
+    monkeypatch.setattr("provisa.api.app_loaders.register_role_surface", _register)
+
+
+def test_a_meta_role_reads_the_union_with_each_member_s_mask_and_the_or_of_their_rows(
+    _no_surface_build,
+):
+    # east is granted region, west email; email is masked to east... and west alike.
+    tables = [
+        {
+            "id": 1,
+            "source_id": "pg",
+            "domain_id": "sales",
+            "table_name": "customers",
+            "alias": None,
+            "columns": [
+                {"column_name": "region", "visible_to": ["east"], "scope": "restricted"},
+                {"column_name": "email", "visible_to": ["west"], "scope": "restricted"},
+            ],
+            "write_grants": [],
+        }
+    ]
+    role = lambda rid: {  # noqa: E731
+        "id": rid,
+        "description": rid,
+        "capabilities": [],
+        "domain_access": ["sales"],
+        "max_rows": None,
+        "rate_limit": None,
+        "session_vars": {},
+    }
+    state = RoleState(
+        roles={"east": role("east"), "west": role("west")},
+        rls_contexts={
+            "east": _RLS(rules={1: "region = 'east'"}),
+            "west": _RLS(rules={1: "region = 'west'"}),
+        },
+        contexts={
+            r: SimpleNamespace(tables={"1": SimpleNamespace(table_id=1)}) for r in ("east", "west")
+        },
+        masking_rules={(1, "west"): {"email": (MaskingRule(MaskType.constant), "varchar")}},
+        masked_columns=[
+            (1, "email", [{"to": ["*"], "mask": {"type": "constant", "value": None}}], "varchar")
+        ],
+        tracked_functions={},
+        tracked_webhooks={},
+        meta_roles={},
+        meta_resolved_at={},
+        meta_qualifiers={},
+        role_chains={"east": ["east"], "west": ["west"]},
+        role_build_inputs={
+            "role_chains": {"east": ["east"], "west": ["west"]},
+            "tables": tables,
+            "metrics": [],
+            "functions": [],
+            "webhooks": [],
+        },
+    )
+    # The served tables are the build inputs' own list, as app.py publishes them.
+    state.tables = state.role_build_inputs["tables"]
+    view = data_view_from_state(
+        state,
+        "meta:east+west",
+        parents={"east": [], "west": []},
+        stored={(1, "region"): ["east"], (1, "email"): ["west"]},
+        readable=lambda _t, _c: True,
+        governance=True,
+    )
+    cols = {c["name"]: c for c in view[0]["columns"]}
+    # The union of the members' columns, each granted by the member that holds it.
+    assert set(cols) == {"region", "email"}
+    assert cols["region"]["granted_by"] == "east"
+    assert cols["email"]["granted_by"] == "west"
+    assert cols["email"]["mask"] == {"type": "constant"}
+    # Each row read as the member whose filter admitted it: the OR of their rules.
+    assert "region = 'east'" in cols["region"]["row_rule"]
+    assert "region = 'west'" in cols["region"]["row_rule"]

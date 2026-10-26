@@ -35,6 +35,7 @@
     "classTerm": "Zeilen sind Instanzen von",
     "classTermPlaceholder": "Begriff wählen",
     "noClassTerm": "Kein Begriff",
-    "classTermUnreadable": "Der Begriff konnte nicht gelesen werden: {{error}}"
+    "classTermUnreadable": "Der Begriff konnte nicht gelesen werden: {{error}}",
+    "access": "Zugriff"
   }
 }

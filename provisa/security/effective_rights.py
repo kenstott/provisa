@@ -113,7 +113,8 @@ def data_view(
         tid, domain = table["id"], table["domain_id"]
         reaches = reaches_domain(list(reach), domain)
         writes: dict[str, list[str]] = {}
-        for grant in table.get("write_grants") or []:
+        # A write is admitted only within the role's reach: outside it nothing is written.
+        for grant in table.get("write_grants") or [] if reaches else []:
             if grant["role"] != role_id:
                 continue
             for column in (

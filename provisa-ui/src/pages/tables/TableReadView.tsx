@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { TableAccessPanel } from "./TableAccessPanel";
 import { maskSpecLabel, maskToLabel } from "../../lib/masks";
 import { grantLabel } from "../../lib/grants";
 import { Fragment, useEffect, useRef } from "react";
@@ -783,6 +784,8 @@ export function TableReadView({
             {t("tableReadView.draftPreviewNote")}
           </Text>
         )}
+        {/* REQ-2162: who can read or write each column. */}
+        {section === "access" && <TableAccessPanel tableId={table.id} />}
         {section === "writes" && (
           // REQ-2074: what each role may write to the table.
           <WriteGrantsPanel

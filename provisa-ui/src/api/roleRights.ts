@@ -29,6 +29,55 @@ export interface RoleEffective {
   /** Every capability the role holds, with the roles it enters at: more than one when it enters
    *  in several branches. */
   capabilities: { right: string; from: string[] }[];
+  /** Per table it reaches, its access to each column the caller may read. */
+  data: RoleTableAccess[];
+}
+
+/** REQ-2161/2162: what a role does with one column, and the grant behind it (none named without
+ *  the governance right). */
+export interface ColumnAccess {
+  read: boolean;
+  write: ("insert" | "update" | "delete")[];
+  mask: { type: string } | null;
+  row_rule: string | null;
+  /** The role the column's grant names, or "*" for every role; null when not shown. */
+  granted_by: string | null;
+  /** The path from the role up to granted_by. */
+  via: string[];
+  reach: "domain" | "public";
+}
+
+/** REQ-2161: one table a role reaches, with the columns it has access to. */
+export interface RoleTableAccess {
+  table_id: number;
+  domain: string;
+  /** As the catalog names it: domain, then alias or table name. */
+  name: string;
+  table_name: string;
+  reach: "domain" | "across";
+  columns: ({ name: string; scope: string } & ColumnAccess)[];
+}
+
+/** REQ-2162: who can read or write each column of a table. */
+export interface TableAccess {
+  table_id: number;
+  domain: string;
+  name: string;
+  table_name: string;
+  columns: {
+    name: string;
+    scope: string;
+    access: ({ role: string; standard: boolean } & ColumnAccess)[];
+  }[];
+}
+
+export async function fetchTableAccess(tableId: number): Promise<TableAccess> {
+  const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/access`);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("Column access", resp.status)));
+  }
+  return resp.json();
 }
 
 export async function fetchRoleEffective(roleId: string): Promise<RoleEffective> {
