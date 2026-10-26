@@ -109,7 +109,7 @@
               </tr>
               <tr>
                 <th>Enforce access policy on every source — warehouses, APIs, NoSQL, graph, code</th>
-                <td>Tag-based classification; enforcement depends on each platform's own controls, which vary by source type</td>
+                <td>Some push policy into the platforms they support: Collibra Protect writes masking and row filters into Snowflake, Databricks, BigQuery and AWS Lake Formation; Atlan syncs tags back to Snowflake and Databricks. APIs, NoSQL, graph and code sources fall outside that reach</td>
                 <td class="is-us">&#10003; Masking, row-level security and column visibility enforced identically on every protocol and source type: SQL, GraphQL, Cypher, SPARQL, MCP and more</td>
               </tr>
               <tr>
@@ -216,8 +216,12 @@
   Governance rules never read from catalog: docs/metadata-export.md "Governance (grants, row rules and masks)
     is never read from a catalog." — tool-verified.
   Atlan beta status: docs/metadata-export.md "The Atlan adapter has not yet run against a live Atlan tenant" — tool-verified.
-  Catalog vendor capabilities (browsing, search, tagging, glossary, lineage): inferred from well-known product capabilities;
-    not verified against current vendor documentation.
-  Tag propagation note ("enforcement depends on each platform's own controls"): inferred; not verified against
-    current Atlan, Collibra or Alation documentation.
+  Collibra Protect (verified 2026-10-26 by the lead): supported sources AWS Lake Formation, BigQuery, Databricks, Snowflake;
+    masking and row filters enforced in the platform. https://productresources.collibra.com/docs/collibra/latest/Content/Protect/to_collibra-protect.htm
+    https://productresources.collibra.com/docs/collibra/latest/Content/Protect/ref_protect-faq.htm
+    https://www.collibra.com/blog/q4-2024-release-protect-for-databricks-is-now-ga
+  Atlan tag reverse sync to Snowflake and Databricks (verified 2026-10-26 by the lead): updates existing imported tags only.
+    https://docs.atlan.com/apps/connectors/data-warehouses/snowflake/how-tos/manage-snowflake-tags
+    https://docs.atlan.com/apps/connectors/data-warehouses/databricks/how-tos/manage-databricks-tags
+  Catalog browsing, search, tagging, glossary and scan-based lineage: general product capabilities of the category.
 -->
