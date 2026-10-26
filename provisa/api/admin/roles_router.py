@@ -351,3 +351,31 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
     # The role's built schema and context must not outlive it; the GraphQL path rebuilds too.
     await _rebuild_schemas()
     return {"deleted": role_id}
+
+
+@router.get("/{role_id}/effective")
+async def effective_rights(role_id: str, request: Request):  # REQ-2161
+    """A role's effective capabilities: its lineage from the standard roles, what each role in it
+    adds, and every capability with the role it comes from. Answered for a role whose definition
+    the caller may read -- a meta-role when it may read every member -- and as not found
+    otherwise, so a role it may not read is not marked as existing."""
+    from provisa.core.db import STANDARD_ROLES
+    from provisa.security.effective_rights import capabilities_view
+    from provisa.security.meta_role import META_PREFIX, is_meta_role_id
+
+    org_id = _active_org(request)
+    identity = getattr(request.state, "identity", None)
+    full = role_definitions_visible(request, getattr(identity, "roles", []))
+    members = role_id[len(META_PREFIX) :].split("+") if is_meta_role_id(role_id) else [role_id]
+    pool = _pool(request)
+    async with pool.acquire() as conn:
+        result = await conn.execute_core(
+            select(roles.c.id, roles.c.capabilities, roles.c.parents).where(
+                or_(roles.c.org_id.is_(None), roles.c.org_id == org_id)
+            )
+        )
+        rows = [dict(r._mapping) for r in result.fetchall()]
+    known = {r["id"] for r in rows}
+    if not all(m in known and full(m) for m in members):
+        raise ApiError(404, "roles.not_found", "Role not found")
+    return capabilities_view(role_id, rows, standard=STANDARD_ROLES)
