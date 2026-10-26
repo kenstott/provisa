@@ -64,6 +64,8 @@
     "inputColumnsTitle": "Input Dataset Columns",
     "addInputColumn": "+ Add Input Column",
     "removeInputColumn": "remove input column {{name}}",
-    "datasetColumnPlaceholder": "column"
+    "datasetColumnPlaceholder": "column",
+    "bindingTemplate": "SQL expression",
+    "bindingTemplateHint": "One SQL expression. Write each argument as {{placeholder}}; it runs inside the calling query."
   }
 }

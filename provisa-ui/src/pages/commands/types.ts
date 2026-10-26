@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { ActionArg, DatasetColumn, InlineField } from "../../api/actions";
+import type { ActionArg, DatasetColumn, InlineField, LanguageBinding } from "../../api/actions";
 
 export const GRAPHQL_TYPES = [
   "String",
@@ -58,6 +58,8 @@ export interface FormState {
   outputColumns: DatasetColumn[];
   // REQ-1634: optional data-product membership.
   productId: string;
+  // REQ-2168: the command's name per language; a language left out offers its own name.
+  languageBindings: Record<string, LanguageBinding>;
 }
 
 // REQ-885: selectable implementation kinds for the function/command editor.
@@ -72,6 +74,8 @@ export const IMPL_KINDS = [
   { value: "python", label: "Python (in-process)" },
   // REQ-2001: a Provisa SQL statement, governed and run as the caller.
   { value: "statement", label: "Provisa SQL statement" },
+  // REQ-2168: a function written as a SQL expression template, pushed down with the query.
+  { value: "sql_expression", label: "SQL expression (function)" },
   // REQ-2131: a code source's @columns function, a batch column transform applied in a
   // projection. Chosen by picking a code source; its columns follow from the function.
   { value: "code_columns", label: "Column transform (code source)" },
@@ -131,6 +135,7 @@ export const EMPTY_FORM: FormState = {
   writesTable: "",
   outputColumns: [],
   productId: "",
+  languageBindings: {},
 };
 
 // REQ-1159: IR type → JSON-schema scalar. return_schema is the GraphQL projection of the

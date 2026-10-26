@@ -42,6 +42,12 @@ export interface InlineField {
   masks?: MaskEntry[]; // REQ-2059: the ordered mask list
 }
 
+/** A command's name in one language (REQ-2168): renamed by `name`, or left out by `exclude`. */
+export interface LanguageBinding {
+  name?: string;
+  exclude?: boolean;
+}
+
 export interface TrackedFunction {
   name: string;
   sourceId: string;
@@ -68,6 +74,8 @@ export interface TrackedFunction {
   productId?: string | null;
   // REQ-2001: a statement command's contract, derived from its statement at every build.
   contract?: StatementContract;
+  // REQ-2168: the command's name per language.
+  languageBindings?: Record<string, LanguageBinding>;
 }
 
 /** What a statement command's statement declares (REQ-2001), as the server derived it. */
@@ -147,6 +155,8 @@ export async function saveFunction(
     // REQ-1924, REQ-871: "schema.table" of the registered table it writes, where known.
     writesTable?: string | null;
     productId?: string | null;
+    // REQ-2168: the command's name per language.
+    languageBindings?: Record<string, LanguageBinding>;
   },
   /** The name of the command saved over (an update), or null for a new one (a create, which
    *  refuses a name that exists). */
