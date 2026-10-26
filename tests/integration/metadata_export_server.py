@@ -36,8 +36,8 @@ from typing import Any
 import httpx
 import yaml
 
-from provisa.core.db import SEEDED_ROLE_IDS
-from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
+from provisa.core.db import SEEDED_ROLE_IDS, STANDARD_ROLES
+from provisa.security.rights import ORG_ADMIN_ROLE
 
 SCHEMA = "mdx_e2e"
 SOURCE = "mdx-wh"
@@ -71,10 +71,11 @@ GLOSSARY_DEFINITION = "A person or company that has placed at least one order."
 CLASS_TERM = "order"
 CLASS_DEFINITION = "A customer's request to buy, placed once."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.
-# The org's data roles: the model's, and the ones every org schema is seeded with. A column read
-# by the model's roles alone is visibility-restricted for the seeded ones.
+# The roles a catalog's governance tags name: the model's, and every standard role (REQ-2155) that
+# reaches a domain -- org_admin among them, platform_admin (which reaches none) not. A column read
+# by the model's roles alone is visibility-restricted for the standard ones.
 MODEL_ROLES = ["analyst", "data_owner", "admin"]
-AUDIENCE = sorted({*MODEL_ROLES, *SEEDED_ROLE_IDS} - {ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
+AUDIENCE = sorted({*MODEL_ROLES, *(r for r in SEEDED_ROLE_IDS if STANDARD_ROLES[r].domain_access)})
 
 VIEW = "order_totals"
 VIEW_SQL = f'SELECT o.id AS id, o.amount * 2 AS net FROM "{DOMAIN}"."orders" o'
@@ -129,9 +130,9 @@ def model_config(
     under a domain of its own name (Purview) is given the one that exists there. ``product_name``
     is its name: a catalog read back by name is given the run's own."""
     roles = MODEL_ROLES
-    # The org's own admin reads every member as well: the tests read as org_admin, the role the
+    # Every role, the org's own admin among them: the tests read as org_admin, the role the
     # server's default assignment gives.
-    everyone = [*AUDIENCE, ORG_ADMIN_ROLE]
+    everyone = AUDIENCE
     config = {
         "federation_engine": engine,
         "auth": {

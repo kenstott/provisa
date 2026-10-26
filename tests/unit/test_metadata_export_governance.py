@@ -23,7 +23,6 @@ from provisa.api.metadata_export.governance import build_governance_tags
 from provisa.api.metadata_export.model import GovernanceSignal, MetadataSnapshot
 from provisa.api.metadata_export.refs import UnknownTableError
 from provisa.core.db import STANDARD_ROLES
-from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from provisa.core.models import (
     Column,
     Domain,
@@ -40,9 +39,9 @@ MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
 MASK_REPLACE = "XXX-XX-\\3"
 RLS_FILTER = "region_id = current_setting('provisa.region')"
 
-# The org's data roles a tag names: the standard roles (REQ-2155) but org_admin and
-# platform_admin, and the config's own (clerk, admin, and any a test adds).
-_STANDARD = sorted(set(STANDARD_ROLES) - {ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
+# The roles a tag names: every standard role (REQ-2155) and config role that reaches a domain
+# (platform_admin reaches none) -- the config's own being clerk, admin, and any a test adds.
+_STANDARD = sorted(r for r, spec in STANDARD_ROLES.items() if spec.domain_access)
 # Every role: each standard role descends from viewer; the config's roles are named.
 _EVERYONE = ["viewer", "clerk", "admin"]
 

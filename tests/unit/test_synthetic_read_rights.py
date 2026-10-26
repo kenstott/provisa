@@ -83,6 +83,11 @@ def _rights(monkeypatch):
         return await _served(conn, None, table_id)
 
     monkeypatch.setattr(synthetic_router, "require_capability_request", lambda request, cap: None)
+
+    async def _reads(request):  # who may read the datasets is the router's own tests
+        return None
+
+    monkeypatch.setattr(synthetic_router, "_require_read", _reads)
     monkeypatch.setattr("provisa.api.admin.read_rights.served_columns_request", _served)
     monkeypatch.setattr("provisa.api.admin.read_rights.served_columns_of", _served_of)
     monkeypatch.setattr(
