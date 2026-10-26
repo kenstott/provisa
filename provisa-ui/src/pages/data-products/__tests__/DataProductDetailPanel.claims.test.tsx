@@ -99,6 +99,27 @@ const lineage = (dq: ProductDq): ProductLineage => ({
   edges: [],
   outputs: [],
   members: [],
+  // REQ-2160: one hop downstream, a view of the product's and another product's member.
+  consumers: [
+    {
+      relation: "sales.revenue_daily",
+      kind: "view",
+      table_id: 70,
+      domain_id: "sales",
+      table_name: "revenue_daily",
+      alias: null,
+      product_id: null,
+    },
+    {
+      relation: "finance.ledger",
+      kind: "materialized_view",
+      table_id: 71,
+      domain_id: "finance",
+      table_name: "ledger",
+      alias: "gl",
+      product_id: "billing",
+    },
+  ],
   inputs: [input(30, "raw.raw_orders"), input(31, "raw.raw_customers")],
   dq,
 });
@@ -263,6 +284,10 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
       expect(screen.getByTestId(`data-product-detail-dq-${row}-c360`)).toBeInTheDocument();
     expect(screen.getByTestId("data-product-detail-dq-c360-orphan-15")).toBeInTheDocument();
     expect(screen.getByTestId("data-product-card-inputPorts-c360")).toBeInTheDocument();
+    // Its consumers one hop downstream, each by its model name, what it is and its product.
+    const consumers = screen.getByTestId("data-product-detail-consumers-c360");
+    expect(consumers).toHaveTextContent("sales.revenue_daily (view)");
+    expect(consumers).toHaveTextContent("finance.gl (materialized view · in billing)");
   });
 
   it("shows any other reader the product's promises, and none of the owner's part", () => {
@@ -272,6 +297,7 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     expect(screen.queryByTestId("data-product-detail-dq-related-c360")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-dq-c360-orphan-15")).toBeNull();
     expect(screen.queryByTestId("data-product-card-inputPorts-c360")).toBeNull();
+    expect(screen.queryByTestId("data-product-card-consumers-c360")).toBeNull();
     // Its promises on its output ports, as the owner sees them.
     expect(screen.getByTestId("data-product-detail-promises-c360")).toHaveTextContent("2 promises");
   });

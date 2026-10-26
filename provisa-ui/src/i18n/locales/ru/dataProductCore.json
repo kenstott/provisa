@@ -52,6 +52,12 @@
     "dqRow_expectations": "Ожидания",
     "dqRow_promises": "Обещания",
     "dqRow_related": "Связанные",
-    "dqRowEmpty": "Нет."
+    "dqRowEmpty": "Нет.",
+    "consumers": "Потребители",
+    "consumersHint": "Кто читает этот продукт на один шаг ниже по потоку: таблицы, представления и материализованные представления, построенные непосредственно на его участниках.",
+    "consumersEmpty": "Потребители не зарегистрированы.",
+    "consumerKind_table": "таблица",
+    "consumerKind_view": "представление",
+    "consumerKind_materialized_view": "материализованное представление"
   }
 }

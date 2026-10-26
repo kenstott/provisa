@@ -106,7 +106,15 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
       owner
       lineageLoading={false}
       lineageError=""
-      lineageGraph={{ nodes: [], edges: [], outputs: [], members: [], inputs: [], dq }}
+      lineageGraph={{
+        nodes: [],
+        edges: [],
+        outputs: [],
+        members: [],
+        consumers: [],
+        inputs: [],
+        dq,
+      }}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,

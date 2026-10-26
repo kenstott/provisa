@@ -8172,5 +8172,11 @@
   "hi/catalogsTab.json::catalogsTab.domainsHelp": "The domains that work with this catalog. Their tables and data products publish to it, and their tables offer it.",
   "hi/metadataExportTab.json::metadataExportTab.catalog": "Catalog",
   "hi/metadataExportTab.json::metadataExportTab.catalogHelp": "A catalog connected in Admin → Catalogs.",
-  "hi/navBar.json::navBar.itemCatalogs": "Catalogs"
+  "hi/navBar.json::navBar.itemCatalogs": "Catalogs",
+  "hi/dataProductCore.json::dataProductCore.consumers": "Consumers",
+  "hi/dataProductCore.json::dataProductCore.consumersHint": "Who reads this product one hop downstream: the tables, views and materialized views built directly on its members.",
+  "hi/dataProductCore.json::dataProductCore.consumersEmpty": "No consumers recorded.",
+  "hi/dataProductCore.json::dataProductCore.consumerKind_table": "table",
+  "hi/dataProductCore.json::dataProductCore.consumerKind_view": "view",
+  "hi/dataProductCore.json::dataProductCore.consumerKind_materialized_view": "materialized view"
 }

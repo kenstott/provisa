@@ -123,10 +123,23 @@ export interface ProductDq {
   unattached: ProductDqEntry[];
 }
 
+/** REQ-2160: a registered relation reading a member directly, one hop downstream. */
+export interface ProductConsumer {
+  relation: string;
+  kind: "table" | "view" | "materialized_view";
+  table_id: number;
+  domain_id: string;
+  table_name: string;
+  alias: string | null;
+  // The product the consumer belongs to, when it is another product's member.
+  product_id: string | null;
+}
+
 /** REQ-2156: a data product's lineage, cut to what its reader may read. */
 export interface ProductLineage extends LineageGraphData {
   members: string[]; // the member relations, a checker's left out
   inputs: ProductInput[];
+  consumers: ProductConsumer[];
   dq: ProductDq;
 }
 

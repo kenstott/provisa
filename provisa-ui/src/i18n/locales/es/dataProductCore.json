@@ -52,6 +52,12 @@
     "dqRow_expectations": "Expectativas",
     "dqRow_promises": "Promesas",
     "dqRow_related": "Relacionadas",
-    "dqRowEmpty": "Ninguna."
+    "dqRowEmpty": "Ninguna.",
+    "consumers": "Consumidores",
+    "consumersHint": "Quién lee este producto un salto aguas abajo: las tablas, vistas y vistas materializadas construidas directamente sobre sus miembros.",
+    "consumersEmpty": "No hay consumidores registrados.",
+    "consumerKind_table": "tabla",
+    "consumerKind_view": "vista",
+    "consumerKind_materialized_view": "vista materializada"
   }
 }

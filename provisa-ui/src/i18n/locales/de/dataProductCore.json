@@ -52,6 +52,12 @@
     "dqRow_expectations": "Erwartungen",
     "dqRow_promises": "Zusagen",
     "dqRow_related": "Verwandte",
-    "dqRowEmpty": "Keine."
+    "dqRowEmpty": "Keine.",
+    "consumers": "Verbraucher",
+    "consumersHint": "Wer dieses Produkt eine Stufe flussabwärts liest: die Tabellen, Sichten und materialisierten Sichten, die direkt auf seinen Mitgliedern aufbauen.",
+    "consumersEmpty": "Keine Verbraucher erfasst.",
+    "consumerKind_table": "Tabelle",
+    "consumerKind_view": "Sicht",
+    "consumerKind_materialized_view": "materialisierte Sicht"
   }
 }

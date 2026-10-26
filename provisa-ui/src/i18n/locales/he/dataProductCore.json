@@ -52,6 +52,12 @@
     "dqRow_expectations": "ציפיות",
     "dqRow_promises": "הבטחות",
     "dqRow_related": "קשורות",
-    "dqRowEmpty": "אין."
+    "dqRowEmpty": "אין.",
+    "consumers": "צרכנים",
+    "consumersHint": "מי קורא את המוצר הזה צעד אחד במורד הזרם: הטבלאות, התצוגות והתצוגות הממומשות שנבנו ישירות על החברים שלו.",
+    "consumersEmpty": "לא נרשמו צרכנים.",
+    "consumerKind_table": "טבלה",
+    "consumerKind_view": "תצוגה",
+    "consumerKind_materialized_view": "תצוגה ממומשת"
   }
 }

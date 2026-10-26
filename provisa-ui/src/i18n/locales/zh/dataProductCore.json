@@ -52,6 +52,12 @@
     "dqRow_expectations": "预期",
     "dqRow_promises": "承诺",
     "dqRow_related": "相关",
-    "dqRowEmpty": "无。"
+    "dqRowEmpty": "无。",
+    "consumers": "消费方",
+    "consumersHint": "在下游一跳读取此产品的对象：直接构建在其成员之上的表、视图和物化视图。",
+    "consumersEmpty": "未记录消费方。",
+    "consumerKind_table": "表",
+    "consumerKind_view": "视图",
+    "consumerKind_materialized_view": "物化视图"
   }
 }

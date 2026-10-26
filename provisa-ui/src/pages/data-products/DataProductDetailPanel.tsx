@@ -50,7 +50,7 @@ import {
   type CoreTable,
   type ProductCore,
 } from "./productCore";
-import { ClaimsCallout, DqIcon, InputsList, OutcomeBadge } from "./dataProductDq";
+import { ClaimsCallout, ConsumersList, DqIcon, InputsList, OutcomeBadge } from "./dataProductDq";
 import { COLOR, dqStatus } from "./dataProductClaims";
 
 /** REQ-2157: the data quality section's rows, in order. */
@@ -873,6 +873,21 @@ export function DataProductDetailPanel({
               inputs={lineageGraph.inputs}
               expectations={lineageGraph.dq.expectations}
               testId={`data-product-detail-inputs-${p.id}`}
+            />
+          </DetailCard>
+        )}
+        {/* REQ-2160: the owner's view of who reads the product, one hop downstream (the product
+            lineage endpoint, cut to the reader). */}
+        {lineageGraph && owner && (
+          <DetailCard
+            section="consumers"
+            testId={`data-product-card-consumers-${p.id}`}
+            label={t("dataProductCore.consumers")}
+            hint={t("dataProductCore.consumersHint")}
+          >
+            <ConsumersList
+              consumers={lineageGraph.consumers}
+              testId={`data-product-detail-consumers-${p.id}`}
             />
           </DetailCard>
         )}

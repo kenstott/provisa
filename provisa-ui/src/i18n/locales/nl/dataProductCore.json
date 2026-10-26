@@ -52,6 +52,12 @@
     "dqRow_expectations": "Verwachtingen",
     "dqRow_promises": "Beloften",
     "dqRow_related": "Gerelateerd",
-    "dqRowEmpty": "Geen."
+    "dqRowEmpty": "Geen.",
+    "consumers": "Afnemers",
+    "consumersHint": "Wie dit product één stap stroomafwaarts leest: de tabellen, views en gematerialiseerde views die direct op zijn leden zijn gebouwd.",
+    "consumersEmpty": "Geen afnemers vastgelegd.",
+    "consumerKind_table": "tabel",
+    "consumerKind_view": "view",
+    "consumerKind_materialized_view": "gematerialiseerde view"
   }
 }

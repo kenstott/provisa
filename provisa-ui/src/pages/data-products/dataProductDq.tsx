@@ -21,7 +21,7 @@ import { Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@mantine
 import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { tableSqlRef } from "../../naming";
-import type { ProductDqEntry, ProductInput } from "../../api/lineage";
+import type { ProductConsumer, ProductDqEntry, ProductInput } from "../../api/lineage";
 import { modelName } from "./productCore";
 import { COLOR, dqStatus } from "./dataProductClaims";
 
@@ -215,6 +215,39 @@ export function InputsList({
               testId={`${testId}-dq-${input.table_id}`}
             />
           )}
+        </List.Item>
+      ))}
+    </List>
+  );
+}
+
+/** REQ-2160: who reads the product one hop downstream, each by its model name, what it is, and the
+ *  product it belongs to when it is another product's. */
+export function ConsumersList({
+  consumers,
+  testId,
+}: {
+  consumers: ProductConsumer[];
+  testId: string;
+}) {
+  const { t } = useTranslation();
+  if (consumers.length === 0) {
+    return (
+      <Text size="sm" c="var(--text-muted)">
+        {t("dataProductCore.consumersEmpty")}
+      </Text>
+    );
+  }
+  return (
+    <List size="sm" data-testid={testId}>
+      {consumers.map((c) => (
+        <List.Item key={c.relation} ff="monospace">
+          {modelName(c)}
+          <Text component="span" c="var(--text-muted)" ff="text" size="xs">
+            {" "}
+            ({t(`dataProductCore.consumerKind_${c.kind}`)}
+            {c.product_id ? ` · ${t("dataProductCore.inProduct", { product: c.product_id })}` : ""})
+          </Text>
         </List.Item>
       ))}
     </List>

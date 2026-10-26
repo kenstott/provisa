@@ -52,6 +52,12 @@
     "dqRow_expectations": "期待",
     "dqRow_promises": "約束",
     "dqRow_related": "関連",
-    "dqRowEmpty": "なし。"
+    "dqRowEmpty": "なし。",
+    "consumers": "コンシューマー",
+    "consumersHint": "このプロダクトを 1 ホップ下流で読むもの: メンバーの上に直接構築されたテーブル、ビュー、マテリアライズドビュー。",
+    "consumersEmpty": "記録されたコンシューマーはありません。",
+    "consumerKind_table": "テーブル",
+    "consumerKind_view": "ビュー",
+    "consumerKind_materialized_view": "マテリアライズドビュー"
   }
 }

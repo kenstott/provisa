@@ -52,6 +52,12 @@
     "dqRow_expectations": "Expectations",
     "dqRow_promises": "Promises",
     "dqRow_related": "Related",
-    "dqRowEmpty": "None."
+    "dqRowEmpty": "None.",
+    "consumers": "Consumers",
+    "consumersHint": "Who reads this product one hop downstream: the tables, views and materialized views built directly on its members.",
+    "consumersEmpty": "No consumers recorded.",
+    "consumerKind_table": "table",
+    "consumerKind_view": "view",
+    "consumerKind_materialized_view": "materialized view"
   }
 }

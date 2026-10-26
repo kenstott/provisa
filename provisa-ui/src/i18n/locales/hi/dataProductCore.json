@@ -52,6 +52,12 @@
     "dqRow_expectations": "अपेक्षाएँ",
     "dqRow_promises": "वादे",
     "dqRow_related": "संबंधित",
-    "dqRowEmpty": "कोई नहीं।"
+    "dqRowEmpty": "कोई नहीं।",
+    "consumers": "उपभोक्ता",
+    "consumersHint": "इस प्रोडक्ट को एक कदम डाउनस्ट्रीम कौन पढ़ता है: इसके सदस्यों पर सीधे बनी टेबल, व्यू और मटीरियलाइज़्ड व्यू।",
+    "consumersEmpty": "कोई उपभोक्ता दर्ज नहीं है।",
+    "consumerKind_table": "टेबल",
+    "consumerKind_view": "व्यू",
+    "consumerKind_materialized_view": "मटीरियलाइज़्ड व्यू"
   }
 }

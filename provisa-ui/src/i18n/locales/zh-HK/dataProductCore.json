@@ -52,6 +52,12 @@
     "dqRow_expectations": "預期",
     "dqRow_promises": "承諾",
     "dqRow_related": "相關",
-    "dqRowEmpty": "無。"
+    "dqRowEmpty": "無。",
+    "consumers": "消費方",
+    "consumersHint": "在下游一跳讀取此產品的對象：直接建構在其成員之上的表、檢視和實體化檢視。",
+    "consumersEmpty": "未記錄消費方。",
+    "consumerKind_table": "表",
+    "consumerKind_view": "檢視",
+    "consumerKind_materialized_view": "實體化檢視"
   }
 }

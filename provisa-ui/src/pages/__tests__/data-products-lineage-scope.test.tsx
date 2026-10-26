@@ -72,6 +72,7 @@ const LINEAGE: ProductLineage = {
   ],
   outputs: ["pet_store.pets.id", "pet_store.pets.name"],
   members: ["pet_store.pets"],
+  consumers: [],
   inputs: [],
   dq: { expectations: [], promises: [], related: [], unattached: [] },
 };
