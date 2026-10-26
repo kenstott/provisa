@@ -27,7 +27,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from tests.helpers import registered_id, release_mutation
+from tests.helpers import registered_id, release_mutation, write_grants_mutation
 from tests.integration.connector_source_harness import (
     _gql,
     create_domain,
@@ -58,9 +58,13 @@ async def client():
 
     prior_env = os.environ.get("PROVISA_ENGINE")
     os.environ["PROVISA_ENGINE"] = "duckdb"
-    prior_engine = app_mod.state.federation_engine
-    app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
-    app_mod.state.federation_engine.bind_terminal()
+    from tests.conftest import as_deployment_org
+
+    # The engine is the deployment org's, set as its boot sets it (REQ-1266).
+    with as_deployment_org():
+        prior_engine = app_mod.state.federation_engine
+        app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
+        app_mod.state.federation_engine.bind_terminal()
     try:
         app = app_mod.create_app()
         async with app.router.lifespan_context(app):
@@ -68,11 +72,17 @@ async def client():
             async with AsyncClient(transport=transport, base_url="http://test", timeout=600) as c:
                 yield c
     finally:
-        app_mod.state.federation_engine = prior_engine
+        with as_deployment_org():
+            app_mod.state.federation_engine = prior_engine
         if prior_env is None:
             os.environ.pop("PROVISA_ENGINE", None)
         else:
             os.environ["PROVISA_ENGINE"] = prior_env
+
+
+# A table read from a replica refreshes on its ttl change signal, so it states the TTL its
+# replica is judged by (REQ-1907); the global response-cache default is not a landing TTL.
+_CACHE_TTL_S = 300
 
 
 async def _register(client: AsyncClient, table: str, columns: list[str]) -> None:
@@ -83,13 +93,18 @@ async def _register(client: AsyncClient, table: str, columns: list[str]) -> None
         mutation {{
             registerTable(input: {{
                 sourceId: "{_SOURCE_ID}", domainId: "{_DOMAIN}", schemaName: "{_DB}",
-                tableName: "{table}", alias: "{table}", columns: [{cols}]
+                tableName: "{table}", alias: "{table}", cacheTtl: {_CACHE_TTL_S}, columns: [{cols}]
             }}) {{ success message }}
         }}
         """,
         "registerTable",
     )
-    await _gql(client, release_mutation(registered_id(registered["message"])), "setTableDraft")
+    table_id = registered_id(registered["message"])
+    # REQ-2074: a registration grants no write; the administrator grants org_admin its writes.
+    await _gql(
+        client, write_grants_mutation(table_id, ["org_admin"], columns), "setTableWriteGrants"
+    )
+    await _gql(client, release_mutation(table_id), "setTableDraft")
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="module")

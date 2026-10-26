@@ -550,7 +550,11 @@ async def test_mcp_run_sql_governs_on_the_request_thread_in_parallel(monkeypatch
         both_governing.wait(timeout=10)  # blocks this call's thread AND its loop
         return {"rows": [{"role": role}]}
 
-    mcp = mcp_server.build_mcp_server(SimpleNamespace(org_id="default"))
+    # The state a first start has: no org setting and no config file, so no derived role is
+    # declared (the loopback reads them to name the role it acts as).
+    mcp = mcp_server.build_mcp_server(
+        SimpleNamespace(org_id="default", settings_overrides={}, config=None)
+    )
     front_ident = threading.get_ident()
     with (
         patch.object(tools, "run_sql", _blocking_run_sql),
