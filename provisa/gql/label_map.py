@@ -119,8 +119,8 @@ class JunctionMapping:  # REQ-1586
     catalog_name: str
     schema_name: str
     table_name: str
-    # REQ-1586: the node type name the junction table WOULD have occupied — the key
-    # _drop_junction_nodes removes from `nodes`, and with it every FK edge that named it.
+    # REQ-1586: the node type name the junction table occupies -- a table like any other, with its
+    # own node label and its own relationships beside the junction edge.
     type_name: str
     source_columns: tuple[str, ...]
     target_columns: tuple[str, ...]
@@ -378,10 +378,6 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                 aliases,
             )
 
-        # REQ-1586: after cross-domain expansion, so a junction reached from another domain is
-        # dropped too rather than re-entering as a traversal node.
-        _drop_junction_nodes(nodes, relationships, domains, nodes_by_table, aliases)
-
         # REQ-1320: tag every node with its table's star-schema modeling role so role-tagged
         # tables additionally expose the Fact/Dimension labels to Neo4j clients. all_tables is
         # the raw table registry (schema_build_cache) — the only place modeling_role lives.
@@ -406,54 +402,6 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             nodes_by_table=nodes_by_table,
             aliases=aliases,
         )
-
-
-def _drop_junction_nodes(  # REQ-1586
-    nodes: dict[str, NodeMapping],
-    relationships: dict[str, RelationshipMapping],
-    domains: dict[str, list[str]],
-    nodes_by_table: dict[str, list[str]],
-    aliases: dict[str, list[RelationshipMapping]],
-) -> None:
-    """Remove every declared junction table from the node side of the Cypher schema.
-
-    A declared junction is an edge, not an entity: it must not appear as a label a pattern can
-    match, as a pill a client can drag onto a canvas, or under a domain's label list. It stays a
-    registered table and is still queryable in SQL and GraphQL — this drops it from the graph
-    schema only.
-
-    The junction's own foreign keys also produced ordinary FK edges into and out of it. Those
-    edges are what the junction edge replaces, and they name a label that no longer exists, so
-    they go with the node — otherwise any consumer resolving an endpoint label (the graph-schema
-    endpoint, a label count) reads a key that was just removed. Mutates every dict passed in.
-    """
-    junction_types = {rm.via.type_name for rm in relationships.values() if rm.via is not None}
-    if not junction_types:
-        return
-    for rel_key, rm in list(relationships.items()):
-        if rm.via is not None:
-            continue
-        if rm.source_label in junction_types or rm.target_label in junction_types:
-            del relationships[rel_key]
-            surviving = [r for r in aliases.get(rm.rel_type, []) if r is not rm]
-            if surviving:
-                aliases[rm.rel_type] = surviving
-            else:
-                aliases.pop(rm.rel_type, None)
-    for type_name in junction_types:
-        nm = nodes.pop(type_name, None)
-        if nm is None:
-            continue
-        if nm.domain_label and nm.domain_label in domains:
-            domains[nm.domain_label] = [t for t in domains[nm.domain_label] if t != type_name]
-            if not domains[nm.domain_label]:
-                del domains[nm.domain_label]
-        if nm.table_label in nodes_by_table:
-            nodes_by_table[nm.table_label] = [
-                t for t in nodes_by_table[nm.table_label] if t != type_name
-            ]
-            if not nodes_by_table[nm.table_label]:
-                del nodes_by_table[nm.table_label]
 
 
 def _build_target_pk(ctx_typed: "CompilationContext") -> dict[str, str]:

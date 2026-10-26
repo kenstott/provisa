@@ -499,6 +499,19 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         None,
         "term",
     ),
+    # REQ-1586: the junction's other relationship, registered like any other.
+    (
+        "meta:glossary_term_domains:domain",
+        _ADMIN,
+        "glossary_term_domains",
+        "domain_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "domains",
+        None,
+        "domain",
+    ),
     (
         "meta:glossary_terms:experts",
         _ADMIN,

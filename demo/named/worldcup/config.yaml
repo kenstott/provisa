@@ -771,3 +771,44 @@ relationships:
   source_column: match_id
   target_table_id: matches
   target_column: match_id
+# REQ-1586: a junction table's own relationships, registered like any other relationship.
+- id: country-alias-country
+  cardinality: many-to-one
+  source_table_id: country_alias
+  source_column: fifa_code
+  target_table_id: view_countries
+  target_column: code
+- id: country-alias-finals-won
+  graphql_alias: finals_won
+  cardinality: one-to-many
+  source_table_id: country_alias
+  source_column: name
+  target_table_id: finals
+  target_column: winners
+- id: country-alias-finals-lost
+  graphql_alias: finals_lost
+  cardinality: one-to-many
+  source_table_id: country_alias
+  source_column: name
+  target_table_id: finals
+  target_column: runners_up
+- id: country-alias-home-matches
+  graphql_alias: home_matches
+  cardinality: one-to-many
+  source_table_id: country_alias
+  source_column: name
+  target_table_id: matches
+  target_column: home_team_name
+- id: country-alias-away-matches
+  graphql_alias: away_matches
+  cardinality: one-to-many
+  source_table_id: country_alias
+  source_column: name
+  target_table_id: matches
+  target_column: away_team_name
+- id: country-alias-goals
+  cardinality: one-to-many
+  source_table_id: country_alias
+  source_column: name
+  target_table_id: goalscorers
+  target_column: team

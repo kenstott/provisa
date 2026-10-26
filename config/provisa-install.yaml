@@ -375,6 +375,45 @@ relationships:
   via_source_column: pet_id
   via_target_column: playgroup_id
   via_label_source: table
+# REQ-1586: a junction table's own relationships, registered like any other relationship.
+- id: pet-companions-pet
+  graphql_alias: pet
+  cardinality: many-to-one
+  source_table_id: pet_companions
+  source_column: pet_id
+  target_table_id: pets
+  target_column: id
+- id: pet-companions-companion
+  graphql_alias: companion
+  cardinality: many-to-one
+  source_table_id: pet_companions
+  source_column: companion_pet_id
+  target_table_id: pets
+  target_column: id
+- id: pet-visits-pet
+  cardinality: many-to-one
+  source_table_id: pet_visits
+  source_column: pet_id
+  target_table_id: pets
+  target_column: id
+- id: pet-visits-vet
+  cardinality: many-to-one
+  source_table_id: pet_visits
+  source_column: vet_id
+  target_table_id: vets
+  target_column: id
+- id: playgroup-members-pet
+  cardinality: many-to-one
+  source_table_id: playgroup_members
+  source_column: pet_id
+  target_table_id: pets
+  target_column: id
+- id: playgroup-members-playgroup
+  cardinality: many-to-one
+  source_table_id: playgroup_members
+  source_column: playgroup_id
+  target_table_id: playgroups
+  target_column: id
 roles:
 - capabilities:
   - query_development

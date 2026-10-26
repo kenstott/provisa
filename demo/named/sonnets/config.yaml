@@ -328,3 +328,6 @@ relationships:
 - {id: line-searches, alias: SEARCHED, cardinality: one-to-many, source_table_id: line, source_column: text, target_table_id: lines_like, target_column: _nf_query, parameters: {query: text, sonnet: sonnet_number}}
 - {id: search-to-line, alias: FOUND, cardinality: many-to-one, source_table_id: lines_like, source_column: id, target_table_id: line, target_column: id}
 - {id: lines-self, alias: VECTOR_OF, cardinality: one-to-one, source_table_id: sonnet_lines, source_column: id, target_table_id: line, target_column: id}
+# REQ-1586: a junction table's own relationships, registered like any other relationship.
+- {id: view-evokes-line, cardinality: many-to-one, source_table_id: view_evokes, source_column: line_id, target_table_id: line, target_column: id}
+- {id: view-evokes-theme, cardinality: many-to-one, source_table_id: view_evokes, source_column: theme_id, target_table_id: theme, target_column: id}

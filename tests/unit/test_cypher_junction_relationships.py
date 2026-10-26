@@ -255,112 +255,184 @@ def test_show_all_edges_carries_the_junction_meta_field_too():
     assert "'glossary_term_edges'" in text
 
 
-def test_a_declared_junction_is_not_a_node_label_in_the_graph_schema():
-    """REQ-1586: once declared, the junction table leaves the node side of the Cypher schema.
+# --- a relationship is a relationship (REQ-1586, amended) ------------------------------------------
 
-    It is an edge, not an entity. Leaving it as a label would put it back on every surface the
-    schema drives — a matchable label, a draggable pill in the graph sidebar, an entry under its
-    domain — which is the reified-node modelling the declaration exists to replace. It stays a
-    registered table and is still queryable in SQL and GraphQL; only the graph schema drops it.
-    """
-
-    from provisa.gql.label_map import _drop_junction_nodes
-
-    edge_node = NodeMapping(
-        label="Meta:GlossaryTermEdge",
-        type_name="GlossaryTermEdge",
-        domain_label="Meta",
-        table_label="GlossaryTermEdge",
-        table_id=2,
-        source_id="provisa-admin",
-        id_column="id",
-        pk_columns=[],
-        catalog_name="provisa_admin",
-        schema_name="public",
-        table_name="glossary_term_edges",
-        properties={},
-    )
-    term = _term_node()
-    nodes = {"GlossaryTerm": term, "GlossaryTermEdge": edge_node}
-    domains = {"Meta": ["GlossaryTerm", "GlossaryTermEdge"]}
-    nodes_by_table = {"GlossaryTerm": ["GlossaryTerm"], "GlossaryTermEdge": ["GlossaryTermEdge"]}
-    kind_of, owner = _junction_edge(), _fk_edge("OWNER", "GlossaryTerm", "GlossaryTerm")
-    relationships = {"KIND_OF": kind_of, "OWNER": owner}
-    aliases = {"KIND_OF": [kind_of], "OWNER": [owner]}
-
-    _drop_junction_nodes(nodes, relationships, domains, nodes_by_table, aliases)
-
-    assert "GlossaryTermEdge" not in nodes
-    assert "GlossaryTerm" in nodes
-    assert domains["Meta"] == ["GlossaryTerm"]
-    assert "GlossaryTermEdge" not in nodes_by_table
-    # An edge between two surviving nodes is untouched by the drop.
-    assert set(relationships) == {"KIND_OF", "OWNER"}
+_PETS, _COMPANIONS = 1, 2
 
 
-def test_dropping_a_junction_node_leaves_no_empty_domain_or_table_bucket():
-    """REQ-1586: a domain or table bucket that held only the junction goes with it, so no surface
-    renders an empty group where the junction used to be."""
-
-    from provisa.gql.label_map import _drop_junction_nodes
-
-    edge_node = NodeMapping(
-        label="Meta:GlossaryTermEdge",
-        type_name="GlossaryTermEdge",
-        domain_label="Meta",
-        table_label="GlossaryTermEdge",
-        table_id=2,
-        source_id="provisa-admin",
-        id_column="id",
-        pk_columns=[],
-        catalog_name="provisa_admin",
-        schema_name="public",
-        table_name="glossary_term_edges",
-        properties={},
-    )
-    nodes = {"GlossaryTermEdge": edge_node}
-    domains = {"Meta": ["GlossaryTermEdge"]}
-    nodes_by_table = {"GlossaryTermEdge": ["GlossaryTermEdge"]}
-    kind_of = _junction_edge()
-    relationships = {"KIND_OF": kind_of}
-    aliases = {"KIND_OF": [kind_of]}
-
-    _drop_junction_nodes(nodes, relationships, domains, nodes_by_table, aliases)
-
-    assert nodes == {}
-    assert domains == {}
-    assert nodes_by_table == {}
-
-
-def test_the_junctions_own_fk_edges_go_with_the_node_they_terminate_on():
-    """REQ-1586: the FK edges into and out of a junction table are exactly what the junction edge
-    replaces. Left behind, they name an endpoint label that no longer exists — and every consumer
-    that resolves an endpoint (the graph-schema endpoint list, a label count) reads that key
-    directly, so the stale edge is a KeyError, not a cosmetic duplicate."""
-    from provisa.gql.label_map import _drop_junction_nodes
-
-    kind_of = _junction_edge()
-    into = _fk_edge("GLOSSARY_TERM_EDGES", "GlossaryTerm", "GlossaryTermEdge")
-    out_of = _fk_edge("GLOSSARY_TERM", "GlossaryTermEdge", "GlossaryTerm")
-    nodes = {"GlossaryTerm": _term_node()}
-    relationships = {"KIND_OF": kind_of, "IN": into, "OUT": out_of}
-    aliases = {
-        "KIND_OF": [kind_of],
-        "GLOSSARY_TERM_EDGES": [into],
-        "GLOSSARY_TERM": [out_of],
+def _pets_table(table_id: int, name: str, columns: list[str]) -> dict:
+    return {
+        "id": table_id,
+        "source_id": "pg",
+        "domain_id": "ps",
+        "schema_name": "public",
+        "table_name": name,
+        "governance": "pre-approved",
+        "columns": [{"column_name": c, "visible_to": ["*"]} for c in columns],
+        "write_ops": [],
+        "write_returns_rows": False,
+        "write_refused_forms": [],
     }
 
-    _drop_junction_nodes(nodes, relationships, {}, {}, aliases)
 
-    assert set(relationships) == {"KIND_OF"}
-    assert set(aliases) == {"KIND_OF"}
-    # Every surviving endpoint resolves — which is the property the graph schema depends on.
-    assert all(r.source_label in nodes and r.target_label in nodes for r in relationships.values())
+def _pets_relationship(rel_id: str, **fields) -> dict:
+    return {
+        "id": rel_id,
+        "alias": None,
+        "graphql_alias": None,
+        "via_table_id": None,
+        "via_source_column": None,
+        "via_target_column": None,
+        "via_type_column": None,
+        "via_type_value": None,
+        "via_label_source": None,
+        **fields,
+    }
 
 
-# ---------------------------------------------------------------------------
-# Composite ends: each end lists its columns in order, paired positionally
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def pets_label_map(monkeypatch):
+    """The real role build over pets and pet_companions: the typed junction pets -> pets through
+    pet_companions, and the junction table's own two relationships, registered like any other."""
+    import provisa.api.app as appmod
+    from provisa.api import app_loaders
+    from provisa.api.role_surface import role_surface
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.core import domain_policy
+
+    monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
+    state = appmod.state
+    for name in ("roles", "schemas", "contexts", "rls_contexts", "table_path_maps", "proto_files"):
+        monkeypatch.setattr(state, name, {}, raising=False)
+    monkeypatch.setattr(state, "graphql_remote_sources", {}, raising=False)
+    monkeypatch.setattr(state, "source_types", {"pg": "postgresql"}, raising=False)
+    monkeypatch.setattr(state, "source_catalogs", {"pg": "pg"}, raising=False)
+    tables = [
+        _pets_table(_PETS, "pets", ["id", "name"]),
+        _pets_table(
+            _COMPANIONS, "pet_companions", ["id", "pet_id", "companion_pet_id", "relation_type"]
+        ),
+    ]
+    relationships = [
+        _pets_relationship(
+            "pets-bonded-pair",
+            cardinality="one-to-many",
+            source_table_id=_PETS,
+            source_column="id",
+            target_table_id=_PETS,
+            target_column="id",
+            via_table_id=_COMPANIONS,
+            via_table_name="pet_companions",
+            via_source_column="pet_id",
+            via_target_column="companion_pet_id",
+            via_type_column="relation_type",
+            via_type_value="bonded pair",
+            via_label_source="column",
+        ),
+        _pets_relationship(
+            "pet-companions-pet",
+            graphql_alias="pet",
+            cardinality="many-to-one",
+            source_table_id=_COMPANIONS,
+            source_column="pet_id",
+            target_table_id=_PETS,
+            target_column="id",
+        ),
+        _pets_relationship(
+            "pet-companions-companion",
+            graphql_alias="companion",
+            cardinality="many-to-one",
+            source_table_id=_COMPANIONS,
+            source_column="companion_pet_id",
+            target_table_id=_PETS,
+            target_column="id",
+        ),
+    ]
+    integer = lambda n: ColumnMetadata(column_name=n, data_type="integer", is_nullable=False)  # noqa: E731
+    text = lambda n: ColumnMetadata(column_name=n, data_type="varchar", is_nullable=True)  # noqa: E731
+    app_loaders._build_and_register_schemas(
+        roles=[
+            {
+                "id": "analyst",
+                "description": "t",
+                "capabilities": ["usage"],
+                "domain_access": ["ps"],
+            }
+        ],
+        tables=tables,
+        relationships=relationships,
+        col_types_converted={
+            _PETS: [integer("id"), text("name")],
+            _COMPANIONS: [
+                integer("id"),
+                integer("pet_id"),
+                integer("companion_pet_id"),
+                text("relation_type"),
+            ],
+        },
+        naming_rules=[],
+        domains=[{"id": "ps"}],
+        domain_prefix=False,
+        kafka_physical={},
+        tracked_functions=[],
+        tracked_webhooks=[],
+        gql_object_cols={},
+        rls_rules=[],
+        metrics=[],
+        draft_tables=[],
+    )
+    surface = role_surface(state, "analyst")
+    label_map = CypherLabelMap.from_schema(
+        surface.context, domain_access=["ps"], all_tables=tables, all_relationships=relationships
+    )
+    return surface, label_map
+
+
+def test_a_junction_table_is_a_node_label_like_any_other_table(pets_label_map) -> None:
+    """REQ-1586 (amended, A RELATIONSHIP IS A RELATIONSHIP): declaring a junction over a table
+    leaves the table a table -- a node label a pattern can match, under its domain."""
+    _surface, label_map = pets_label_map
+    junction_nodes = [nm for nm in label_map.nodes.values() if nm.table_id == _COMPANIONS]
+    assert len(junction_nodes) == 1
+    assert junction_nodes[0].type_name in label_map.domains[junction_nodes[0].domain_label]
+
+
+def test_the_junction_tables_relationships_are_ordinary_edges(pets_label_map) -> None:
+    """Its relationships to the pet and the companion are edges like any foreign key's, beside
+    the declared junction edge, which is still served directly between the two pets."""
+    _surface, label_map = pets_label_map
+    junction = next(nm.type_name for nm in label_map.nodes.values() if nm.table_id == _COMPANIONS)
+    pet = next(nm.type_name for nm in label_map.nodes.values() if nm.table_id == _PETS)
+    out_of_junction = {
+        rm.field_name
+        for rm in label_map.relationships.values()
+        if rm.via is None and rm.source_label == junction and rm.target_label == pet
+    }
+    assert out_of_junction == {"pet", "companion"}
+    direct = [rm for rm in label_map.relationships.values() if rm.via is not None]
+    assert [(rm.rel_type, rm.source_label, rm.target_label) for rm in direct] == [
+        ("BONDED_PAIR", pet, pet)
+    ]
+    assert all(
+        r.source_label in label_map.nodes and r.target_label in label_map.nodes
+        for r in label_map.relationships.values()
+    )
+
+
+def test_the_junction_tables_graphql_type_reaches_the_pet_and_the_companion(
+    pets_label_map,
+) -> None:
+    from graphql import get_named_type
+
+    surface, _label_map = pets_label_map
+    junction = next(
+        t
+        for name, t in surface.schema.type_map.items()
+        if not name.startswith("__") and "relationType" in (getattr(t, "fields", None) or {})
+    )
+    pet_type = get_named_type(junction.fields["pet"].type)
+    assert get_named_type(junction.fields["companion"].type) is pet_type
+    assert "name" in pet_type.fields
 
 
 def _composite_label_map() -> CypherLabelMap:
