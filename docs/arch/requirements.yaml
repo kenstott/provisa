@@ -57750,8 +57750,8 @@
     stored like any other, named by the ordinary field rule and alias, collisions refused as for any relationship,
     and served on every surface (GraphQL fields, SQL canvas joins, Cypher relationship types). The declared
     junction relationship (pets → pets via pet_companions, typed by relation_type) is served as well, as
-    a direct edge. The existing junction declaration is unchanged; the two relationships are registered in config
-    like any other.'
+    a direct edge. A junction relationship refers to the junction table''s two relationships rather than
+    repeating their columns, so nothing is declared twice.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
