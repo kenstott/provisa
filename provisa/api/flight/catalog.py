@@ -76,12 +76,12 @@ def role_visibility(state, role_id: str) -> dict[int, set[str]]:
 
 
 def role_sees_metric(state, role_id: str, metric) -> bool:
-    """Whether ``role_id`` may see ``metric`` (its ``visible_to``; ``*`` is every role). A
-    meta-role sees what any of its members sees."""
+    """Whether ``role_id`` may see ``metric``: its ``visible_to`` names the role (REQ-2153: an
+    empty list and ``*`` name none). A meta-role sees what any of its members sees."""
     from provisa.security.meta_role import acting_roles
 
     granted = metric.visible_to
-    return "*" in granted or any(r in granted for r in acting_roles(state, role_id))
+    return any(r in granted for r in acting_roles(state, role_id))
 
 
 def build_catalog_tables(

@@ -47,6 +47,7 @@ _NOT_COLUMN_VISIBILITY: dict[tuple[str, str], str] = {
     ("compiler/function_gen.py", "build_function_mutations"): "a function or webhook's assignment",
     ("pgwire/function_catalog.py", "_fn_visible"): "a function's assignment",
     ("hasura_v2/mapper.py", "_inherit_several"): "writes an imported role's grants",
+    ("security/default_grant.py", "with_read_grant"): "writes a registration's grant (REQ-2154)",
     ("api/startup_seed.py", "_ensure_ops_steward_grant"): "writes the ops stewards' grant",
     ("api/demo_templates.py", "_sandbox_sees_what_its_rights_cover"): "writes a demo's grants",
     # calcite's: the lineage roles lens moves to the shared read-rights filter (REQ-2152).
