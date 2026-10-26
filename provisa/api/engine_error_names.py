@@ -71,15 +71,17 @@ def _names(org_id: str) -> dict[str, str]:
     from provisa.compiler.sql_rewrite import semantic_ref
 
     runtime = state.org_registry.get(org_id)
-    if runtime is None:
+    # The model-wide context holds every table the org serves: reading each role's would build
+    # every role's surface (REQ-1882).
+    ctx = None if runtime is None else runtime.view_context
+    if ctx is None:
         return {}
     named: dict[str, str] = {}
-    for ctx in runtime.contexts.values():
-        for meta in ctx.tables.values():
-            model = semantic_ref(meta)  # "domain"."table"
-            parts = (meta.catalog_name, meta.schema_name, meta.table_name)
-            named[".".join(f'"{p}"' for p in parts)] = model
-            # As a JSON error body carries it, its quotes escaped.
-            named[".".join(f'\\"{p}\\"' for p in parts)] = model.replace('"', '\\"')
-            named[".".join(parts)] = model
+    for meta in ctx.tables.values():
+        model = semantic_ref(meta)  # "domain"."table"
+        parts = (meta.catalog_name, meta.schema_name, meta.table_name)
+        named[".".join(f'"{p}"' for p in parts)] = model
+        # As a JSON error body carries it, its quotes escaped.
+        named[".".join(f'\\"{p}\\"' for p in parts)] = model.replace('"', '\\"')
+        named[".".join(parts)] = model
     return named
