@@ -33887,6 +33887,7 @@
   - REQ-1056
   superseded_by: REQ-1240
 - id: REQ-1058
+  value: 'Publish selected tables and views to unauthenticated visitors, with no account required.'
   status: proposed
   group: 1. Access Governance & Security
   category: Public Data Publishing
@@ -33928,6 +33929,7 @@
     The text predates the current terms: the org is named by its provisa.dev subdomain and there is no
     tenant_id claim (REQ-1276).'
 - id: REQ-1059
+  value: 'Control public access through the same role and grant model as private access—no separate publishing system.'
   status: proposed
   group: 1. Access Governance & Security
   category: Public Data Publishing
@@ -47741,6 +47743,7 @@
   - tests/unit/test_tag_params.py
   - tests/unit/test_derived_tags.py
 - id: REQ-1414
+  value: 'Query tag assignments as a SQL view and join them with any other data in your model.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -51556,6 +51559,7 @@
   docs:
   - sources.md
 - id: REQ-1492
+  value: 'Write operations are locked to the environment they were granted in, so a promotion cannot mutate production.'
   status: proposed
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
@@ -52703,6 +52707,7 @@
   - REQ-1490
   since: 2026-08
 - id: REQ-1506
+  value: 'Promote a single corrected metric to production without pulling along every other pending change.'
   status: accepted
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
@@ -61035,6 +61040,7 @@
   e2e_reason: The derived name and the checker badge on the registered row depend on the live dataset
     resolution against the compiled schema and on the register mutation's checker derivation.
 - id: REQ-1664
+  value: 'Extend Great Expectations checks with your own Python logic, registered and governed as a command.'
   status: accepted
   target: 2026-Q4
   group: 4. Source Connectors
@@ -66820,6 +66826,7 @@
   docs:
   - admin-graphql.md
 - id: REQ-1786
+  value: 'Adding a new source immediately discovers its tables, with no separate crawl step needed.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -75597,6 +75604,7 @@
   - tests/unit/test_admin_routes_gated.py
   - tests/unit/test_admin_read_gates.py
 - id: REQ-1928
+  value: 'Pass typed parameters and column references to commands from SQL, so queries stay parameterised.'
   status: proposed
   group: 5. Query Languages, Compilation & Operations
   category: Extensible Functions
@@ -77150,6 +77158,7 @@
     Current GovData contract is REQ-540/541.'
   superseded_by: REQ-540
 - id: REQ-493
+  value: 'Connect Apache Accumulo tables as governed relational sources and query them alongside your other data.'
   status: accepted
   group: 4. Source Connectors
   category: Source Connectors
@@ -81652,6 +81661,7 @@
   docs:
   - sources.md
 - id: REQ-1995
+  value: 'Refer a pending data registration to another domain steward for confirmation, keeping the request live.'
   status: proposed
   since: 2026-10
   target: 2027-Q1
@@ -86969,6 +86979,7 @@ Then it updates the linked asset rather than creating another"
   - REQ-1389
   notes: "Maintainer 2026-10-21, through the lead: pull descriptions and references from the customer's catalog when describing a table; a human pick list rather than LLM matching; catalogs as their own admin panel reused by export and import; store each pick; an export records the reference in the catalog too, so the catalog can later become the authority by importing. Maintainer: a catalog import, useful once a table is linked by an export or a pick in the table editor. Maintainer: a scheduled import, so for certain tables the catalog is the authority and they are updated on a stated schedule. Maintainer: authority can't be known for sure, so show when descriptions were last imported from which catalog, and let a steward elect to lock a table to a catalog. Maintainer: the table editor lets you refresh descriptions from the catalog. Maintainer: different domains can use their own catalogs."
 - id: REQ-2123
+  value: 'Explore column profiles as a rotatable 3D terrain, making shape anomalies visible at a glance.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -86986,6 +86997,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2026-Q4"
   notes: '2026-10-21, the maintainer via the lead: the profiling demo''s tour shows its graphs, each step opening the customers table''s View Profile Runs and picking the graph itself, then explaining it once drawn (a stage carries data-ready): the terrain, and the drift strata on postal_code. Relationships and Joint cloud are left out: this run''s correlations and dependencies are all below the map''s lowest strength (0.1), and customers has no joint counts.'
 - id: REQ-2124
+  value: 'Compare column distributions, completeness and outliers in three additional 3D views from the same profile.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87140,6 +87152,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - tests/unit/test_statement_contract.py
   - tests/integration/test_data_product_edges_e2e.py
 - id: REQ-2127
+  value: 'Browse and inspect your data products in a dedicated page, with metadata drawn live from the governed model.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87180,6 +87193,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1634
   target: "2026-Q4"
 - id: REQ-2128
+  value: 'See a data product''s member tables, contracts and linked glossary terms as an interactive knowledge graph.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87360,6 +87374,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1592
   target: "2026-Q4"
 - id: REQ-2131
+  value: 'Process columns in batch with a Python or Node function, reducing round-trip overhead on large tables.'
   status: proposed
   since: 2026-10
   group: 4. Source Connectors
@@ -87398,6 +87413,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2105
   target: "2027-Q1"
 - id: REQ-2132
+  value: 'State the business meaning of each data quality check in plain language, not just its technical predicate.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87444,6 +87460,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2127
   target: "2027-Q1"
 - id: REQ-2133
+  value: 'A preflight check can call Provisa''s own services—LLM, vectors, cache, data quality—before a source refresh.'
   status: proposed
   since: 2026-10
   group: 9. Live Data & Events
@@ -87697,6 +87714,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - tests/unit/test_graphql_front_answers.py
     - tests/integration/test_sparql_endpoint.py
 - id: REQ-2136
+  value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87747,6 +87765,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2125
   target: "2027-Q1"
 - id: REQ-2137
+  value: 'Write back to your model through SPARQL Update, with governance enforced on every triple change.'
   status: proposed
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
@@ -87766,6 +87785,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-885
   target: "2027-Q2"
 - id: REQ-2138
+  value: 'Attach an OWL reasoner to a SPARQL source so Provisa reads inferred triples alongside the asserted ones.'
   status: proposed
   since: 2026-10
   group: 4. Source Connectors
@@ -87830,6 +87850,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2056
   target: "2027-Q1"
 - id: REQ-2141
+  value: 'Glossary terms derive their OWL type automatically from what they are grounded in—no manual classification.'
   status: proposed
   docs:
   - admin-graphql.md
@@ -88325,6 +88346,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     '
 - id: REQ-2150
+  value: 'See a glossary term''s related terms and column bindings as a small interactive graph in its detail view.'
   status: proposed
   target: "2027-Q1"
   group: 10. UI & Admin Surfaces
@@ -88480,6 +88502,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then only data_steward and roles it delegates to can read diagnosis'
 - id: REQ-2155
+  value: 'Start from built-in analyst, steward and operator roles and extend them, instead of building access from scratch.'
   status: proposed
   target: 2027-Q1
   group: 1. Access Governance & Security
@@ -88580,6 +88603,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then it sees raw.orders feeding orders_v directly, with no transform and no sign of a hidden step'
 - id: REQ-2157
+  value: 'Define input expectations and output promises for a data product, with check results tracked over time.'
   status: proposed
   target: 2027-Q1
   group: 10. UI & Admin Surfaces
@@ -88609,6 +88633,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And Related holds fulfilment''s check on orders'
 - id: REQ-2158
+  value: 'Declare a versioned data contract per output port so consumers know exactly what they can rely on.'
   status: proposed
   target: 2027-Q1
   group: 1. Access Governance & Security
@@ -88672,6 +88697,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     column without its values is a mask, whose unmasking is a grant; and only some rows is a row rule, which
     adding a parent never lifts (REQ-2155).'
 - id: REQ-2160
+  value: 'A product''s owner sees health and expectations; a consumer sees the contract, SLA and latest check results.'
   status: proposed
   target: 2027-Q1
   group: 1. Access Governance & Security
@@ -88704,6 +88730,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then the panel shows Promises, access, support and lineage only'
 - id: REQ-2161
+  value: 'See a role''s effective rights—the composition of its scope, capabilities and grants—in one panel.'
   status: proposed
   target: 2027-Q1
   group: 1. Access Governance & Security
@@ -88750,6 +88777,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And each readable column with its scope and the grant that serves it to dq_lead'
 - id: REQ-2162
+  value: 'See every role that can read, write or mask a column, with the inheritance chain that gave each role access.'
   status: proposed
   target: 2027-Q1
   group: 1. Access Governance & Security
@@ -88772,6 +88800,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then the panel lists data_steward and clinical_reviewer with the grant, inheritance and reach behind
     each'
 - id: REQ-2163
+  value: 'Query your business glossary as a live SQL, GraphQL or Cypher table, with row-level governance applied.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -88820,6 +88849,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And a term none of whose domains the role reaches is absent from ontology.terms'
 - id: REQ-2164
+  value: 'Export server logs with secrets and physical addresses redacted, ready to attach to a support email.'
   status: proposed
   target: 2027-Q1
   group: 1. Access Governance & Security
@@ -88848,6 +88878,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And no network request is made'
 - id: REQ-2165
+  value: 'Export your governed graph as Turtle or N-Triples and load it into any triple store you already run.'
   status: proposed
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
@@ -88877,6 +88908,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And an export with the same as_recorded later yields the same triples'
 - id: REQ-2166
+  value: 'Join your Jena, GraphDB or Stardog triples with Provisa''s governed data live, with no copy needed.'
   status: proposed
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
@@ -88905,6 +88937,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     Then it receives the role''s governed rows'
 - id: REQ-2167
+  value: 'Every protocol surface publishes its conformance pass rate and deliberate differences, so you know what works.'
   status: proposed
   target: 2026-Q4
   group: 1. Access Governance & Security
@@ -88953,6 +88986,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And the CI report shows the Cypher pass rate'
 - id: REQ-2168
+  value: 'LangChain, Neo4j Browser and other Cypher tools connect and learn your graph''s schema without any changes.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -89026,6 +89060,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And a Cypher query it then writes with apoc.text.join runs and pushes the function down'
 - id: REQ-2169
+  value: 'Add a new data source, query engine or secrets vault by writing a driver, using the same kit the built-ins use.'
   status: proposed
   target: 2027-Q1
   group: 1. Access Governance & Security

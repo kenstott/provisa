@@ -110,6 +110,10 @@ class Requirement(BaseModel):
     # where a page and the requirements behind it are traced; checked by
     # scripts/validate_requirements.py.
     docs: Optional[list[str]] = None
+    # One plain sentence, in user terms, describing what a customer gains from this requirement.
+    # Used to generate the public roadmap (docs/roadmap.md); never contains requirement IDs.
+    # Under 160 characters.
+    value: Optional[str] = None
 
     @field_validator("id")
     @classmethod

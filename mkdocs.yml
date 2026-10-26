@@ -186,6 +186,7 @@ nav:
       - v0.1.0-alpha.481: releases/v0.1.0-alpha.481.md
       - v0.1.0-alpha.480: releases/v0.1.0-alpha.480.md
       - v0.1.0-alpha.479: releases/v0.1.0-alpha.479.md
+  - Roadmap: roadmap.md
 
 # Internal docs — never published to the public site. GTM/pricing, competitor
 # comparisons, and the private multi-tenant/SaaS work must not appear in the
