@@ -8037,7 +8037,7 @@
   "fr/serverErrors.json::serverErrors.cypher.nested_aggregate": "{{outer}} aggregates the aggregate {{inner}}: an aggregate cannot be taken of another. Aggregate in a WITH first.",
   "fr/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table.",
   "fr/serverErrors.json::serverErrors.cypher.undefined_variable": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}.",
-  "fr/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Registered types: {{suggestions}}.",
+  "fr/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Nearest registered types: {{suggestions}}.",
   "fr/serverErrors.json::serverErrors.cypher.no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
   "fr/serverErrors.json::serverErrors.cypher.invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
   "fr/serverErrors.json::serverErrors.cypher.invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",

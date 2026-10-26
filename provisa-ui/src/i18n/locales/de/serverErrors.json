@@ -539,7 +539,7 @@
       "invalid_regex": "Das Muster \"{{pattern}}\" in {{expression}} ist kein gültiger regulärer Ausdruck: {{reason}}. =~ erwartet einen regulären Ausdruck, z. B. \".*{{word}}.*\", oder verwenden Sie CONTAINS \"{{word}}\".",
       "unknown_label": "Es gibt kein Label :{{label}}. Registrierte Labels: {{suggestions}}.",
       "no_labels": "Es gibt kein Label :{{label}}: Diese Rolle kann keine Tabelle lesen.",
-      "unknown_relationship_type": "Es gibt keinen Beziehungstyp {{types}}. Registrierte Typen: {{suggestions}}.",
+      "unknown_relationship_type": "Es gibt keinen Beziehungstyp {{types}}. Nächstliegende registrierte Typen: {{suggestions}}.",
       "no_relationship_types": "Es gibt keinen Beziehungstyp {{types}}: Diese Rolle kann keine Beziehung durchlaufen.",
       "type_mismatch": "In {{expression}} kann {{value}} nicht mit {{property}} (Typ {{property_type}}) verglichen werden. {{fix}}",
       "aggregate_in_where": "WHERE kann das Aggregat {{aggregate}} nicht verwenden: WHERE filtert Zeilen, bevor sie gruppiert werden. Aggregieren Sie in einem WITH und filtern Sie danach.",

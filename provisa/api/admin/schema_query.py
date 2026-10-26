@@ -331,6 +331,7 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
             alias="HAS_TABLE",
             graphql_alias=None,
             computed_cypher_alias=None,
+            cypher_type="HAS_TABLE",
             disable_cypher=False,
             same_entity=False,
             via_table_id=None,

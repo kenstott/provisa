@@ -539,7 +539,7 @@
       "invalid_regex": "{{expression}} 中的模式 \"{{pattern}}\" 不是有效的正则表达式：{{reason}}。=~ 需要正则表达式，例如 \".*{{word}}.*\"，或使用 CONTAINS \"{{word}}\"。",
       "unknown_label": "不存在标签 :{{label}}。已注册的标签：{{suggestions}}。",
       "no_labels": "不存在标签 :{{label}}：此角色无法读取任何表。",
-      "unknown_relationship_type": "不存在关系类型 {{types}}。已注册的类型：{{suggestions}}。",
+      "unknown_relationship_type": "不存在关系类型 {{types}}。最接近的已注册类型：{{suggestions}}。",
       "no_relationship_types": "不存在关系类型 {{types}}：此角色无法遍历任何关系。",
       "type_mismatch": "在 {{expression}} 中，{{value}} 无法与类型为 {{property_type}} 的 {{property}} 比较。{{fix}}",
       "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分组之前筛选行。请在 WITH 中聚合，然后再筛选。",

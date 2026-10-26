@@ -8032,7 +8032,7 @@
   "zh-HK/dataProductsTab.json::dataProductsTab.detail.lineageLaneUpstream": "Upstream, hop {{n}}",
   "zh-HK/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}",
   "zh-HK/serverErrors.json::serverErrors.cypher.access_violations": "This role may not run this query:",
-  "zh-HK/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Registered types: {{suggestions}}.",
+  "zh-HK/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Nearest registered types: {{suggestions}}.",
   "zh-HK/serverErrors.json::serverErrors.cypher.no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
   "zh-HK/serverErrors.json::serverErrors.cypher.invalid_skip": "SKIP {{value}} is not a whole number of rows: SKIP takes a count of 0 or more, e.g. SKIP 10.",
   "zh-HK/serverErrors.json::serverErrors.cypher.invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",

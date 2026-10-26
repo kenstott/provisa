@@ -8033,7 +8033,7 @@
   "es/dataProductsTab.json::dataProductsTab.detail.lineageLaneUpstream": "Upstream, hop {{n}}",
   "es/serverErrors.json::serverErrors.cypher.access_violations": "This role may not run this query:",
   "es/serverErrors.json::serverErrors.cypher.invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
-  "es/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Registered types: {{suggestions}}.",
+  "es/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Nearest registered types: {{suggestions}}.",
   "es/serverErrors.json::serverErrors.cypher.aggregate_in_where": "WHERE cannot use the aggregate {{aggregate}}: WHERE filters rows before they are grouped. Aggregate in a WITH and filter after it.",
   "es/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
   "es/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",

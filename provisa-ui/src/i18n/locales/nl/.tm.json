@@ -8041,7 +8041,7 @@
   "nl/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table.",
   "nl/serverErrors.json::serverErrors.cypher.engine_refused": "The engine refused the query: {{error}}",
   "nl/serverErrors.json::serverErrors.cypher.undefined_variable": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}.",
-  "nl/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Registered types: {{suggestions}}.",
+  "nl/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Nearest registered types: {{suggestions}}.",
   "nl/serverErrors.json::serverErrors.cypher.nested_aggregate": "{{outer}} aggregates the aggregate {{inner}}: an aggregate cannot be taken of another. Aggregate in a WITH first.",
   "nl/serverErrors.json::serverErrors.cypher.aggregate_in_where": "WHERE cannot use the aggregate {{aggregate}}: WHERE filters rows before they are grouped. Aggregate in a WITH and filter after it.",
   "nl/serverErrors.json::serverErrors.cypher.no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",

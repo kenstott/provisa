@@ -46,6 +46,8 @@ const base: Relationship = {
   viaTypeColumn: "relation_type",
   viaTypeValue: "bonded pair",
   viaLabelSource: "column",
+  // The type the server serves the junction edge as (its nomination, upper-snaked).
+  cypherType: "BONDED_PAIR",
 };
 
 function show(rel: Relationship, domainsEnabled = true) {

@@ -539,7 +539,7 @@
       "invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
       "unknown_label": "There is no label :{{label}}. Registered labels: {{suggestions}}.",
       "no_labels": "There is no label :{{label}}: this role can read no table.",
-      "unknown_relationship_type": "There is no relationship type {{types}}. Registered types: {{suggestions}}.",
+      "unknown_relationship_type": "There is no relationship type {{types}}. Nearest registered types: {{suggestions}}.",
       "no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
       "type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE cannot use the aggregate {{aggregate}}: WHERE filters rows before they are grouped. Aggregate in a WITH and filter after it.",

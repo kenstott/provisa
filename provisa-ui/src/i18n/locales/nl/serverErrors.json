@@ -539,7 +539,7 @@
       "invalid_regex": "Het patroon \"{{pattern}}\" in {{expression}} is geen geldige reguliere expressie: {{reason}}. =~ verwacht een reguliere expressie, bijv. \".*{{word}}.*\", of gebruik CONTAINS \"{{word}}\".",
       "unknown_label": "Er is geen label :{{label}}. Geregistreerde labels: {{suggestions}}.",
       "no_labels": "Er is geen label :{{label}}: deze rol kan geen enkele tabel lezen.",
-      "unknown_relationship_type": "Er is geen relatietype {{types}}. Geregistreerde typen: {{suggestions}}.",
+      "unknown_relationship_type": "Er is geen relatietype {{types}}. Dichtstbijzijnde geregistreerde typen: {{suggestions}}.",
       "no_relationship_types": "Er is geen relatietype {{types}}: deze rol kan geen enkele relatie doorlopen.",
       "type_mismatch": "In {{expression}} kan {{value}} niet worden vergeleken met {{property}}, van type {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE kan het aggregaat {{aggregate}} niet gebruiken: WHERE filtert rijen voordat ze worden gegroepeerd. Aggregeer in een WITH en filter daarna.",

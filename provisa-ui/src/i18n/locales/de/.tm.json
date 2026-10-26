@@ -8034,7 +8034,7 @@
   "de/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
   "de/serverErrors.json::serverErrors.cypher.invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",
   "de/serverErrors.json::serverErrors.cypher.invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
-  "de/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Registered types: {{suggestions}}.",
+  "de/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Nearest registered types: {{suggestions}}.",
   "de/serverErrors.json::serverErrors.cypher.aggregate_in_where": "WHERE cannot use the aggregate {{aggregate}}: WHERE filters rows before they are grouped. Aggregate in a WITH and filter after it.",
   "de/serverErrors.json::serverErrors.cypher.engine_refused": "The engine refused the query: {{error}}",
   "de/serverErrors.json::serverErrors.cypher.no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
