@@ -591,7 +591,12 @@ async def _product_lineage(
     state, product_id: str, role_id: str | None
 ) -> tuple[dict, LineageGraph, list[NativeTable]] | None:
     from provisa.api.admin.served import served_columns_for
-    from provisa.lineage.product import nearest_inputs, product_dq, product_graph
+    from provisa.lineage.product import (
+        nearest_consumers,
+        nearest_inputs,
+        product_dq,
+        product_graph,
+    )
 
     if not await _product_exists(state, product_id):
         return None
@@ -635,6 +640,12 @@ async def _product_lineage(
         _input(relation, graph, by_relation, types)
         for relation in nearest_inputs(graph, member_relations, base=base)
     ]
+    # REQ-2160: who reads the product, one hop downstream, as far as the role may read them.
+    out["consumers"] = [
+        _consumer(by_relation[relation])
+        for relation in nearest_consumers(graph, member_relations)
+        if relation in by_relation
+    ]
     out["dq"] = product_dq(
         product_id,
         await _fetch_checkers(state),
@@ -643,6 +654,24 @@ async def _product_lineage(
         served=served_columns_for(state, role_id),
     )
     return out, graph, natives
+
+
+def _consumer(table: dict) -> dict:
+    """A registered relation reading the product directly: a table, a view or a materialized
+    view, and the product it belongs to, when it is another product's member."""
+    if table["source_id"] != DERIVED_SOURCE_ID:
+        kind = "table"
+    else:
+        kind = "materialized_view" if table["materialize"] else "view"
+    return {
+        "relation": _relation_of(table["domain_id"], table["table_name"]),
+        "kind": kind,
+        "table_id": table["id"],
+        "domain_id": table["domain_id"],
+        "table_name": table["table_name"],
+        "alias": table["alias"],
+        "product_id": table["product_id"],
+    }
 
 
 async def _fetch_checkers(state) -> list[dict]:
@@ -753,6 +782,7 @@ async def _fetch_tables(state) -> list[dict]:
                 rt.c.source_id,
                 rt.c.product_id,
                 rt.c.dq_contract,
+                rt.c.materialize,
             ).where(rt.c.draft.is_(False))
         )
         return [dict(r._mapping) for r in res.fetchall()]

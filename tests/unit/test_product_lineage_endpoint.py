@@ -56,7 +56,7 @@ TABLES = [
     },
 ]
 for _t in TABLES:
-    _t.update(domain_id="sales", alias=None)
+    _t.update(domain_id="sales", alias=None, materialize=False)
 
 VIEWS = [
     {
@@ -318,3 +318,50 @@ def test_a_role_without_a_request_reads_the_same_answer(wired) -> None:
     assert out["dq"] == _lineage("analyst")["dq"]
     assert out["natives"] == {}
     assert asyncio.run(product_lineage_for(app_module.state, "nope", "analyst")) is None
+
+
+def test_a_consumer_one_hop_downstream_is_listed_cut_to_the_reader(wired, monkeypatch) -> None:
+    """REQ-2160: the owner sees who reads the product, as far as they may read it."""
+    tables = [
+        *TABLES,
+        {
+            "id": 8,
+            "table_name": "report",
+            "source_id": DERIVED_SOURCE_ID,
+            "product_id": "p2",
+            "dq_contract": None,
+            "domain_id": "sales",
+            "alias": None,
+            "materialize": True,
+        },
+    ]
+    views = [
+        *VIEWS,
+        {"domain_id": "sales", "table_name": "report", "view_sql": "SELECT amount FROM sales.mart"},
+    ]
+    columns = [*COLUMNS, _column(8, "report", "amount")]
+
+    async def _tables(state):
+        return tables
+
+    async def _views(state):
+        return views
+
+    async def _columns(state):
+        return columns
+
+    monkeypatch.setattr(lineage_router, "_fetch_tables", _tables)
+    monkeypatch.setattr(lineage_router, "_fetch_view_rows", _views)
+    monkeypatch.setattr(lineage_router, "_fetch_registry_columns", _columns)
+    monkeypatch.setitem(
+        app_module.state.contexts, "owner", _context({1: ["amount"], 3: ["amount"], 8: ["amount"]})
+    )
+    (only,) = _lineage("owner")["consumers"]
+    assert (only["relation"], only["kind"], only["table_id"], only["product_id"]) == (
+        "sales.report",
+        "materialized_view",
+        8,
+        "p2",
+    )
+    # The analyst reads no column of report: no consumer.
+    assert _lineage("analyst")["consumers"] == []

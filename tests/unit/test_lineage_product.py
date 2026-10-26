@@ -94,3 +94,12 @@ def test_a_member_upstream_of_another_is_no_input() -> None:
     g = product_graph(_graph(), MEMBERS | {"raw.orders.amount"}, checker_relations=set())
     inputs = nearest_inputs(g, {"sales.mart", "raw.orders"}, base={"raw.orders"})
     assert inputs == ["mv.daily", "native:raw.orders"]
+
+
+def test_the_consumers_are_one_hop_downstream_and_never_a_member() -> None:
+    from provisa.lineage.product import nearest_consumers
+
+    g = product_graph(_graph(), MEMBERS, checker_relations={"sales.mart_dq"})
+    # report reads mart directly; report2 reads report, two hops away; the checker is no consumer.
+    assert nearest_consumers(g, {"sales.mart"}) == ["sales.report"]
+    assert nearest_consumers(g, {"sales.mart", "sales.report"}) == []
