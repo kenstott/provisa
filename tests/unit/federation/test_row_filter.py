@@ -372,3 +372,20 @@ def test_a_fresh_filter_is_served_from_the_replica_and_a_stale_one_is_fetched_on
 def test_the_record_key_is_the_canonical_filter_s_digest():
     assert row_filter.filter_hash('"amount" > 100') == row_filter.filter_hash('"amount" > 100')
     assert row_filter.filter_hash('"amount" > 100') != row_filter.filter_hash('"amount" > 101')
+
+
+async def test_a_filter_recorded_nowhere_was_never_fetched_and_asking_creates_nothing(tmp_path):
+    """Asked before the replica's first fetch, the store holds no record of it (on Postgres, not
+    even the replica's schema): the filter was never fetched, and the read creates nothing -- it
+    created the record in a schema that did not exist, and the read failed."""
+    import sqlite3
+
+    store = tmp_path / "store.sqlite"
+    sqlite3.connect(store).close()
+    engine = SimpleNamespace(engine=SimpleNamespace(materialize_store=lambda: f"sqlite:///{store}"))
+    at = await row_filter.filter_fetched_at(
+        SimpleNamespace(), SimpleNamespace(dialect="postgres"), engine, "", "orders", "abc"
+    )
+    assert at is None
+    tables = sqlite3.connect(store).execute("SELECT name FROM sqlite_master").fetchall()
+    assert tables == []

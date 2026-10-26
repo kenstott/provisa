@@ -226,14 +226,17 @@ async def filter_fetched_at(
         dsn = engine.engine.materialize_store()
         record = _record_table(schema, table, _store_dialect(dsn))
         async with store_writer.store_connection(dsn) as conn:
-            from sqlalchemy.schema import CreateTable
-
-            await conn.execute_core(CreateTable(record, if_not_exists=True))
-            row = (
-                await conn.execute_core(
-                    select(record.c.fetched_at).where(record.c.filter_hash == digest)
-                )
-            ).fetchone()
+            # Asked before the replica's first fetch, its schema and its record need not exist
+            # yet: a filter recorded nowhere was never fetched, as the DuckDB store answers. The
+            # first fetch creates both (replace_filtered_rows).
+            if not await conn.has_table(record.name, schema=schema or None):
+                row = None
+            else:
+                row = (
+                    await conn.execute_core(
+                        select(record.c.fetched_at).where(record.c.filter_hash == digest)
+                    )
+                ).fetchone()
             at = None if row is None else row[0]
     if at is None:
         return None
@@ -281,7 +284,7 @@ async def replace_filtered_rows(
 
     import pyarrow as pa
     from sqlalchemy import delete, text
-    from sqlalchemy.schema import CreateTable
+    from sqlalchemy.schema import CreateSchema, CreateTable
 
     from provisa.federation import store_writer
     from provisa.federation.materialize_exec import land_rows
@@ -296,6 +299,10 @@ async def replace_filtered_rows(
     async with store_writer.store_connection(dsn) as conn:
         await require_store_replica_table(conn, schema, table, action="write the row-level replica")
         async with conn.transaction():
+            # The replica's schema, as a landed table's is made (backend.apply_cdc_events): a
+            # row-level replica's first fetch may be the first write to it.
+            if schema and conn.capabilities.schemas:
+                await conn.execute_core(CreateSchema(schema, if_not_exists=True))
             await conn.execute_core(CreateTable(cache_table, if_not_exists=True))
             await conn.execute_core(CreateTable(record, if_not_exists=True))
             await conn.execute_core(delete(cache_table).where(text(where_sql)))
