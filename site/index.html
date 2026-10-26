@@ -182,11 +182,11 @@
 
     <!-- Jobs: the hero's promise, sized to one project -->
     <section class="jobs container" aria-label="Start with one job">
-      <p class="jobs-kicker">Most requirements fall into six problem types:</p>
+      <p class="jobs-kicker">Most requirements fall into six problem types, and they rarely arrive on day one. They land late, on a project that is already built, and upend it:</p>
       <div class="jobs-grid">
         <a class="job" href="/docs/integrations/#mcp-ai-agents">
           <p class="job-tag">AI access</p>
-          <h3>Your AI agent needs company data, and nobody wants to hand it the database.</h3>
+          <h3>Now leadership wants an AI agent on it, and nobody wants to hand it the database.</h3>
           <p>
             Point Claude or any MCP client at Provisa instead of the database. The OAuth
             token maps to a role, so the agent gets the same six access-control layers a
@@ -197,7 +197,7 @@
         </a>
         <a class="job" href="/why/interfaces">
           <p class="job-tag">App backends</p>
-          <h3>Your app needs one API, and the data lives in sources that don't match.</h3>
+          <h3>Now the app team needs an API over it, and the data lives in sources that don't match.</h3>
           <p>
             The app needs Postgres, a document store, and two internal REST services in
             the same response. Declare the relationships once and the API spans all of them, per role,
@@ -208,7 +208,7 @@
         </a>
         <a class="job" href="/why/sources">
           <p class="job-tag">BI across sources</p>
-          <h3>Your dashboards need every source, and the warehouse project is a year away.</h3>
+          <h3>Now the business wants it in Tableau, and the warehouse project is a year away.</h3>
           <p>
             Postgres, Mongo, Elasticsearch, a Google Sheet, an S3 prefix of extracts,
             and the SaaS systems the business runs on, Salesforce, ServiceNow, Jira and Stripe
@@ -219,7 +219,7 @@
         </a>
         <div class="job">
           <p class="job-tag">Data science access</p>
-          <h3>Your data scientists need every dataset, and each one is a separate request.</h3>
+          <h3>Now the data scientists want all of it, and each dataset is a separate request.</h3>
           <p>
             Register the sources once and the whole team queries them from a Jupyter
             notebook (<code>%%sql</code>, <code>%%graphql</code> or <code>%%cypher</code>
@@ -234,7 +234,7 @@
         </div>
         <a class="job" href="/why/governance">
           <p class="job-tag">Data provisioning</p>
-          <h3>Other teams need your data, and you're asked to build each of them a pipeline.</h3>
+          <h3>Now three other teams need it, and each one wants its own pipeline.</h3>
           <p>
             The consuming team writes SQL and gets it back fast: Arrow streams over Flight, typed gRPC, and, past a row threshold, a
             presigned S3 URL for multi-GB deliveries instead of a timed-out HTTP
@@ -245,7 +245,7 @@
         </a>
         <a class="job" href="/demos#public-data">
           <p class="job-tag">Public data</p>
-          <h3>Your data means more beside public data, and joining them means another ETL job.</h3>
+          <h3>Now someone wants it joined to public data, and that means another ETL job.</h3>
           <p>
             Your database joined by county to NOAA weather, by CVE to CISA's exploited-vulnerability
             catalog, by LEI to Wikidata's ownership graph, or by NDC to FDA recalls — with no ETL
@@ -254,6 +254,7 @@
           <span class="job-more">See the demos &rarr;</span>
         </a>
       </div>
+      <p class="jobs-kicker" style="margin-top: 24px;">With one model, each of these is another interface on what you already declared, not a rebuild.</p>
     </section>
 
     <section class="picker-section container" id="source-picker" aria-label="Source types">
