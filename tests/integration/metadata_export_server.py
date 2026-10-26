@@ -218,8 +218,10 @@ def model_config(
                         "name": "ssn",
                         "data_type": "text",
                         # The masked column's audience is the org's roles: masked for all but
-                        # admin, as the catalogs' restricted and exempt roles show it.
-                        "visible_to": AUDIENCE,
+                        # admin, as the catalogs' restricted and exempt roles show it. The org's
+                        # admin reads it too, so a catalog published as it receives the column
+                        # (REQ-2152).
+                        "visible_to": everyone,
                         "masks": [
                             {"to": ["admin"], "mask": None},
                             {

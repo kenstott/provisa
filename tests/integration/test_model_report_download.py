@@ -224,6 +224,8 @@ async def served(
     acme.tenant_db = tenant_db
     acme.model_db = tenant_db
     acme.roles = {rid: {"id": rid, **spec} for rid, spec in _ROLES.items()}
+    # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
+    acme.role_build_inputs = {"draft_tables": []}
     registry = OrgRegistry()
     for key in app_module.state.org_registry.all_org_ids():
         rt = app_module.state.org_registry.get(key)

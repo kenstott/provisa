@@ -105,6 +105,8 @@ async def plane(monkeypatch):
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
+    # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
     monkeypatch.setattr(
         appmod.state,
         "config",
