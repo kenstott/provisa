@@ -36,7 +36,13 @@ from provisa.profiler.governance import ColumnRule
 _ROLES = {
     "viewer": {"capabilities": ["query_development"]},
     "steward": {
-        "capabilities": ["table_registration", "source_registration", "environment_management"]
+        "capabilities": [
+            "table_registration",
+            "source_registration",
+            "environment_management",
+            "dq_read",  # REQ-2155: data quality's own rights
+            "dq_rw",
+        ]
     },
     "org_admin": {"capabilities": ["user_management", "table_registration"]},
 }
@@ -130,28 +136,30 @@ def _request(role: str, org: str = "acme"):
 _TABLE_RIGHT = "Missing capability: 'table_registration'"
 _ENV_RIGHT = "Missing capability: 'environment_management'"
 _DATA_RIGHT = "Missing capability: 'environment_data'"
+_DQ_READ = "Missing capability: 'dq_read'"  # REQ-2155
+_DQ_RW = "Missing capability: 'dq_rw'"
 
 _REFUSALS = [
     ("find_table_id", {"domain": "sales", "table": "orders"}, _TABLE_RIGHT),
-    ("list_profilers", {}, _TABLE_RIGHT),
+    ("list_profilers", {}, _DQ_READ),
     ("set_table_profiler", {"table_id": 1, "profiler_source_id": "prof"}, _TABLE_RIGHT),
     ("run_profiler", {"source_id": "prof"}, "Missing capability: 'source_registration'"),
     ("run_table_profile", {"table_id": 1}, _TABLE_RIGHT),
-    ("list_profile_runs", {"table_id": 1}, _TABLE_RIGHT),
+    ("list_profile_runs", {"table_id": 1}, _DQ_READ),
     ("declare_table_profile", {"table_id": 1, "profile": {"rowCount": 1}}, _TABLE_RIGHT),
-    ("get_profile_run_as_declared", {"table_id": 1, "run_id": "r1"}, _TABLE_RIGHT),
-    ("get_table_profile", {"table_id": 1}, _TABLE_RIGHT),
-    ("list_profile_constraints", {"table_id": 1}, _TABLE_RIGHT),
+    ("get_profile_run_as_declared", {"table_id": 1, "run_id": "r1"}, _DQ_READ),
+    ("get_table_profile", {"table_id": 1}, _DQ_READ),
+    ("list_profile_constraints", {"table_id": 1}, _DQ_READ),
     (
         "decide_profile_constraint",
         {"table_id": 1, "kind": "not_null", "column": "id", "status": "accepted"},
-        _TABLE_RIGHT,
+        _DQ_RW,
     ),
-    ("forget_profile_constraint", {"table_id": 1, "constraint_id": "c1"}, _TABLE_RIGHT),
-    ("export_profile_constraint", {"table_id": 1, "constraint_id": "c1"}, _TABLE_RIGHT),
-    ("list_profile_checks", {"table_id": 1}, _TABLE_RIGHT),
-    ("create_drift_check", {"table_id": 1}, _TABLE_RIGHT),
-    ("create_expectation_check", {"table_id": 1, "expectations_table_id": 2}, _TABLE_RIGHT),
+    ("forget_profile_constraint", {"table_id": 1, "constraint_id": "c1"}, _DQ_RW),
+    ("export_profile_constraint", {"table_id": 1, "constraint_id": "c1"}, _DQ_RW),
+    ("list_profile_checks", {"table_id": 1}, _DQ_READ),
+    ("create_drift_check", {"table_id": 1}, _DQ_RW),
+    ("create_expectation_check", {"table_id": 1, "expectations_table_id": 2}, _DQ_RW),
     ("list_fake_kinds", {}, _TABLE_RIGHT),
     ("get_table_fakes", {"table_id": 1}, _TABLE_RIGHT),
     ("set_column_fake", {"table_id": 1, "column": "email", "fake": "email()"}, _TABLE_RIGHT),

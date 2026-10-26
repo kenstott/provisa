@@ -22,7 +22,8 @@
 * ``POST   /admin/tables/{table_id}/profile-checks/drift`` — Create drift check.
 * ``POST   /admin/tables/{table_id}/profile-checks/expectation`` — Create expectation check.
 
-All are for those who may edit the table (``table_registration``). Every export is refused by name
+Reading needs ``dq_read`` and every change ``dq_rw`` (REQ-2155): data quality's own rights,
+not ``table_registration``. Every export is refused by name
 where no checker can take it (``provisa.profiler.export``).
 """
 
@@ -34,7 +35,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import require_capability_request, require_dq_read_request
 from provisa.api.admin.profiler_router import _db, _member
 from provisa.api.app import state
 from provisa.api.errors import ApiError
@@ -83,7 +84,7 @@ def _physical_names(table_id: int) -> dict[str, str]:
 
 @router.get("/tables/{table_id}/profile-constraints")
 async def list_constraints(request: Request, table_id: int) -> dict:
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.profiler import constraints, export
 
     async with _db().acquire() as conn:
@@ -101,7 +102,7 @@ async def list_constraints(request: Request, table_id: int) -> dict:
 
 @router.post("/tables/{table_id}/profile-constraints")
 async def decide_constraint(request: Request, table_id: int, body: DecisionInput) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import constraints
 
     try:
@@ -131,7 +132,7 @@ async def decide_constraint(request: Request, table_id: int, body: DecisionInput
 
 @router.delete("/tables/{table_id}/profile-constraints/{constraint_id}")
 async def forget_constraint(request: Request, table_id: int, constraint_id: str) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import constraints
 
     async with _db().acquire() as conn:
@@ -159,7 +160,7 @@ async def _added(conn: Any, checker: Any, check: dict) -> dict:
 async def export_constraint(
     request: Request, table_id: int, constraint_id: str, body: ExportInput
 ) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import constraints, export
 
     async with _db().acquire() as conn:
@@ -212,7 +213,7 @@ def _published(table_id: int) -> tuple[str, list[str]] | None:
 
 @router.get("/tables/{table_id}/profile-checks")
 async def check_candidates(request: Request, table_id: int) -> dict:
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.core.schema_org import registered_tables as rt
     from provisa.profiler import export
 
@@ -255,7 +256,7 @@ async def _drift_checker(conn: Any, table_id: int, checker_table_id: int | None)
 
 @router.post("/tables/{table_id}/profile-checks/drift")
 async def create_drift_check(request: Request, table_id: int, body: ExportInput) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import export
 
     async with _db().acquire() as conn:
@@ -265,7 +266,7 @@ async def create_drift_check(request: Request, table_id: int, body: ExportInput)
 
 @router.post("/tables/{table_id}/profile-checks/expectation")
 async def create_expectation_check(request: Request, table_id: int, body: ExpectationInput) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import export
 
     published = _published(body.expectationsTableId)

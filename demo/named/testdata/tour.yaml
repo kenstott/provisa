@@ -68,7 +68,7 @@ steps:
     ORDER BY revenue DESC
     LIMIT 10
 - key: testdataPreprodAnalyst
-  role: analyst
+  role: shop_analyst
 - key: testdataPreprodAsAnalyst
   sql: >-
     SELECT name, email, city, region

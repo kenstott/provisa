@@ -34,7 +34,7 @@ from tests.integration.worker_boot_harness import WorkerBoot, _config
 
 pytestmark = [pytest.mark.integration]
 
-_ROLES = ["org_admin", "analyst"]
+_ROLES = ["org_admin", "itest_analyst"]
 _CUSTOMERS = 200
 # Customer 1 places 50 orders (the hot key); customers 2..101 place 5 each; the rest none.
 _ORDERS = [(1, 1)] * 50 + [(c, c) for c in range(2, 102) for _ in range(5)]
@@ -153,7 +153,8 @@ def server():
         ],
         "roles": [
             {
-                "id": "analyst",
+                "id": "itest_analyst",
+                "parents": ["analyst"],
                 "description": "Test role.",
                 "capabilities": ["query_development", "full_results"],
                 "domain_access": ["*"],
@@ -609,7 +610,7 @@ def test_generated_rows_keep_their_distance_from_real_rows(profiled):
     schema = close["storeSchema"]
     # W1: the store's tables of the dataset are read only through the model, by no name of their
     # own -- the real samples were such tables, never registered.
-    for role in ("analyst", "org_admin"):
+    for role in ("itest_analyst", "org_admin"):
         status, body = _call(
             boot,
             "POST",

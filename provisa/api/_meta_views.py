@@ -746,12 +746,22 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
         CREATE OR REPLACE VIEW roles_meta AS
-        SELECT id, parent_role_id, org_id,
+        SELECT id, org_id,
                capabilities,
                tenant_id,
                'meta' AS domain_id,
                description
         FROM roles
+    """,
+    # REQ-2155: a role's parents, one row per (role, parent), in declared order.
+    "roles_parents": """
+        CREATE OR REPLACE VIEW roles_parents AS
+        SELECT r.id || ':' || p.parent_role_id AS id,
+               r.id AS role_id, p.parent_role_id, p.position::int AS position,
+               'meta' AS domain_id
+        FROM roles r
+        CROSS JOIN LATERAL jsonb_array_elements_text(r.parents)
+            WITH ORDINALITY AS p(parent_role_id, position)
     """,
     "roles_domain_access": """
         CREATE OR REPLACE VIEW roles_domain_access AS

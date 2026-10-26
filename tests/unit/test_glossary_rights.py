@@ -27,7 +27,6 @@ and onto ``glossary_read``. ``glossary_rw`` is curation on top of that. Asserted
 
 from __future__ import annotations
 
-import json
 import re
 import types
 from pathlib import Path
@@ -152,26 +151,13 @@ class TestGlossaryGates:
 # --- the seeds -----------------------------------------------------------------------------------
 
 
-def _schema_sql_seed(role_id: str) -> set[str]:
-    sql = _SCHEMA_SQL.read_text()
-    seed = re.search(rf"'{role_id}',\s*'(\[[\s\S]*?\])'::jsonb", sql)
-    assert seed, f"schema.sql: {role_id} seed not found"
-    return set(json.loads(seed.group(1)))
-
-
 def _db_seed(role_id: str) -> set[str]:
-    from provisa.core.db import _SEED_ROLES
+    from provisa.core.db import STANDARD_ROLE_RIGHTS
 
-    for seeded_id, caps in _SEED_ROLES:
+    for seeded_id, caps in STANDARD_ROLE_RIGHTS.items():
         if seeded_id == role_id:
             return set(caps)
-    raise AssertionError(f"db.py _SEED_ROLES: {role_id} not found")
-
-
-@pytest.mark.parametrize("role_id", ["org_admin", "analyst", "developer", "modeler"])
-def test_the_two_seeds_agree_on_the_glossary_rights(role_id):
-    glossary = {"glossary_read", "glossary_rw", "org_glossary_rw"}
-    assert _schema_sql_seed(role_id) & glossary == _db_seed(role_id) & glossary
+    raise AssertionError(f"standard_roles.yaml: {role_id} not found")
 
 
 def test_an_analyst_reads_the_glossary_but_does_not_curate_it():
@@ -180,7 +166,8 @@ def test_an_analyst_reads_the_glossary_but_does_not_curate_it():
     assert "glossary_rw" not in caps
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "modeler"])
+# REQ-2155: the glossary is the data steward's to curate, and org_admin's through it.
+@pytest.mark.parametrize("role_id", ["org_admin", "data_steward"])
 def test_the_curating_roles_hold_both(role_id):
     assert {"glossary_read", "glossary_rw"} <= _db_seed(role_id)
 

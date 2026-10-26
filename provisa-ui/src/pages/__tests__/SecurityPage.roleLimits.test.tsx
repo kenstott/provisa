@@ -34,7 +34,8 @@ const LIMIT_ROLES = [
     capabilities: [],
     demonstrated: [],
     domain_access: ["*"],
-    parentRoleId: null,
+    parents: [],
+    standard: false,
   },
 ];
 

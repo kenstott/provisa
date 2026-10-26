@@ -305,7 +305,7 @@ class AdminGovernance:
 
     # ---- reads
     def _roles(self) -> dict[str, dict[str, Any]]:
-        data = self._graphql("{ roles { id capabilities domainAccess parentRoleId } }")
+        data = self._graphql("{ roles { id capabilities domainAccess parents } }")
         return {r["id"]: r for r in data["roles"]}
 
     def _tables(self) -> dict[int, dict[str, Any]]:
@@ -344,7 +344,7 @@ class AdminGovernance:
                                 "description": f"Benchmark governance: {level} below {r.role}",
                                 "capabilities": list(top["capabilities"]),
                                 "domainAccess": list(top["domainAccess"]),
-                                "parentRoleId": cm.chain_role(r.role, level - 1),
+                                "parents": [cm.chain_role(r.role, level - 1)],
                             }
                         },
                     )

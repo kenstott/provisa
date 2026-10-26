@@ -179,10 +179,15 @@ async def schema_input(tenant_db, trino_conn, _load_config) -> dict:
         table["write_returns_rows"] = table_write_returns_rows(table, stype, None, source_path=None)
         table["write_refused_forms"] = []
 
+    # REQ-2155: as the build registers them -- each grant held by the roles that inherit it, each
+    # role with its ancestors' rights folded in.
+    from provisa.security.inheritance import expand_column_grants, flatten_role_dicts, role_chains
+
+    expand_column_grants(tables, role_chains(roles))
     return {
         "tables": tables,
         "rels": rels,
-        "roles": {r["id"]: r for r in roles},
+        "roles": {r["id"]: r for r in flatten_role_dicts(roles)},
         "domains": domains,
         "column_types": column_types,
         "naming_rules": naming_rules,
@@ -213,7 +218,7 @@ class TestSchemaGenValid:
         assert schema.query_type is not None
 
     def test_analyst_schema_validates(self, schema_input):
-        si = _make_schema_input(schema_input, "analyst")
+        si = _make_schema_input(schema_input, "sales_analytics_analyst")
         schema = generate_schema(si)
         assert_valid_schema(schema)  # raises if invalid
         assert schema.query_type is not None
@@ -232,7 +237,7 @@ class TestSchemaGenObjectTypes:
 
     def test_analyst_sees_only_sales_analytics_domain(self, schema_input):
         """Analyst has access to sales-analytics domain only, not product-catalog."""
-        si = _make_schema_input(schema_input, "analyst")
+        si = _make_schema_input(schema_input, "sales_analytics_analyst")
         schema = generate_schema(si)
         query = schema.query_type
         field_names = set(query.fields.keys())
@@ -263,13 +268,13 @@ class TestSchemaGenColumnVisibility:
 
     def test_analyst_cannot_see_amount_column(self, schema_input):
         """Amount is visible_to [admin] only, not analyst."""
-        si = _make_schema_input(schema_input, "analyst")
+        si = _make_schema_input(schema_input, "sales_analytics_analyst")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
         assert "amount" not in orders_type.fields
 
     def test_analyst_can_see_region_column(self, schema_input):
-        si = _make_schema_input(schema_input, "analyst")
+        si = _make_schema_input(schema_input, "sales_analytics_analyst")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
         assert "region" in orders_type.fields
@@ -282,7 +287,7 @@ class TestSchemaGenColumnVisibility:
 
     def test_analyst_cannot_see_email_on_customers(self, schema_input):
         """Email is visible_to [admin] only."""
-        si = _make_schema_input(schema_input, "analyst")
+        si = _make_schema_input(schema_input, "sales_analytics_analyst")
         schema = generate_schema(si)
         customers_type = _unwrap_list_type(schema.query_type.fields["customers"])
         assert "email" not in customers_type.fields
@@ -308,7 +313,7 @@ class TestSchemaGenRelationships:
 
     def test_analyst_sees_relationship_within_domain(self, schema_input):
         """Both orders and customers are in sales-analytics — analyst should see it."""
-        si = _make_schema_input(schema_input, "analyst")
+        si = _make_schema_input(schema_input, "sales_analytics_analyst")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
         assert "customer" in orders_type.fields

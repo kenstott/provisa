@@ -59,13 +59,13 @@ tables:
   file_glob: complaints_*.csv
   description: 311 complaints, one CSV file a month, read as one table
   columns:
-  - {name: complaint_id, data_type: varchar, is_primary_key: true, description: The complaint's number, visible_to: [org_admin]}
-  - {name: opened_at, data_type: varchar, description: When the complaint was made, visible_to: [org_admin]}
-  - {name: status, data_type: varchar, description: 'open or closed', visible_to: [org_admin]}
-  - {name: closed_at, data_type: varchar, description: 'When the complaint was closed; empty while it is open', visible_to: [org_admin]}
-  - {name: category, data_type: varchar, description: 'What the complaint is about: noise, dust, a blocked sidewalk and so on', visible_to: [org_admin]}
-  - {name: neighborhood, data_type: varchar, description: The neighborhood the complaint is in, visible_to: [org_admin]}
-  - {name: address, data_type: varchar, description: The street address the complaint is about, visible_to: [org_admin]}
+  - {name: complaint_id, data_type: varchar, is_primary_key: true, description: The complaint's number, visible_to: [data_steward]}
+  - {name: opened_at, data_type: varchar, description: When the complaint was made, visible_to: [data_steward]}
+  - {name: status, data_type: varchar, description: 'open or closed', visible_to: [data_steward]}
+  - {name: closed_at, data_type: varchar, description: 'When the complaint was closed; empty while it is open', visible_to: [data_steward]}
+  - {name: category, data_type: varchar, description: 'What the complaint is about: noise, dust, a blocked sidewalk and so on', visible_to: [data_steward]}
+  - {name: neighborhood, data_type: varchar, description: The neighborhood the complaint is in, visible_to: [data_steward]}
+  - {name: address, data_type: varchar, description: The street address the complaint is about, visible_to: [data_steward]}
 - source_id: drop
   domain_id: city
   schema: drop
@@ -76,14 +76,14 @@ tables:
   alias: permits
   description: Building permits, from a Parquet file
   columns:
-  - {name: permit_id, data_type: varchar, is_primary_key: true, description: The permit's number, visible_to: [org_admin]}
-  - {name: address, data_type: varchar, description: The street address of the permitted work, visible_to: [org_admin]}
-  - {name: neighborhood, data_type: varchar, description: The neighborhood of the permitted work, visible_to: [org_admin]}
-  - {name: permit_type, data_type: varchar, description: 'What is permitted: a new building, an addition, a demolition or a renovation', visible_to: [org_admin]}
-  - {name: issued_on, data_type: date, description: When the permit was issued, visible_to: [org_admin]}
-  - {name: expires_on, data_type: date, description: When the permit expires, visible_to: [org_admin]}
-  - {name: status, data_type: varchar, description: 'active until it expires, then expired', visible_to: [org_admin]}
-  - {name: valuation, data_type: bigint, description: The declared value of the work in USD, visible_to: [org_admin]}
+  - {name: permit_id, data_type: varchar, is_primary_key: true, description: The permit's number, visible_to: [data_steward]}
+  - {name: address, data_type: varchar, description: The street address of the permitted work, visible_to: [data_steward]}
+  - {name: neighborhood, data_type: varchar, description: The neighborhood of the permitted work, visible_to: [data_steward]}
+  - {name: permit_type, data_type: varchar, description: 'What is permitted: a new building, an addition, a demolition or a renovation', visible_to: [data_steward]}
+  - {name: issued_on, data_type: date, description: When the permit was issued, visible_to: [data_steward]}
+  - {name: expires_on, data_type: date, description: When the permit expires, visible_to: [data_steward]}
+  - {name: status, data_type: varchar, description: 'active until it expires, then expired', visible_to: [data_steward]}
+  - {name: valuation, data_type: bigint, description: The declared value of the work in USD, visible_to: [data_steward]}
 - source_id: drop
   domain_id: city
   schema: drop
@@ -95,9 +95,9 @@ tables:
   description: The city's 2026 budget, a line a department and neighborhood, from an Excel workbook's
     sheet "budget"
   columns:
-  - {name: neighborhood, data_type: varchar, description: The neighborhood the money is spent in, visible_to: [org_admin]}
-  - {name: department, data_type: varchar, description: The department spending it, visible_to: [org_admin]}
-  - {name: amount, data_type: bigint, description: The budgeted amount in USD, visible_to: [org_admin]}
+  - {name: neighborhood, data_type: varchar, description: The neighborhood the money is spent in, visible_to: [data_steward]}
+  - {name: department, data_type: varchar, description: The department spending it, visible_to: [data_steward]}
+  - {name: amount, data_type: bigint, description: The budgeted amount in USD, visible_to: [data_steward]}
 - source_id: drop
   domain_id: city
   schema: drop
@@ -107,10 +107,10 @@ tables:
   enable_group_by: true
   description: Inspections of permitted work, from a JSON file
   columns:
-  - {name: inspection_id, data_type: integer, is_primary_key: true, description: The inspection's number, visible_to: [org_admin]}
-  - {name: permit_id, data_type: varchar, description: The permit whose work was inspected, visible_to: [org_admin]}
-  - {name: inspected_on, data_type: varchar, description: When the work was inspected, visible_to: [org_admin]}
-  - {name: result, data_type: varchar, description: 'passed, failed or corrections needed', visible_to: [org_admin]}
+  - {name: inspection_id, data_type: integer, is_primary_key: true, description: The inspection's number, visible_to: [data_steward]}
+  - {name: permit_id, data_type: varchar, description: The permit whose work was inspected, visible_to: [data_steward]}
+  - {name: inspected_on, data_type: varchar, description: When the work was inspected, visible_to: [data_steward]}
+  - {name: result, data_type: varchar, description: 'passed, failed or corrections needed', visible_to: [data_steward]}
 views:
 # The answer to the question, stored: for each neighborhood, the complaints made at an address
 # with an active building permit, and how many such permits there are.
@@ -128,9 +128,9 @@ views:
     WHERE p.status = 'active'
     GROUP BY c.neighborhood
   columns:
-  - {name: neighborhood, data_type: varchar, description: The neighborhood, visible_to: [org_admin]}
-  - {name: complaints, data_type: bigint, description: Complaints made at an address with an active permit, visible_to: [org_admin]}
-  - {name: active_permits, data_type: bigint, description: The active permits those complaints are about, visible_to: [org_admin]}
+  - {name: neighborhood, data_type: varchar, description: The neighborhood, visible_to: [data_steward]}
+  - {name: complaints, data_type: bigint, description: Complaints made at an address with an active permit, visible_to: [data_steward]}
+  - {name: active_permits, data_type: bigint, description: The active permits those complaints are about, visible_to: [data_steward]}
 relationships:
 - {id: permit-complaints, alias: DRAWS, cardinality: one-to-many, source_table_id: permits, source_column: address, target_table_id: complaints, target_column: address}
 - {id: inspection-permit, alias: INSPECTS, cardinality: many-to-one, source_table_id: inspections, source_column: permit_id, target_table_id: permits, target_column: permit_id}

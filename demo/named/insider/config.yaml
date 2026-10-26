@@ -45,20 +45,24 @@ naming:
 roles:
 # The control room: the watch list and every case.
 - id: control_room
+  parents: [viewer]
   description: "The control room: the watch list and every case."
   capabilities: [query_development]
   domain_access: [bank]
 # First-level reviewers: their own desks' cases, the deal withheld; never the watch list.
 - id: reviewer_ana
+  parents: [viewer]
   description: "A first-level reviewer: the cases of the desks Ana reviews, the deal withheld, never the watch list."
   capabilities: [query_development]
   domain_access: [bank]
 - id: reviewer_ben
+  parents: [viewer]
   description: "A first-level reviewer: the cases of the desks Ben reviews, the deal withheld, never the watch list."
   capabilities: [query_development]
   domain_access: [bank]
 # A deal team: its own deal's rows of the watch list and of the queue.
 - id: deal_team_falcon
+  parents: [viewer]
   description: "The Falcon deal team: its own deal's rows of the watch list and of the review queue."
   capabilities: [query_development]
   domain_access: [bank]
@@ -102,14 +106,14 @@ tables:
   enable_group_by: true
   description: 'The control room''s watch list: each deal in discussion, its code name, the company, aliases and ticker, what kind of deal it is, and when it was announced'
   columns:
-  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [org_admin, control_room, deal_team_falcon], is_primary_key: true}
-  - {name: code_name, data_type: varchar, description: 'The project code name the deal team uses', visible_to: [org_admin, control_room, deal_team_falcon]}
-  - {name: legal_name, data_type: varchar, description: 'The company''''s legal name', visible_to: [org_admin, control_room, deal_team_falcon]}
-  - {name: aliases, data_type: varchar, description: 'Other names the company goes by, separated by semicolons', visible_to: [org_admin, control_room, deal_team_falcon]}
-  - {name: ticker, data_type: varchar, description: 'The company''''s ticker', visible_to: [org_admin, control_room, deal_team_falcon]}
-  - {name: deal_type, data_type: varchar, description: 'merger, acquisition, loan or underwriting', visible_to: [org_admin, control_room, deal_team_falcon]}
-  - {name: description, data_type: varchar, description: 'What the deal is, in a sentence', visible_to: [org_admin, control_room, deal_team_falcon]}
-  - {name: announced_on, data_type: date, description: 'When the deal was announced; empty while it is not public', visible_to: [org_admin, control_room, deal_team_falcon]}
+  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [data_steward, control_room, deal_team_falcon], is_primary_key: true}
+  - {name: code_name, data_type: varchar, description: 'The project code name the deal team uses', visible_to: [data_steward, control_room, deal_team_falcon]}
+  - {name: legal_name, data_type: varchar, description: 'The company''''s legal name', visible_to: [data_steward, control_room, deal_team_falcon]}
+  - {name: aliases, data_type: varchar, description: 'Other names the company goes by, separated by semicolons', visible_to: [data_steward, control_room, deal_team_falcon]}
+  - {name: ticker, data_type: varchar, description: 'The company''''s ticker', visible_to: [data_steward, control_room, deal_team_falcon]}
+  - {name: deal_type, data_type: varchar, description: 'merger, acquisition, loan or underwriting', visible_to: [data_steward, control_room, deal_team_falcon]}
+  - {name: description, data_type: varchar, description: 'What the deal is, in a sentence', visible_to: [data_steward, control_room, deal_team_falcon]}
+  - {name: announced_on, data_type: date, description: 'When the deal was announced; empty while it is not public', visible_to: [data_steward, control_room, deal_team_falcon]}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -118,17 +122,17 @@ tables:
   enable_group_by: true
   description: 'Who was brought over the wall for each deal, and when'
   columns:
-  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [org_admin, control_room, deal_team_falcon], is_primary_key: true}
-  - {name: employee_id, data_type: varchar, description: 'The employee brought over the wall', visible_to: [org_admin, control_room, deal_team_falcon], is_primary_key: true}
-  - {name: over_wall_at, data_type: timestamp, description: 'When they were brought over the wall', visible_to: [org_admin, control_room, deal_team_falcon]}
+  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [data_steward, control_room, deal_team_falcon], is_primary_key: true}
+  - {name: employee_id, data_type: varchar, description: 'The employee brought over the wall', visible_to: [data_steward, control_room, deal_team_falcon], is_primary_key: true}
+  - {name: over_wall_at, data_type: timestamp, description: 'When they were brought over the wall', visible_to: [data_steward, control_room, deal_team_falcon]}
 - source_id: bank
   domain_id: bank
   schema: bank
   table: screening
   description: 'The screening scope: each message and each watch-list deal it is screened against'
   columns:
-  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [org_admin, control_room], is_primary_key: true}
-  - {name: deal_id, data_type: varchar, description: 'The deal it is screened against', visible_to: [org_admin, control_room], is_primary_key: true}
+  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [data_steward, control_room], is_primary_key: true}
+  - {name: deal_id, data_type: varchar, description: 'The deal it is screened against', visible_to: [data_steward, control_room], is_primary_key: true}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -137,8 +141,8 @@ tables:
   enable_group_by: true
   description: 'The mail domains of each deal''''s own counterparties: the company, its counsel'
   columns:
-  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [org_admin, control_room, deal_team_falcon], is_primary_key: true}
-  - {name: domain, data_type: varchar, description: 'A counterparty''''s mail domain', visible_to: [org_admin, control_room, deal_team_falcon], is_primary_key: true}
+  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [data_steward, control_room, deal_team_falcon], is_primary_key: true}
+  - {name: domain, data_type: varchar, description: 'A counterparty''''s mail domain', visible_to: [data_steward, control_room, deal_team_falcon], is_primary_key: true}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -149,15 +153,15 @@ tables:
     the deal, the signals, whether its sender is on the deal''s team, whether it went to one of the
     deal''s counterparties and whether it was sent before the announcement; written by match_deals'
   columns:
-  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
-  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
-  - {name: flagged_entity, data_type: varchar, description: 'The flagged entity: the company the deal is about', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
-  - {name: name_match, data_type: double, description: 'The strongest match of the company''s names, its ticker or the code name, from 0 to 1', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
-  - {name: meaning_match, data_type: double, description: 'How close the message reads to the deal''s description, from 0 to 1', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
-  - {name: signals, data_type: varchar, description: 'The signals that fired: legal_name, alias, ticker, code_name, meaning', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
-  - {name: sender_on_team, data_type: integer, description: '1 when its sender was brought over the wall for the deal', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
-  - {name: to_counterparty, data_type: integer, description: '1 when it went to one of the deal''s own counterparties', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
-  - {name: before_announcement, data_type: integer, description: '1 when it was sent before the deal was announced', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
+  - {name: deal_id, data_type: varchar, description: 'The deal', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
+  - {name: flagged_entity, data_type: varchar, description: 'The flagged entity: the company the deal is about', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: name_match, data_type: double, description: 'The strongest match of the company''s names, its ticker or the code name, from 0 to 1', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: meaning_match, data_type: double, description: 'How close the message reads to the deal''s description, from 0 to 1', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: signals, data_type: varchar, description: 'The signals that fired: legal_name, alias, ticker, code_name, meaning', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: sender_on_team, data_type: integer, description: '1 when its sender was brought over the wall for the deal', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: to_counterparty, data_type: integer, description: '1 when it went to one of the deal''s own counterparties', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: before_announcement, data_type: integer, description: '1 when it was sent before the deal was announced', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [message_id, deal_id, flagged_entity, name_match, meaning_match, signals, sender_on_team, to_counterparty, before_announcement]}
   - {role: org_admin, operation: update, columns: [message_id, deal_id, flagged_entity, name_match, meaning_match, signals, sender_on_team, to_counterparty, before_announcement]}
@@ -170,10 +174,10 @@ tables:
   enable_group_by: true
   description: 'The bank''''s employees and their desks'
   columns:
-  - {name: employee_id, data_type: varchar, description: 'The employee', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
-  - {name: name, data_type: varchar, description: 'Their name', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
-  - {name: email, data_type: varchar, description: 'Their bank address', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
-  - {name: desk, data_type: varchar, description: 'Their desk', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: employee_id, data_type: varchar, description: 'The employee', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
+  - {name: name, data_type: varchar, description: 'Their name', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: email, data_type: varchar, description: 'Their bank address', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: desk, data_type: varchar, description: 'Their desk', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -182,8 +186,8 @@ tables:
   enable_group_by: true
   description: 'Which first-level reviewer each desk''''s mail goes to'
   columns:
-  - {name: desk, data_type: varchar, description: 'The desk', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
-  - {name: reviewer, data_type: varchar, description: 'The reviewer''''s role', visible_to: [org_admin, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
+  - {name: desk, data_type: varchar, description: 'The desk', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben], is_primary_key: true}
+  - {name: reviewer, data_type: varchar, description: 'The reviewer''''s role', visible_to: [data_steward, control_room, deal_team_falcon, reviewer_ana, reviewer_ben]}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -192,11 +196,11 @@ tables:
   enable_group_by: true
   description: 'The bank''''s customers'
   columns:
-  - {name: customer_id, data_type: varchar, description: 'The customer', visible_to: [org_admin, control_room], is_primary_key: true}
-  - {name: name, data_type: varchar, description: 'Their name', visible_to: [org_admin, control_room]}
-  - {name: email, data_type: varchar, description: 'Their address', visible_to: [org_admin, control_room]}
-  - {name: ssn, data_type: varchar, description: 'Their social security number', visible_to: [org_admin, control_room]}
-  - {name: account_no, data_type: varchar, description: 'Their account number', visible_to: [org_admin, control_room]}
+  - {name: customer_id, data_type: varchar, description: 'The customer', visible_to: [data_steward, control_room], is_primary_key: true}
+  - {name: name, data_type: varchar, description: 'Their name', visible_to: [data_steward, control_room]}
+  - {name: email, data_type: varchar, description: 'Their address', visible_to: [data_steward, control_room]}
+  - {name: ssn, data_type: varchar, description: 'Their social security number', visible_to: [data_steward, control_room]}
+  - {name: account_no, data_type: varchar, description: 'Their account number', visible_to: [data_steward, control_room]}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -205,11 +209,11 @@ tables:
   enable_group_by: true
   description: 'The bank''''s own log of who read customer records, and when'
   columns:
-  - {name: access_id, data_type: integer, description: 'The read', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben], is_primary_key: true}
-  - {name: employee_id, data_type: varchar, description: 'Who read', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: accessed_at, data_type: timestamp, description: 'When', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: table_name, data_type: varchar, description: 'What they read', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: records_read, data_type: integer, description: 'How many records', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
+  - {name: access_id, data_type: integer, description: 'The read', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben], is_primary_key: true}
+  - {name: employee_id, data_type: varchar, description: 'Who read', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: accessed_at, data_type: timestamp, description: 'When', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: table_name, data_type: varchar, description: 'What they read', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: records_read, data_type: integer, description: 'How many records', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -218,13 +222,13 @@ tables:
   enable_group_by: true
   description: 'The employees'''' mail'
   columns:
-  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben], is_primary_key: true}
-  - {name: sender_id, data_type: varchar, description: 'Who sent it', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: sent_at, data_type: timestamp, description: 'When it was sent', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: subject, data_type: varchar, description: 'Its subject', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: body, data_type: varchar, description: 'Its text', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: outside_recipients, data_type: integer, description: 'How many of its recipients were outside the bank', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: personal_recipients, data_type: integer, description: 'How many of its recipients were personal addresses', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
+  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben], is_primary_key: true}
+  - {name: sender_id, data_type: varchar, description: 'Who sent it', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: sent_at, data_type: timestamp, description: 'When it was sent', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: subject, data_type: varchar, description: 'Its subject', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: body, data_type: varchar, description: 'Its text', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: outside_recipients, data_type: integer, description: 'How many of its recipients were outside the bank', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: personal_recipients, data_type: integer, description: 'How many of its recipients were personal addresses', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
 - source_id: bank
   domain_id: bank
   schema: bank
@@ -233,10 +237,10 @@ tables:
   enable_group_by: true
   description: 'Each message''''s recipients: internal, external, or a personal address'
   columns:
-  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [org_admin, control_room], is_primary_key: true}
-  - {name: address, data_type: varchar, description: 'The recipient''''s address', visible_to: [org_admin, control_room], is_primary_key: true}
-  - {name: domain, data_type: varchar, description: 'The address''''s domain', visible_to: [org_admin, control_room]}
-  - {name: kind, data_type: varchar, description: 'internal, external or personal', visible_to: [org_admin, control_room]}
+  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [data_steward, control_room], is_primary_key: true}
+  - {name: address, data_type: varchar, description: 'The recipient''''s address', visible_to: [data_steward, control_room], is_primary_key: true}
+  - {name: domain, data_type: varchar, description: 'The address''''s domain', visible_to: [data_steward, control_room]}
+  - {name: kind, data_type: varchar, description: 'internal, external or personal', visible_to: [data_steward, control_room]}
 views:
 # Each message against each deal its screening scope names (every deal), embedded by the demo's
 # local model and matched by deal_signals; a view that applies a column transform is stored, so
@@ -255,15 +259,15 @@ views:
     JOIN "bank"."message" AS m ON m.message_id = s.message_id
     JOIN "bank"."deal" AS d ON d.deal_id = s.deal_id
   columns:
-  - {name: message_id, data_type: varchar, description: The message, visible_to: [org_admin]}
-  - {name: deal_id, data_type: varchar, description: The deal, visible_to: [org_admin]}
-  - {name: legal_name, data_type: varchar, description: 'The company''s legal name', visible_to: [org_admin]}
-  - {name: sender_id, data_type: varchar, description: Who sent it, visible_to: [org_admin]}
-  - {name: sent_at, data_type: timestamp, description: When it was sent, visible_to: [org_admin]}
-  - {name: announced_on, data_type: date, description: When the deal was announced; empty while it is not public, visible_to: [org_admin]}
-  - {name: name_match, data_type: double, description: 'Its strongest match by name, 0 to 1', visible_to: [org_admin]}
-  - {name: meaning_match, data_type: double, description: 'Its match by meaning, 0 below the floor', visible_to: [org_admin]}
-  - {name: signals, data_type: varchar, description: 'The signals that fired, in order; empty when none did', visible_to: [org_admin]}
+  - {name: message_id, data_type: varchar, description: The message, visible_to: [data_steward]}
+  - {name: deal_id, data_type: varchar, description: The deal, visible_to: [data_steward]}
+  - {name: legal_name, data_type: varchar, description: 'The company''s legal name', visible_to: [data_steward]}
+  - {name: sender_id, data_type: varchar, description: Who sent it, visible_to: [data_steward]}
+  - {name: sent_at, data_type: timestamp, description: When it was sent, visible_to: [data_steward]}
+  - {name: announced_on, data_type: date, description: When the deal was announced; empty while it is not public, visible_to: [data_steward]}
+  - {name: name_match, data_type: double, description: 'Its strongest match by name, 0 to 1', visible_to: [data_steward]}
+  - {name: meaning_match, data_type: double, description: 'Its match by meaning, 0 below the floor', visible_to: [data_steward]}
+  - {name: signals, data_type: varchar, description: 'The signals that fired, in order; empty when none did', visible_to: [data_steward]}
 - id: review_queue
   domain_id: bank
   materialize: true
@@ -314,21 +318,21 @@ views:
     GROUP BY m.message_id, m.sent_at, m.subject, m.body, m.outside_recipients,
       m.personal_recipients, e.name, e.desk, r.reviewer
   columns:
-  - {name: message_id, data_type: varchar, description: The message, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: deal_id, data_type: varchar, description: 'The deal it was matched to; withheld from a first-level reviewer', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben], masks: [{to: [org_admin, control_room]}, {to: ['*'], mask: {type: constant, value: withheld}}]}
-  - {name: flagged, data_type: varchar, description: 'The flagged entity: the company the deal is about, or customer data', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: sender, data_type: varchar, description: Who sent it, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: desk, data_type: varchar, description: The sender''s desk, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: reviewer, data_type: varchar, description: The first-level reviewer the case goes to, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: sent_at, data_type: timestamp, description: When it was sent, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: subject, data_type: varchar, description: Its subject, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: signals, data_type: varchar, description: What it matched, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: outside_team, data_type: integer, description: 1 when its sender was not on the deal''s team, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: outside_bank, data_type: integer, description: 1 when a recipient was outside the bank, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: personal, data_type: integer, description: 1 when a recipient was a personal address, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: before_announcement, data_type: integer, description: 1 when it was sent before the deal was announced, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: to_counterparty, data_type: integer, description: 1 when it went to one of the deal''s own counterparties, visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
-  - {name: score, data_type: double, description: 'The score: the match weighted by who sent it and where it went', visible_to: [org_admin, control_room, reviewer_ana, reviewer_ben]}
+  - {name: message_id, data_type: varchar, description: The message, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: deal_id, data_type: varchar, description: 'The deal it was matched to; withheld from a first-level reviewer', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben], masks: [{to: [data_steward, control_room]}, {to: ['*'], mask: {type: constant, value: withheld}}]}
+  - {name: flagged, data_type: varchar, description: 'The flagged entity: the company the deal is about, or customer data', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: sender, data_type: varchar, description: Who sent it, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: desk, data_type: varchar, description: The sender''s desk, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: reviewer, data_type: varchar, description: The first-level reviewer the case goes to, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: sent_at, data_type: timestamp, description: When it was sent, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: subject, data_type: varchar, description: Its subject, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: signals, data_type: varchar, description: What it matched, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: outside_team, data_type: integer, description: 1 when its sender was not on the deal''s team, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: outside_bank, data_type: integer, description: 1 when a recipient was outside the bank, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: personal, data_type: integer, description: 1 when a recipient was a personal address, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: before_announcement, data_type: integer, description: 1 when it was sent before the deal was announced, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: to_counterparty, data_type: integer, description: 1 when it went to one of the deal''s own counterparties, visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
+  - {name: score, data_type: double, description: 'The score: the match weighted by who sent it and where it went', visible_to: [data_steward, control_room, reviewer_ana, reviewer_ben]}
 functions:
 # What a message says of a deal: its names fuzzily, its ticker and code name as words, and the
 # cosine of the two embeddings, applied in message_deal_signals (insider_signals.py).
@@ -342,7 +346,7 @@ functions:
     signals that fired
   source_id: insider_signals
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   arguments:
   - {name: subject, type: text}
   - {name: body, type: text}
@@ -367,7 +371,7 @@ functions:
     went to a counterparty and whether it was sent before the announcement
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "bank"."deal_match" (message_id, deal_id, flagged_entity, name_match,

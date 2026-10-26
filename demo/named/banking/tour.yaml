@@ -80,7 +80,7 @@ steps:
 - key: bankingAsAnalyst
   route: /sql
   capability: query_development
-  role: analyst
+  role: banking_analyst
 - key: bankingDay
   sql: >-
     SELECT e.business_date, e.branch, e.product, e.currency, e.posting_count, e.credits, e.debits,

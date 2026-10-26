@@ -15,7 +15,8 @@ domains:
     description: Kafka topic served through the semantic pipeline
 
 roles:
-  - id: analyst
+  - id: kafka_e2e_analyst
+    parents: [analyst]
     description: "Queries the Kafka pipeline's tables."
     capabilities:
       - query_development
@@ -42,7 +43,7 @@ kafka_sources:
           # column — the loader carries what the YAML declares and nothing infers a type later.
           - name: order_id
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, kafka_e2e_analyst]
           - name: sku
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, kafka_e2e_analyst]

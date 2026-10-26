@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, insert, text
 
 import provisa.core
+from provisa.core.db import assert_standard_roles
 from provisa.api.auth_router import router as auth_router
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
@@ -70,6 +71,8 @@ def _prepare_sync():
         conn.execute(text(f"CREATE SCHEMA {_ORG_SCHEMA}"))
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMA}"))
         conn.execute(text(schema_sql))
+        # REQ-2155: the standard roles are written by init_schema, not schema.sql.
+        assert_standard_roles(conn, _ORG_SCHEMA)
     return engine
 
 

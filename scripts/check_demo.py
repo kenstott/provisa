@@ -31,6 +31,9 @@ Each check is the one the repo already has, run for this demo alone:
               (scripts/demo_stores.py SHARED_TYPES) with the suffix config.yaml names its data with
               (ns_env) and, for Postgres and MongoDB, its access script
   locales     the tour's words translated in every locale, not the English left in place
+  regions     a published demo in regions (demo.yaml regions) one the regions sandbox tier serves:
+              named in PROVISA_SANDBOX_REGIONS_DEMOS (packaging/linux/first-launch.sh), the list
+              the UI server routes to that tier by (provisa/ui_server.py)
 
 Exits 1 when any check found something missing.
 """
@@ -59,6 +62,7 @@ _STORE_LABELS = ("com.provisa.demo.host_env", "com.provisa.demo.port_env", "com.
 #: The shared store types whose data the node loads with the demo's roles and grants: their access
 #: script (com.provisa.demo.access) is required (scripts/demo_stores.py loads it).
 _SHARED_ACCESS = ("postgres", "mongo")
+INSTALL = ROOT / "packaging" / "linux" / "first-launch.sh"
 
 
 def demo_cases(collected: list[str], name: str) -> list[str]:
@@ -245,6 +249,26 @@ def check_locales(name: str, home: Path, locales: Path = LOCALES) -> list[str]:
     return problems
 
 
+def regions_demos(install: Path = INSTALL) -> frozenset[str]:
+    """The demos the install's regions sandbox tier serves: its PROVISA_SANDBOX_REGIONS_DEMOS."""
+    found = re.search(r'PROVISA_SANDBOX_REGIONS_DEMOS:\s*"([^"]*)"', install.read_text())
+    if found is None:
+        raise ValueError(f"{install.relative_to(ROOT)} sets no PROVISA_SANDBOX_REGIONS_DEMOS")
+    return frozenset(n for n in found.group(1).split(",") if n)
+
+
+def check_regions(name: str, home: Path, listed: frozenset[str] | None = None) -> list[str]:
+    spec = yaml.safe_load((home / "demo.yaml").read_text()) or {}
+    if not spec.get("published") or not spec.get("regions"):
+        return []
+    if name in (regions_demos() if listed is None else listed):
+        return []
+    return [
+        "demo.yaml: in regions, but not one PROVISA_SANDBOX_REGIONS_DEMOS names "
+        f"({INSTALL.relative_to(ROOT)})"
+    ]
+
+
 def checks(name: str, home: Path) -> dict[str, Callable[[], list[str]]]:
     return {
         "tests": lambda: check_tests(name),
@@ -254,6 +278,7 @@ def checks(name: str, home: Path) -> dict[str, Callable[[], list[str]]]:
         "bundle": lambda: check_bundle(home),
         "run-compose": lambda: check_run_compose(home, name),
         "locales": lambda: check_locales(name, home),
+        "regions": lambda: check_regions(name, home),
     }
 
 

@@ -30,7 +30,8 @@ const ROLES = [
     capabilities: [],
     demonstrated: [],
     domain_access: ["sales"],
-    parentRoleId: null,
+    parents: [],
+    standard: false,
   },
   {
     id: "everything",
@@ -38,7 +39,8 @@ const ROLES = [
     capabilities: [],
     demonstrated: [],
     domain_access: ["*"],
-    parentRoleId: null,
+    parents: [],
+    standard: false,
   },
   {
     id: "newrole",
@@ -46,7 +48,8 @@ const ROLES = [
     capabilities: [],
     demonstrated: [],
     domain_access: [],
-    parentRoleId: null,
+    parents: [],
+    standard: false,
   },
 ];
 

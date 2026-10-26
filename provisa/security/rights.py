@@ -85,6 +85,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # REQ-1573: be served by an environment other than prod — the right the org-routing middleware
     # checks when a request names one. Held by org_admin and developer; an analyst works in prod.
     ENVIRONMENT_SWITCH = "environment_switch"
+    # REQ-2155: manage the environments the caller owns (created_by) -- create one, becoming its
+    # owner, and delete one it owns; ENVIRONMENT_MANAGEMENT manages any.
+    ENVIRONMENT_OWNED_MANAGEMENT = "environment_owned_management"
     # REQ-1942: change an environment's data choices -- its data mode, its sources' bindings,
     # read-only or read-write, its synthetic settings -- including creating it reading real data.
     # Held by org_admin alone: a developer switching an environment to Test (fake) with no fakes
@@ -114,6 +117,14 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # is catalog curation, on the same footing as TABLE_REGISTRATION — org_admin only.
     DATA_PRODUCT_READ = "data_product_read"
     DATA_PRODUCT_RW = "data_product_rw"
+    # REQ-2155: edit a data product whose owner_role is a role the caller holds (an ancestor
+    # included) -- the data product owner's right; DATA_PRODUCT_RW edits any product.
+    DATA_PRODUCT_OWNED_RW = "data_product_owned_rw"
+    # REQ-2155: data quality's own rights, so managing checks no longer needs TABLE_REGISTRATION.
+    # DQ_READ reads check definitions and results; DQ_RW manages checks, expectations and
+    # promises (REQ-2157).
+    DQ_READ = "dq_read"
+    DQ_RW = "dq_rw"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
     # The right the wire surfaces read off a role's list by name. A member here so that the

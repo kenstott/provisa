@@ -42,10 +42,24 @@ import { setActingRoles } from "../lib/actingRole";
 // instead of removing a tab.
 export const DEFAULT_ADMIN_ROLE: Role = {
   id: "org_admin",
-  // The seed's own (SEEDED_ROLE_DESCRIPTIONS in provisa/core/db.py).
-  description:
-    "Administers the organization: its sources, model, governance, members and settings, in every domain.",
+  // The standard role's own (provisa/core/standard_roles.yaml).
+  description: "Administers the organization: its sources, model, governance, members and settings.",
   capabilities: [
+    "environment_management",
+    "environment_data",
+    "user_management",
+    "org_glossary_rw",
+  ] as Capability[],
+  parents: [
+    "developer",
+    "data_product_owner",
+    "data_steward",
+    "dq_steward",
+    "source_admin",
+    "org_operator",
+  ],
+  // REQ-2155: its own capabilities and every ancestor's.
+  effectiveCapabilities: [
     "source_registration",
     "table_registration",
     "create_relationship",
@@ -65,6 +79,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "observability",
     "environment_management",
     "environment_switch",
+    "environment_owned_management", // REQ-2155: inherited from developer
     "environment_data", // REQ-1942
     "sensitive_data", // REQ-1943
     "glossary_read", // REQ-1590
@@ -72,6 +87,9 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "org_glossary_rw", // REQ-1592
     "data_product_read", // REQ-1634
     "data_product_rw", // REQ-1634
+    "data_product_owned_rw", // REQ-2155
+    "dq_read", // REQ-2155
+    "dq_rw", // REQ-2155
   ] as Capability[],
   // REQ-1602: org_admin holds every right it is offered, so it is shown nothing it cannot use.
   demonstrated: [],
@@ -83,7 +101,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
 // control-plane authority, and REQ-1327 keeps a role holding it off the data plane entirely. This
 // mirrors is_control_plane_role() in provisa/security/rights.py.
 function isControlPlaneOnly(role: Role): boolean {
-  return role.capabilities.includes("cross_org" as Capability);
+  return role.effectiveCapabilities.includes("cross_org" as Capability);
 }
 
 // The acting role sent in X-Provisa-Role while "All roles" is selected is the first of this list, so
@@ -104,7 +122,7 @@ function orderByDataPlaneFirst(roles: Role[]): Role[] {
 function unionCapabilities(roles: Role[]): Capability[] {
   const set = new Set<Capability>();
   for (const r of roles) {
-    for (const c of r.capabilities) set.add(c);
+    for (const c of r.effectiveCapabilities) set.add(c);
   }
   return [...set];
 }

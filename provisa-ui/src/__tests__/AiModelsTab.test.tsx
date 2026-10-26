@@ -113,7 +113,11 @@ describe("AiModelsTab", () => {
   it("saves a vector model's stated version", async () => {
     // REQ-2002: the version recorded with every use of the model, where its provider reports none.
     mockFetch.mockResolvedValue(state());
-    mockSet.mockResolvedValue({ success: true, updated: ["vector_models"], restart_required: true });
+    mockSet.mockResolvedValue({
+      success: true,
+      updated: ["vector_models"],
+      restart_required: true,
+    });
     render(<AiModelsTab />);
 
     const version = await screen.findByRole("textbox", { name: "Version" });

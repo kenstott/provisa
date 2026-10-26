@@ -449,8 +449,6 @@ tables:
     is_primary_key: true
   - name: org_id
     data_type: text
-  - name: parent_role_id
-    data_type: text
   - name: tenant_id
     data_type: uuid
 - source_id: provisa-admin
@@ -464,6 +462,21 @@ tables:
     data_type: text
   - name: id
     data_type: text
+  - name: role_id
+    data_type: text
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: roles_parents
+  columns:
+  - name: domain_id
+    data_type: text
+  - name: id
+    data_type: text
+  - name: parent_role_id
+    data_type: text
+  - name: position
+    data_type: integer
   - name: role_id
     data_type: text
 - source_id: provisa-admin
@@ -1778,22 +1791,6 @@ relationships:
   needs_review: false
   source_table_id: roles
   target_table_id: domains
-- id: meta:roles:parent_role
-  source_column: parent_role_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: PARENT_ROLE
-  graphql_alias: parentRole
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: roles
-  target_table_id: roles
 - id: meta:roles:rls_rules
   source_column: id
   target_column: role_id
@@ -1851,6 +1848,36 @@ relationships:
   version: 1
   needs_review: false
   source_table_id: roles_domain_access
+  target_table_id: roles
+- id: meta:roles_parents:parent_roles
+  source_column: parent_role_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  alias: PARENT_ROLE
+  graphql_alias: parentRole
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: roles_parents
+  target_table_id: roles
+- id: meta:roles_parents:roles
+  source_column: role_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: roles_parents
   target_table_id: roles
 - id: meta:table_columns:effective_column_tags
   source_column: column_key

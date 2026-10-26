@@ -255,6 +255,6 @@ async def test_a_roles_inactivity_days_is_kept_and_served(org):
         )
         row = await role_repo.get(conn, "temp")
     assert row is not None and row["inactivity_days"] == 14
-    assert _role_from_row(row).inactivity_days == 14
+    assert _role_from_row(row, detail=True, effective=[]).inactivity_days == 14
     with pytest.raises(ValueError):
         Role(id="t", description="d", capabilities=[], domain_access=["*"], inactivity_days=0)

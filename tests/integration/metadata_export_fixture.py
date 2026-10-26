@@ -70,20 +70,22 @@ def governed_config() -> ProvisaConfig:
             _table(
                 "orders",
                 [
-                    Column(name="id", data_type="integer", visible_to=["analyst", "admin"]),
+                    Column(name="id", data_type="integer", visible_to=["itest_analyst", "admin"]),
                     Column(
                         name="amount",
                         data_type="numeric",
-                        visible_to=["analyst", "admin"],
+                        visible_to=["itest_analyst", "admin"],
                         description="Order total in cents",
                     ),
                     Column(
-                        name="customer_id", data_type="integer", visible_to=["analyst", "admin"]
+                        name="customer_id",
+                        data_type="integer",
+                        visible_to=["itest_analyst", "admin"],
                     ),
                     Column(
                         name="ssn",
                         data_type="text",
-                        visible_to=["analyst", "admin"],
+                        visible_to=["itest_analyst", "admin"],
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
@@ -102,15 +104,15 @@ def governed_config() -> ProvisaConfig:
             _table(
                 "customers",
                 [
-                    Column(name="id", data_type="integer", visible_to=["analyst", "admin"]),
-                    Column(name="name", data_type="text", visible_to=["analyst", "admin"]),
+                    Column(name="id", data_type="integer", visible_to=["itest_analyst", "admin"]),
+                    Column(name="name", data_type="text", visible_to=["itest_analyst", "admin"]),
                 ],
             ),
             _table(
                 "order_totals",
                 [
-                    Column(name="id", data_type="integer", visible_to=["analyst", "admin"]),
-                    Column(name="net", data_type="numeric", visible_to=["analyst", "admin"]),
+                    Column(name="id", data_type="integer", visible_to=["itest_analyst", "admin"]),
+                    Column(name="net", data_type="numeric", visible_to=["itest_analyst", "admin"]),
                 ],
                 view_sql="SELECT orders.id AS id, orders.amount * 2 AS net FROM orders",
             ),
@@ -129,12 +131,21 @@ def governed_config() -> ProvisaConfig:
             )
         ],
         roles=[
-            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(
+                id="itest_analyst",
+                description="Test role.",
+                capabilities=[],
+                parents=["analyst"],
+                domain_access=["*"],
+            ),
             Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
         rls_rules=[
             RLSRule(
-                table_id="orders", role_id="analyst", filter=RLS_FILTER, description="Test rule."
+                table_id="orders",
+                role_id="itest_analyst",
+                filter=RLS_FILTER,
+                description="Test rule.",
             )
         ],
     )

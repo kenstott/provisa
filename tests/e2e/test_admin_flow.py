@@ -60,4 +60,4 @@ class TestAdminQuery:
         assert resp.status_code == 200
         rules = resp.json()["data"]["rlsRules"]
         assert len(rules) > 0
-        assert rules[0]["roleId"] == "analyst"
+        assert rules[0]["roleId"] == "sales_analytics_analyst"

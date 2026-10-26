@@ -38,6 +38,7 @@ _META: dict[str, str] = {
     "rls_rules": "Row-level security predicates applied per (table, role) before any query runs",
     "roles": "The role hierarchy queries execute under; a role inherits its parent's grants",
     "roles_domain_access": "Which domains each role may reach — one row per role/domain pair",
+    "roles_parents": "Which roles each role inherits from — one row per role/parent pair",
     "tracked_webhooks": "HTTP endpoints registered as callable functions in the model",
     "tracked_functions": "Source-native and Provisa-defined functions exposed as callable "
     "commands in the model",
@@ -315,11 +316,17 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "roles": {
         "id": "Role name — what a caller executes as",
         "description": "What the role is for, as an access review reads it",
-        "parent_role_id": "Role this one inherits grants from",
         "org_id": "Org the role was defined in",
         "capabilities": "Platform capabilities the role holds beyond data access",
         "domain_id": "Constant 'meta' — the domain this catalog view is exposed in",
         "tenant_id": _TENANT,
+    },
+    "roles_parents": {
+        "id": "Composite key of the role and a role it inherits from",
+        "role_id": "The role",
+        "parent_role_id": "A role it inherits capabilities and grants from",
+        "position": "Where the parent stands in the role's declared order, from 1",
+        "domain_id": "Constant 'meta' — the domain this catalog view is exposed in",
     },
     "roles_domain_access": {
         "id": "Composite key of the role and the domain it reaches",

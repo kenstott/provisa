@@ -103,7 +103,7 @@ The preview returns the three parts as lists. The command-line converter prints 
 | Select permission | carried | Column grants (`visible_to`) and a row rule. A session-variable term (`X-Hasura-User-Id`) becomes `current_setting('provisa.hasura_user_id')`, which the request binds at query time from the identity's claims or the member's attributes. A Hasura session variable keeps its own name; `provisa.user_id` stays the signed-in identity. |
 | Row rule through a relationship | carried | An `EXISTS` subquery over the related table. |
 | Insert, update and delete permission | carried | Write grants on the table: one per role and operation. `columns` become the grant's columns, `filter` its `rows`, `check` its `check`, and `set` its presets. |
-| Inherited role of one role | carried | That role as `parent_role_id`. |
+| Inherited role of one role | carried | That role in `parents`. |
 | Inherited role of several roles | mapped | A role holding the union of their grants, written out: a Provisa role has one parent. |
 | Computed field | redo | A column of a view over the table. |
 | Tracked function | carried | A command; see below. Otherwise redo. |

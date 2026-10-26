@@ -398,24 +398,27 @@ async def _save_data_product(
     """A data product saved: a create makes a new one, refusing an id that exists; an update
     changes one, refusing an id that does not. Either refusal names the id and writes nothing."""
     # REQ-1634: creating/deleting a data product is catalog curation, gated on its own
-    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW.
-    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2155: a product's
+    # owner (data_product_owned_rw) edits the one it owns.
+    from provisa.api.admin.capabilities import _identity_from_info, data_product_edit_refusal
+    from provisa.api.app import state as app_state
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
-
-    require_capability(info, "data_product_rw")
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
         conn = cast("Connection", conn)
         # REQ-1944: the product's domain, and the one it is moved out of when it exists.
         stored = await data_product_repo.get(conn, input.id)
-        require_right_in_domains(
-            info,
-            "data_product_rw",
+        refusal = data_product_edit_refusal(
+            _identity_from_info(info),
+            app_state,
+            stored,
             {input.domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
+        if refusal is not None:
+            raise PermissionError(refusal)
         if creating and stored is not None:
             return MutationResult(
                 success=False,
@@ -480,8 +483,18 @@ async def _save_role(
     from provisa.core.models import Role as RoleModel
 
     require_capability(info, "user_management")
+    from provisa.core.db import STANDARD_ROLES
     from provisa.core.models import RoleRateLimit
     from provisa.core.repositories import role as role_repo
+
+    if input.id in STANDARD_ROLES:  # REQ-2155
+        return MutationResult(
+            success=False,
+            message=f"Role {input.id!r} is a standard role. Extend it with a role of your own "
+            "that inherits from it.",
+            code="schema.role_standard_locked",
+            params={"role": input.id},
+        )
 
     # REQ-1682: each constant session value is refused by name for what is wrong with it.
     from provisa.auth.attributes import normalize_name, session_constant_problem
@@ -515,37 +528,33 @@ async def _save_role(
         if rl is not None
         else None
     )
-    # REQ-1677: the parent must exist, be another role, and not close a cycle.
-    from provisa.security.inheritance import parent_map, parent_problem
+    # REQ-2155: each parent must exist, be another role, be named once and not close a cycle.
+    from provisa.security.inheritance import parent_map, parents_problem
 
-    parent_id = input.parent_role_id or None
+    parents = list(input.parents)
     async with pool.acquire() as conn:
         existing = await role_repo.list_all(cast("Connection", conn))
-    problem = parent_problem(input.id, parent_id, parent_map(existing))
+    problem = parents_problem(input.id, parents, parent_map(existing))
     if problem is not None:
         return MutationResult(
             success=False,
             message=problem,
             code="schema.role_parent_invalid",
-            params={"role": input.id, "parent": parent_id, "reason": problem},
+            params={"role": input.id, "parents": parents, "reason": problem},
         )
     # REQ-042/REQ-1337: the same two refusals the REST surface makes — an unknown capability,
-    # and a platform right (the role's own or its parent chain's) defined by a caller who is
-    # not a platform administrator.
+    # and a platform right (the role's own or an ancestor's) defined by a caller who is not a
+    # platform administrator.
     from provisa.api.admin._platform_guard import role_definition_problem
-    from provisa.security.inheritance import effective_capabilities, effective_domain_access
+    from provisa.security.inheritance import effective_capabilities
 
-    inherited = effective_capabilities(parent_id, existing) if parent_id is not None else []
-    inherited_domains = (
-        effective_domain_access(parent_id, existing) if parent_id is not None else []
-    )
+    inherited = sorted({c for p in parents for c in effective_capabilities(p, existing)})
     definition_problem = role_definition_problem(
         info.context["request"],
         input.capabilities,
         inherited,
         role_id=input.id,
         domain_access=input.domain_access,
-        inherited_domain_access=inherited_domains,
     )
     if definition_problem is not None:
         return MutationResult(
@@ -555,7 +564,7 @@ async def _save_role(
             params={"role": input.id, **definition_problem.params},
         )
     # REQ-1531: a role hands out reach; whoever defines it must hold every domain the
-    # definition adds to what the role reaches — listed or inherited.
+    # definition adds to what the role reaches (its own list: reach is not inherited, REQ-2155).
     from provisa.api.admin.capabilities import require_reach_of_added_domains
 
     held = next((r for r in existing if r["id"] == input.id), None)
@@ -585,13 +594,9 @@ async def _save_role(
     if held is not None:
         # REQ-1531: redefining a role is an act in every domain it reaches now, not only in
         # the ones the change adds.
-        require_right_in_domains(
-            info, "user_management", effective_domain_access(input.id, existing)
-        )
+        require_right_in_domains(info, "user_management", held["domain_access"])
     require_reach_of_added_domains(
-        info,
-        None if held is None else effective_domain_access(input.id, existing),
-        [*input.domain_access, *inherited_domains],
+        info, None if held is None else held["domain_access"], input.domain_access
     )
     model = RoleModel(
         id=input.id,
@@ -599,7 +604,7 @@ async def _save_role(
         capabilities=input.capabilities,
         domain_access=input.domain_access,
         rate_limit=rate_limit,
-        parent_role_id=parent_id,
+        parents=parents,
         residency_values=input.residency_values,  # REQ-1921
         session_vars=session_vars,  # REQ-1682
         inactivity_days=input.inactivity_days,  # REQ-2077
@@ -3996,16 +4001,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import role as role_repo
 
         require_capability(info, "user_management")  # REQ-1531: see create_role
-        from provisa.security.inheritance import effective_domain_access
+        from provisa.core.db import STANDARD_ROLES
 
+        if id in STANDARD_ROLES:  # REQ-2155
+            return MutationResult(
+                success=False,
+                message=f"Role {id!r} is a standard role and cannot be deleted",
+                code="schema.role_standard_locked",
+                params={"role": id},
+            )
         pool = await _get_pool()
         async with pool.acquire() as conn:
             existing = await role_repo.list_all(cast("Connection", conn))
-            if any(r["id"] == id for r in existing):
-                # REQ-1531: removing a role is an act in every domain it reaches.
-                require_right_in_domains(
-                    info, "user_management", effective_domain_access(id, existing)
-                )
+            for r in existing:
+                if r["id"] == id:
+                    # REQ-1531: removing a role is an act in every domain it reaches.
+                    require_right_in_domains(info, "user_management", r["domain_access"])
             try:
                 deleted = await role_repo.delete(cast("Connection", conn), id)
             except role_repo.RoleDeleteRefused as refused:

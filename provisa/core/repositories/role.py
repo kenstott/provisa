@@ -20,7 +20,6 @@ from sqlalchemy import delete as _delete, select
 from provisa.core.models import Role
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import roles
-from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -32,19 +31,19 @@ KEPT_ON_FORM_EDIT: tuple[str, ...] = ("max_rows", "relationship_guard")
 
 
 class ReservedRoleRedefined(Exception):
-    """REQ-1349/REQ-1297: a config file (or the admin surface) tried to define ``org_admin`` or
-    ``platform_admin``. Their definitions are the deployment's own (the seed / schema.sql), never a
-    config file's — a config that overrode them once silently stripped an administrator of rights.
-    The write is refused by name rather than dropped silently, so a config that declares one fails
-    to load instead of loading with the declaration quietly ignored."""
+    """REQ-2155 (and REQ-1349/REQ-1297 before it): a config file (or the admin surface) tried to
+    define a standard role. Standard roles are Provisa's (``provisa.core.db.STANDARD_ROLES``), never a
+    config file's -- a config that overrode org_admin once silently stripped an administrator of
+    rights. The write is refused by name rather than dropped silently, so a config that declares
+    one fails to load instead of loading with the declaration quietly ignored."""
 
     code = "config.reserved_role_redefined"
 
     def __init__(self, role_id: str) -> None:
         self.role_id = role_id
         super().__init__(
-            f"Role {role_id!r} is a reserved administrative role and cannot be defined by a config "
-            f"file or the admin surface; remove it from the config."
+            f"Role {role_id!r} is a standard role and cannot be defined by a config file or the "
+            "admin surface; declare a role of your own that inherits from it."
         )
 
 
@@ -76,24 +75,14 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
     creation and never changed, and is None for a role no administrator of an org created.
     """
     model_change.name("upsert", "role", role.id)  # REQ-1524
-    if role.id in (PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE):
-        # REQ-1349: org_admin is refused on the same terms as platform_admin below. The shipped
-        # install config redefined it WITHOUT `org_settings`/`observability`, and config load runs
-        # after apply_tenancy_role_grants and overwrites `capabilities` wholesale — so an org
-        # administrator lost every admin right the seed had just granted and the Admin tab vanished.
-        # The two admin roles' definitions are the seed's, not a config file's.
-        #
-        # REQ-1297: platform_admin's definition belongs to schema.sql alone — it is the control-plane
-        # role and holds no standing data capabilities. Config files and the roles admin surface used
-        # to be able to redefine it, and the shipped install config did exactly that: it re-granted
-        # source_registration/table_registration/query_development/approve_view and
-        # domain_access ['*'] over the seeded row in every org schema the config loaded into. Refusing
-        # the write here is what makes "platform_admin has no rights to tenant org data" hold for a
-        # deployment that loads a config, not just a bare one.
-        #
-        # REQ-1349: refuse LOUDLY, by name. Returning silently let a config that declared one of these
-        # roles load as if it had been honoured, hiding an operator's mistake — the declaration did
-        # nothing, with no signal. A config that declares either role now fails to load.
+    from provisa.core.db import STANDARD_ROLES
+
+    if role.id in STANDARD_ROLES:
+        # REQ-2155: a standard role's definition is Provisa's, asserted on every init_schema
+        # (db.assert_standard_roles); an organisation extends one with a child role. REQ-1349: the
+        # shipped install config once redefined org_admin without org_settings/observability, and
+        # the config load overwrote the seed's rights wholesale. Refused LOUDLY, by name: returning
+        # silently would load a config as if a declaration it carries had been honoured.
         raise ReservedRoleRedefined(role.id)
     await require_residency_grant_saved(conn, role.id, role.capabilities, role.residency_values)
     await conn.upsert(
@@ -107,7 +96,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "session_vars": role.session_vars,  # REQ-1682
             # REQ-1174: per-role rate + query-complexity limits; None = unlimited (column NULL).
             "rate_limit": role.rate_limit.model_dump() if role.rate_limit is not None else None,
-            "parent_role_id": role.parent_role_id,  # REQ-1677
+            "parents": role.parents,  # REQ-2155
             "max_rows": role.max_rows,  # REQ-005, REQ-1919
             "relationship_guard": role.relationship_guard,  # REQ-1919
             "inactivity_days": role.inactivity_days,  # auth.role_grants
@@ -121,7 +110,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "residency_values",
             "session_vars",
             "rate_limit",
-            "parent_role_id",
+            "parents",
             "max_rows",
             "relationship_guard",
             "inactivity_days",

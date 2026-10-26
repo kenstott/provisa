@@ -39,7 +39,7 @@ _ROWS = [
     (3, "east", "cy@example.com", "s3", 30),
     (4, "north", "dee@example.com", "s4", 40),
 ]
-_READERS = ["org_admin", "analyst", "auditor"]
+_READERS = ["org_admin", "itest_analyst", "auditor"]
 # The result tables this test registers, by kind.
 _KINDS = ("runs", "columns", "top_values", "shapes")
 
@@ -91,7 +91,7 @@ def server():
                     "capabilities": ["query_development", "full_results"],
                     "domain_access": ["*"],
                 }
-                for role in ("analyst", "auditor", "outsider")
+                for role in ("itest_analyst", "auditor", "outsider")
             ],
             # The org admin's own row rule: the profile describes only the rows it may read.
             "rls_rules": [
@@ -256,7 +256,7 @@ def test_a_masked_columns_values_reach_only_the_roles_that_see_it_unmasked(profi
         f"SELECT column_name, value FROM sales.{top} WHERE kind = 'top' "
         "AND column_name IN ('email', 'amount', 'secret')"
     )
-    status, analyst = _sql(boot, "analyst", sql)
+    status, analyst = _sql(boot, "itest_analyst", sql)
     assert status == 200, analyst
     assert {r["column_name"] for r in analyst} == {"amount"}
     status, auditor = _sql(boot, "auditor", sql)
@@ -265,7 +265,7 @@ def test_a_masked_columns_values_reach_only_the_roles_that_see_it_unmasked(profi
     assert "secret" not in {r["column_name"] for r in auditor}
 
     shapes = profiled["names"]["shapes"]
-    status, rows = _sql(boot, "analyst", f"SELECT DISTINCT column_name FROM sales.{shapes}")
+    status, rows = _sql(boot, "itest_analyst", f"SELECT DISTINCT column_name FROM sales.{shapes}")
     assert status == 200, rows
     assert "email" not in {r["column_name"] for r in rows}
 
@@ -276,7 +276,7 @@ def test_the_columns_table_shows_a_restricted_reader_shape_but_no_values(profile
         f"SELECT column_name, null_share, min_value, max_value FROM sales.{columns} "
         "ORDER BY column_name"
     )
-    status, analyst = _sql(boot, "analyst", sql)
+    status, analyst = _sql(boot, "itest_analyst", sql)
     assert status == 200, analyst
     by = {r["column_name"]: r for r in analyst}
     # secret is not visible to the analyst: its description is withheld.
@@ -295,11 +295,11 @@ def test_a_role_that_cannot_read_the_profiled_table_reads_no_profile(profiled):
 
 def test_the_runs_view_is_safe_for_its_viewer(profiled):
     boot, member_id = profiled["boot"], profiled["member_id"]
-    status, runs = _call(boot, "analyst", "GET", f"/admin/tables/{member_id}/profile-runs")
+    status, runs = _call(boot, "itest_analyst", "GET", f"/admin/tables/{member_id}/profile-runs")
     assert status == 200, runs
     run_id = runs[0]["run_id"]
     path = f"/admin/tables/{member_id}/profile-runs/{run_id}"
-    status, analyst = _call(boot, "analyst", "GET", path)
+    status, analyst = _call(boot, "itest_analyst", "GET", path)
     assert status == 200, analyst
     cols = {r["column_name"]: r for r in analyst["columns"]}
     assert "secret" not in cols

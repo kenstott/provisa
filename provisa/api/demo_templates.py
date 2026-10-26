@@ -333,7 +333,6 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
         from provisa.core.demo_bundles import store_namespaces
 
         raw = _with_stores(raw, store_namespaces(demo.directory))
-    _sandbox_sees_what_its_rights_cover(raw, _role_rights(raw))
     from provisa.core.demo_secrets import resolving
 
     # REQ-2095: the secrets it names, from its own secrets.yaml, wherever it is parsed.
@@ -462,58 +461,51 @@ def _with_stores(node: Any, values: dict[str, str]) -> Any:
     return node
 
 
-def _role_rights(raw: dict) -> dict[str, frozenset[str]]:
-    """Each role a demo's configuration can name, with its rights: the seeded roles, and the
-    demo's own (flattened, inheritance included), which stand in for a seeded one of the same id."""
-    from provisa.core.db import SEEDED_ROLE_RIGHTS
-    from provisa.core.models import Role, flatten_roles
+def tour_standard_roles(directory: Path) -> list[str]:  # REQ-2155
+    """The standard roles the demo's tour acts as (its steps' ``role``), in tour order: a role is
+    acted as only when it is held, so a sandbox's person is granted them with the demo's own. One
+    the sandbox withholds (what org_admin holds and sandbox does not) refuses the demo by name."""
+    from provisa.core.db import SANDBOX_WITHHELD, STANDARD_ROLE_RIGHTS
 
-    rights = dict(SEEDED_ROLE_RIGHTS)
-    own = flatten_roles([Role(**role) for role in raw.get("roles", [])])
-    rights.update({role.id: frozenset(role.capabilities) for role in own})
-    return rights
-
-
-def _sandbox_sees_what_its_rights_cover(node: Any, rights: dict[str, frozenset[str]]) -> None:
-    """A demo names who sees each column and table as it would anywhere (its admin, its own
-    roles). Its sandbox's person holds the sandbox role (REQ-1597): wherever a role holding every
-    right the sandbox role holds is named, the sandbox role is named with it."""
-    from provisa.api.demo_sandbox import SANDBOX_ROLE
-
-    covered = rights[SANDBOX_ROLE]
-    if isinstance(node, list):
-        for item in node:
-            _sandbox_sees_what_its_rights_cover(item, rights)
-    elif isinstance(node, dict):
-        visible = node.get("visible_to")
-        if (
-            isinstance(visible, list)
-            and SANDBOX_ROLE not in visible
-            and any(covered <= rights.get(role_id, frozenset()) for role_id in visible)
-        ):
-            visible.append(SANDBOX_ROLE)
-        for value in node.values():
-            _sandbox_sees_what_its_rights_cover(value, rights)
+    tour = directory / "tour.yaml"
+    if not tour.is_file():
+        return []
+    named = [s["role"] for s in yaml.safe_load(tour.read_text())["steps"] if "role" in s]
+    out = []
+    for role_id in dict.fromkeys(named):
+        if role_id not in STANDARD_ROLE_RIGHTS:
+            continue
+        withheld = sorted(STANDARD_ROLE_RIGHTS[role_id] & SANDBOX_WITHHELD)
+        if withheld:
+            raise ValueError(
+                f"{directory.name}: its tour acts as {role_id!r}, which holds "
+                f"{', '.join(withheld)}, which a sandbox's person may not"
+            )
+        out.append(role_id)
+    return out
 
 
 def demo_roles(template_org: str) -> list[str]:
-    """The roles a demo's configuration defines for itself (its analyst, say), which a sandbox's
-    person also holds so the demo's tour can run as each. One that would carry a right the sandbox
-    role withholds (REQ-1597), on its own or by inheritance, is refused by name rather than
-    granted."""
-    from provisa.core.db import SANDBOX_DENIED
-    from provisa.core.models import flatten_roles
+    """The roles a demo's configuration defines for itself (its shop analyst, say), and the standard
+    roles its tour acts as (:func:`tour_standard_roles`), which a sandbox's person also holds so the
+    demo's tour can run as each. One that would carry a right the sandbox role withholds (REQ-2155:
+    what org_admin holds and sandbox does not), on its own or through a standard role it inherits
+    from, is refused by name rather than granted."""
+    from provisa.core.db import SANDBOX_WITHHELD, standard_role_dicts
+    from provisa.security.inheritance import flatten_role_dicts
 
+    own = [role.model_dump() for role in template_seed(template_org).roles]
+    flattened = {r["id"]: r for r in flatten_role_dicts([*standard_role_dicts(), *own])}
     out = []
-    for role in flatten_roles(list(template_seed(template_org).roles)):
-        withheld = sorted(set(role.capabilities) & SANDBOX_DENIED)
+    for role in own:
+        withheld = sorted(set(flattened[role["id"]]["capabilities"]) & SANDBOX_WITHHELD)
         if withheld:
             raise ValueError(
-                f"demo role {role.id!r} of {template_org} holds {', '.join(withheld)}, which a "
+                f"demo role {role['id']!r} of {template_org} holds {', '.join(withheld)}, which a "
                 "sandbox's person may not"
-            )  # REQ-1597
-        out.append(role.id)
-    return out
+            )
+        out.append(role["id"])
+    return [*out, *tour_standard_roles(demo_of_template(template_org).directory)]
 
 
 def replicated_tables(config: Any) -> list[Any]:

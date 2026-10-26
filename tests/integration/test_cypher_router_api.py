@@ -133,7 +133,7 @@ class TestGraphSchema:
 
     async def test_schema_scoped_by_analyst_role(self, client):
         """analyst role's domain_access excludes product-catalog (REQ-392 domain scoping)."""
-        schema = await _schema(client, headers={"X-Provisa-Role": "analyst"})
+        schema = await _schema(client, headers={"X-Provisa-Role": "sales_analytics_analyst"})
         domain_ids = {n["domain_id"] for n in schema["node_labels"]}
         assert "product-catalog" not in domain_ids
 
@@ -207,10 +207,12 @@ class TestGraphCounts:
 
     async def test_counts_scoped_by_analyst_role(self, client):
         """analyst lacks product-catalog domain_access — counts must omit those labels."""
-        resp = await client.get("/data/graph-counts", headers={"X-Provisa-Role": "analyst"})
+        resp = await client.get(
+            "/data/graph-counts", headers={"X-Provisa-Role": "sales_analytics_analyst"}
+        )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        schema = await _schema(client, headers={"X-Provisa-Role": "analyst"})
+        schema = await _schema(client, headers={"X-Provisa-Role": "sales_analytics_analyst"})
         allowed_labels = {n["label"] for n in schema["node_labels"]}
         assert set(data["label_counts"].keys()) <= allowed_labels
 
@@ -301,7 +303,7 @@ class TestCypherDomainScoping:
         resp = await _cypher(
             client,
             f"MATCH (n:{products['label']}) RETURN n LIMIT 1",
-            headers={"X-Provisa-Role": "analyst"},
+            headers={"X-Provisa-Role": "sales_analytics_analyst"},
         )
         # Either the label doesn't resolve for analyst (400 translate error) or governance
         # rejects it (403) — never a bare 200 success against an out-of-scope domain.

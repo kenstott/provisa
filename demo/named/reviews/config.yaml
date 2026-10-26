@@ -42,7 +42,8 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: store_analyst
+  parents: [analyst]
   description: "Queries the store's reviews."
   capabilities:
   - query_development
@@ -84,13 +85,13 @@ tables:
   table: products
   description: What the shop sells, one MongoDB document a product
   columns:
-  - {name: product_id, data_type: integer, path: _id, is_primary_key: true, description: The product's id, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: The product's name, visible_to: [org_admin, analyst]}
-  - {name: category, data_type: varchar, description: 'Its category: headphones, phone, laptop, power bank and so on', visible_to: [org_admin, analyst]}
-  - {name: brand, data_type: varchar, description: The brand, visible_to: [org_admin, analyst]}
-  - {name: price, data_type: double, description: The price in USD, visible_to: [org_admin, analyst]}
-  - {name: battery_hours, data_type: integer, path: specs.battery_hours, description: 'Hours on a charge, as the maker states it (nested: specs.battery_hours)', visible_to: [org_admin, analyst]}
-  - {name: weight_g, data_type: integer, path: specs.weight_g, description: 'Its weight in grams (nested: specs.weight_g)', visible_to: [org_admin, analyst]}
+  - {name: product_id, data_type: integer, path: _id, is_primary_key: true, description: The product's id, visible_to: [data_steward, store_analyst]}
+  - {name: name, data_type: varchar, description: The product's name, visible_to: [data_steward, store_analyst]}
+  - {name: category, data_type: varchar, description: 'Its category: headphones, phone, laptop, power bank and so on', visible_to: [data_steward, store_analyst]}
+  - {name: brand, data_type: varchar, description: The brand, visible_to: [data_steward, store_analyst]}
+  - {name: price, data_type: double, description: The price in USD, visible_to: [data_steward, store_analyst]}
+  - {name: battery_hours, data_type: integer, path: specs.battery_hours, description: 'Hours on a charge, as the maker states it (nested: specs.battery_hours)', visible_to: [data_steward, store_analyst]}
+  - {name: weight_g, data_type: integer, path: specs.weight_g, description: 'Its weight in grams (nested: specs.weight_g)', visible_to: [data_steward, store_analyst]}
 - source_id: catalog
   domain_id: store
   schema: catalog${env:REVIEWS_MONGO_NS}
@@ -102,10 +103,10 @@ tables:
     [{"$eq": ["$stars", 1]}, 1, 0]}}}}, {"$project": {"_id": 0, "product_id": "$_id", "ratings":
     1, "avg_stars": {"$round": ["$avg_stars", 2]}, "one_star": 1}}]}'
   columns:
-  - {name: product_id, data_type: integer, description: The product rated, visible_to: [org_admin, analyst]}
-  - {name: ratings, data_type: integer, description: How many star ratings it has, visible_to: [org_admin, analyst]}
-  - {name: avg_stars, data_type: double, description: 'Its average rating, 1 to 5 stars', visible_to: [org_admin, analyst]}
-  - {name: one_star, data_type: integer, description: How many of its ratings are one star, visible_to: [org_admin, analyst]}
+  - {name: product_id, data_type: integer, description: The product rated, visible_to: [data_steward, store_analyst]}
+  - {name: ratings, data_type: integer, description: How many star ratings it has, visible_to: [data_steward, store_analyst]}
+  - {name: avg_stars, data_type: double, description: 'Its average rating, 1 to 5 stars', visible_to: [data_steward, store_analyst]}
+  - {name: one_star, data_type: integer, description: How many of its ratings are one star, visible_to: [data_steward, store_analyst]}
 - source_id: reviews
   domain_id: store
   schema: default
@@ -117,13 +118,13 @@ tables:
   enable_aggregates: true
   enable_group_by: true
   columns:
-  - {name: review_id, data_type: varchar, is_primary_key: true, description: The review's id, visible_to: [org_admin, analyst]}
-  - {name: product_id, data_type: integer, description: The product reviewed, visible_to: [org_admin, analyst]}
-  - {name: customer_id, data_type: integer, description: The customer who wrote it, visible_to: [org_admin, analyst]}
-  - {name: rating, data_type: integer, description: 'The stars given, 1 to 5', visible_to: [org_admin, analyst]}
-  - {name: title, data_type: varchar, description: The review's title, visible_to: [org_admin, analyst]}
-  - {name: text, data_type: varchar, description: What the customer wrote, visible_to: [org_admin, analyst]}
-  - {name: created_at, data_type: timestamp, description: When it was written, visible_to: [org_admin, analyst]}
+  - {name: review_id, data_type: varchar, is_primary_key: true, description: The review's id, visible_to: [data_steward, store_analyst]}
+  - {name: product_id, data_type: integer, description: The product reviewed, visible_to: [data_steward, store_analyst]}
+  - {name: customer_id, data_type: integer, description: The customer who wrote it, visible_to: [data_steward, store_analyst]}
+  - {name: rating, data_type: integer, description: 'The stars given, 1 to 5', visible_to: [data_steward, store_analyst]}
+  - {name: title, data_type: varchar, description: The review's title, visible_to: [data_steward, store_analyst]}
+  - {name: text, data_type: varchar, description: What the customer wrote, visible_to: [data_steward, store_analyst]}
+  - {name: created_at, data_type: timestamp, description: When it was written, visible_to: [data_steward, store_analyst]}
 - source_id: reviews
   domain_id: store
   schema: default
@@ -133,13 +134,13 @@ tables:
   query_template: '{"index": "reviews${env:REVIEWS_ES_NS}", "size": 1000, "query": {"match_phrase": {"text": "{{phrase}}"}},
     "highlight": {"fields": {"text": {}}}}'
   columns:
-  - {name: review_id, data_type: varchar, description: The review, visible_to: [org_admin, analyst]}
-  - {name: score, data_type: double, path: _score, description: How well the review matches the phrase, visible_to: [org_admin, analyst]}
-  - {name: product_id, data_type: integer, description: The product reviewed, visible_to: [org_admin, analyst]}
-  - {name: rating, data_type: integer, description: 'The stars given, 1 to 5', visible_to: [org_admin, analyst]}
-  - {name: text, data_type: varchar, description: What the customer wrote, visible_to: [org_admin, analyst]}
-  - {name: highlight_text, data_type: json, description: 'The passages of the text that hold the phrase, the phrase marked', visible_to: [org_admin, analyst]}
-  - {name: _nf_phrase, data_type: varchar, native_filter_type: query_arg, native_filter_required: false, required_by_steward: true, description: The phrase to search the reviews for, visible_to: []}
+  - {name: review_id, data_type: varchar, description: The review, visible_to: [data_steward, store_analyst]}
+  - {name: score, data_type: double, path: _score, description: How well the review matches the phrase, visible_to: [data_steward, store_analyst]}
+  - {name: product_id, data_type: integer, description: The product reviewed, visible_to: [data_steward, store_analyst]}
+  - {name: rating, data_type: integer, description: 'The stars given, 1 to 5', visible_to: [data_steward, store_analyst]}
+  - {name: text, data_type: varchar, description: What the customer wrote, visible_to: [data_steward, store_analyst]}
+  - {name: highlight_text, data_type: json, description: 'The passages of the text that hold the phrase, the phrase marked', visible_to: [data_steward, store_analyst]}
+  - {name: _nf_phrase, data_type: varchar, native_filter_type: query_arg, native_filter_required: false, required_by_steward: true, description: The phrase to search the reviews for, visible_to: [viewer]}
 - source_id: purchases
   domain_id: store
   schema: neo4j
@@ -150,9 +151,9 @@ tables:
     RETURN c.customer_id AS customer_id, c.name AS name, c.city AS city
     ORDER BY c.customer_id
   columns:
-  - {name: customer_id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: The customer's name, visible_to: [org_admin]}
-  - {name: city, data_type: varchar, description: Where the customer lives, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, store_analyst]}
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [data_steward]}
+  - {name: city, data_type: varchar, description: Where the customer lives, visible_to: [data_steward, store_analyst]}
 - source_id: purchases
   domain_id: store
   schema: neo4j
@@ -162,9 +163,9 @@ tables:
     MATCH (c:Customer)-[b:BOUGHT]->(p:Product)
     RETURN c.customer_id AS customer_id, p.product_id AS product_id, toString(b.on) AS bought_on
   columns:
-  - {name: customer_id, data_type: integer, description: The customer who bought it, visible_to: [org_admin, analyst]}
-  - {name: product_id, data_type: integer, description: The product bought, visible_to: [org_admin, analyst]}
-  - {name: bought_on, data_type: date, description: When it was bought, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, description: The customer who bought it, visible_to: [data_steward, store_analyst]}
+  - {name: product_id, data_type: integer, description: The product bought, visible_to: [data_steward, store_analyst]}
+  - {name: bought_on, data_type: date, description: When it was bought, visible_to: [data_steward, store_analyst]}
 - source_id: purchases
   domain_id: store
   schema: neo4j
@@ -176,9 +177,9 @@ tables:
     WHERE p <> o
     RETURN p.product_id AS product_id, o.product_id AS also_bought_id, count(DISTINCT c) AS customers
   columns:
-  - {name: product_id, data_type: integer, description: The product, visible_to: [org_admin, analyst]}
-  - {name: also_bought_id, data_type: integer, description: Another product its buyers bought, visible_to: [org_admin, analyst]}
-  - {name: customers, data_type: integer, description: How many of its buyers bought that one too, visible_to: [org_admin, analyst]}
+  - {name: product_id, data_type: integer, description: The product, visible_to: [data_steward, store_analyst]}
+  - {name: also_bought_id, data_type: integer, description: Another product its buyers bought, visible_to: [data_steward, store_analyst]}
+  - {name: customers, data_type: integer, description: How many of its buyers bought that one too, visible_to: [data_steward, store_analyst]}
 relationships:
 - {id: review-of-product, alias: REVIEW_OF, cardinality: many-to-one, source_table_id: reviews, source_column: product_id, target_table_id: products, target_column: product_id}
 - {id: review-by-customer, alias: WRITTEN_BY, cardinality: many-to-one, source_table_id: reviews, source_column: customer_id, target_table_id: customers, target_column: customer_id}

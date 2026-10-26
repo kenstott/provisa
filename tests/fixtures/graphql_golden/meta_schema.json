@@ -248,6 +248,21 @@
        }
       },
       {
+       "name": "m__rolesParents",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RolesParents"
+         }
+        }
+       }
+      },
+      {
        "name": "m__sensitiveCoverage",
        "type": {
         "kind": "LIST",
@@ -3201,13 +3216,6 @@
        }
       },
       {
-       "name": "parentRoleId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "tenantId",
        "type": {
         "kind": "SCALAR",
@@ -3241,13 +3249,6 @@
        "type": {
         "kind": "OBJECT",
         "name": "M__Domains"
-       }
-      },
-      {
-       "name": "parentRole",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__Roles"
        }
       },
       {
@@ -3652,6 +3653,82 @@
     {
      "fields": [
       {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "parentRoleId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "position",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "roleId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "parentRole",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Roles"
+       }
+      },
+      {
+       "name": "role",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Roles"
+       }
+      }
+     ],
+     "name": "M__RolesParents"
+    },
+    {
+     "fields": [
+      {
        "name": "columnKey",
        "type": {
         "kind": "SCALAR",
@@ -3926,6 +4003,11 @@
    "domain_id": "meta",
    "graphql_field": "m__rolesDomainAccess",
    "table_name": "roles_domain_access"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__rolesParents",
+   "table_name": "roles_parents"
   },
   {
    "domain_id": "meta",

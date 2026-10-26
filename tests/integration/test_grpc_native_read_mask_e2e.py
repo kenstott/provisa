@@ -48,7 +48,7 @@ _REPO = Path(__file__).resolve().parents[2]
 _ORG = "grpc_read_mask_e2e"
 _SCHEMA = "grpc_read_mask_e2e_src"
 _ROLE = "org_admin"
-_NARROW_ROLE = "analyst"  # cannot read ``amount``
+_NARROW_ROLE = "sales_analytics_analyst"  # cannot read ``amount``
 _COLUMNS = ("order_id", "amount", "region", "status", "order_meta")
 _ORDERS = [
     (1, 10.5, "east", "open"),

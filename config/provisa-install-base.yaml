@@ -24,39 +24,40 @@ tables:
   - name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - name: name
     data_type: varchar(100)
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - name: species
     data_type: varchar(50)
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - name: breed_name
     data_type: varchar(100)
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - name: price
     data_type: decimal(10,2)
     visible_to:
-    - org_admin
+    - data_steward
   - name: available
     data_type: boolean
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
 roles:
 # REQ-1297/REQ-1349: platform_admin and org_admin are both absent by design. schema.sql seeds each
 # — platform_admin control-plane only, org_admin with the org-scoped rights including org_settings
 # and observability — and role_repo.upsert refuses to overwrite either row. A block here loads AFTER
 # apply_tenancy_role_grants and overwrites capabilities wholesale, which is how org_admin lost both
 # org-scoped rights and its Admin tab.
-- id: analyst
+- id: pet_analyst
+  parents: [analyst]
   description: "Queries the pet store's data. What a member is given to explore it."
   capabilities:
   - query_development

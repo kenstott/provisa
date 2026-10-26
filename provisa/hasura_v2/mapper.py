@@ -165,8 +165,13 @@ def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:  # REQ-417
 
 # REQ-1684: a Hasura role with any select permission may query, which in Provisa is the
 # query_development right; one with an insert/update/delete permission may also write. Hasura's
-# implicit admin is Provisa's org_admin, which is why every imported column names it.
+# implicit admin reads every column; in Provisa the standard data_steward is named for that read
+# (org_admin and the sandbox inherit it, REQ-2155), which is why every imported column names it.
 _READ_CAPS = [Capability.QUERY_DEVELOPMENT.value]
+#: REQ-2155: the standard role a grant names for what Hasura's admin reads.
+_ADMIN_READER = "data_steward"
+#: REQ-2155: what an imported role builds on when Hasura names no role it inherits.
+_BASE_ROLE = "viewer"
 
 
 def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ-040, REQ-1684
@@ -211,10 +216,11 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                 domain_access=["*"],
             )
         # One role inherited is a Provisa parent exactly. Several are written out as the union
-        # of their grants once the tables are mapped (_inherit_several): a Provisa role has one
-        # parent.
+        # of their grants once the tables are mapped (_inherit_several): Hasura's union reads every
+        # row where one member does, and Provisa's inheritance of several parents never lifts a
+        # row rule (REQ-2155), so parents would read fewer rows than Hasura gave.
         if len(ir.role_set) == 1:
-            roles[ir.role_name].parent_role_id = ir.role_set[0]
+            roles[ir.role_name].parents = [ir.role_set[0]]
         if ir.role_set:
             # Ensure child roles exist
             for child_role in ir.role_set:
@@ -225,6 +231,11 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                         capabilities=list(_READ_CAPS),
                         domain_access=["*"],
                     )
+
+    # REQ-2155: every imported role builds on viewer, unless Hasura names the one it inherits.
+    for role in roles.values():
+        if not role.parents:
+            role.parents = [_BASE_ROLE]
 
     # Upgrade capabilities based on permission types
     for source in metadata.sources:
@@ -514,10 +525,10 @@ def _map_table(
         if orig_name in all_columns:
             all_columns[orig_name].alias = alias
 
-    # REQ-1684: Hasura's admin holds every permission implicitly; Provisa's org_admin is that
-    # role, and a column's grant list is literal, so it is named on every imported column.
+    # REQ-1684: Hasura's admin holds every permission implicitly, and a column's grant list is
+    # literal: data_steward, which org_admin inherits (REQ-2155), is named on every imported column.
     for col in all_columns.values():
-        col.visible_to = sorted(set(col.visible_to) | {ORG_ADMIN_ROLE})
+        col.visible_to = sorted(set(col.visible_to) | {_ADMIN_READER})
 
     columns = list(all_columns.values())
 
@@ -656,9 +667,7 @@ def _map_action(
     """A Hasura action as a command calling the same handler, with its arguments and output."""
     # Hasura answers an action with no permissions to the admin alone; so does the command it
     # becomes (a command's one role list, empty, would assign it to every role).
-    visible_to = [p.get("role", "") for p in action.permissions if p.get("role")] or [
-        ORG_ADMIN_ROLE
-    ]
+    visible_to = [p.get("role", "") for p in action.permissions if p.get("role")] or [_ADMIN_READER]
     defn = action.definition
     kind = defn.action_type if defn.action_type in ("mutation", "query") else "mutation"
     output = defn.output_type.strip().rstrip("!").strip("[]!")
@@ -755,8 +764,9 @@ def _inherit_several(
     collector.map(
         "roles",
         role_id,
-        f"a role holding the union of the grants of {' and '.join(members)}: a Provisa role "
-        "inherits from one parent, so what it inherits from several is written out on it",
+        f"a role holding the union of the grants of {' and '.join(members)}, written out on it: "
+        "Hasura's union reads every row where one member does, which inheriting from several "
+        "Provisa roles never does",
     )
 
 
@@ -928,7 +938,21 @@ def convert_metadata(
 
     # Roles
     roles_dict = _collect_roles(metadata)
-    roles = sorted(roles_dict.values(), key=lambda r: r.id)
+    # REQ-2155: a Hasura role named as a Provisa standard role is that standard role, which a
+    # configuration never declares (it is Provisa's, and locked); the grants naming it stand.
+    from provisa.core.db import STANDARD_ROLE_RIGHTS
+
+    for role_id in sorted(set(roles_dict) & set(STANDARD_ROLE_RIGHTS)):
+        extra = sorted(set(roles_dict[role_id].capabilities) - STANDARD_ROLE_RIGHTS[role_id])
+        collector.map(
+            "roles",
+            role_id,
+            "the Provisa standard role of the same name, which is not redefined"
+            + (f"; it does not hold {', '.join(extra)}" if extra else ""),
+        )
+    roles = sorted(
+        (r for r in roles_dict.values() if r.id not in STANDARD_ROLE_RIGHTS), key=lambda r: r.id
+    )
 
     # Tables, RLS, Relationships
     tables: list[Table] = list(remote_tables)
@@ -976,7 +1000,7 @@ def convert_metadata(
                     "source_id": hs.name,
                     "schema_name": hf.schema_name,
                     "kind": "query" if hf.exposed_as == "query" else "mutation",
-                    "visible_to": list(hf.roles) or [ORG_ADMIN_ROLE],
+                    "visible_to": list(hf.roles) or [_ADMIN_READER],
                 }
             )
 
