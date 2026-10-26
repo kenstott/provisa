@@ -88925,7 +88925,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-10-26: the results are published in the docs under a Conformance section, one page per surface,
     each giving the suite and its version, the pass rate, and every deliberate difference with its reason.
     The pages are generated from the CI run''s results, never typed by hand, so they cannot drift from what
-    the suite last reported.'
+    the suite last reported. (Amended 2026-10-25, DIFFERENCES WITH WORKAROUNDS:) Maintainer 2026-10-26:
+    the suites are what gives customers comfort, so each Conformance page lists every difference in detail
+    with its workaround, grouped by cause: writes (supported where they map onto the model through governed
+    table writes; a write needing structure the model lacks is refused by name; transactions are a no-op
+    by design), vocabulary fixed by the model (new vocabulary is defined in the model as a table, column
+    or ontology term, not written into the data; unbounded patterns answer within named limits), and add-ins
+    such as APOC, GDS, custom SPARQL functions or Postgres extensions (offered as commands where commonly
+    needed; otherwise run in the customer''s own store by querying Provisa live or loading the governed
+    graph into it, REQ-2165/2166). Each page also lists the real tools verified to work over that surface
+    (e.g. psql, DBeaver and Tableau over pgwire; Neo4j Browser and Bloom over Bolt; Protege and Stardog
+    Studio over SPARQL), which stays the priority when ordering fixes.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
