@@ -74,7 +74,7 @@ async def _judge(rubric: str) -> float:
     reply = await _call_llm(
         rubric + "\n\nRespond with ONLY a single number between 0 and 1.",
         "table_description",
-        max_tokens=16,
+        max_tokens=1024,
     )
     m = re.search(r"(0(?:\.\d+)?|1(?:\.0+)?)", reply or "")
     return float(m.group(1)) if m else 0.0
@@ -92,7 +92,7 @@ _ORDERS_PROMPT = (
 
 @pytest.mark.asyncio
 async def test_table_description_is_on_topic():
-    desc = await _call_llm(_ORDERS_PROMPT, "table_description", max_tokens=256)
+    desc = await _call_llm(_ORDERS_PROMPT, "table_description", max_tokens=2048)
     assert desc and 15 <= len(desc) <= 500, f"implausible description: {desc!r}"
     score = await _judge(
         "On a scale 0..1, how well does this description accurately and specifically describe a "
@@ -109,7 +109,7 @@ async def test_column_description_is_on_topic():
         "'customer_id' of a database table named 'orders' (columns: id, customer_id, total_amount, "
         "status, created_at). Respond with only the description text, no preamble."
     )
-    desc = await _call_llm(prompt, "column_description", max_tokens=128)
+    desc = await _call_llm(prompt, "column_description", max_tokens=2048)
     assert desc and 5 <= len(desc) <= 300, f"implausible column description: {desc!r}"
     score = await _judge(
         "On a scale 0..1, does this one-line description correctly explain that 'customer_id' is a "
