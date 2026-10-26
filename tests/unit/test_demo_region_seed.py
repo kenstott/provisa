@@ -156,3 +156,29 @@ def test_a_region_the_setup_built_no_history_in_is_left_as_seeded(tmp_path):
 
     assert carry_setup_history("default", demo, {"ledger": region_store}) == {"ledger": []}
     assert json.loads((seed / "record.json").read_text())["views"] == ["mv_other"]
+
+
+async def test_a_sandbox_on_the_regions_tier_runs_in_its_regions_store(monkeypatch):
+    """A regions demo's sandbox is built in the store its region names, where its replicas and
+    views were copied: built in its own folder's store instead, banking's end-of-day totals were
+    not there (CI run 40357864733: schema org_sbxrwarehouse..._rg_warehouse_mv_cache does not
+    exist). Off the regions tier it is built in its own folder's store."""
+    from provisa.api import app, demo_sandbox
+
+    built: list[tuple[str, str | None]] = []
+
+    async def build(org_id, *, storage_url=None, **_kw):
+        built.append((org_id, storage_url))
+        return SimpleNamespace()
+
+    lanes = {"sbxrwarehouse1": SimpleNamespace(materialize_url="postgresql://warehouse_store")}
+
+    async def lane_of(org_id, env):
+        assert env == "prod"
+        return lanes.get(org_id)
+
+    monkeypatch.setattr(app, "build_org_runtime", build)
+    monkeypatch.setattr(app, "_region_lane_of", lane_of)
+    await demo_sandbox._sandbox_runtime("sbxrwarehouse1")
+    await demo_sandbox._sandbox_runtime("sbxplain1")
+    assert built == [("sbxrwarehouse1", "postgresql://warehouse_store"), ("sbxplain1", None)]

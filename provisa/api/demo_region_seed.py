@@ -494,47 +494,44 @@ def views_kept_here(config: Any) -> int:
     )
 
 
-async def views_built_here(template_org: str) -> int:
-    """How many of the template's views this node's region has built."""
+def _built_since(build: dict, since: datetime) -> bool:
+    return build["region"] == here() and (
+        build["last_refresh_at"] is not None and build["last_refresh_at"] >= since
+    )
+
+
+async def views_built_here(template_org: str, since: datetime) -> int:
+    """How many of the template's views this node's region has built since ``since`` (when every
+    replica it keeps had landed): a build before then read replicas not yet there, so a seed of
+    it would carry what they lacked."""
     [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
     _replicas, builds = await _records(state_db(template_org, store))
-    return sum(1 for b in builds if b["region"] == here() and b["last_refresh_at"] is not None)
+    return sum(1 for b in builds if _built_since(b, since))
 
 
-def views_unrecorded_here(config: Any, records: list[dict]) -> list[str]:
-    """The materialized views this node's region keeps that have no build record here at all --
-    neither built nor building -- by MV id: a view whose inputs are all read in place has no
-    replica build to fan out to it, and a periodic one waits for its next boundary."""
+def views_kept_here_ids(config: Any) -> list[str]:
+    """The materialized views this node's region keeps, by MV id: each built once its region's
+    replicas have landed, whether a replica build fans out to it or not (a view whose inputs are
+    all read in place has none; a periodic one waits for its next boundary)."""
     from provisa.api.demo_replicas import view_mv_id
     from provisa.core.models import DERIVED_SOURCE_ID
 
-    recorded = {r["mv_id"] for r in records if r["region"] == here()}
     return [
-        mv_id
+        view_mv_id(f"mv_{t.table_name}")
         for t in config.tables
-        if t.source_id == DERIVED_SOURCE_ID
-        and t.materialize
-        and t.region == here()
-        and (mv_id := view_mv_id(f"mv_{t.table_name}")) not in recorded
+        if t.source_id == DERIVED_SOURCE_ID and t.materialize and t.region == here()
     ]
 
 
-async def view_records_here(template_org: str) -> list[dict]:
-    """The template's view build records in this node's region."""
-    [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
-    _replicas, builds = await _records(state_db(template_org, store))
-    return builds
-
-
-async def views_waiting_here(template_org: str) -> str:
-    """What the template's views not yet built in this node's region wait on: each one's build
-    record here (its status and error), or that it has none."""
+async def views_waiting_here(template_org: str, since: datetime) -> str:
+    """What the template's views not built since ``since`` in this node's region wait on: each
+    one's build record here (its status and error), or that it has none."""
     [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
     _replicas, builds = await _records(state_db(template_org, store))
     recorded = [
         f"{b['mv_id']}: {b['status']}" + (f" ({b['last_error']})" if b["last_error"] else "")
         for b in builds
-        if b["region"] == here() and b["last_refresh_at"] is None
+        if b["region"] == here() and not _built_since(b, since)
     ]
     return "; ".join(recorded) or "views with no build recorded"
 
