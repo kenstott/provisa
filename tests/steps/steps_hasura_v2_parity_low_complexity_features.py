@@ -254,36 +254,11 @@ def _run_compile_query(doc_and_field, ctx: CompilationContext, table: TableMeta)
 
 
 def _flatten_roles_from_dicts(role_definitions: list[dict]) -> dict[str, dict]:
-    """Flatten a role hierarchy into per-role dicts with merged capabilities/domain_access."""
-    by_id: dict[str, dict] = {r["id"]: r for r in role_definitions}
-    resolved: dict[str, dict] = {}
+    """The dict path the runtime build flattens roles by (security.inheritance.flatten_role_dicts):
+    capabilities merged down the chain, each role's domain_access its own (REQ-2155)."""
+    from provisa.security.inheritance import flatten_role_dicts
 
-    def _resolve(role_id: str, visiting: set[str]) -> dict:
-        if role_id in resolved:
-            return resolved[role_id]
-        if role_id in visiting:
-            raise ValueError(f"Cycle detected in role hierarchy at role '{role_id}'")
-        visiting = visiting | {role_id}
-        role = by_id[role_id]
-        caps: set[str] = set(role.get("capabilities") or [])
-        domains: set[str] = set(role.get("domain_access") or [])
-        for parent_id in role.get("parents") or []:
-            parent_resolved = _resolve(parent_id, visiting)
-            caps |= set(parent_resolved["capabilities"])
-            domains |= set(parent_resolved["domain_access"])
-        merged = {
-            "id": role_id,
-            "description": "Test role.",
-            "capabilities": sorted(caps),
-            "domain_access": sorted(domains),
-        }
-        resolved[role_id] = merged
-        return merged
-
-    for role in role_definitions:
-        _resolve(role["id"], set())
-
-    return resolved
+    return {r["id"]: r for r in flatten_role_dicts(role_definitions)}
 
 
 def _role(
