@@ -311,14 +311,13 @@ code:not(pre code) {
 }
 
 /* ── Interfaces: three languages, then protocols by workload ─ */
-.langs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
-@media (max-width: 1100px) { .langs { grid-template-columns: repeat(2, 1fr); } }
+.langs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .lang {
-  padding: 20px 22px; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 16px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface);
 }
 .lang h4 { margin: 0 0 8px; font-size: 1.02rem; }
-.lang p { margin: 0; color: var(--text-muted); font-size: .93rem; }
+.lang p { margin: 0; color: var(--text-muted); font-size: .88rem; }
 
 .iface-matrix {
   margin-top: 18px; border: 1px solid var(--border); border-radius: var(--radius);
