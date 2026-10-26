@@ -34443,7 +34443,12 @@
   description: 'Metadata export user documentation: a published docs page (docs/metadata-export.md, navigated
     under Security & Governance) covering the supported targets, the YAML configuration, what the payload
     contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile
-    sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.'
+    sync model. [SUPERSEDED by REQ-2122, 2026-10-25 -- Provisa now also reads from catalogs (descriptions
+    taken, refreshed or locked from a domain''s catalogs). Kept here for history; do not implement against
+    it.] Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path. [END
+    SUPERSEDED BLOCK] (Amended 2026-10-25, PUBLISH AND READ-BACK:) The page states what flows each way:
+    the export publishes governed metadata to a domain''s catalogs, and a table''s description can be taken
+    from, refreshed from or locked to those catalogs (REQ-2122). Nothing else is ingested from a catalog.'
   use_case: An admin evaluating or configuring catalog integration finds the supported targets and the
     exact configuration in the product docs instead of in the architecture notes.
   code:
@@ -34459,7 +34464,8 @@
 
     Then the metadata export page is reachable from the Security and Governance navigation
 
-    And the page states that publication is outbound only
+    And the page states that metadata is published to a domain''s catalogs and that only table descriptions
+    are read back from them
 
     And the page names every registered export provider
 
