@@ -35,6 +35,11 @@ on:
         type: string
         required: false
         default: ""
+      task_dump_s:
+        description: "Every N seconds the backends log what each request is awaiting (diagnostics); empty: never"
+        type: string
+        required: false
+        default: ""
   # Callable: by an orchestrator, and by the proof of the CI's own structure. Every secret its two
   # jobs read, by name; the caller passes each one and nothing is inherited.
   workflow_call:
@@ -133,6 +138,7 @@ jobs:
         PROVISA_E2E_LANE=core
         PROVISA_E2E_WORKERS=2
         PROVISA_E2E_SPECS=${{ inputs.specs }}
+        PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
       working-directory: provisa-ui
       # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
       # its folder): the run's own record of what did not execute.
@@ -201,6 +207,7 @@ jobs:
         CI=true
         PROVISA_E2E_LANE=core
         PROVISA_E2E_SPECS=${{ inputs.specs }}
+        PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
       working-directory: provisa-ui
       # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
       # its folder): the run's own record of what did not execute.
