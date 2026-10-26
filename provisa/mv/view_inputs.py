@@ -142,13 +142,14 @@ class ModelIndex:
             )
             for parts in row_spellings(row, catalogs.get(row["source_id"])):
                 self._add(parts, ("table", table_id))
-        for ctx in state.contexts.values():
-            for meta in ctx.tables.values():
-                target = ("table", meta.table_id)
-                semantic = semantic_table_name(meta)
-                self._add((semantic,), target)
-                self._add((domain_to_sql_name(meta.domain_id), semantic), target)
-                self._add((meta.catalog_name, meta.schema_name, meta.table_name), target)
+        # The model-wide context names every table, with no role's surface built to read it.
+        model = state.view_context
+        for meta in model.tables.values() if model is not None else []:
+            target = ("table", meta.table_id)
+            semantic = semantic_table_name(meta)
+            self._add((semantic,), target)
+            self._add((domain_to_sql_name(meta.domain_id), semantic), target)
+            self._add((meta.catalog_name, meta.schema_name, meta.table_name), target)
         for mv in state.mv_registry.get_enabled():
             target = ("view", mv.id)
             self._add((mv.target_catalog, mv.target_schema, mv.target_table), target)

@@ -265,7 +265,15 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
             f"(mcp.role / PROVISA_MCP_ROLE: {', '.join(sorted(pinned))})",
         )
         raise refused
-    return resolve_requested_role(state, held, named)
+    from provisa.auth.derived_roles import unsecured_principal
+    from provisa.core.request_context import set_session_vars
+
+    # REQ-1952: unsecured, a declared derived role named beside a data role is that set's
+    # qualifier and binds its attribute, as the HTTP middleware, Flight and gRPC resolve it.
+    # Bound in this tool call's own context (its request thread, a copy of the call's).
+    role, session_vars = unsecured_principal(state, named)
+    set_session_vars(session_vars)
+    return role
 
 
 def switchable_roles(state: Any) -> set[str]:  # REQ-2082

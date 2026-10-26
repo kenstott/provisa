@@ -129,6 +129,13 @@ def meta_dataset(meta: Any) -> str:
     return f"{PGWIRE_DATA_SOURCE}/{domain_to_sql_name(meta.domain_id)}/{semantic_table_name(meta)}"
 
 
+def model_contexts(state: Any) -> dict[str, Any]:
+    """The contexts a contract's dataset is resolved against: the model-wide one, which compiles
+    every table of the model (state.view_context). Read in place of every role's context, it builds
+    no role's surface (api/role_surface.LazySurface) and names every governed table."""
+    return {"__model__": state.view_context}
+
+
 def resolve_contract_target(dataset: str, contexts: Mapping) -> Any:
     """The compiled :class:`~provisa.compiler.sql_types.TableMeta` whose :func:`meta_dataset` is
     ``dataset``, matched over every role's compiled tables in ``contexts`` (``state.contexts``).

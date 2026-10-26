@@ -171,6 +171,39 @@ def reap_orphans(rss: Any, *, now: datetime) -> None:
             _delete_namespace(rss, name)
 
 
+def _our_rules(ec2: Any, group_id: str, port: int) -> list[str]:
+    """The CIDRs of the inbound rules on ``port`` that these tests added to ``group_id``: the
+    ones carrying their description, and no other rule."""
+    (group,) = ec2.describe_security_groups(GroupIds=[group_id])["SecurityGroups"]
+    return [
+        r["CidrIp"]
+        for perm in group["IpPermissions"]
+        if perm.get("IpProtocol") == "tcp"
+        and perm.get("FromPort") == port
+        and perm.get("ToPort") == port
+        for r in perm.get("IpRanges", [])
+        if r.get("Description") == _PREFIX
+    ]
+
+
+def _revoke(ec2: Any, group_id: str, port: int, cidrs: list[str]) -> None:
+    """Remove these tests' inbound rules for ``cidrs`` on ``port`` from ``group_id``."""
+    if not cidrs:
+        return
+    print(f"== revoking {', '.join(cidrs)} -> {group_id}:{port} ==", flush=True)
+    ec2.revoke_security_group_ingress(
+        GroupId=group_id,
+        IpPermissions=[
+            {
+                "IpProtocol": "tcp",
+                "FromPort": port,
+                "ToPort": port,
+                "IpRanges": [{"CidrIp": c} for c in cidrs],
+            }
+        ],
+    )
+
+
 def _wait_available(rss: Any, workgroup: str) -> dict:
     deadline = time.monotonic() + _AVAILABLE_TIMEOUT_S
     status = "PENDING"
@@ -310,6 +343,7 @@ def redshift_cluster():
         adminUserPassword=password,
     )
     prior = {k: os.environ.get(k) for k in _ENV_KEYS}
+    authorized: list[tuple[str, int, str]] = []  # (group, port, cidr): revoked at teardown
     try:
         print(
             f"== provisioning workgroup {workgroup} ({_BASE_CAPACITY_RPU} RPU, public) ==",
@@ -331,6 +365,14 @@ def redshift_cluster():
         # this same NAT address, so one rule covers both the seeding client and the engine.
         my_ip = _egress_ip()
         for group_id in wg["securityGroupIds"]:
+            # Each run comes from a new egress IP: a rule an aborted earlier run left behind is
+            # removed first, or the group fills to its rule limit (RulesPerSecurityGroupLimitExceeded).
+            _revoke(
+                ec2,
+                group_id,
+                port,
+                [c for c in _our_rules(ec2, group_id, port) if c != f"{my_ip}/32"],
+            )
             print(f"== authorizing {my_ip}/32 -> {group_id}:{port} ==", flush=True)
             try:
                 ec2.authorize_security_group_ingress(
@@ -347,6 +389,7 @@ def redshift_cluster():
             except ClientError as exc:
                 if exc.response["Error"]["Code"] != "InvalidPermission.Duplicate":
                     raise
+            authorized.append((group_id, port, f"{my_ip}/32"))
 
         print(f"== waiting for TCP reachability at {endpoint}:{port} ==", flush=True)
         _wait_tcp_ready(endpoint, port)
@@ -368,6 +411,8 @@ def redshift_cluster():
         # teardown, under that test's own pytest-timeout (warehouse run 39087576400: the
         # BigQuery test after it failed at 900s, blocked here). The delete is asked for now and
         # waited for at interpreter exit, which no test's timeout bounds.
+        for group_id, rule_port, cidr in authorized:
+            _revoke(ec2, group_id, rule_port, [cidr])
         print(f"== deleting {workgroup} / {namespace} (finished at exit) ==", flush=True)
         _request_workgroup_delete(rss, workgroup)
         atexit.register(_finish_delete, rss, workgroup, namespace)

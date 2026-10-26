@@ -83,7 +83,7 @@ async def scan_table(state: Any, table_id: int) -> dict:
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import sources
     from provisa.core.secrets_store import bound_to_request_org
-    from provisa.dq.contract import contract_dataset, resolve_contract_target
+    from provisa.dq.contract import contract_dataset, model_contexts, resolve_contract_target
     from provisa.dq.runner import run_contract
 
     async with state.model_db.acquire() as conn:
@@ -100,7 +100,7 @@ async def scan_table(state: Any, table_id: int) -> dict:
     if checker not in CHECKERS or not contract:
         raise ValueError(f"table {table_name!r} is not a data-quality checker table")
     dataset = contract_dataset(contract, checker)
-    target = resolve_contract_target(dataset, state.contexts)
+    target = resolve_contract_target(dataset, model_contexts(state))
     async with bound_to_request_org():
         connection = checker_connection(mapping)
     scan_id = str(uuid.uuid4())

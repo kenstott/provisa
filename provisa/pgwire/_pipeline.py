@@ -4788,7 +4788,10 @@ async def _govern_compiled(
 
     from provisa.security.rights import require_role
 
-    surface = state.surfaces[role_id]  # one snapshot: context and row filters of one build
+    from provisa.api.role_surface import built_surface
+
+    # One snapshot: context and row filters of one build.
+    surface = built_surface(state.surfaces[role_id])
     ctx = surface.context
     rls = surface.rls
 

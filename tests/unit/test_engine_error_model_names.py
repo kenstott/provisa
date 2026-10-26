@@ -56,7 +56,7 @@ def _meta(table_id: int, table: str) -> TableMeta:
 def org(monkeypatch):
     """An org whose model holds pets and owners, read through the source pet-store-sqlite."""
     ctx = types.SimpleNamespace(tables={"pets": _meta(1, "pets"), "owners": _meta(2, "owners")})
-    runtime = types.SimpleNamespace(contexts={"analyst": ctx})
+    runtime = types.SimpleNamespace(view_context=ctx)
     registry = types.SimpleNamespace(get=lambda org_id: runtime if org_id == _ORG else None)
     monkeypatch.setattr("provisa.api.app.state.org_registry", registry, raising=False)
 
