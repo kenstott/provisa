@@ -88806,3 +88806,31 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And ontology.Customer offers no segment column to that role
 
     And a term none of whose domains the role reaches is absent from ontology.terms'
+- id: REQ-2164
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Operations
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: behavioral
+  description: 'Redacted log export: an operator can export the server''s recent logs as one plain-text
+    file with redaction applied, to attach to a support email. Support is by email only; the customer
+    owns what it sends, and this feature helps it redact. The export runs the same redaction the server
+    already applies (provisa/security/redaction.py: secrets, credentials) plus the client-facing naming
+    rule (physical source addresses written as model names), and it is offered from the admin UI and as
+    a command. The file is readable as written so the operator can review it before sending; the product
+    never sends it anywhere (no upload, no support portal, no phone-home), so an air-gapped install exports
+    the same way.'
+  scenario: 'Given server logs containing a source password, a physical address pet_store_sqlite.pet_store.pets
+    and a query error
+
+    When an operator exports logs for support
+
+    Then the file contains the error
+
+    And the password does not appear in it
+
+    And the table appears as pet_store.pets, not by its physical address
+
+    And no network request is made'
