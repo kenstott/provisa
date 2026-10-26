@@ -57,9 +57,9 @@ def _ui_env() -> str:
     return (_REPO / "packaging/linux/first-launch.sh").read_text()
 
 
-def test_the_tier_lists_retail():
-    # banking joins once its bundle builds (its setup on a node per region).
-    assert sorted(_LISTED) == ["retail"]
+def test_the_tier_lists_retail_and_banking():
+    # banking is served by its warehouse node, the node of its visitor region.
+    assert sorted(_LISTED) == ["banking", "retail"]
 
 
 def test_the_tier_declares_every_listed_demos_regions_with_a_store_each():
