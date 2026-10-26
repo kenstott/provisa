@@ -89133,3 +89133,36 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then pets.id is recorded as the primary key
 
     And a foreign key the source declares is offered as a relationship candidate'
+- id: REQ-2171
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  feature: source-registration-introspection
+  priority: MUST
+  type: behavioral
+  description: 'The canonical IR has type aliases. An alias is declared once in the IR vocabulary: a name,
+    a canonical base type, and per-surface details (the pgwire type OID and text format, the GraphQL scalar
+    name, the RDF datatype, the Arrow extension name). A source column whose native type is an aliased
+    type registers as its canonical base type carrying the alias: a Postgres inet column is canonical
+    text with alias inet. Every surface that needs only the canonical type treats it as the base type
+    (filters, joins, aggregation, the engines); surfaces that care read the alias: pgwire reports the
+    alias''s type OID and sends the value in Postgres''s text form, GraphQL names the alias''s scalar
+    (serialized as its base), RDF uses its datatype. An alias adds names and wire details only, never
+    new comparison or arithmetic rules; a type needing its own operators is a real IR type. First set:
+    inet (text, pgwire 869, GraphQL IPAddress; Trino ipaddress and ClickHouse IPv4/IPv6 map to it), cidr
+    (text, 650, CIDR), macaddr (text, 829, MACAddress), xml (text, 142), point (text, 600), oid (bigint,
+    26), money (numeric, 790, Postgres money text format). Binary pgwire encoding of an alias is listed
+    as a difference on the pgwire Conformance page unless a tool needs it. Source drivers (REQ-2169) can
+    declare aliases for their own types.'
+  scenario: 'Given a Postgres source table with an inet column ip
+
+    When it is registered
+
+    Then ip is canonical text with alias inet
+
+    And a pgwire query of ip reports type OID 869 and the value as Postgres''s text form
+
+    And GraphQL types ip as IPAddress
+
+    And a SQL filter ip = ''10.0.0.1'' compares it as text'
