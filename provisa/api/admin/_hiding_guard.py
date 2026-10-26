@@ -84,7 +84,7 @@ def rights_for(field: str, *, sensitive: bool, editor: bool) -> tuple[str, ...] 
 
 #: Who a scope serves, narrowest first (REQ-1959): the roles a grant names; the roles that
 #: reach the table's domain; roles outside it too.
-_SCOPE_REACH = {"restricted": 0, "domain": 1, "public": 2}
+_SCOPE_REACH = {"domain": 0, "listed": 1, "public": 2}
 
 
 def scope_widens(before: str, after: str) -> bool:

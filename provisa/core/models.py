@@ -1072,7 +1072,7 @@ class Column(
     # relationship, not data (graphql_remote/relation_columns.py).
     gql_object_type: str | None = None
     gql_is_list: bool = False
-    scope: str = "domain"  # "domain" | "public" | "restricted" (core/column_scope.py, REQ-1959)
+    scope: str = "domain"  # "domain" | "listed" | "public" (core/column_scope.py, REQ-2153)
 
     @model_validator(mode="before")
     @classmethod

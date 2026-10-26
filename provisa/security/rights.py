@@ -329,14 +329,10 @@ def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
 
 # --- which columns a role is served (REQ-039, REQ-1133, REQ-1959) --------------------------------
 
-from provisa.core.column_scope import SCOPE_DOMAIN, SCOPE_PUBLIC, SCOPE_RESTRICTED  # noqa: E402
+from provisa.core.column_scope import SCOPE_PUBLIC  # noqa: E402
 
-# Domains where an empty ``visible_to`` means NO role rather than every role: their columns need
-# an explicit grant (REQ-1133), and nothing in them is served across domains.
-LOCKDOWN_DOMAINS: frozenset[str] = frozenset({"ops"})
-
-# A column's ``scope`` (core/column_scope.py): ``domain`` is served within the domains a role
-# reaches, ``public`` also outside them, ``restricted`` only to whom ``visible_to`` names.
+# A column's ``scope`` (core/column_scope.py): ``domain`` and ``listed`` are served within the
+# domains a role reaches, ``public`` also outside them. ``listed`` adds only names in the catalog.
 
 
 def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: bool) -> bool:
@@ -346,32 +342,20 @@ def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: b
     ``reaches``: whether the role reaches the table's domain, as the caller decides it (a domain
     it lists, ``*``, or the catalog domain every role may traverse).
 
-    The column's own grant comes first: ``visible_to`` names the role, or ``*``, or is empty —
-    which is everyone, except in a lockdown domain and on a ``restricted`` column, where an empty
-    list is nobody. Within reach that is all. Outside reach a column is served only when it is
-    ``public``: publishing removes the domain condition for that column and nothing else — its
-    grant, masks, row rules and limits apply as they do within the domain. A parameter column of
-    an API table (``native_filter_type``) is an argument, not data, and publishes nothing; a
-    lockdown domain's columns are never served across domains.
+    The column's own grant comes first, and it is the only thing that says who: ``visible_to``
+    names the role (a grant to an ancestor is folded down to its descendants when roles load,
+    security.inheritance.expand_grants), and an empty list is no role (REQ-2154). Within reach
+    that is all. Outside reach a column is served only when it is ``public``: publishing removes
+    the domain condition for that column and nothing else -- its grant, masks, row rules and
+    limits apply as they do within the domain. A ``listed`` column is served as a ``domain`` one:
+    its names in the catalog are not data. A parameter column of an API table
+    (``native_filter_type``) is an argument, not data, and publishes nothing.
     """
-    granted_to = column.get("visible_to") or []
-    # A column dict synthesized for a table registered without columns carries no scope: the
-    # model's default for a column, ``domain`` (core/models.py Column.scope).
-    scope = column.get("scope") or SCOPE_DOMAIN
-    named = ALL_DOMAINS in granted_to or role["id"] in granted_to
-    if scope == SCOPE_RESTRICTED or domain_id in LOCKDOWN_DOMAINS:
-        granted = named
-    else:
-        granted = named or not granted_to
-    if not granted:
+    if role["id"] not in (column.get("visible_to") or ()):
         return False
     if reaches:
         return True
-    return (
-        scope == SCOPE_PUBLIC
-        and domain_id not in LOCKDOWN_DOMAINS
-        and not column.get("native_filter_type")
-    )
+    return column.get("scope") == SCOPE_PUBLIC and not column.get("native_filter_type")
 
 
 def served_across_domains(role: dict, table: dict) -> bool:

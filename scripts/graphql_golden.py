@@ -138,6 +138,7 @@ async def meta_model_config(db: Any) -> dict:
                     {
                         "name": str(c.column_name),
                         "data_type": str(c.data_type),
+                        "visible_to": list(c.visible_to),
                         **({"is_primary_key": True} if c.is_primary_key else {}),
                     }
                     for c in sorted(columns, key=lambda c: c.column_name)

@@ -11,17 +11,17 @@
 """A public column is served outside the domains a role reaches (REQ-1959).
 
 A column's ``scope`` was stored and read by nothing. It now decides where the column is served:
-``domain`` within the domains a role reaches; ``public`` there and outside them; ``restricted``
-only to whom ``visible_to`` names. Publishing removes the domain condition for that column and
-nothing else: its own grant still decides who, and a table outside a role's reach is served with
-its PUBLIC columns only. A parameter column publishes nothing; a lockdown domain's columns are
-never served across domains.
+``domain`` within the domains a role reaches; ``listed`` the same, its names shown in the catalog;
+``public`` there and outside them. Who reads a column is its grant alone, and an empty grant is no
+role (REQ-2154). Publishing removes the domain condition for that column and nothing else: its own
+grant still decides who, and a table outside a role's reach is served with its PUBLIC columns only.
+A parameter column publishes nothing.
 
 The rule is one function (``security.rights.column_served``); the schema build, SQL governance,
 the direct-read check (V001) and the catalog's row scope read it.
 """
 
-# Requirements: REQ-1959, REQ-039, REQ-1133
+# Requirements: REQ-1959, REQ-039, REQ-2153, REQ-2154
 
 from __future__ import annotations
 
@@ -67,37 +67,51 @@ def _table(table_id: int, domain: str, name: str, columns: list[dict]) -> dict:
     }
 
 
+# The roles the tests read as; a grant names the roles that read a column (REQ-2154: an empty
+# grant is no role, in every domain and every scope).
+EVERY = ["seller", "hr_reader", "auditor", "anyone"]
+
 # hr.staff: a published name, a domain-only salary, a public column granted to one role only,
-# and a restricted column granted to nobody.
+# and a column granted to nobody.
 STAFF = _table(
     1,
     HR,
     "staff",
     [
-        _column("id", "public"),
-        _column("name", "public"),
-        _column("salary", "domain"),
+        _column("id", "public", EVERY),
+        _column("name", "public", EVERY),
+        _column("salary", "domain", EVERY),
         _column("badge", "public", ["auditor"]),
-        _column("ssn", "restricted"),
+        _column("ssn", "domain", []),
     ],
 )
 # hr.reviews: nothing published.
-REVIEWS = _table(2, HR, "reviews", [_column("id"), _column("score")])
+REVIEWS = _table(
+    2, HR, "reviews", [_column("id", "domain", EVERY), _column("score", "domain", EVERY)]
+)
 # sales.orders: the seller's own table.
-ORDERS = _table(3, SALES, "orders", [_column("id"), _column("staff_id")])
+ORDERS = _table(
+    3, SALES, "orders", [_column("id", "domain", EVERY), _column("staff_id", "domain", EVERY)]
+)
 # An API table whose only "public" columns are its parameters — the register form's old default.
 LOOKUP = _table(
     4,
     HR,
     "get_staff_by_id",
     [
-        _column("title", "domain"),
-        _column("staff_id", "public", native_filter_type="path_param"),
+        _column("title", "domain", EVERY),
+        _column("staff_id", "public", EVERY, native_filter_type="path_param"),
     ],
 )
-# ops is a lockdown domain: nothing in it is served across domains.
-AUDIT = _table(5, OPS, "audit_log", [_column("id", "public", ["seller"]), _column("who", "public")])
-TABLES = [STAFF, REVIEWS, ORDERS, LOOKUP, AUDIT]
+# ops is a domain like any other: a public column granted to the seller is served to it.
+AUDIT = _table(
+    5, OPS, "audit_log", [_column("id", "public", ["seller"]), _column("who", "public", [])]
+)
+# hr.payroll: its names are listed to every role; its data is the domain's.
+PAYROLL = _table(
+    6, HR, "payroll", [_column("id", "listed", EVERY), _column("amount", "domain", EVERY)]
+)
+TABLES = [STAFF, REVIEWS, ORDERS, LOOKUP, AUDIT, PAYROLL]
 
 
 def _role(role_id: str, *domains: str) -> dict:
@@ -145,6 +159,7 @@ def test_a_role_that_reaches_the_domain_is_served_as_before():
     served = _served(_role("hr_reader", HR))
     assert served["staff"] == ["id", "name", "salary"]  # badge is another role's; ssn nobody's
     assert served["reviews"] == ["id", "score"]
+    assert served["payroll"] == ["id", "amount"]
     assert "orders" not in served
 
 
@@ -154,13 +169,32 @@ def test_a_public_columns_own_grant_still_decides_who():
     assert _served(_role("auditor", HR))["staff"] == ["id", "name", "salary", "badge"]
 
 
-def test_a_restricted_column_is_served_only_to_whom_it_names():
-    """An empty grant is everyone on a domain column and nobody on a restricted one."""
+@pytest.mark.parametrize("scope", ["domain", "listed", "public"])
+def test_an_empty_grant_is_no_role_in_every_scope(scope):
+    """REQ-2154: an empty grant list means no role, in every domain, whatever the scope -- even a
+    role that reaches every domain."""
+    column = _column("ssn", scope, [])
     for role in (_role("hr_reader", HR), _role("anyone", "*")):
-        assert "ssn" not in _served(role)["staff"]
-    named = {**STAFF, "columns": [_column("ssn", "restricted", ["hr_reader"])]}
-    assert column_served(_role("hr_reader", HR), HR, named["columns"][0], reaches=True)
-    assert not column_served(_role("seller", SALES), HR, named["columns"][0], reaches=False)
+        assert not column_served(role, HR, column, reaches=True)
+        assert not column_served(role, HR, column, reaches=False)
+    assert "ssn" not in _served(_role("anyone", "*"))["staff"]
+
+
+def test_star_names_no_role():
+    """REQ-2153: ``*`` is no grant entry; a grant to every role is a grant to Viewer."""
+    assert not column_served(
+        _role("seller", SALES), HR, _column("c", "public", ["*"]), reaches=True
+    )
+
+
+def test_a_listed_column_is_served_only_within_reach():
+    """REQ-2153: listed shows names in the catalog; reading it still needs the domain and a grant,
+    so outside reach the data plane serves nothing of it."""
+    assert "payroll" not in _served(_role("seller", SALES))
+    assert not served_across_domains(_role("seller", SALES), PAYROLL)
+    listed = _column("id", "listed", ["seller"])
+    assert column_served(_role("seller", HR), HR, listed, reaches=True)
+    assert not column_served(_role("seller", SALES), HR, listed, reaches=False)
 
 
 def test_a_parameter_column_publishes_nothing():
@@ -171,11 +205,10 @@ def test_a_parameter_column_publishes_nothing():
     assert _served(_role("hr_reader", HR))["get_staff_by_id"] == ["title"]
 
 
-def test_a_lockdown_domain_is_never_served_across_domains():
-    assert "audit_log" not in _served(_role("seller", SALES))
-    assert not served_across_domains(_role("seller", SALES), AUDIT)
-    # Within it, the explicit grant is what counts (REQ-1133): `who` is public and granted to
-    # nobody, so not even a role that reaches ops is served it.
+def test_ops_is_a_domain_like_any_other():
+    """REQ-2159: no lockdown domain. ops's public column granted to the seller is served across
+    domains; its column granted to nobody is served to no one."""
+    assert _served(_role("seller", SALES))["audit_log"] == ["id"]
     assert _served(_role("seller", SALES, OPS))["audit_log"] == ["id"]
 
 
@@ -183,29 +216,25 @@ def test_a_set_of_roles_is_served_the_union():
     """A meta-role is a role: its domains are its members' union, and a grant to a member
     reaches it (security/meta_role.py). The rule needs no case for it."""
     meta = _role("meta:auditor+seller", SALES)
-    tables = [
-        {**STAFF, "columns": [dict(c) for c in STAFF["columns"]]},
-        REVIEWS,
-        ORDERS,
-        LOOKUP,
-        AUDIT,
-    ]
+    tables = [{**t, "columns": [dict(c) for c in t["columns"]]} for t in TABLES]
     # What expand_grants does when the meta-role is made: a grant naming a member names it.
-    for column in tables[0]["columns"]:
-        if "auditor" in column["visible_to"]:
-            column["visible_to"] = [*column["visible_to"], meta["id"]]
+    for table in tables:
+        for column in table["columns"]:
+            if {"auditor", "seller"} & set(column["visible_to"]):
+                column["visible_to"] = [*column["visible_to"], meta["id"]]
     served = {
         t["table_name"]: [c["column_name"] for c in t["columns"]]
         for t in visible_tables(tables, meta)
     }
     assert served["staff"] == ["id", "name", "badge"]
     assert served["orders"] == ["id", "staff_id"]
-    assert "reviews" not in served and "audit_log" not in served
+    assert served["audit_log"] == ["id"]
+    assert "reviews" not in served and "payroll" not in served
 
 
 def test_nothing_is_public_by_default():
     assert Column(name="c", visible_to=[]).scope == "domain"
-    unpublished = _table(9, HR, "t", [{"column_name": "c", "visible_to": []}])  # no scope at all
+    unpublished = _table(9, HR, "t", [{"column_name": "c", "visible_to": ["seller"]}])  # no scope
     assert not served_across_domains(_role("seller", SALES), unpublished)
 
 
@@ -224,21 +253,21 @@ def test_the_shared_helper_and_the_schema_build_agree():
 
 def test_the_catalog_describes_a_published_table_to_a_role_outside_its_domain():
     """REQ-1132's row scope: a role's own tables, now including those published to it."""
-    assert compute_meta_row_scope(_role("seller", SALES), TABLES, []) == {1, 3}
-    assert compute_meta_row_scope(_role("hr_reader", HR), TABLES, []) == {1, 2, 4}
+    assert compute_meta_row_scope(_role("seller", SALES), TABLES, []) == {1, 3, 5}
+    assert compute_meta_row_scope(_role("hr_reader", HR), TABLES, []) == {1, 2, 4, 6}
     assert compute_meta_row_scope(_role("anyone", "*"), TABLES, []) is None
 
 
 # --- scope is one of three values, on every path --------------------------------------------------
 
 
-@pytest.mark.parametrize("scope", ["domain", "public", "restricted"])
+@pytest.mark.parametrize("scope", ["domain", "listed", "public"])
 def test_the_three_scopes_are_accepted(scope):
     assert require_column_scope("c", scope) == scope
     assert Column(name="c", visible_to=[], scope=scope).scope == scope
 
 
-@pytest.mark.parametrize("scope", ["Public", "everyone", "", None, "org"])
+@pytest.mark.parametrize("scope", ["restricted", "Public", "everyone", "", None, "org"])
 def test_anything_else_is_refused_naming_the_column(scope):
     with pytest.raises(ColumnScopeInvalid, match="'c'") as refused:
         require_column_scope("c", scope)
@@ -247,9 +276,7 @@ def test_anything_else_is_refused_naming_the_column(scope):
     with pytest.raises(ValueError):
         Column(name="c", visible_to=[], scope=scope)  # type: ignore[arg-type]
     if isinstance(scope, str):
-        with pytest.raises(
-            ValueError, match="a column's scope is one of domain, public, restricted"
-        ):
+        with pytest.raises(ValueError, match="a column's scope is one of domain, listed, public"):
             Column(name="c", visible_to=[], scope=scope)
 
 
@@ -299,7 +326,7 @@ def _v001(role: dict, sql: str) -> list[str]:
 def test_sql_serves_the_same_columns_as_the_schema():
     gov, _ = _sql_context(_role("seller", SALES))
     assert gov.visible_columns[1] == frozenset({"id", "name"})
-    assert gov.public_tables == frozenset({1})
+    assert gov.public_tables == frozenset({1, 5})  # staff, and ops's audit_log (no lockdown)
     assert gov.visible_columns[2] == frozenset()  # reviews: nothing of it
     assert gov.visible_columns[3] is None  # its own table: every column
     reader, _ = _sql_context(_role("hr_reader", HR))
@@ -428,7 +455,8 @@ def test_the_role_narrowed_catalog_carries_the_published_table_and_columns():
     _si, _schema, ctx = _compiled(role)
     visible = role_visibility(RoleState(contexts={role["id"]: ctx}), role["id"])
     assert visible[1] == {"id", "name"}
-    assert 2 not in visible and 4 not in visible and 5 not in visible
+    assert 2 not in visible and 4 not in visible and 6 not in visible
+    assert visible[5] == {"id"}  # ops is a domain like any other (REQ-2159)
     assert visible[3] == {"id", "staff_id"}
 
 
