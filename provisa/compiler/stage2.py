@@ -1489,7 +1489,7 @@ def _apply_limit_ceiling(sql: str, ceiling: int) -> str:
     constant outer LIMIT, so the ceiling still bounds the result — min(inner, ceiling) — and stays
     valid on engines that reject expressions in LIMIT.
     """
-    tree = sqlglot.parse_one(sql, read="postgres")
+    tree = parse_once(sql, "postgres")
     node = tree if isinstance(tree, (exp.Select, exp.Union)) else tree.find(exp.Select)
     if node is None:
         raise ValueError("_apply_limit_ceiling: query has no SELECT/UNION to bound")

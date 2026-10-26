@@ -44,7 +44,9 @@ class RowLimit:
 def binds(sql: str, limit: int) -> bool:
     """Whether a ceiling of ``limit`` is what bounds ``sql``: the statement gives no LIMIT of its
     own, one above the ceiling, or one whose value is not written in it."""
-    tree = sqlglot.parse_one(sql, read="postgres")
+    from provisa.core.parse_once import parse_once
+
+    tree = parse_once(sql, "postgres")
     node = tree if isinstance(tree, (exp.Select, exp.SetOperation)) else tree.find(exp.Select)
     if node is None:
         return False

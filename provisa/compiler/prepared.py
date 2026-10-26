@@ -120,7 +120,6 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal as TypingLiteral
 
-import sqlglot
 from sqlglot import expressions as exp
 
 from provisa.compiler.definitions import refuse_definition
@@ -294,7 +293,9 @@ def _parse(raw_sql: str) -> Any:
     from provisa.compiler.clause_order import refuse_out_of_order
 
     refuse_out_of_order(raw_sql)
-    return sqlglot.parse_one(raw_sql, read="postgres")
+    from provisa.core.parse_once import parse_once
+
+    return parse_once(raw_sql, "postgres")
 
 
 async def prepare_front_end(
@@ -332,7 +333,12 @@ async def prepare_front_end(
     # default thread pool so the loop stays free to dispatch other work while this parse runs.
     # This is the one mandatory parse every call pays (see module docstring); it also supplies the
     # tree the shape digest below is hashed from, so no second parse is needed to key the cache.
-    parsed_input = await loop.run_in_executor(None, lambda: _parse(raw_sql))
+    # In the caller's context: the request's parse scope keeps this tree for the steps after it.
+    import contextvars
+
+    parsed_input = await loop.run_in_executor(
+        None, contextvars.copy_context().run, lambda: _parse(raw_sql)
+    )
     # Nothing is defined through a query protocol (provisa/compiler/definitions.py): a statement
     # that creates, alters or drops a relation is refused here, as soon as its kind is known and
     # before any of the pipeline's work on it.

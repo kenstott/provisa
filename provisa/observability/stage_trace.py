@@ -58,7 +58,9 @@ def _redacted_tree(sql: str) -> exp.Expression:  # pyright: ignore[reportPrivate
             return exp.Placeholder()
         return node
 
-    return sqlglot.parse_one(sql, read="postgres").transform(_blank)
+    from provisa.core.parse_once import parse_once
+
+    return parse_once(sql, "postgres").transform(_blank)
 
 
 def redact_sql(sql: str) -> str:

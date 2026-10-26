@@ -34,7 +34,7 @@ import threading
 import time as _time
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from provisa.federation.execution_auth import plan_authorization
 
@@ -1236,7 +1236,10 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
     )
 
 
-async def _off_loop(fn, *args, **kwargs):
+_OffLoopT = TypeVar("_OffLoopT")
+
+
+async def _off_loop(fn: Callable[..., _OffLoopT], *args: Any, **kwargs: Any) -> _OffLoopT:
     """REQ-1882: run a synchronous, CPU-bound call (sqlglot parsing, the regex-based SQL-rewrite
     passes) on the default thread pool executor instead of in-line on the caller's event loop.
 
@@ -1252,13 +1255,13 @@ async def _off_loop(fn, *args, **kwargs):
     that loop serves one connection, so the call blocks no one else and the request never leaves
     its thread. On the shared process loop (HTTP/GraphQL/gRPC) this still offloads to the pool.
     """
-    loop = asyncio.get_running_loop()
-    if kwargs:
-        from functools import partial
+    import contextvars
 
-        fn = partial(fn, **kwargs)
-        return await loop.run_in_executor(None, fn, *args)
-    return await loop.run_in_executor(None, fn, *args)
+    loop = asyncio.get_running_loop()
+    # Run in the caller's context, as asyncio.to_thread does: the request's state that lives in
+    # context variables -- its parse scope among them (core/parse_once.py) -- is the call's too.
+    context = contextvars.copy_context()
+    return await loop.run_in_executor(None, lambda: context.run(fn, *args, **kwargs))
 
 
 def embedding_provider(model: Any) -> Any:  # REQ-2002
@@ -1307,10 +1310,12 @@ async def _govern_and_route(
     ``product_statement``: see :func:`govern_statement`."""
     from provisa.api.app import state
 
+    from provisa.core.parse_once import parse_scope
     from provisa.core.statement_warnings import collecting
 
     await _wake_before_governing(state)
-    with collecting() as found:
+    # REQ-913: the raw-SQL stage parses each text it passes between its steps once.
+    with parse_scope(), collecting() as found:
         plan = await _govern_and_route_planned(
             sql,
             role_id,

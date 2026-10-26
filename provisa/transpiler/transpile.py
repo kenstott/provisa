@@ -682,11 +682,11 @@ def transpile(
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():
         lowered = _OWN_TRY_CASTS[target_dialect](
-            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+            lowered if lowered is not None else parse_once(pg_sql, "postgres")
         )
     if target_dialect == "exasol":
         result = _exasol_stored_case(
-            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+            lowered if lowered is not None else parse_once(pg_sql, "postgres")
         )
     elif lowered is not None:
         result = lowered.sql(dialect=target_dialect, identify=identify)

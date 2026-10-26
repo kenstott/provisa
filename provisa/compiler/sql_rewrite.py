@@ -662,10 +662,9 @@ def strip_catalog(sql: str) -> str:  # REQ-863
     query onto the DIRECT route, where a native driver addresses schema.table (no catalog).
     VALUES-CTE relations left by inlining carry no catalog and are untouched.
     """
-    import sqlglot
     import sqlglot.expressions as exp
 
-    tree = sqlglot.parse_one(sql, read="postgres")
+    tree = parse_once(sql, "postgres")
     for tbl in tree.find_all(exp.Table):
         if tbl.args.get("catalog") is not None:
             tbl.set("catalog", None)
