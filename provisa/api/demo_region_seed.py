@@ -34,6 +34,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 #: Where the bundle carries each region's seed, under the demo's ``seeded`` directory.
@@ -486,6 +487,31 @@ async def views_built_here(template_org: str) -> int:
     return sum(1 for b in builds if b["region"] == here() and b["last_refresh_at"] is not None)
 
 
+def views_unrecorded_here(config: Any, records: list[dict]) -> list[str]:
+    """The materialized views this node's region keeps that have no build record here at all --
+    neither built nor building -- by MV id: a view whose inputs are all read in place has no
+    replica build to fan out to it, and a periodic one waits for its next boundary."""
+    from provisa.api.demo_replicas import view_mv_id
+    from provisa.core.models import DERIVED_SOURCE_ID
+
+    recorded = {r["mv_id"] for r in records if r["region"] == here()}
+    return [
+        mv_id
+        for t in config.tables
+        if t.source_id == DERIVED_SOURCE_ID
+        and t.materialize
+        and t.region == here()
+        and (mv_id := view_mv_id(f"mv_{t.table_name}")) not in recorded
+    ]
+
+
+async def view_records_here(template_org: str) -> list[dict]:
+    """The template's view build records in this node's region."""
+    [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
+    _replicas, builds = await _records(state_db(template_org, store))
+    return builds
+
+
 async def views_waiting_here(template_org: str) -> str:
     """What the template's views not yet built in this node's region wait on: each one's build
     record here (its status and error), or that it has none."""
@@ -497,3 +523,27 @@ async def views_waiting_here(template_org: str) -> str:
         if b["region"] == here() and b["last_refresh_at"] is None
     ]
     return "; ".join(recorded) or "views with no build recorded"
+
+
+async def unanswered_regions(
+    addresses: dict[str, str], *, probe: Callable[[str], Awaitable[bool]] | None = None
+) -> list[tuple[str, str]]:
+    """Every other region whose node does not answer at its ``addresses`` entry (the platform's
+    regions, as the deployment config declares them): ``probe`` an address, by default its
+    /health."""
+    probe = probe or _answers
+    return [
+        (region, address)
+        for region, address in sorted(addresses.items())
+        if region != here() and not await probe(address)
+    ]
+
+
+async def _answers(address: str) -> bool:
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            return (await client.get(f"{address}/health")).status_code == 200
+    except httpx.HTTPError:
+        return False

@@ -42,6 +42,7 @@ import asyncio
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -694,7 +695,8 @@ def _start_builds() -> None:
     # A few at a time (sandbox.template_builds_at_once): all at once, a small tier's machine was
     # too busy to serve the visitors it was preparing for.
     at_once = int(settings_registry.value("sandbox.template_builds_at_once"))
-    task = spawn_background(template_builds.run(at_once, _prepare), name="demo-templates")
+    prepare = _prepare_seeding if seeding_release() else _prepare
+    task = spawn_background(template_builds.run(at_once, prepare), name="demo-templates")
     _build_tasks.add(task)
     task.add_done_callback(_build_tasks.discard)
 
@@ -1030,6 +1032,78 @@ async def _template_row(pool, demo: PublishedDemo) -> bool:
     return build
 
 
+#: How long another region's node may go unanswered while a seeding region waits on its views
+#: (its nodes start together, and one may still be starting).
+_REGION_ANSWER_GRACE_S = 60.0
+
+
+async def _build_view(org_id: str, mv_id: str) -> None:
+    """Build the template's materialized view ``mv_id`` now (a seeding run's view nothing else
+    builds); a failed build is recorded on the view (mv.refresh.refresh_mv), where the wait reads
+    it."""
+    from provisa.api.app import state
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.mv.refresh import refresh_mv
+
+    token = set_current_org(org_id)
+    try:
+        assert state.federation_engine is not None
+        mv = state.mv_registry.get(mv_id)
+        if mv is None:
+            raise LookupError(f"view {mv_id!r} is kept in this region and not registered")
+        await refresh_mv(
+            state.federation_engine,
+            mv,
+            state.mv_registry,
+            store=state.model_db,
+            ledger=state.tenant_db,
+        )
+    finally:
+        reset_current_org(token)
+
+
+def silent_regions(
+    down: dict[str, str], since: dict[str, float], now: float
+) -> tuple[list[tuple[str, str]], dict[str, float]]:
+    """Of the regions not answering now (``down``: region -> address), those that have not answered
+    for _REGION_ANSWER_GRACE_S, given when each was first found not answering (``since``); and the
+    record to carry to the next poll. A region that answers again starts over."""
+    since = {region: since.get(region, now) for region in down}
+    return [
+        (region, down[region])
+        for region, first in sorted(since.items())
+        if now - first >= _REGION_ANSWER_GRACE_S
+    ], since
+
+
+#: Why a seeding run's template was not ready, by demo (_prepare_seeding writes it out).
+_seeding_failures: dict[str, str] = {}
+
+
+async def _prepare_seeding(demo: PublishedDemo, build: bool) -> bool:
+    """:func:`_prepare` in a bundle build's seeding run: a template that is not ready, or cannot be
+    prepared, says why beside the record the build waits for (demo_replicas.seed_failure_path),
+    which ends the build at once by name instead of at the end of its budget."""
+    from provisa.api.demo_replicas import seed_failure_path
+
+    try:
+        ready = await _prepare(demo, build)
+    except Exception as exc:  # allow-ble: re-raised; its reason is written out first
+        _write_seeding_failure(seed_failure_path(demo.directory), f"{type(exc).__name__}: {exc}")
+        raise
+    if not ready:
+        _write_seeding_failure(
+            seed_failure_path(demo.directory),
+            _seeding_failures.get(demo.name, "the template was not ready"),
+        )
+    return ready
+
+
+def _write_seeding_failure(path: Path, reason: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(reason)
+
+
 async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     """Build (or only load) the template, wait until every replica it declares has landed, then
     run the ready hooks. A replica whose build failed stops the wait: the template is not ready,
@@ -1055,6 +1129,7 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         landed, failed, declared, waiting = await _replica_progress(rt)
         if failed:
             log.error("demo template %s: replicas failed to land: %s", demo.name, failed)
+            _seeding_failures[demo.name] = f"replicas failed to land: {failed}"
             return False
         # Every table of a demo is replicated always (template_seed): its template is ready when
         # each one has a landed replica, whether or not convergence has asked for all yet.
@@ -1087,18 +1162,47 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         reset_current_org(token)
     from provisa.api.demo_region_seed import (
         regional,
+        unanswered_regions,
+        view_records_here,
         views_built_here,
         views_kept_here,
+        views_unrecorded_here,
         views_waiting_here,
     )
 
     if exporting and regional():
         # REQ-2068: a region's seed carries its views too; no node of it builds them after.
         said = None
+        unanswered_since: dict[str, float] = {}
+        asked: set[str] = set()
         while (built := await views_built_here(org_id)) < (
             kept := views_kept_here(template_seed(org_id))
         ):
             waiting = await views_waiting_here(org_id)
+            # A view nothing builds -- its inputs all read in place, its refresh periodic -- is
+            # asked for once, as an operator's refresh asks (schema_mutation.refresh_mv).
+            for mv_id in views_unrecorded_here(
+                template_seed(org_id), await view_records_here(org_id)
+            ):
+                if mv_id not in asked:
+                    asked.add(mv_id)
+                    await _build_view(org_id, mv_id)
+            # A view may read a table another region keeps in place: that region's node answers
+            # at the address the deployment config declares for it, or the view never builds.
+            from provisa.api.app import state
+
+            down = dict(
+                await unanswered_regions({r.id: r.address for r in state.config.platform.regions})
+            )
+            dead, unanswered_since = silent_regions(down, unanswered_since, time.monotonic())
+            if dead:
+                reason = "views wait on " + ", ".join(
+                    f"region {region}, whose node at {address} does not answer"
+                    for region, address in dead
+                )
+                log.error("demo template %s: %s", demo.name, reason)
+                _seeding_failures[demo.name] = reason
+                return False
             if waiting != said:
                 said = waiting
                 log.warning(
