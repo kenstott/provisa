@@ -261,6 +261,17 @@ class UnwindClause:
 
 
 @dataclass
+class ProcedureCall:  # REQ-2168
+    """``CALL ns.name(args) YIELD col [AS var], … [WHERE …]`` composed in a statement: a command
+    called by its Cypher command binding, its rows a source as an UNWIND's are."""
+
+    name: str
+    args: list[CypherExpr]
+    yields: list[tuple[str, str]]  # (column the command returns, variable it is bound to)
+    where: "WhereClause | None" = None
+
+
+@dataclass
 class MatchStep:
     """One or more MATCH/OPTIONAL MATCH clauses and their associated WHERE."""
 

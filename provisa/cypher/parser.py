@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.cypher.expr_parser import parse_expression
+from provisa.gql.expr_ast import Variable
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
@@ -40,6 +41,7 @@ from provisa.gql.ir import (
     UnwindClause,
     MatchStep,
     CallSubquery,
+    ProcedureCall,
     OrderItem,
     CypherAST,
 )
@@ -103,7 +105,6 @@ _MASTER_RE = re.compile(
 )
 
 _WRITE_KEYWORDS = {"CREATE", "MERGE", "SET", "DELETE", "DETACH", "REMOVE"}
-_APOC_RE = re.compile(r"\bapoc\s*\.", re.IGNORECASE)
 
 
 @dataclass
@@ -136,6 +137,27 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
 
 #: The prefix of the name an anonymous pattern with an inline property map is given.
 INLINE_PREFIX = "__inline"
+
+
+def _in_scope(pipeline: list) -> list[str]:
+    """The variables in scope after ``pipeline``: what its last WITH carries, and what each clause
+    after it binds, in the order bound."""
+    from provisa.gql.mistakes import _names
+
+    scope: list[str] = []
+    for step in pipeline:
+        if isinstance(step, WithClause):
+            scope = []
+            for item in step.items:
+                if item.alias:
+                    scope.append(item.alias)
+                elif isinstance(item.expression, Variable):
+                    scope.append(item.expression.name)
+            continue
+        bound: set[str] = set()
+        _names(step, bound, [])
+        scope.extend(sorted(n for n in bound if n not in scope))
+    return scope
 
 
 def _where(text: str | None) -> WhereClause | None:
@@ -288,7 +310,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             elif kw == "WITH":
                 self._advance()
                 _flush_match_step()
-                pipeline.append(self._parse_with())
+                pipeline.append(self._parse_with(_in_scope(pipeline)))
 
             elif kw == "UNWIND":
                 self._advance()
@@ -297,7 +319,13 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
             elif kw == "CALL":
                 self._advance()
-                call_subqueries.append(self._parse_call_subquery())
+                _next = self._peek()
+                if _next is not None and _next.type == "IDENT":
+                    # REQ-2168: a procedure called in the statement, its rows a source.
+                    _flush_match_step()
+                    pipeline.append(self._parse_procedure_call())
+                else:
+                    call_subqueries.append(self._parse_call_subquery())
 
             elif kw == "UNION":
                 self._advance()
@@ -667,8 +695,17 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     # --- WITH ---
 
-    def _parse_with(self) -> WithClause:
-        items = self._parse_return_items()
+    def _parse_with(self, scope: list[str]) -> WithClause:
+        """``scope``: the variables in scope before it, which ``WITH *`` carries on."""
+        items: list[ReturnItem] = []
+        if (t := self._peek()) is not None and t.type == "STAR":
+            self._advance()
+            items = [ReturnItem(expression=Variable(name=n), name=n) for n in scope]
+            if (t := self._peek()) is not None and t.type == "COMMA":
+                self._advance()
+                items.extend(self._parse_return_items())
+        else:
+            items = self._parse_return_items()
         # Its ORDER BY, SKIP and LIMIT are the WITH's own: they pick the rows it carries on.
         order_by: list[OrderItem] = []
         if self._match_keyword("ORDER"):
@@ -763,6 +800,64 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         self._consume_keyword("AS")
         variable = self._expect("IDENT").value
         return UnwindClause(expression=parse_expression(expr), variable=variable)
+
+    # --- CALL procedure ---
+
+    def _parse_procedure_call(self) -> "ProcedureCall":  # REQ-2168
+        """Parse ``ns.name(args) YIELD col [AS var], … [WHERE …]`` after CALL. A call composed
+        in a statement names what it yields: its rows are a source the rest of it reads."""
+        name = [self._expect("IDENT").value]
+        while (t := self._peek()) is not None and t.type == "DOT":
+            self._advance()
+            name.append(self._expect("IDENT").value)
+        proc = ".".join(name)
+        self._expect("LPAREN")
+        args: list[str] = []
+        current: list[str] = []
+        depth = 0
+        while True:
+            t = self._peek()
+            if t is None:
+                raise CypherParseError(f"CALL {proc}: the argument list is not closed")
+            if t.type in ("LPAREN", "LBRACKET", "LBRACE"):
+                depth += 1
+            elif t.type in ("RPAREN", "RBRACKET", "RBRACE"):
+                if depth == 0:
+                    self._advance()
+                    break
+                depth -= 1
+            elif t.type == "COMMA" and depth == 0:
+                self._advance()
+                args.append(" ".join(current))
+                current = []
+                continue
+            current.append(self._advance().value)
+        if current or args:
+            args.append(" ".join(current))
+        if not self._opt_keyword("YIELD"):
+            raise CypherParseError(
+                f"CALL {proc}: name the columns it returns with YIELD: "
+                f"CALL {proc}(…) YIELD column [AS variable], …"
+            )
+        yields: list[tuple[str, str]] = []
+        while True:
+            if (t := self._peek()) is not None and t.type == "STAR":
+                raise CypherParseError(
+                    f"CALL {proc} … YIELD * is not read in a larger statement; name the columns"
+                )
+            column = self._expect("IDENT").value
+            variable = self._expect("IDENT").value if self._opt_keyword("AS") else column
+            yields.append((column, variable))
+            if (t := self._peek()) is None or t.type != "COMMA":
+                break
+            self._advance()
+        where = _where(self._parse_where()) if self._opt_keyword("WHERE") else None
+        return ProcedureCall(
+            name=proc,
+            args=[parse_expression(a) for a in args],
+            yields=yields,
+            where=where,
+        )
 
     # --- CALL subquery ---
 
@@ -940,7 +1035,7 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
 def _parse_statement(query: str) -> CypherAST:
     """Parse a read-only Cypher query into a CypherAST.
 
-    Raises CypherParseError for write clauses, APOC references, or unbounded
+    Raises CypherParseError for write clauses or unbounded
     variable-length patterns.
     """
     refuse_multiple_statements(query)
@@ -955,12 +1050,6 @@ def _parse_statement(query: str) -> CypherAST:
                 "writes (governed like any other write); MERGE, DETACH DELETE, and "
                 "REMOVE are not supported."
             )
-
-    # Reject APOC references
-    if _APOC_RE.search(query):
-        raise CypherParseError(
-            "APOC procedure references are not allowed in Provisa Cypher queries."
-        )
 
     query = _normalize_legacy_params(query)
     tokens, comments = _tokenize(query)

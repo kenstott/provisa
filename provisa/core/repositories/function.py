@@ -75,6 +75,10 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "materialize": func.materialize,
         "requires_approval": func.requires_approval,  # REQ-1924
         "writes_table": func.writes_table,  # REQ-1924, REQ-871
+        # REQ-2168: the command's name per language.
+        "language_bindings": {
+            k: v.model_dump(exclude_defaults=True) for k, v in func.language_bindings.items()
+        },
     }
     update_cols = [
         "source_id",
@@ -94,6 +98,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "materialize",
         "requires_approval",
         "writes_table",
+        "language_bindings",
     ]
     function_id = await conn.upsert_returning(
         tracked_functions,
@@ -264,6 +269,7 @@ def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
         materialize=bool(d.get("materialize", False)),
         requires_approval=bool(d.get("requires_approval", False)),
         writes_table=d.get("writes_table"),
+        language_bindings=d["language_bindings"],  # REQ-2168
     )
 
 

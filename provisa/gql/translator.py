@@ -41,6 +41,7 @@ from provisa.gql.ir import (
     MatchStep,
     NodePattern,
     PathPattern,
+    ProcedureCall,
     ReturnItem,
     UnwindClause,
     WhereClause,
@@ -65,6 +66,7 @@ from provisa.gql.translator_helpers import (
 )
 from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
+    CALL_MARKER,
     CUT_COLUMN,
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
     CypherTranslateError,
@@ -853,15 +855,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _group_pipeline(
         self,
-    ) -> list[tuple[list[MatchStep], list[UnwindClause], WithClause | None]]:
+    ) -> list[tuple[list[MatchStep], list[UnwindClause | ProcedureCall], WithClause | None]]:
         segments: list = []
         current_matches: list[MatchStep] = []
-        current_unwinds: list[UnwindClause] = []
+        current_unwinds: list[UnwindClause | ProcedureCall] = []
         for item in self._ast.pipeline:
             if isinstance(item, MatchStep):
                 current_matches.append(item)
-            elif isinstance(item, UnwindClause):
-                current_unwinds.append(item)
+            elif isinstance(item, (UnwindClause, ProcedureCall)):
+                current_unwinds.append(item)  # REQ-2168: a call's rows are a source as UNWIND's
             elif isinstance(item, WithClause):
                 segments.append((list(current_matches), list(current_unwinds), item))
                 current_matches = []
@@ -885,7 +887,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _build_unwind_joins(
         self,
-        unwinds: list[UnwindClause],
+        unwinds: list[UnwindClause | ProcedureCall],
         has_from: bool,
     ) -> tuple[exp.Expression | None, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/CROSS JOIN sources for UNWIND clauses.
@@ -896,6 +898,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         from_expr: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         cross_joins: list[dict] = []
         for uw in unwinds:
+            if isinstance(uw, ProcedureCall):  # REQ-2168
+                source = self._procedure_source(uw)
+                if not has_from and from_expr is None:
+                    from_expr = source
+                    has_from = True
+                else:
+                    cross_joins.append({"table": source, "on": None, "join_type": "CROSS"})
+                continue
             alias = f"_uw{self._unwind_count}"
             self._unwind_count += 1
             array_expr = self._build_unwind_expr(uw.expression)
@@ -921,6 +931,60 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             else:
                 cross_joins.append({"table": unnest, "on": None, "join_type": "CROSS"})
         return from_expr, cross_joins
+
+    def _call_value(self, arg: CypherExpr, call: ProcedureCall, position: int) -> Any:
+        """A CALL argument's value: a literal, a list of them, or a ``$parameter``'s value."""
+        from provisa.gql.expr_ast import ListLiteral, Literal, Parameter
+
+        if isinstance(arg, Literal):
+            return arg.value
+        if isinstance(arg, ListLiteral):
+            return [self._call_value(item, call, position) for item in arg.items]
+        if isinstance(arg, Parameter):
+            if arg.name not in self._params:
+                raise CypherTranslateError(
+                    f"CALL {call.name}: parameter ${arg.name} (argument {position}) was not supplied"
+                )
+            return self._params[arg.name]
+        raise CypherTranslateError(
+            f"CALL {call.name}: argument {position} is not a value or a $parameter"
+        )
+
+    def _procedure_source(self, call: ProcedureCall) -> exp.Expression:  # REQ-2168
+        """A composed CALL as a source: the marker table function (CALL_MARKER) aliased with the
+        variables it yields, filtered by its WHERE. Each argument's value is written into it, so
+        a statement holding one is translated for its parameters' values."""
+        import json
+
+        alias = f"_call{self._unwind_count}"
+        self._unwind_count += 1
+        variables = [var for _, var in call.yields]
+        values = [self._call_value(a, call, i + 1) for i, a in enumerate(call.args)]
+        marker = exp.Anonymous(
+            this=CALL_MARKER,
+            expressions=[
+                exp.Literal.string(call.name),
+                exp.Literal.string(json.dumps([col for col, _ in call.yields])),
+                exp.Literal.string(json.dumps(values, default=str)),
+            ],
+        )
+        table = exp.Table(
+            this=marker,
+            alias=exp.TableAlias(
+                this=exp.Identifier(this=alias),
+                columns=[exp.Identifier(this=v, quoted=True) for v in variables],
+            ),
+        )
+        for var in variables:
+            self._var_table[var] = (alias, None)
+        self._unwind_aliases.add(alias)
+        condition = self._build_where(call.where)
+        if condition is None:
+            return table
+        return exp.Subquery(
+            this=exp.select(exp.Star()).from_(table).where(condition),
+            alias=exp.TableAlias(this=exp.Identifier(this=alias)),
+        )
 
     def _register_node(self, node: "NodePattern") -> None:
         """Register a single node into var_table and domain_nodes if not already present."""
@@ -1083,6 +1147,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                             )
                             for key in sorted(keys)
                         )
+                    continue
+                if meta is None and held_in in self._unwind_aliases:
+                    # An UNWIND's or a CALL's variable is one column of its source, not a row.
+                    exprs.append(
+                        exp.alias_(self._parse_expr(expr), alias or expr_text, quoted=True)
+                    )
                     continue
                 tbl_col = exp.Column(
                     this=exp.Star(),

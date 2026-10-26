@@ -259,6 +259,8 @@ def _names(node: object, bound: set[str], used: list[str]) -> None:
         used.append(node.var)  # type: ignore[attr-defined]
     if kind == "CallSubquery":
         bound.update(node.imported_vars)  # type: ignore[attr-defined]
+    if kind == "ProcedureCall":  # REQ-2168: YIELD binds each variable it names
+        bound.update(var for _, var in node.yields)  # type: ignore[attr-defined]
     for f in dataclasses.fields(node):
         value = getattr(node, f.name)
         if (kind, f.name) in _BINDERS and isinstance(value, str):
@@ -278,6 +280,9 @@ def _clause_of(name: str, ast: CypherAST) -> str:
             parts.append(("WHERE", step.where))
         elif isinstance(step, UnwindClause):
             parts.append(("UNWIND", step.expression))
+        elif type(step).__name__ == "ProcedureCall":
+            parts.append(("CALL", step.args))  # type: ignore[attr-defined]
+            parts.append(("WHERE", step.where))  # type: ignore[attr-defined]
     parts.append(("RETURN", ast.return_clause))
     parts.append(("ORDER BY", ast.order_by))
     for clause, part in parts:

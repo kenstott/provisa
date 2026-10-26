@@ -307,7 +307,8 @@ def _build_grammar() -> pp.ParserElement:
     )
 
     # map literal: { key: value, ... }
-    map_entry = pp.Group((_ident | _sstring) + pp.Suppress(":") + expr)
+    # A map key is a name, keyword or not ({start: a, end: b}), or a quoted string.
+    map_entry = pp.Group((_ident_any | _sstring) + pp.Suppress(":") + expr)
     map_lit = (_LBRC + pp.Optional(pp.DelimitedList(map_entry)) + _RBRC).set_parse_action(
         lambda t: MapLiteral([(str(e[0]), _e(e[1])) for e in t])
     )
