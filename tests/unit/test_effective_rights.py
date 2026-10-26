@@ -142,6 +142,12 @@ def wired(monkeypatch):
         )
         monkeypatch.setattr("provisa.core.db.STANDARD_ROLES", dict.fromkeys(STANDARD))
 
+        # The data half is read from the runtime (tests/unit/test_effective_data.py).
+        async def data(_request, role_id, parents):
+            return [{"role": role_id, "parents": parents[role_id]}]
+
+        monkeypatch.setattr(roles_router, "_data_access", data)
+
     return wire
 
 
@@ -151,6 +157,7 @@ async def test_the_endpoint_answers_a_role_the_caller_may_read(wired):
     view = await roles_router.effective_rights("dq_lead", _request())
     assert view["chain"] == ["dq_lead", "dq_steward", "viewer", "dp_owner"]
     assert {"right": "export", "from": ["dq_lead"]} in view["capabilities"]
+    assert view["data"] == [{"role": "dq_lead", "parents": ["dq_steward", "dp_owner"]}]
 
 
 @pytest.mark.asyncio
