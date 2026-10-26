@@ -89199,7 +89199,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     one exists (every effort); an engine with no equivalent treats the subtype as its base type, and that
     difference is a known anomaly, listed per engine and subtype (e.g. ''inet orders as text on engine X'')
     on the engine''s compatibility page, not emulated. The engine contract test kit checks native mappings
-    and asserts the listed anomalies, so an undocumented difference fails.'
+    and asserts the listed anomalies, so an undocumented difference fails. (Amended 2026-10-25, PUSHDOWN
+    REWRITES WHERE STRAIGHTFORWARD:) Maintainer 2026-10-26: an exception to the known-anomaly rule. Where
+    a subtype''s predicate or ordering has a straightforward rewrite into an expression the engine evaluates
+    natively, so it still pushes down (e.g. normalising both sides of an inet equality with the engine''s
+    own string functions, or ordering by an engine-native sortable expression), the engine driver uses it,
+    and the case is not an anomaly. Only what has no straightforward pushdown rewrite is listed as a known
+    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
