@@ -78,6 +78,17 @@
           Provisa compiles each request and hands it to your engine. Results stream back. It scales horizontally and vertically to support your workloads, and the heavy compute is offloaded to your engine.
         </p>
 
+        <h2 id="command-bindings">Command bindings</h2>
+        <p>
+          Does Provisa support the library or tool you already use? It can: create its command bindings. A command is written once, and every language can call it, each under the name that language's callers expect. That's <code>apoc.meta.data</code> for a Cypher tool, a catalog function for a SQL client, a field in GraphQL, a tool in MCP.
+        </p>
+        <p>
+          Every command is offered in every language by default. Renaming it or leaving it out of a language is an explicit choice, and SQL is always there because everything compiles to it. Where a language expects a different result shape, that variant is its own command. Each one runs governed, so a mimicked tool call never sees more than the role may read.
+        </p>
+        <p>
+          That's how Provisa speaks APOC to Neo4j tools and agent frameworks, and it's how you teach it any other dialect yourself, without waiting for a release.
+        </p>
+
         <h2>What you can check today</h2>
         <p>
           The generated SQL is visible for any query in the <a href="/demos">explorer</a>: write a GraphQL query and the Query Language Explorer shows its Semantic SQL and Cypher translations live, beside your query, before it runs.
