@@ -1,0 +1,14 @@
+{
+  "roleRights": {
+    "tabs": "角色分區",
+    "tab_details": "詳細資料",
+    "tab_capabilities": "能力",
+    "kind_standard": "標準角色",
+    "kind_custom": "角色",
+    "kind_meta": "元角色",
+    "lineageHint": "由標準角色到此角色：每個角色列出它新增的能力；此角色列出它擁有的全部能力。",
+    "capability": "能力",
+    "from": "來自",
+    "own": "自身"
+  }
+}

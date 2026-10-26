@@ -1,0 +1,14 @@
+{
+  "roleRights": {
+    "tabs": "Role sections",
+    "tab_details": "Details",
+    "tab_capabilities": "Capabilities",
+    "kind_standard": "standard role",
+    "kind_custom": "role",
+    "kind_meta": "meta-role",
+    "lineageHint": "From the standard roles to this one: each role lists the capabilities it adds; this role lists all it holds.",
+    "capability": "Capability",
+    "from": "Comes from",
+    "own": "its own"
+  }
+}

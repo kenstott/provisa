@@ -1,0 +1,14 @@
+{
+  "roleRights": {
+    "tabs": "Rollenabschnitte",
+    "tab_details": "Details",
+    "tab_capabilities": "Berechtigungen",
+    "kind_standard": "Standardrolle",
+    "kind_custom": "Rolle",
+    "kind_meta": "Meta-Rolle",
+    "lineageHint": "Von den Standardrollen bis zu dieser: Jede Rolle listet die Berechtigungen, die sie hinzufügt; diese Rolle listet alle, die sie hält.",
+    "capability": "Berechtigung",
+    "from": "Stammt von",
+    "own": "eigene"
+  }
+}
