@@ -317,7 +317,7 @@ def test_a_lazily_built_role_serves_what_an_eager_build_served(monkeypatch) -> N
             "table_name": "orders",
             "governance": "pre-approved",
             "columns": [
-                {"column_name": "id", "visible_to": ["*"]},
+                {"column_name": "id", "visible_to": ["analyst", "steward"]},
                 {"column_name": "amount", "visible_to": ["steward"]},
             ],
             "write_ops": ["delete", "insert", "update"],
