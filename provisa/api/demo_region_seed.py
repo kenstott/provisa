@@ -331,38 +331,52 @@ async def export_seed(template_org: str, demo_directory: Path) -> None:
     )
 
 
+def append_logs(dsn: str, schema: str) -> list[str]:
+    """The bitemporal views' append logs ``schema`` holds in the store ``dsn``: its tables carrying
+    the managed recorded-time column every append log has (mv.bitemporal BitemporalSpec
+    .system_column), declared or inherited alike."""
+    import duckdb
+
+    from provisa.mv.bitemporal import BitemporalSpec
+
+    con = duckdb.connect()
+    try:
+        _attach(con, "logs_src", dsn, read_only=True)
+        return [
+            r[0]
+            for r in con.execute(
+                "SELECT DISTINCT table_name FROM duckdb_columns() WHERE database_name = 'logs_src' "
+                "AND schema_name = ? AND column_name = ? ORDER BY table_name",
+                [schema, BitemporalSpec.__dataclass_fields__["system_column"].default],
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+
 def carry_setup_history(
-    setup_org: str,
-    demo_directory: Path,
-    homes: dict[str, list[str]],
-    region_urls: dict[str, str],
-) -> None:
-    """Carry the setup's bitemporal views' history in their home regions' seeds (REQ-1162): the
-    bundle build, once each region's seeding node has written its seed. ``homes`` names each
-    region's bitemporal views' stored tables; ``region_urls`` each region's store, where the setup
-    built them as ``setup_org``. Each replaces the table the seeding node built in its region's
-    seed -- one build, where the setup's holds every close it recorded -- and the seed's record
-    names it. One the setup never built fails the build by name: the bundle would serve that view
-    with no history."""
-    for region, tables in homes.items():
+    setup_org: str, demo_directory: Path, region_urls: dict[str, str]
+) -> dict[str, list[str]]:
+    """Carry the setup's bitemporal views' history in each region's seed (REQ-1162): the bundle
+    build, once each region's seeding node has written its seed. In each region's store
+    (``region_urls``) the setup built its views as ``setup_org``; each append log there
+    (:func:`append_logs`) replaces the table the seeding node built in that region's seed -- one
+    build, where the setup's holds every close it recorded -- and the seed's record names it. A
+    plain materialized view's table is the seed's own. The tables carried, by region."""
+    carried: dict[str, list[str]] = {}
+    for region, url in region_urls.items():
+        schema = views_schema(setup_org, region)
         directory = seed_dir(demo_directory, region)
-        copied = copy_tables(
-            region_urls[region],
-            views_schema(setup_org, region),
-            f"duckdb:///{directory / _STORE}",
-            _VIEWS,
-            tables,
+        carried[region] = copy_tables(
+            url, schema, f"duckdb:///{directory / _STORE}", _VIEWS, append_logs(url, schema)
         )
-        missing = sorted(set(tables) - set(copied))
-        if missing:
-            raise RuntimeError(
-                f"region {region}: these bitemporal views were never built by the setup: "
-                + ", ".join(missing)
-            )
+        if not carried[region]:
+            continue
         record_path = directory / _RECORD
         record = json.loads(record_path.read_text())
-        record["views"] = sorted({*record["views"], *copied})
+        record["views"] = sorted({*record["views"], *carried[region]})
         record_path.write_text(json.dumps(record, indent=2, default=str) + "\n")
+    return carried
 
 
 async def adopt_seed(template_org: str, demo_directory: Path) -> bool:
@@ -480,47 +494,44 @@ def views_kept_here(config: Any) -> int:
     )
 
 
-async def views_built_here(template_org: str) -> int:
-    """How many of the template's views this node's region has built."""
+def _built_since(build: dict, since: datetime) -> bool:
+    return build["region"] == here() and (
+        build["last_refresh_at"] is not None and build["last_refresh_at"] >= since
+    )
+
+
+async def views_built_here(template_org: str, since: datetime) -> int:
+    """How many of the template's views this node's region has built since ``since`` (when every
+    replica it keeps had landed): a build before then read replicas not yet there, so a seed of
+    it would carry what they lacked."""
     [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
     _replicas, builds = await _records(state_db(template_org, store))
-    return sum(1 for b in builds if b["region"] == here() and b["last_refresh_at"] is not None)
+    return sum(1 for b in builds if _built_since(b, since))
 
 
-def views_unrecorded_here(config: Any, records: list[dict]) -> list[str]:
-    """The materialized views this node's region keeps that have no build record here at all --
-    neither built nor building -- by MV id: a view whose inputs are all read in place has no
-    replica build to fan out to it, and a periodic one waits for its next boundary."""
+def views_kept_here_ids(config: Any) -> list[str]:
+    """The materialized views this node's region keeps, by MV id: each built once its region's
+    replicas have landed, whether a replica build fans out to it or not (a view whose inputs are
+    all read in place has none; a periodic one waits for its next boundary)."""
     from provisa.api.demo_replicas import view_mv_id
     from provisa.core.models import DERIVED_SOURCE_ID
 
-    recorded = {r["mv_id"] for r in records if r["region"] == here()}
     return [
-        mv_id
+        view_mv_id(f"mv_{t.table_name}")
         for t in config.tables
-        if t.source_id == DERIVED_SOURCE_ID
-        and t.materialize
-        and t.region == here()
-        and (mv_id := view_mv_id(f"mv_{t.table_name}")) not in recorded
+        if t.source_id == DERIVED_SOURCE_ID and t.materialize and t.region == here()
     ]
 
 
-async def view_records_here(template_org: str) -> list[dict]:
-    """The template's view build records in this node's region."""
-    [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
-    _replicas, builds = await _records(state_db(template_org, store))
-    return builds
-
-
-async def views_waiting_here(template_org: str) -> str:
-    """What the template's views not yet built in this node's region wait on: each one's build
-    record here (its status and error), or that it has none."""
+async def views_waiting_here(template_org: str, since: datetime) -> str:
+    """What the template's views not built since ``since`` in this node's region wait on: each
+    one's build record here (its status and error), or that it has none."""
     [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
     _replicas, builds = await _records(state_db(template_org, store))
     recorded = [
         f"{b['mv_id']}: {b['status']}" + (f" ({b['last_error']})" if b["last_error"] else "")
         for b in builds
-        if b["region"] == here() and b["last_refresh_at"] is None
+        if b["region"] == here() and not _built_since(b, since)
     ]
     return "; ".join(recorded) or "views with no build recorded"
 

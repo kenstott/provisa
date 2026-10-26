@@ -85,11 +85,12 @@ def test_a_region_fails_the_wait_only_once_it_has_not_answered_for_the_grace():
     assert (dead, since) == ([], {})
 
 
-def test_a_view_nothing_builds_is_asked_for_once(monkeypatch):
-    """A view whose inputs are all read in place (banking's end-of-day totals, at the ledger) has
-    no replica build to fan out to it, and its calendar refresh waits for the next close: the
-    seeding run asks for its build, once. A view with a build record -- built, or building -- is
-    left to it (CI run 40318311383: 0 of 1 views built, no build recorded, for 1800 s)."""
+def test_every_view_its_region_keeps_is_built_once_its_replicas_have_landed(monkeypatch):
+    """Each view a region keeps is built by its seeding run once that region's replicas have
+    landed: banking's end-of-day totals read only in place, so no replica build fans out to it
+    (CI run 40318311383: 0 of 1 views built, no build recorded, for 1800 s), and retail's EU
+    marketing audience, built as the node started from replicas not yet landed, was carried empty
+    (CI run 40357867904). A view kept in another region is that region's."""
     from types import SimpleNamespace
 
     from provisa.core.models import DERIVED_SOURCE_ID
@@ -108,5 +109,25 @@ def test_a_view_nothing_builds_is_asked_for_once(monkeypatch):
             view("view_ledger_side", "ledger"),
         ]
     )
-    records = [{"mv_id": "view-view_rollup", "region": "warehouse"}]
-    assert demo_region_seed.views_unrecorded_here(config, records) == ["view-view_eod_totals"]
+    assert demo_region_seed.views_kept_here_ids(config) == [
+        "view-view_eod_totals",
+        "view-view_rollup",
+    ]
+
+
+def test_a_view_built_before_its_replicas_landed_is_not_built(monkeypatch):
+    """A build counts once it ran after every replica its region keeps had landed."""
+    from datetime import UTC, datetime, timedelta
+
+    monkeypatch.setattr(demo_region_seed, "here", lambda: "eu")
+    landed = datetime(2026, 10, 26, 16, 21, tzinfo=UTC)
+    early = {"region": "eu", "last_refresh_at": landed - timedelta(seconds=5)}
+    after = {"region": "eu", "last_refresh_at": landed + timedelta(seconds=5)}
+    never = {"region": "eu", "last_refresh_at": None}
+    elsewhere = {"region": "us", "last_refresh_at": landed + timedelta(seconds=5)}
+    assert [demo_region_seed._built_since(b, landed) for b in (early, after, never, elsewhere)] == [
+        False,
+        True,
+        False,
+        False,
+    ]

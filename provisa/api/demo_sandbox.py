@@ -89,6 +89,19 @@ class OpenedSandbox:
     token: str | None
 
 
+async def _sandbox_runtime(org_id: str) -> Any:
+    """Build a sandbox's runtime: on the regions sandbox tier, in its region's store (REQ-2068),
+    where its replicas and views were copied (demo_region_seed.copy_to_sandbox); elsewhere in the
+    store of its own folder."""
+    from provisa.api.app import _region_lane_of, build_org_runtime
+    from provisa.core.environments import PROD
+
+    bound = await _region_lane_of(org_id, PROD)
+    return await build_org_runtime(
+        org_id, storage_url=None if bound is None else bound.materialize_url
+    )
+
+
 def visitor_user_id(org_id: str) -> str:
     """The user minted for a visitor's sandbox: its own, and nobody else's."""
     return f"sandbox-visitor-{org_id}"
@@ -275,7 +288,7 @@ async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> O
 @model_change.commits_itself  # REQ-1524: its first commit is written below, as org creation's is
 async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> str | None:
     from provisa.api.admin.orgs_router import _admin_pool, _pool, _refresh_root_registry_view
-    from provisa.api.app import _stop_org_servers, build_org_runtime, state
+    from provisa.api.app import _stop_org_servers, state
     from provisa.codesource import uploads
     from provisa.auth.pat import PersonalAccessTokenStore
     from provisa.core import org_files
@@ -340,7 +353,7 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
             await copy_views_to_sandbox(demo.template_org, org_id, views, demo.directory)
 
     async with _stage(org_id, demo.name, "its runtime"):
-        rt = await state.org_registry.rebuild(org_id, lambda oid: build_org_runtime(oid))
+        rt = await state.org_registry.rebuild(org_id, _sandbox_runtime)
     assert rt.model_db is not None
     async with _stage(org_id, demo.name, "its person's membership and roles"):
         if kind == VISITOR:

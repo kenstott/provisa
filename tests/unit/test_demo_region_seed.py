@@ -100,46 +100,85 @@ async def test_each_node_reaps_its_own_sandboxes(monkeypatch, regional, here, re
     assert await demo_sandbox.expired(datetime.now(UTC) + timedelta(hours=1)) == reaped
 
 
+def _append_log(path, schema: str, name: str, rows: int) -> None:
+    """A bitemporal view's append log: its rows with the managed recorded-time and op columns."""
+    con = duckdb.connect(str(path))
+    con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    con.execute(
+        f'CREATE TABLE "{schema}"."{name}" AS SELECT range AS id, '
+        "now() AS sys_recorded_at, 'upsert' AS sys_op FROM range(?)",
+        [rows],
+    )
+    con.close()
+
+
 def test_a_regions_demo_s_setup_history_is_carried_in_its_home_region_s_seed(tmp_path):
     """REQ-1162, REQ-2068: the setup builds a bitemporal view's history in its home region's store,
-    as the setup's org; its seeding node then builds the view once more, as the template's. The
-    history the bundle carries is the setup's: it replaces that view's table in the region's seed,
-    and the seed's record names it."""
+    as the setup's org -- declared or inherited, its append log carries the managed recorded-time
+    column; its seeding node then builds the view once more, as the template's. The history the
+    bundle carries is the setup's: each append log the setup's org holds in a region replaces that
+    table in the region's seed, and the seed's record names it. A plain materialized view's table
+    is the seed's own."""
     from provisa.api.demo_region_seed import carry_setup_history, seed_dir, views_schema
 
     demo = tmp_path / "banking"
     seed = seed_dir(demo, "warehouse")
     seed.mkdir(parents=True)
-    region_store = _store(
-        tmp_path / "warehouse.duckdb", views_schema("default", "warehouse"), mv_eod_totals=30
-    )
-    _store(seed / "store.duckdb", "views", mv_eod_totals=1, mv_other=2)
-    (seed / "record.json").write_text(json.dumps({"tables": [], "views": ["mv_other"]}))
-
-    carry_setup_history(
-        "default", demo, {"warehouse": ["mv_eod_totals"]}, {"warehouse": region_store}
+    region = tmp_path / "warehouse.duckdb"
+    _append_log(region, views_schema("default", "warehouse"), "mv_view_eod_totals", 30)
+    region_store = _store(region, views_schema("default", "warehouse"), mv_view_plain=9)
+    _store(seed / "store.duckdb", "views", mv_view_eod_totals=1, mv_view_plain=2)
+    (seed / "record.json").write_text(
+        json.dumps({"tables": [], "views": ["mv_view_eod_totals", "mv_view_plain"]})
     )
 
+    carried = carry_setup_history("default", demo, {"warehouse": region_store})
+
+    assert carried == {"warehouse": ["mv_view_eod_totals"]}
     assert held_rows(
-        f"duckdb:///{seed / 'store.duckdb'}", "views", ["mv_eod_totals", "mv_other"]
-    ) == {
-        "mv_eod_totals": 30,
-        "mv_other": 2,
-    }
-    assert json.loads((seed / "record.json").read_text())["views"] == ["mv_eod_totals", "mv_other"]
+        f"duckdb:///{seed / 'store.duckdb'}", "views", ["mv_view_eod_totals", "mv_view_plain"]
+    ) == {"mv_view_eod_totals": 30, "mv_view_plain": 2}
+    assert json.loads((seed / "record.json").read_text())["views"] == [
+        "mv_view_eod_totals",
+        "mv_view_plain",
+    ]
 
 
-def test_a_bitemporal_view_the_setup_never_built_fails_the_build_by_name(tmp_path):
+def test_a_region_the_setup_built_no_history_in_is_left_as_seeded(tmp_path):
     from provisa.api.demo_region_seed import carry_setup_history, seed_dir, views_schema
 
     demo = tmp_path / "banking"
-    seed = seed_dir(demo, "warehouse")
+    seed = seed_dir(demo, "ledger")
     seed.mkdir(parents=True)
-    region_store = _store(tmp_path / "warehouse.duckdb", views_schema("default", "warehouse"), x=1)
+    region_store = _store(tmp_path / "ledger.duckdb", views_schema("default", "ledger"), x=1)
     _store(seed / "store.duckdb", "views", mv_other=2)
     (seed / "record.json").write_text(json.dumps({"tables": [], "views": ["mv_other"]}))
 
-    with pytest.raises(RuntimeError, match="mv_eod_totals"):
-        carry_setup_history(
-            "default", demo, {"warehouse": ["mv_eod_totals"]}, {"warehouse": region_store}
-        )
+    assert carry_setup_history("default", demo, {"ledger": region_store}) == {"ledger": []}
+    assert json.loads((seed / "record.json").read_text())["views"] == ["mv_other"]
+
+
+async def test_a_sandbox_on_the_regions_tier_runs_in_its_regions_store(monkeypatch):
+    """A regions demo's sandbox is built in the store its region names, where its replicas and
+    views were copied: built in its own folder's store instead, banking's end-of-day totals were
+    not there (CI run 40357864733: schema org_sbxrwarehouse..._rg_warehouse_mv_cache does not
+    exist). Off the regions tier it is built in its own folder's store."""
+    from provisa.api import app, demo_sandbox
+
+    built: list[tuple[str, str | None]] = []
+
+    async def build(org_id, *, storage_url=None, **_kw):
+        built.append((org_id, storage_url))
+        return SimpleNamespace()
+
+    lanes = {"sbxrwarehouse1": SimpleNamespace(materialize_url="postgresql://warehouse_store")}
+
+    async def lane_of(org_id, env):
+        assert env == "prod"
+        return lanes.get(org_id)
+
+    monkeypatch.setattr(app, "build_org_runtime", build)
+    monkeypatch.setattr(app, "_region_lane_of", lane_of)
+    await demo_sandbox._sandbox_runtime("sbxrwarehouse1")
+    await demo_sandbox._sandbox_runtime("sbxplain1")
+    assert built == [("sbxrwarehouse1", "postgresql://warehouse_store"), ("sbxplain1", None)]

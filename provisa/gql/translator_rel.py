@@ -1019,7 +1019,10 @@ class _RelJoinMixin:  # mixin for _Translator
                     )
                 else:
                     _path_tgt_alias = ""
-                self._path_vars[clause.variable] = (_path_src_alias, _path_tgt_alias, False)
+                # A variable-length pattern's path function has recorded whether it recurses
+                # (#309: its length reads the walk's hop count); a fixed path does not.
+                recursive = self._path_vars.get(clause.variable, ("", "", False))[2]
+                self._path_vars[clause.variable] = (_path_src_alias, _path_tgt_alias, recursive)
                 if (
                     rels
                     and clause.variable not in self._path_steps

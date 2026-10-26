@@ -88835,7 +88835,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     serves the ontology schema as standard RDFS/OWL/SKOS: Class terms as owl:Class, kind-of edges as rdfs:subClassOf,
     Property terms as owl:DatatypeProperty or owl:ObjectProperty with rdfs:domain and rdfs:range, sub-properties
     as rdfs:subPropertyOf, names as skos:prefLabel, definitions as skos:definition, all under the same read
-    rights as the views.'
+    rights as the views. (Amended 2026-10-25, AXIOMS JOIN INSTANCES:) Maintainer 2026-10-26, before launch:
+    a SPARQL query may join the ontology''s axioms to instance data, e.g. ?x a ?c . ?c rdfs:subClassOf*
+    :Party answers every instance of Party and of its subclasses, and rdfs:subPropertyOf chains likewise,
+    computed in SQL and governed as any read: a role that cannot read a subclass''s table gets none of its
+    instances.'
   scenario: 'Given Class term Customer bound to sales.customers (key id) with Property terms name and
     segment bound to its columns
 
@@ -89061,7 +89065,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     may be renamed or excluded; the SQL binding cannot be excluded. Always written in full as ''command
     binding'', never a bare ''binding'', since a term binding (a term bound to a column, REQ-2163) is a
     different thing; in the UI a command''s tab is Bindings and a term shows Bound columns. It is the answer
-    to ''does it support this library or tool we use?'': it can, by creating command bindings for it.'
+    to ''does it support this library or tool we use?'': it can, by creating command bindings for it. (Amended
+    2026-10-25, META IS REACHED BY EVERY ROLE:) Maintainer 2026-10-26: every role reaches the meta domain,
+    for command admission as well as schema building, under one rule rather than two. The built-in APOC
+    commands live in meta, and grants decide who may call them: they are granted to the standard roles (REQ-2155),
+    changeable like any grant. A role without the grant cannot call them, whatever its domains. (Amended
+    2026-10-25, ARGUMENT DEFAULTS:) Maintainer 2026-10-26: a command or function argument may declare a
+    default value. A call that omits it uses the default; an argument without a default stays required,
+    and omitting it is refused by name as now. Defaults are validated against the argument''s type at save.
+    Every surface honours them (SQL, Cypher CALL, GraphQL optional arguments, REST, MCP tool schemas, gRPC),
+    so apoc.meta.data() with no arguments, as older langchain_community sends, answers with its declared
+    default sample.'
   scenario: 'Given a role that reads Shelter:Employees but not Shelter:Payroll
 
     When LangChain''s Neo4j integration connects over Bolt as that role and loads the schema with apoc.meta.data
@@ -89133,3 +89147,87 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then pets.id is recorded as the primary key
 
     And a foreign key the source declares is offered as a relationship candidate'
+- id: REQ-2171
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  feature: source-registration-introspection
+  priority: MUST
+  type: behavioral
+  description: 'The canonical IR has type aliases. An alias is declared once in the IR vocabulary: a name,
+    a canonical base type, and per-surface details (the pgwire type OID and text format, the GraphQL scalar
+    name, the RDF datatype, the Arrow extension name). A source column whose native type is an aliased type
+    registers as its canonical base type carrying the alias: a Postgres inet column is canonical text with
+    alias inet. Every surface that needs only the canonical type treats it as the base type (filters, joins,
+    aggregation, the engines); surfaces that care read the alias: pgwire reports the alias''s type OID and
+    sends the value in Postgres''s text form, GraphQL names the alias''s scalar (serialized as its base),
+    RDF uses its datatype. [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded by SUBTYPE SEMANTICS ON EVERY
+    ENGINE. Kept here for history; do not implement against it.] An alias adds names and wire details only,
+    never new comparison or arithmetic rules; [END SUPERSEDED BLOCK] a type needing its own operators is
+    a real IR type. First set: inet (text, pgwire 869, GraphQL IPAddress; Trino ipaddress and ClickHouse
+    IPv4/IPv6 map to it), cidr (text, 650, CIDR), macaddr (text, 829, MACAddress), xml (text, 142), point
+    (text, 600), oid (bigint, 26), money (numeric, 790, Postgres money text format). Binary pgwire encoding
+    of an alias is listed as a difference on the pgwire Conformance page unless a tool needs it. Source
+    drivers (REQ-2169) can declare aliases for their own types. (Amended 2026-10-25, ALIAS WHERE SUPPORTED,
+    BASE ELSEWHERE:) Maintainer 2026-10-26: the rule is uniform for engines and language surfaces alike.
+    Where the native engine (or store) or the downstream surface supports the aliased type, it uses the
+    alias''s native form: a Postgres or Trino engine keeps inet/ipaddress, a replica into a store with the
+    type lands it natively, pgwire reports the alias''s OID, GraphQL names the alias''s scalar. Where it
+    does not, it uses the canonical base type. Each engine driver and surface declares which aliases it
+    supports; nothing is guessed. (Amended 2026-10-25, TYPE MAPPINGS KEY ON ALIASES:) Maintainer 2026-10-26,
+    the simpler rule: every engine''s and surface''s type mapping simply includes the aliases. An alias
+    maps to that engine''s or surface''s equivalent type where one exists (Trino ipaddress, Postgres inet,
+    ClickHouse IPv6, DuckDB''s inet; pgwire OID 869; GraphQL IPAddress), and a mapping with no entry for
+    an alias maps it as its base type. Declaring support is just adding the alias to the mapping; there
+    is no separate support list. (Amended 2026-10-25, TERM: SUBTYPE:) Maintainer 2026-10-26: the term is
+    subtype, not alias. Some IR types are subtypes of another IR type: inet is a subtype of text, oid of
+    bigint, money of numeric. [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded by SUBTYPE SEMANTICS ON
+    EVERY ENGINE. Kept here for history; do not implement against it.] A subtype has its base type''s semantics
+    everywhere [END SUPERSEDED BLOCK] (comparison, ordering, filters, joins, governance); a type mapping
+    that has no entry for a subtype maps it as its base type. Every ''alias'' above reads as ''subtype'',
+    in code, UI and docs. (Amended 2026-10-25, REGISTRATION ALWAYS RECORDS THE SUBTYPE:) Maintainer 2026-10-26:
+    table registration always records the subtype when the source''s native type has one (a Postgres inet,
+    a Trino ipaddress, a ClickHouse IPv4 registers as inet), never the bare base type. Each source driver''s
+    type mapping maps its native types to subtypes the same way engines and surfaces map subtypes outward.
+    Whether a subtype is used afterwards is then each engine''s and surface''s own choice. (Amended 2026-10-25,
+    CROSS-SOURCE TYPE AUDIT:) Maintainer 2026-10-26: equivalent ideas exist under different names across
+    source types, so every source driver''s type mapping is audited against the subtypes: each native type
+    equivalent to a subtype maps to it on registration (inet: Postgres/CockroachDB/YugabyteDB inet and cidr,
+    Trino ipaddress, ClickHouse IPv4/IPv6, Elasticsearch ip, Cassandra inet, DuckDB INET; money: SQL Server
+    money and smallmoney; xml: SQL Server and Oracle XML types; point: MySQL POINT, Elasticsearch geo_point;
+    and so on). The audit also lists native types that suggest a new subtype; those are proposed to the
+    maintainer, not added unasked. (Amended 2026-10-25, SUBTYPE SEMANTICS ON EVERY ENGINE:) Maintainer 2026-10-26:
+    engine mapping is not low stakes; engines make every effort to map types correctly. Each subtype states
+    its semantics (ordering, equality, comparison); where it states none, its base type''s apply. inet orders
+    numerically and compares as an address (10.0.0.1 equals 10.0.0.1/32); money behaves as numeric; xml,
+    macaddr and point as text. Every engine driver maps each subtype to an equivalent with those semantics
+    (Postgres inet, Trino ipaddress, ClickHouse IPv6), and [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded
+    by KNOWN ANOMALY WHERE AN ENGINE LACKS THE TYPE. Kept here for history; do not implement against it.]
+    an engine with no native equivalent delivers the semantics on the base type itself [END SUPERSEDED BLOCK]
+    (a sortable normalised form for ordering, normalised comparison for equality), never plain base-type
+    behaviour. The engine driver contract test kit (REQ-2169) checks every subtype''s semantics on every
+    engine, so moving between engines never changes an answer. (Amended 2026-10-25, KNOWN ANOMALY WHERE
+    AN ENGINE LACKS THE TYPE:) Maintainer 2026-10-26: emulating a subtype''s semantics on an engine without
+    the type is more challenging than it is worth. Engines map every subtype to a native equivalent wherever
+    one exists (every effort); an engine with no equivalent treats the subtype as its base type, and that
+    difference is a known anomaly, listed per engine and subtype (e.g. ''inet orders as text on engine X'')
+    on the engine''s compatibility page, not emulated. The engine contract test kit checks native mappings
+    and asserts the listed anomalies, so an undocumented difference fails. (Amended 2026-10-25, PUSHDOWN
+    REWRITES WHERE STRAIGHTFORWARD:) Maintainer 2026-10-26: an exception to the known-anomaly rule. Where
+    a subtype''s predicate or ordering has a straightforward rewrite into an expression the engine evaluates
+    natively, so it still pushes down (e.g. normalising both sides of an inet equality with the engine''s
+    own string functions, or ordering by an engine-native sortable expression), the engine driver uses it,
+    and the case is not an anomaly. Only what has no straightforward pushdown rewrite is listed as a known
+    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used.'
+  scenario: 'Given a Postgres source table with an inet column ip
+
+    When it is registered
+
+    Then ip is canonical text with alias inet
+
+    And a pgwire query of ip reports type OID 869 and the value as Postgres''s text form
+
+    And GraphQL types ip as IPAddress
+
+    And a SQL filter ip = ''10.0.0.1'' compares it as text'
