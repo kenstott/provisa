@@ -169,6 +169,23 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
     assert done == ["up", "bundles", "seed", "no empty replica", "dump", "down"]
 
 
+def test_a_published_demo_in_regions_no_regions_tier_serves_is_not_built(tmp_path, monkeypatch):
+    """The regions sandbox tier serves only the demos PROVISA_SANDBOX_REGIONS_DEMOS names; a
+    published demo in regions it does not name is refused before its stores come up."""
+    named = tmp_path / "named"
+    demo = named / "zoo"
+    demo.mkdir(parents=True)
+    (demo / "demo.yaml").write_text(
+        "requires_provisa: 0.1.0a483\npublished: true\nregions: {headless: [eu], visitor: us}\n"
+    )
+    monkeypatch.setattr(builder.Stores, "up", lambda self: pytest.fail("its stores came up"))
+    args = argparse.Namespace(
+        name="zoo", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
+    )
+    with pytest.raises(SystemExit, match="PROVISA_SANDBOX_REGIONS_DEMOS"):
+        builder.build(args)
+
+
 def test_the_bundle_action_installs_a_demo_s_extras_before_it_builds():
     action = yaml.safe_load(
         (_REPO / ".github" / "actions" / "demo-bundle" / "action.yml").read_text()
