@@ -1,0 +1,14 @@
+{
+  "roleRights": {
+    "tabs": "Rolsecties",
+    "tab_details": "Details",
+    "tab_capabilities": "Rechten",
+    "kind_standard": "standaardrol",
+    "kind_custom": "rol",
+    "kind_meta": "metarol",
+    "lineageHint": "Van de standaardrollen tot deze: elke rol noemt de rechten die hij toevoegt; deze rol noemt alle rechten die hij heeft.",
+    "capability": "Recht",
+    "from": "Komt van",
+    "own": "eigen"
+  }
+}

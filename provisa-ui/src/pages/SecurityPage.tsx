@@ -22,6 +22,7 @@ import {
   NumberInput,
   Stack,
   Table,
+  Tabs,
   Text,
   TextInput,
   Textarea,
@@ -40,6 +41,7 @@ import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ResidencyGrant } from "../components/admin/ResidencyGrant";
 import { RoleRead } from "./security/RoleRead";
+import { RoleCapabilities } from "./security/RoleCapabilities";
 import { SessionValuesField } from "./security/SessionValuesField";
 import { CapabilityGrid, DomainsNote, SubtreeNote } from "./security/RoleFormParts";
 import { useRegionChoices } from "../hooks/useRegionQueries";
@@ -396,7 +398,23 @@ export function SecurityRolesPage() {
           </PanelActions>
         )}
         {editingRoleInRow !== r.id ? (
-          <RoleRead role={r} />
+          // REQ-2161: the role's values, then its effective rights by dimension.
+          <Tabs defaultValue="details" keepMounted={false}>
+            <Tabs.List mb="sm" aria-label={t("roleRights.tabs")}>
+              <Tabs.Tab value="details" data-testid={`role-tab-details-${r.id}`}>
+                {t("roleRights.tab_details")}
+              </Tabs.Tab>
+              <Tabs.Tab value="capabilities" data-testid={`role-tab-capabilities-${r.id}`}>
+                {t("roleRights.tab_capabilities")}
+              </Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel value="details">
+              <RoleRead role={r} />
+            </Tabs.Panel>
+            <Tabs.Panel value="capabilities">
+              <RoleCapabilities roleId={r.id} />
+            </Tabs.Panel>
+          </Tabs>
         ) : (
           <FormLayout>
             {/* REQ-2080: required. A role says what it is for, in words an access review reads. */}

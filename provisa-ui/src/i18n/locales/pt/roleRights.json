@@ -1,0 +1,14 @@
+{
+  "roleRights": {
+    "tabs": "Seções da função",
+    "tab_details": "Detalhes",
+    "tab_capabilities": "Capacidades",
+    "kind_standard": "função padrão",
+    "kind_custom": "função",
+    "kind_meta": "metafunção",
+    "lineageHint": "Das funções padrão até esta: cada função lista as capacidades que acrescenta; esta função lista todas as que possui.",
+    "capability": "Capacidade",
+    "from": "Vem de",
+    "own": "própria"
+  }
+}
