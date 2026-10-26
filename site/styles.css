@@ -208,9 +208,6 @@ code { font-family: var(--mono); font-size: .87rem; line-height: 1.7; color: #cb
 }
 .jobs-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 24px; }
 .job { grid-column: span 2; }
-/* Five cards: centre the trailing pair under the first row of three. */
-.jobs-grid > .job:nth-child(4) { grid-column: 2 / span 2; }
-.jobs-grid > .job:nth-child(5) { grid-column: 4 / span 2; }
 .job {
   display: block; padding: 26px; border-radius: var(--radius);
   border: 1px solid var(--border); background: var(--surface); color: inherit;
@@ -233,7 +230,7 @@ code { font-family: var(--mono); font-size: .87rem; line-height: 1.7; color: #cb
 .job-more + .job-more { margin-left: 18px; }
 @media (max-width: 860px) {
   .jobs-grid { grid-template-columns: 1fr; }
-  .jobs-grid > .job, .jobs-grid > .job:nth-child(4), .jobs-grid > .job:nth-child(5) { grid-column: auto; }
+  .jobs-grid > .job { grid-column: auto; }
   .jobs { padding-top: 48px; }
 }
 @media (prefers-reduced-motion: reduce) { .job:hover { transform: none; } }

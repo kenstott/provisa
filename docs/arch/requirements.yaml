@@ -88840,7 +88840,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     serves the ontology schema as standard RDFS/OWL/SKOS: Class terms as owl:Class, kind-of edges as rdfs:subClassOf,
     Property terms as owl:DatatypeProperty or owl:ObjectProperty with rdfs:domain and rdfs:range, sub-properties
     as rdfs:subPropertyOf, names as skos:prefLabel, definitions as skos:definition, all under the same read
-    rights as the views.'
+    rights as the views. (Amended 2026-10-25, AXIOMS JOIN INSTANCES:) Maintainer 2026-10-26, before launch:
+    a SPARQL query may join the ontology''s axioms to instance data, e.g. ?x a ?c . ?c rdfs:subClassOf*
+    :Party answers every instance of Party and of its subclasses, and rdfs:subPropertyOf chains likewise,
+    computed in SQL and governed as any read: a role that cannot read a subclass''s table gets none of its
+    instances.'
   scenario: 'Given Class term Customer bound to sales.customers (key id) with Property terms name and
     segment bound to its columns
 
@@ -89066,7 +89070,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     may be renamed or excluded; the SQL binding cannot be excluded. Always written in full as ''command
     binding'', never a bare ''binding'', since a term binding (a term bound to a column, REQ-2163) is a
     different thing; in the UI a command''s tab is Bindings and a term shows Bound columns. It is the answer
-    to ''does it support this library or tool we use?'': it can, by creating command bindings for it.'
+    to ''does it support this library or tool we use?'': it can, by creating command bindings for it. (Amended
+    2026-10-25, META IS REACHED BY EVERY ROLE:) Maintainer 2026-10-26: every role reaches the meta domain,
+    for command admission as well as schema building, under one rule rather than two. The built-in APOC
+    commands live in meta, and grants decide who may call them: they are granted to the standard roles (REQ-2155),
+    changeable like any grant. A role without the grant cannot call them, whatever its domains. (Amended
+    2026-10-25, ARGUMENT DEFAULTS:) Maintainer 2026-10-26: a command or function argument may declare a
+    default value. A call that omits it uses the default; an argument without a default stays required,
+    and omitting it is refused by name as now. Defaults are validated against the argument''s type at save.
+    Every surface honours them (SQL, Cypher CALL, GraphQL optional arguments, REST, MCP tool schemas, gRPC),
+    so apoc.meta.data() with no arguments, as older langchain_community sends, answers with its declared
+    default sample.'
   scenario: 'Given a role that reads Shelter:Employees but not Shelter:Payroll
 
     When LangChain''s Neo4j integration connects over Bolt as that role and loads the schema with apoc.meta.data

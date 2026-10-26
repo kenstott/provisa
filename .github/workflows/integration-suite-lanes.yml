@@ -66,6 +66,8 @@ on:
     secrets:
       ANTHROPIC_API_KEY:
         required: false
+      OPENROUTER_API_KEY:
+        required: false
       SPLUNKBASE_USERNAME:
         required: false
       SPLUNKBASE_PASSWORD:
@@ -327,6 +329,7 @@ jobs:
     secrets:
       # The e2e lane's LLM-evaluation tests reach the live model.
       ANTHROPIC_API_KEY: ${{ matrix.lane == 'e2e' && secrets.ANTHROPIC_API_KEY || '' }}
+      OPENROUTER_API_KEY: ${{ matrix.lane == 'e2e' && secrets.OPENROUTER_API_KEY || '' }}
       # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
       SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
       SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}

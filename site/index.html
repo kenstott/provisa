@@ -58,9 +58,9 @@
         <h1 class="hero-hook" aria-live="polite">
           <span class="hook-rotate">
             <span class="hook-pair is-active" aria-hidden="false">Connect Postgres, Snowflake and Salesforce.<br />Query with SQL, GraphQL or your AI agent.<br />In 5 minutes.</span>
-            <span class="hook-pair" aria-hidden="true">Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</span>
-            <span class="hook-pair" aria-hidden="true">Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</span>
-            <span class="hook-pair" aria-hidden="true">Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</span>
+            <span class="hook-pair" aria-hidden="true" hidden>Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</span>
+            <span class="hook-pair" aria-hidden="true" hidden>Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</span>
+            <span class="hook-pair" aria-hidden="true" hidden>Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</span>
           </span>
         </h1>
         <p class="lead">Governed from the first query.</p>
@@ -276,9 +276,11 @@
         <p class="whatis-name">One model: federation, metrics, ontology and governance.</p>
         <p class="whatis-def">
           Those are usually four tools, each holding its own description of the same data.
-          Here they come from one model, so there is nothing to drift. Data catalogs that
-          provide a context layer tell an agent what it should do; Provisa enforces what it
-          can do.
+          Keep the ones you have, and Provisa keeps them in sync from one model: it publishes
+          to your catalog and lineage tools, and imports from your semantic layer. Or use
+          Provisa on its own; the extra tools are optional. Either way there is nothing to
+          drift. Data catalogs that provide a context layer tell an agent what it should do;
+          Provisa enforces what it can do.
         </p>
         <a class="more" href="/why/one-model">One model — what each part covers</a>
         <a class="more" href="/why/no-lock-in#promote-config">Every change is versioned, and promoted through environments</a>
@@ -651,16 +653,12 @@
             Docker, no JVM and no cluster. Launch it and pick the guided demo:
             a sample federation is already bundled, so you can run SQL, GraphQL, and
             Cypher over it before you connect anything of your own.
-            Prefer not to install anything? A hosted service is planned; meanwhile you can
-            see what it looks like and connect your own sources in the browser at
+            Prefer not to install anything? Connect your own sources in the browser at
             <a href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener">sandbox.provisa.dev</a>.
           </p>
           <p class="section-sub dl-license">
-            Business Source License 1.1. Non-production use, including evaluation, is
-            free forever, for any size organization. Production use is also free for any organization that, together with
-            its affiliates, has fewer than
-            100 employees and contractors and under $1,000,000 in annual revenue, budget,
-            or expenditures. Each release converts to GPL v2-or-later four years after it ships.
+            Free to evaluate, for any size of organization.
+            <a href="https://github.com/kenstott/provisa/blob/main/LICENSE" target="_blank" rel="noopener">License terms &rarr;</a>
           </p>
         </header>
 
@@ -912,9 +910,11 @@
       function next() {
         pairs[current].classList.remove('is-active');
         pairs[current].setAttribute('aria-hidden', 'true');
+        pairs[current].hidden = true;
         current = (current + 1) % pairs.length;
         pairs[current].classList.add('is-active');
         pairs[current].setAttribute('aria-hidden', 'false');
+        pairs[current].hidden = false;
       }
       setInterval(next, 4000);
     })();
