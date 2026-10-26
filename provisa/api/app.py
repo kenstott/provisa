@@ -35,7 +35,7 @@ from provisa.federation.colocation import colocation_key
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
-from provisa.api.role_surface import RoleSurface
+from provisa.api.role_surface import LazySurface, RoleSurface
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_file import router as redirect_file_router
 from provisa.api.data.signal import router as signal_router
@@ -881,7 +881,7 @@ class AppState:
         self._active_runtime().user_attributes = value
 
     @property
-    def surfaces(self) -> dict[str, RoleSurface]:
+    def surfaces(self) -> dict[str, RoleSurface | LazySurface]:
         """role id -> the role's whole data surface, from one build (api/role_surface.py)."""
         return self._active_runtime().surfaces
 
@@ -1063,6 +1063,15 @@ class AppState:
     @view_context.setter
     def view_context(self, value: CompilationContext | None) -> None:
         self._active_runtime().view_context = value
+
+    @property
+    def view_path_map(self) -> dict | None:
+        """The model-wide path map (OrgRuntime.view_path_map)."""
+        return self._active_runtime().view_path_map
+
+    @view_path_map.setter
+    def view_path_map(self, value: dict | None) -> None:
+        self._active_runtime().view_path_map = value
 
     @property
     def rls_contexts(self) -> MutableMapping[str, RLSContext]:
@@ -3327,24 +3336,28 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                 )
             )
 
-        _checked = _build_and_register_schemas(
-            roles=roles,
-            tables=tables,
-            relationships=relationships,
-            col_types_converted=col_types_converted,
-            naming_rules=naming_rules,
-            domains=domains,
-            domain_prefix=domain_prefix,
-            kafka_physical=kafka_physical,
-            tracked_functions=tracked_functions,
-            tracked_webhooks=tracked_webhooks,
-            gql_object_cols=_gql_object_cols,
-            rls_rules=rls_rules,
-            metrics=_metric_dicts,  # REQ-1319
-            field_numbers=_field_numbers,
-            draft_tables=draft_tables,  # REQ-1921
-        )
+    # REQ-1882, REQ-1900: the per-role compile needs no database, and is the rebuild's longest
+    # phase: it runs with this rebuild's connection given back, so concurrent requests and the
+    # health probe are not kept waiting at the connection gate for all of it.
+    _checked = _build_and_register_schemas(
+        roles=roles,
+        tables=tables,
+        relationships=relationships,
+        col_types_converted=col_types_converted,
+        naming_rules=naming_rules,
+        domains=domains,
+        domain_prefix=domain_prefix,
+        kafka_physical=kafka_physical,
+        tracked_functions=tracked_functions,
+        tracked_webhooks=tracked_webhooks,
+        gql_object_cols=_gql_object_cols,
+        rls_rules=rls_rules,
+        metrics=_metric_dicts,  # REQ-1319
+        field_numbers=_field_numbers,
+        draft_tables=draft_tables,  # REQ-1921
+    )
 
+    async with state.model_db.acquire() as conn:
         await persist_field_numbers(conn, _field_numbers)
 
         # REQ-2129: this build's column lineage edges, read by the meta domain's lineage views.

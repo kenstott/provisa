@@ -465,7 +465,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         from provisa.security.rights import require_role
 
         _role = require_role(_state.roles, role_id)
-        _surface = _state.surfaces[role_id]  # one snapshot: parts of one build
+        from provisa.api.role_surface import built_surface
+
+        _surface = built_surface(_state.surfaces[role_id])  # one snapshot: parts of one build
         _gov = build_governance_context(
             role_id,
             _surface.rls,

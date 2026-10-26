@@ -215,22 +215,12 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
 def build_catalog_tables_from_context(state) -> list[CatalogTable]:  # REQ-127, REQ-128
     """Build catalog tables using in-memory compilation contexts.
 
-    This is faster than querying PG and works in test scenarios.
-    Iterates over all role contexts and merges the broadest view.
+    This is faster than querying PG and works in test scenarios. It reads the model-wide
+    context, the broadest view there is, so no role's surface is built to answer it.
     """
-    # Find the role with the broadest access
-    best_role_id = None
-    best_count = -1
-    for role_id, ctx in state.contexts.items():
-        count = len(getattr(ctx, "table_map", {}))
-        if count > best_count:
-            best_count = count
-            best_role_id = role_id
-
-    if best_role_id is None:
+    ctx = state.view_context
+    if ctx is None:
         return []
-
-    ctx = state.contexts[best_role_id]
     table_map = getattr(ctx, "table_map", {})
     # REQ-1415: the model's tag assignments, as the rebuild hydrated them into its config.
     table_tags, column_tags = tags_by_object(

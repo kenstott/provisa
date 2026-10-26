@@ -136,7 +136,9 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
     source_type = state.source_types[source_id]
 
     # Collect all tables referenced in the selection (root + related via joins)
-    surface = state.surfaces[role_id]  # one snapshot: the parts are of one build
+    from provisa.api.role_surface import built_surface
+
+    surface = built_surface(state.surfaces[role_id])  # one snapshot: the parts are of one build
     ctx = surface.context
     related_tables = (
         _collect_related_tables(

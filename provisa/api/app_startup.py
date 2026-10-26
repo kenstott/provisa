@@ -328,6 +328,10 @@ async def _start_servers(_log: logging.Logger) -> None:
     from provisa.core.connection_loop import set_process_loop
 
     set_process_loop(asyncio.get_running_loop())
+    # REQ-1882: what every request awaits, on a timer, when PROVISA_TASK_DUMP_S asks for it.
+    from provisa.core.task_dump import start_from_env as _start_task_dump
+
+    _start_task_dump()
 
     if state.wire_proto:
         try:

@@ -524,9 +524,11 @@ def test_the_sampler_shows_process_names_and_arguments_and_no_credential():
     commands = "\n".join(
         line for line in script.splitlines() if line.strip() and not line.lstrip().startswith("#")
     )
-    # `ps` is asked for the arguments column and no environment (no `e` modifier, no /proc read).
+    # A process's arguments are read from /proc/<pid>/cmdline, and `ps` is asked for no column
+    # beyond pid and memory (no `e` modifier): nothing reads a process's environment.
     (asked,) = re.findall(r"ps (-\S+ \S+)", commands)
-    assert asked == "-eo pid=,pcpu=,pmem=,rss=,args="
+    assert asked == "-eo pid=,pmem=,rss="
+    assert "/proc/$1/cmdline" in commands
     assert "environ" not in commands and "printenv" not in commands
     redact = re.search(r"sed -E '(s/.*?/Ig)'", script).group(1).removesuffix("Ig") + "g"
     shown = subprocess.run(  # noqa: S603 -- the script's own expression, on made-up lines

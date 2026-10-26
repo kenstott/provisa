@@ -360,10 +360,11 @@ def _dq_dataset_of(table_id: int) -> str | None:
     from provisa.api.app import state
     from provisa.dq.contract import meta_dataset
 
-    for ctx in state.contexts.values():
-        for meta in ctx.tables.values():
-            if meta.table_id == table_id:
-                return meta_dataset(meta)
+    # The model-wide context: every table, with no role's surface built to read it.
+    ctx = state.view_context
+    for meta in ctx.tables.values() if ctx is not None else []:
+        if meta.table_id == table_id:
+            return meta_dataset(meta)
     return None
 
 
@@ -510,10 +511,12 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
 
         from provisa.api.app import state
         from provisa.core.schema_org import registered_tables
-        from provisa.dq.contract import contract_dataset, resolve_contract_target
+        from provisa.dq.contract import contract_dataset, model_contexts, resolve_contract_target
 
         checker = state.source_types[self.source_id]
-        meta = resolve_contract_target(contract_dataset(self.dq_contract, checker), state.contexts)
+        meta = resolve_contract_target(
+            contract_dataset(self.dq_contract, checker), model_contexts(state)
+        )
         if state.model_db is None:
             raise RuntimeError("tenant database not connected")
         async with state.model_db.acquire() as conn:
