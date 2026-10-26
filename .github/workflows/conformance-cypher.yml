@@ -1,0 +1,184 @@
+name: Conformance (Cypher)
+
+# REQ-2167: Provisa's Cypher over HTTP against the openCypher TCK (github.com/opencypher/openCypher,
+# tck/features, Apache-2.0), fetched at a pinned tag by git, never vendored, and run by
+# scripts/conformance/cypher_tck.py against POST /data/cypher as org_admin.
+#
+# A failing scenario is data, written to the job summary and to the artifact conformance-cypher.json
+# (read by scripts/conformance/fill_docs.py into docs/conformance/cypher.md), never a job failure. A
+# scenario whose setup builds its own graph is counted apart as not runnable by design: a Provisa
+# graph's vocabulary is its model's. The job fails only when the Provisa instance did not start or
+# the suite did not run.
+#
+# The instance is the pgwire conformance job's: the embedded PostgreSQL control plane and
+# `uvicorn main:app` on the DuckDB engine, natively on the runner, its model loaded by
+# PUT /admin/config; no auth provider, so the x-provisa-role header names the role.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-cypher-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cypher:
+    name: Cypher conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      TCK_REPO: https://github.com/opencypher/openCypher.git
+      TCK_VERSION: "2024.3"
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - name: Fetch the openCypher TCK
+        run: |
+          git clone --quiet --depth 1 --branch "$TCK_VERSION" "$TCK_REPO" "$RUNNER_TEMP/opencypher"
+          head -n 3 "$RUNNER_TEMP/opencypher/LICENSE"
+          grep -q "Apache License" "$RUNNER_TEMP/opencypher/LICENSE"
+          find "$RUNNER_TEMP/opencypher/tck/features" -name '*.feature' | wc -l
+
+      - name: Seed the PostgreSQL fixture
+        run: |
+          .venv/bin/python scripts/conformance/pgwire_catalog_types.py seed \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+
+      # The model, and how it presents the fixture under the names PostgreSQL gives it, so the same
+      # statement runs unchanged on both servers:
+      #   domain  conformance           -> the pgwire schema `conformance`
+      #   source  conformance-pg        -> the PostgreSQL service above (postgresql)
+      #   table   types_fixture         -> registered from schema `conformance`, alias types_fixture
+      #   columns c_bool .. c_point     -> their own names, each declared with the type
+      #                                    registration gives that PostgreSQL type, visible to
+      #                                    org_admin; a type registration refuses (inet, money,
+      #                                    xml, ...) is left out and named in the type report
+      # naming.domain_prefix is false, so the table keeps its own name under the domain's schema.
+      # The full model is scripts/conformance/pgwire_catalog_types.py (provisa_config).
+      - name: Start the Provisa instance
+        id: start
+        run: |
+          home="$RUNNER_TEMP/provisa"
+          mkdir -p "$home"
+          .venv/bin/python scripts/conformance/pgwire_catalog_types.py config \
+            --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT"
+          started=$(.venv/bin/python -m provisa.core.control_plane_pg start "$home/control-pg" --init-sql db/init.sql)
+          cp_host=$(sed -n 's/^PG_HOST=//p' <<<"$started")
+          cp_port=$(sed -n 's/^PG_PORT=//p' <<<"$started")
+          cp_password=$(sed -n 's/^PG_PASSWORD=//p' <<<"$started")
+          echo "::add-mask::$cp_password"
+          test -n "$cp_host" && test -n "$cp_port" && test -n "$cp_password"
+          cp_url="postgresql+psycopg://provisa:$cp_password@/provisa?host=$cp_host&port=$cp_port"
+          key=$(python3 -c 'import base64, os; print(base64.b64encode(os.urandom(32)).decode())')
+          echo "::add-mask::$key"
+          GRPC_PORT=$((PROVISA_API_PORT + 1)) \
+          FLIGHT_PORT=$((PROVISA_API_PORT + 2)) \
+          PROVISA_BOLT_PORT=$((PROVISA_API_PORT + 3)) \
+          PROVISA_MCP_PORT=$((PROVISA_API_PORT + 4)) \
+          PROVISA_DATA_DIR="$home" \
+          PROVISA_TELEMETRY_DIR="$home/telemetry" \
+          PROVISA_CONFIG="$home/provisa.yaml" \
+          PROVISA_HOME="$home" \
+          PROVISA_LICENSING_SANDBOX_DIR="$home/licensing" \
+          PYTHON_KEYRING_BACKEND=tests._memory_keyring.MemoryKeyring \
+          PROVISA_ENCRYPTION_KEY="$key" \
+          ORG_ID=conformance \
+          TENANT_DATABASE_URL="$cp_url" \
+          PLATFORM_DATABASE_URL="$cp_url" \
+            nohup .venv/bin/uvicorn main:app --host 127.0.0.1 --port "$PROVISA_API_PORT" \
+            > "$home/server.log" 2>&1 &
+          echo $! > "$home/server.pid"
+          for _ in $(seq 1 90); do
+            curl -sf "http://127.0.0.1:$PROVISA_API_PORT/health" >/dev/null && break
+            sleep 2
+          done
+          curl -sf "http://127.0.0.1:$PROVISA_API_PORT/health" >/dev/null || { echo "::error::Provisa never answered /health"; tail -n 200 "$home/server.log"; exit 1; }
+          # The model, as global-setup.ts bootstraps each backend (PUT /admin/config).
+          status=$(curl -s -o "$home/config-response.txt" -w '%{http_code}' --retry 5 --retry-all-errors --retry-delay 3 \
+            -X PUT -H 'Content-Type: application/yaml' --data-binary @"$home/provisa.yaml" \
+            "http://127.0.0.1:$PROVISA_API_PORT/admin/config")
+          if [ "${status:0:1}" != "2" ]; then
+            echo "::error::PUT /admin/config answered $status"; cat "$home/config-response.txt"; tail -n 200 "$home/server.log"; exit 1
+          fi
+          # Warm (REQ-1882's readiness probe): the first statement is not paying for the warm-up.
+          for _ in $(seq 1 90); do
+            curl -sf "http://127.0.0.1:$PROVISA_API_PORT/ready" >/dev/null && break
+            sleep 2
+          done
+          curl -sf "http://127.0.0.1:$PROVISA_API_PORT/ready" >/dev/null || { echo "::error::Provisa never answered /ready"; tail -n 200 "$home/server.log"; exit 1; }
+          for _ in $(seq 1 60); do
+            (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null && break
+            sleep 2
+          done
+          (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null || { echo "::error::pgwire never listened on $PROVISA_PGWIRE_PORT"; tail -n 200 "$home/server.log"; exit 1; }
+          echo "Provisa is up: API $PROVISA_API_PORT, pgwire $PROVISA_PGWIRE_PORT"
+
+      - name: Run the TCK
+        timeout-minutes: 40
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          .venv/bin/python scripts/conformance/cypher_tck.py \
+            "$RUNNER_TEMP/opencypher/tck/features" "$TCK_VERSION" \
+            "http://127.0.0.1:$PROVISA_API_PORT" org_admin \
+            "$RUNNER_TEMP/report/conformance-cypher.json" "$RUNNER_TEMP/report/conformance-cypher.md"
+          cat "$RUNNER_TEMP/report/conformance-cypher.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        run: cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/" || true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-cypher
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi

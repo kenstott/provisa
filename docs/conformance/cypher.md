@@ -16,9 +16,11 @@ Dynamic labels and relationship types (e.g. `MATCH (n:$label)`) are not supporte
 
 ### Add-ins
 
-APOC procedures and GDS algorithms are not available inline. Where a procedure is commonly needed, Provisa offers it as a command. For others, use `apoc.bolt.load` or `apoc.bolt.execute` from your own Neo4j instance querying Provisa over Bolt, so your store runs the procedure and Provisa provides the data.
+The APOC calls Cypher tools and agent frameworks make are offered as commands and functions: `apoc.meta.data`, `apoc.meta.schema` and `apoc.schema.nodes` answer from the role's graph, the common `apoc.text`, `apoc.coll`, `apoc.map`, `apoc.date` and `apoc.convert` functions push down with the query, and `apoc.path.expand` and `apoc.path.subgraphNodes` walk the graph as variable-length patterns. See [The APOC set Provisa ships](../commands.md#the-apoc-set-provisa-ships). Procedures that act outside the model (`apoc.create.*`, `apoc.periodic.iterate`, `apoc.load.*`) are not offered; for those, run them on your own Neo4j instance against data it reads from Provisa over Bolt. GDS algorithms are not available inline.
 
-Real tools and agent frameworks interact through Bolt. Conformance entries for specific APOC calls reflect those captured as replays, covering what real callers use, not the full APOC catalogue.
+### Scenarios that build their own graph
+
+TCK scenarios that create their graph (`CREATE` in their setup, a named TCK graph, a test procedure) are not runnable: a Provisa graph's labels and relationship types are its model's. The pass rate counts the scenarios that run.
 
 ## Tools
 
