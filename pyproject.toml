@@ -1,7 +1,7 @@
 [project]
 name = "provisa"
 version = "0.1.0"
-description = "Federation, metrics, ontology and governance from a single model."
+description = "Provisa is a data kernel: a small set of semantic primitives, compiled and run as one data control plane."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

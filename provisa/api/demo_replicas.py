@@ -289,6 +289,16 @@ def seed_paths(demo_directory: Path) -> tuple[Path, Path]:
     return seed / SEED_STORE, seed / SEED_RECORD
 
 
+def seed_failure_path(demo_directory: Path) -> Path:
+    """Where a bundle build's seeding run says why its template could not be seeded: beside the
+    record the build waits for -- this node's region's, on a regions node."""
+    from provisa.api import demo_region_seed
+
+    if demo_region_seed.regional():
+        return demo_region_seed.seed_dir(demo_directory, demo_region_seed.here()) / "failed"
+    return demo_directory / SEED_DIR / "failed"
+
+
 def views_seed_paths(demo_directory: Path) -> tuple[Path, Path]:
     """Where a demo's bitemporal views' append logs are: their store and their record."""
     seed = demo_directory / SEED_DIR

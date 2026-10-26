@@ -8,7 +8,7 @@
 # permission from the copyright holder.
 #
 # The provisioning demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
-# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# by scripts/gen-site-demos.mjs. published: true
 # Provisa, is beside it.
 title: Provisioning datasets to downstream teams
 description: >-
@@ -17,6 +17,7 @@ description: >-
   pulls it over Arrow Flight as of that moment, each seeing its own governed view, with no copies.
 screenshot: card.png
 published: true
+group: provision
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
 requires_provisa: 0.1.0a491

@@ -8,7 +8,7 @@
 # permission from the copyright holder.
 #
 # The insider demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
-# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# by scripts/gen-site-demos.mjs. published: true
 # Provisa, is beside it.
 title: Insider review
 description: >-
@@ -17,6 +17,7 @@ description: >-
   customer data: one ranked review queue, with the watch list itself never shown to the reviewer.
 screenshot: card.png
 published: true
+group: compliance
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release whose column transforms (REQ-2131) run its matching as a code resolver
 # rather than host code (REQ-2134).

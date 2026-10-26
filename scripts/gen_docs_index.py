@@ -30,7 +30,7 @@ GH_BASE = "https://github.com/kenstott/provisa/blob/main/"
 def render(src: str) -> str:
     # docs/images/x.png -> images/x.png ; docs/x.md -> x.md (paths are relative to docs/)
     src = src.replace("docs/images/", "images/")
-    src = re.sub(r"\]\(docs/([^)]+\.md)\)", r"](\1)", src)
+    src = re.sub(r"\]\(docs/([^)]+)\)", r"](\1)", src)
     # README quick-start self-reference -> site home
     src = src.replace("[README Quick Start](../README.md#quick-start)", "[Quick Start](index.md)")
     # repo-root files not in the docs tree -> absolute GitHub links

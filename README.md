@@ -1,21 +1,25 @@
 # Provisa
 
-**Connect your databases. Query them in 5 minutes with GraphQL, gRPC, SQL or MCP, over any API or protocol.**
+**Connect Postgres, Snowflake and Salesforce. Query with SQL, GraphQL or your AI agent. In 5 minutes.**
 
-Provisa puts one API over all your data. Point it at your databases and business applications, describe how they fit together, and query the joined result over REST, GraphQL, SQL, gRPC, MCP, JSON:API, Arrow Flight, pgwire or Bolt.
+Governed from the first query.
 
-It works because everything comes from a single model: your domains, the relationships between your tables, and the policies on them, across every source. Provisa runs from that model and governs from it, so there's nothing to keep in sync. The registered relationships are the only joins a query may make, and the access policies are compiled into every query plan. Four things follow from the one model:
+---
+
+Provisa is a data kernel: a small set of semantic primitives, compiled and run as one data control plane.
+
+The primitives are [sources](docs/sources.md), [tables](docs/configuration.md#tables), [relationships](docs/configuration.md#relationships), [terms](docs/ontology.md), [roles](docs/access-model.md), [capabilities](docs/access-model.md#capabilities), [grants](docs/access-model.md#grants), [scope](docs/access-model.md#scope), [products](docs/data-products.md), and contracts. Declare them and the whole governed API follows.
+
+Every language compiles to one IR. Governance is applied there and pushed down into the native query your engine runs.
+
+Provisa compiles each request and hands it to your engine. Results stream back. It scales horizontally and vertically to support your workloads, and the heavy compute is offloaded to your engine.
+
+Four things follow from the one model:
 
 - **Federation.** 73 connectors reach more than 85 kinds of source, Salesforce, ServiceNow and Stripe among them. The SaaS systems your business runs on read as tables beside your databases, in place, without a pipeline into a warehouse first. Query them in SQL, GraphQL or Cypher, over nine protocols.
-- **Metrics.** A metric is a named, governed aggregate. You define it once, and every tool and language that asks for it gets the same definition.
-- **Ontology.** The business glossary is a graph of concepts, their definitions and how they relate. Provisa maps it onto the tables and columns that hold the values, which is what lets it answer questions about your data. A concept stays a draft until it reaches data, directly or through other concepts. The glossary says what a concept is; a metric says how a number is computed.
-- **Governance.** Six layers of checks are compiled into every query plan, in every language and over every protocol, and every request is recorded the same way: who queried what, as which role, under which policy. Traces, metrics and logs are registered as queryable tables beside your business data.
-
-You can ask in **GraphQL, Cypher or SQL**, and connect over **pgwire, Bolt, gRPC, REST, Arrow Flight or JDBC**. Every query language is lowered to one intermediate representation, and governance is applied there, once, so a policy can't drift between languages. On the way out, that form is translated into each source's own dialect. A new query language is a new front end on the same core.
-
-Reads and writes both go through it. A query across sources fans out through the federation layer. Writes, and reads from a single source, go straight to that source's driver, governed the same way and typically back in under 100 ms. Arrow Flight columnar streaming is built in.
-
-The model has a small vocabulary: domains, relationships, roles and policies. That keeps it easy to read and to audit, and you can read the policy set and know what it does. Provisa itself is a light query compiler. It never sits in your data path as a runtime. It turns a request into native queries, routes them and steps aside, which is why the estate stays fast.
+- **Metrics.** A metric is a named, governed aggregate. Define it once, and every tool and language that asks for it gets the same definition.
+- **Ontology.** The business glossary is a graph of concepts, their definitions and how they relate. Provisa maps it onto the tables and columns that hold the values. A concept stays a draft until it reaches data. The glossary says what a concept is; a metric says how a number is computed.
+- **Governance.** Six layers of checks are compiled into every query plan, in every language and over every protocol. Every request is recorded the same way: who queried what, as which role, under which policy. Traces, metrics and logs are registered as queryable tables beside your business data.
 
 You can use it in two ways, and they combine:
 

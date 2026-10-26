@@ -44,8 +44,12 @@ def is_org_id(value: str | None) -> bool:  # REQ-1309
 SANDBOX_PREFIX = "sbx"
 TEMPLATE_PREFIX = "sbxtpl"
 #: A sandbox of the regions sandbox tier (REQ-2068): ``r`` is no hex digit, so no sandbox of the
-#: other tier begins so.
+#: other tier begins so. It is followed by the region of the node holding it, then its hex
+#: (:data:`SANDBOX_HEX_DIGITS`): the tier runs a node per visitor region, and a sandbox's id names
+#: the one it is served by.
 REGIONS_SANDBOX_PREFIX = "sbxr"
+#: How many random hex digits end a sandbox's id.
+SANDBOX_HEX_DIGITS = 12
 
 
 def is_sandbox_tier_org(org_id: str) -> bool:
@@ -56,6 +60,14 @@ def is_sandbox_tier_org(org_id: str) -> bool:
 def is_regions_sandbox(org_id: str) -> bool:
     """Whether ``org_id`` is a sandbox of the regions sandbox tier (REQ-2068)."""
     return org_id.startswith(REGIONS_SANDBOX_PREFIX)
+
+
+def regions_sandbox_region(org_id: str) -> str | None:
+    """The region of the regions-tier node holding sandbox ``org_id`` (REQ-2068); None for any
+    other org."""
+    if not is_regions_sandbox(org_id):
+        return None
+    return org_id[len(REGIONS_SANDBOX_PREFIX) : -SANDBOX_HEX_DIGITS]
 
 
 def is_template_org(org_id: str) -> bool:

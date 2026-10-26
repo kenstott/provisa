@@ -34,6 +34,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 #: Where the bundle carries each region's seed, under the demo's ``seeded`` directory.
@@ -330,6 +331,54 @@ async def export_seed(template_org: str, demo_directory: Path) -> None:
     )
 
 
+def append_logs(dsn: str, schema: str) -> list[str]:
+    """The bitemporal views' append logs ``schema`` holds in the store ``dsn``: its tables carrying
+    the managed recorded-time column every append log has (mv.bitemporal BitemporalSpec
+    .system_column), declared or inherited alike."""
+    import duckdb
+
+    from provisa.mv.bitemporal import BitemporalSpec
+
+    con = duckdb.connect()
+    try:
+        _attach(con, "logs_src", dsn, read_only=True)
+        return [
+            r[0]
+            for r in con.execute(
+                "SELECT DISTINCT table_name FROM duckdb_columns() WHERE database_name = 'logs_src' "
+                "AND schema_name = ? AND column_name = ? ORDER BY table_name",
+                [schema, BitemporalSpec.__dataclass_fields__["system_column"].default],
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+
+def carry_setup_history(
+    setup_org: str, demo_directory: Path, region_urls: dict[str, str]
+) -> dict[str, list[str]]:
+    """Carry the setup's bitemporal views' history in each region's seed (REQ-1162): the bundle
+    build, once each region's seeding node has written its seed. In each region's store
+    (``region_urls``) the setup built its views as ``setup_org``; each append log there
+    (:func:`append_logs`) replaces the table the seeding node built in that region's seed -- one
+    build, where the setup's holds every close it recorded -- and the seed's record names it. A
+    plain materialized view's table is the seed's own. The tables carried, by region."""
+    carried: dict[str, list[str]] = {}
+    for region, url in region_urls.items():
+        schema = views_schema(setup_org, region)
+        directory = seed_dir(demo_directory, region)
+        carried[region] = copy_tables(
+            url, schema, f"duckdb:///{directory / _STORE}", _VIEWS, append_logs(url, schema)
+        )
+        if not carried[region]:
+            continue
+        record_path = directory / _RECORD
+        record = json.loads(record_path.read_text())
+        record["views"] = sorted({*record["views"], *carried[region]})
+        record_path.write_text(json.dumps(record, indent=2, default=str) + "\n")
+    return carried
+
+
 async def adopt_seed(template_org: str, demo_directory: Path) -> bool:
     """Land the template from its bundle's region seeds, each into its region's stores, and record
     each region's builds: this node's as built for its own store, another's as it wrote them.
@@ -445,21 +494,67 @@ def views_kept_here(config: Any) -> int:
     )
 
 
-async def views_built_here(template_org: str) -> int:
-    """How many of the template's views this node's region has built."""
+def _built_since(build: dict, since: datetime) -> bool:
+    return build["region"] == here() and (
+        build["last_refresh_at"] is not None and build["last_refresh_at"] >= since
+    )
+
+
+async def views_built_here(template_org: str, since: datetime) -> int:
+    """How many of the template's views this node's region has built since ``since`` (when every
+    replica it keeps had landed): a build before then read replicas not yet there, so a seed of
+    it would carry what they lacked."""
     [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
     _replicas, builds = await _records(state_db(template_org, store))
-    return sum(1 for b in builds if b["region"] == here() and b["last_refresh_at"] is not None)
+    return sum(1 for b in builds if _built_since(b, since))
 
 
-async def views_waiting_here(template_org: str) -> str:
-    """What the template's views not yet built in this node's region wait on: each one's build
-    record here (its status and error), or that it has none."""
+def views_kept_here_ids(config: Any) -> list[str]:
+    """The materialized views this node's region keeps, by MV id: each built once its region's
+    replicas have landed, whether a replica build fans out to it or not (a view whose inputs are
+    all read in place has none; a periodic one waits for its next boundary)."""
+    from provisa.api.demo_replicas import view_mv_id
+    from provisa.core.models import DERIVED_SOURCE_ID
+
+    return [
+        view_mv_id(f"mv_{t.table_name}")
+        for t in config.tables
+        if t.source_id == DERIVED_SOURCE_ID and t.materialize and t.region == here()
+    ]
+
+
+async def views_waiting_here(template_org: str, since: datetime) -> str:
+    """What the template's views not built since ``since`` in this node's region wait on: each
+    one's build record here (its status and error), or that it has none."""
     [store] = [s for s in await org_region_stores(template_org) if s.region == here()]
     _replicas, builds = await _records(state_db(template_org, store))
     recorded = [
         f"{b['mv_id']}: {b['status']}" + (f" ({b['last_error']})" if b["last_error"] else "")
         for b in builds
-        if b["region"] == here() and b["last_refresh_at"] is None
+        if b["region"] == here() and not _built_since(b, since)
     ]
     return "; ".join(recorded) or "views with no build recorded"
+
+
+async def unanswered_regions(
+    addresses: dict[str, str], *, probe: Callable[[str], Awaitable[bool]] | None = None
+) -> list[tuple[str, str]]:
+    """Every other region whose node does not answer at its ``addresses`` entry (the platform's
+    regions, as the deployment config declares them): ``probe`` an address, by default its
+    /health."""
+    probe = probe or _answers
+    return [
+        (region, address)
+        for region, address in sorted(addresses.items())
+        if region != here() and not await probe(address)
+    ]
+
+
+async def _answers(address: str) -> bool:
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            return (await client.get(f"{address}/health")).status_code == 200
+    except httpx.HTTPError:
+        return False

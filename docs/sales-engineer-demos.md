@@ -39,7 +39,7 @@ The launcher reads `.env` in the repository root if one exists, and `.env` is no
 
 The word after `--demo` is a name only if it does not start with `--`. So `--demo --source=redis` runs the standard demo, and `--demo perf --source=redis` runs the `perf` demo.
 
-`--demo` always runs natively. The backend is a Python process, the federation engine runs inside it, and the control plane is an embedded PostgreSQL database. The standard demo needs no containers.
+`--demo` always runs natively. The backend is a Python process, the federation engine runs inside it, and the model store is an embedded PostgreSQL database. The standard demo needs no containers.
 
 ### The standard demo
 
@@ -127,7 +127,7 @@ See [Add one toy source](#add-one-toy-source-with-source).
 
 - **Stop Provisa:** press `Ctrl+C` in the terminal that runs the launcher. It stops the backend, the UI and the demo servers. The embedded PostgreSQL stays up for the next start.
 - **Other keys:** `Ctrl+R` restarts the backend, `Ctrl+U` clears the UI cache and restarts the UI, and `Ctrl+E` stops the servers and leaves Docker running.
-- **Reset the Provisa side:** just start again. Every `--demo` start drops and rebuilds the demo control plane.
+- **Reset the Provisa side:** just start again. Every `--demo` start drops and rebuilds the demo model store.
 - **Reset a named demo's data:** just start again. A named demo reseeds from empty by default. Pass `--keep-data` to reuse the data from the last seeding instead.
 - **Stop a named demo's data stack.** `Ctrl+C` does not stop it. Run:
 
@@ -157,7 +157,7 @@ These are the messages the scripts print, and what to do.
 | `Unknown demo name: X. No demo/named/X/ directory.` | The name does not match a directory. Run `ls demo/named`. |
 | `--demo X has no config.yaml (and no fragment.yaml) in demo/named/X/ to register it with.` | The demo directory has neither file. Export the model into `config.yaml` (see [Create `config.yaml`](#4-create-configyaml)). |
 | `--demo X has both config.yaml and fragment.yaml in demo/named/X/. Keep one: ...` | A demo takes a whole config or a fragment, not both. Delete one. |
-| `Embedded control plane requires pgserver (Python <=3.12). Aborting.` | The virtual environment uses a newer Python. Recreate it with `PYTHON=python3.12 ./venv.sh`, and read `.logs/control-plane-pg.log`. |
+| `Embedded model store requires pgserver (Python <=3.12). Aborting.` | The virtual environment uses a newer Python. Recreate it with `PYTHON=python3.12 ./venv.sh`, and read `.logs/control-plane-pg.log`. |
 | `Backend crashed. Last logs:` or `Backend did not become healthy. Last logs:` | Read the 20 lines printed, then `.logs/backend.log`. The launcher waits up to about three minutes for `/health`. |
 | `UI dev server crashed — see .../.logs/ui.log` | The UI failed to build. Read `.logs/ui.log`, and check `node --version` against `.nvmrc`. |
 | `UI still building after 60s — continuing` | Not an error. Wait, then reload the page. |
@@ -394,7 +394,7 @@ The names and addresses come from short fixed lists and `@example.com`, so no re
 
 ### 4. Create `config.yaml`
 
-`config.yaml` is the demo's whole config: every source, domain, table, relationship and role it shows, plus the settings the standard demo carries. The launcher uses it in place of the standard demo config. Every start rebuilds the control plane from it, so the demo is exactly what the file lists.
+`config.yaml` is the demo's whole config: every source, domain, table, relationship and role it shows, plus the settings the standard demo carries. The launcher uses it in place of the standard demo config. Every start rebuilds the model store from it, so the demo is exactly what the file lists.
 
 You do not write it by hand. Build the demo in the running UI and export it.
 
@@ -581,7 +581,7 @@ The two combine: `./start-ui-install.sh --demo retail --source=redis`.
 
 - **Use synthetic data only.** Never copy a customer's data into a demo, not even a sample. Generate rows from fixed lists and a seeded random generator, as `generate_postgres.py` does. Use `@example.com` addresses.
 - **To make a realistic demo from a customer's shape, use profiles and fakes.** Profile a table, declare fakes on its identifying columns, and generate a synthetic dataset at the volume you need. [Building test environments](test-data.md) walks through it, and [Fake methods](fake-methods.md) lists every fake. That route copies the distributions and relationships without the people.
-- **Reset between customer sessions.** Start the launcher again (every `--demo` start rebuilds the control plane), and a named demo reseeds from empty unless you pass `--keep-data`. Do not pass `--keep-data` between customers if a session changed the data.
+- **Reset between customer sessions.** Start the launcher again (every `--demo` start rebuilds the model store), and a named demo reseeds from empty unless you pass `--keep-data`. Do not pass `--keep-data` between customers if a session changed the data.
 - **Keep secrets out of files.** Write connection values as `${env:NAME}` in `config.yaml` and put the real values in the repository's `.env`, which git ignores. The launcher loads `.env` before it reads the config. Never commit a password, key or token. The `provisa`/`provisa` password in the examples protects a local container that exists only for the demo.
 - **Do not reuse a named demo's ports** for anything else running on your laptop.
 

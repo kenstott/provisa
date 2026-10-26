@@ -100,7 +100,7 @@ A deployment of one organization reads a reference exactly as written, with no p
 
 ## Provisa's built-in store
 
-This is the default when no central service is configured. Every row in `secrets_store` holds an encrypted envelope blob. The `value` column is binary, and the decryption key lives in the process environment, outside the database. A copy of the control plane without the deployment's master key holds ciphertext and nothing else.
+This is the default when no central service is configured. Every row in `secrets_store` holds an encrypted envelope blob. The `value` column is binary, and the decryption key lives in the process environment, outside the database. A copy of the model store without the deployment's master key holds ciphertext and nothing else.
 
 Encryption is never optional. When no process-wide encryption key is configured, the store uses a local keychain. If the host has no keychain to hold a key, the store refuses to write, and the value is never stored in the clear.
 

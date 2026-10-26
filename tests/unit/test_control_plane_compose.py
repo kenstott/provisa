@@ -47,7 +47,7 @@ def test_every_service_is_the_control_planes_or_the_sandbox_tiers(tmp_path):
     assert profiles == {
         "provisa": ["control"],
         "provisa-sandbox": ["sandbox"],
-        # REQ-2068: the regions sandbox tier and each region's own PostgreSQL.
+        # REQ-2068: the regions sandbox tier's nodes and the region PostgreSQLs.
         "provisa-sandbox-regions": ["sandbox"],
         "region-pg-eu": ["sandbox"],
         "region-pg-us": ["sandbox"],
@@ -127,5 +127,22 @@ def test_the_regions_tier_runs_as_its_visitor_region_with_a_store_per_region(tmp
     assert eu["volumes"] != us["volumes"]
     assert "ports" not in eu and "ports" not in us
     ui = services["provisa-ui"]["environment"]
-    assert ui["PROVISA_SANDBOX_REGIONS_DEMOS"] == "retail"
-    assert "provisa-sandbox-regions:8100" in ui["PROVISA_SANDBOX_REGIONS_API_URL"]
+    assert ui["PROVISA_SANDBOX_REGIONS_DEMOS"] == "retail=us"
+    assert "us=https://provisa-sandbox-regions:8100" in ui["PROVISA_SANDBOX_REGIONS_NODES"]
+
+
+def test_the_regions_node_is_given_every_region_the_tier_declares(tmp_path):
+    """REQ-2068: the tier's config declares every regions demo's regions, so its node is given each
+    region's store and address; ledger and warehouse keep theirs in databases of their own in the eu
+    and us PostgreSQLs. banking's node (region warehouse) joins once banking's bundle builds."""
+    services = _compose(tmp_path)["services"]
+    assert "provisa-sandbox-regions-warehouse" not in services
+    node_env = services["provisa-sandbox-regions"]["environment"]
+    assert node_env["PROVISA_DEMO_LEDGER_PG_URL"].endswith("@region-pg-eu:5432/ledger")
+    assert node_env["PROVISA_DEMO_WAREHOUSE_PG_URL"].endswith("@region-pg-us:5432/warehouse")
+    assert ".invalid" in node_env["PROVISA_DEMO_LEDGER_ADDRESS"]
+    assert services["region-pg-eu"]["environment"]["REGION_PG_ALSO"] == "ledger"
+    assert services["region-pg-us"]["environment"]["REGION_PG_ALSO"] == "warehouse"
+    for store in ("region-pg-eu", "region-pg-us"):
+        check = " ".join(services[store]["healthcheck"]["test"])
+        assert "createdb" in check and "$REGION_PG_ALSO" in check

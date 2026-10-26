@@ -8,7 +8,7 @@
 # permission from the copyright holder.
 #
 # The vulnerabilities demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
-# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# by scripts/gen-site-demos.mjs. published: true
 # Provisa, is beside it.
 title: Exploited vulnerabilities in our code
 description: >-
@@ -18,6 +18,7 @@ description: >-
   due date are they?
 screenshot: card.png
 published: true
+group: public-data
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
 requires_provisa: 0.1.0a490

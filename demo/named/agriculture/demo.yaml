@@ -17,6 +17,7 @@ description: >-
   government data: does weather explain the losses in our portfolio?
 screenshot: card.png
 published: true
+group: public-data
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
 requires_provisa: 0.1.0a489

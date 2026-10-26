@@ -33,6 +33,13 @@ def serves_on_regions_tier(directory: Path) -> bool:
     return bool(yaml.safe_load((directory / "demo.yaml").read_text()).get("regions"))
 
 
+def visitor_region(demo: str) -> str:
+    """The region ``demo``'s visitor is served in (its demo.yaml's ``regions.visitor``): the node
+    that serves it runs as that region, as start-ui-install.sh starts it (REQ-2035)."""
+    declared = yaml.safe_load((_REPO / "demo" / "named" / demo / "demo.yaml").read_text())
+    return declared["regions"]["visitor"]
+
+
 @contextlib.contextmanager
 def regions_tier(
     org_id: str,
@@ -43,7 +50,7 @@ def regions_tier(
     auth: dict[str, Any],
     env: dict[str, str] | None = None,
 ) -> Iterator[tuple[Any, Any, Path]]:
-    """Serve ``demo`` from ``bundle`` on a regions tier node in region us; yields the started
+    """Serve ``demo`` from ``bundle`` on a regions tier node in its visitor region; yields the started
     server, its stack and the directory its bundles are synced into. ``env`` adds to the node's."""
     from tests.integration.demo_registry import DemoRegistry
     from tests.integration.isolated_server import IsolatedServer
@@ -52,6 +59,13 @@ def regions_tier(
     registry, stack = DemoRegistry(), _Stack()
     registry.start()
     stack.start()
+    # The tier's config declares every regions demo's regions (retail's and banking's): each is
+    # given a store, as each node of the tier is.
+    import psycopg
+
+    with psycopg.connect(stack.url(stack.engine_port, "provisa"), autocommit=True) as conn:
+        for region in ("ledger", "warehouse"):
+            conn.execute(f"CREATE DATABASE {region}_store")
     server = None
     try:
         registry.push(bundle)
@@ -68,12 +82,20 @@ def regions_tier(
             env={
                 "PLATFORM_DATABASE_URL": control_plane,
                 "TENANT_DATABASE_URL": control_plane,
-                "PROVISA_REGION": "us",
+                "PROVISA_REGION": visitor_region(demo),
                 "PROVISA_ENCRYPTION_KEY": _MASTER_KEY,
                 "PROVISA_DEMO_EU_ADDRESS": "http://127.0.0.1:1",
                 "PROVISA_DEMO_US_ADDRESS": "http://127.0.0.1:2",
                 "PROVISA_DEMO_EU_PG_URL": stack.url(stack.engine_port, "eu_store", "+psycopg"),
                 "PROVISA_DEMO_US_PG_URL": stack.url(stack.engine_port, "us_store", "+psycopg"),
+                "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:3",
+                "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:4",
+                "PROVISA_DEMO_LEDGER_PG_URL": stack.url(
+                    stack.engine_port, "ledger_store", "+psycopg"
+                ),
+                "PROVISA_DEMO_WAREHOUSE_PG_URL": stack.url(
+                    stack.engine_port, "warehouse_store", "+psycopg"
+                ),
                 "REDIS_URL": f"redis://127.0.0.1:{stack.redis_port}/0",
                 "PROVISA_SANDBOX_TIER": "true",
                 "PROVISA_DEMO_BUNDLES": demo,

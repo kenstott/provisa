@@ -61,8 +61,10 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
   await expect(page.getByTestId("calendar-version")).toHaveValue("v1");
   await page.getByTestId("calendar-create-submit").click();
 
-  // On success the modal closes and the picker auto-selects the new calendar.
-  await expect(page.getByTestId("calendar-name")).toHaveCount(0);
+  // On success the modal closes and the picker auto-selects the new calendar. The create is a server
+  // round trip (2-4 s on the CI runner) handled on a main thread still busy with the dev server's
+  // warm-up chunks, so the close gets the same budget as the test's other waits.
+  await expect(page.getByTestId("calendar-name")).toHaveCount(0, { timeout: 30000 });
   // mv-calendar is a Mantine Select <input>; toContainText checks text content (empty for inputs),
   // so use toHaveValue which checks the input's value attribute.
   await expect(page.getByTestId("mv-calendar")).toHaveValue(/e2e-fiscal/, { timeout: 10000 });
@@ -92,7 +94,12 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
   // mv-calendar data-testid is on the inner <input>; the Mantine clearable "×" CloseButton is
   // inside the Input rightSection wrapper. Use `.locator('button')` (not getByRole) because
   // Mantine marks the CloseButton aria-hidden, and force:true bypasses opacity/pointer-events.
-  await page.locator('[data-testid="mv-calendar"]').locator("xpath=..").locator("button").first().click({ force: true });
+  await page
+    .locator('[data-testid="mv-calendar"]')
+    .locator("xpath=..")
+    .locator("button")
+    .first()
+    .click({ force: true });
   await page.getByRole("button", { name: /save/i }).first().click();
   // Wait for save chain to complete before the test ends (avoids uncaught-browser-error on teardown).
   await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 60000 });

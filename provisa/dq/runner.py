@@ -30,12 +30,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sys
+import time
 from datetime import datetime
 from typing import Any
 
 from provisa.dq.contract import CHECKERS, contract_dataset
 from provisa.dq.results import RESULT_FIELDS
+
+log = logging.getLogger(__name__)
 
 # Seconds before an unresponsive checker subprocess is killed. A scan is aggregate SQL against one
 # dataset, so this is generous; a checker still running here is wedged, not slow, and the poll node
@@ -146,6 +150,7 @@ async def _run_worker(payload: dict, *, timeout: float) -> dict:
         # 0o600 before the secret is written, not after — the endpoint password is in this file.
         payload_path.touch(mode=0o600)
         payload_path.write_text(json.dumps(payload), encoding="utf-8")
+        started = time.monotonic()
         proc = await asyncio.create_subprocess_exec(
             *build_command(str(payload_path)),
             stdout=asyncio.subprocess.PIPE,
@@ -156,12 +161,14 @@ async def _run_worker(payload: dict, *, timeout: float) -> dict:
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
+            _log_run(payload["checker"], started, "killed at timeout")
             raise CheckerError(
                 f"checker {payload['checker']!r} did not finish within {timeout}s"
             ) from None
     finally:
         payload_path.unlink(missing_ok=True)
         Path(tmp_dir).rmdir()
+    _log_run(payload["checker"], started, f"exit {proc.returncode}")
     if proc.returncode != 0:
         raise CheckerError(
             f"checker {payload['checker']!r} exited {proc.returncode}: "
@@ -178,6 +185,12 @@ async def _run_worker(payload: dict, *, timeout: float) -> dict:
             f"checker {payload['checker']!r} result envelope is missing its 'checks' list"
         )
     return envelope
+
+
+def _log_run(checker: str, started: float, outcome: str) -> None:
+    """One line per checker run: which checker, how long its worker took, how it ended. A run that
+    never answered otherwise left nothing to say where its time went."""
+    log.warning("dq worker %s: %.2fs, %s", checker, time.monotonic() - started, outcome)
 
 
 def parse_results(

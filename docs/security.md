@@ -619,7 +619,7 @@ Row and column rules written on the answering node's region (`current_setting('p
 
 ### Store credentials and where the stores listen
 
-The bundled stores have no default credentials. The PostgreSQL control plane, Redis, MinIO, Grafana's admin account and the Trino cluster's shared secret each take a value generated for the deployment:
+The bundled stores have no default credentials. The PostgreSQL model store, Redis, MinIO, Grafana's admin account and the Trino cluster's shared secret each take a value generated for the deployment:
 
 - The launchers (`provisa start`, the desktop and server installers) generate them once and keep them in `~/.provisa/store-credentials.env` (mode 600). A value already in the environment is used as given, and a secondary node, which uses the primary's stores, refuses to start without the primary's.
 - The Terraform modules generate them with `random_password` and give the same values to every node. They are held in the Terraform state, so protect the state as you would the passwords.
@@ -644,7 +644,7 @@ The desktop and native tiers run PostgreSQL embedded. On macOS and Linux it list
 
 ### Sources on a shared deployment
 
-On a deployment that holds many organizations, an organization's sources may reach only public addresses: never the platform's private network, where its control plane, cache and object store are. The check applies when a source is saved, by the UI, the admin API or a configuration apply, and again at every connection and every HTTP redirect. A demo sandbox's sources are further held to the address they were checked at. The deployment's own organization, whose sources the operator configures, is not held.
+On a deployment that holds many organizations, an organization's sources may reach only public addresses: never the platform's private network, where its model store, cache and object store are. The check applies when a source is saved, by the UI, the admin API or a configuration apply, and again at every connection and every HTTP redirect. A demo sandbox's sources are further held to the address they were checked at. The deployment's own organization, whose sources the operator configures, is not held.
 
 ## Encryption at Rest and the Organization's Own Keys
 

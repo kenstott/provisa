@@ -44,6 +44,7 @@ __all__ = [
     "is_demo_sandbox",
     "is_sandbox_tier_org",
     "is_template_org",
+    "is_this_nodes_sandbox",
     "new_sandbox_org_id",
     "require_this_tier",
     "serves_sandboxes",
@@ -58,13 +59,25 @@ def template_org_id(demo: str) -> str:
 
 def new_sandbox_org_id() -> str:
     """A fresh sandbox org id: ``sbx`` and 12 random hex digits (``t`` is not one, so a sandbox's
-    id never begins as a template's) -- ``sbxr`` and them on the regions sandbox tier (REQ-2068),
-    so the UI server routes it there by its id."""
-    from provisa.api.demo_region_seed import regional
-    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
+    id never begins as a template's) -- on the regions sandbox tier (REQ-2068) ``sbxr``, this
+    node's region and them, so the UI server routes it to this node by its id."""
+    from provisa.api.demo_region_seed import here, regional
+    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX, SANDBOX_HEX_DIGITS
 
-    prefix = REGIONS_SANDBOX_PREFIX if regional() else SANDBOX_PREFIX
-    return f"{prefix}{secrets.token_hex(6)}"
+    prefix = f"{REGIONS_SANDBOX_PREFIX}{here()}" if regional() else SANDBOX_PREFIX
+    return f"{prefix}{secrets.token_hex(SANDBOX_HEX_DIGITS // 2)}"
+
+
+def is_this_nodes_sandbox(org_id: str) -> bool:
+    """Whether sandbox ``org_id`` is this node's to serve and reap: on the regions sandbox tier,
+    one this node's region minted (REQ-2068); on the other tier, any that is not the regions
+    tier's."""
+    from provisa.api.demo_region_seed import here, regional
+    from provisa.core.org_ids import is_regions_sandbox, regions_sandbox_region
+
+    if regional():
+        return regions_sandbox_region(org_id) == here()
+    return not is_regions_sandbox(org_id)
 
 
 def serves_sandboxes() -> bool:

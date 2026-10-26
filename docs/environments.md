@@ -99,7 +99,7 @@ Every deploy moves the environment's cursor forward along its own commit line. A
 A branch is seeded at the tip of the environment it was created from, so an undo stops at that
 seeding point and does not walk onto the parent environment's commits.
 
-The `can_undo` and `can_redo` flags come with the environments list response. Both report `false` when the projection doesn't hold the commit the control plane names, a state the design allows and calls **drifted**. A node whose repository store never received a particular commit still lists its environments; only the history answers change.
+The `can_undo` and `can_redo` flags come with the environments list response. Both report `false` when the projection doesn't hold the commit the model store names, a state the design allows and calls **drifted**. A node whose repository store never received a particular commit still lists its environments; only the history answers change.
 
 ## Authorization
 

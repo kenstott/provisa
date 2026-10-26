@@ -250,11 +250,12 @@ def check_locales(name: str, home: Path, locales: Path = LOCALES) -> list[str]:
 
 
 def regions_demos(install: Path = INSTALL) -> frozenset[str]:
-    """The demos the install's regions sandbox tier serves: its PROVISA_SANDBOX_REGIONS_DEMOS."""
+    """The demos the install's regions sandbox tier serves: its PROVISA_SANDBOX_REGIONS_DEMOS, each
+    entry a demo and the region its node serves (``retail=us``; provisa/ui_server.py)."""
     found = re.search(r'PROVISA_SANDBOX_REGIONS_DEMOS:\s*"([^"]*)"', install.read_text())
     if found is None:
         raise ValueError(f"{install.relative_to(ROOT)} sets no PROVISA_SANDBOX_REGIONS_DEMOS")
-    return frozenset(n for n in found.group(1).split(",") if n)
+    return frozenset(entry.split("=", 1)[0] for entry in found.group(1).split(",") if entry)
 
 
 def check_regions(name: str, home: Path, listed: frozenset[str] | None = None) -> list[str]:

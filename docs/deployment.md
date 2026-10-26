@@ -158,7 +158,7 @@ Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 
 For developer workstations and evaluation. It's fully air-gapped and needs no internet after download.
 
-The base installer is a **native install**: the DuckDB federation engine, an embedded PostgreSQL control plane (pgserver) and an in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis or MinIO. You choose the federation engine in the wizard: DuckDB (native, the default), Trino on Docker, or an external engine. Observability is self-telemetry that's always on and viewable in Admin; the Docker collector, Prometheus and Grafana stack is a separate optional demonstration, and it doesn't switch that on or off. The demo data pack is optional and off by default. Trino, the Docker observability stack and the demo are heavy add-ons. They're looked for locally first (the directory next to the installer, mounted volumes, `~/Downloads`) and only then fetched from the GitHub release, so enterprises can pre-stage the tarballs for air-gapped installs.
+The base installer is a **native install**: the DuckDB federation engine, an embedded PostgreSQL model store (pgserver) and an in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis or MinIO. You choose the federation engine in the wizard: DuckDB (native, the default), Trino on Docker, or an external engine. Observability is self-telemetry that's always on and viewable in Admin; the Docker collector, Prometheus and Grafana stack is a separate optional demonstration, and it doesn't switch that on or off. The demo data pack is optional and off by default. Trino, the Docker observability stack and the demo are heavy add-ons. They're looked for locally first (the directory next to the installer, mounted volumes, `~/Downloads`) and only then fetched from the GitHub release, so enterprises can pre-stage the tarballs for air-gapped installs.
 
 ### Steps
 
@@ -183,7 +183,7 @@ All data is stored in `~/.provisa/`. To remove everything: `provisa uninstall`.
 
 For developer workstations and evaluation. It's fully air-gapped and needs no internet after download.
 
-Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + embedded PostgreSQL control plane (pgserver), shipping no Docker, no VM, and no container images. The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer.
+Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + embedded PostgreSQL model store (pgserver), shipping no Docker, no VM, and no container images. The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer.
 
 ### Steps
 
