@@ -4,13 +4,6 @@
 # over the fixture model, not excluded; until it is, it counts as a failure. The examples' DETACH
 # DELETE is their cleanup, not their subject, so it is adapted too.
 
-- group: Writes to relationships
-  requirement: REQ-665
-  decision: >-
-    "CREATE, SET, and DELETE cannot target relationship entities. Attempting to write a
-    relationship is a hard error at translation time."
-  reason: "cannot target relationships"
-
 - group: Digits below the microsecond
   requirement: REQ-2173
   decision: >-
