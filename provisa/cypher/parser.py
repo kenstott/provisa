@@ -664,6 +664,14 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         if t and t.type == "ARROW_LEFT":
             # <- rel ->  means left direction for start of rel
             self._advance()
+            _tb = self._peek()
+            if _tb and _tb.type in ("MINUS", "ARROW_RIGHT"):  # <-- or <--> : no brackets
+                self._advance()
+                rel = RelPattern(
+                    variable=None, types=[], min_hops=None, max_hops=None, direction="none"
+                )
+                rel.direction = "left" if _tb.type == "MINUS" else "none"
+                return rel, self._parse_node()
             rel = self._parse_rel_pattern()
             _tr = self._peek()
             if _tr and _tr.type == "ARROW_RIGHT":
@@ -692,7 +700,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 )
                 direction = "right"
             else:
-                # plain - means no direction
+                # -- means no direction
+                self._expect("MINUS")
                 rel = RelPattern(
                     variable=None, types=[], min_hops=None, max_hops=None, direction="none"
                 )

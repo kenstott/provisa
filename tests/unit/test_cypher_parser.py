@@ -390,3 +390,23 @@ def test_two_writes_in_one_query_are_refused():
 
     with pytest.raises(CypherWriteParseError, match="but got: 2"):
         parse_cypher_write("CREATE (a:A {x: 1}); CREATE (b:A {x: 2})")
+
+
+@pytest.mark.parametrize(
+    ("query", "direction"),
+    [
+        ("MATCH (a:A)--(b:A) RETURN a", "none"),
+        ("MATCH (a:A)-->(b:A) RETURN a", "right"),
+        ("MATCH (a:A)<--(b:A) RETURN a", "left"),
+        ("MATCH (a:A)<-->(b:A) RETURN a", "none"),
+    ],
+)
+def test_a_relationship_written_without_brackets_is_read(query, direction):
+    """openCypher TCK: ``(me)--(you)`` is a relationship of any type, either direction."""
+    rel = parse_cypher(query).match_clauses[0].pattern.rels[0]
+    assert (rel.types, rel.direction) == ([], direction)
+
+
+def test_a_single_dash_between_nodes_is_not_a_relationship():
+    with pytest.raises(CypherParseError):
+        parse_cypher("MATCH (a:A)-(b:A) RETURN a")
