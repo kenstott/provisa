@@ -254,16 +254,29 @@ async def test_connecting_dials_the_host_to_pair_and_to_check_and_no_more(host, 
     wired["give"](hashed)
     dials = []
     dial = remote._dial
+    checking = []
 
     def counted(*args, **kwargs):
-        dials.append(args[:2])
+        dials.append("check" if checking else "other")
         return dial(*args, **kwargs)
 
+    check = remote_sources._check
+
+    def counted_check(*args, **kwargs):
+        # The check's own connections (a remote worker opens as many as it serves calls on).
+        checking.append(True)
+        try:
+            return check(*args, **kwargs)
+        finally:
+            checking.pop()
+
     monkeypatch.setattr(remote, "_dial", counted)
+    monkeypatch.setattr(remote_sources, "_check", counted_check)
     built = await remote_sources.connect(None, "shop", "127.0.0.1", port, pairing)
     der = ssl.PEM_cert_to_DER_cert(built["remote"]["certificate"])
     assert hashlib.sha256(der).hexdigest() == built["remote"]["pin"]
-    assert len(dials) == 2
+    assert dials.count("other") == 1  # the pairing dial: none for the certificate
+    assert "check" in dials
 
 
 async def test_a_host_running_other_code_is_refused_naming_both_hashes(host, wired):
