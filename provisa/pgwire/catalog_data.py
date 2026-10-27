@@ -40,6 +40,14 @@ _PG_TYPE_ROWS = [
     (1700, "numeric", 11, -1, "b", "N", False, 0, False, "i", "m"),
     (3802, "jsonb", 11, -1, "b", "U", False, 0, False, "i", "x"),
     (2950, "uuid", 11, 16, "b", "U", False, 0, False, "c", "p"),
+    # REQ-2171: the subtypes' types, as PostgreSQL's pg_type has them.
+    (26, "oid", 11, 4, "b", "N", False, 0, True, "i", "p"),
+    (142, "xml", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    (600, "point", 11, 16, "b", "G", False, 0, False, "d", "p"),
+    (650, "cidr", 11, -1, "b", "I", False, 0, False, "i", "m"),
+    (790, "money", 11, 8, "b", "N", False, 0, True, "d", "p"),
+    (829, "macaddr", 11, 6, "b", "U", False, 0, False, "i", "p"),
+    (869, "inet", 11, -1, "b", "I", False, 0, False, "i", "m"),
 ]
 
 # OID → (attlen, attbyval, attalign, attstorage)
@@ -61,6 +69,14 @@ _PG_OID_ATTR_META: dict[int, tuple[int, bool, str, str]] = {
     1700: (-1, False, "i", "m"),  # numeric
     3802: (-1, False, "i", "x"),  # jsonb
     2950: (16, False, "c", "p"),  # uuid
+    # REQ-2171: the subtypes' types
+    26: (4, True, "i", "p"),  # oid
+    142: (-1, False, "i", "x"),  # xml
+    600: (16, False, "d", "p"),  # point
+    650: (-1, False, "i", "m"),  # cidr
+    790: (8, True, "d", "p"),  # money
+    829: (6, False, "i", "p"),  # macaddr
+    869: (-1, False, "i", "m"),  # inet
 }
 
 _TYPEINFO_COLS = [
@@ -122,6 +138,13 @@ _TYPEINFO: dict[int, tuple] = {
     1700: ("pg_catalog", "numeric", "b", None, None, None, None),
     2950: ("pg_catalog", "uuid", "b", None, None, None, None),
     3802: ("pg_catalog", "jsonb", "b", None, None, None, None),
+    # REQ-2171: the subtypes' types (oid is above)
+    142: ("pg_catalog", "xml", "b", None, None, None, None),
+    600: ("pg_catalog", "point", "b", None, None, None, None),
+    650: ("pg_catalog", "cidr", "b", None, None, None, None),
+    790: ("pg_catalog", "money", "b", None, None, None, None),
+    829: ("pg_catalog", "macaddr", "b", None, None, None, None),
+    869: ("pg_catalog", "inet", "b", None, None, None, None),
     # Array types
     199: ("pg_catalog", "_json", "b", None, 114, ",", None),
     1000: ("pg_catalog", "_bool", "b", None, 16, ",", None),

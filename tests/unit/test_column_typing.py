@@ -41,6 +41,8 @@ _ARRAYS_OF_A_PRIMITIVE = [
     ("Array(Int8)", "clickhouse", 1, "smallint"),
     ("Array(Decimal(18, 2))", "clickhouse", 1, "numeric(18,2)"),
     ("Array(DateTime64(3))", "clickhouse", 1, "timestamp"),
+    # REQ-2171: an element of a subtype (IPv4 is inet) is typed by its base.
+    ("Array(IPv4)", "clickhouse", 1, "text"),
     ("ARRAY<STRING>", "bigquery", 1, "text"),
     ("ARRAY<INT64>", "bigquery", 1, "bigint"),
     ("ARRAY<NUMERIC(10, 2)>", "bigquery", 1, "numeric(10,2)"),
@@ -65,7 +67,7 @@ _PLAIN_JSON = [
     ("Map(String, UInt8)", "clickhouse"),
     ("Nested(a String, b UInt8)", "clickhouse"),
     ("Array(Tuple(String, UInt8))", "clickhouse"),
-    ("Array(IPv4)", "clickhouse"),  # an element with no semantic SQL type
+    ("Array(Polygon)", "clickhouse"),  # an element with no semantic SQL type
     ("STRUCT<a INT64, b ARRAY<STRING>>", "bigquery"),
     ("ARRAY<STRUCT<a INT64>>", "bigquery"),
     ("struct<a:int,b:string>", "databricks"),

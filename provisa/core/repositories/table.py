@@ -97,6 +97,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.element_type,
     table_columns.c.native_type,
     table_columns.c.native_platform,
+    table_columns.c.subtype,  # REQ-2171
     table_columns.c.fake,
     table_columns.c.fake_stable,
     table_columns.c.fake_stable_version,
@@ -131,6 +132,19 @@ def _nested_attributes(
             "native_platform": existing[4],
         }
     return {"array_depth": 0, "element_type": None, "native_type": None, "native_platform": None}
+
+
+def _stored_subtype(data_type: str, existing: tuple[str, str] | None) -> tuple[str, str | None]:
+    """``(data_type, subtype)`` to store for a column registered as ``data_type`` (REQ-2171): a
+    subtype is stored as its base carrying the subtype; the stored base restated keeps the stored
+    subtype; any other type has none."""
+    from provisa.core.ir_types import SUBTYPES, base_type, type_name
+
+    if type_name(data_type) in SUBTYPES:
+        return base_type(data_type), type_name(data_type)
+    if existing is not None and existing[0] == data_type:
+        return data_type, existing[1]
+    return data_type, None
 
 
 async def stored_column_types(
@@ -358,6 +372,7 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
     """REQ-2158: the contract the table's save stores, checked against the stored one and the
     columns it saves (provisa.core.data_contracts)."""
     from provisa.core import data_contracts
+    from provisa.core.ir_types import base_type
 
     stored = (
         await conn.execute_core(
@@ -375,7 +390,8 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
         if not declared_type:
             continue  # refused by name where the columns are written (REQ-1426)
         try:
-            column_types[col.name] = stored_type_of(declared_type)
+            # REQ-2171: a contract promises the stored type, a subtype's base.
+            column_types[col.name] = stored_type_of(base_type(declared_type))
         except ReportedNumericMalformed as malformed:
             raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
     return data_contracts.for_save(
@@ -599,10 +615,16 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 table_columns.c.element_type,
                 table_columns.c.native_type,
                 table_columns.c.native_platform,
+                table_columns.c.subtype,
             ).where(table_columns.c.table_id == table_id)
         )
     ).fetchall()
     _existing_types = {r.column_name: r.data_type for r in _existing_rows}
+    # REQ-2171: a column's subtype persists with the base type it was recorded with: an edit that
+    # restates the stored base keeps it.
+    _existing_subtypes = {
+        r.column_name: (r.data_type, r.subtype) for r in _existing_rows if r.subtype
+    }
     # REQ-1965: the hidden attributes of a natively nested column are recorded from the source at
     # registration and persist with the type they describe: a re-registration that restates the
     # same type without them (a configuration apply, an admin's edit of another field) keeps them.
@@ -731,6 +753,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         # REQ-1961: a numeric's precision and scale are stored in one spelling, whoever writes
         # the registration and however they spelled it; a size no numeric can have is refused
         # here, the one place a column's type is written.
+        _data_type, _subtype = _stored_subtype(_data_type, _existing_subtypes.get(col.name))
         try:
             _data_type = stored_type_of(_data_type)
         except ReportedNumericMalformed as malformed:
@@ -767,6 +790,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 gql_is_list=getattr(col, "gql_is_list", False),
                 epoch_unit=getattr(col, "epoch_unit", None),
                 **_nested_attributes(col, _data_type, _existing_nested.get(col.name)),
+                subtype=_subtype,  # REQ-2171
                 fake=getattr(col, "fake", None),  # REQ-1494
                 fake_stable=getattr(col, "fake_stable", False),
                 fake_stable_version=pinned_version(

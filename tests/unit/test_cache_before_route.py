@@ -306,7 +306,7 @@ async def test_a_hit_carries_the_shape_its_miss_was_typed_by(pipe):
 
     # The registry's column types, as a schema build keeps them: orders.id is an integer.
     pipe.state.schema_build_cache = {
-        "column_types": {1: [SimpleNamespace(column_name="id", data_type="integer")]}
+        "column_types": {1: [SimpleNamespace(column_name="id", data_type="integer", subtype=None)]}
     }
     miss, _ = await _raw(pipe, _CACHED, [7])
     hit = await pipe.mod._govern_and_route(_CACHED, "analyst", params=[7], serve_cached=True)

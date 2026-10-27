@@ -11,6 +11,7 @@
 import datetime
 import decimal
 import hashlib
+import ipaddress
 import uuid as _uuid_mod
 import io
 import json
@@ -270,6 +271,81 @@ def _uuid_to_pg_binary(u):
     return (u if isinstance(u, _uuid_mod.UUID) else _uuid_mod.UUID(str(u))).bytes
 
 
+def _inet_text(v):
+    """inet_out: an address with its full prefix is written without it."""
+    if isinstance(v, (ipaddress.IPv4Interface, ipaddress.IPv6Interface)):
+        return str(v.ip) if v.network.prefixlen == v.max_prefixlen else str(v)
+    return str(v)
+
+
+def _inet_binary(is_cidr):
+    """inet_send / cidr_send: family (2 IPv4, 3 IPv6), prefix bits, is-cidr flag, address length,
+    then the address."""
+
+    def encode(v):
+        if is_cidr:
+            net = ipaddress.ip_network(str(v))
+            address, bits = net.network_address.packed, net.prefixlen
+        else:
+            iface = ipaddress.ip_interface(str(v))
+            address, bits = iface.ip.packed, iface.network.prefixlen
+        family = 2 if len(address) == 4 else 3
+        return bytes([family, bits, 1 if is_cidr else 0, len(address)]) + address
+
+    return encode
+
+
+def _macaddr_binary(v):
+    raw = bytes.fromhex(re.sub(r"[:\-.]", "", str(v)))
+    if len(raw) != 6:
+        raise ValueError(f"not a macaddr: {v!r}")
+    return raw
+
+
+def _float8_text(x):
+    """float8out: the shortest exact form, with no trailing .0."""
+    text = repr(float(x))
+    return text[:-2] if text.endswith(".0") else text
+
+
+def _point_parts(v):
+    if isinstance(v, (tuple, list)):
+        return float(v[0]), float(v[1])
+    x, y = str(v).strip().strip("()").split(",")
+    return float(x), float(y)
+
+
+def _point_text(v):
+    if isinstance(v, (tuple, list)):
+        x, y = _point_parts(v)
+        return f"({_float8_text(x)},{_float8_text(y)})"
+    return str(v)
+
+
+def _money_value(v):
+    """A money value as a decimal: a number, or money's own text (``-$1,234.57``)."""
+    if isinstance(v, str):
+        text = v.strip().replace(",", "").replace("$", "")
+        return decimal.Decimal(text)
+    return v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
+
+
+def _money_cents(v):
+    return int(
+        _money_value(v).quantize(decimal.Decimal("0.01"), rounding=decimal.ROUND_HALF_UP) * 100
+    )
+
+
+def _money_text(v):
+    """cash_out under lc_monetary C: a dollar sign, comma thousands, two decimals."""
+    if isinstance(v, str):
+        return v
+    cents = _money_cents(v)
+    sign = "-" if cents < 0 else ""
+    dollars, rem = divmod(abs(cents), 100)
+    return f"{sign}${dollars:,}.{rem:02d}"
+
+
 def _micros_since_2000(dt):
     # A naive value (TIMESTAMP WITHOUT TIME ZONE — what DuckDB and psycopg2 return for `timestamp`)
     # counts from a naive epoch; subtracting the aware one raised TypeError mid-stream.
@@ -384,6 +460,15 @@ BVTYPE_TO_PGTYPE = {
     ),
     # signed: a value before 2000-01-01 is a negative offset (unsigned raised OverflowError).
     BVType.TIMESTAMP: (1114, _timestamp_text, _timestamp_binary(_micros_since_2000)),
+    # Provisa's IR subtypes (REQ-2171): each sent as its PostgreSQL type, in its text and binary
+    # forms.
+    BVType.INET: (869, _inet_text, _inet_binary(False)),
+    BVType.CIDR: (650, str, _inet_binary(True)),
+    BVType.MACADDR: (829, str, _macaddr_binary),
+    BVType.XML: (142, str, lambda r: str(r).encode("utf-8")),
+    BVType.POINT: (600, _point_text, lambda r: struct.pack("!dd", *_point_parts(r))),
+    BVType.OID: (26, str, lambda r: struct.pack("!I", int(r))),
+    BVType.MONEY: (790, _money_text, lambda r: struct.pack("!q", _money_cents(r))),
 }
 
 

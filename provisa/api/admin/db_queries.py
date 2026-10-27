@@ -73,6 +73,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
         "fake_why, "  # REQ-2094
         "array_depth, element_type, native_type, native_platform, "  # REQ-1965
+        "subtype, "  # REQ-2171
         "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
         "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
         "FROM table_columns WHERE table_id IN "
@@ -116,6 +117,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
                 "element_type": r.get("element_type"),
                 "native_type": r.get("native_type"),
                 "native_platform": r.get("native_platform"),
+                "subtype": r.get("subtype"),  # REQ-2171
                 "fake": r.get("fake"),  # REQ-1494
                 "fake_stable": bool(r.get("fake_stable") or False),
                 "fake_stable_version": r.get("fake_stable_version"),

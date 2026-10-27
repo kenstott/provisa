@@ -156,6 +156,7 @@ class _Col:
         self.column_name = name
         self.data_type = dtype
         self.is_nullable = nullable
+        self.subtype = None  # REQ-2171
 
 
 def _ops_ctx():

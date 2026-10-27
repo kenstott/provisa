@@ -1487,6 +1487,16 @@ class _KeptResultShape:
             self._memo["read_shape"] = await _off_loop(self._derive)
         return self._memo["read_shape"]
 
+    def subtyped(self) -> list[tuple[str, str]] | None:
+        """REQ-2171: the shape of a statement that reads a table with a subtyped column, for one
+        whose columns are otherwise typed by what the engine returned (not described first);
+        None for any other statement, which is not derived. Read on the caller's own thread."""
+        _sql, table_map, _ctx, state = self._args
+        column_types = state.schema_build_cache["column_types"]
+        if not any(c.subtype for tid in set(table_map.values()) for c in column_types.get(tid, [])):
+            return None
+        return self.now()
+
 
 def _kept_result_shape(
     memo: dict[str, Any], governed_sql: str, table_map: dict[str, int], ctx: Any, state: Any

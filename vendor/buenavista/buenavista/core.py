@@ -48,6 +48,14 @@ class BVType(enum.Enum):
     REALARRAY = 26
     BOOLARRAY = 27
     DECIMALARRAY = 28
+    # Provisa's IR subtypes (REQ-2171), each sent as its PostgreSQL type.
+    INET = 29
+    CIDR = 30
+    MACADDR = 31
+    XML = 32
+    POINT = 33
+    OID = 34
+    MONEY = 35
 
 
 class RawDataRowBytes(bytes):

@@ -1,0 +1,326 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5b2e8d14-7c3a-4f69-a0d1-3e9f6b8c2a75
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""IR subtypes (REQ-2171).
+
+Some IR types are subtypes of another: inet, cidr, macaddr, xml and point of text, oid of bigint,
+money of numeric. Registration always records the subtype when a source's native type has one
+(a Postgres inet, a Trino ipaddress, a ClickHouse IPv4 registers as inet). The column is stored as
+its base type carrying the subtype, so every surface that needs only the base type reads the base;
+pgwire and its catalog report the subtype's PostgreSQL type."""
+
+# Requirements: REQ-2171
+
+from __future__ import annotations
+
+import contextlib
+import decimal
+import ipaddress
+import struct
+from types import SimpleNamespace
+
+import pytest
+from sqlalchemy import insert, select
+
+from buenavista.postgres import BVTYPE_TO_PGTYPE
+from provisa.api.admin.introspect import _pg_column_typing
+from provisa.compiler.introspect import ColumnMetadata, introspect_tables
+from provisa.compiler.result_shape import derive_result_shape
+from provisa.core import secrets_store
+from provisa.core.ir_types import SUBTYPES, column_typing, to_ir, to_physical
+from provisa.core.models import Column, Table
+from provisa.core.repositories import table as table_repo
+from provisa.core.schema_org import domains, sources, table_columns
+from provisa.pgwire.catalog_data import _PG_OID_ATTR_META, _TYPEINFO, pg_type_rows
+from provisa.pgwire.catalog_populate import _physical_to_pg_name, _physical_to_pg_oid
+from provisa.pgwire.server import _sql_type_to_bvtype
+
+# name: (base IR type, PostgreSQL type OID), as the requirement's first set declares them.
+_FIRST_SET = {
+    "inet": ("text", 869),
+    "cidr": ("text", 650),
+    "macaddr": ("text", 829),
+    "xml": ("text", 142),
+    "point": ("text", 600),
+    "oid": ("bigint", 26),
+    "money": ("numeric", 790),
+}
+
+
+def test_each_subtype_is_declared_once_with_its_base_and_postgresql_type():
+    assert {name: (to_ir(s.base), s.pg_oid) for name, s in SUBTYPES.items()} == _FIRST_SET
+
+
+@pytest.mark.parametrize("name", sorted(_FIRST_SET))
+def test_a_subtype_is_its_base_type_to_every_surface_that_needs_only_the_base(name):
+    base = _FIRST_SET[name][0]
+    assert to_ir(name) == base
+    assert to_physical(name, "postgresql") == to_physical(SUBTYPES[name].base, "postgresql")
+
+
+# --- registration records the subtype -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("native", "platform", "subtype"),
+    [
+        ("ipaddress", "trino", "inet"),
+        ("IPv4", "clickhouse", "inet"),
+        ("IPv6", "clickhouse", "inet"),
+        ("ip", "elasticsearch", "inet"),
+        ("geo_point", "elasticsearch", "point"),
+        ("inet", "cassandra", "inet"),
+        ("INET", "duckdb", "inet"),
+        ("money", "sqlserver", "money"),
+        ("smallmoney", "sqlserver", "money"),
+        ("xml", "sqlserver", "xml"),
+        ("xmltype", "oracle", "xml"),
+        ("point", "mysql", "point"),
+    ],
+)
+def test_a_native_type_equivalent_to_a_subtype_registers_as_it(native, platform, subtype):
+    assert column_typing(native, platform).data_type == subtype
+    # Everything that maps the native type to the IR without registering it reads the base.
+    assert to_ir(native, platform) == to_ir(subtype)
+
+
+@pytest.mark.parametrize("kind", ["postgresql", "cockroachdb", "yugabytedb"])
+@pytest.mark.parametrize("native", sorted(_FIRST_SET))
+def test_a_postgres_wire_column_of_a_subtype_registers_as_it(kind, native):
+    assert _pg_column_typing(kind, native, native, native, "b").data_type == native
+
+
+# --- the store keeps the base type and the subtype ----------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def no_vault(monkeypatch):
+    @contextlib.asynccontextmanager
+    async def _unbound():
+        yield
+
+    monkeypatch.setattr(secrets_store, "bound_to_request_org", _unbound)
+
+
+@pytest.fixture
+async def org_plane(control_plane):
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(domains).values(id="net"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+    return db
+
+
+def _hosts(*columns: tuple[str, str]) -> Table:
+    return Table(
+        source_id="pg",
+        domain_id="net",
+        schema_name="public",
+        table_name="hosts",
+        columns=[Column(name=n, data_type=t, visible_to=["admin"]) for n, t in columns],
+    )
+
+
+async def _stored(db) -> dict[str, tuple[str, str | None]]:
+    async with db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(
+                    table_columns.c.column_name, table_columns.c.data_type, table_columns.c.subtype
+                )
+            )
+        ).fetchall()
+    return {r.column_name: (r.data_type, r.subtype) for r in rows}
+
+
+@pytest.mark.asyncio
+async def test_a_column_registered_as_a_subtype_is_stored_as_its_base_carrying_the_subtype(
+    org_plane,
+):
+    async with org_plane.acquire() as conn:
+        await table_repo.upsert(
+            conn, _hosts(("id", "integer"), ("ip", "inet"), ("fee", "money"), ("row", "oid"))
+        )
+    assert await _stored(org_plane) == {
+        "id": ("integer", None),
+        "ip": ("text", "inet"),
+        "fee": (SUBTYPES["money"].base, "money"),
+        "row": ("bigint", "oid"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_resaving_a_column_as_its_base_keeps_the_subtype_and_a_new_type_drops_it(org_plane):
+    async with org_plane.acquire() as conn:
+        await table_repo.upsert(conn, _hosts(("ip", "inet"), ("mac", "macaddr")))
+        # An edit of the table restates each column's stored type, the base.
+        await table_repo.upsert(conn, _hosts(("ip", "text"), ("mac", "integer")))
+    assert await _stored(org_plane) == {"ip": ("text", "inet"), "mac": ("integer", None)}
+
+
+@pytest.mark.asyncio
+async def test_the_tables_a_server_builds_from_carry_each_columns_subtype(org_plane):
+    from provisa.api.admin.db_queries import fetch_tables
+
+    async with org_plane.acquire() as conn:
+        await table_repo.upsert(conn, _hosts(("id", "integer"), ("ip", "inet")))
+        tables = await fetch_tables(conn)
+    (hosts,) = [t for t in tables if t["table_name"] == "hosts"]
+    assert {c["column_name"]: c["subtype"] for c in hosts["columns"]} == {"id": None, "ip": "inet"}
+    (metadata,) = introspect_tables(None, [hosts], {"pg": {"type": "postgresql"}}).values()
+    assert [(m.column_name, m.data_type, m.subtype) for m in metadata] == [
+        ("id", "integer", None),
+        ("ip", "text", "inet"),
+    ]
+
+
+# --- the pgwire catalog reports the PostgreSQL type ---------------------------------------------
+
+
+@pytest.mark.parametrize("name", sorted(_FIRST_SET))
+def test_the_catalog_reports_a_subtype_as_its_postgresql_type(name):
+    oid = _FIRST_SET[name][1]
+    assert _physical_to_pg_oid(name) == oid
+    assert _physical_to_pg_name(name) == name
+    assert {row[0]: row[1] for row in pg_type_rows()}[oid] == name
+    assert oid in _PG_OID_ATTR_META
+    assert _TYPEINFO[oid][1] == name
+
+
+def _catalog_ctx():
+    meta = SimpleNamespace(
+        table_id=1,
+        domain_id="net",
+        schema_name="public",
+        table_name="hosts",
+        display_name="hosts",
+        field_name="net__hosts",
+    )
+    return SimpleNamespace(
+        tables={"hosts": meta},
+        physical_to_sql={},
+        virtual_columns={},
+        row_virtual_columns={},
+        columns_outside_relation=set(),
+        nested_columns={},
+    )
+
+
+_HOSTS = {
+    1: [
+        ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
+        ColumnMetadata(column_name="ip", data_type="text", is_nullable=True, subtype="inet"),
+        ColumnMetadata(column_name="name", data_type="text", is_nullable=True),
+    ]
+}
+
+
+def test_the_catalog_lists_a_subtyped_column_as_the_subtype():
+    from provisa.pgwire.catalog_populate import _build_catalog_index
+
+    idx = _build_catalog_index(_catalog_ctx(), _HOSTS)
+    assert [(c[1], c[2]) for c in idx.all_cols] == [
+        ("id", "integer"),
+        ("ip", "inet"),
+        ("name", "text"),
+    ]
+
+
+# --- pgwire results report the PostgreSQL type --------------------------------------------------
+
+
+def test_a_statement_reading_a_subtyped_column_is_described_as_the_subtype():
+    tables = {"net.hosts": 1, "hosts": 1}
+    ctx = _catalog_ctx()
+    assert derive_result_shape("SELECT id, ip FROM net.hosts", tables, ctx, _HOSTS) == [
+        ("id", "integer"),
+        ("ip", "inet"),
+    ]
+    joined = derive_result_shape(
+        "SELECT h.ip, upper(h.ip) AS shout FROM net.hosts h JOIN net.hosts g ON h.id = g.id",
+        tables,
+        ctx,
+        _HOSTS,
+    )
+    # A bare column is the subtype; an expression over it is typed by the base, as text.
+    assert joined[0] == ("ip", "inet")
+    assert joined[1][0] == "shout" and joined[1][1].lower() in {"text", "varchar"}
+
+
+@pytest.mark.parametrize("name", sorted(_FIRST_SET))
+def test_pgwire_sends_a_subtype_with_its_postgresql_type_oid(name):
+    assert BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][0] == _FIRST_SET[name][1]
+
+
+def _text(name: str, value):
+    return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][1](value)
+
+
+def _binary(name: str, value):
+    return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][2](value)
+
+
+def test_pgwire_sends_each_subtype_in_postgresqls_text_form():
+    assert _text("inet", "10.0.0.1") == "10.0.0.1"
+    assert _text("inet", ipaddress.ip_interface("10.0.0.1/32")) == "10.0.0.1"
+    assert _text("inet", ipaddress.ip_interface("10.0.0.1/24")) == "10.0.0.1/24"
+    assert _text("cidr", ipaddress.ip_network("10.0.0.0/8")) == "10.0.0.0/8"
+    assert _text("macaddr", "08:00:2b:01:02:03") == "08:00:2b:01:02:03"
+    assert _text("xml", "<a>1</a>") == "<a>1</a>"
+    assert _text("point", "(1,2)") == "(1,2)"
+    assert _text("point", (1.0, 2.5)) == "(1,2.5)"
+    assert _text("oid", 42) == "42"
+    # money in PostgreSQL's own form (lc_monetary C): a dollar sign, thousands, two decimals.
+    assert _text("money", decimal.Decimal("1234.5")) == "$1,234.50"
+    assert _text("money", decimal.Decimal("-1234.567")) == "-$1,234.57"
+    assert _text("money", "$1,234.50") == "$1,234.50"
+
+
+def test_pgwire_sends_each_subtype_in_postgresqls_binary_form():
+    assert _binary("inet", "10.0.0.1") == bytes([2, 32, 0, 4, 10, 0, 0, 1])
+    assert _binary("inet", "10.0.0.1/24") == bytes([2, 24, 0, 4, 10, 0, 0, 1])
+    assert _binary("cidr", "10.0.0.0/8") == bytes([2, 8, 1, 4, 10, 0, 0, 0])
+    assert _binary("inet", "::1") == bytes([3, 128, 0, 16]) + bytes(15) + b"\x01"
+    assert _binary("macaddr", "08:00:2b:01:02:03") == bytes([8, 0, 0x2B, 1, 2, 3])
+    assert _binary("xml", "<a>1</a>") == b"<a>1</a>"
+    assert _binary("point", "(1,2.5)") == struct.pack("!dd", 1.0, 2.5)
+    assert _binary("oid", 42) == struct.pack("!I", 42)
+    assert _binary("money", decimal.Decimal("1234.5")) == struct.pack("!q", 123450)
+    assert _binary("money", "-$1,234.57") == struct.pack("!q", -123457)
+
+
+def test_an_undescribed_statements_subtyped_columns_are_sent_as_their_postgresql_type():
+    """The simple protocol types columns by what the engine returned: an engine holding inet as
+    text answers varchar, and the column still goes out as inet."""
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire.server import ProvisaQueryResult
+
+    engine = QueryResult(
+        rows=[(1, "10.0.0.1")], column_names=["id", "ip"], column_types=["integer", "varchar"]
+    )
+    result = ProvisaQueryResult(engine, "SELECT id, ip FROM net.hosts", read_shape=_SHAPE)
+    assert [BVTYPE_TO_PGTYPE[result.column(i)[1]][0] for i in range(2)] == [23, 869]
+    with pytest.raises(RuntimeError, match="returned 2"):
+        ProvisaQueryResult(engine, "SELECT id, ip FROM net.hosts", read_shape=_SHAPE[:1])
+
+
+_SHAPE = [("id", "integer"), ("ip", "inet")]
+
+
+def _kept(table_map):
+    from provisa.pgwire._pipeline import _kept_result_shape
+
+    state = SimpleNamespace(schema_build_cache={"column_types": {**_HOSTS, 2: _HOSTS[1][:1]}})
+    return _kept_result_shape({}, "SELECT id, ip FROM net.hosts", table_map, _catalog_ctx(), state)
+
+
+def test_only_a_statement_reading_a_subtyped_column_derives_its_shape_for_the_wire():
+    assert _kept({"net.hosts": 1}).subtyped() == _SHAPE
+    assert _kept({"net.ids": 2}).subtyped() is None

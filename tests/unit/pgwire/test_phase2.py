@@ -46,6 +46,7 @@ class _ColMeta:
     column_name: str
     data_type: str
     is_nullable: bool
+    subtype: str | None = None  # REQ-2171
 
 
 def _make_state(tables: dict, col_types: dict) -> Any:

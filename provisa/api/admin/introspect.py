@@ -1394,7 +1394,13 @@ def _pg_column_typing(
     registering an unmappable column. Its two markers are resolved here: ``ARRAY`` from the
     array type's own spelling, and ``USER-DEFINED`` as a composite (JSON, REQ-1965) or as an enum
     or domain (text)."""
-    from provisa.core.ir_types import ColumnTyping, column_typing, composite_typing, to_ir
+    from provisa.core.ir_types import (
+        ColumnTyping,
+        column_typing,
+        composite_typing,
+        subtype_of,
+        to_ir,
+    )
 
     if data_type == _PG_ARRAY:
         return column_typing(formatted or udt_name, kind)
@@ -1404,6 +1410,9 @@ def _pg_column_typing(
         return ColumnTyping("text")
     if data_type == "numeric" and formatted and formatted != "numeric":
         return ColumnTyping(formatted)  # a sized decimal keeps its size (REQ-1961)
+    subtype = subtype_of(data_type, kind)
+    if subtype is not None:
+        return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
     return ColumnTyping(to_ir(data_type))
 
 

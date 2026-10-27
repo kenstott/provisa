@@ -34,6 +34,8 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
+from provisa.core.ir_types import base_type
+
 # Dialects a registered type string may be spelled in: the registry stores what the bound engine or
 # the source reported, or what the config declared.
 _TYPE_DIALECTS = ("postgres", "duckdb", "trino", "clickhouse")
@@ -117,7 +119,8 @@ def table_columns(table_id: int, ctx: Any, column_types: dict) -> dict[str, str]
         if (table_id, physical) in ctx.columns_outside_relation:
             continue  # registered, but the relation a statement reads does not hold it
         out[exposed_names.get((table_id, physical)) or apply_sql_name(physical)] = RegisteredType(
-            _described_type(col.data_type, nested.get(physical.lower()))
+            # REQ-2171: a subtyped column is described as its subtype
+            col.subtype or _described_type(col.data_type, nested.get(physical.lower()))
         )
     for virtual in ctx.virtual_columns.get(table_id, {}):
         out[virtual] = RegisteredType("varchar")
@@ -298,7 +301,8 @@ def _annotated_shape(
     nested: dict[str, Any] = {}
     for (db, name), columns in registered.items():
         nested.setdefault(db, {})[name] = {
-            col: _registered_type(raw) or exp.DataType.build("unknown")
+            # REQ-2171: an expression over a subtyped column is typed by its base
+            col: _registered_type(base_type(raw)) or exp.DataType.build("unknown")
             for col, raw in columns.items()
         }
     schema = MappingSchema(nested, dialect="postgres")

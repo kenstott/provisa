@@ -190,7 +190,11 @@ def _catalog_state(metrics: list) -> MagicMock:
     state.contexts = {"testrole": ctx}
     state.schema_build_cache = {
         "column_types": {
-            1: [SimpleNamespace(column_name="id", data_type="integer", is_nullable=False)]
+            1: [
+                SimpleNamespace(
+                    column_name="id", data_type="integer", is_nullable=False, subtype=None
+                )
+            ]
         },
         "tables": [],
         "domains": [],
