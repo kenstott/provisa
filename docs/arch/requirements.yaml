@@ -8825,6 +8825,7 @@
   - tests/unit/test_cypher_parser.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_cypher_tck_precedence.py
+  - tests/unit/test_cypher_tck_quantifiers.py
   - tests/unit/test_sql_to_cypher.py
   - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01

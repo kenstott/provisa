@@ -691,7 +691,26 @@ class ExprLowering:
             return _anon("none_match", source, pred) if pred else _anon("none_match", source)
         # SINGLE → cardinality(filter(list, pred)) = 1
         filtered = _anon("filter", source, pred) if pred else source
-        return exp.EQ(this=_anon("cardinality", filtered), expression=exp.Literal.number(1))
+        one = exp.EQ(this=_anon("cardinality", filtered), expression=exp.Literal.number(1))
+        if node.predicate is None:
+            return one
+        # Three-valued: a second true decides false; otherwise a null predicate value leaves it null.
+        unknown = _lam(
+            node.var, exp.Is(this=exp.Paren(this=self.lower(node.predicate)), expression=exp.Null())
+        )
+        return exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.GT(
+                        this=_anon("cardinality", filtered.copy()),
+                        expression=exp.Literal.number(1),
+                    ),
+                    true=exp.false(),
+                ),
+                exp.If(this=_anon("any_match", source.copy(), unknown), true=exp.Null()),
+            ],
+            default=one,
+        )
 
     def _lower_Reduce(self, node: Reduce) -> exp.Expression:
         # reduce(list, init, (acc, x) -> step, acc -> acc)
