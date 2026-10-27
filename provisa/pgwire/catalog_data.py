@@ -542,6 +542,12 @@ _TABLE_MAP.update(
     }
 )
 
+# Every other PostgreSQL 17 relation, which no client queries (catalog_pg17_tables, tier 4).
+UNQUERIED_RELATIONS: tuple[tuple[str, str], ...] = tuple(
+    key for key in RELATIONS if key not in _TABLE_MAP
+)
+_TABLE_MAP.update({key: served_table(*key) for key in UNQUERIED_RELATIONS})
+
 _CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
 
 _NAMESPACE_OIDS = {"pg_catalog": 11, "information_schema": 12}

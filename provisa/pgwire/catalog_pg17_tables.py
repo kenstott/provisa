@@ -18,7 +18,7 @@ something Provisa has none of (publications, security labels, extended statistic
 
 from __future__ import annotations
 
-from provisa.pgwire.catalog_pg17 import RELATIONS
+from provisa.pgwire.catalog_pg17 import RELATIONS, STATIC_ROWS
 
 # A PG 17 column type, as the catalog DB stores it (the types catalog_types then describes it as).
 _DUCKDB_TYPES: dict[str, str] = {
@@ -187,3 +187,92 @@ def populate_client_relations(db) -> None:  # REQ-2167
         "FALSE, FALSE, e.extrelocatable, n.nspname, NULL, NULL "
         "FROM _pg_extension e JOIN _pg_namespace n ON n.oid = e.extnamespace"
     )
+
+
+# What each PostgreSQL 17 relation no client queries holds (REQ-2167, tier 4), where Provisa has
+# something to list in it: the rows derived, as PostgreSQL derives them, from relations the catalog
+# already serves. Any other is empty.
+_DERIVED_ROWS: dict[str, str] = {
+    "_pg_shadow": (
+        "SELECT rolname, oid, rolcreatedb, rolsuper, rolreplication, rolbypassrls, NULL, "
+        "rolvaliduntil, rolconfig FROM _pg_roles WHERE rolcanlogin"
+    ),
+    "_pg_group": (
+        "SELECT r.rolname, r.oid, (SELECT list(m.member) FROM _pg_auth_members m "
+        "WHERE m.roleid = r.oid) FROM _pg_roles r WHERE NOT r.rolcanlogin"
+    ),
+    # A key's index, with the definition PostgreSQL writes for it (pg_get_indexdef).
+    "_pg_indexes": (
+        "SELECT n.nspname, c.relname, ci.relname, NULL, "
+        "'CREATE ' || CASE WHEN i.indisunique THEN 'UNIQUE ' ELSE '' END || 'INDEX ' || "
+        "ci.relname || ' ON ' || n.nspname || '.' || c.relname || ' USING btree (' || "
+        "(SELECT string_agg(a.attname, ', ' ORDER BY k.ordinal) FROM "
+        "(SELECT unnest(i.indkey) AS attnum, generate_subscripts(i.indkey, 1) AS ordinal) k "
+        "JOIN _pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum) || ')' "
+        "FROM _pg_index i JOIN _pg_class c ON c.oid = i.indrelid "
+        "JOIN _pg_class ci ON ci.oid = i.indexrelid "
+        "JOIN _pg_namespace n ON n.oid = c.relnamespace"
+    ),
+    # Provisa keeps no view's text (pg_get_viewdef): the definition is NULL.
+    "_pg_views": (
+        "SELECT n.nspname, c.relname, r.rolname, NULL FROM _pg_class c "
+        "JOIN _pg_namespace n ON n.oid = c.relnamespace "
+        "LEFT JOIN _pg_roles r ON r.oid = c.relowner WHERE c.relkind = 'v'"
+    ),
+    # PostgreSQL 17 lists each NOT NULL column of a table as a check constraint, named
+    # <namespace oid>_<table oid>_<attnum>_not_null.
+    "_is_check_constraints": (
+        "SELECT (SELECT datname FROM _pg_database), n.nspname, "
+        "n.oid || '_' || c.oid || '_' || a.attnum || '_not_null', "
+        "a.attname || ' IS NOT NULL' FROM _pg_attribute a "
+        "JOIN _pg_class c ON c.oid = a.attrelid "
+        "JOIN _pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE a.attnotnull AND a.attnum > 0 AND c.relkind IN ('r', 'p') "
+        "AND n.nspname NOT IN ('pg_catalog', 'information_schema')"
+    ),
+    # The table a key constraint is on, or a foreign key references.
+    "_is_constraint_table_usage": (
+        "SELECT (SELECT datname FROM _pg_database), nr.nspname, r.relname, "
+        "(SELECT datname FROM _pg_database), nc.nspname, k.conname FROM _pg_constraint k "
+        "JOIN _pg_namespace nc ON nc.oid = k.connamespace "
+        "JOIN _pg_class r ON r.oid = CASE WHEN k.contype = 'f' THEN k.confrelid "
+        "ELSE k.conrelid END "
+        "JOIN _pg_namespace nr ON nr.oid = r.relnamespace WHERE k.contype IN ('p', 'u', 'f')"
+    ),
+    # Its columns: a key's own, or the referenced columns of a foreign key.
+    "_is_constraint_column_usage": (
+        "SELECT (SELECT datname FROM _pg_database), nr.nspname, r.relname, a.attname, "
+        "(SELECT datname FROM _pg_database), nc.nspname, k.conname FROM _pg_constraint k "
+        "JOIN _pg_namespace nc ON nc.oid = k.connamespace "
+        "JOIN _pg_class r ON r.oid = CASE WHEN k.contype = 'f' THEN k.confrelid "
+        "ELSE k.conrelid END "
+        "JOIN _pg_namespace nr ON nr.oid = r.relnamespace "
+        "JOIN _pg_attribute a ON a.attrelid = r.oid AND list_contains("
+        "CASE WHEN k.contype = 'f' THEN k.confkey ELSE k.conkey END, a.attnum) "
+        "WHERE k.contype IN ('p', 'u', 'f')"
+    ),
+    # The database's encoding, UTF8; its collation where pg_collation has one matching it.
+    "_is_character_sets": (
+        "SELECT NULL, NULL, 'UTF8', 'UCS', 'UTF8', "
+        "CASE WHEN nc.nspname IS NOT NULL THEN d.datname END, nc.nspname, c.collname "
+        "FROM _pg_database d LEFT JOIN (_pg_collation c JOIN _pg_namespace nc "
+        "ON c.collnamespace = nc.oid) ON d.datcollate = c.collcollate "
+        "AND d.datctype = c.collctype ORDER BY length(c.collname) DESC, c.collname LIMIT 1"
+    ),
+    "_is_information_schema_catalog_name": "SELECT datname FROM _pg_database",
+}
+
+
+def populate_unqueried_relations(db, relations) -> None:  # REQ-2167
+    """Serve every remaining PostgreSQL 17 relation with its columns: the rows derived from the
+    catalog where Provisa has something to list (_DERIVED_ROWS), PostgreSQL's own rows for the SQL
+    conformance tables, and otherwise none (no statistic, setting or server internal is made
+    up)."""
+    for schema, name in relations:
+        create_relation(db, schema, name)
+        table = served_table(schema, name)
+        if table in _DERIVED_ROWS:
+            db.execute(f"INSERT INTO {table} {_DERIVED_ROWS[table]}")
+    for name, rows in STATIC_ROWS.items():
+        width = len(RELATIONS[("information_schema", name)])
+        db.executemany(f"INSERT INTO _is_{name} VALUES ({', '.join(['?'] * width)})", list(rows))

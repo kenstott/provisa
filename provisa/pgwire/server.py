@@ -45,6 +45,7 @@ import jwt
 from buenavista.core import BVType, Connection, QueryResult as BVQueryResult, Session
 from buenavista.postgres import (
     BVTYPE_TO_PGTYPE,
+    _array_entry,
     BVBuffer,
     BVContext,
     BuenaVistaHandler,
@@ -507,6 +508,7 @@ _ARRAY_OF: dict[BVType, BVType] = {
     BVType.DECIMAL: BVType.DECIMALARRAY,
     BVType.TEXT: BVType.STRINGARRAY,
     BVType.OID: BVType.OIDARRAY,
+    BVType.REGTYPE: BVType.REGTYPEARRAY,
 }
 
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
@@ -630,6 +632,7 @@ _WIRE_FAMILIES = (
             BVType.OIDARRAY,
             BVType.OIDVECTOR,
             BVType.INT2VECTOR,
+            BVType.REGTYPEARRAY,
         }
     ),
 )
@@ -662,6 +665,7 @@ def _register_reg_types() -> None:
     type_names = {oid: entry[-1] for oid, entry in TYPES.items()}
     BVTYPE_TO_PGTYPE[BVType.REGPROC] = (24, _reg_text(PROC_NAMES), _reg_binary)
     BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _reg_binary)
+    BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY] = _array_entry(BVType.REGTYPE, 2211)
 
 
 _register_reg_types()

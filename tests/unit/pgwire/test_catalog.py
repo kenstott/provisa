@@ -604,3 +604,67 @@ class TestPgjdbcIndexInfo:
             state,
         )
         assert [tuple(r) for r in result.rows] == [(1, 1)]
+
+
+class TestDerivedSystemViews:
+    """The PostgreSQL 17 system views Provisa answers from what its catalog already holds."""
+
+    @pytest.fixture
+    def state(self):
+        return _make_pet_store_state()
+
+    def _rows(self, sql, state):
+        return [tuple(r) for r in answer(sql, "testrole", state).rows]
+
+    def test_pg_indexes_gives_each_key_index_and_its_definition(self, state):
+        rows = self._rows(
+            "SELECT schemaname, tablename, indexdef FROM pg_catalog.pg_indexes "
+            "WHERE tablename = 'pets'",
+            state,
+        )
+        assert len(rows) == 1
+        schema, table, definition = rows[0]
+        assert (schema, table) == ("meta", "pets")
+        assert definition.startswith("CREATE UNIQUE INDEX ")
+        assert definition.endswith(" ON meta.pets USING btree (id)")
+
+    def test_check_constraints_lists_not_null_columns_as_postgresql_17_does(self, state):
+        pets_oid = self._rows("SELECT oid FROM pg_catalog.pg_class WHERE relname = 'pets'", state)
+        meta_oid = self._rows(
+            "SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'meta'", state
+        )
+        rows = self._rows(
+            "SELECT constraint_schema, constraint_name, check_clause "
+            "FROM information_schema.check_constraints ORDER BY constraint_name",
+            state,
+        )
+        assert ("meta", f"{meta_oid[0][0]}_{pets_oid[0][0]}_1_not_null", "id IS NOT NULL") in rows
+
+    def test_constraint_usage_names_the_referenced_table_of_a_foreign_key(self, state):
+        tables = self._rows(
+            "SELECT table_name, constraint_name FROM information_schema.constraint_table_usage",
+            state,
+        )
+        columns = self._rows(
+            "SELECT table_name, column_name, constraint_name "
+            "FROM information_schema.constraint_column_usage",
+            state,
+        )
+        fk = [
+            name
+            for (name,) in self._rows(
+                "SELECT conname FROM pg_catalog.pg_constraint WHERE contype = 'f'", state
+            )
+        ]
+        assert fk and ("registered_tables", fk[0]) in tables
+        assert ("registered_tables", "id", fk[0]) in columns
+
+    def test_character_sets_and_the_catalog_name_are_the_databases(self, state):
+        assert self._rows(
+            "SELECT character_set_name, character_repertoire, form_of_use "
+            "FROM information_schema.character_sets",
+            state,
+        ) == [("UTF8", "UCS", "UTF8")]
+        assert self._rows(
+            "SELECT catalog_name FROM information_schema.information_schema_catalog_name", state
+        ) == [("provisa",)]
