@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import sys
 import textwrap
+import threading
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pyarrow as pa
 import pytest
@@ -397,3 +399,76 @@ def test_a_calls_batches_pulled_for_another_thread_run_in_the_callers_context_on
     assert {value for value, _ in seen} == {"the request"}
     assert len({thread for _, thread in seen}) == 1 and seen[0][1] != threading.get_ident()
     assert closed == [True]
+
+
+# --- a lane's socket is closed once its reader has left it ---------------------------------------
+
+
+class _Socket:
+    """A lane's socket stand-in: ``frames`` given to the reader, then a read that waits for the
+    shutdown; every close and every end of a read recorded in ``order``."""
+
+    def __init__(self, frames: bytes = b"") -> None:
+        self._frames = frames
+        #: The frames are given once this is set: after the call has leased the lane.
+        self.gate = threading.Event()
+        if not frames:
+            self.gate.set()
+        self.in_recv = threading.Event()
+        self._shut = threading.Event()
+        self.order: list[str] = []
+
+    def recv(self, size: int) -> bytes:
+        self.gate.wait(5)
+        if self._frames:
+            chunk, self._frames = self._frames[:size], self._frames[size:]
+            return chunk
+        self.in_recv.set()
+        self._shut.wait(5)
+        time.sleep(0.05)  # still in the call when the socket is shut
+        self.order.append("read ended")
+        return b""
+
+    def shutdown(self, how: int) -> None:
+        self._shut.set()
+
+    def close(self) -> None:
+        self.order.append("closed")
+
+
+def _laned(*sockets: _Socket) -> w.Worker:
+    worker = w.Worker(
+        "orders-src", "h1", w.HostCommand(argv=lambda _address: ["unused"], env={}, cwd=Path("."))
+    )
+    worker._attach(list(sockets), {"exports": []}, "code-worker-test")  # pyright: ignore[reportArgumentType]  # stand-ins
+    return worker
+
+
+def test_stop_closes_a_lane_only_once_its_reader_has_left_it():
+    """A closed socket's number is the next one opened: closed while its reader is still in its
+    recv, the reader reads that connection's bytes (a TLS handshake's "bad record MAC"). stop()
+    wakes each lane's reader, and closes the socket once the reader has left it."""
+    sock = _Socket()
+    worker = _laned(sock)
+    assert sock.in_recv.wait(5)
+    worker.stop()
+    assert sock.order == ["read ended", "closed"]
+
+
+def test_stop_ends_a_lane_whose_reader_waits_on_a_full_queue():
+    """A reader delivering to a call that is not taking its rows waits while the call's queue is
+    full; a stopped lane takes no more, so its reader leaves and the lane is closed."""
+    rows = b"".join(w._frame({"op": "row", "id": 1, "n": n}) for n in range(w._QUEUED + 3))
+    sock = _Socket(rows)
+    worker = _laned(sock)
+    worker._lanes[0].lease(1)  # a call that never reads what it is sent
+    sock.gate.set()
+    deadline = time.monotonic() + 5
+    while not worker._lanes[0].waiting.full():
+        assert time.monotonic() < deadline, "the reader never filled the call's queue"
+        time.sleep(0.01)
+    stopped = threading.Thread(target=worker.stop)
+    stopped.start()
+    stopped.join(5)
+    assert not stopped.is_alive(), "stop() waited for a reader that could not leave"
+    assert sock.order[-1] == "closed"
