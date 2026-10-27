@@ -226,93 +226,6 @@ async def _sqlite_fks(
     return results
 
 
-# ---------------------------------------------------------------------------
-# UNIQUE constraint introspection (REQ-1093)
-# ---------------------------------------------------------------------------
-
-# Declared UNIQUE constraints (not PRIMARY KEY) with their ordered columns.
-_PG_UNIQUE = """
-SELECT
-    tc.constraint_name       AS name,
-    kcu.column_name          AS column_name,
-    kcu.ordinal_position     AS ordinal
-FROM information_schema.table_constraints  AS tc
-JOIN information_schema.key_column_usage   AS kcu
-    ON tc.constraint_name = kcu.constraint_name
-   AND tc.table_schema    = kcu.table_schema
-WHERE tc.constraint_type = 'UNIQUE'
-  AND tc.table_schema    = $1
-  AND tc.table_name      = $2
-ORDER BY tc.constraint_name, kcu.ordinal_position
-"""
-
-
-async def _pg_uniques(driver, schema_name: str, table_name: str) -> list[dict]:  # REQ-1093
-    """Return declared UNIQUE constraints from PostgreSQL/MySQL information_schema.
-
-    Each dict: {"name": str, "columns": [col, ...]} with columns in ordinal order.
-    Composite constraints yield multi-element columns; nothing is inferred from data.
-    """
-    rows = await driver.execute(_PG_UNIQUE, [schema_name, table_name])
-    grouped: dict[str, list[str]] = {}
-    for name, column_name, _ordinal in rows.rows:
-        grouped.setdefault(name, []).append(column_name)
-    return [{"name": name, "columns": cols} for name, cols in grouped.items()]
-
-
-async def _sqlite_uniques(driver, schema_name: str, table_name: str) -> list[dict]:  # REQ-1093
-    """Return declared UNIQUE constraints from SQLite PRAGMA index_list/index_info.
-
-    origin 'u' = a UNIQUE keyword/constraint; 'pk' (primary key) and 'c' (explicit
-    CREATE UNIQUE INDEX) are excluded so only table-declared UNIQUE constraints surface.
-    """
-    idx_rows = await driver.execute(f'PRAGMA index_list("{table_name}")', [])
-    results: list[dict] = []
-    for row in idx_rows.rows:
-        # columns: seq, name, unique, origin, partial
-        _seq, idx_name, is_unique, origin = row[0], row[1], row[2], row[3]
-        if not is_unique or origin != "u":
-            continue
-        info = await driver.execute(f'PRAGMA index_info("{idx_name}")', [])
-        # index_info columns: seqno, cid, name — already ordered by seqno
-        cols = [r[2] for r in info.rows]
-        results.append({"name": idx_name, "columns": cols})
-    return results
-
-
-async def introspect_unique_constraints(  # REQ-1093
-    source_pools,
-    source_type: str,
-    source_id: str,
-    schema_name: str,
-    table_name: str,
-) -> list[dict]:
-    """Introspect declared UNIQUE constraints for one table.
-
-    Returns [{"name": str, "columns": [col, ...]}]; empty when the source exposes
-    none or does not support constraint introspection. Only source-declared
-    constraints are returned — uniqueness is never inferred from sampled data.
-    """
-    source_type_lower = source_type.lower()
-    if not source_pools.has(source_id):
-        return []
-    driver = source_pools.get(source_id)
-    try:
-        if source_type_lower in ("postgresql", "postgres", "mysql", "mariadb"):
-            return await _pg_uniques(driver, schema_name, table_name)
-        if source_type_lower == "sqlite":
-            return await _sqlite_uniques(driver, schema_name, table_name)
-    except Exception:
-        _log.debug(
-            "UNIQUE introspection failed for %s.%s (%s)",
-            schema_name,
-            table_name,
-            source_type,
-            exc_info=True,
-        )
-    return []
-
-
 async def introspect_fk_constraints(  # REQ-018, REQ-413
     source_pools,
     source_type: str,
@@ -327,36 +240,26 @@ async def introspect_fk_constraints(  # REQ-018, REQ-413
     Returns [{"column_name", "referenced_table", "referenced_column"}]; empty when the source
     exposes none or does not support constraint introspection.
     """
+    from provisa.federation.pgwire_replica import SourceStillStartingError
+
     source_type_lower = source_type.lower()
     try:
         pg_driver, close = await _constraint_driver(source_pools, source_type_lower, source_id)
-        if pg_driver is not None:
-            try:
-                rows = await pg_driver.execute(_PG_OUTBOUND, [schema_name, table_name])
-                return [
-                    {"column_name": r[0], "referenced_table": r[1], "referenced_column": r[2]}
-                    for r in rows.rows
-                ]
-            finally:
-                if close is not None:
-                    await close()
-        if source_type_lower == "sqlite" and source_pools.has(source_id):
-            driver = source_pools.get(source_id)
-            rows = await driver.execute(f'PRAGMA foreign_key_list("{table_name}")', [])
-            return [
-                # columns: id, seq, table, from, to, on_update, on_delete, match
-                {"column_name": r[3], "referenced_table": r[2], "referenced_column": r[4] or "id"}
-                for r in rows.rows
-            ]
-    except Exception:
-        _log.debug(
-            "FK introspection failed for %s.%s (%s)",
-            schema_name,
-            table_name,
-            source_type,
-            exc_info=True,
-        )
-    return []
+    except SourceStillStartingError:
+        # A source whose bundled server has not begun listening offers no candidates yet; the
+        # next discovery reads them.
+        return []
+    if pg_driver is None:
+        return []
+    try:
+        rows = await pg_driver.execute(_PG_OUTBOUND, [schema_name, table_name])
+        return [
+            {"column_name": r[0], "referenced_table": r[1], "referenced_column": r[2]}
+            for r in rows.rows
+        ]
+    finally:
+        if close is not None:
+            await close()
 
 
 def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
