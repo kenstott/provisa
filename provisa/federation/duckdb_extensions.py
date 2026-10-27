@@ -31,6 +31,8 @@ from pathlib import Path
 
 import duckdb
 
+from provisa.core import engine_memory
+
 from provisa.federation.connector import Connector
 from provisa.federation.engine import build_duckdb_engine
 
@@ -64,7 +66,7 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     """
     from provisa_duckdb_ext import ext_root  # type: ignore[import-not-found]  # ModuleNotFoundError propagates by design
 
-    con = duckdb.connect()
+    con = engine_memory.connect()
     try:
         _ver = con.execute("SELECT version()").fetchone()
         _plat = con.execute("PRAGMA platform").fetchone()
@@ -98,7 +100,7 @@ def connect() -> duckdb.DuckDBPyConnection:
     config: dict[str, str | bool | int | float | list[str]] = (
         {"extension_directory": ext_dir} if ext_dir else {}
     )
-    return duckdb.connect(config=config)
+    return engine_memory.connect(extra=config)
 
 
 # Settings an extension is loaded with, whatever loads it. SET GLOBAL: a plain SET stays on the one

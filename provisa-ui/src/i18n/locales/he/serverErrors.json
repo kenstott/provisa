@@ -461,7 +461,8 @@
       "relationship_same_entity_direct": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: הוא מצטרף דרך טבלת קישור או פונקציה, לא שורה לשורה",
       "relationship_same_entity_cardinality": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: הוא {{cardinality}}, ואותה ישות היא שורה לשורה",
       "relationship_same_entity_not_grounded": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{source}} ו-{{target}} אינן מעוגנות באותו מונח",
-      "relationship_same_entity_not_keys": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{columns}} אינו המפתח הראשי או מפתח ייחודי של {{table}}"
+      "relationship_same_entity_not_keys": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{columns}} אינו המפתח הראשי או מפתח ייחודי של {{table}}",
+      "kaggle_token_missing": "מערך הנתונים {{owner}}/{{ref}} של Kaggle: למקור הנתונים אין אסימון API של Kaggle. הוסיפו אותו בטופס מקורות נתונים, שבו מוזן האסימון שלו."
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",

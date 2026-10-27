@@ -170,9 +170,9 @@ def copy_tables(
     -- into ``dst_schema`` of the store ``dst``, rows and all, each replacing a table of its name
     there; the tables copied. Either store is a DuckDB file (a seed) or a PostgreSQL store (a
     region's); one store may be both, a schema copied within it."""
-    import duckdb
+    from provisa.core import engine_memory
 
-    con = duckdb.connect()
+    con = engine_memory.connect()
     try:
         same = src == dst
         _attach(con, "copy_src", src, read_only=not same)
@@ -203,9 +203,9 @@ def copy_tables(
 def held_rows(dsn: str, schema: str, tables: list[str]) -> dict[str, int]:
     """The rows each of ``tables`` holds in ``schema`` of the store ``dsn``; one not there is left
     out."""
-    import duckdb
+    from provisa.core import engine_memory
 
-    con = duckdb.connect()
+    con = engine_memory.connect()
     try:
         _attach(con, "held", dsn, read_only=True)
         present = {

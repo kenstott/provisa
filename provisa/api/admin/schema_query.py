@@ -1232,9 +1232,13 @@ class Query:  # REQ-021, REQ-042
         authenticates against the real Kaggle API. Backs the token-gate that unlocks the dataset
         picker step, and re-editing an existing source whose token has since expired/revoked."""
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
         from provisa.kaggle.client import validate_token
 
-        return await validate_token(token)
+        # The token as typed: a value, or a reference resolved in the org's vault.
+        async with _bound_to_request_org():
+            resolved = resolve_secrets(token)
+        return await validate_token(resolved)
 
     @strawberry.field
     async def kaggle_datasets(  # REQ-1783
@@ -1245,9 +1249,12 @@ class Query:  # REQ-021, REQ-042
         assume a fixed catalog belonging to an already-registered source; here there is no source
         yet and the catalog is Kaggle's entire public listing, searched by free text."""
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
         from provisa.kaggle.client import search_datasets
 
-        results = await search_datasets(token, query=query, page=page)
+        async with _bound_to_request_org():
+            resolved = resolve_secrets(token)
+        results = await search_datasets(resolved, query=query, page=page)
         return [
             KaggleDatasetType(
                 ref=d.get("ref", ""),

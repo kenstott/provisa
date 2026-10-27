@@ -61,6 +61,9 @@ OWNERS: dict[str, set[str]] = {
         # by the faked projection, beside its real values, for the leak-rate check -- no engine,
         # no store, nothing leaves the process.
         "provisa/fakes/adequacy.py",
+        # REQ-2006: the one door every DuckDB database is opened through -- capped by the
+        # deployment's engine.duckdb_memory_limit, and kept while open for the leak probe's reading.
+        "provisa/core/engine_memory.py",
     },
     "trino": {
         "provisa/federation/trino_types.py",  # REQ-1678: the connection/exception alias leaf

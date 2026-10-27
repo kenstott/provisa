@@ -175,6 +175,28 @@ describe("a new single-file source's table, set up with it as a draft", () => {
     expect(screen.queryByTestId("source-draft-table-domain")).not.toBeInTheDocument();
   });
 
+  it("is never put into a domain Provisa generates for itself", async () => {
+    // meta and ops lead the domains list on a real server; no picker offers them as the domain
+    // to put a table into (internalDomains.ts), and neither may this one's default.
+    expect(draftTable(BASE, [{ id: "meta" }, { id: "ops" }, { id: "shelter" }])).toEqual({
+      registerTableDraft: true,
+      tableDomainId: "shelter",
+    });
+    const [shelter, finance] = DOMAINS[0].result.data.domains;
+    const internal = [
+      { ...shelter, id: "meta", isSystem: true },
+      { ...shelter, id: "ops", isSystem: true },
+    ];
+    const mocks = [{ ...DOMAINS[0], result: { data: { domains: [...internal, shelter, finance] } } }];
+    renderInForm(<Harness start={{}} />, { mocks });
+    const picker = screen.getByTestId("source-draft-table-domain");
+    await waitFor(() => expect(picker).toHaveValue("shelter"));
+    fireEvent.click(picker);
+    expect(await screen.findByRole("option", { name: "finance", hidden: true })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "meta", hidden: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "ops", hidden: true })).not.toBeInTheDocument();
+  });
+
   it("is not offered while a source is edited, nor sent for another type", () => {
     renderInForm(<Harness start={{}} editing="supplies" />, { mocks: DOMAINS });
     expect(screen.queryByTestId("source-draft-table")).not.toBeInTheDocument();

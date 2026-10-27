@@ -702,9 +702,9 @@ def _duckdb_extension_scratch_read(connector_details: dict, select_sql: str) -> 
     than re-deriving the ATTACH DSN here) means this can never drift from what the live federation
     engine actually runs. One-shot: opened, queried, closed — never shared with the app's own
     engine connection, so this can run regardless of which engine is currently active."""
-    import duckdb
+    from provisa.core import engine_memory
 
-    conn = duckdb.connect(":memory:")
+    conn = engine_memory.connect()
     try:
         _scratch_attach(conn, connector_details)
         cursor = conn.execute(select_sql)
@@ -719,9 +719,9 @@ def _duckdb_extension_scratch_batches(
 ) -> Any:  # REQ-1915
     """:func:`_duckdb_extension_scratch_read` a batch at a time: the same throwaway connection,
     its cursor fetched ``batch_rows`` rows per step, closed when the iteration ends."""
-    import duckdb
+    from provisa.core import engine_memory
 
-    conn = duckdb.connect(":memory:")
+    conn = engine_memory.connect()
     try:
         _scratch_attach(conn, connector_details)
         cursor = conn.execute(select_sql)

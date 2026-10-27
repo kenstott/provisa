@@ -66709,7 +66709,8 @@
     matching amendments for why (the per-file design predates, and is strictly inferior to, this session''s
     `files`/pgwire-file recursive directory discovery, REQ-1690). Everything else this REQ already established
     (no eager registerTable, no domain picker here) still holds unchanged; only the number and type of
-    Source(s) created changed.'
+    Source(s) created changed.
+    (Amended 2026-10-24, THE TOKEN IS THE SOURCE''S CREDENTIAL:) The token the form''s first step validates is the new source''s credential field, stored as the user entered it (a value, or a ${secret:...}/${env:...} reference they typed) and resolved by the server at every use: validation, search, staging at creation, and each "Refresh from Kaggle", which no longer asks for it. The link /sources?new=kaggle&kaggle=<owner>/<dataset> opens the form on the Kaggle type with that dataset chosen once the token is checked; the assistant, which never takes a credential, gives that link for a Kaggle dataset it found instead of proposing createSource.'
   use_case: An operator adding a Kaggle source cannot search datasets before entering a valid token (Kaggle's
     own search endpoint requires it), so the form must gate the picker step on live token validation rather
     than present both steps at once.
@@ -68157,7 +68158,8 @@
     staging: a new _stage_kaggle_if_needed helper in provisa/api/admin/schema_common.py detects kaggle_owner/kaggle_ref
     in the source''s federation_hints_json, downloads and extracts the dataset to a real staging directory,
     and UNCONDITIONALLY OVERWRITES the input path with the actual staged path. No caller''s path is ever
-    trusted for Kaggle-hinted sources, making it impossible to create a source with zero backing files.'
+    trusted for Kaggle-hinted sources, making it impossible to create a source with zero backing files.
+    (Amended 2026-10-24, THE SOURCE''S OWN TOKEN:) _stage_kaggle_if_needed stages with the source''s own token, its credential field as entered, resolved in the org''s vault; a Kaggle-hinted source that holds none is refused by name (schema.kaggle_token_missing), naming the Sources form where its token is entered. The kaggle.api_token operator setting has no default -- it named a secret nobody created -- and is read only by the assistant''s Kaggle search tool, which has no form; unset, that tool fails naming the setting.'
   use_case: Before this fix, a caller could create a Kaggle source without staging the dataset, bypassing
     the mandatory download step that only the admin form's UI ensured. Centralizing staging inside the
     resolver closes that hole for all callers.
@@ -82050,7 +82052,14 @@
     ordinary org created with the deployment''s demo holds the demo''s sources, which the operator wrote as a
     template''s are: those sources reach the destinations the demo declares, private ones included, as a
     sandbox''s demo sources do. Every other source of that org -- one its members add, at the demo''s own host
-    or anywhere else -- is held to public destinations, when it is saved and at each connection. (Amended 2026-10-18, TEMPLATE BUILDS A FEW AT A TIME:) The tier builds its demos'' templates through a queue, sandbox.template_builds_at_once of them together (an operator setting, default 2, read when the tier starts): built all at once after a restart, a 2-vCPU tier was too busy to serve visitors. A visitor who opens a demo whose template is still waiting is told it is still being prepared (sandbox.demo_not_ready) and the demo is built next. A template that cannot be built is logged with its cause and leaves the others to build.'
+    or anywhere else -- is held to public destinations, when it is saved and at each connection. (Amended 2026-10-18, TEMPLATE BUILDS A FEW AT A TIME:) The tier builds its demos'' templates through a queue, sandbox.template_builds_at_once of them together (an operator setting, default 2, read when the tier starts): built all at once after a restart, a 2-vCPU tier was too busy to serve visitors. A visitor who opens a demo whose template is still waiting is told it is still being prepared (sandbox.demo_not_ready) and the demo is built next. A template that cannot be built is logged with its cause and leaves the others to build.
+    (Amended 2026-10-24, A DEPLOYMENT CAPS EVERY ENGINE:) An operator setting, engine.duckdb_memory_limit
+    (bytes, on the settings page''s engine card, env PROVISA_ENGINE_DUCKDB_MEMORY_LIMIT), caps the
+    memory of every DuckDB engine the deployment builds, not only a sandbox''s; past it a query spills
+    to disk or is refused by name. Unset, an engine keeps DuckDB''s own limit (most of the host''s
+    memory), for a host the engine has to itself. A sandbox''s engine keeps its own cap
+    (sandbox.memory_limit). The UI e2e lanes set it for each backend, which shares a 16 GB runner
+    with the demo sources and the browser.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true

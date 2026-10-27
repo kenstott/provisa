@@ -618,8 +618,8 @@ export function useRefreshKaggleSource() {
     refreshKaggleSource: MutationResult;
   }>(RefreshKaggleSource);
   return {
-    refreshKaggleSource: async (sourceId: string, token: string) => {
-      const result = await refreshKaggleSource({ variables: { sourceId, token } });
+    refreshKaggleSource: async (sourceId: string) => {
+      const result = await refreshKaggleSource({ variables: { sourceId } });
       return (result.data?.refreshKaggleSource ?? {
         success: false,
         message: "",

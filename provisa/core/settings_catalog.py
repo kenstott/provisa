@@ -313,12 +313,12 @@ DECLARED: list[Setting] = [
         type="str",
         effect="live",  # read at each Kaggle search and each staging
         req="REQ-1819",
-        # The default is a reference in a visible, editable field, not a name hidden in code
-        # (maintainer ruling, 2026-10-10: the product resolves what a field holds and makes up
-        # no secret names): an operator who already created a secret of this name keeps
-        # working, and any other value or reference may be typed over it.
-        # reference-convention: REQ-1798 -- the Kaggle token's fixed secret name
-        default="${secret:kaggle_api_token}",
+        # Read only by the assistant's Kaggle tool, which has no form: a Kaggle source holds its own
+        # token in its credential field. Unset unless the operator sets it -- a value or a
+        # reference they type -- and never a secret name nobody created (maintainer ruling: the
+        # product resolves what a field holds and makes up no secret names).
+        default=None,
+        nullable=True,
         credential=True,
     ),
     Setting(

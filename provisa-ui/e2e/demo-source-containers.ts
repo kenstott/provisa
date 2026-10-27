@@ -23,7 +23,7 @@
 // PROVISA_E2E_DEMO_PREFIX overrides it; default is unchanged so every existing caller (CI,
 // local runs) behaves exactly as before.
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -75,18 +75,22 @@ export type DemoSource = (typeof DEMO_SOURCES)[number];
 
 const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
-const ENV_ARGS = Object.entries(DEMO_SOURCE_ENV)
-  .map(([k, v]) => `--env ${k}=${v}`)
-  .join(" ");
 // REQ-1772: see module comment above.
 export const DEMO_PREFIX = process.env.PROVISA_E2E_DEMO_PREFIX ?? "provisa-e2e";
 
+/** provision.py's arguments, one element each: never joined into a shell line, where a value
+ * with a space (the Fuseki JVM options) split into two arguments (run 40119276840). */
+export function provisionArgv(cmd: "up" | "down", names: readonly string[]): string[] {
+  const env = Object.entries(DEMO_SOURCE_ENV).flatMap(([k, v]) => ["--env", `${k}=${v}`]);
+  return [PROVISION, cmd, "--prefix", DEMO_PREFIX, ...env, ...names];
+}
+
 function provision(cmd: "up" | "down", names: readonly DemoSource[]): void {
   if (names.length === 0) return;
-  execSync(
-    `"${PYTHON}" "${PROVISION}" ${cmd} --prefix ${DEMO_PREFIX} ${ENV_ARGS} ${names.join(" ")}`,
-    { stdio: "pipe", env: { ...process.env, ...DEMO_SOURCE_ENV } },
-  );
+  execFileSync(PYTHON, provisionArgv(cmd, names), {
+    stdio: "pipe",
+    env: { ...process.env, ...DEMO_SOURCE_ENV },
+  });
 }
 
 /**

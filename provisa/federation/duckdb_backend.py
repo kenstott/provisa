@@ -20,6 +20,8 @@ import threading
 
 import duckdb
 
+from provisa.core import engine_memory
+
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 from provisa.federation.native_backend import NativeEngineBackend
 
@@ -167,7 +169,7 @@ def evaluate_over_arrow(sql: str, relation: str, data: Any) -> Any:
     in-memory connection, and return the result as an Arrow table — a statement over rows already
     in this process (REQ-1921/1922: a region's admission of rows it fetched by key), never a read
     of any store or source."""
-    con = duckdb.connect()
+    con = engine_memory.connect()
     try:
         con.register(relation, data)
         return con.execute(sql).to_arrow_table()
@@ -197,7 +199,7 @@ def local_catalog_connection() -> duckdb.DuckDBPyConnection:
     """Private in-memory DuckDB connection for pgwire's pg_catalog emulation (REQ-127,
     REQ-128, REQ-363). Independent of any federated engine's dialect — this connection
     only ever serves synthetic catalog tables, never physical source data."""
-    db = duckdb.connect(":memory:")
+    db = engine_memory.connect()
     db.execute("CREATE MACRO pg_backend_pid() AS 0")
     db.execute("CREATE MACRO age(x) AS 0")
     db.execute("CREATE MACRO quote_ident(x) AS '\"' || replace(x, '\"', '\"\"') || '\"'")

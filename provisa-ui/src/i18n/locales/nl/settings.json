@@ -72,6 +72,10 @@
       }
     },
     "engine": {
+      "duckdb_memory_limit": {
+        "label": "Geheugenlimiet van de DuckDB-engine",
+        "help": "Het meeste geheugen dat een DuckDB-engine van deze implementatie mag gebruiken. Daarboven wijkt een query uit naar schijf of wordt geweigerd. Niet ingesteld: de eigen limiet van DuckDB, het grootste deel van het geheugen van de host."
+      },
       "ready_timeout": {
         "label": "Gereedheids-timeout van de engine",
         "help": "Hoelang het opstarten wacht tot de federatie-engine gereed is voordat het mislukt."

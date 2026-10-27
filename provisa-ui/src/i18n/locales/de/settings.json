@@ -72,6 +72,10 @@
       }
     },
     "engine": {
+      "duckdb_memory_limit": {
+        "label": "Speicherlimit der DuckDB-Engine",
+        "help": "Der meiste Arbeitsspeicher, den eine DuckDB-Engine dieser Bereitstellung nutzen darf. Darüber hinaus lagert eine Abfrage auf die Festplatte aus oder wird abgelehnt. Nicht gesetzt: das eigene Limit von DuckDB, der größte Teil des Arbeitsspeichers des Hosts."
+      },
       "ready_timeout": {
         "label": "Zeitlimit für Engine-Bereitschaft",
         "help": "Wie lange der Start wartet, bis die Föderations-Engine bereit ist, bevor er fehlschlägt."
