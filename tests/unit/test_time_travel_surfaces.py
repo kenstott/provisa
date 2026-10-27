@@ -230,6 +230,23 @@ async def test_a_role_that_does_not_see_the_recorded_time_still_reads_the_latest
     assert dict(ledger.execute(governed).fetchall()) == {"p1": 120, "p2": 50}
 
 
+async def test_the_compiled_stage_reads_the_versions_for_a_role_that_does_not_see_the_recorded_time(
+    monkeypatch, ledger
+):
+    """GraphQL, gRPC, REST and Cypher read the versions as the raw stage does: the recorded time
+    is read inside, not judged against the caller's grants."""
+    import provisa.api.app as app_mod
+    from provisa.pgwire import _pipeline
+
+    state = _state(frozenset({"updated_at"}))
+    monkeypatch.setattr(app_mod, "state", state, raising=False)
+    travel = _canonical("2026-10-03", "2026-10-04T23:00:00")
+    governed = await _pipeline._govern_compiled(
+        _SQL, "analyst", state, {}, sdl_joins=False, as_of=travel
+    )
+    assert dict(ledger.execute(governed.governed_sql).fetchall()) == {"p1": 100}
+
+
 async def test_a_role_that_does_not_see_the_recorded_time_cannot_select_it(monkeypatch):
     """The versions read reads the recorded time for itself; the caller's own statement is still
     governed: naming the column it is not granted is refused (V003)."""
