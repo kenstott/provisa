@@ -22,6 +22,7 @@ import duckdb
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.cypher.parser import parse_cypher
+from provisa.cypher.write_translator import WriteTranslator, bind_write_params, parse_cypher_write
 from provisa.ephemeral import seam
 from provisa.gql.assembler import assemble_rows, to_serializable
 from provisa.gql.graph_rewriter import apply_graph_rewrites
@@ -138,9 +139,18 @@ class Session:
         rows = assemble_rows([dict(zip(columns, r)) for r in result.fetchall()], graph_vars)
         return [to_serializable(r, keep_values=True) for r in rows]
 
+    async def write(self, statement: str, params: dict[str, Any]) -> None:
+        """The governed write path, as a surface runs it: translated and sent to the source."""
+        sql, values = bind_write_params(
+            WriteTranslator(self.model).translate(parse_cypher_write(statement)), params
+        )
+        self.duck.execute(sql.replace('"memory".', ""), values)
+
     def run(self, statement: str, **params: Any) -> Any:
         made = asyncio.run(
-            seam.write(statement, params, self.model, self.session, self.state, self.read)
+            seam.write(
+                statement, params, self.model, self.session, self.state, self.read, self.write
+            )
         )
         if made is not None:
             return made

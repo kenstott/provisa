@@ -97,3 +97,12 @@ def test_a_match_of_any_node_keeps_a_model_nodes_identity(monkeypatch):
     before = s.run("MATCH (n) WHERE n.name = 'Ann' RETURN id(n) AS i")
     s.run("CREATE (:Temp {name: 'Cy'})")
     assert s.run("MATCH (n) WHERE n.name = 'Ann' RETURN id(n) AS i") == before
+
+
+def test_a_mixed_create_lands_its_governed_row_and_its_session_parts(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("CREATE (c:Person {id: 42, name: 'Cy'}), (n:Note {text: 'x'}), (c)-[:ABOUT]->(n)")
+    assert s.duck.execute("SELECT id, name FROM s.person WHERE id = 42").fetchall() == [(42, "Cy")]
+    assert _values(s.run("MATCH (n:Note) RETURN n.text")) == [("x",)]
+    rows = s.run("MATCH (p:Person)-[:ABOUT]->(n:Note) RETURN p.name, n.text")
+    assert _values(rows) == [("Cy", "x")]
