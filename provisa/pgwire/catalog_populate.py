@@ -138,9 +138,12 @@ class CatalogIndex:  # REQ-532
         "attnum_to_col",
         "ns_map",
         "metric_oids",
+        "database",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, database: str) -> None:
+        # REQ-588: the served database, every catalog the index lists its tables and schemas under.
+        self.database = database
         self.tables: list[tuple] = []
         self.all_cols: list[tuple] = []
         self.table_id_to_oid: dict[int, int] = {}
@@ -153,13 +156,13 @@ class CatalogIndex:  # REQ-532
 
 
 def _build_catalog_index(
-    ctx, col_types: dict, metrics: list | None = None
+    ctx, col_types: dict, metrics: list | None = None, *, database: str
 ) -> CatalogIndex:  # REQ-128, REQ-363
     """Build the CatalogIndex once. All populate functions read from it — nothing recomputes."""
     from provisa.compiler.naming import domain_to_sql_name, apply_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
 
-    idx = CatalogIndex()
+    idx = CatalogIndex(database)
     if not ctx:
         return idx
 
@@ -181,7 +184,7 @@ def _build_catalog_index(
         if tm.table_id in seen_table_ids:
             continue
         seen_table_ids.add(tm.table_id)
-        cat = "provisa"
+        cat = idx.database
         raw_schema = tm.domain_id or tm.schema_name or "public"
         sch = domain_to_sql_name(raw_schema)
         tname = semantic_table_name(tm)
@@ -223,8 +226,8 @@ def _build_catalog_index(
         idx.ns_map["metrics"] = _ns_extra
         for i, m in enumerate(sorted(metrics, key=lambda m: m.name)):
             toid = 60000 + i
-            idx.tables.append(("provisa", "metrics", m.name, toid, toid))
-            idx.toid_to_table[toid] = ("provisa", "metrics", m.name)
+            idx.tables.append((idx.database, "metrics", m.name, toid, toid))
+            idx.toid_to_table[toid] = (idx.database, "metrics", m.name)
             idx.metric_oids[m.name] = toid
             # A metric with no declared datatype surfaces as double — the natural type of
             # an aggregate value; the design mandates this default (REQ-1319: datatype is
@@ -244,7 +247,7 @@ def _populate_is_schemata(db, idx: CatalogIndex) -> None:
     seen_schemas: set[tuple] = {(c, s) for c, s, *_ in idx.tables}
     # Always include schemas from the namespace map (public, information_schema, pg_catalog).
     for ns in idx.ns_map:
-        seen_schemas.add(("provisa", ns))
+        seen_schemas.add((idx.database, ns))
     if seen_schemas:
         db.executemany(
             "INSERT INTO _is_schemata VALUES (?,?,'provisa',NULL,NULL,NULL,NULL)",
@@ -286,7 +289,7 @@ def _populate_is_columns(db, idx: CatalogIndex) -> None:
         generation_expression VARCHAR, is_updatable VARCHAR)""")
     col_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
-        c, s, t = idx.toid_to_table.get(toid, ("provisa", "public", ""))
+        c, s, t = idx.toid_to_table.get(toid, (idx.database, "public", ""))
         pg_type = _physical_to_pg_name(col_type)
         null_str = "YES" if is_nullable else "NO"
         col_rows.append(
@@ -359,7 +362,7 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
         relrowsecurity BOOLEAN, relforcerowsecurity BOOLEAN, relispopulated BOOLEAN,
         relreplident VARCHAR, relispartition BOOLEAN, relrewrite INTEGER,
         relfrozenxid INTEGER, relminmxid INTEGER, relacl VARCHAR,
-        reloptions VARCHAR, relpartbound VARCHAR)""")
+        reloptions VARCHAR[], relpartbound VARCHAR)""")
     natts_by_toid: dict[int, int] = {}
     for col in idx.all_cols:
         natts_by_toid[col[0]] = natts_by_toid.get(col[0], 0) + 1
@@ -581,7 +584,7 @@ def _populate_pg_attribute(db, idx: CatalogIndex) -> None:
         attnotnull BOOLEAN, atthasdef BOOLEAN, atthasmissing BOOLEAN,
         attidentity VARCHAR, attgenerated VARCHAR, attisdropped BOOLEAN,
         attislocal BOOLEAN, attinhcount INTEGER, attcollation INTEGER,
-        attacl VARCHAR, attoptions VARCHAR, attfdwoptions VARCHAR)""")
+        attacl VARCHAR, attoptions VARCHAR[], attfdwoptions VARCHAR[])""")
     attr_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
         pg_oid = _physical_to_pg_oid(col_type)
@@ -789,7 +792,7 @@ def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
         oid INTEGER, rolname VARCHAR, rolsuper BOOLEAN, rolinherit BOOLEAN,
         rolcreaterole BOOLEAN, rolcreatedb BOOLEAN, rolcanlogin BOOLEAN,
         rolreplication BOOLEAN, rolconnlimit INTEGER, rolpassword VARCHAR,
-        rolvaliduntil VARCHAR, rolbypassrls BOOLEAN, rolconfig VARCHAR)""")
+        rolvaliduntil TIMESTAMPTZ, rolbypassrls BOOLEAN, rolconfig VARCHAR[])""")
 
     rows: list[tuple] = []
     seen_names: set[str] = set()
@@ -844,7 +847,7 @@ def _populate_pg_settings(db) -> None:
         name VARCHAR, setting VARCHAR, unit VARCHAR, category VARCHAR,
         short_desc VARCHAR, extra_desc VARCHAR, context VARCHAR,
         vartype VARCHAR, source VARCHAR, min_val VARCHAR, max_val VARCHAR,
-        enumvals VARCHAR, boot_val VARCHAR, reset_val VARCHAR,
+        enumvals VARCHAR[], boot_val VARCHAR, reset_val VARCHAR,
         sourcefile VARCHAR, sourceline INTEGER, pending_restart BOOLEAN)""")
     db.executemany(
         f"INSERT INTO _pg_settings VALUES ({','.join(['?'] * 17)})",
@@ -958,7 +961,11 @@ def role_catalog_index(state, role_id: str) -> tuple[object, CatalogIndex, list]
     _metrics_attr = getattr(getattr(state, "config", None), "metrics", None)
     all_metrics = _metrics_attr if isinstance(_metrics_attr, list) else []
     metrics = [m for m in all_metrics if role_id in m.visible_to]
-    return ctx, _build_catalog_index(ctx, col_types, metrics), metrics
+    return (
+        ctx,
+        _build_catalog_index(ctx, col_types, metrics, database=served_database_name(state)),
+        metrics,
+    )
 
 
 def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
@@ -979,7 +986,7 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _populate_pg_type(db)
     _populate_empty_system_tables(db)
     _populate_pg_extension(db)  # REQ-892: advertise enabled extension surfaces
-    populate_functions(db, state, role_id)  # REQ-872
+    populate_functions(db, state, role_id, idx.database)  # REQ-872
     raw_tables = state.schema_build_cache.get("tables", []) if state else []
     raw_domains = state.schema_build_cache.get("domains", []) if state else []
     _populate_pg_description(db, idx, raw_tables, raw_domains, metrics)

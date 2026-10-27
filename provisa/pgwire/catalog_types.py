@@ -29,7 +29,7 @@ from sqlglot.schema import MappingSchema
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS, TYPES
 
 # The types whose text and binary forms are those of the wire type a catalog column is served
-# with (text, or a 4-byte integer), named the way the statement's annotation names them; their
+# with (text, a 4-byte integer, or a timestamp with time zone), named the way the statement's annotation names them; their
 # OIDs are PostgreSQL 17's, as RELATIONS records them.
 _SAME_WIRE_FORM = frozenset(
     {
@@ -42,6 +42,7 @@ _SAME_WIRE_FORM = frozenset(
         "information_schema.character_data",
         "information_schema.yes_or_no",
         "information_schema.cardinal_number",
+        "information_schema.time_stamp",
     }
 )
 

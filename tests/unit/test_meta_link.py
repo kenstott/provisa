@@ -134,7 +134,7 @@ def test_the_catalog_publishes_the_link_as_a_composite_foreign_key(ctx):
         2: [_col("id", "integer")],
         3: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
     }
-    idx = _build_catalog_index(ctx, col_types)
+    idx = _build_catalog_index(ctx, col_types, database="provisa")
     db = duckdb.connect()
     db.execute("CREATE TABLE _pg_namespace (oid INTEGER, nspname VARCHAR)")
     db.executemany(

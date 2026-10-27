@@ -123,3 +123,33 @@ def test_a_catalog_function_returns_the_type_postgresql_declares():
     assert returned("pg_catalog.pg_get_expr(NULL::pg_node_tree, NULL::oid)") == TEXT
     assert returned('pg_catalog."current_database"()') == NAME
     assert returned('pg_catalog."current_user"()') == NAME
+
+
+# The PostgreSQL types a served catalog column is stored and sent as, beyond the ones above.
+_STORED_AS_POSTGRESQL_DOES = frozenset(
+    {
+        "timestamp with time zone",
+        "information_schema.time_stamp",
+        "interval",
+        "numeric",
+        "bytea",
+        "boolean",
+        "text[]",
+        "smallint[]",
+    }
+)
+
+
+def test_every_served_catalog_column_of_a_stored_type_is_postgresqls():
+    from provisa.pgwire.catalog_data import _TABLE_MAP
+    from provisa.pgwire.catalog_pg17 import RELATIONS
+
+    differing = []
+    for schema, relation in sorted(_TABLE_MAP):
+        if (schema, relation) not in RELATIONS:
+            continue
+        served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
+        for column, pg_type, pg_oid in RELATIONS[(schema, relation)]:
+            if pg_type in _STORED_AS_POSTGRESQL_DOES and served.get(column, pg_oid) != pg_oid:
+                differing.append(f"{schema}.{relation}.{column}: {served[column]}, not {pg_type}")
+    assert differing == []
