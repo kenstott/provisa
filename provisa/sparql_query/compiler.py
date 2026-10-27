@@ -1042,9 +1042,14 @@ class _Lowering:
             return cond if op == "=" else Unary("NOT", cond)
         if op in ("IN", "NOT IN"):
             items = ListLiteral([self.expr(x, bindings, labels) for x in e.other])
-            cond = Binary("IN", self.expr(e.expr, bindings, labels), items)
+            cond = Binary("IN", self.expr(e.expr, bindings, labels), items, cross_kinds="error")
             return cond if op == "IN" else Unary("NOT", cond)
-        return Binary(op, self.expr(e.expr, bindings, labels), self.expr(e.other, bindings, labels))
+        return Binary(
+            op,
+            self.expr(e.expr, bindings, labels),
+            self.expr(e.other, bindings, labels),
+            cross_kinds="error",
+        )
 
     def _same_node(self, a: str, b: str, labels: dict[str, str]) -> CypherExpr:
         """Whether two subjects are the same: rows of one table with equal keys."""

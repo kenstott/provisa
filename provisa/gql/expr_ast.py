@@ -128,6 +128,10 @@ class Binary(CypherExpr):
     op: str
     left: CypherExpr
     right: CypherExpr
+    #: A comparison of values of two kinds (1 and '1'): "unequal" -- never equal and of no order,
+    #: openCypher's -- or "error" -- a type error, null, SPARQL's (SPARQL 1.1 17.3). Each front end
+    #: states its language's.
+    cross_kinds: str = field(default="unequal", kw_only=True)
 
 
 @dataclass

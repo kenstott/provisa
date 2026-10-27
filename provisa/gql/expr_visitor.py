@@ -289,25 +289,26 @@ def _written_value(node: CypherExpr) -> object:
     return _UNKNOWN
 
 
-def _cypher_equal(a: object, b: object) -> bool | None:
-    """openCypher's a = b: null where either is null, or where nothing unequal decides it but a
-    null inside a list or map; values of two kinds are never equal (1 and '1', 1 and [1])."""
+def _cypher_equal(a: object, b: object, cross_kinds: str = "unequal") -> bool | None:
+    """a = b: null where either is null, or where nothing unequal decides it but a null inside a
+    list or map; values of two kinds (1 and '1', 1 and [1]) are unequal, or a type error (null)
+    where ``cross_kinds`` is "error" (Binary.cross_kinds)."""
     if a is None or b is None:
         return None
     number_a = isinstance(a, (int, float)) and not isinstance(a, bool)
     number_b = isinstance(b, (int, float)) and not isinstance(b, bool)
-    if number_a or number_b:
-        return number_a and number_b and a == b
+    if number_a and number_b:
+        return a == b
     if isinstance(a, list) and isinstance(b, list):
         if len(a) != len(b):
             return False
-        return _all_equal([_cypher_equal(x, y) for x, y in zip(a, b, strict=True)])
+        return _all_equal([_cypher_equal(x, y, cross_kinds) for x, y in zip(a, b, strict=True)])
     if isinstance(a, dict) and isinstance(b, dict):
         if set(a) != set(b):
             return False
-        return _all_equal([_cypher_equal(a[k], b[k]) for k in a])
-    if type(a) is not type(b):
-        return False
+        return _all_equal([_cypher_equal(a[k], b[k], cross_kinds) for k in a])
+    if number_a or number_b or type(a) is not type(b):
+        return None if cross_kinds == "error" else False
     return a == b
 
 
@@ -358,11 +359,11 @@ def _folded_equality(node: Binary) -> object:
             return None
         if not isinstance(right, list):
             return _UNKNOWN
-        found = [_cypher_equal(left, item) for item in right]
+        found = [_cypher_equal(left, item, node.cross_kinds) for item in right]
         if True in found:
             return True
         return None if None in found else False
-    same = _cypher_equal(left, right)
+    same = _cypher_equal(left, right, node.cross_kinds)
     if node.op == "=" or same is None:
         return same
     return not same
@@ -553,8 +554,11 @@ class ExprLowering:
             self._refuse_mismatched_comparison(node)
             left_kind, right_kind = self._value_kind(node.left), self._value_kind(node.right)
             if left_kind and right_kind and left_kind != right_kind:
-                # Values of two kinds ('1' and 1) are never equal and have no order (openCypher):
-                # never the engine's implicit cast of one to the other.
+                # Values of two kinds ('1' and 1): never the engine's implicit cast of one to the
+                # other. A type error where the language says so (SPARQL), else never equal and
+                # of no order (openCypher).
+                if node.cross_kinds == "error":
+                    return exp.Null()
                 if op == "=":
                     return exp.false()
                 if op in ("<>", "!="):

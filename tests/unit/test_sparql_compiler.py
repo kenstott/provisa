@@ -685,3 +685,19 @@ def test_xsd_integer_casts_as_xpath_does(con, cast, value):
     # Not Cypher's toInteger, which reads "2.9" as 2 (SPARQL 1.1 17.1, XPath casting).
     rows = _answer(con, f"SELECT ?x WHERE {{ ?s p:name 'Ann' ; p:age ?a BIND({cast} AS ?x) }}")
     assert [r["x"] for r in rows] == [value]
+
+
+@pytest.mark.parametrize(
+    ("comparison", "value"),
+    [
+        ('"a" = true', None),  # two kinds: a type error, unbound (Cypher answers false)
+        ('"a" != true', None),
+        ('"1" IN (true, false)', None),
+        ('"a" = "a"', True),  # one kind compares
+        ('"a" IN ("b", "a")', True),
+    ],
+)
+def test_a_comparison_of_two_kinds_is_a_type_error(con, comparison, value):
+    # SPARQL 1.1 17.3: = of an xsd:string and an xsd:boolean is an error; a BIND of it is unbound.
+    rows = _answer(con, f"SELECT ?x WHERE {{ ?s p:name 'Ann' BIND({comparison} AS ?x) }}")
+    assert [r["x"] for r in rows] == [value]
