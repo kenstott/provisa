@@ -100,6 +100,7 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                 GraphVarKind.MAP,
                 GraphVarKind.JSON_MAP,
                 GraphVarKind.JSON_LIST,
+                GraphVarKind.DURATION,  # REQ-2172: a duration's parts
                 GraphVarKind.TERM,
                 GraphVarKind.CUT,
             ):

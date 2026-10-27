@@ -26,7 +26,15 @@ from typing import TYPE_CHECKING, cast
 import sqlglot.expressions as exp
 
 from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
-from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr, Term
+from provisa.gql.expr_ast import (
+    CypherExpr,
+    MapProjection,
+    PatternComprehension,
+    Property,
+    SubqueryExpr,
+    Term,
+    Variable,
+)
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
@@ -248,6 +256,27 @@ class TranslatorExprContext:
         if not info or info[1] is None:
             return None
         return dict(info[1].property_types).get(name)
+
+    def temporal_kind(self, expr: CypherExpr) -> str | None:
+        """The temporal kind ``expr`` has (REQ-2172), or None."""
+        from provisa.gql import temporal
+
+        return temporal.kind_of(expr, self._t._temporal_kinds, self._property_kind)
+
+    def temporal_element_kind(self, expr: CypherExpr) -> str | None:
+        """The temporal kind every item of a list literal has (an UNWIND's variable), or None."""
+        from provisa.gql import temporal
+
+        return temporal.element_kind(expr, self._t._temporal_kinds, self._property_kind)
+
+    def _property_kind(self, node: Property) -> str | None:
+        """A registered column's temporal kind, by its registered type."""
+        from provisa.gql import temporal
+
+        if not isinstance(node.obj, Variable):
+            return None
+        registered = self.property_type(exp.column(node.obj.name), node.name)
+        return temporal.kind_of_type(registered) if registered else None
 
     def resolve_parameter(self, name: str) -> exp.Expression:
         t = self._t

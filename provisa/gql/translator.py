@@ -30,7 +30,7 @@ from __future__ import annotations
 import copy
 import re
 from dataclasses import replace
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import sqlglot.expressions as exp
 
@@ -74,6 +74,10 @@ from provisa.gql.translator_types import (
 )
 from provisa.gql.translator_rel import _RelJoinMixin
 from provisa.gql.translator_union import _UnionMixin
+
+
+if TYPE_CHECKING:
+    from provisa.gql.expr_context import TranslatorExprContext
 
 
 def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
@@ -337,6 +341,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
         # which m.key reads (#287)
         self._map_vars: dict[str, set[str]] = {}
+        # REQ-2172: a variable a WITH or UNWIND binds to a temporal value -> its kind (temporal.py)
+        self._temporal_kinds: dict[str, str] = {}
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
@@ -951,6 +957,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             )
             self._var_table[uw.variable] = (alias, None)
             self._unwind_aliases.add(alias)
+            element = self._temporal_context().temporal_element_kind(uw.expression)
+            if element is not None:
+                self._temporal_kinds[uw.variable] = element
             if not has_from and from_expr is None:
                 from_expr = unnest
                 has_from = True
@@ -1091,6 +1100,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             return {"table": join_table, "on": on_clause, "join_type": join_type}
         return None
 
+    def _temporal_context(self) -> "TranslatorExprContext":
+        """The context temporal kinds are read in (REQ-2172)."""
+        from provisa.gql.expr_context import TranslatorExprContext
+
+        return TranslatorExprContext(self)
+
     def _lower_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Lower an expression tree to sqlglot node-to-node against the translator's traversal state
         (REQ-913). Raises on a construct the context cannot handle, so a gap surfaces loudly instead
@@ -1202,7 +1217,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _update_var_table_for_with(self, items: list[ReturnItem], cte_name: str) -> None:
         new_var_table: dict[str, tuple[str, Any]] = {}
+        kinds: dict[str, str] = {}
         for item in items:
+            name = item.alias or (
+                item.expression.name if isinstance(item.expression, Variable) else None
+            )
+            found = self._temporal_context().temporal_kind(item.expression)
+            if name and found is not None:
+                kinds[name] = found
             expr = item.expression
             alias = item.alias
             bare = expr.name if isinstance(expr, Variable) else None
@@ -1219,6 +1241,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._map_array_vars.add(key)
         self._var_table = new_var_table
         self._cte_sources = set(new_var_table.keys())
+        self._temporal_kinds = kinds
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
         """Return (type_name_key, domain_label). Raises on ambiguity.

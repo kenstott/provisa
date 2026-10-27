@@ -3752,6 +3752,16 @@ Dynamic labels and relationship types (e.g. `MATCH (n:$label)`) are not supporte
 
 The APOC calls Cypher tools and agent frameworks make are offered as commands and functions: `apoc.meta.data`, `apoc.meta.schema` and `apoc.schema.nodes` answer from the role's graph, the common `apoc.text`, `apoc.coll`, `apoc.map`, `apoc.date` and `apoc.convert` functions push down with the query, and `apoc.path.expand` and `apoc.path.subgraphNodes` walk the graph as variable-length patterns. See [The APOC set Provisa ships](../commands.md#the-apoc-set-provisa-ships). Procedures that act outside the model (`apoc.create.*`, `apoc.periodic.iterate`, `apoc.load.*`) are not offered; for those, run them on your own Neo4j instance against data it reads from Provisa over Bolt. GDS algorithms are not available inline.
 
+### Temporal values on the engine's types
+
+Dates, times and durations are held in the engine's own types: a date as `DATE`, a time as `TIME` or `TIME WITH TIME ZONE`, a local date time as `TIMESTAMP`, a date time as `TIMESTAMP WITH TIME ZONE`, a duration as `INTERVAL` (months, days and microseconds). Answers differ from openCypher's where those types hold less than Cypher's values do:
+
+- **Precision.** Times and durations keep microseconds. A value written to the nanosecond is answered to the microsecond.
+- **A date time's offset and zone name.** A date time is kept as the instant it names. Its offset and zone name (`+01:00[Europe/Stockholm]`) are not kept, so `duration.between` and arithmetic that mix a date time with a local value read the date time at UTC.
+- **A duration built from computed text.** `duration('P1Y2M')` written in the statement is read as openCypher reads it. A duration built from text the query computes is read by the engine's interval parser: PostgreSQL reads ISO-8601, DuckDB does not.
+- **Fractions of computed components.** `duration({months: 0.75})` written in the statement carries a fraction of a month down as openCypher's average month. When the fraction is computed, the engine carries it as 30 days.
+- **Engines with no interval of months and seconds.** Trino has no interval type that holds both a month part and a time part, so a statement with a duration is refused by Trino and answered as the engine's refusal. A source whose own SQL has no interval reads such a statement through the engine.
+
 ### Scenarios that build their own graph
 
 TCK scenarios that create their graph (`CREATE` in their setup, a named TCK graph, a test procedure) are not runnable: a Provisa graph's labels and relationship types are its model's. The pass rate counts the scenarios that run.

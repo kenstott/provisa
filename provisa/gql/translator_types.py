@@ -32,6 +32,7 @@ class GraphVarKind(str, Enum):
     # A list literal of values of several types ([1, 'a', true]): each value JSON-encoded, so the
     # list is one engine type; the answer decodes them.
     JSON_LIST = "JSON_LIST"
+    DURATION = "DURATION"  # REQ-2172: a duration's [months, days, microseconds]
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
     # column off the rows and reports it beside them.
     CUT = "CUT"

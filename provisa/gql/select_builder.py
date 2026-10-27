@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
+from provisa.gql import temporal
 from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Term, Variable
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
@@ -29,6 +30,7 @@ from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
 # Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
 
 if TYPE_CHECKING:
+    from provisa.gql.expr_context import TranslatorExprContext
     from provisa.gql.translator_types import GraphVarKind
 
 
@@ -161,6 +163,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         raise NotImplementedError(expr)
+
+    def _temporal_context(self) -> "TranslatorExprContext":  # REQ-2172
+        raise NotImplementedError
 
     def _build_edge_object(
         self,
@@ -565,6 +570,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
 
         parsed = self._parse_expr(expr)
         name = alias or (written if written and not isinstance(expr, Variable) else None)
+        if name and self._temporal_context().temporal_kind(expr) == temporal.DURATION:
+            # REQ-2172: a duration leaves the engine as its parts, written as ISO-8601 in the answer.
+            parsed = temporal.returned(parsed)
+            self._graph_vars[name.lower()] = GraphVarKind.DURATION
         _prop_m = _variable_property(expr)
         if _prop_m:
             _var, _prop = _prop_m

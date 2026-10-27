@@ -57,6 +57,7 @@ from provisa.gql.expr_ast import (
     Unary,
     Variable,
 )
+from provisa.gql import temporal
 from provisa.gql.translator_helpers import _and_all
 from provisa.gql.translator_types import CypherTranslateError
 
@@ -125,6 +126,10 @@ class ExprContext(Protocol):
 
     def resolve_parameter(self, name: str) -> exp.Expression:
         """A ``$param`` reference — the positional placeholder it binds to."""
+        ...
+
+    def temporal_kind(self, expr: CypherExpr) -> str | None:
+        """The temporal kind ``expr`` has (REQ-2172: date, time, ..., duration), or None."""
         ...
 
     def resolve_term(self, node: Term) -> exp.Expression:
@@ -261,6 +266,8 @@ class ExprLowering:
                 if key == node.name:
                     return self.lower(value)
             return exp.Null()
+        if self._ctx.temporal_kind(node.obj) == temporal.DURATION:
+            return temporal.duration_property(self.lower(node.obj), node.name)
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:
@@ -309,7 +316,22 @@ class ExprLowering:
         left = self.lower(node.left)
         right = self.lower(node.right)
         if op in _BINARY_ARITH:
+            # REQ-2172: a duration with a temporal value or another duration, as openCypher reads it.
+            timed = temporal.arithmetic(
+                op,
+                left,
+                self._ctx.temporal_kind(node.left),
+                right,
+                self._ctx.temporal_kind(node.right),
+            )
+            if timed is not None:
+                return timed
             return _BINARY_ARITH[op](this=left, expression=right)
+        if op in ("=", "<>", "!=") and (
+            self._ctx.temporal_kind(node.left) == temporal.DURATION
+            and self._ctx.temporal_kind(node.right) == temporal.DURATION
+        ):
+            return temporal.equality("=" if op == "=" else "<>", left, right)
         if op in ("=", "<>", "!="):
             # The `id` of a node drawn from several tables is the graph's synthetic identity —
             # engine-typed VARCHAR (built via CAST(pk AS VARCHAR) across heterogeneous node types
@@ -410,6 +432,17 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2172
+            if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
+                return exp.Null()
+            kinds = [self._ctx.temporal_kind(a) for a in node.args]
+            return temporal.duration_function(node.name, node.args, kinds, self.lower)
+        if (
+            node.name.lower() == "tostring"
+            and len(node.args) == 1
+            and self._ctx.temporal_kind(node.args[0]) == temporal.DURATION
+        ):
+            return temporal.iso_text(self.lower(node.args[0]))
         args = [self.lower(a) for a in node.args]
         return self._ctx.resolve_function(node.name, args, distinct=node.distinct)
 

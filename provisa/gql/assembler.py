@@ -164,6 +164,11 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         return _json_maps(col, value)
     if kind == GraphVarKind.JSON_LIST:
         return _json_list(col, value)
+    if kind == GraphVarKind.DURATION:  # REQ-2172
+        from provisa.gql.temporal import iso_duration
+
+        months, days, micros = (int(v) for v in value)
+        return iso_duration(months, days, micros)
     if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
         # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
         # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.
