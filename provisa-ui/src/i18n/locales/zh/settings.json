@@ -144,10 +144,6 @@
         "label": "每个工作进程的请求线程数",
         "help": "单个工作进程同时运行的请求上限；超出的请求需等待空闲线程。需要重启，因为该上限在工作进程启动时确定。"
       },
-      "workers": {
-        "label": "工作进程数",
-        "help": "服务器运行的工作进程数量。需要重启，因为进程由启动器启动。"
-      },
       "stream_threads": {
         "label": "每个工作进程的流式线程数",
         "help": "单个工作进程同时保持的流式响应和打开的 WebSocket 上限，包括订阅。每个都在等待其客户端而不占用 CPU 核心，因此与请求线程分开计算。"
@@ -211,10 +207,6 @@
       "mode": {
         "label": "安全模式",
         "help": "标准模式，或高安全模式：在高安全模式下，数据端点会拒绝任何无法自行解密结果的客户端，且不会启动 pgwire、Bolt 和 MCP 监听器。需要重启，因为它决定启动哪些监听器；因会切断普通客户端，保存前需确认。"
-      },
-      "multitenancy": {
-        "label": "多租户",
-        "help": "部署是否服务多个组织，每个组织只管理自己的数据。需要重启，因为角色授权在启动时设定；因会改变谁可以管理该部署，保存前需确认。"
       },
       "superuser": {
         "username": {
@@ -286,10 +278,6 @@
         "label": "Airport 端口",
         "help": "Airport Flight 服务监听的端口；0 表示不启用。需要重启；因会打开或关闭监听器，保存前需确认。"
       },
-      "port": {
-        "label": "HTTP API 端口",
-        "help": "HTTP API 监听的端口。需要重启；因 UI 和所有客户端都必须随之调整，保存前需确认。"
-      },
       "public_url": {
         "label": "公开地址",
         "help": "此部署对外使用的地址，例如 https://data.example.com。SPARQL 和 RDF 导出中每个主体的 IRI 都以它开头，因此在这些 IRI 被使用期间应保持不变。未设置时，返回主体 IRI 的查询会被拒绝。"
@@ -335,14 +323,6 @@
       "bolt_key": {
         "label": "Bolt TLS 私钥",
         "help": "Bolt 监听器专用证书的私钥。需要重启；保存前需确认。"
-      },
-      "http_cert": {
-        "label": "HTTP API TLS 证书",
-        "help": "HTTP API 所出示的证书文件。需要重启；保存前需确认。"
-      },
-      "http_key": {
-        "label": "HTTP API TLS 私钥",
-        "help": "HTTP API 证书的私钥。需要重启；保存前需确认。"
       }
     },
     "cache": {
@@ -463,8 +443,6 @@
         "help": "随遥测一起导出的日志记录的最低严重级别。"
       },
       "subsystem_traces": {
-        "label": "子系统追踪",
-        "help": "哪些内部子系统写入各自的追踪。",
         "http_api": {
           "label": "子系统追踪：HTTP API",
           "help": "由平台 API 处理的请求。 需要重启。"
@@ -529,22 +507,6 @@
       "s3_endpoint": {
         "label": "遥测存储地址",
         "help": "已存储遥测写入的对象存储。"
-      },
-      "s3_bucket": {
-        "label": "遥测存储桶",
-        "help": "已存储遥测写入的存储桶。"
-      },
-      "s3_region": {
-        "label": "遥测存储区域",
-        "help": "遥测对象存储所在的区域。"
-      },
-      "s3_access_key": {
-        "label": "遥测存储访问密钥",
-        "help": "遥测对象存储的访问密钥。机密。"
-      },
-      "s3_secret_key": {
-        "label": "遥测存储机密密钥",
-        "help": "遥测对象存储的机密密钥。机密。"
       },
       "support_endpoint": {
         "label": "支持遥测端点",
@@ -641,108 +603,6 @@
       "egress_allowlist": {
         "label": "托管函数出口允许列表",
         "help": "托管函数可以调用的主机；其余一律被拒绝。因每个条目都会开通一条出站路径，保存前需确认。"
-      }
-    },
-    "cdc": {
-      "consumer_group_id": {
-        "label": "CDC 消费者组",
-        "help": "此部署从消息代理读取变更事件时使用的名称。"
-      }
-    },
-    "graphql_remote": {
-      "max_object_depth": {
-        "label": "远程 GraphQL 对象深度",
-        "help": "跟进远程 GraphQL 数据源中嵌套对象的深度。"
-      },
-      "max_list_depth": {
-        "label": "远程 GraphQL 列表深度",
-        "help": "跟进远程 GraphQL 数据源中嵌套列表的深度。"
-      },
-      "max_list_items": {
-        "label": "远程 GraphQL 列表项数",
-        "help": "从远程 GraphQL 数据源的单个列表中读取的最大项数。"
-      },
-      "max_rows": {
-        "label": "远程 GraphQL 每次读取的行数",
-        "help": "对分页的远程 GraphQL 表进行一次读取时所获取的最大行数。"
-      }
-    },
-    "provisioning": {
-      "engine_namespace": {
-        "label": "引擎命名空间",
-        "help": "创建引擎集群所在的 Kubernetes 命名空间。"
-      },
-      "engine_cluster_mode": {
-        "label": "引擎集群模式",
-        "help": "预配引擎所在的 Kubernetes 集群类型。"
-      },
-      "engine_cpu": {
-        "label": "引擎 CPU",
-        "help": "分配给每个已预配引擎的 CPU。"
-      },
-      "engine_shard": {
-        "label": "引擎分片",
-        "help": "此节点所属的引擎分片。"
-      },
-      "engine_otlp_endpoint": {
-        "label": "引擎遥测端点",
-        "help": "已预配引擎发送自身遥测数据的目标。"
-      },
-      "engine_control_plane_host": {
-        "label": "引擎控制平面主机",
-        "help": "引擎访问控制平面数据库所用的地址，当它与此服务器所用的地址不同时设置。"
-      },
-      "engine_control_plane_port": {
-        "label": "引擎控制平面端口",
-        "help": "引擎访问控制平面数据库所用的端口。"
-      },
-      "engine_lakehouse_metastore_host": {
-        "label": "湖仓元存储主机",
-        "help": "引擎所用湖仓元存储的地址。"
-      },
-      "engine_lakehouse_metastore_port": {
-        "label": "湖仓元存储端口",
-        "help": "引擎所用湖仓元存储的端口。"
-      },
-      "engine_otel_s3_endpoint": {
-        "label": "引擎遥测存储地址",
-        "help": "引擎访问遥测对象存储所用的地址。"
-      },
-      "isolated_engine_image": {
-        "label": "专用引擎镜像",
-        "help": "组织专用引擎所使用的容器镜像。"
-      },
-      "isolated_engine_network": {
-        "label": "专用引擎网络",
-        "help": "专用引擎所连接的容器网络。"
-      },
-      "isolated_engine_memory": {
-        "label": "专用引擎内存",
-        "help": "分配给专用引擎的内存。"
-      },
-      "isolated_engine_host_template": {
-        "label": "专用引擎主机模式",
-        "help": "用于生成专用引擎主机名的模式。"
-      },
-      "isolated_engine_port": {
-        "label": "专用引擎端口",
-        "help": "专用引擎监听的端口。"
-      },
-      "isolated_engine_ready_timeout": {
-        "label": "专用引擎就绪超时",
-        "help": "等待专用引擎就绪的最长时间。"
-      },
-      "isolated_engine_docker_socket": {
-        "label": "专用引擎 Docker 套接字",
-        "help": "用于启动专用引擎的 Docker 套接字。"
-      },
-      "zaychik_cpu": {
-        "label": "查询网关 CPU",
-        "help": "分配给引擎查询网关的 CPU。"
-      },
-      "zaychik_memory": {
-        "label": "查询网关内存",
-        "help": "分配给引擎查询网关的内存。"
       }
     },
     "readonlyReasons": {

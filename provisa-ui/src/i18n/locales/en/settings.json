@@ -144,10 +144,6 @@
         "label": "Request threads per worker",
         "help": "The most requests one worker process runs at once; more wait for a free thread. Restart required because the limit is fixed when the worker starts."
       },
-      "workers": {
-        "label": "Worker processes",
-        "help": "How many worker processes the server runs. Restart required because processes are started by the launcher."
-      },
       "stream_threads": {
         "label": "Stream threads per worker",
         "help": "The most streamed responses and open WebSockets one worker process holds at once, subscriptions included. Each one waits on its client rather than using a core, so this is kept apart from the request threads."
@@ -211,10 +207,6 @@
       "mode": {
         "label": "Security mode",
         "help": "Standard, or high security, where data endpoints refuse any client that cannot decrypt results itself and the pgwire, Bolt and MCP listeners are not started. Restart required because it decides which listeners start; guarded because it cuts off ordinary clients."
-      },
-      "multitenancy": {
-        "label": "Multitenancy",
-        "help": "Whether the deployment serves several organizations, each administering only its own data. Restart required because role grants are set at start; guarded because it changes who may administer the deployment."
       },
       "superuser": {
         "username": {
@@ -286,10 +278,6 @@
         "label": "Airport port",
         "help": "The port the Airport Flight service listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."
       },
-      "port": {
-        "label": "HTTP API port",
-        "help": "The port the HTTP API listens on. Restart required; guarded because the UI and every client must follow a change."
-      },
       "public_url": {
         "label": "Public address",
         "help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused."
@@ -335,14 +323,6 @@
       "bolt_key": {
         "label": "Bolt TLS private key",
         "help": "The private key for the Bolt listener's own certificate. Restart required; guarded."
-      },
-      "http_cert": {
-        "label": "HTTP API TLS certificate",
-        "help": "The certificate file the HTTP API presents. Restart required; guarded."
-      },
-      "http_key": {
-        "label": "HTTP API TLS private key",
-        "help": "The private key for the HTTP API's certificate. Restart required; guarded."
       }
     },
     "cache": {
@@ -463,8 +443,6 @@
         "help": "The lowest severity of log record exported with telemetry."
       },
       "subsystem_traces": {
-        "label": "Subsystem traces",
-        "help": "Which internal subsystems write their own traces.",
         "http_api": {
           "label": "Subsystem traces: HTTP API",
           "help": "Requests served by the platform API. Restart required."
@@ -529,22 +507,6 @@
       "s3_endpoint": {
         "label": "Telemetry store address",
         "help": "The object store stored telemetry is written to."
-      },
-      "s3_bucket": {
-        "label": "Telemetry store bucket",
-        "help": "The bucket stored telemetry is written to."
-      },
-      "s3_region": {
-        "label": "Telemetry store region",
-        "help": "The region of the telemetry object store."
-      },
-      "s3_access_key": {
-        "label": "Telemetry store access key",
-        "help": "The telemetry object store's access key. Secret."
-      },
-      "s3_secret_key": {
-        "label": "Telemetry store secret key",
-        "help": "The telemetry object store's secret key. Secret."
       },
       "support_endpoint": {
         "label": "Support telemetry endpoint",
@@ -641,108 +603,6 @@
       "egress_allowlist": {
         "label": "Hosted function egress allowlist",
         "help": "The hosts a hosted function may call out to; everything else is refused. Guarded because each entry opens an outbound path."
-      }
-    },
-    "cdc": {
-      "consumer_group_id": {
-        "label": "CDC consumer group",
-        "help": "The name this deployment uses when it reads change events from a message broker."
-      }
-    },
-    "graphql_remote": {
-      "max_object_depth": {
-        "label": "Remote GraphQL object depth",
-        "help": "How deep nested objects from a remote GraphQL source are followed."
-      },
-      "max_list_depth": {
-        "label": "Remote GraphQL list depth",
-        "help": "How deep nested lists from a remote GraphQL source are followed."
-      },
-      "max_list_items": {
-        "label": "Remote GraphQL list items",
-        "help": "The most items read from one list of a remote GraphQL source."
-      },
-      "max_rows": {
-        "label": "Remote GraphQL rows per read",
-        "help": "The most rows one read of a paged remote GraphQL table takes."
-      }
-    },
-    "provisioning": {
-      "engine_namespace": {
-        "label": "Engine namespace",
-        "help": "The Kubernetes namespace engine clusters are created in."
-      },
-      "engine_cluster_mode": {
-        "label": "Engine cluster mode",
-        "help": "The kind of Kubernetes cluster engines are provisioned on."
-      },
-      "engine_cpu": {
-        "label": "Engine CPU",
-        "help": "The CPU given to each provisioned engine."
-      },
-      "engine_shard": {
-        "label": "Engine shard",
-        "help": "The engine shard this node belongs to."
-      },
-      "engine_otlp_endpoint": {
-        "label": "Engine telemetry endpoint",
-        "help": "Where provisioned engines send their own telemetry."
-      },
-      "engine_control_plane_host": {
-        "label": "Engine control-plane host",
-        "help": "The address engines use to reach the control-plane database, when it differs from the one this server uses."
-      },
-      "engine_control_plane_port": {
-        "label": "Engine control-plane port",
-        "help": "The port engines use to reach the control-plane database."
-      },
-      "engine_lakehouse_metastore_host": {
-        "label": "Lakehouse metastore host",
-        "help": "The address of the lakehouse metastore engines use."
-      },
-      "engine_lakehouse_metastore_port": {
-        "label": "Lakehouse metastore port",
-        "help": "The port of the lakehouse metastore engines use."
-      },
-      "engine_otel_s3_endpoint": {
-        "label": "Engine telemetry store address",
-        "help": "The telemetry object store's address as engines reach it."
-      },
-      "isolated_engine_image": {
-        "label": "Dedicated engine image",
-        "help": "The container image used for an organization's dedicated engine."
-      },
-      "isolated_engine_network": {
-        "label": "Dedicated engine network",
-        "help": "The container network a dedicated engine is attached to."
-      },
-      "isolated_engine_memory": {
-        "label": "Dedicated engine memory",
-        "help": "The memory given to a dedicated engine."
-      },
-      "isolated_engine_host_template": {
-        "label": "Dedicated engine host pattern",
-        "help": "The pattern a dedicated engine's host name is built from."
-      },
-      "isolated_engine_port": {
-        "label": "Dedicated engine port",
-        "help": "The port a dedicated engine listens on."
-      },
-      "isolated_engine_ready_timeout": {
-        "label": "Dedicated engine ready timeout",
-        "help": "How long to wait for a dedicated engine to become ready."
-      },
-      "isolated_engine_docker_socket": {
-        "label": "Dedicated engine Docker socket",
-        "help": "The Docker socket used to start dedicated engines."
-      },
-      "zaychik_cpu": {
-        "label": "Query gateway CPU",
-        "help": "The CPU given to the engine's query gateway."
-      },
-      "zaychik_memory": {
-        "label": "Query gateway memory",
-        "help": "The memory given to the engine's query gateway."
       }
     },
     "readonlyReasons": {
