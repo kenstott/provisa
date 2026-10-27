@@ -61,7 +61,6 @@
     "dqResultsTableHint": "(derivada da tabela verificada; uma linha por verificação por execução, todas as execuções mantidas)",
     "dqResultsTablePlaceholder": "Escolha acima a tabela a verificar",
     "dqVisibleToLabel": "Resultados visíveis para",
-    "dqDescription": "Resultados da verificação de qualidade de {{table}} — uma linha por verificação por execução, com resultado, valor da métrica e limite",
     "errorDqContract": "Escolha a tabela a verificar no painel de Qualidade de dados.",
     "errorDqVisibleTo": "Os resultados devem ser visíveis para pelo menos uma função.",
     "dqScanIntervalLabel": "Verificar a cada (segundos)",
@@ -135,6 +134,9 @@
     "qdrantVectors": "Vetores de {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensões, pontuado por {{distance}}",
     "qdrantUnnamedVector": "(sem nome)",
-    "continue": "Continuar"
+    "continue": "Continuar",
+    "checkReasonLabel": "Por que esta verificação existe",
+    "checkReasonHint": "A promessa de qualidade em termos de negócio; encabeça a verificação em cada produto.",
+    "checkReasonPlaceholder": "Os pedidos estão completos e são únicos para que a receita diária concilie com o financeiro"
   }
 }

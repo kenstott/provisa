@@ -148,13 +148,12 @@ def test_a_contract_on_a_non_checker_source_is_rejected():
         _validate_dq_contracts(_config(table))
 
 
-def test_a_checker_table_declaring_its_own_product_is_rejected():
-    """REQ-1443 clause 10: membership is inherited from the scanned table, so a declared one could
-    only agree with the derivation or contradict it."""
+def test_a_checker_table_keeps_the_product_it_is_assigned_to():
+    """REQ-1443 PRODUCT ASSIGNMENT: a checker table is assigned to a product as any member is."""
     table = _results_table()
     table.product_id = "orders-product"
-    with pytest.raises(ValueError, match="cannot declare product_id"):
-        _validate_dq_contracts(_config(table, _target_table()))
+    _validate_dq_contracts(_config(table, _target_table()))
+    assert table.product_id == "orders-product"
 
 
 def test_a_checker_table_without_a_contract_is_rejected():

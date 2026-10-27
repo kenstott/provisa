@@ -20,8 +20,8 @@ import type { CoreEdge } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => <div data-testid="kg-panel" />,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => <div data-testid="graph-panel" />,
 }));
 
 const PRODUCT = {
@@ -32,21 +32,20 @@ const PRODUCT = {
 } as unknown as DataProduct;
 
 const EDGE: CoreEdge = {
-  kind: "relationship",
-  direction: null,
+  id: "pet_health:related:12",
+  kind: "related",
   target_product_id: null,
   target_table_id: 12,
-  target_relation: null,
   direct: false,
   hops: 3,
   path_count: 2,
   aliases: "HAS_OWNER, VISITED_BY",
   supporting_tables: "pet-store.visits, pet-store.appointments, pet-store.clinics",
-  vias: null,
   target_table: {
     id: 12,
     domain_id: "pet-store",
     table_name: "owners",
+    alias: null,
     description: "Everyone who has adopted or fostered a pet, with how to reach them.",
   },
 };
@@ -70,11 +69,11 @@ function panel() {
       coreError={null}
       reader={null}
       canEdit={false}
-      canSeeLineage={false}
+      canDelete={false}
+      owner
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}

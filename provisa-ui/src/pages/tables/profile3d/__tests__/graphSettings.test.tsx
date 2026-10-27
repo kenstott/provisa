@@ -136,7 +136,6 @@ describe("the Ontology View's remembered settings", () => {
       data={g}
       scope={GLOSSARY_SCOPE}
       preset="ontology"
-      zero={[]}
       settingsKey={{ kind: "ontology", subject: null }}
       exportName="ontology"
       testId="x"

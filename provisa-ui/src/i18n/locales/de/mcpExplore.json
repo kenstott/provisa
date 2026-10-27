@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} läuft.",
     "toolDoneTooltip": "{{name}} ist abgeschlossen. Das Ergebnis wurde an den Assistenten zurückgegeben.",
     "toolErrorTooltip": "{{name}} ist fehlgeschlagen. Der Assistent hat den Fehler erhalten und versucht es möglicherweise mit anderen Argumenten erneut.",
-    "roleNoteHelpTitle": "Die Rolle dieser Sitzung"
+    "roleNoteHelpTitle": "Die Rolle dieser Sitzung",
+    "toolExplainTooltip": "{{name}} ist fertig. Klicken Sie, um die gesendete und die ausgeführte Anweisung zu sehen.",
+    "explainTitle": "Was die Abfrage des Agenten ausführte",
+    "explainSent": "Die Anweisung, die der Agent gesendet hat",
+    "explainRan": "Die ausgeführte Anweisung, geregelt für {{role}}"
   }
 }

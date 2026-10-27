@@ -65,6 +65,9 @@ class NativeTable:
     address: tuple[tuple[str, str], ...]  # (what, value), in reading order
     fields: tuple[NativeField, ...]
     served: dict[str, Any]
+    # The schema and table the source reads it from; None where the source has no such thing.
+    source_schema: str | None = None
+    source_table: str | None = None
 
     @property
     def native_relation(self) -> str:
@@ -168,6 +171,23 @@ def native_address(
     return tuple((what, value) for what, value in out if value)
 
 
+def source_object(
+    source_type: str, address: tuple[tuple[str, str], ...]
+) -> tuple[str | None, str | None]:
+    """(schema, table) a table is read from at its source, from its address: a database's
+    schema-qualified table, a document store's database and collection; (None, None) for a source
+    whose address names no table (an API operation, a topic, a file, a function)."""
+    named = dict(address)
+    if source_type in _DOCUMENT_NAMES:
+        outer, inner = _DOCUMENT_NAMES[source_type]
+        return (named.get(outer) if outer else None), named.get(inner)
+    qualified = named.get("table")
+    if qualified is None:
+        return None, None
+    schema, _, table = qualified.partition(".")
+    return schema, table
+
+
 def _iso(at: datetime | None) -> str | None:
     return at.isoformat() if at is not None else None
 
@@ -198,6 +218,7 @@ def native_table(
     native-filter column is an argument of the read, not a field of its rows)."""
     stype = source.type.value if hasattr(source.type, "value") else str(source.type)
     hints = source.federation_hints or {}
+    schema, name = source_object(stype, address)
     return NativeTable(
         relation=relation,
         source_id=source.id,
@@ -206,6 +227,8 @@ def native_table(
         address=address,
         fields=tuple(_field(c) for c in table["columns"] if c.get("native_filter_type") is None),
         served=serving,
+        source_schema=schema,
+        source_table=name,
     )
 
 
@@ -231,7 +254,13 @@ def with_native_hop(graph: LineageGraph, natives: list[NativeTable]) -> None:
             continue
         node_id = f"{native.native_relation}.{field.raw}"
         graph.nodes[node_id] = Node(
-            id=node_id, column=field.raw, relation=native.native_relation, kind="native"
+            id=node_id,
+            column=field.raw,
+            relation=native.native_relation,
+            kind="native",
+            source_id=native.source_id,
+            source_schema=native.source_schema,
+            source_table=native.source_table,
         )
         ops = (TransformOp(field.rename, RENAME),) if field.rename else ()
         graph.add_edge(Edge(source=node_id, target=node.id, transform=field.raw, ops=ops))

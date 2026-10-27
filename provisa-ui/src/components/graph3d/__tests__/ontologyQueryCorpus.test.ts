@@ -31,10 +31,14 @@ interface MetaSchemaDoc {
 }
 
 function reader(): MetaReader {
-  const doc = JSON.parse(readFileSync(resolve(GOLDEN, "meta_schema.json"), "utf8")) as MetaSchemaDoc;
+  const doc = JSON.parse(
+    readFileSync(resolve(GOLDEN, "meta_schema.json"), "utf8"),
+  ) as MetaSchemaDoc;
   return {
     schema: new RoleSchema(doc.introspection),
-    roots: new Map(doc.root_fields.map((r) => [rootKey(r.domain_id, r.table_name), r.graphql_field])),
+    roots: new Map(
+      doc.root_fields.map((r) => [rootKey(r.domain_id, r.table_name), r.graphql_field]),
+    ),
   };
 }
 
@@ -45,7 +49,11 @@ function subsets<T>(items: T[]): T[][] {
 
 const LAYERS: LayerId[] = ["domains", "data", "columns", "ownerTables"];
 const SEARCHES = [[], ["party"]];
-const STATUSES: QueryScope["hiddenStatuses"][] = [[], ["retired"], ["draft", "deprecated", "retired"]];
+const STATUSES: QueryScope["hiddenStatuses"][] = [
+  [],
+  ["retired"],
+  ["draft", "deprecated", "retired"],
+];
 const EDGE_TYPES = [[], ["KIND_OF", "PART_OF"]];
 const DOMAINS = [[], ["sales"]];
 
@@ -59,27 +67,27 @@ function ontologyScopes(): [string, QueryScope][] {
       for (const hiddenStatuses of STATUSES)
         for (const edgeTypes of EDGE_TYPES)
           for (const domains of DOMAINS) {
-              const key = [
-                ["ontology", ...layers].join("+"),
-                `search=${search.join(",")}`,
-                `hidden=${hiddenStatuses.join(",")}`,
-                `edges=${edgeTypes.join(",")}`,
-                `domains=${domains.join(",")}`,
-              ].join(" ");
-              out.push([
-                key,
-                {
-                  layers: new Set<LayerId>(["ontology", ...layers]),
-                  search,
-                  hiddenStatuses,
-                  edgeTypes,
-                  domains,
-                  orphans: true,
-                  tags: [],
-                  sensitivities: [],
-                },
-              ]);
-            }
+            const key = [
+              ["ontology", ...layers].join("+"),
+              `search=${search.join(",")}`,
+              `hidden=${hiddenStatuses.join(",")}`,
+              `edges=${edgeTypes.join(",")}`,
+              `domains=${domains.join(",")}`,
+            ].join(" ");
+            out.push([
+              key,
+              {
+                layers: new Set<LayerId>(["ontology", ...layers]),
+                search,
+                hiddenStatuses,
+                edgeTypes,
+                domains,
+                orphans: true,
+                tags: [],
+                sensitivities: [],
+              },
+            ]);
+          }
   return out;
 }
 
@@ -112,7 +120,8 @@ function corpus(): Record<string, string> {
     add(`ontology: ${key}`, ontologyQuery(m, s));
     add(`ontology count: ${key}`, ontologyCountQuery(m, s));
   }
-  for (const [key, product, f] of productScopes()) add(`product graph: ${key}`, productGraphQuery(m, product, f));
+  for (const [key, product, f] of productScopes())
+    add(`product graph: ${key}`, productGraphQuery(m, product, f));
   return out;
 }
 

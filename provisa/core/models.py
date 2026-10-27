@@ -1645,6 +1645,10 @@ class Table(
     # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
     # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
     mv_preprocess: str | None = None
+    # REQ-2133: Hold on failing checks -- a built-in preflight that holds a refresh while a checker
+    # scanning one of the view's nearest physical inputs failed its latest run; combined with
+    # mv_preprocess, the refresh lands only if both continue.
+    mv_hold_on_failing_checks: bool = False
     # REQ-2109: the bitemporal declaration of a table or a view, all three or none. business_key
     # names the columns identifying the same thing across versions; valid_time the column holding
     # the date the business gives the record (when it was agreed, booked or took effect);

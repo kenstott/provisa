@@ -133,13 +133,12 @@
     "mvPrimaryKeyDerived": "Rij-identiteitssleutel (uit de primairesleutelselectievakjes in de kolommen hieronder):",
     "mvPrimaryKeyMissing": "Upsert en incrementeel onderhoud vereisen een rij-identiteitssleutel. Markeer de sleutelkolom(men) als primaire sleutel in de kolommenlijst hieronder.",
     "preprocessLabel": "Preflight-controle (Python)",
-    "preprocessHelp": "Optionele preflight-controle die na de view-SQL en vóór het landen wordt uitgevoerd: definieer preflight(streams, ctx) en retourneer een OORDEEL — ctx.ok() om door te gaan, ctx.abort(reason) om af te wijzen (fout + downstream vergiftigen), of ctx.quarantine(reason) om vast te houden zonder te landen. streams is een dict met invoernodes als sleutels: streams[\"schema.table\"] levert de rijen van die invoer lazy op, zodat een invoer kan worden geïnspecteerd zonder deze te materialiseren. Een controle inspecteert; hij transformeert GEEN rijen (zet transformaties in SQL of een externe processor). Een in SQL uitdrukbare controle — if any(...)/all(...) over de rijen van één invoer — wordt naar de engine gepusht als een telprobe over die invoer, en schaalt zo naar een miljard rijen; al het andere streamt elke invoer als Arrow-batches en stopt vroegtijdig. Roep ctx.warn(reason) aan voor een niet-fatale waarschuwing. De controle MOET deterministisch zijn — geen klok, willekeur, imports of IO — en wordt bij het opslaan op puurheid gecontroleerd; een niet-deterministische of onveilige controle wordt afgewezen.",
+    "preprocessHelp": "Optionele preflight-controle die na de view-SQL en vóór het landen wordt uitgevoerd: definieer preflight(streams, ctx) en retourneer een OORDEEL — ctx.ok() om door te gaan, ctx.abort(reason) om af te wijzen (fout + downstream vergiftigen), of ctx.quarantine(reason) om vast te houden zonder te landen. streams is een dict met invoernodes als sleutels: streams[\"schema.table\"] levert de rijen van die invoer lazy op, zodat een invoer kan worden geïnspecteerd zonder deze te materialiseren. Een controle inspecteert; hij transformeert GEEN rijen (zet transformaties in SQL of een externe processor). Een in SQL uitdrukbare controle — if any(...)/all(...) over de rijen van één invoer — wordt naar de engine gepusht als een telprobe over die invoer, en schaalt zo naar een miljard rijen; al het andere streamt elke invoer als Arrow-batches en stopt vroegtijdig. Roep ctx.warn(reason) aan voor een niet-fatale waarschuwing. Ze mag precies één module importeren, provisa_services, om de diensten van Provisa aan te roepen (waaronder dq); zo'n controle streamt altijd en haar oordeel is de stand op het moment van verversen. Anders MOET de controle deterministisch zijn — geen klok, willekeur, andere imports of IO — en wordt ze bij het opslaan op puurheid gecontroleerd; een niet-deterministische of onveilige controle wordt afgewezen.",
     "preprocessAria": "Python-bron van MV-preflight-controle",
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "Dataproduct",
     "dataProductNone": "Geen",
     "dataProductDesc": "Gepubliceerd in de catalogus en geëxporteerd naar Atlas, {{atlan}} en andere.",
-    "dataProductInherited": "Overgenomen van de tabel die dit contract scant",
     "enableAggregatesLabel": "Aggregaten inschakelen",
     "enableAggregatesDesc": "(_aggregate-rootveld beschikbaar maken in GraphQL)",
     "enableGroupByLabel": "Group by inschakelen",
@@ -280,6 +279,11 @@
     "timeTravelSectionHelp": "Bitemporeel bewaart beide: wanneer het gebeurde en wanneer het werd vastgelegd. Zo zijn de gegevens te lezen per een datum, of zoals ze op een datum waren vastgelegd. Koppel de bedrijfssleutel, geldigheidstijd en registratietijd aan kolommen; Provisa bepaalt hoe de versies worden bewaard.",
     "timeTravelLabel": "Historie bewaren",
     "timeTravelOff": "Uit",
-    "timeTravelBitemporal": "Bitemporeel"
+    "timeTravelBitemporal": "Bitemporeel",
+    "holdOnFailingChecksLabel": "Vasthouden bij falende controles",
+    "holdOnFailingChecksHelp": "Breekt een verversing af en houdt de vorige kopie, wanneer de laatste run van een controletabel die een van de invoeren van deze view scant is mislukt. Draait vóór de voorcontrole hierboven; beide moeten doorgaan.",
+    "holdOnFailingChecksShowCode": "Code tonen",
+    "holdOnFailingChecksHideCode": "Code verbergen",
+    "holdOnFailingChecksCodeHelp": "De controle die deze optie toepast. Kopieer haar naar de voorcontrole hierboven om haar te wijzigen."
   }
 }

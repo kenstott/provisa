@@ -133,13 +133,12 @@
     "mvPrimaryKeyDerived": "Zeilenidentitätsschlüssel (aus den Primärschlüssel-Kontrollkästchen in den Spalten unten):",
     "mvPrimaryKeyMissing": "Upsert und inkrementelle Pflege benötigen einen Zeilenidentitätsschlüssel. Markieren Sie die Schlüsselspalte(n) in der Spaltenliste unten als Primärschlüssel.",
     "preprocessLabel": "Preflight-Prüfung (Python)",
-    "preprocessHelp": "Optionale Preflight-Prüfung, die nach dem Sicht-SQL und vor dem Landen läuft: Definieren Sie preflight(streams, ctx) und geben Sie ein URTEIL zurück — ctx.ok() zum Fortfahren, ctx.abort(reason) zum Ablehnen (Fehler + Downstream vergiften) oder ctx.quarantine(reason) zum Zurückhalten ohne Landen. streams ist ein Dict mit den Eingabeknoten als Schlüssel: streams[\"schema.table\"] liefert die Zeilen dieser Eingabe lazy, sodass Sie eine Eingabe prüfen können, ohne sie zu materialisieren. Eine Prüfung inspiziert; sie transformiert KEINE Zeilen (Transformationen gehören in SQL oder einen externen Prozessor). Eine SQL-ausdrückbare Prüfung — if any(...)/all(...) über die Zeilen einer Eingabe — wird als Count-Probe über diese Eingabe an die Engine heruntergedrückt und skaliert so auf eine Milliarde Zeilen; alles andere streamt jede Eingabe als Arrow-Batches und bricht frühzeitig ab. Rufen Sie ctx.warn(reason) für einen nicht-fatalen Hinweis auf. Die Prüfung MUSS deterministisch sein — keine Uhr, kein Zufall, keine Imports, kein IO — und wird beim Speichern auf Reinheit geprüft; eine nicht-deterministische oder unsichere Prüfung wird abgelehnt.",
+    "preprocessHelp": "Optionale Preflight-Prüfung, die nach dem Sicht-SQL und vor dem Landen läuft: Definieren Sie preflight(streams, ctx) und geben Sie ein URTEIL zurück — ctx.ok() zum Fortfahren, ctx.abort(reason) zum Ablehnen (Fehler + Downstream vergiften) oder ctx.quarantine(reason) zum Zurückhalten ohne Landen. streams ist ein Dict mit den Eingabeknoten als Schlüssel: streams[\"schema.table\"] liefert die Zeilen dieser Eingabe lazy, sodass Sie eine Eingabe prüfen können, ohne sie zu materialisieren. Eine Prüfung inspiziert; sie transformiert KEINE Zeilen (Transformationen gehören in SQL oder einen externen Prozessor). Eine SQL-ausdrückbare Prüfung — if any(...)/all(...) über die Zeilen einer Eingabe — wird als Count-Probe über diese Eingabe an die Engine heruntergedrückt und skaliert so auf eine Milliarde Zeilen; alles andere streamt jede Eingabe als Arrow-Batches und bricht frühzeitig ab. Rufen Sie ctx.warn(reason) für einen nicht-fatalen Hinweis auf. Sie darf genau ein Modul importieren, provisa_services, um die Dienste von Provisa aufzurufen (darunter dq); eine solche Prüfung streamt immer, und ihr Urteil ist der Stand zum Zeitpunkt der Aktualisierung. Andernfalls MUSS sie deterministisch sein — keine Uhr, kein Zufall, keine anderen Imports, kein IO — und wird beim Speichern auf Reinheit geprüft; eine nicht-deterministische oder unsichere Prüfung wird abgelehnt.",
     "preprocessAria": "Python-Quelltext der MV-Preflight-Prüfung",
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "Datenprodukt",
     "dataProductNone": "Keines",
     "dataProductDesc": "Wird im Katalog veröffentlicht und nach Atlas, {{atlan}} und anderen exportiert.",
-    "dataProductInherited": "Von der Tabelle geerbt, die dieser Vertrag prüft",
     "enableAggregatesLabel": "Aggregate aktivieren",
     "enableAggregatesDesc": "(Root-Feld _aggregate in GraphQL bereitstellen)",
     "enableGroupByLabel": "Group By aktivieren",
@@ -280,6 +279,11 @@
     "timeTravelSectionHelp": "Bitemporal hält beides fest: wann etwas geschah und wann es erfasst wurde. So lassen sich die Daten zum Stand eines Datums lesen oder so, wie sie an einem Datum erfasst waren. Ordnen Sie Geschäftsschlüssel, Gültigkeitszeit und Erfassungszeit Spalten zu; Provisa entscheidet, wie die Versionen gespeichert werden.",
     "timeTravelLabel": "Historie führen",
     "timeTravelOff": "Aus",
-    "timeTravelBitemporal": "Bitemporal"
+    "timeTravelBitemporal": "Bitemporal",
+    "holdOnFailingChecksLabel": "Bei fehlschlagenden Prüfungen anhalten",
+    "holdOnFailingChecksHelp": "Bricht eine Aktualisierung ab und behält die vorherige Kopie, wenn der letzte Lauf einer Prüftabelle, die eine der Eingaben dieser Ansicht prüft, fehlgeschlagen ist. Läuft vor der obigen Vorabprüfung; beide müssen fortfahren.",
+    "holdOnFailingChecksShowCode": "Code anzeigen",
+    "holdOnFailingChecksHideCode": "Code ausblenden",
+    "holdOnFailingChecksCodeHelp": "Die Prüfung, die diese Option anwendet. Kopieren Sie sie in die obige Vorabprüfung, um sie zu ändern."
   }
 }

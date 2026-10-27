@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from provisa.mv.preflight import CONTINUE, Decision, Verdict
-from provisa.mv.preprocess import REQUIRED_FUNC
+from provisa.mv.preprocess import REQUIRED_FUNC, uses_services
 
 # Python comparator AST node -> SQL operator (None-compares are special-cased in the visitor).
 _CMP_OPS: dict[type[ast.cmpop], str] = {
@@ -261,6 +261,8 @@ def translate(source: str) -> SqlPreflight | None:
     a computed stream key, an untranslatable predicate — returns ``None`` so the caller uses the
     Python+Arrow streaming path. Never guesses: an ambiguous construct is a None, not a wrong SQL.
     """
+    if uses_services(source):
+        return None  # REQ-1165: a check that calls Provisa's services runs on the Python path only
     try:
         tree = ast.parse(source)
     except SyntaxError:

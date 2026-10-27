@@ -568,8 +568,8 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
     (REQ-1912), so it stands in only for a join-pattern view, which has no SQL of its own; each
     input is addressed where the engine reads it at the read (``preflight_eval``)."""
     source = getattr(mv, "preprocess", None)
-    if source is None or not source.strip():
-        return None
+    if (source is None or not source.strip()) and not mv.hold_on_failing_checks:
+        return None  # REQ-2133: a view that holds on failing checks is checked without one
 
     from provisa.events.lineage import extract_inputs  # noqa: PLC0415
     from provisa.events.processor import NodeContext  # noqa: PLC0415
@@ -577,7 +577,15 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
 
     ctx = NodeContext(node=mv.id, kind="mv", claimed=[], prior_hash=None)
     inputs = sorted(extract_inputs(mv.sql or select_sql, "postgres"))
-    return await evaluate_streams(engine, source, inputs, ctx)
+    return await evaluate_streams(
+        engine,
+        source,
+        inputs,
+        ctx,
+        product_id=mv.product_id,
+        hold=mv.hold_on_failing_checks,  # REQ-2133
+        table_id=mv.table_id,
+    )
 
 
 class SealedBuildRefused(ValueError):

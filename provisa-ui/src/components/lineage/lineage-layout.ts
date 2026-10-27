@@ -168,11 +168,10 @@ export function buildLineageModel(
     if (n.relation && native)
       return { id: boxId(n.relation), relation: n.relation, label: nativeLabel(native) };
     // REQ-2116: natives (where a table is read from) go only to a user with source registration;
-    // for anyone else a native box is named by the registered table it lands in, never by the
-    // internal "native:" key.
+    // for anyone else a native box is named by its source and the names the source gives the
+    // object (REQ-2156), never by the internal "native:" key.
     if (n.relation?.startsWith(NATIVE_PREFIX)) {
-      const label = named(n.relation.slice(NATIVE_PREFIX.length));
-      return { id: boxId(n.relation), relation: n.relation, label };
+      return { id: boxId(n.relation), relation: n.relation, label: sourceNames(n) };
     }
     if (n.relation) {
       const served = servedOf.get(n.relation);
@@ -437,6 +436,13 @@ export function lanesFrom(links: [string, string][], zero: string[]): Map<string
 /** REQ-2116: the height of a native box's head -- one line per address part, the logo beside. */
 export function nativeHeadHeight(head: NativeHead): number {
   return Math.max(NATIVE_LOGO_W, head.lines.length * NATIVE_LINE_H) + 6;
+}
+
+/** REQ-2156: a native object by its source's own names -- the source, then its schema and table
+ *  where it has them. */
+function sourceNames(n: LineageNode): string {
+  const object = [n.source_schema, n.source_table].filter(Boolean).join(".");
+  return object ? `${n.source_id} · ${object}` : (n.source_id as string);
 }
 
 function nativeHints(native: LineageNative): string {
