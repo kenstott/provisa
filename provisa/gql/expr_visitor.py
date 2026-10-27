@@ -130,6 +130,10 @@ class ExprContext(Protocol):
         """A ``$param`` reference — the positional placeholder it binds to."""
         ...
 
+    def parameter_value(self, name: str) -> object:
+        """The value the client gives ``$name``."""
+        ...
+
     def temporal_kind(self, expr: CypherExpr) -> str | None:
         """The temporal kind ``expr`` has (REQ-2173: date, time, ..., duration), or None."""
         ...
@@ -140,6 +144,10 @@ class ExprContext(Protocol):
 
     def is_text(self, expr: CypherExpr) -> bool:
         """Whether ``expr`` is a string (size() of it counts its characters)."""
+        ...
+
+    def is_list(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a list (+ appends an element to it)."""
         ...
 
     def resolve_term(self, node: Term) -> exp.Expression:
@@ -243,6 +251,24 @@ def _float_division(left: exp.Expression, right: exp.Expression) -> exp.Expressi
             )
         ],
         default=exp.Div(this=left, expression=right),
+    )
+
+
+def _reversed_list(items: exp.Expression) -> exp.Expression:
+    """A list's items last to first, in the engine functions the IR names (DuckDB's reverse takes
+    a string alone): each index from the last down to 1, read. An empty list is itself, as Trino's
+    sequence takes no step down from 0 to 1."""
+    size = _anon("cardinality", items.copy())
+    indexes = _anon("sequence", size, exp.Literal.number(1), exp.Literal.number(-1))
+    read = _lam("_i", _anon("element_at", items.copy(), exp.column("_i")))
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=size.copy(), expression=exp.Literal.number(0)),
+                true=items.copy(),
+            )
+        ],
+        default=_anon("transform", indexes, read),
     )
 
 
@@ -387,6 +413,20 @@ class ExprLowering:
             if mistake is not None:
                 raise mistake
 
+    def _value_kind(self, node: CypherExpr) -> str | None:
+        """A value's kind as the statement writes it -- "number", "text" or "boolean" -- where it
+        is known when the query is read, else None."""
+        if isinstance(node, Paren):
+            return self._value_kind(node.inner)
+        if isinstance(node, Literal):
+            return {"number": "number", "string": "text", "boolean": "boolean"}.get(node.kind)
+        if isinstance(node, Binary) and node.op in ("-", "*", "/", "%", "^"):
+            left, right = self._value_kind(node.left), self._value_kind(node.right)
+            return "number" if left == right == "number" else None
+        if self._ctx.is_text(node):
+            return "text"
+        return None
+
     def _lower_Binary(self, node: Binary) -> exp.Expression:
         op = node.op
         if op in _BINARY_CMP:
@@ -394,6 +434,15 @@ class ExprLowering:
             if same is not None:
                 return same
             self._refuse_mismatched_comparison(node)
+            left_kind, right_kind = self._value_kind(node.left), self._value_kind(node.right)
+            if left_kind and right_kind and left_kind != right_kind:
+                # Values of two kinds ('1' and 1) are never equal and have no order (openCypher):
+                # never the engine's implicit cast of one to the other.
+                if op == "=":
+                    return exp.false()
+                if op in ("<>", "!="):
+                    return exp.true()
+                return exp.Null()
         left = self.lower(node.left)
         right = self.lower(node.right)
         # SQL binds IS NULL looser than a comparison, Cypher tighter: a = b IS NULL is a = (b IS NULL).
@@ -413,6 +462,12 @@ class ExprLowering:
                 return timed
             if op == "/" and (self._is_float(node.left) or self._is_float(node.right)):
                 return _float_division(left, right)
+            if op == "+" and self._ctx.is_list(node.left) != self._ctx.is_list(node.right):
+                # A list + an element appends it, an element + a list prepends it (SQL's + of a
+                # list and a value is no operator).
+                if self._ctx.is_list(node.left):
+                    return _anon("array_append", left, right)
+                return _anon("array_prepend", left, right)
             if op == "/":
                 # An integer divided by an integer is an integer, as in SQL: typed, so sqlglot does
                 # not cast the dividend to DOUBLE PRECISION.
@@ -551,6 +606,21 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if node.name.lower() == "keys" and len(node.args) == 1:
+            given = node.args[0]
+            if isinstance(given, MapLiteral):
+                return exp.Array(expressions=[exp.Literal.string(k) for k, _ in given.entries])
+            if isinstance(given, Parameter):
+                value = self._ctx.parameter_value(given.name)
+                if isinstance(value, dict):
+                    # The map the client gives: its keys, as it gives them.
+                    return exp.Array(expressions=[exp.Literal.string(str(k)) for k in value])
+        if (
+            node.name.lower() == "reverse"
+            and len(node.args) == 1
+            and self._ctx.is_list(node.args[0])
+        ):
+            return _reversed_list(self.lower(node.args[0]))
         if node.name.lower() == "size" and len(node.args) == 1:
             # A list written in the statement is counted where it is written (its engine may not
             # type an empty one), and the size of null is null (openCypher).
@@ -645,6 +715,13 @@ class ExprLowering:
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
+        if (
+            isinstance(node.obj, (MapLiteral, Variable))
+            and isinstance(node.index, Literal)
+            and node.index.kind == "string"
+        ):
+            # m['k'] is m.k: the key's value as it is, not its JSON.
+            return self.lower(Property(obj=node.obj, name=str(node.index.value)))
         # Cypher lists are 0-indexed; the engine element_at is 1-indexed → shift positive indices.
         base = self.lower(node.obj)
         idx = self.lower(node.index)
@@ -691,7 +768,26 @@ class ExprLowering:
             return _anon("none_match", source, pred) if pred else _anon("none_match", source)
         # SINGLE → cardinality(filter(list, pred)) = 1
         filtered = _anon("filter", source, pred) if pred else source
-        return exp.EQ(this=_anon("cardinality", filtered), expression=exp.Literal.number(1))
+        one = exp.EQ(this=_anon("cardinality", filtered), expression=exp.Literal.number(1))
+        if node.predicate is None:
+            return one
+        # Three-valued: a second true decides false; otherwise a null predicate value leaves it null.
+        unknown = _lam(
+            node.var, exp.Is(this=exp.Paren(this=self.lower(node.predicate)), expression=exp.Null())
+        )
+        return exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.GT(
+                        this=_anon("cardinality", filtered.copy()),
+                        expression=exp.Literal.number(1),
+                    ),
+                    true=exp.false(),
+                ),
+                exp.If(this=_anon("any_match", source.copy(), unknown), true=exp.Null()),
+            ],
+            default=one,
+        )
 
     def _lower_Reduce(self, node: Reduce) -> exp.Expression:
         # reduce(list, init, (acc, x) -> step, acc -> acc)

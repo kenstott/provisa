@@ -8824,7 +8824,11 @@
   - tests/unit/test_cypher_graph_fns.py
   - tests/unit/test_cypher_parser.py
   - tests/unit/test_cypher_translator.py
+  - tests/unit/test_cypher_tck_comparison.py
+  - tests/unit/test_cypher_tck_lists.py
+  - tests/unit/test_cypher_tck_maps.py
   - tests/unit/test_cypher_tck_precedence.py
+  - tests/unit/test_cypher_tck_quantifiers.py
   - tests/unit/test_sql_to_cypher.py
   - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01
@@ -90030,7 +90034,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (a session relationship may end on a model node). Example: CREATE (c:Customer {id: 42}), (n:Note {text:
     ''call back''}), (c)-[:ABOUT]->(n) writes the Customer row to its source and the Note and ABOUT to the
     session. Statements are not atomic across the two paths (transactions are a no-op by design), so the
-    outcome equals running the parts as separate statements.'
+    outcome equals running the parts as separate statements. (Amended 2026-10-27, WRITES LOWER THROUGH THE
+    GRAPH IR:) Maintainer 2026-10-27: graph writes lower through the graph IR (REQ-2135) before MERGE, DETACH
+    DELETE and SPARQL Update are built. The IR gains write clauses (CREATE, SET, REMOVE, DELETE, MERGE);
+    the Cypher parser accepts them and SPARQL INSERT/DELETE DATA lower to them; one classifier over the
+    IR decides governed vs session for every language, and the governed writer takes IR input in place of
+    the regex translator. Reads need no IR change.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
