@@ -428,8 +428,7 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
     Clients (DataGrip) resolve primary-key columns via pg_index.indkey rather than
     pg_constraint, so each key constraint is surfaced as its backing index. indkey
     carries the ordered table attnums; indexrelid is synthesized from the
-    constraint oid (the index has no distinct pg_class entry — PK column resolution
-    joins pg_index → pg_attribute on indrelid, not on indexrelid).
+    constraint oid; its pg_class row is _populate_index_classes'.
     """
     index_rows: list[tuple] = []
     for con_row in constraint_rows:
@@ -467,6 +466,61 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
         )
     if index_rows:
         db.executemany(f"INSERT INTO _pg_index VALUES ({','.join(['?'] * 20)})", index_rows)
+
+
+_BTREE_AM_OID = 403
+
+
+def _populate_index_classes(db, constraint_rows: list[tuple]) -> None:  # REQ-2167
+    """Each key constraint's index as a pg_class relation (relkind 'i', btree), named after its
+    constraint as PostgreSQL names a key's index: pgjdbc's getIndexInfo (DBeaver's index list)
+    joins pg_index to pg_class on indexrelid."""
+    rows = [
+        _index_class_row(con[0] + _INDEX_OID_OFFSET, con[1], con[2], len(con[18]))
+        for con in constraint_rows
+        if con[3] in ("p", "u") and con[18]
+    ]
+    if rows:
+        db.executemany(f"INSERT INTO _pg_class VALUES ({','.join(['?'] * 33)})", rows)
+
+
+def _index_class_row(oid: int, name: str, namespace: int, natts: int) -> tuple:
+    """A key constraint's index as its pg_class row, in _pg_class's column order."""
+    return (
+        oid,
+        name,
+        namespace,
+        0,  # reltype: an index has no row type
+        0,
+        10,
+        _BTREE_AM_OID,  # relam
+        oid,
+        0,
+        0,  # relpages
+        0.0,  # reltuples
+        0,
+        0,
+        False,
+        False,
+        "p",
+        "i",  # relkind
+        natts,
+        0,
+        False,
+        False,
+        False,
+        False,
+        False,
+        True,
+        "n",  # relreplident
+        False,
+        0,
+        0,
+        0,
+        None,
+        None,
+        None,
+    )
 
 
 def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex) -> None:
