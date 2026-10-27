@@ -89906,7 +89906,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     value is bounded by the serving engine''s range and the IANA time-zone database: dates within the engine''s
     year range (not openCypher''s +-999,999,999), UTC offsets strictly within +-18:00, and historic zone
     offsets as IANA data gives them (1818 Europe/Stockholm is +01:12:12, not Java''s local mean time). A
-    value beyond these is refused by name; Provisa carries no temporal range or zone data of its own.'
+    value beyond these is refused by name; Provisa carries no temporal range or zone data of its own. (Amended
+    2026-10-27, OFFSETS ARE THE ENGINE''S:) Maintainer 2026-10-27, refining the above: a UTC offset is bounded
+    by the serving engine''s own range, not by a fixed +-18:00 (DuckDB''s TIMETZ holds offsets under 16
+    hours); an offset beyond it is refused naming the bound.'
   scenario: 'Given the Cypher surface
 
     When RETURN duration.between(date(''1984-10-11''), date(''2015-06-24'')) AS d runs
