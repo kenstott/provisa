@@ -376,6 +376,11 @@ for (const c of [
       await page.getByTestId("table-edit-save").click();
       // Registered under its result relation's name, <name>_<source>_dq (REQ-1443).
       const relation = `${resultsTable}_${sourceId.replaceAll("-", "_")}_dq`;
+      // The list shows 50 rows a page and every spec before this one has added tables, so the new
+      // one can be on any page: filter the list to it.
+      await page
+        .getByRole("searchbox", { name: /Filter by source, domain, or table/ })
+        .fill(relation);
       const badge = page.getByTestId(`tables-checker-${relation}`);
       await expect(badge).toBeVisible({ timeout: 20000 });
       await expect(badge).toHaveText(c.checker);

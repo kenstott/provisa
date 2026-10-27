@@ -9,11 +9,13 @@
 Drives the full live path through the real app: register a MATERIALIZED bitemporal view over GraphQL
 (config persists to the DB) and release it, which builds it — the first version in its append log;
 change its row and refresh, the second version; then query it through /data/sql — current-by-default
-and with the X-Provisa-As-Of header, before, between and after the two versions. The materialize store is pointed
+and with the view's as_of / as_recorded arguments (REQ-1163), before, between and after the two
+versions. The materialize store is pointed
 at an embedded DuckDB file so the in-process test app needs no external store (the isolated Postgres
 is on an ephemeral port, not :5432)."""
 
 import os
+import re
 import tempfile
 
 import pytest
@@ -23,6 +25,13 @@ from httpx import ASGITransport, AsyncClient
 from tests.helpers import registered_id, release_mutation
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
+
+
+def _at(sql: str, **times: str) -> str:
+    """``sql`` with its relation read at ``times`` (as_of, as_recorded): the relation's own
+    arguments, written after its name (REQ-1163)."""
+    said = ", ".join(f"{name} => '{value}'" for name, value in times.items())
+    return re.sub(r'FROM ("[^"]+"\."[^"]+")', lambda m: f"FROM {m.group(1)}({said})", sql, count=1)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
@@ -160,11 +169,9 @@ async def test_bitemporal_view_http_end_to_end(client):
         "columns": ["id", "amount"],
     }, cur.text
 
-    # (3) X-Provisa-As-Of after the first version → the reconstructed current row (time-travel path).
+    # (3) As of after the first version → the reconstructed current row (time-travel path).
     fut = await _sql(
-        client,
-        'SELECT id, amount FROM "bt"."bt_view"',
-        **{"X-Provisa-As-Of": "2999-01-01T00:00:00"},
+        client, _at('SELECT id, amount FROM "bt"."bt_view"', as_of="2999-01-01T00:00:00")
     )
     assert fut.status_code == 200, fut.text
     # The rows and their columns are what is under test; the body also carries the engine's
@@ -174,21 +181,17 @@ async def test_bitemporal_view_http_end_to_end(client):
         "columns": ["id", "amount"],
     }, fut.text
 
-    # (4) X-Provisa-As-Of BEFORE the first version → no version was effective yet → empty.
+    # (4) As of BEFORE the first version → no version was effective yet → empty.
     past = await _sql(
-        client,
-        'SELECT id, amount FROM "bt"."bt_view"',
-        **{"X-Provisa-As-Of": "2000-01-01T00:00:00"},
+        client, _at('SELECT id, amount FROM "bt"."bt_view"', as_of="2000-01-01T00:00:00")
     )
     assert past.status_code == 200, past.text
     # REQ-1436: the projection rides alongside the rows, and is still present when the result is
     # empty — that is the case it exists for.
     assert _rows_and_columns(past) == {"data": {"sql": []}, "columns": ["id", "amount"]}, past.text
 
-    # (5) A malformed X-Provisa-As-Of is rejected at the endpoint before execution → HTTP 400.
-    bad = await _sql(
-        client, 'SELECT id FROM "bt"."bt_view"', **{"X-Provisa-As-Of": "not-a-timestamp"}
-    )
+    # (5) A malformed as_of is refused before execution, naming the view → HTTP 400.
+    bad = await _sql(client, _at('SELECT id FROM "bt"."bt_view"', as_of="not-a-timestamp"))
     assert bad.status_code == 400, bad.text
     assert "as-of" in bad.text.lower() or "as_of" in bad.text.lower()
 
@@ -210,21 +213,21 @@ async def test_bitemporal_view_http_end_to_end(client):
     # Between the two versions: the first. Both are valid from 1 January -- the second corrects
     # the first -- so they are told apart on recorded time, an as-recorded read (REQ-2109: as_of
     # filters valid time, as_recorded recorded time).
-    then = await _sql(client, select, **{"X-Provisa-As-Recorded": between})
+    then = await _sql(client, _at(select, as_recorded=between))
     assert then.status_code == 200, then.text
     assert _rows_and_columns(then)["data"] == {"sql": [{"id": 1, "amount": 10}]}, then.text
     # As of that time alone: the correction, valid from 1 January as the original was.
-    corrected = await _sql(client, select, **{"X-Provisa-As-Of": between})
+    corrected = await _sql(client, _at(select, as_of=between))
     assert _rows_and_columns(corrected)["data"] == {"sql": [{"id": 1, "amount": 20}]}, (
         corrected.text
     )
     # After the second, and by default: the changed row.
-    for headers in ({"X-Provisa-As-Of": "2999-01-01T00:00:00"}, {}):
-        now = await _sql(client, select, **headers)
+    for times in ({"as_of": "2999-01-01T00:00:00"}, {}):
+        now = await _sql(client, _at(select, **times) if times else select)
         assert now.status_code == 200, now.text
         assert _rows_and_columns(now)["data"] == {"sql": [{"id": 1, "amount": 20}]}, now.text
     # And before the first there is still nothing: the change rewrote no history.
-    past = await _sql(client, select, **{"X-Provisa-As-Of": "2000-01-01T00:00:00"})
+    past = await _sql(client, _at(select, as_of="2000-01-01T00:00:00"))
     assert _rows_and_columns(past)["data"] == {"sql": []}, past.text
 
 
@@ -299,23 +302,21 @@ async def test_a_correction_is_read_as_it_was_recorded(client):
     await refresh()
 
     select = 'SELECT id, amount FROM "btc"."bt_corrected"'
-    valid = {"X-Provisa-As-Of": "2026-09-30T12:00:00"}
+    valid = {"as_of": "2026-09-30T12:00:00"}
 
-    async def amounts(**headers) -> list[int]:
-        resp = await _sql(client, select, **headers)
+    async def amounts(**times: str) -> list[int]:
+        resp = await _sql(client, _at(select, **times))
         assert resp.status_code == 200, resp.text
         return [r["amount"] for r in resp.json()["data"]["sql"]]
 
     # As recorded before the correction: the original.
-    assert await amounts(**valid, **{"X-Provisa-As-Recorded": recorded_before}) == [10]
+    assert await amounts(**valid, as_recorded=recorded_before) == [10]
     # As recorded since, and as of alone: the correction.
-    assert await amounts(**valid, **{"X-Provisa-As-Recorded": "2999-01-01T00:00:00"}) == [20]
+    assert await amounts(**valid, as_recorded="2999-01-01T00:00:00") == [20]
     assert await amounts(**valid) == [20]
     # As recorded alone: the version in force as recorded then.
-    assert await amounts(**{"X-Provisa-As-Recorded": recorded_before}) == [10]
+    assert await amounts(as_recorded=recorded_before) == [10]
     # One time, not a range.
-    bad = await _sql(
-        client, select, **{"X-Provisa-As-Recorded": "2026-10-01T00:00:00/2026-10-05T00:00:00"}
-    )
+    bad = await _sql(client, _at(select, as_recorded="2026-10-01T00:00:00/2026-10-05T00:00:00"))
     assert bad.status_code == 400, bad.text
-    assert "data.invalid_as_recorded" in bad.text, bad.text
+    assert "invalid as_recorded" in bad.text, bad.text

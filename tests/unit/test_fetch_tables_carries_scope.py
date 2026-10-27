@@ -41,7 +41,7 @@ class _Conn:
         self.statements.append(sql)
         if "FROM table_write_grants" in sql:  # REQ-2074: no write grants
             return []
-        if "FROM registered_tables" in sql:
+        if "FROM table_columns" not in sql and "FROM registered_tables" in sql:
             row = defaultdict(lambda: None)
             row.update(
                 id=1, source_id="pg", domain_id="hr", schema_name="public", table_name="staff"
@@ -54,7 +54,7 @@ class _Conn:
             "ssn": ("restricted", []),
         }
         return [
-            defaultdict(lambda: None, column_name=name, scope=scope, visible_to=granted)
+            defaultdict(lambda: None, table_id=1, column_name=name, scope=scope, visible_to=granted)
             for name, (scope, granted) in stored.items()
         ]
 

@@ -11,6 +11,7 @@
 /** Types matching provisa/api/admin/types.py */
 
 import type { MaskEntry } from "../lib/masks";
+import type { LifecycleStatus } from "../components/lifecycle/StatusBadge";
 
 // REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
 export interface SourceCdcConfig {
@@ -86,6 +87,14 @@ export interface Domain {
 // Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
 // individuals via the existing role machinery, tags/authoritativeDefinitions/inputPorts/
 // outputPorts are derived from existing tag assignments/glossary/lineage rather than stored here.
+// REQ-2153: a listed table in a domain the caller does not reach: its name and its listed
+// columns' names, and nothing more.
+export interface ListedNames {
+  domainId: string;
+  tableName: string;
+  columnNames: string[];
+}
+
 export interface DataProduct {
   id: string;
   domainId: string;
@@ -96,9 +105,18 @@ export interface DataProduct {
   limitations: string;
   usage: string;
   version?: string | null;
-  status?: string | null;
+  // REQ-1634 STATUS: changed only by its actions (publish, deprecate, retire, restore).
+  status: LifecycleStatus;
+  /** Why it was deprecated or retired. */
+  statusReason?: string | null;
+  /** A deprecated product's planned retirement, an ISO date. */
+  retireOn?: string | null;
+  /** The product a retired one's members moved to. */
+  successorId?: string | null;
   sla?: string | null;
   support?: string | null;
+  /** The support contact (email or URL) a catalog listing requires. */
+  supportContact?: string | null;
   customProperties: Record<string, unknown>;
 }
 
@@ -366,6 +384,9 @@ export interface RegisteredTable {
   // REQ-1634: this table's root query field name in the compiled data-plane GraphQL schema,
   // server-derived (provisa.compiler.naming.generate_name) — null if no role's schema exposes it.
   graphqlFieldName: string | null;
+  // REQ-1163: how the relation travels in time -- "bitemporal" (as_of and as_recorded), "snapshot"
+  // (an Iceberg or Delta table: as_recorded alone) -- or null; server-derived.
+  timeTravel: "bitemporal" | "snapshot" | null;
   // REQ-1443: "provisa/<domain-slug>/<table>" — the pgwire names a contract's dataset uses,
   // server-derived (provisa.dq.contract.meta_dataset) — null if no role's context exposes it.
   dqDataset: string | null;
@@ -609,6 +630,8 @@ export interface Relationship {
   // by the naming authority; the client must never transliterate graphqlAlias itself.
   physicalName: string | null;
   computedCypherAlias: string | null;
+  // REQ-351, REQ-1586: the Cypher type the server serves this edge as; never derived here.
+  cypherType: string | null;
   autoSuggested: boolean;
   disableCypher: boolean;
   /** REQ-2141: the rows it joins are the same entity (two tables one term grounds, keys 1:1). */

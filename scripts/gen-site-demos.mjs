@@ -42,7 +42,7 @@ export const GROUPS = [
   { id: "data-science", label: "Data science access" },
   { id: "agents",       label: "Give an agent your data" },
   { id: "provision",    label: "Data provisioning" },
-  { id: "public-data",  label: "Public data" },
+  { id: "public-data",  label: "New or changing sources" },
   { id: "compliance",   label: "Compliance and audit" },
 ];
 

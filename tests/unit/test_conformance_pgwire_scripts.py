@@ -211,12 +211,26 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
         "CONFORMANCE_PG_DATABASE": "conformance",
         "CONFORMANCE_PG_USER": "postgres",
         "CONFORMANCE_PG_PASSWORD": "conformance",
+        "CONFORMANCE_JWT_SECRET": "conformance-jwt-signing-key-not-a-secret-0000",
+        "PROVISA_SUPERUSER_USERNAME": "conformance-su",
+        "PROVISA_SUPERUSER_PASSWORD": "conformance-su-password",
     }.items():
         monkeypatch.setenv(key, value)
+    # An unsized numeric's scale is read from the job's PostgreSQL by registration's own sampling
+    # (introspect._sized_numeric, tested with it); here it stands in.
+    sampled: list[str] = []
+
+    def _sized(dsn: str, column: str) -> dict:
+        sampled.append(column)
+        return {"data_type": "numeric(38,4)"}
+
+    monkeypatch.setattr(m, "_sized_numeric", _sized)
     path = tmp_path / "provisa.yaml"
-    m.write_config(path, 55432)
+    m.write_config(path, 55432, "host=127.0.0.1 port=55432")
     cfg = parse_config(path)
-    assert cfg.auth.provider == "none"
+    # Password auth with SCRAM: pgspec's auth tests meet a real exchange, not trust mode.
+    assert cfg.auth.provider == "basic"
+    assert cfg.auth.scram is True
     assert cfg.naming.domain_prefix is False
     (table,) = cfg.tables
     assert domain_to_sql_name(table.domain_id) == m.FIXTURE_SCHEMA == table.schema_name
@@ -227,12 +241,20 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
     # type registration refuses is left out of the model, never registered unmappable.
     from provisa.compiler.type_map import column_type_to_graphql
 
-    registered, refused = m.registrable_columns()
-    assert [(c.name, c.data_type) for c in table.columns] == [(n, ir) for n, _, ir in registered]
+    registered, refused = m.registrable_columns("host=127.0.0.1 port=55432")
+    typed = {n: typing["data_type"] for n, _, typing in registered}
+    assert [(c.name, c.data_type) for c in table.columns] == list(typed.items())
     for column in table.columns:
         column_type_to_graphql(column.data_type)  # every registered type maps
-    assert {n for n, _, _ in registered} | set(refused) == {n for n, _, _ in m.FIXTURE}
-    assert dict((n, ir) for n, _, ir in registered)["c_numeric_10_2"] == "numeric(10,2)"
-    assert dict((n, ir) for n, _, ir in registered)["c_int4_array"] == "json"
+    assert set(typed) | set(refused) == {n for n, _, _ in m.FIXTURE}
+    assert typed["c_numeric_10_2"] == "numeric(10,2)"
+    assert typed["c_numeric"] == "numeric(38,4)" and "c_numeric" in sampled
+    # REQ-1965: an array of one primitive type registers as JSON with its element type.
+    arrays = {c.name: c for c in table.columns}
+    assert arrays["c_int4_array"].data_type == "json"
+    assert (arrays["c_int4_array"].array_depth, arrays["c_int4_array"].element_type) == (
+        1,
+        "integer",
+    )
     assert "c_inet" in refused
     assert cfg.sources[0].port == 55432

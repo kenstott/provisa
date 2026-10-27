@@ -110,17 +110,21 @@ def _routed_plan() -> MagicMock:
 
 
 def _pipeline_patches(result, *, govern=None):
-    """Patch the real _handle_query pipeline seams: gRPC lowers the request to a semantic SELECT,
-    then governs+routes it and executes the plan (the retired parse→compile→transpile→execute_direct
-    path no longer runs). ``govern`` may be an AsyncMock to capture/assert the govern call."""
+    """Patch the real _handle_query pipeline seams: gRPC lowers the request to GraphQL text,
+    compiles it (``compile_generated_graphql``), then governs+routes the statement and executes
+    the plan. ``govern`` may be an AsyncMock to capture/assert the govern call."""
     govern_patch = patch(
         "provisa.pgwire._pipeline._govern_and_route_compiled",
         govern if govern is not None else AsyncMock(return_value=_routed_plan()),
     )
     return (
         patch(
-            "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-            return_value=("SELECT id, amount FROM orders", []),
+            "provisa.grpc.query_ir.grpc_table_to_graphql",
+            return_value=("{ orders { id amount } }", {}),
+        ),
+        patch(
+            "provisa.api.generated_plan.compile_generated_graphql",
+            return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
         ),
         govern_patch,
         patch(
@@ -141,8 +145,8 @@ class TestStreamedQueries:
         rows = [[i, float(i * 100)] for i in range(1, 6)]
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=rows)
 
-        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result)
-        with p_semantic, p_govern, p_execute:
+        p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result)
+        with p_lower, p_compile, p_govern, p_execute:
             context = _mock_context("admin")
             request = MagicMock()
             request.limit = 0
@@ -163,8 +167,8 @@ class TestStreamedQueries:
 
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[])
 
-        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result)
-        with p_semantic, p_govern, p_execute:
+        p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result)
+        with p_lower, p_compile, p_govern, p_execute:
             context = _mock_context("admin")
             request = MagicMock()
             request.limit = 0
@@ -242,8 +246,8 @@ class TestRoleBasedFieldFiltering:
         fake_result = SimpleNamespace(column_names=["id"], rows=[[42]])
 
         govern = AsyncMock(return_value=_routed_plan())
-        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result, govern=govern)
-        with p_semantic as mock_semantic, p_govern, p_execute:
+        p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result, govern=govern)
+        with p_lower as mock_lower, p_compile as mock_compile, p_govern, p_execute:
             context = _mock_context("viewer")
             request = MagicMock()
             request.limit = 0
@@ -253,8 +257,10 @@ class TestRoleBasedFieldFiltering:
 
             # The servicer selects the schema/context by the metadata role and passes that
             # role through governance (the IR path replaces the old parse_query(schema) call).
-            mock_semantic.assert_called_once()
-            assert mock_semantic.call_args[0][0] is state.contexts["viewer"]
+            mock_lower.assert_called_once()
+            assert mock_lower.call_args[0][0] is state.contexts["viewer"]
+            mock_compile.assert_called_once()
+            assert mock_compile.call_args[0][1] == "viewer"
             govern.assert_awaited_once()
             assert govern.await_args[0][1] == "viewer"
             assert streamed  # rows streamed for the resolved role

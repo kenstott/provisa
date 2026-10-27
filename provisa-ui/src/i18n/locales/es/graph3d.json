@@ -96,7 +96,6 @@
     "openAsQueryFocused": "El entorno de la búsqueda o el foco aún no se puede expresar como una sola consulta.",
     "openAsQueryCompiling": "Compilando la consulta…",
     "openAsQueryNoCypher": "Esta consulta no tiene forma Cypher.",
-    "openAsQuerySparqlLater": "SPARQL se abrirá cuando exista su endpoint.",
     "layersMenu": "Capas",
     "termsMenu": "Términos",
     "menuAll": "todos",
@@ -109,6 +108,8 @@
     "overBudget": "{{count}} coincidencias; acote la búsqueda o elija un dominio",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Anclado en tablas aún no vinculadas como la misma entidad: {{tables}}",
-    "status_draft": "Borrador"
+    "status_draft": "Borrador",
+    "openAsQueryNoSparql": "Esta consulta no tiene forma SPARQL.",
+    "openAsQuerySparqlRoots": "Cada raíz de esta consulta es su propia consulta SPARQL: abra el GraphQL para leerlas una por una."
   }
 }

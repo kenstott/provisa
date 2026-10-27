@@ -233,12 +233,12 @@ The view reads the refresh records in `"ops"."traces"` and answers on every engi
 
 ## A view as it stood, and as it was recorded
 
-A view that maps its source's columns as `business_key`, `valid_time` and `recorded_time` keeps every version it has held: each refresh appends, and no version is rewritten, on any store. A plain read answers the current state. Two request headers read its past:
+A view that maps its source's columns as `business_key`, `valid_time` and `recorded_time` keeps every version it has held: each refresh appends, and no version is rewritten, on any store. A plain read answers the current state. Two arguments of the view, written where the statement names it, read its past:
 
-- `X-Provisa-As-Of` reads the view as of a time, or over a range.
-- `X-Provisa-As-Recorded` reads it as Provisa had recorded it at a time. Versions recorded after that time are left out, so a correction recorded later does not change a replay of the past.
+- `as_of` reads the view as of a time, or over a range: `"reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00')`.
+- `as_recorded` reads it as Provisa had recorded it at a time. Versions recorded after that time are left out, so a correction recorded later does not change a replay of the past.
 
-As of 30 September and as recorded on 1 October gives the original figure; as recorded on 5 October gives the correction. The audit record of each statement keeps both times (`as_of`, `as_recorded`), so a report can be reproduced as it was first produced. [Views with history](configuration.md#views-with-history-time-travel) covers the three declarations, with examples, and every surface that takes the two values.
+As of 30 September and as recorded on 1 October gives the original figure; as recorded on 5 October gives the correction. The audit record of each statement keeps the times it read at (`as_of`, `as_recorded`), so a report can be reproduced as it was first produced. [Views with history](configuration.md#views-with-history-time-travel) covers the three declarations, with examples, and every surface that takes the two values.
 
 ## What a column rename or drop would break
 

@@ -58,8 +58,9 @@ from provisa.gql.translator_helpers import (
     _collects_maps,
     _properties_of,
     _fold_where_into_optional_joins,
+    _optional_step_matches_whole,
     _node_table_expr,
-    _optional_vars,
+    _clause_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
 )
@@ -255,20 +256,79 @@ def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: igno
     return node
 
 
-def _steps_where(steps: list) -> WhereClause | None:
-    """Every condition of a segment's MATCH steps, each step's own WHERE, ANDed: a WHERE after a
-    MATCH is that MATCH's, one after an OPTIONAL MATCH is folded into its join
-    (_fold_where_into_optional_joins), and none is dropped for another."""
-    wheres = [step.where.expression for step in steps if step.where is not None]
-    if not wheres:
-        return None
-    if len(wheres) == 1:
-        return WhereClause(wheres[0])
-    # Each step's WHERE one conjunct of the whole, which the fold routes to its own join.
-    joined: CypherExpr = Paren(wheres[0])
-    for w in wheres[1:]:
+#: A segment's WHEREs: the MATCHes' (filtering the rows) and each OPTIONAL MATCH's own, with the
+#: variables it introduces (_steps_where).
+_StageWheres = tuple["WhereClause | None", list[tuple[set[str], "WhereClause | None"]]]
+
+
+#: The one row a statement that opens with an OPTIONAL MATCH starts from (_optional_start).
+_OPTIONAL_START = "_optional_start"
+
+
+def _optional_start(
+    from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    joins: list[dict],
+    matches: list[MatchClause],
+    carried: str | None,
+    lateral_bound: set[str],
+) -> "tuple[exp.Expression, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A statement that opens with an OPTIONAL MATCH answers one row, its variables null, where
+    the pattern matches nothing (REQ-345): it starts from one row and the pattern is joined to it as
+    any OPTIONAL MATCH is, so its WHERE conditions the match (_fold_where_into_optional_joins) and
+    it matches whole or not at all (_optional_step_matches_whole). After a WITH, the rows the WITH
+    carries are where it starts; in a CALL body, the outer row its imported variables are bound to
+    (``lateral_bound``)."""
+    if carried is not None or lateral_bound or not matches or not matches[0].optional:
+        return from_clause, joins
+    one = exp.Subquery(
+        this=exp.select(exp.alias_(exp.Literal.number(1), "_one")),
+        alias=exp.TableAlias(this=exp.to_identifier(_OPTIONAL_START)),
+    )
+    return one, [{"table": from_clause, "on": exp.true(), "join_type": "LEFT"}, *joins]
+
+
+def _and(
+    left: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    right: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> "exp.Expression | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return exp.And(this=left, expression=right)
+
+
+def _steps_where(
+    steps: list,
+) -> tuple[WhereClause | None, list[tuple[set[str], "WhereClause | None"]]]:
+    """A segment's MATCH steps' WHEREs, each its own clause's, as openCypher scopes it (REQ-345).
+    A WHERE after a MATCH filters the rows: those WHEREs ANDed, none dropped for another, returned
+    first. A WHERE after an OPTIONAL MATCH is that match's condition and never removes a row,
+    whatever it names: returned with the variables the OPTIONAL MATCH introduces, whose join it
+    conditions (_fold_where_into_optional_joins). Every OPTIONAL MATCH is returned, with its WHERE
+    or None: its pattern -- every comma-separated part of it -- matches whole or not at all
+    (_optional_step_matches_whole)."""
+    required: list[CypherExpr] = []
+    optional: list[tuple[set[str], WhereClause | None]] = []
+    seen: set[str] = set()
+    for step in steps:
+        new: set[str] = set()
+        for m in step.matches:
+            mine = _clause_vars(m)
+            new |= mine - seen
+            seen |= mine
+        if step.matches and step.matches[-1].optional:
+            optional.append((new, step.where))
+        elif step.where is not None:
+            required.append(step.where.expression)
+    if not required:
+        return None, optional
+    if len(required) == 1:
+        return WhereClause(required[0]), optional
+    joined: CypherExpr = Paren(required[0])
+    for w in required[1:]:
         joined = Binary("AND", joined, Paren(w))
-    return WhereClause(joined)
+    return WhereClause(joined), optional
 
 
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
@@ -302,6 +362,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # extra (from, joins, path_step_overrides) branches from multi-path shortestPath/allShortestPaths
         # (FROM, joins, path steps by alias, relationship type by variable) of each extra branch
         self._extra_path_branches: list[tuple[exp.Expression | None, list[dict], dict, dict]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # #293: each node a WITH carries beside another node, by its variable: (the WITH's CTE,
+        # the node's columns). Its columns are carried as "<var>.<column>", and a segment after
+        # the WITH reads the node as its own row of them (_expose_split_nodes).
+        self._split_carried: dict[str, tuple[str, list[str]]] = {}
         # WITH RECURSIVE CTEs for self-referential variable-length paths
         self._recursive_ctes: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
@@ -386,11 +450,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
         ]
-        stage_where = _steps_where(match_steps)
+        stage_where, optional_wheres = _steps_where(match_steps)
         held: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
             held = list(self._held_end_conditions)
+            from_clause, joins = _optional_start(
+                from_clause, list(joins), all_matches, carried, self._lateral_bound
+            )
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
             if unwinds:
                 _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
@@ -407,13 +474,17 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             assert from_clause is not None
         else:
             raise CypherTranslateError("Pipeline segment has no data source")
+        from_clause, joins = self._expose_split_nodes(from_clause, joins)
 
         select_exprs = self._build_with_select_items(with_clause.items)
         where_expr = self._build_where(stage_where)
-        if where_expr and stage_where is not None:
-            joins, where_expr = _fold_where_into_optional_joins(
-                where_expr, _optional_vars(all_matches), joins
-            )
+        for step_vars, owned in optional_wheres:
+            if owned is not None:
+                joins, kept = _fold_where_into_optional_joins(
+                    self._lower_where(owned), step_vars, joins
+                )
+                where_expr = _and(where_expr, kept)
+            joins = _optional_step_matches_whole(joins, step_vars)
 
         stage_query = exp.select(*select_exprs).from_(from_clause)
         for join in joins:
@@ -438,19 +509,66 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             stage_query = stage_query.offset(with_clause.skip)
         if with_clause.where is not None:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
-            before = (self._var_table, self._cte_sources)
+            before = (self._var_table, self._cte_sources, self._split_carried)
             self._update_var_table_for_with(with_clause.items, "_inner")
             with_where_expr = self._build_where(with_clause.where)
-            self._var_table, self._cte_sources = before
+            exposed = self._split_node_joins()
+            self._var_table, self._cte_sources, self._split_carried = before
             if with_where_expr:
-                stage_query = (
-                    exp.select(exp.Star())
-                    .from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
-                    .where(with_where_expr)
+                # The stage's own columns: a carried node read beside them adds its own (#293).
+                star = (
+                    exp.Column(this=exp.Star(), table=exp.to_identifier("_inner"))
+                    if exposed
+                    else exp.Star()
                 )
+                wrapper = exp.select(star)
+                wrapper = wrapper.from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
+                for join in exposed:
+                    wrapper = wrapper.join(join["table"], join_type=join["join_type"])
+                stage_query = wrapper.where(with_where_expr)
 
         cte_name = f"_w{n}"
         return cte_name, stage_query
+
+    def _split_node_joins(self) -> list[dict]:
+        """Each node a WITH carries beside another, read from its row of the WITH's CTE as a table
+        of its own columns under its own name (#293)."""
+        joins = []
+        for key, (cte, cols) in self._split_carried.items():
+            row = exp.select(
+                *(
+                    exp.alias_(exp.column(f"{key}.{c}", table=cte, quoted=True), c, quoted=True)
+                    for c in cols
+                )
+            )
+            table = exp.alias_(exp.Lateral(this=exp.Subquery(this=row)), alias=key)
+            joins.append({"table": table, "on": None, "join_type": "CROSS"})
+        return joins
+
+    def _expose_split_nodes(
+        self,
+        from_clause: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict],
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The segment's FROM with the carried nodes read from their WITH's rows (#293): a pattern
+        starting at one goes on from that WITH's CTE, and each such node is joined, per row, right
+        after it, before any join that reads it."""
+        if not self._split_carried:
+            return from_clause, joins
+        (cte,) = {c for c, _ in self._split_carried.values()}
+        exposed = self._split_node_joins()
+        # The CTE is read once, first: a join of it _beside_carried_rows set after is dropped.
+        rest = [
+            j for j in joins if not (isinstance(j["table"], exp.Table) and j["table"].name == cte)
+        ]
+        if isinstance(from_clause, exp.Table) and from_clause.name in (cte, *self._split_carried):
+            return exp.Table(this=exp.Identifier(this=cte)), [*exposed, *rest]
+        carried = {
+            "table": exp.Table(this=exp.Identifier(this=cte)),
+            "on": None,
+            "join_type": "CROSS",
+        }
+        return from_clause, [carried, *exposed, *rest]
 
     @staticmethod
     def _beside_carried_rows(
@@ -479,10 +597,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         final_match_steps: list,
         final_unwinds: list,
         cte_defs: list[tuple[str, exp.Expression]],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "WhereClause | None"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "_StageWheres"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/joins for the final segment.
 
-        Returns (from_clause, joins, all_matches, stage_where).
+        Returns (from_clause, joins, all_matches, its WHEREs as _steps_where gives them).
         """
         all_matches = [
             _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
@@ -506,44 +624,53 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 joins = list(uw_joins)
         elif all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
-            joins = self._beside_carried_rows(
-                from_clause, list(joins), cte_defs[-1][0] if cte_defs else None
+            carried = cte_defs[-1][0] if cte_defs else None
+            from_clause, joins = _optional_start(
+                from_clause, list(joins), all_matches, carried, self._lateral_bound
             )
+            joins = self._beside_carried_rows(from_clause, list(joins), carried)
             if final_unwinds:
                 _, uw_joins = self._build_unwind_joins(final_unwinds, has_from=True)
                 joins = list(joins) + uw_joins
         else:
             raise CypherTranslateError("Query has no data source")
 
+        from_clause, joins = self._expose_split_nodes(from_clause, joins)
         return from_clause, joins, all_matches, stage_where
 
     def _apply_where_and_fold(
         self,
-        stage_where: "WhereClause | None",
-        all_matches: list[MatchClause],
+        stage_where: "_StageWheres",
         joins: list[dict],
     ) -> tuple["exp.Expression | None", list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Build WHERE and fold optional-join conditions.
+        """Build the WHERE of the MATCHes and fold each OPTIONAL MATCH's own WHERE into its join.
 
-        Also updates self._extra_path_branches with folded WHERE.
+        Also updates self._extra_path_branches with the folded joins.
         """
-        where_expr = self._build_where(stage_where)
-        if where_expr and stage_where is not None:
-            opt_vars = _optional_vars(all_matches)
-            joins, where_expr = _fold_where_into_optional_joins(where_expr, opt_vars, joins)
-            raw_where = self._build_where(stage_where)
-            if raw_where is not None:
+        required, optional_wheres = stage_where
+        where_expr = self._build_where(required)
+        for step_vars, owned in optional_wheres:
+            if owned is not None:
+                joins, kept = _fold_where_into_optional_joins(
+                    self._lower_where(owned), step_vars, joins
+                )
+                where_expr = _and(where_expr, kept)
                 self._extra_path_branches = [
                     (
                         bf,
-                        _fold_where_into_optional_joins(_of_branch(raw_where, types), opt_vars, bj)[
-                            0
-                        ],
+                        _fold_where_into_optional_joins(
+                            _of_branch(self._lower_where(owned), types), step_vars, bj
+                        )[0],
                         bps,
                         types,
                     )
                     for bf, bj, bps, types in self._extra_path_branches
                 ]
+            joins = _optional_step_matches_whole(joins, step_vars)
+            self._extra_path_branches = [
+                (bf, _optional_step_matches_whole(bj, step_vars), bps, types)
+                for bf, bj, bps, types in self._extra_path_branches
+            ]
         return where_expr, joins
 
     def _build_main_query(
@@ -730,7 +857,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             cut = self._cut_column()
             for select_exprs in selects:
                 select_exprs.append(cut.copy())
-        where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
+        where_expr, joins = self._apply_where_and_fold(stage_where, joins)
 
         order_exprs = self._build_order_by(
             self._ast.order_by,
@@ -1011,6 +1138,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _build_where(self, where: WhereClause | None) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is None:
             return None
+        return self._lower_where(where)
+
+    def _lower_where(self, where: WhereClause) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         return self._lower_expr(where.expression).transform(_timestamp_literal)
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -1058,12 +1188,57 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for key, value in expr.entries
         ]
 
+    def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping]:
+        """The nodes a WITH carries by their keys, when it carries two or more: each is carried as
+        its own columns, ``<key>.<column>``, so two tables' columns of one name never meet (#293)."""
+        nodes = {}
+        for item in items:
+            expr = item.expression
+            if isinstance(expr, Variable) and expr.name in self._var_table:
+                meta = self._var_table[expr.name][1]
+                if isinstance(meta, NodeMapping):
+                    nodes[item.alias or expr.name] = meta
+        return nodes if len(nodes) > 1 else {}
+
+    def _node_columns(self, nm: NodeMapping) -> list[str]:
+        """Every column of ``nm``'s table a later clause can read: its properties, its keys and
+        the join columns of the relationships that reach it."""
+        cols = {*nm.properties.values(), *nm.physical_properties.values(), nm.id_column}
+        cols.update(nm.pk_columns)
+        rels = [
+            *self._lm.relationships.values(),
+            *(r for rs in self._lm.aliases.values() for r in rs),
+        ]
+        for rel in rels:
+            for end, column, expr in (
+                (rel.source_label, rel.join_source_column, rel.source_expr),
+                (rel.target_label, rel.join_target_column, rel.target_expr),
+            ):
+                if end not in (nm.label, nm.type_name):
+                    continue
+                if expr is not None:
+                    raise CypherTranslateError(
+                        f"A WITH carrying {nm.label} beside another node: its relationship "
+                        f"{rel.rel_type} joins on an expression"
+                    )
+                cols.add(column)
+        return sorted(c for c in cols if c)
+
     def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expr]:
         exprs: list[exp.Expr] = []
+        split = self._carried_nodes(items)
         for item in items:
             expr = item.expression
             alias = item.alias
             bare = expr.name if isinstance(expr, Variable) else None
+            if bare is not None and (alias or bare) in split:
+                held_in = self._var_table[bare][0]
+                key = alias or bare
+                exprs.extend(
+                    exp.alias_(exp.column(c, table=held_in, quoted=True), f"{key}.{c}", quoted=True)
+                    for c in self._node_columns(split[key])
+                )
+                continue
             if bare is not None and bare in self._var_table:
                 expr_text = bare
                 held_in, meta = self._var_table[expr_text]
@@ -1103,12 +1278,17 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _update_var_table_for_with(self, items: list[ReturnItem], cte_name: str) -> None:
         new_var_table: dict[str, tuple[str, Any]] = {}
+        split = self._carried_nodes(items)
+        self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
         for item in items:
             expr = item.expression
             alias = item.alias
             bare = expr.name if isinstance(expr, Variable) else None
             key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
-            if bare is not None and bare in self._var_table:
+            if key in split:
+                # Read as its own row of the carried columns, under its own name.
+                new_var_table[key] = (key, split[key])
+            elif bare is not None and bare in self._var_table:
                 original_meta = self._var_table[bare][1]
                 new_var_table[key] = (cte_name, original_meta)
                 if bare in self._map_array_vars:

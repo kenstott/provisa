@@ -714,7 +714,18 @@ class TestTrinoInternalTls:
         return str(count)
 
     def test_workers_join_over_internal_tls(self):
-        result = _helm_deploy(worker_replicas=1, extra=("--set", "trino.internalTls=true"))
+        # The coordinator's JVM takes 80% of its container for heap; serving its HTTPS endpoint
+        # and the worker's HTTPS announcements on top took it past _CHART_SETS' 1Gi (exit 137,
+        # run 40364893477). 1.5Gi fits in the 6Gi minikube beside the rest of the release.
+        result = _helm_deploy(
+            worker_replicas=1,
+            extra=(
+                "--set",
+                "trino.internalTls=true",
+                "--set",
+                "trino.coordinator.resources.limits.memory=1536Mi",
+            ),
+        )
         assert result.returncode == 0, f"helm upgrade failed:\n{result.stderr}\n{_why_not_ready()}"
         try:
             # The coordinator and its one worker, the worker having joined over HTTPS.

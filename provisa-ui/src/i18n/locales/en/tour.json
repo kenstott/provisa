@@ -1692,25 +1692,17 @@
         "title": "One day's totals",
         "description": "1 October as it stands now. For each branch, product and currency you see what came in, what went out and the net. A BI tool connected over pgwire runs this same SQL."
       },
-      "bankingAsReported": {
-        "title": "As reported at the close",
-        "description": "As recorded is now set to 1 October's close. A BI tool does the same with SET provisa.as_recorded on its pgwire session. As recorded filters the transactions on updated_at and the daily totals on each day's close, so you see the figures the bank reported that evening."
-      },
       "bankingReported": {
         "title": "What was reported",
-        "description": "The corporate totals for 1 and 2 October, as reported at 1 October's close. London's GBP total still carries the payment that was later reversed. 2 October had not closed yet, so it has no figures."
-      },
-      "bankingAsRestated": {
-        "title": "As restated since",
-        "description": "As recorded moves to 12 October's close, the last of the thirty days. By then the reversal entered on 6 October and the late trade entered on 7 October have both been recorded."
+        "description": "The corporate totals for 1 and 2 October, as reported at 1 October's close: the view's as_recorded argument reads it as it had been recorded then, and a BI tool on pgwire does the same with SET provisa.as_recorded. London's GBP total still carries the payment that was later reversed. 2 October had not closed yet, so it has no figures."
       },
       "bankingRestated": {
         "title": "What it says now",
-        "description": "The same SQL. London's 1 October total no longer carries the reversed payment, and Edinburgh's 2 October USD total now includes the late trade. The versions reported at each close are kept beside the restated ones, and recorded_at shows when each was recorded."
+        "description": "The same SQL with as_recorded at 12 October's close, the last of the thirty days. London's 1 October total no longer carries the reversed payment, and Edinburgh's 2 October USD total now includes the late trade. The versions reported at each close are kept beside the restated ones, and recorded_at shows when each was recorded."
       },
       "bankingAsOpsSql": {
         "title": "Back to operations",
-        "description": "The explorer now runs as operations, still as recorded at 12 October's close."
+        "description": "The explorer now runs as operations."
       },
       "bankingPostings": {
         "title": "The postings behind a total",

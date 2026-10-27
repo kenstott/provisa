@@ -15,8 +15,11 @@
 #
 #   sampler.sh <file>     samples until killed (the job's end)
 #
-# A process is shown by its NAME and its arguments, never its environment (`ps` is not asked for
-# it). Arguments are cut to 100 characters, and the value of any argument that names a
+# "by cpu" is each process's CPU over the interval since the previous sample (from /proc/<pid>/stat),
+# not ps's average over the process's whole life: a browser that has burned a core for forty minutes
+# and one that just started are told apart (run 40256175245). A process is shown by its NAME and its
+# arguments, never its environment. Arguments are written whole up to 1000 characters -- enough for
+# a chrome process's --type and the flags that name it -- and the value of any argument that names a
 # password, token, secret or key is replaced before it is written.
 set -euo pipefail
 
@@ -27,22 +30,62 @@ redact() {
   sed -E 's/(([A-Za-z_-]*(pass(word)?|token|secret|key)[A-Za-z_-]*)[= ])[^ ]+/\1<redacted>/Ig'
 }
 
-top_by() {
-  # pid, %cpu, %mem, resident MiB, name and arguments
-  ps -eo pid=,pcpu=,pmem=,rss=,args= --sort="-$1" | head -n 5 \
-    | awk '{ rss = $4 / 1024; $4 = ""; args = ""; for (i = 5; i <= NF; i++) args = args " " $i;
-             printf "  %7s %5s%% cpu %5s%% mem %7.0f MiB %s\n", $1, $2, $3, rss, substr(args, 2, 100) }' \
-    | redact
+hz="$(getconf CLK_TCK)"
+prev="$(mktemp)"
+prev_uptime=""
+
+ticks() {
+  # pid and its user+system CPU ticks so far, for every live process. The command is cut at its
+  # last ")" so a name holding spaces or parentheses does not shift the fields.
+  # A process that exits between the glob and the read makes cat fail; under pipefail that
+  # ended the sampler after its first sample (run 40442770713), so read the ones still alive.
+  { cat /proc/[0-9]*/stat 2>/dev/null || true; } \
+    | awk '{ i = index($0, ") "); split(substr($0, i + 2), f, " "); print $1, f[12] + f[13] }' \
+    | sort -k1,1
+}
+
+args_of() {
+  tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | cut -c1-1000
+}
+
+top_by_interval_cpu() {
+  # pid, % of one CPU over the last interval, resident MiB, name and arguments
+  local now uptime
+  now="$(mktemp)"
+  ticks > "$now"
+  uptime="$(cut -d' ' -f1 /proc/uptime)"
+  if [ -n "$prev_uptime" ]; then
+    join "$prev" "$now" \
+      | awk -v hz="$hz" -v dt="$(awk -v a="$prev_uptime" -v b="$uptime" 'BEGIN { print b - a }')" \
+          '{ printf "%s %.1f\n", $1, ($3 - $2) * 100 / (hz * dt) }' \
+      | sort -k2,2 -rn | head -n 5 \
+      | while read -r pid pct; do
+          rss="$(awk '/^VmRSS/ { printf "%.0f", $2 / 1024 }' "/proc/$pid/status" 2>/dev/null)"
+          printf "  %7s %6s%% cpu %7s MiB %s\n" "$pid" "$pct" "${rss:-?}" "$(args_of "$pid")"
+        done | redact
+  else
+    echo "  (first sample: no interval yet)"
+  fi
+  mv "$now" "$prev"
+  prev_uptime="$uptime"
+}
+
+top_by_memory() {
+  # pid, %mem, resident MiB, name and arguments
+  ps -eo pid=,pmem=,rss= --sort=-rss | head -n 5 \
+    | while read -r pid pmem rss; do
+        printf "  %7s %5s%% mem %7.0f MiB %s\n" "$pid" "$pmem" "$((rss / 1024))" "$(args_of "$pid")"
+      done | redact
 }
 
 while true; do
   {
     echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ)  load: $(cut -d' ' -f1-3 /proc/loadavg)"
     free -m | awk 'NR == 2 { printf "  memory: %s MiB used of %s, %s available\n", $3, $2, $7 }'
-    echo "  by cpu:"
-    top_by pcpu
+    echo "  by cpu (last interval):"
+    top_by_interval_cpu
     echo "  by memory:"
-    top_by rss
+    top_by_memory
   } >> "$out"
   sleep 30
 done

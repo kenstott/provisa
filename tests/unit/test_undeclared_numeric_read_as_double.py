@@ -191,7 +191,13 @@ def test_the_shape_of_the_governed_statement_says_double_precision():
     shape = derive_result_shape(
         governed,
         {"sales.orders": 1, "orders": 1},
-        SimpleNamespace(physical_to_sql={}, virtual_columns={}, columns_outside_relation=set()),
+        SimpleNamespace(
+            physical_to_sql={},
+            virtual_columns={},
+            columns_outside_relation=set(),
+            tables={},
+            nested_columns={},
+        ),
         columns,
     )
     assert shape == [("id", "integer"), ("ratio", _D), ("amount", "numeric(18,2)")]

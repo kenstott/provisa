@@ -111,7 +111,7 @@ class TestTheMetaRole:
         from provisa.security.masking import reader_masks
 
         meta = "meta:analyst+region__eu"
-        everyone = {"to": ["*"], "mask": {"type": "constant", "value": None}}
+        everyone = {"mask": {"type": "constant", "value": None}}
         masked = [
             (1, "email", [{"to": ["region__eu"], "mask": None}, everyone], "varchar"),
             (1, "phone", [{"to": ["org_admin"], "mask": None}, everyone], "varchar"),

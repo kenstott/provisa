@@ -74,7 +74,11 @@ import request_mix  # noqa: E402
 import request_render  # noqa: E402
 import setup_contract as sc  # noqa: E402
 
-TRANSPORTS = tuple(ol.TRANSPORTS)  # all ten: graphql ... mcp
+# The gated transports: every one but sparql, which rejoins as a separate run once the ontology
+# work exposes the bench tables over SPARQL (until then the deployment exposes none there).
+UNGATED = ("sparql",)
+TRANSPORTS = tuple(t for t in ol.TRANSPORTS if t not in UNGATED)
+JOIN_TRANSPORTS = tuple(t for t in cm.JOIN_TRANSPORTS if t in TRANSPORTS)
 SOURCES = tuple(lp.SOURCES)
 LATENCY_OUT = REPO / "results" / "bench_features" / "latency.json"
 READER = "bench_feat_reader"  # the second contract role: a child of org_admin
@@ -366,6 +370,8 @@ def stack() -> Iterator[Stack]:
         server = start_server(ports)
         raw = lp.proof_contract(server, project)
         raw["deployment"]["roles"] = [{"role": "org_admin", "weight": 1.0}]
+        for transport in UNGATED:
+            raw["transports"].pop(transport)
         raw["deployment"]["endpoints"]["mcp"]["url"] = f"http://127.0.0.1:{ports['mcp']}/mcp"
         contract = tmp / "contract.yaml"
         contract.write_text(yaml.safe_dump(raw, sort_keys=False))
@@ -411,7 +417,7 @@ def start_server(ports: dict[str, int], **env: str) -> Any:
         await_grpc=True,
         config=str(lp.PERF / "config.yaml"),
         env={
-            **lp._source_env(ports),  # noqa: SLF001
+            **lp._server_env(ports),  # noqa: SLF001
             "PROVISA_MCP_PORT": str(ports["mcp"]),
             # loopback: the harness's pinned roles apply to a call with no bearer (mcp_pin); off
             # loopback a bearer is required
@@ -631,7 +637,7 @@ _CROSS = {
 }
 
 
-@pytest.mark.parametrize("transport", cm.JOIN_TRANSPORTS)
+@pytest.mark.parametrize("transport", JOIN_TRANSPORTS)
 @pytest.mark.parametrize("knob", ["joins_same_source", "joins_cross_source"])
 def test_joins_answer_pairs_that_join(stack, transport, knob):
     weights = _CROSS if knob == "joins_cross_source" else None
@@ -664,7 +670,7 @@ def _audit_baseline(stack: Stack) -> int:
 
 # The surface each transport's statements are recorded under (query_audit_log.source).
 SURFACE = {
-    **{t: "http" for t in ("data_sql", "graphql", "rest", "jsonapi", "cypher_http")},
+    **{t: "http" for t in ("data_sql", "graphql", "rest", "jsonapi", "cypher_http", "sparql")},
     "pgwire": "pgwire",
     "flight_sql": "flight",
     "bolt": "bolt",
@@ -721,7 +727,7 @@ def test_a_route_hint_answers_the_same_rows_and_is_the_route_taken(stack, transp
     assert routes == {"engine" if mode == "federated" else "direct"}, routes
 
 
-@pytest.mark.parametrize("transport", cm.JOIN_TRANSPORTS)
+@pytest.mark.parametrize("transport", JOIN_TRANSPORTS)
 def test_join_replication_answers_the_same_pairs(stack, transport):
     def replicated(c: dict[str, Any]) -> None:
         # both ends of every cross-source join read from replicas, and only such joins drawn
@@ -974,7 +980,12 @@ def test_under_each_governance_knob_every_transport_answers_and_it_is_applied(
             attrs = [cm.derived_attribute(i) for i in (1, 2)]
             assert all(a in request_role for a in attrs), request_role
             evaluated = f"{row['role_id']} {' '.join(enforced.get('acting_roles', []))}"
-            assert all(a in evaluated for a in attrs), (transport, evaluated)
+            assert all(a in evaluated for a in attrs), (
+                transport,
+                evaluated,
+                request_role,
+                [(r["id"], r["role_id"], _enforced(r).get("acting_roles")) for r in rows],
+            )
 
 
 # --------------------------------------------------------------------------------------------

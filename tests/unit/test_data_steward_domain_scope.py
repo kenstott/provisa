@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
     tags,
     tracked_functions,
 )
+from tests.unit.gate_identity import serve_every_column
 
 STEWARD_RIGHTS = [
     "access_config",
@@ -57,6 +58,12 @@ STEWARD_RIGHTS = [
     "view_governance",
     "create_relationship",  # REQ-2155: meaning plus access -- relationships are meaning
 ]
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 def _roles(steward_id: str) -> dict[str, dict]:
@@ -194,8 +201,12 @@ def _request(*role_ids: str) -> Any:
     identity = types.SimpleNamespace(
         user_id="u1", roles=list(role_ids), acting_roles=list(role_ids)
     )
+    # The role the request acts as, as the auth middleware binds it: a set acts as its meta-role.
+    from provisa.security.meta_role import meta_role_id
+
+    acting = role_ids[0] if len(role_ids) == 1 else meta_role_id(list(role_ids))
     return types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=identity, active_org_id="acme")
+        state=types.SimpleNamespace(identity=identity, active_org_id="acme", role=acting)
     )
 
 
@@ -425,7 +436,7 @@ def _column(table_input: Any, name: str) -> Any:
 def _mask_to_zero() -> list:
     from provisa.api.admin.types import MaskEntryInput, MaskSpecInput
 
-    return [MaskEntryInput(to=["*"], mask=MaskSpecInput(type="constant", value=0))]
+    return [MaskEntryInput(mask=MaskSpecInput(type="constant", value=0))]
 
 
 async def _stored(db: Database, table_id: int, column: str) -> dict:

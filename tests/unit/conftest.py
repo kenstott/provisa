@@ -163,9 +163,12 @@ def _deployment_org_bound(request: pytest.FixtureRequest, monkeypatch):
 
     org_files.folder(org_id).mkdir(parents=True, exist_ok=True)
     yield
-    # A routed AppState attribute monkeypatch replaced is put back while the org is bound.
-    monkeypatch.undo()
-    reset_current_org(token)
+    # A routed AppState attribute monkeypatch replaced is put back while the org is bound; the
+    # org is unbound however that goes, so no later test runs in it.
+    try:
+        monkeypatch.undo()
+    finally:
+        reset_current_org(token)
 
 
 @pytest.fixture(autouse=True)

@@ -54,6 +54,7 @@ export class RelationsScene extends BaseScene<RelHover> {
   // ---------- public ----------
 
   setData(model: RelationsModel, edges: RelEdge[], resetCamera: boolean) {
+    this.invalidate();
     this.model = model;
     this.edges = edges;
     this.rebuild();
@@ -61,6 +62,7 @@ export class RelationsScene extends BaseScene<RelHover> {
   }
 
   setEdges(edges: RelEdge[]) {
+    this.invalidate();
     this.edges = edges;
     this.rebuild();
   }
@@ -78,17 +80,20 @@ export class RelationsScene extends BaseScene<RelHover> {
   }
 
   setSelected(id: string | null) {
+    this.invalidate();
     this.selected = id;
     this.paint();
   }
 
   setHover(h: RelHover | null) {
+    this.invalidate();
     if (h?.kind === this.hover?.kind && h?.id === this.hover?.id) return;
     this.hover = h;
     this.paint();
   }
 
   resetView(instant = false) {
+    this.invalidate();
     const dist = this.aspect < 1.1 ? 30 / Math.max(this.aspect, 0.5) : 24;
     this.flyTo(
       new THREE.Vector3(dist * 0.45, dist * 0.35, dist * 0.82),
@@ -98,6 +103,7 @@ export class RelationsScene extends BaseScene<RelHover> {
   }
 
   focus(id: string) {
+    this.invalidate();
     const n = this.nodes.find((x) => x.node.id === id);
     if (!n) return;
     const tgt = n.mesh.position.clone();

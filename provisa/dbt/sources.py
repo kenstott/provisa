@@ -87,6 +87,10 @@ def _served(config: ProvisaConfig, role_id: str) -> list[tuple[Table, set[str]]]
         }
         for index, table in enumerate(config.tables)
     ]
+    # A grant to a role reaches its descendants, as when the runtime loads roles (REQ-2155).
+    from provisa.core.db import fold_config_grants
+
+    fold_config_grants(as_dicts, [r.model_dump() for r in config.roles])
     return [
         (config.tables[seen["at"]], {column["name"] for column in seen["columns"]})
         for seen in visible_tables(as_dicts, role)

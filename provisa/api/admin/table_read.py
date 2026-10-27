@@ -79,12 +79,17 @@ class _WithDraft:
         self.federation_engine = type(real)(real.engine, self)
 
     @property
-    def contexts(self) -> dict:
-        return {r: s.context for r, s in self.surfaces.items() if s.context is not None}
+    def contexts(self) -> Any:
+        # Views of this read's surfaces: a role is built when its part is read, not all of them.
+        from provisa.api.role_surface import SurfacePart
+
+        return SurfacePart(self, "context")
 
     @property
-    def rls_contexts(self) -> dict:
-        return {r: s.rls for r, s in self.surfaces.items() if s.rls is not None}
+    def rls_contexts(self) -> Any:
+        from provisa.api.role_surface import SurfacePart
+
+        return SurfacePart(self, "rls")
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._state, name)

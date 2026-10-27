@@ -16,7 +16,7 @@ nodes load the demo's config.yaml as is over one model store, as start-ui-instal
 the ledger node headless, and the warehouse node a visitor uses. The demo's setup.yaml is run
 against the warehouse node as the launcher runs it: thirty business days loaded one at a time, each
 day's totals built sealed at its close. Then each reading step of tour.yaml is run as the tour runs
-it -- in order, as the reader and under the time travel the steps before it set -- and its answer
+it -- in order, as the reader -- and its answer
 checked: each day recorded at its own close, the two restatements recorded at the close of the day
 they arrived, the version reported at a close kept beside them, no posting in the warehouse's
 store, the drill-down under the ledger's row rules and masks, the same figure over GraphQL, SQL
@@ -61,6 +61,13 @@ _CORPORATE = (
     "SELECT e.business_date, e.branch, e.currency, e.net_movement, e.recorded_at "
     'FROM "banking"."view_eod_totals" AS e WHERE e.product = \'corporate\''
 )
+
+
+def _corporate(as_recorded: str) -> str:
+    """The corporate totals as recorded at ``as_recorded``: the time is the relation's argument."""
+    return _CORPORATE.replace(
+        '"view_eod_totals" AS e', f"\"view_eod_totals\"(as_recorded => '{as_recorded}') AS e"
+    )
 
 
 class _Stores(_Stack):
@@ -167,12 +174,8 @@ def nodes(tmp_path_factory):
         ledger.down()
 
 
-def _sql(srv, sql: str, role: str, travel: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def _sql(srv, sql: str, role: str) -> list[dict[str, Any]]:
     headers = {"X-Provisa-Role": role}
-    if travel and travel.get("as_of"):
-        headers["X-Provisa-As-Of"] = travel["as_of"]
-    if travel and travel.get("as_recorded"):
-        headers["X-Provisa-As-Recorded"] = travel["as_recorded"]
     resp = httpx.post(
         f"{srv.base_url}/data/sql",
         json={"sql": sql},
@@ -188,20 +191,18 @@ def _sql(srv, sql: str, role: str, travel: dict[str, str] | None = None) -> list
 
 @pytest.fixture(scope="module")
 def answers(nodes) -> dict[str, list[dict[str, Any]]]:
-    """Every sql step of the tour, in order, as its reader and under the time travel the steps
-    before it set, as the tour runner runs it on the explorer (a role picked on another page is
-    the header's, not the explorer's)."""
-    role, travel = _ADMIN, {}
+    """Every sql step of the tour, in order, as its reader, as the tour runner runs it on the
+    explorer (a role picked on another page is the header's, not the explorer's). A statement's
+    time travel is its relation's arguments, in its text (REQ-1163)."""
+    role = _ADMIN
     out: dict[str, list[dict[str, Any]]] = {}
     page = None
     for step in _STEPS:
         page = step.get("route", page)
         if "role" in step and page == "/sql":
             role = _ADMIN if step["role"] == "all" else step["role"]
-        if "as_recorded" in step:
-            travel["as_recorded"] = step["as_recorded"]
         if "sql" in step:
-            out[step["key"]] = _sql(nodes["warehouse"], step["sql"], role, dict(travel))
+            out[step["key"]] = _sql(nodes["warehouse"], step["sql"], role)
     return out
 
 
@@ -247,15 +248,15 @@ def test_a_day_not_yet_closed_has_no_figures_as_reported(answers):
 
 def test_the_late_trade_restates_its_own_trade_date(nodes):
     # Its own day only: the corporate totals of every day run past the server's default row limit.
-    oct_2 = f"{_CORPORATE} AND e.business_date = DATE '2026-10-02'"
+    oct_2 = " AND e.business_date = DATE '2026-10-02'"
     at_its_close = _total(
-        _sql(nodes["warehouse"], oct_2, "banking_analyst", {"as_recorded": _OCT_2_CLOSE}),
+        _sql(nodes["warehouse"], _corporate(_OCT_2_CLOSE) + oct_2, "banking_analyst"),
         "2026-10-02",
         "Edinburgh",
         "USD",
     )
     now = _total(
-        _sql(nodes["warehouse"], oct_2, "banking_analyst", {"as_recorded": _LAST_CLOSE}),
+        _sql(nodes["warehouse"], _corporate(_LAST_CLOSE) + oct_2, "banking_analyst"),
         "2026-10-02",
         "Edinburgh",
         "USD",

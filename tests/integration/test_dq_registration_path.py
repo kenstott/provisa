@@ -21,6 +21,7 @@ actual rows disagree just as surely as no derivation at all.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import insert, select
@@ -54,13 +55,13 @@ def _compiled_estate():
     Tests about an UNGOVERNED dataset empty it."""
     from provisa.api.app import state
 
-    state.contexts = dq_contexts(
+    state.view_context = dq_contexts(
         (1, "warehouse", "sales", "sales", "orders"),
         # The results table publishes the name it was given over its relation's (REQ-1443).
         (2, "dq", "default", "quality", "orders_scans_dq_dq", "orders_scans"),
-    )
+    )["analyst"]
     yield
-    state.contexts = {}
+    state.view_context = None
 
 
 @asynccontextmanager
@@ -194,7 +195,7 @@ async def test_a_contract_naming_an_ungoverned_table_is_rejected(control_plane):
     what the compiled schema actually publishes, not what a config file listed."""
     from provisa.api.app import state
 
-    state.contexts = {}
+    state.view_context = SimpleNamespace(tables={})
     async with _conn(control_plane) as conn:
         await conn.execute_core(insert(sources).values(id="dq", type="soda"))
         with pytest.raises(ValueError, match="resolves to no governed table"):
@@ -306,7 +307,7 @@ async def test_a_dry_run_against_an_ungoverned_dataset_reports_where_it_resolved
     from provisa.api.admin._dq_resolvers import dry_run_contract
     from provisa.api.app import state
 
-    state.contexts = {}
+    state.view_context = SimpleNamespace(tables={})
     async with _conn(control_plane) as conn:
         await conn.execute_core(insert(sources).values(id="dq", type="soda", mapping=_MAPPING))
         result = await dry_run_contract(conn, source_id="dq", contract_text=CONTRACT)

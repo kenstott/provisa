@@ -13,6 +13,7 @@ import type { ViewerRequest } from "../components/nativeParams";
 import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
+import type { ApprovedJoin } from "../components/canvas/joinGraph";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
@@ -902,6 +903,12 @@ export interface PlatformSettings {
   cache: {
     default_ttl: number;
   };
+  // REQ-259: the org's Apollo Federation subgraph and the role it serves as.
+  federation: {
+    enabled: boolean;
+    subgraph_name: string;
+    role: string | null;
+  };
   naming: {
     // Deployment-wide, so absent for an org administrator; the two below are the org's own.
     domain_prefix?: boolean;
@@ -1552,6 +1559,10 @@ export interface CompileResult {
   warnings?: string[];
   compiled_cypher?: string | null;
   cypher_error?: string | null;
+  /** REQ-2136: the root's read as a SPARQL SELECT, its PREFIX lines with it; null with
+   * ``sparql_error`` saying why there is none. */
+  compiled_sparql?: string | null;
+  sparql_error?: string | null;
 }
 
 /** One thing an answer says about itself (REQ-1350), as the server sends it. */
@@ -1577,22 +1588,6 @@ export function toResultRedirect(handle: {
   };
 }
 
-/**
- * REQ-1163: a statement's time travel over bitemporal views -- as of a time on each view's clock,
- * and as Provisa had recorded it at a time. Each is an ISO 8601 time; an empty one is not sent.
- */
-export interface TimeTravel {
-  asOf?: string | null;
-  asRecorded?: string | null;
-}
-
-function timeTravelHeaders(travel: TimeTravel | undefined): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (travel?.asOf) headers["X-Provisa-As-Of"] = travel.asOf;
-  if (travel?.asRecorded) headers["X-Provisa-As-Recorded"] = travel.asRecorded;
-  return headers;
-}
-
 /** What a refused statement says: in the reader's language by its code and params (serverErrors),
  * else in the server's own words; never the body it came in. */
 async function refusal(resp: Response, op: string): Promise<string> {
@@ -1608,11 +1603,7 @@ async function refusal(resp: Response, op: string): Promise<string> {
     : text || requestFailed(op, resp.status);
 }
 
-function sqlHeaders(
-  role: string,
-  statsEnabled: boolean,
-  timeTravel: TimeTravel | undefined,
-): Record<string, string> {
+function sqlHeaders(role: string, statsEnabled: boolean): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -1620,7 +1611,6 @@ function sqlHeaders(
     // `role` is a fallback for callers with no auth context at all. Without it here, the
     // middleware's default-assigned role silently overrode the SQL Explorer's picker.
     "X-Provisa-Role": role,
-    ...timeTravelHeaders(timeTravel),
   };
   if (statsEnabled) headers["X-Provisa-Stats"] = "true";
   return headers;
@@ -1632,7 +1622,6 @@ export async function runSql(
   statement: string | { sql: string; params: (string | number)[] },
   role: string = "org_admin",
   statsEnabled: boolean = false,
-  timeTravel?: TimeTravel,
 ): Promise<{
   columns: string[];
   /** REQ-1937: each column's SQL type, parallel to `columns`; null when the engine reported none. */
@@ -1649,7 +1638,7 @@ export async function runSql(
   redirect?: ResultRedirect;
 }> {
   try {
-    const headers = sqlHeaders(role, statsEnabled, timeTravel);
+    const headers = sqlHeaders(role, statsEnabled);
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       // The acting role travels ONLY in X-Provisa-Role. Under "Role: All" that header is the
       // comma-separated set; a body `role` repeating it is refused as a mismatch (data.role_mismatch,
@@ -1725,6 +1714,15 @@ export interface StatementAnswer {
   redirect?: ResultRedirect;
 }
 
+/** The joins the acting role's statements may write: what the SQL canvas draws. */
+export async function fetchApprovedJoins(): Promise<ApprovedJoin[]> {
+  const resp = await fetch(`${API_BASE_RAW}/data/sql/approved-joins`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(await refusal(resp, "fetchApprovedJoins"));
+  return ((await resp.json()) as { joins: ApprovedJoin[] }).joins;
+}
+
 /** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a
  * dollar-quoted block does not split). Nothing is run. */
 export async function splitSql(sql: string): Promise<string[]> {
@@ -1754,13 +1752,17 @@ export async function runSqlEach(
   sql: string,
   role: string,
   statsEnabled: boolean,
-  timeTravel?: TimeTravel,
+  // REQ-1937: the values of the statement's $1…$n placeholders, bound by the server; none sent
+  // when there are none.
+  params: (string | number)[] = [],
 ): Promise<{ answers: StatementAnswer[]; provisa_stats?: unknown; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
-      headers: sqlHeaders(role, statsEnabled, timeTravel),
-      body: JSON.stringify({ sql, results: "each" }),
+      headers: sqlHeaders(role, statsEnabled),
+      body: JSON.stringify(
+        params.length > 0 ? { sql, results: "each", params } : { sql, results: "each" },
+      ),
     });
     if (!resp.ok) return { answers: [], error: await refusal(resp, "runSql") };
     const json = (await resp.json()) as { results: EachEntry[]; provisa_stats?: unknown };
@@ -1828,7 +1830,6 @@ export async function explainSql(
   sqlText: string,
   role: string = "org_admin",
   analyze: boolean = false,
-  timeTravel?: TimeTravel,
 ): Promise<ExplainResponse> {
   const resp = await fetch(`${API_BASE_RAW}/data/sql/explain`, {
     method: "POST",
@@ -1836,7 +1837,6 @@ export async function explainSql(
       "Content-Type": "application/json",
       Accept: "application/json",
       "X-Provisa-Role": role,
-      ...timeTravelHeaders(timeTravel),
     },
     body: JSON.stringify({ sql: sqlText, analyze }),
   });

@@ -97,6 +97,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
+    timeTravel: null,
     dqDataset: null,
     qualityCheckers: [],
     ...overrides,
@@ -134,6 +135,8 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     viaTypeValue: null,
     viaLabelSource: null,
     parameters: [],
+    // The Cypher type the server serves the edge as (REQ-1586); set where a test reads it.
+    cypherType: null,
     ...overrides,
   };
 }
@@ -399,6 +402,7 @@ describe("buildErdElements — junction relationships", () => {
       viaTypeColumn: "relation_type",
       viaTypeValue: "bonded_pair",
       viaLabelSource: "column",
+      cypherType: "BONDED_PAIR",
       cardinality: "many-to-many",
       ...overrides,
     });
@@ -439,8 +443,8 @@ describe("buildErdElements — junction relationships", () => {
   it("one junction node carries a distinct labeled path per relationship", () => {
     const rels = [
       viaRel({ id: 100, viaTypeValue: "bonded_pair" }),
-      viaRel({ id: 101, viaTypeValue: "littermate" }),
-      viaRel({ id: 102, viaTypeValue: "shares_enclosure" }),
+      viaRel({ id: 101, viaTypeValue: "littermate", cypherType: "LITTERMATE" }),
+      viaRel({ id: 102, viaTypeValue: "shares_enclosure", cypherType: "SHARES_ENCLOSURE" }),
     ];
     const { nodes, edges } = buildErdElements(
       [pets, companions],
@@ -463,8 +467,8 @@ describe("buildErdElements — junction relationships", () => {
   it("parallel paths get their own label row so one does not cover the rest", () => {
     const rels = [
       viaRel({ id: 100, viaTypeValue: "bonded_pair" }),
-      viaRel({ id: 101, viaTypeValue: "littermate" }),
-      viaRel({ id: 102, viaTypeValue: "shares_enclosure" }),
+      viaRel({ id: 101, viaTypeValue: "littermate", cypherType: "LITTERMATE" }),
+      viaRel({ id: 102, viaTypeValue: "shares_enclosure", cypherType: "SHARES_ENCLOSURE" }),
     ];
     const { edges } = buildErdElements(
       [pets, companions],
@@ -600,6 +604,7 @@ describe("buildErdElements — complementary rows", () => {
       viaTableName: "pet_companions",
       viaTypeValue: "bonded_pair",
       viaLabelSource: "column",
+      cypherType: "BONDED_PAIR",
       cardinality: "one-to-many",
     });
     const { edges } = buildErdElements(

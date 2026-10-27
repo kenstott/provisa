@@ -31,8 +31,16 @@ from tests.unit.test_glossary_class_grounding import (
     cfg_db,  # noqa: F401  (a fixture)
     _config,
 )
+from tests.unit.gate_identity import serve_every_column
 
 TODAY = datetime.date.today()
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which columns a caller may read is REQ-2152's own tests
+    (test_glossary_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 async def _status(db, term_id: int) -> str:
@@ -257,7 +265,7 @@ async def test_restore_brings_back_an_empty_draft_and_clears_a_deprecation(
 
 @pytest.mark.asyncio
 async def test_the_scheduler_retires_a_deprecated_term_on_its_date(control_plane, monkeypatch):
-    from provisa.scheduler.term_retirement import retire_due_terms
+    from provisa.scheduler.planned_retirement import retire_due_terms
 
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         note = await _note(db, ids)
@@ -293,13 +301,13 @@ async def test_the_scheduler_retires_a_deprecated_term_on_its_date(control_plane
 def test_each_orgs_scheduler_runs_the_retirement_daily():
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-    from provisa.scheduler import term_retirement
+    from provisa.scheduler import planned_retirement
 
     scheduler = AsyncIOScheduler()
-    term_retirement.register_org(scheduler, "acme")
-    term_retirement.register_org(scheduler, "acme")  # kept, not doubled
+    planned_retirement.register_org(scheduler, "acme")
+    planned_retirement.register_org(scheduler, "acme")  # kept, not doubled
     [job] = scheduler.get_jobs()
-    assert job.id == "glossary_term_retirement:org_acme" and job.args == ("acme",)
+    assert job.id == "planned_retirement:org_acme" and job.args == ("acme",)
 
 
 # --- the export snapshot, the meta view, config -----------------------------------------------

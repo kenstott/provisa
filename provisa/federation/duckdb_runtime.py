@@ -199,11 +199,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # REQ-2050: the engine's zone is UTC, so an instant (TIMESTAMPTZ) reads as UTC and a
         # literal with no zone compared to one is UTC -- never the host's zone.
         _cfg["TimeZone"] = "UTC"
-        # REQ-2006: an org's engine may be capped (a demo sandbox's, sandbox.memory_limit). DuckDB
-        # spills to disk past it and refuses, by name, what cannot spill.
-        _limit = getattr(store_engine, "memory_limit", None)
-        if _limit is not None:
-            _cfg["memory_limit"] = f"{_limit // (1024 * 1024)}MiB"
+        # REQ-2006: an org's engine may be capped (a demo sandbox's, sandbox.memory_limit), and the
+        # deployment may cap every engine (engine.duckdb_memory_limit); unset is DuckDB's own.
+        # DuckDB spills to disk past it and refuses, by name, what cannot spill.
+        from provisa.core import engine_memory
+
+        _cfg.update(engine_memory.config(getattr(store_engine, "memory_limit", None)))
         # Spilled data stays in the org's folder (engine.temp_org). A runtime built for no org --
         # one introspecting a source's catalog, which reads metadata and spills nothing -- has no
         # folder to name, and keeps DuckDB's own.
@@ -212,7 +213,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             from provisa.core import org_files
 
             _cfg["temp_directory"] = str(org_files.org_tmp(_temp_org))
-        self._con = duckdb.connect(config=_cfg)
+        self._con = engine_memory.connect(extra=_cfg)
+        engine_memory.log_limit(self._con, "federation engine")
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 
         register_fake_functions(self._con)  # REQ-1494: provisa_digest, provisa_fake_method
@@ -261,6 +263,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # #266: each attached view's columns named apart from their source fields, by its physical
         # name, as the attach walk gave them (native_backend._mongo_column_fields).
         self._column_fields: dict[str, list[tuple[str, str]]] = {}
+        # (catalog, schema, table) of an attached remote table's view -> its raw attach alias and
+        # its address there, for a read that goes to the remote itself (exact_numeric, REQ-2167).
+        self._remote_tables: dict[tuple[str, str, str], tuple[str, str, str]] = {}
         self._dbx_lock = threading.Lock()
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
         # REQ-1529: the ATTACH each raw alias was made with, so an environment reaching the same
@@ -364,6 +369,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._column_fields[phys] = fields
             renamed = "".join(f", {_quoted(field)} AS {_quoted(name)}" for field, name in fields)
             self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS SELECT *{renamed} FROM {remote}")
+            view = (self._catalog_of(source), source.schema_name, source.table_name)
+            self._remote_tables[view] = (raw_alias, remote_schema, source.table_name)
 
     def detach_source(self, source: Any) -> None:
         """Remove the live exposure of ``source``'s table from this engine: the view at its
@@ -507,6 +514,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def refresh_live_relations(self, sql: str) -> None:
         """REQ-1867: the same re-pointing for a statement this runtime does not run itself."""
         self._refresh_databricks_relations(sql)
+
+    def remote_table(self, view: tuple[str, str, str]) -> tuple[str, str, str] | None:
+        """The raw attach alias and remote address of the attached table ``view`` stands for, or
+        None when ``view`` is no attached remote table."""
+        return self._remote_tables.get(view)
 
     def _prepare_sql(self, duck_sql: str) -> str:
         """The per-statement preparation every execution path runs: in-place Databricks views

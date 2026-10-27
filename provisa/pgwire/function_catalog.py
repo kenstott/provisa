@@ -46,9 +46,8 @@ def _fn_sql_type(provisa_type: str | None) -> str:
 
 
 def _fn_visible(fn: dict, role_id: str) -> bool:
-    """A tracked function is discoverable when unrestricted or the role is granted visibility."""
-    visible_to = fn.get("visible_to") or []
-    return not visible_to or role_id in visible_to
+    """A tracked function is discoverable to a role its ``visible_to`` names (REQ-2154)."""
+    return role_id in (fn.get("visible_to") or ())
 
 
 def _dedupe_functions(fns: dict) -> list[dict]:

@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 _SET_RE = re.compile(r"^\s*SET\b", re.IGNORECASE)
 _SHOW_RE = re.compile(r"^\s*SHOW\b", re.IGNORECASE)
 _TXN_RE = re.compile(
-    r"^\s*(BEGIN|START\s+TRANSACTION|START|COMMIT|ROLLBACK|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
+    r"^\s*(BEGIN|START\s+TRANSACTION|START|COMMIT|END|ROLLBACK|ABORT|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
     re.IGNORECASE,
 )
 
@@ -233,6 +233,17 @@ def _handle_txid(sql: str):
     return QueryResult(rows=[(next_txid(),)], column_names=[col], column_types=["BIGINT"])
 
 
+_SET_CONFIG_VALUE_RE = re.compile(
+    r"set_config\s*\(\s*'(?:[^']|'')*'\s*,\s*'((?:[^']|'')*)'", re.IGNORECASE
+)
+
+
+def _set_config_value(sql: str) -> str | None:
+    """What set_config(name, value, is_local) answers: the value it set, as PostgreSQL does."""
+    m = _SET_CONFIG_VALUE_RE.search(sql)
+    return m.group(1).replace("''", "'") if m else None
+
+
 def _handle_current_setting(sql: str):
     """Answer SELECT current_setting(...) [+ set_config(...)] without DuckDB."""
     from provisa.executor.result import QueryResult
@@ -254,7 +265,7 @@ def _handle_current_setting(sql: str):
         col2 = (m2.group(1) or "set_config") if m2 else "set_config"
         key = m1.group(1).lower() if m1 else ""
         val1 = _KNOWN_SETTINGS.get(key, "")
-        return QueryResult(rows=[(val1, None)], column_names=[col1, col2])
+        return QueryResult(rows=[(val1, _set_config_value(sql))], column_names=[col1, col2])
 
     m = re.search(r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", sql, re.IGNORECASE)
     if not m:
@@ -295,7 +306,11 @@ def answer(sql: str, role_id: str, state):  # REQ-532
     if "set_config" in stripped.lower() and "current_setting" not in stripped.lower():
         from provisa.executor.result import QueryResult
 
-        return QueryResult(rows=[("on",)], column_names=["set_config"], column_types=["VARCHAR"])
+        return QueryResult(
+            rows=[(_set_config_value(stripped),)],
+            column_names=["set_config"],
+            column_types=["VARCHAR"],
+        )
 
     # asyncpg type-introspection recursive CTE. During describe ($1 not yet bound)
     # return schema-only. During execute, return rows from _TYPEINFO for the requested OIDs

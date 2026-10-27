@@ -60,7 +60,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from provisa.compiler.sql_literals import sql_literal
-from provisa.api.metadata_export.model import AssetKind
+from provisa.api.metadata_export.model import AssetKind, listed
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -408,7 +408,7 @@ def listing_statements(
 
     ``publish=False`` (the default) keeps it DRAFT (``PUBLISH = FALSE``); organization listings,
     unlike external ones, have no ``REVIEW`` parameter -- there is no Marketplace review step, so
-    ``publish=True`` (``DataProductAsset.publish`` / ``DataProduct.publish``) takes it live
+    ``publish=True`` (a live or deprecated product, model.listed) takes it live
     immediately. ``IF NOT EXISTS`` leaves an existing listing's manifest alone; the caller converges
     it with :func:`listing_update_statement` when :func:`manifest_matches` says it drifted."""
     return [
@@ -537,6 +537,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
     # REQ-1912: every object this adapter addresses is in the engine's own store, where a
     # replica-served table is published through its export view.
     needs_export_views = True
+    binds_products = False  # REQ-1634 STATUS: see MetadataExport.binds_products
 
     def _runtime_or_none(self) -> SnowflakeFederationRuntime | None:
         url = configured_engine_url()
@@ -712,7 +713,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             members=members,
             documentation=documentation,
         )
-        publish = getattr(product, "publish", False)
+        publish = listed(product)  # REQ-1634 STATUS: PUBLISH = TRUE while in service
         statements = share_statements(
             share_name,
             product.description,

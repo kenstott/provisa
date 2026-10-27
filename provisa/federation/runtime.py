@@ -126,7 +126,8 @@ class EngineRuntime:  # REQ-825, REQ-840
 
         # REQ-615: a session's temporary table is read at its address in the engine's store.
         pg_sql = address_temp_tables(pg_sql, self._state)
-        return self._backend.transpile_physical(self._search_replica_indexes(pg_sql))
+        physical = self._backend.transpile_physical(self._search_replica_indexes(pg_sql))
+        return self._backend.exact_reads(self._state, physical)
 
     def _search_replica_indexes(self, pg_sql: str) -> str:
         """``pg_sql`` at its replicas' addresses, each top-k similarity search over a replica

@@ -1692,25 +1692,17 @@
         "title": "Die Summen eines Tages",
         "description": "Der 1. Oktober, wie er jetzt steht. Für jede Filiale, jedes Produkt und jede Währung sehen Sie Eingänge, Ausgänge und den Saldo. Ein über pgwire verbundenes BI-Tool führt genau dieses SQL aus."
       },
-      "bankingAsReported": {
-        "title": "Wie zum Abschluss gemeldet",
-        "description": "Erfasst bis steht jetzt auf dem Abschluss vom 1. Oktober. Ein BI-Tool tut dasselbe mit SET provisa.as_recorded in seiner pgwire-Sitzung. Erfasst bis filtert die Transaktionen nach updated_at und die Tagessummen nach dem Abschluss jedes Tages, sodass Sie die Zahlen sehen, die die Bank an jenem Abend gemeldet hat."
-      },
       "bankingReported": {
         "title": "Was gemeldet wurde",
-        "description": "Die Firmenkundensummen für den 1. und 2. Oktober, wie zum Abschluss vom 1. Oktober gemeldet. Londons GBP-Summe enthält noch die später stornierte Zahlung. Der 2. Oktober war noch nicht abgeschlossen und hat daher keine Zahlen."
-      },
-      "bankingAsRestated": {
-        "title": "Wie seither korrigiert",
-        "description": "Erfasst bis rückt auf den Abschluss vom 12. Oktober, den letzten der dreißig Tage. Bis dahin sind die am 6. Oktober eingetragene Stornierung und der am 7. Oktober eingetragene verspätete Handel beide erfasst."
+        "description": "Die Firmenkundensummen für den 1. und 2. Oktober, wie zum Abschluss vom 1. Oktober gemeldet: Das Argument as_recorded der View liest sie so, wie sie damals erfasst waren, und ein BI-Tool über pgwire tut dasselbe mit SET provisa.as_recorded. Londons GBP-Summe enthält noch die später stornierte Zahlung. Der 2. Oktober war noch nicht abgeschlossen und hat daher keine Zahlen."
       },
       "bankingRestated": {
         "title": "Was es jetzt sagt",
-        "description": "Dasselbe SQL. Londons Summe vom 1. Oktober enthält die stornierte Zahlung nicht mehr, und Edinburghs USD-Summe vom 2. Oktober enthält jetzt den verspäteten Handel. Die bei jedem Abschluss gemeldeten Versionen bleiben neben den korrigierten erhalten, und recorded_at zeigt, wann jede erfasst wurde."
+        "description": "Dasselbe SQL mit as_recorded zum Abschluss vom 12. Oktober, dem letzten der dreißig Tage. Londons Summe vom 1. Oktober enthält die stornierte Zahlung nicht mehr, und Edinburghs USD-Summe vom 2. Oktober enthält jetzt den verspäteten Handel. Die bei jedem Abschluss gemeldeten Versionen bleiben neben den korrigierten erhalten, und recorded_at zeigt, wann jede erfasst wurde."
       },
       "bankingAsOpsSql": {
         "title": "Zurück zu Operations",
-        "description": "Der Explorer läuft jetzt als Operations, weiterhin erfasst bis zum Abschluss vom 12. Oktober."
+        "description": "Der Explorer läuft jetzt als Operations."
       },
       "bankingPostings": {
         "title": "Die Buchungen hinter einer Summe",

@@ -58,7 +58,6 @@ from provisa.compiler.type_map import JSONScalar, column_type_to_graphql, array_
 from provisa.compiler.schema_types import SchemaInput, _TableInfo
 from provisa.security.rights import (
     GOVERNANCE_META_COLUMNS,
-    LOCKDOWN_DOMAINS,
     META_DOMAIN_ID,
     Capability,
     column_served,
@@ -94,15 +93,8 @@ from provisa.compiler.schema_inputs import (
 # Tables in these domains are included in all role contexts so SQL JOINs
 # can reference them, but V001 still blocks direct FROM-clause access.
 # Only the meta (catalog) domain is implicitly discoverable by every role (REQ-1132). Ops is a normal
-# domain a role must be explicitly GRANTED (REQ-1133) — it is NOT implicit, so an ungranted role's
-# schema never exposes ops tables/columns to any query surface.
+# domain a role must reach, like any other.
 _IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta"})
-
-# Domains where an empty visible_to=[] means visible to NO role (not unrestricted),
-# matching stage2.py::build_governance_context's interpretation for the same seeded
-# data. Ops columns are seeded with visible_to=[] (REQ-884/_seed_ops_domain) and
-# require an explicit per-role grant (REQ-1133) rather than defaulting open.
-_LOCKDOWN_DOMAINS: frozenset[str] = LOCKDOWN_DOMAINS
 
 
 def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
@@ -111,7 +103,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
     accessible = set(role["domain_access"])
     # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, and
     # an empty list is no domains (rights.reaches_all_domains — the one place that is decided).
-    # Not to be confused with a COLUMN's visible_to below, where an empty list means every role.
+    # A COLUMN's visible_to below reads the same way: an empty list is no role (REQ-2154).
     all_access = reaches_all_domains(role["domain_access"])
 
     # REQ-1319: role-visible metrics keyed by the single semantic table their expression
@@ -120,8 +112,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
     # reachable through the raw-SQL `metrics.<name>` expansion (REQ-1317).
     metrics_by_table: dict[str, list[dict]] = {}
     for m in si.metrics:
-        vt = m.get("visible_to") or []
-        if vt and "*" not in vt and role["id"] not in vt:
+        # REQ-1317: a metric is read by the roles it names; none named is no role.
+        if role["id"] not in (m.get("visible_to") or ()):
             continue
         refs = metric_reference_tables(m["name"], m["expression"])
         if len(refs) == 1:
@@ -151,19 +143,16 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         col_meta = {m.column_name.lower(): m for m in si.column_types[table_id]}
 
         # Filter columns by role visibility; split native filter cols from regular cols.
-        # visible_to=[] means unrestricted (visible to all roles). REQ-1132/REQ-1134: in the meta
+        # REQ-1132/REQ-1134: in the meta
         # (catalog) domain, GOVERNANCE columns (visible_to, masks, view_sql, …) are hidden unless the
         # role holds view_governance — enforced HERE so every query surface (GraphQL, SQL,
         # cypher) that derives from this per-role schema sees the same governed catalog.
         _hide_meta_gov = table["domain_id"] == META_DOMAIN_ID and not has_capability(
             role, Capability.VIEW_GOVERNANCE
         )
-        # REQ-1133: lockdown domains (e.g. ops) require an explicit visible_to grant; no
-        # capability stands in for one (REQ-1327).
         # Which columns the role is served is ONE rule (security.rights.column_served): the
-        # column's grant (empty = everyone, "*", or the role; an explicit grant only in a
-        # lockdown domain and on a restricted column), and outside the role's reach only a
-        # public column (REQ-1959).
+        # column's grant names the role (empty is no role, REQ-2154), and outside the role's
+        # reach only a public column (REQ-1959). No capability stands in for a grant (REQ-1327).
         visible_cols = [
             c
             for c in table["columns"]
@@ -241,6 +230,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 ),
                 enable_group_by=bool(table.get("enable_group_by", False)),
                 read_only=bool(table.get("view_sql")),  # REQ-1157: MV/view → query-only
+                time_travel=si.time_travel.get(table_id),  # REQ-1163
                 write_ops=frozenset(table["write_ops"]),
                 write_returns_rows=table["write_returns_rows"],
                 write_refused_forms=frozenset(table["write_refused_forms"]),
@@ -318,14 +308,15 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                 t.type_name = to_type_name(t.field_name)
 
 
-#: REQ-1365: the root Query field that dereferences a semantic address.
-RESOLVE_FIELD = "resolve"
+#: REQ-1365: the root Query field that dereferences a semantic address: a system field, named
+#: like _meta and _domain_ so it does not sit among a role's domain roots.
+RESOLVE_FIELD = "_resolve"
 
 
 def _add_resolve_field(query_fields: dict) -> None:
-    """Add ``resolve(uri, as_of)`` to a role's Query type (REQ-1365). It is in every role's
+    """Add ``_resolve(uri, as_of, as_recorded)`` to a role's Query type (REQ-1365). It is in every role's
     schema, so REST and MCP offer it by the REQ-1929 rule. A table or command already named
-    ``resolve`` is refused by name rather than shadowed."""
+    ``_resolve`` is refused by name rather than shadowed."""
     if RESOLVE_FIELD in query_fields:
         raise ValueError(
             f"a table or command is exposed as the GraphQL field {RESOLVE_FIELD!r}, which is "
@@ -438,7 +429,23 @@ def _table_field_args(
     )
     _build_native_filter_args(t, args)
     _build_similar_arg(t, args)
+    _add_time_travel_args(t, args)
     return args
+
+
+def _add_time_travel_args(t: _TableInfo, args: dict[str, GraphQLArgument]) -> None:
+    """REQ-1163: time travel is an argument of the relation that has versions -- a bitemporal
+    table or view takes ``as_of`` (valid time) and ``as_recorded`` (recorded time); an Iceberg or
+    Delta table travels by its snapshots, ``as_recorded`` alone (REQ-372). Each is one ISO 8601
+    time, validated as the SQL arguments are (provisa.mv.time_travel)."""
+    if t.time_travel == "bitemporal":
+        args["as_of"] = GraphQLArgument(
+            GraphQLString, description="Read the versions in force at this valid time"
+        )
+    if t.time_travel in ("bitemporal", "snapshot"):
+        args["as_recorded"] = GraphQLArgument(
+            GraphQLString, description="Read what had been recorded by this time"
+        )
 
 
 def _dedup_tables(tables: list[_TableInfo]) -> list[_TableInfo]:
@@ -631,18 +638,24 @@ def _add_standard_relationship_field(
     else:
         field_name = rel_field_name(target.field_name, cardinality)
     if cardinality in ("many-to-one", "one-to-one"):
+        # REQ-1163: a related relation that has versions takes its time-travel arguments here too.
+        travel: dict[str, GraphQLArgument] = {}
+        _add_time_travel_args(target, travel)
         fields[field_name] = GraphQLField(
             target_type,
+            args=travel or None,
             deprecation_reason=rel.get("deprecation_reason"),  # REQ-1375
         )
     elif cardinality == "one-to-many":
+        many_args = _build_db_field_args(
+            where_types.get(target.table_id),
+            order_by_types.get(target.table_id),
+            distinct_enums.get(target.table_id),
+        )
+        _add_time_travel_args(target, many_args)
         fields[field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(target_type)),
-            args=_build_db_field_args(
-                where_types.get(target.table_id),
-                order_by_types.get(target.table_id),
-                distinct_enums.get(target.table_id),
-            ),
+            args=many_args,
             deprecation_reason=rel.get("deprecation_reason"),  # REQ-1375
         )
     else:
@@ -985,6 +998,17 @@ def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
     }
 
 
+class NoTablesServed(ValueError):
+    """A role no column of any table is served to (REQ-2154: a grant names its roles): it has no
+    schema to build, which is the role's state, not a failure of the build."""
+
+    def __init__(self, role_id: str) -> None:
+        self.role_id = role_id
+        super().__init__(
+            f"No tables visible to role {role_id!r}. Check domain_access and column visibility."
+        )
+
+
 def generate_schema(
     si: SchemaInput,
 ) -> (
@@ -999,10 +1023,7 @@ def generate_schema(
     """
     tables = _build_visible_tables(si)
     if not tables:
-        raise ValueError(
-            f"No tables visible to role {si.role['id']!r}. "
-            f"Check domain_access and column visibility."
-        )
+        raise NoTablesServed(si.role["id"])
 
     domain_alias_map = _build_domain_alias_map(si.domains)
     _assign_names(

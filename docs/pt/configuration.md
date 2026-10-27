@@ -952,25 +952,35 @@ Lida como registrada em 3 de outubro, a operação mostra a quantidade errada. L
 
 Uma versão vigora do seu momento até o da versão seguinte. Uma exclusão tem efeito quando o Provisa a registra.
 
-**Leitura.** Uma leitura simples responde a versão de cada chave vigente agora. O cabeçalho `X-Provisa-As-Of` lê em um momento, ou sobre um intervalo dado como intervalo ISO 8601 `start/end`:
+**Leitura.** Uma leitura simples responde a versão de cada chave em vigor agora. Para ler outro momento, dê à relação o seu próprio argumento `as_of` onde a instrução a nomeia, um instante ou um intervalo dado como intervalo ISO 8601 `start/end`:
 
-```
-X-Provisa-As-Of: 2026-03-01T00:00:00
-X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
-```
-
-Um momento responde a versão de cada chave vigente então. Um intervalo responde cada versão vigente em algum momento dentro dele, uma linha por versão.
-
-**Como registrado.** Uma correção registrada depois muda o que uma visão diz sobre o passado: a versão em vigor em 30 de setembro passa a ser a corrigida assim que a correção é registrada. Para ler a visão como o Provisa a tinha registrado num momento, antes de qualquer correção posterior, adicione `X-Provisa-As-Recorded`, um instante ISO 8601:
-
-```
-X-Provisa-As-Of: 2026-09-30T12:00:00
-X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-03-01T00:00:00') AS e
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-01-01T00:00:00/2026-04-01T00:00:00') AS e
 ```
 
-Toda versão registrada depois desse momento fica de fora, e o as-of então escolhe a versão em vigor no seu próprio momento. Com `X-Provisa-As-Recorded` sozinho, a leitura responde com a versão de cada chave em vigor conforme registrado naquele momento. Ele aceita um instante, não um intervalo; um intervalo ou um valor malformado é recusado com HTTP 400 (`data.invalid_as_recorded`).
+Um instante responde a versão de cada chave em vigor então. Um intervalo responde cada versão em vigor em algum momento dentro dele, uma linha por versão.
 
-Os dois instantes também chegam ao Provisa sem os cabeçalhos. O instante as-of é o argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), o parâmetro de consulta REST `as_of` e a opção `as_of` de um ticket do Arrow Flight, e um intervalo passado a `resolve` responde com as `versions` da linha no lugar da sua `row`. O instante as-recorded é o argumento `as_recorded` de `resolve`, o parâmetro de consulta REST `as_recorded` e a opção `as_recorded` de um ticket do Arrow Flight. O registro de auditoria de cada instrução guarda os dois instantes com que leu, `as_of` e `as_recorded`. Direitos, máscaras e regras de linha se aplicam como em qualquer leitura. Um valor as-of malformado, ou um intervalo cujo fim não vem depois do início, é recusado com HTTP 400 (`data.invalid_as_of`).
+**Como registrado.** Uma correção registrada depois muda o que uma view diz sobre o passado: a versão em vigor em 30 de setembro é a corrigida assim que a correção é registrada. Para ler a view como a Provisa a tinha registrado em um momento, antes de qualquer correção posterior, adicione `as_recorded`, um instante ISO 8601:
+
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_recorded => '2026-10-01T00:00:00') AS e
+```
+
+Toda versão registrada depois desse momento fica de fora, e o as-of escolhe então a versão em vigor no seu próprio momento. Com `as_recorded` sozinho, a leitura responde a versão de cada chave em vigor como registrado então. Recebe um instante, não um intervalo.
+
+**Onde vão os argumentos.** Cada referência leva o seu próprio momento, de modo que uma instrução pode ler uma view em dois momentos por duas referências, e uma referência sem argumentos lê o estado atual. Um momento também pode ser um valor vinculado, `(as_recorded => $1)`, com o valor enviado nos `params` da requisição. Só uma relação que guarda suas versões recebe os argumentos: uma tabela ou view com histórico, e uma tabela Iceberg ou Delta, que viaja pelos seus snapshots e por isso recebe só `as_recorded` (o snapshot em vigor naquele momento). Qualquer outra relação, um momento malformado, um intervalo dado a `as_recorded` ou `as_of` numa tabela Iceberg ou Delta é recusado com HTTP 400, nomeando a relação.
+
+Os mesmos dois nomes são os argumentos do campo da relação em GraphQL, em campos raiz e num campo de relacionamento cujo alvo guarda suas versões, de modo que dois aliases podem ler uma view em dois momentos:
+
+```graphql
+{
+  reported: view_eod_totals(as_recorded: "2026-10-01T17:00:00") { branch net_movement }
+  restated: view_eod_totals(as_recorded: "2026-10-12T17:00:00") { branch net_movement }
+}
+```
+
+O REST os recebe como os parâmetros de consulta `as_of` e `as_recorded` do endpoint da tabela, e a ferramenta MCP `describe_table` diz quais argumentos uma tabela recebe. O campo `_resolve` (GraphQL, REST e MCP) também recebe `as_of` e `as_recorded`, e um intervalo dado a ele responde as `versions` da linha no lugar da sua `row`; assim também a chamada gRPC `Resolve`. Um ticket do Arrow Flight os recebe como suas opções `as_of` e `as_recorded`, e uma sessão pgwire define um padrão para as instruções que executa com `SET provisa.as_of` e `SET provisa.as_recorded`, que os argumentos próprios de uma referência substituem. Os seletores "As of" e "As recorded at" do explorador SQL escrevem os argumentos na instrução. O registro de auditoria de cada instrução guarda o momento em que ela leu, `as_of` e `as_recorded`, quando leu em um só momento. Direitos, máscaras e regras de linha se aplicam como em qualquer leitura.
 
 Toda view com histórico responde mais três colunas, concedidas como a sua coluna de hora de origem (senão a sua primeira coluna de chave):
 
@@ -1732,6 +1742,7 @@ Para fontes do Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` com o camin
 | `TRINO_HOST` | `localhost` | Host do coordenador Trino |
 | `TRINO_PORT` | `8080` | Porta HTTP do coordenador Trino |
 | `PROVISA_ENGINE_FILES_GID` | `1000` | Grupo com que o Trino lê seus arquivos secretos (as configurações SASL de uma fonte Kafka, a chave de cliente de um host de código) quando o Provisa não roda como root nem como o usuário do Trino, como um app nativo ao lado do contêiner do Trino. O usuário do Provisa precisa ser membro dele, ou o arquivo é recusado pelo nome. |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | O mesmo, para o servidor de um motor Postgres que lê a chave de cliente de um host de código |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Caminho para o JSON de chave de service account GCP (motor/fonte BigQuery) |
 | `GOOGLE_CLOUD_PROJECT` | — | Projeto GCP padrão (BigQuery; sobreposto pela URL) |
 | `FABRIC_SQL_SERVER` | — | Endpoint SQL do Fabric Warehouse (alternativa a `PROVISA_ENGINE_URL`) |

@@ -40,7 +40,8 @@ from tests.integration.connector_source_harness import (
     query_semantic,
     rebuild_schemas,
 )
-from tests.helpers import registered_id, release_mutation
+from tests.conftest import as_deployment_org
+from tests.helpers import registered_id, release_mutation, write_grants_mutation
 
 pytestmark = [
     pytest.mark.integration,
@@ -65,9 +66,11 @@ async def client():
 
     prior_env = os.environ.get("PROVISA_ENGINE")
     os.environ["PROVISA_ENGINE"] = "duckdb"
-    prior_engine = app_mod.state.federation_engine
-    app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
-    app_mod.state.federation_engine.bind_terminal()
+    # The engine is the deployment org's, set as its boot sets it (REQ-1266).
+    with as_deployment_org():
+        prior_engine = app_mod.state.federation_engine
+        app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
+        app_mod.state.federation_engine.bind_terminal()
     try:
         app = app_mod.create_app()
         async with app.router.lifespan_context(app):
@@ -75,7 +78,8 @@ async def client():
             async with AsyncClient(transport=transport, base_url="http://test", timeout=600) as c:
                 yield c
     finally:
-        app_mod.state.federation_engine = prior_engine
+        with as_deployment_org():
+            app_mod.state.federation_engine = prior_engine
         if prior_env is None:
             os.environ.pop("PROVISA_ENGINE", None)
         else:
@@ -117,7 +121,10 @@ async def _register(
         """,
         "registerTable",
     )
-    await _gql(client, release_mutation(registered_id(registered["message"])), "setTableDraft")
+    table_id = registered_id(registered["message"])
+    # The tests write both tables: the role may write every registered column (REQ-2074).
+    await _gql(client, write_grants_mutation(table_id, [_ROLE], columns), "setTableWriteGrants")
+    await _gql(client, release_mutation(table_id), "setTableDraft")
 
 
 async def _mutation(client: AsyncClient, verb: str, table: str) -> str:
@@ -158,13 +165,18 @@ async def registered(client):
     assert maps, "the instance has no active transform map into sys_user"
     import_set = maps[0]["importSet"]
     await _register(client, "incident", ["sys_id", "number", "short_description", "active"])
-    await _register(client, "sys_user", ["sys_id", "user_name", "first_name"], import_set)
+    await _register(client, "sys_user", ["sys_id", "user_name", "first_name", "email"], import_set)
     await rebuild_schemas(client)
     return import_set
 
 
 def _own_name() -> str:
     return f"provisa-itest-{uuid.uuid4().hex[:12]}"
+
+
+def _email(name: str) -> str:
+    """The email of user ``name``: the instance's transform map into sys_user coalesces on it."""
+    return f"{name}@example.invalid"
 
 
 async def test_a_registered_table_is_read_through_a_filter_and_a_limit(client, registered):
@@ -194,15 +206,14 @@ async def test_an_unbound_tables_insert_update_and_delete_are_written_to_it(clie
     try:
         written = await _data(
             client,
-            f'mutation {{ {insert}(input: {{short_description: "{name}"}}) '
-            "{ affected_rows returning { sys_id short_description } } }",
+            f'mutation {{ {insert}(input: {{shortDescription: "{name}"}}) {{ affected_rows }} }}',
         )
         assert written[insert]["affected_rows"] == 1
-        assert written[insert]["returning"][0]["short_description"] == name
+        assert [r["short_description"] for r in await _incidents_named(client, name)] == [name]
         await _data(
             client,
-            f'mutation {{ {update}(where: {{short_description: {{eq: "{name}"}}}}, '
-            f'set: {{short_description: "{name} changed"}}) {{ affected_rows }} }}',
+            f'mutation {{ {update}(where: {{shortDescription: {{eq: "{name}"}}}}, '
+            f'set: {{shortDescription: "{name} changed"}}) {{ affected_rows }} }}',
         )
         assert [r["short_description"] for r in await _incidents_named(client, name)] == [
             f"{name} changed"
@@ -210,7 +221,7 @@ async def test_an_unbound_tables_insert_update_and_delete_are_written_to_it(clie
     finally:
         await _data(
             client,
-            f'mutation {{ {delete}(where: {{short_description: {{like: "{name}%"}}}}) '
+            f'mutation {{ {delete}(where: {{shortDescription: {{like: "{name}%"}}}}) '
             "{ affected_rows } }",
         )
     assert await _incidents_named(client, name) == []
@@ -224,21 +235,25 @@ async def test_a_bound_tables_insert_goes_through_its_import_set(client, registe
     try:
         written = await _data(
             client,
-            f'mutation {{ {insert}(input: {{user_name: "{name}", first_name: "Provisa"}}) '
-            "{ affected_rows returning { sys_id user_name } } }",
+            f'mutation {{ {insert}(input: {{userName: "{name}", firstName: "Provisa", '
+            f'email: "{_email(name)}"}}) {{ affected_rows }} }}',
         )
-        # The returned row is the record the transform wrote into sys_user.
-        assert written[insert]["returning"][0]["user_name"] == name
-        assert written[insert]["returning"][0]["sys_id"]
+        assert written[insert]["affected_rows"] == 1
+        # The record the transform wrote into sys_user.
+        (row,) = await _users_named(client, name)
+        assert row["sys_id"]
     finally:
         await _data(
             client,
-            f'mutation {{ {delete}(where: {{user_name: {{eq: "{name}"}}}}) {{ affected_rows }} }}',
+            f'mutation {{ {delete}(where: {{userName: {{eq: "{name}"}}}}) {{ affected_rows }} }}',
         )
-    rows = await query_semantic(
+    assert await _users_named(client, name) == []
+
+
+async def _users_named(client: AsyncClient, name: str) -> list[dict[str, Any]]:
+    return await query_semantic(
         client, f'SELECT "sys_id" FROM "{_DOMAIN}"."sys_user" WHERE "user_name" = \'{name}\''
     )
-    assert rows == []
 
 
 # -- the instance's own APIs, as commands ---------------------------------------------------------
@@ -276,12 +291,24 @@ async def offered(client, registered):
 
 
 def _operation(offered: dict[str, str], method: str, path: str) -> str:
-    (name,) = [n for n, said in offered.items() if said.startswith(f"[{method}] {path}")]
+    """The operation offered as ``method path`` exactly: its comment is that, then its summary."""
+    said_as = f"[{method}] {path}"
+    (name,) = [
+        n for n, said in offered.items() if said == said_as or said.startswith(f"{said_as} — ")
+    ]
     return name
 
 
+def _result(answer: list[dict[str, Any]]) -> Any:
+    """What a ServiceNow REST answer holds: the instance wraps each in ``result``, and a command
+    answers an object as its one row."""
+    (row,) = answer
+    return row["result"]
+
+
 async def _register_command(client: AsyncClient, name: str, operation: str) -> str:
-    """Register ``operation`` as a command of the companion; the data GraphQL field it runs as."""
+    """Register ``operation`` as a command of the companion; the data GraphQL field it runs as:
+    a query field for an operation that reads, a mutation field otherwise."""
     resp = await client.post(
         "/admin/actions/functions",
         json={
@@ -295,10 +322,14 @@ async def _register_command(client: AsyncClient, name: str, operation: str) -> s
     )
     assert resp.status_code == 200, resp.text
     await rebuild_schemas(client)
-    data = await _data(client, "{ __schema { mutationType { fields { name } } } }")
+    data = await _data(
+        client,
+        "{ __schema { queryType { fields { name } } mutationType { fields { name } } } }",
+    )
     (field,) = [
         f["name"]
-        for f in data["__schema"]["mutationType"]["fields"]
+        for root in ("queryType", "mutationType")
+        for f in data["__schema"][root]["fields"]
         if f["name"].split("__")[-1] == name
     ]
     return field
@@ -320,34 +351,60 @@ async def test_an_import_set_row_goes_through_its_transform_map(client, register
         if not c["name"].startswith("sys_")
     ]
     user_field = next(c for c in staging_columns if "user_name" in c or "user_id" in c)
+    email_field = next(c for c in staging_columns if "email" in c)
     field = await _register_command(
         client, "snowImportUser", _operation(offered, "POST", f"/api/now/import/{import_set}")
     )
     name = _own_name()
     delete = await _mutation(client, "delete", "sys_user")
-    answer = await _data(client, f'mutation {{ {field}(body: {{ {user_field}: "{name}" }}) }}')
-    rows = answer[field]
+    answer = await _data(
+        client,
+        f'mutation {{ {field}(body: {{ {user_field}: "{name}", {email_field}: "{_email(name)}" }}) }}',
+    )
+    rows = _result(answer[field])
     try:
         assert rows and rows[0]["status"] in ("inserted", "updated"), rows
         assert rows[0]["table"] == "sys_user"
     finally:
-        for row in rows or []:
+        for row in rows:
             if row.get("sys_id"):
                 await _data(
                     client,
-                    f'mutation {{ {delete}(where: {{sys_id: {{eq: "{row["sys_id"]}"}}}}) '
+                    f'mutation {{ {delete}(where: {{sysId: {{eq: "{row["sys_id"]}"}}}}) '
                     "{ affected_rows } }",
                 )
+
+
+async def _orderable_without_variables(
+    client: AsyncClient, detail: str, items: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """The first catalog item none of whose variables is mandatory: the instance refuses an order
+    that leaves one unset ("Mandatory Variables are required", run 39444269086), and which items
+    ask for what is the instance's own catalog."""
+    for item in items:
+        if not item.get("sys_id"):
+            continue
+        answer = await _data(client, f'query {{ {detail}(sys_id: "{item["sys_id"]}") }}')
+        variables = _result(answer[detail]).get("variables") or []
+        if not any(v.get("mandatory") for v in variables):
+            return item
+    raise AssertionError("the instance's catalog has no item that orders without its variables")
 
 
 async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
     client, registered, offered
 ):
-    """A Service Catalog order through the instance's own API: the first orderable item, once;
-    the request it creates is removed through the Table API as a registered table."""
+    """A Service Catalog order through the instance's own API: the first item that orders with
+    no variables, once; the request it creates is removed through the Table API as a registered
+    table."""
     del registered
     items = await _register_command(
         client, "snowCatalogItems", _operation(offered, "GET", "/api/sn_sc/servicecatalog/items")
+    )
+    detail = await _register_command(
+        client,
+        "snowCatalogItem",
+        _operation(offered, "GET", "/api/sn_sc/servicecatalog/items/{sys_id}"),
     )
     order = await _register_command(
         client,
@@ -355,12 +412,12 @@ async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
         _operation(offered, "POST", "/api/sn_sc/servicecatalog/items/{sys_id}/order_now"),
     )
     listed = await _data(client, f"query {{ {items} }}")
-    item = next(i for i in listed[items] if i.get("sys_id"))
+    item = await _orderable_without_variables(client, detail, _result(listed[items]))
     ordered = await _data(
         client,
         f'mutation {{ {order}(sys_id: "{item["sys_id"]}", body: {{ sysparm_quantity: 1 }}) }}',
     )
-    request = ordered[order][0]
+    request = _result(ordered[order])
     await _register(client, "sc_request", ["sys_id", "number"])
     await rebuild_schemas(client)
     delete = await _mutation(client, "delete", "sc_request")
@@ -369,6 +426,6 @@ async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
     finally:
         await _data(
             client,
-            f'mutation {{ {delete}(where: {{sys_id: {{eq: "{request["sys_id"]}"}}}}) '
+            f'mutation {{ {delete}(where: {{sysId: {{eq: "{request["sys_id"]}"}}}}) '
             "{ affected_rows } }",
         )

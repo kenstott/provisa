@@ -35,11 +35,18 @@ on:
         type: string
         required: false
         default: ""
+      task_dump_s:
+        description: "Every N seconds the backends log what each request is awaiting (diagnostics); empty: never"
+        type: string
+        required: false
+        default: ""
   # Callable: by an orchestrator, and by the proof of the CI's own structure. Every secret its two
   # jobs read, by name; the caller passes each one and nothing is inherited.
   workflow_call:
     secrets:
       ANTHROPIC_API_KEY:
+        required: false
+      OPENROUTER_API_KEY:
         required: false
       AZURE_CLIENT_ID:
         required: false
@@ -61,11 +68,15 @@ on:
         required: false
       FABRIC_SQL_SERVER:
         required: false
+      FREE_ASKAMERICA_KEY:
+        required: false
       GOOGLE_APPLICATION_CREDENTIALS_JSON:
         required: false
       GOOGLE_CLOUD_PROJECT:
         required: false
       GSHEETS_TEST_SHEET_ID:
+        required: false
+      KAGGLE_API_TOKEN:
         required: false
       SNOWFLAKE_ACCOUNT:
         required: false
@@ -82,6 +93,8 @@ on:
       SP_CLIENT_ID:
         required: false
       SP_SITE_URL:
+        required: false
+      STRIPE_API_KEY:
         required: false
       SP_TENANT_ID:
         required: false
@@ -133,6 +146,7 @@ jobs:
         PROVISA_E2E_LANE=core
         PROVISA_E2E_WORKERS=2
         PROVISA_E2E_SPECS=${{ inputs.specs }}
+        PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
       working-directory: provisa-ui
       # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
       # its folder): the run's own record of what did not execute.
@@ -159,10 +173,12 @@ jobs:
         provisa-ui/playwright-results.json
       artifact-retention: 7
     secrets:
-      # chat-panel-streaming.spec.ts drives a live model and fails by name without it. This
+      # chat-panel-streaming.spec.ts drives a live model (Haiku through OpenRouter, the e2e
+      # config's ai_endpoints/ai_models: e2e/liveModel.ts) and fails by name without it. This
       # workflow runs on release pushes, tags and dispatch only (no pull_request trigger), so
       # the secret never reaches a fork's code.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # The live sources this job's specs register: Snowflake, Databricks, BigQuery, Google
       # Sheets and Fabric (source-to-query-cloud-warehouse / -special-cases). Passed by name.
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
@@ -182,6 +198,13 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      # The live APIs the job's specs call, each skipped by name without its key (run 40115205350
+      # reported 10 NOT EXECUTED with every one of these present in the repo's secrets):
+      # AskAmerica/govdata (askamerica-*, source-to-query-special-cases), Kaggle (kaggle-source),
+      # OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox (source-to-query-stripe).
+      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
   # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
   provisioning:
@@ -201,6 +224,7 @@ jobs:
         CI=true
         PROVISA_E2E_LANE=core
         PROVISA_E2E_SPECS=${{ inputs.specs }}
+        PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
       working-directory: provisa-ui
       # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
       # its folder): the run's own record of what did not execute.
@@ -228,6 +252,7 @@ jobs:
       artifact-retention: 7
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # SharePoint (source-to-query.spec.ts), the one live source among this job's specs.
       SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
       SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}

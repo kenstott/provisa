@@ -144,6 +144,40 @@ async def test_atlas_captures_the_guid_of_every_published_entity(snapshot, monke
 
 
 @pytest.mark.asyncio
+async def test_atlas_and_so_purview_bind_each_data_product(monkeypatch):
+    """REQ-1634 STATUS: Atlas binds a product's entity under the product's URI, and Purview's
+    publish runs the Atlas pass first (its Data Map), so a Purview target holds each product it
+    published: a retirement is sent there (binds_products stays True for both)."""
+    from provisa.api.metadata_export.purview import PurviewExport
+    from provisa.core.models import DataProduct
+
+    model = ProvisaConfig(
+        sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
+        domains=[Domain(id="sales", description="Sales")],
+        tables=[
+            Table(
+                source_id="wh",
+                domain_id="sales",
+                schema_name="public",
+                table_name="orders",
+                product_id="prod",
+                columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
+            )
+        ],
+        data_products=[DataProduct(id="prod", domain_id="sales", name="Prod", status="live")],
+        roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
+    )
+    with_product = build_snapshot(model, org_id="acme", dialect="postgres", contexts={})
+    (product,) = with_product.data_products
+    monkeypatch.setattr(AtlasExport, "classification_merge", False)
+    _mock_atlas(monkeypatch)
+    result = await AtlasExport(_config("atlas")).publish(with_product)
+    assert result.ok, result.errors
+    assert product.semantic_uri in result.bindings
+    assert issubclass(PurviewExport, AtlasExport) and PurviewExport.binds_products
+
+
+@pytest.mark.asyncio
 async def test_atlas_prefers_the_stored_guid_over_the_laggy_search_index(snapshot, monkeypatch):
     """The basic-search index lags commits; the stored binding is the identity of record."""
     monkeypatch.setattr(AtlasExport, "classification_merge", False)
@@ -508,13 +542,22 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
         # target's catalog serves the snapshot's domains, so its tables are published to it.
         domains = sorted({t.domain_id for t in snapshot.tables})
         return MetadataExportConfig(
-            enabled=True, targets=[{"catalog": target_id} for target_id in exporters]
+            enabled=True,
+            targets=[{"catalog": target_id, "role": "steward"} for target_id in exporters],
         ), [
             MetadataExportTarget(
-                id=target_id, provider="atlas", endpoint="https://catalog.example", domains=domains
+                id=target_id,
+                provider="atlas",
+                endpoint="https://catalog.example",
+                domains=domains,
+                role="steward",
             )
             for target_id in exporters
         ]
+
+    async def _reads_everything(state, role):
+        # The role reads every column here: what a role is sent is test_metadata_export_scope.
+        return lambda table: None
 
     async def _model(*args, **kwargs):
         # An empty config: the publish path reads the DQ outcomes off it (REQ-1443), and a
@@ -522,6 +565,8 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
         return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
 
     monkeypatch.setattr(publishing, "_export_config", _export_config)
+    monkeypatch.setattr(publishing, "role_reader", _reads_everything)
+    monkeypatch.setattr(publishing, "role_reach", lambda state, role: lambda domain_id: True)
     monkeypatch.setattr(publishing, "_model_for_export", _model)
     monkeypatch.setattr(
         publishing,
@@ -575,6 +620,7 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
     class _Exporter:
         stored_bindings: dict = {}
         needs_export_views = False  # a remote catalog: it addresses nothing in the engine's store
+        binds_products = True  # Atlas binds its product entities itself
 
         async def publish(self, published_snapshot):
             seen["bindings"] = dict(self.stored_bindings)
@@ -612,6 +658,7 @@ async def test_a_binding_the_publish_captured_is_kept_though_it_names_no_snapsho
     class _Exporter:
         stored_bindings: dict = {}
         needs_export_views = False
+        binds_products = True
 
         async def publish(self, published_snapshot):
             result = PublishResult(provider_name="atlas", published={"table": 1})
@@ -653,6 +700,7 @@ async def test_a_refusal_an_adapter_does_not_report_is_its_targets_named_failure
     class _Accepted:
         stored_bindings: dict = {}
         needs_export_views = False
+        binds_products = True
 
         async def publish(self, published_snapshot):
             return PublishResult(provider_name="atlas", published={"table": 1})
@@ -751,3 +799,111 @@ async def test_atlan_classification_merge_keeps_a_stewards_tag(snapshot, monkeyp
     assert all(url.startswith("https://catalog.example/api/meta/entity/guid/") for url in deletes)
     assert all(url.endswith("/classification/provisa_stale") for url in deletes)
     assert calls["posts"]
+
+
+@pytest.mark.asyncio
+async def test_a_retired_product_is_sent_only_where_it_was_published(
+    snapshot, control_plane, monkeypatch
+):
+    """REQ-1634 STATUS: a retired product is withdrawn from a target an earlier publish put it in,
+    and never created, retired, where it was not. For a provider that keeps no product bindings
+    (Horizon), the publish path records what it published."""
+    import dataclasses
+    import types
+    from contextlib import asynccontextmanager
+
+    from provisa.api.metadata_export import publishing
+    from provisa.api.metadata_export.model import DataProductAsset
+    from provisa.api.metadata_export.provider import PublishResult
+    from provisa.api.metadata_export.refs import data_product_ref
+    from provisa.core.repositories import catalog_binding
+
+    db = control_plane.org()
+
+    class _TenantDb:
+        @asynccontextmanager
+        async def acquire(self):
+            async with db.acquire() as conn:
+                yield conn
+
+    def product(pid: str, status: str) -> DataProductAsset:
+        return DataProductAsset(
+            ref=data_product_ref(pid),
+            id=pid,
+            name=pid.upper(),
+            domain_id="sales",
+            owner=None,
+            description="",
+            semantic_uri=f"provisa://acme/sales/products/{pid}",
+            status=status,
+            # A retired product's members went to its successor.
+            members=() if status == "retired" else (snapshot.tables[0].ref,),
+        )
+
+    sent: list[list[tuple[str, str]]] = []
+
+    class _Horizon:
+        stored_bindings: dict = {}
+        needs_export_views = False
+        binds_products = False  # a listing is found by its name, never by a stored id
+
+        async def publish(self, published_snapshot):
+            sent.append([(p.id, p.status) for p in published_snapshot.data_products])
+            return PublishResult(provider_name="snowflake_horizon", published={})
+
+    current: dict = {}
+
+    async def _export_config(org_id):
+        return MetadataExportConfig(
+            enabled=True, targets=[{"catalog": "horizon", "role": "steward"}]
+        ), [
+            MetadataExportTarget(
+                id="horizon",
+                provider="snowflake_horizon",
+                endpoint="https://catalog.example",
+                domains=["sales"],
+                role="steward",
+            )
+        ]
+
+    async def _reads_everything(state, role):
+        return lambda table: None
+
+    async def _model(*args, **kwargs):
+        return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+
+    monkeypatch.setattr(publishing, "_export_config", _export_config)
+    monkeypatch.setattr(publishing, "role_reader", _reads_everything)
+    monkeypatch.setattr(publishing, "role_reach", lambda state, role: lambda domain_id: True)
+    monkeypatch.setattr(publishing, "_model_for_export", _model)
+    monkeypatch.setattr(publishing, "build_snapshot", lambda *a, **k: current["snapshot"])
+    exporter = _Horizon()
+    monkeypatch.setattr(publishing, "metadata_export", lambda config: exporter)
+    monkeypatch.setattr(
+        "provisa.api.app.state",
+        RoleState(
+            model_db=(_one_db := _TenantDb()),
+            tenant_db=_one_db,
+            contexts={},
+            multitenancy=False,
+            config=types.SimpleNamespace(
+                mail=types.SimpleNamespace(base_url="https://provisa.test")
+            ),
+        ),
+        raising=False,
+    )
+
+    async def publish(*products: DataProductAsset) -> None:
+        current["snapshot"] = dataclasses.replace(snapshot, data_products=list(products))
+        assert (await publishing.publish_snapshot("acme"))["horizon"].ok
+
+    # c360 is published live; old was retired before this target ever had it.
+    await publish(product("c360", "live"), product("old", "retired"))
+    assert sent[-1] == [("c360", "live")]
+    async with db.acquire() as conn:
+        bound = await catalog_binding.load_bindings(conn, "horizon")
+    assert bound["provisa://acme/sales/products/c360"] == ("c360", "C360")
+    assert "provisa://acme/sales/products/old" not in bound
+    # c360 retires: it was published here, so it is sent, retired, to be withdrawn.
+    await publish(product("c360", "retired"), product("old", "retired"))
+    assert sent[-1] == [("c360", "retired")]

@@ -256,6 +256,26 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
         ],
         "foreign_keys": _foreign_keys(state, role, schema, table),
         "unique_constraints": _unique_constraints(state, role, schema, table),  # REQ-1093
+        "time_travel": _time_travel(state, role, schema, table),  # REQ-1163
+    }
+
+
+def _time_travel(state: Any, role: str, schema: str, table: str) -> dict | None:
+    """REQ-1163: how the table travels in time, for an agent writing a read of it: the arguments
+    its reference takes in SQL (``"schema"."table"(as_recorded => '2026-10-01T17:00:00')``) and in
+    GraphQL; None when it keeps no versions."""
+    from provisa.mv.time_travel import relation_kinds
+
+    meta = _find_role_table(state.contexts[role], schema, table)
+    if meta is None:
+        return None
+    rows = [r for r in getattr(state, "tables", None) or [] if r["id"] == meta.table_id]
+    kind = relation_kinds(state, rows).get(meta.table_id)
+    if kind is None:
+        return None
+    return {
+        "kind": kind,
+        "arguments": ["as_of", "as_recorded"] if kind == "bitemporal" else ["as_recorded"],
     }
 
 
@@ -505,16 +525,21 @@ async def list_glossary_terms(
     edge-connected to one), deprecated or retired -- so you can tell them apart without a second
     call; see create/update below for what 'finalizing' a term means."""
     require_role(role, state)
-    from provisa.api.admin.glossary_router import _require_glossary_read, _view_scope
+    from provisa.api.admin.glossary_router import (
+        _require_glossary_read,
+        _view_scope,
+        counted_as_served,
+    )
     from provisa.core.repositories import glossary as glossary_repo
 
     _require_glossary_read(request)
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        return await glossary_repo.list_terms(
+        terms = await glossary_repo.list_terms(
             conn, q=q, include_deprecated=include_deprecated, domains=_view_scope(request, None)
         )
+        return await counted_as_served(conn, request, terms)
 
 
 async def create_glossary_term(
@@ -852,13 +877,13 @@ async def create_data_product(  # REQ-1855
     limitations: str = "",
     usage: str = "",
     version: str | None = None,
-    status: str | None = None,
     sla: str | None = None,
     support: str | None = None,
 ) -> dict:
     """Create or replace a data product by id (an id that already exists is overwritten in
     full — fetch it first with list_data_products if you mean to change only some fields).
-    `domain_id` must be a real, existing domain."""
+    `domain_id` must be a real, existing domain. Its status is kept: a new product is a draft,
+    and change_data_product_status changes it."""
     require_role(role, state)
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
@@ -893,12 +918,100 @@ async def create_data_product(  # REQ-1855
             limitations=limitations,
             usage=usage,
             version=version,
-            status=status,
+            # REQ-1634 STATUS: the lifecycle changes only by its actions; a save keeps it.
+            **(
+                {
+                    "status": stored["status"],
+                    "status_reason": stored["status_reason"],
+                    "retire_on": stored["retire_on"],
+                    "successor": stored["successor_id"],
+                }
+                if stored is not None
+                else {}
+            ),
             sla=sla,
             support=support,
         )
         await data_product_repo.upsert(conn, model)
     return {"id": id}
+
+
+#: REQ-1634 STATUS: the actions a data product's status changes by.
+DATA_PRODUCT_ACTIONS = ("publish", "deprecate", "retire", "restore")
+
+
+async def change_data_product_status(
+    state: Any, role: str, request: Any, id: str, action: str, body: dict
+) -> dict:  # REQ-1634
+    """Publish, deprecate, retire or restore a data product. ``body``: deprecate takes
+    ``reason`` (required) and ``retire_on`` (ISO date, optional); retire takes ``reason`` and
+    ``successor`` (the product its members move to, required when it has any)."""
+    import datetime
+
+    require_role(role, state)
+    from provisa.api.admin.capabilities import (
+        require_capability_request,
+        require_right_in_domains_request,
+    )
+    from provisa.api.admin.glossary_router import _caller_id
+    from provisa.core.repositories import data_product as data_product_repo
+
+    if action not in DATA_PRODUCT_ACTIONS:
+        raise ValueError(f"action is one of {', '.join(DATA_PRODUCT_ACTIONS)}, not {action!r}")
+    require_capability_request(request, "data_product_rw")
+    by = _caller_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        stored = await data_product_repo.get(conn, id)
+        if stored is None:
+            raise ValueError(f"Data product not found: {id}")
+        require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+        try:
+            async with conn.transaction():
+                if action == "publish":
+                    await data_product_repo.publish(conn, id, by=by)
+                elif action == "deprecate":
+                    retire_on = body.get("retire_on")
+                    await data_product_repo.deprecate(
+                        conn,
+                        id,
+                        reason=body.get("reason"),
+                        retire_on=datetime.date.fromisoformat(retire_on) if retire_on else None,
+                        by=by,
+                        today=datetime.date.today(),
+                    )
+                elif action == "retire":
+                    await data_product_repo.retire(
+                        conn, id, reason=body.get("reason"), successor=body.get("successor"), by=by
+                    )
+                else:
+                    await data_product_repo.restore(conn, id, by=by)
+        except data_product_repo.StatusRefused as refused:
+            raise ValueError(str(refused)) from refused
+        changed = await data_product_repo.get(conn, id)
+        assert changed is not None  # a status action changes a product, never removes it
+    return {"ok": True, "id": id, "status": changed["status"]}
+
+
+async def list_data_product_findings(state: Any, role: str, request: Any) -> list[dict]:  # REQ-2146
+    """What a curator should look at in the data products: each product with its findings, each
+    {kind, code, message, params} -- no_members, member_deprecated, no_owner, no_support_contact,
+    retirement_blocked, domain_steward_unset, no_description, successor_retired."""
+    import datetime
+
+    require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.core import product_findings
+
+    require_capability_request(request, "data_product_read")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        found = await product_findings.findings(
+            conn, await product_findings.context(datetime.date.today())
+        )
+    return [{"product_id": pid, "findings": items} for pid, items in sorted(found.items())]
 
 
 async def delete_data_product(state: Any, role: str, request: Any, id: str) -> dict:  # REQ-1855
@@ -939,21 +1052,24 @@ async def upsert_metric(  # REQ-1856
     references (e.g. "SUM(orders.amount) - SUM(orders.refunds)") — must parse under sqlglot and
     contain at least one aggregate function, or this raises. `ai_context` is definition text
     written for AI consumers (yourself and other agents) — fill it in with what the metric means
-    and when to use it, not just a repeat of the expression. `visible_to` defaults to every role
-    (["*"]) if omitted."""
+    and when to use it, not just a repeat of the expression. `visible_to` defaults to the acting
+    role and the standard Viewer role (every role built on Viewer) if omitted."""
     require_role(role, state)
     from provisa.api.admin.capabilities import require_capability_request
     from provisa.core.models import Metric as MetricModel
     from provisa.core.repositories import metric as metric_repo
 
     require_capability_request(request, "table_registration")
+    from provisa.security.default_grant import default_read_grant as _default_read_grant
+
     model = MetricModel(
         name=name,
         expression=expression,
         datatype=datatype,
         description=description,
         ai_context=ai_context,
-        visible_to=list(visible_to) if visible_to else ["*"],
+        # REQ-1317: one created with no roles named is read by the acting role and Viewer.
+        visible_to=list(visible_to) if visible_to else _default_read_grant(role),
     )
     pool = state.model_db
     assert pool is not None
@@ -1248,14 +1364,14 @@ async def explain_sql(state: Any, role: str, sql: str) -> dict:
 
 
 def _visible_metrics(state: Any, role: str) -> list[Any]:
-    """Config metrics whose ``visible_to`` contains "*" or ``role`` (REQ-1319).
+    """Config metrics whose ``visible_to`` names ``role`` (REQ-1319, REQ-1317).
 
     Sourced from the loaded config (``state.config.metrics``) — the same reachable
     config object _domain_descriptions reads domains from.
     """
     config = getattr(state, "config", None)
     metrics = getattr(config, "metrics", None) or []
-    return [m for m in metrics if "*" in m.visible_to or role in m.visible_to]
+    return [m for m in metrics if role in m.visible_to]
 
 
 def list_metrics(state: Any, role: str) -> list[dict]:

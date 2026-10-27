@@ -153,7 +153,10 @@ def commits(plane) -> Iterator[list[str]]:
 
 
 def _info() -> Any:
-    request = types.SimpleNamespace(state=types.SimpleNamespace(identity=None, active_org_id=ORG))
+    # No auth provider: the request acts as the role the middleware binds (REQ-2154).
+    request = types.SimpleNamespace(
+        state=types.SimpleNamespace(identity=None, active_org_id=ORG, role="admin")
+    )
     return types.SimpleNamespace(context={"request": request})
 
 

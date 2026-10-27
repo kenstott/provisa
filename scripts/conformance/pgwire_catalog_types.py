@@ -226,39 +226,79 @@ def seed(pg_dsn: str) -> None:
     print(f"seeded {FIXTURE_SCHEMA}.{FIXTURE_TABLE}: {len(FIXTURE)} columns, one row")
 
 
-def registered_type(pg_type: str) -> str:
-    """The type a PostgreSQL source column of ``pg_type`` registers as, decided as registration
-    decides it (provisa/api/admin/introspect.py ``_pg_column_typing``): an array by
-    ``column_typing`` (JSON, REQ-1965), a sized decimal keeping its size (REQ-1961), any other
-    scalar by ``to_ir``. Raises ValueError for a type registration refuses."""
+def registered_typing(pg_type: str) -> dict[str, Any]:
+    """How a PostgreSQL source column of ``pg_type`` registers, decided as registration decides
+    it (provisa/api/admin/introspect.py ``_pg_column_typing``): an array by ``column_typing``
+    (JSON with its depth, element type and native spelling, REQ-1965), a sized decimal keeping its
+    size (REQ-1961), any other scalar by ``to_ir``. The column fields, ``data_type`` first. Raises
+    ValueError for a type registration refuses."""
     from provisa.core.ir_types import column_typing, to_ir
     from provisa.core.numeric_type import numeric_size_of
 
     typing = column_typing(pg_type, "postgresql")
-    if typing.native_type or numeric_size_of(typing.data_type) is not None:
-        return typing.data_type
-    return to_ir(pg_type)
+    if typing.native_type:
+        return {
+            "data_type": typing.data_type,
+            "array_depth": typing.array_depth,
+            "element_type": typing.element_type,
+            "native_type": typing.native_type,
+            "native_platform": typing.native_platform,
+        }
+    if numeric_size_of(typing.data_type) is not None:
+        return {"data_type": typing.data_type}
+    return {"data_type": to_ir(pg_type)}
 
 
-def registrable_columns() -> tuple[list[tuple[str, str, str]], dict[str, str]]:
-    """The fixture's columns as ``[(column, pg type, registered type)]``, and those registration
-    refuses, each with why. A refused column stays in PostgreSQL's fixture but not in the model:
-    the type report names it rather than the boot failing on it."""
-    registered: list[tuple[str, str, str]] = []
+class _SourcePool:
+    """The job's PostgreSQL as registration's source pool reads it (``execute`` of one source)."""
+
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    async def execute(self, source_id: str, sql: str, params: list | None = None) -> Any:
+        from types import SimpleNamespace
+
+        with psycopg.connect(self.dsn, autocommit=True) as conn:
+            return SimpleNamespace(rows=conn.execute(sql, params or []).fetchall())
+
+
+def _sized_numeric(pg_dsn: str, column: str) -> dict[str, Any]:
+    """An unsized numeric column as registration records it: ``numeric(38, s)``, ``s`` read from
+    the fixture's values by registration's own sampling (REQ-2167)."""
+    import asyncio
+
+    from provisa.api.admin.introspect import _sized_numeric as sample
+
+    typing = asyncio.run(
+        sample(_SourcePool(pg_dsn), "conformance-pg", FIXTURE_SCHEMA, FIXTURE_TABLE, column)
+    )
+    return {"data_type": typing.data_type}
+
+
+def registrable_columns(
+    pg_dsn: str,
+) -> tuple[list[tuple[str, str, dict[str, Any]]], dict[str, str]]:
+    """The fixture's columns as ``[(column, pg type, registered column fields)]``, and those
+    registration refuses, each with why. A refused column stays in PostgreSQL's fixture but not in
+    the model: the type report names it rather than the boot failing on it."""
+    registered: list[tuple[str, str, dict[str, Any]]] = []
     refused: dict[str, str] = {}
     for name, typ, _ in FIXTURE:
         try:
-            registered.append((name, typ, registered_type(typ)))
+            typing = registered_typing(typ)
+            if typing["data_type"] == "numeric":
+                typing = _sized_numeric(pg_dsn, name)
+            registered.append((name, typ, typing))
         except ValueError as exc:
             refused[name] = str(exc).split(":")[0]
     return registered, refused
 
 
-def provisa_config(pg_port: int) -> dict[str, Any]:
+def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     """The model the conformance instance boots with.
 
-    No auth provider, so pgwire is in trust mode and the startup user names the role
-    (``org_admin``). One domain, ``conformance``, which pgwire presents as the schema; one
+    The basic provider with SCRAM: pgwire proves the job user's password, and the user acts as
+    ``org_admin``. One domain, ``conformance``, which pgwire presents as the schema; one
     PostgreSQL source over the job's real PostgreSQL; one table, ``types_fixture``, registered from
     that source's ``conformance`` schema under its own name and alias, every registrable column
     typed as registration types a PostgreSQL column (``registered_type``) and visible to
@@ -266,13 +306,24 @@ def provisa_config(pg_port: int) -> dict[str, Any]:
     column whose type registration refuses is left out of the model and named in the report.
     pgspec needs nothing here: every table it touches it creates itself as a session temporary
     table."""
-    registered, _refused = registrable_columns()
+    registered, _refused = registrable_columns(pg_dsn)
     return {
         "federation_engine": "duckdb",
         "auth": {
-            "provider": "none",
+            # Password auth with SCRAM-SHA-256 (REQ-1394), so pgspec's auth tests prove a password
+            # rather than meet trust mode. The break-glass account creates the job's one user
+            # (CONFORMANCE_USER) once the server is up; that user is org_admin by default.
+            "provider": "basic",
+            "scram": True,
+            "jwt_secret": "${env:CONFORMANCE_JWT_SECRET}",
+            "superuser": {
+                "username": "${env:PROVISA_SUPERUSER_USERNAME}",
+                "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
+            },
             "assignments_source": "provisa",
             "default_assignments": [{"domain_id": "*", "role_id": "org_admin"}],
+            # The role a pgwire login acts as when its user names none.
+            "default_role": "org_admin",
         },
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
@@ -301,21 +352,21 @@ def provisa_config(pg_port: int) -> dict[str, Any]:
                         "name": name,
                         # A column is registered with its type (REQ-1426), as registration
                         # types a PostgreSQL source's column.
-                        "data_type": ir_type,
+                        **typing,
                         "visible_to": ["org_admin"],
                     }
-                    for name, _typ, ir_type in registered
+                    for name, _typ, typing in registered
                 ],
             }
         ],
     }
 
 
-def write_config(path: Path, pg_port: int) -> None:
+def write_config(path: Path, pg_port: int, pg_dsn: str) -> None:
     import yaml
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(provisa_config(pg_port), sort_keys=False))
+    path.write_text(yaml.safe_dump(provisa_config(pg_port, pg_dsn), sort_keys=False))
     print(f"wrote {path}")
 
 
@@ -519,8 +570,8 @@ def type_conversions(pg: Server, provisa: Server, names: dict[int, str]) -> dict
         server.run("SET DateStyle TO 'ISO, MDY'")
         server.run("SET IntervalStyle TO 'postgres'")
         server.run("SET extra_float_digits TO 1")
-    registered, refused = registrable_columns()
-    model_type = {col: ir for col, _, ir in registered}
+    registered, refused = registrable_columns(pg.dsn)
+    model_type = {col: typing["data_type"] for col, _, typing in registered}
     fixture = []
     for col, typ, _ in FIXTURE:
         sql = f"SELECT {col} FROM {FIXTURE_SCHEMA}.{FIXTURE_TABLE}"
@@ -654,6 +705,7 @@ def main(argv: list[str]) -> int:
     c = sub.add_parser("config")
     c.add_argument("--out", required=True, type=Path)
     c.add_argument("--pg-port", required=True, type=int)
+    c.add_argument("--pg", required=True, help="the job's PostgreSQL: unsized numerics' scale")
     p = sub.add_parser("probe")
     p.add_argument("--pg", required=True)
     p.add_argument("--provisa", required=True)
@@ -663,7 +715,7 @@ def main(argv: list[str]) -> int:
     if args.command == "seed":
         seed(args.pg)
     elif args.command == "config":
-        write_config(args.out, args.pg_port)
+        write_config(args.out, args.pg_port, args.pg)
     else:
         probe(args.pg, args.provisa, args.out_json, args.out_md)
     return 0

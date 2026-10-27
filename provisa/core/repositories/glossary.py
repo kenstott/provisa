@@ -814,6 +814,28 @@ async def list_terms(
     ]
 
 
+async def bindings(conn: "Connection") -> list[tuple[int, int, str | None]]:
+    """Every (term id, table id, column) a term is bound to: its column refs, and with column
+    None the tables it grounds as a class (REQ-2141)."""
+    refs = (
+        await conn.execute_core(
+            select(
+                glossary_term_refs.c.term_id,
+                glossary_term_refs.c.table_id,
+                glossary_term_refs.c.column_name,
+            )
+        )
+    ).fetchall()
+    classes = (
+        await conn.execute_core(
+            select(registered_tables.c.class_term_id, registered_tables.c.id).where(
+                registered_tables.c.class_term_id.is_not(None)
+            )
+        )
+    ).fetchall()
+    return [(r[0], r[1], r[2]) for r in refs] + [(r[0], r[1], None) for r in classes]
+
+
 async def get_term(conn: "Connection", term_id: int) -> dict | None:
     row = (
         await conn.execute_core(select(glossary_terms).where(glossary_terms.c.id == term_id))
@@ -1268,6 +1290,9 @@ class TermDeleteRefused(ValueError):
     def __init__(self, term_id: int, dependents: list[Dependent]) -> None:
         self.term_id = term_id
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = "The term has physical refs in"
         super().__init__(
             "term has physical refs; retire it, or move its refs to another term, first"
         )
@@ -1348,6 +1373,18 @@ async def move_ref(
     )
     removed = await _settle_terms(conn, {row.term_id}, domains_before=domains_before)
     return {"source_term_removed": row.term_id in removed}
+
+
+async def term_edges(conn: "Connection") -> list[tuple[int, int, str]]:  # REQ-2135
+    """Every edge between terms: (from term id, to term id, relationship type)."""
+    rows = await conn.execute_core(
+        select(
+            glossary_term_edges.c.from_term_id,
+            glossary_term_edges.c.to_term_id,
+            glossary_term_edges.c.rel_type,
+        )
+    )
+    return [(r.from_term_id, r.to_term_id, r.rel_type) for r in rows.fetchall()]
 
 
 async def add_edge(conn: "Connection", from_term_id: int, to_term_id: int, rel_type: str) -> None:

@@ -1692,25 +1692,17 @@
         "title": "一天的汇总",
         "description": "10 月 1 日现在的样子。按分行、产品和币种，可以看到流入、流出和净额。通过 pgwire 连接的 BI 工具运行的正是这条 SQL。"
       },
-      "bankingAsReported": {
-        "title": "日终时报送的样子",
-        "description": "记录于现在设置为 10 月 1 日的日终。BI 工具在其 pgwire 会话中用 SET provisa.as_recorded 做同样的事。记录于按 updated_at 筛选交易，按每天的日终筛选每日汇总，所以你看到的是银行当晚报送的数字。"
-      },
       "bankingReported": {
         "title": "当时报送了什么",
-        "description": "按 10 月 1 日日终报送的 10 月 1 日和 2 日的公司业务汇总。伦敦的 GBP 汇总仍包含后来被冲销的那笔付款。10 月 2 日当时还没有日终，所以没有数字。"
-      },
-      "bankingAsRestated": {
-        "title": "之后更正的样子",
-        "description": "记录于移到 10 月 12 日的日终，也就是三十天中的最后一天。到那时，10 月 6 日录入的冲销和 10 月 7 日录入的迟到交易都已记录。"
+        "description": "按 10 月 1 日日终报送的 10 月 1 日和 2 日的公司业务汇总：视图的 as_recorded 参数按当时的记录读取它们，通过 pgwire 连接的 BI 工具用 SET provisa.as_recorded 做同样的事。伦敦的 GBP 汇总仍包含后来被冲销的那笔付款。10 月 2 日当时还没有日终，所以没有数字。"
       },
       "bankingRestated": {
         "title": "现在的结果",
-        "description": "同一条 SQL。伦敦 10 月 1 日的汇总不再包含被冲销的付款，爱丁堡 10 月 2 日的 USD 汇总现在包含了迟到的交易。每次日终报送的版本与更正后的版本并存，recorded_at 显示每个版本的记录时间。"
+        "description": "同一条 SQL，as_recorded 设为 10 月 12 日日终，即三十天中的最后一天。伦敦 10 月 1 日的汇总不再包含被冲销的付款，爱丁堡 10 月 2 日的 USD 汇总现在包含了迟到的交易。每次日终报送的版本与更正后的版本并存，recorded_at 显示每个版本的记录时间。"
       },
       "bankingAsOpsSql": {
         "title": "回到运营身份",
-        "description": "浏览器现在以运营身份运行，仍然记录于 10 月 12 日的日终。"
+        "description": "浏览器现在以运营身份运行。"
       },
       "bankingPostings": {
         "title": "汇总背后的记账",

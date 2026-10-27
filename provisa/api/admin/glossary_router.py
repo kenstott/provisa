@@ -300,12 +300,31 @@ async def list_terms(
     require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
-        return await glossary_repo.list_terms(
-            cast("Connection", conn),
+        _conn = cast("Connection", conn)
+        terms = await glossary_repo.list_terms(
+            _conn,
             q=q,
             include_deprecated=include_deprecated,
             domains=_view_scope(request, domains),
         )
+        return await counted_as_served(_conn, request, terms)
+
+
+async def counted_as_served(conn: "Connection", request: Any, terms: list[dict]) -> list[dict]:
+    """``terms`` with their counts of the columns and tables the caller is served (REQ-2152)."""
+    from provisa.api.admin.read_rights import reader_for_request
+
+    reader = reader_for_request(request)
+    refs: dict[int, int] = {}
+    grounded: dict[int, int] = {}
+    for term_id, table_id, column in await glossary_repo.bindings(conn):
+        if reader.column(table_id, column):
+            counted = refs if column is not None else grounded
+            counted[term_id] = counted.get(term_id, 0) + 1
+    return [
+        {**t, "ref_count": refs.get(t["id"], 0), "table_count": grounded.get(t["id"], 0)}
+        for t in terms
+    ]
 
 
 @router.get("/terms/{term_id}")
@@ -319,6 +338,14 @@ async def get_term(request: Request, term_id: int) -> dict:
         if term is None:
             raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
         await _require_term_readable(_conn, term_id, request)
+        grounds = await glossary_repo.term_tables(_conn, term_id)
+    from provisa.api.admin.read_rights import reader_for_request
+
+    # REQ-2152: the refs, and the counts, of the columns and tables its caller is served.
+    reader = reader_for_request(request)
+    term["refs"] = [r for r in term["refs"] if reader.column(r["table_id"], r["column_name"])]
+    term["ref_count"] = len(term["refs"])
+    term["table_count"] = sum(1 for t in grounds if reader.column(t["table_id"], None))
     return term
 
 
@@ -413,12 +440,16 @@ async def delete_term(request: Request, term_id: int) -> dict:
         try:
             deleted = await glossary_repo.delete_term(_conn, term_id)
         except glossary_repo.TermDeleteRefused as refused:
-            # REQ-1918: the term's physical refs block it; each table it is rooted in is named.
+            from provisa.api.admin.read_rights import reader_for_request, refusal
+
+            # REQ-1918: the term's physical refs block it; each table it is rooted in that the
+            # caller may read is named (REQ-2152). The message names none of them.
+            _said, named = await refusal(_conn, reader_for_request(request), refused)
             raise ApiError(
                 400,
                 "glossary.invalid",
                 str(refused),
-                dependents=[d.as_dict() for d in refused.dependents],
+                dependents=named,
             ) from refused
     if not deleted:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
@@ -448,7 +479,10 @@ async def term_for_ref(request: Request, table_id: int, column_name: str) -> dic
 
         _require_domain(request, await table_domain(_conn, table_id))
         term = await glossary_repo.get_term_by_ref(_conn, table_id, column_name)
-    if term is None:
+    from provisa.api.admin.read_rights import reader_for_request
+
+    # REQ-2152: a column the caller is not served is answered as one no term is bound to.
+    if term is None or not reader_for_request(request).column(table_id, column_name):
         raise ApiError(404, "glossary.ref_not_found", "no term for that column")
     return term
 
@@ -466,10 +500,15 @@ async def related_terms_for_tables(
     """
     _require_glossary_read(request)
     require_active_org_id(request)
+    from provisa.api.admin.read_rights import reader_for_request
+
+    # REQ-2152: the terms of the tables the caller is served a column of.
+    reader = reader_for_request(request)
+    served = {t for t in table_id if reader.column(t, None)}
     pool = await _pool()
     async with pool.acquire() as conn:
         return await glossary_repo.related_terms_for_tables(
-            cast("Connection", conn), set(table_id), domains=_authority(request)
+            cast("Connection", conn), served, domains=_authority(request)
         )
 
 
@@ -669,7 +708,11 @@ async def move_ref(request: Request) -> dict:
         losing = await glossary_repo.get_term_by_ref(
             _conn, int(body["table_id"]), str(body["column_name"])
         )
-        if losing is None:
+        from provisa.api.admin.read_rights import reader_for_request
+
+        # REQ-2152: a ref on a column the caller is not served is answered as missing.
+        served = reader_for_request(request).column(int(body["table_id"]), str(body["column_name"]))
+        if losing is None or not served:
             raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
         await _require_term_curatable(_conn, losing["id"], request)
         await _require_term_curatable(_conn, int(body["to_term_id"]), request)
@@ -704,8 +747,12 @@ async def move_ref(request: Request) -> dict:
         except TermTagRefused as exc:
             raise ApiError(409, exc.code, str(exc), **exc.params) from exc
         except glossary_repo.TermIsClass as exc:
+            from provisa.api.admin.read_rights import reader_for_request, told_glossary_refusal
+
+            # REQ-2152: only the tables the caller reads are named.
+            said, tables = await told_glossary_refusal(_conn, reader_for_request(request), exc)
             raise ApiError(
-                409, "glossary.term_is_class", str(exc), term=exc.term, tables=", ".join(exc.tables)
+                409, "glossary.term_is_class", said, term=exc.term, tables=tables
             ) from exc
         except glossary_repo.KeyColumnDerived as exc:
             raise ApiError(
@@ -846,12 +893,17 @@ async def _require_table_groundable(
     whether the caller may touch that table at all, and the term is gated by the curation rule."""
     from provisa.api.admin.domain_guard import DomainLookupError, table_domain
 
+    from provisa.api.admin.read_rights import reader_for_request
+
     if not await glossary_repo.term_exists(conn, term_id):
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
     try:
         domain = await table_domain(conn, table_id)
     except DomainLookupError as exc:
         raise ApiError(404, "glossary.table_not_found", f"table {table_id} not found") from exc
+    # REQ-2152: a table the caller is served no column of is answered as one that does not exist.
+    if not reader_for_request(request).column(table_id, None):
+        raise ApiError(404, "glossary.table_not_found", f"table {table_id} not found")
     _require_domain(request, domain)
     await _require_term_curatable(conn, term_id, request)
 
@@ -866,12 +918,16 @@ async def ground_term_table(
     except glossary_repo.TableHasNoPrimaryKey as exc:
         raise ApiError(400, "glossary.table_no_primary_key", str(exc), table=exc.table) from exc
     except glossary_repo.TermIsProperty as exc:
+        from provisa.api.admin.read_rights import reader_for_request, told_glossary_refusal
+
+        # REQ-2152: only the columns the caller reads are named.
+        said, columns = await told_glossary_refusal(conn, reader_for_request(request), exc)
         raise ApiError(
             409,
             "glossary.term_is_property",
-            str(exc),
+            said,
             term=exc.term,
-            columns=", ".join(exc.columns),
+            columns=columns,
         ) from exc
     except glossary_repo.TableAlreadyGrounded as exc:
         raise ApiError(
@@ -1052,7 +1108,37 @@ async def applied_history(request: Request, term_id: int) -> dict:
             "glossary.no_retirement_history",
             f"the model's history holds no retirement of term {term_id}",
         )
-    return history
+    return await _history_as_read(request, history)
+
+
+async def _history_as_read(request: Request, history: dict) -> dict:
+    """``history`` with only the refs its caller reads (REQ-2152): a table path is told when the
+    table it names now is one the caller is served a column of, a column ref when the caller is
+    served that column. A path naming no table now cannot be told of, and is left out."""
+    from sqlalchemy import select
+
+    from provisa.api.admin.read_rights import reader_for_request
+    from provisa.core.env_files import table_path
+    from provisa.core.schema_org import registered_tables as rt
+
+    reader = reader_for_request(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        rows = (
+            await conn.execute_core(select(rt.c.id, rt.c.domain_id, rt.c.table_name, rt.c.alias))
+        ).fetchall()
+    by_path = {table_path(r.domain_id, r.alias or r.table_name): r.id for r in rows}
+    return {
+        **history,
+        "columns": [
+            c
+            for c in history["columns"]
+            if c["table"] in by_path and reader.column(by_path[c["table"]], c["column"])
+        ],
+        "tables": [
+            t for t in history["tables"] if t in by_path and reader.column(by_path[t], None)
+        ],
+    }
 
 
 @router.get("/findings")
@@ -1112,9 +1198,14 @@ async def list_term_tables(request: Request, term_id: int) -> list[dict]:
         _conn = cast("Connection", conn)
         await _require_term_readable(_conn, term_id, request)
         try:
-            return await glossary_repo.term_tables(_conn, term_id)
+            grounds = await glossary_repo.term_tables(_conn, term_id)
         except glossary_repo.TermNotFound as exc:
             raise ApiError(404, "glossary.term_not_found", str(exc)) from exc
+    from provisa.api.admin.read_rights import reader_for_request
+
+    # REQ-2152: only the tables the caller is served a column of.
+    reader = reader_for_request(request)
+    return [t for t in grounds if reader.column(t["table_id"], None)]
 
 
 @router.post("/terms/{term_id}/tables")

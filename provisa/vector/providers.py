@@ -184,7 +184,9 @@ class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
             ) from exc
         with self._in_use:
             self._loaded(model)
-        return Path(snapshot_download(model.id, local_files_only=True)).name
+        # local_files_only: the cached snapshot's own name is read, and nothing is downloaded, so
+        # there is no revision to pin.
+        return Path(snapshot_download(model.id, local_files_only=True)).name  # nosec B615
 
 
 _PROVIDERS: dict[str, type[EmbeddingProvider]] = {

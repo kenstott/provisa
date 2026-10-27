@@ -260,7 +260,10 @@ def test_a_read_that_cannot_wait_for_the_build_fails_by_name_and_the_build_goes_
                         timeout=60,
                     )
                     assert refused.status_code >= 500, refused.text
-                    assert "the replica of src.public.wide is still being built" in refused.text
+                    # Named as the model names the table (REQ-2152), in a body that is JSON.
+                    told = refused.json()
+                    assert 'the replica of "shop"."wide" is still being built' in told["detail"]
+                    assert told["params"]["replica"] == '"shop"."wide"', told
             finally:
                 blocker.rollback()  # releases the lock: the build can now read the source
                 blocker.close()

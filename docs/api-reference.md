@@ -49,6 +49,8 @@ Execute a GraphQL query or mutation.
 
 The request runs as its acting role: the authenticated user's role, or in dev mode (no auth) the `X-Provisa-Role` header, `org_admin` when the header is absent. The `role` field in the body does not select a role. If it is present it must equal the acting role; a different value returns `400` with code `data.role_mismatch`, naming both roles. The same rule applies to `POST /data/sql`, `POST /data/query` and `POST /query/nl`.
 
+**GraphQL over HTTP.** The endpoint follows the GraphQL-over-HTTP specification. It also answers `GET /data/graphql`, with `query`, `operationName`, `variables` and `extensions` URL-encoded (`variables` and `extensions` as JSON strings); a mutation sent with `GET` returns `405`. A request whose `Accept` lists `application/graphql-response+json` before `application/json` is answered with that media type; every other request is answered with `application/json`. A request that is not a GraphQL request returns `400`: no body, a body that is not a JSON object, or a parameter of the wrong JSON type (`query` and `operationName` are strings, `variables` and `extensions` are objects). A document that does not parse or validate, or whose variables do not coerce, is answered with its `errors` and no `data`: status `200` under `application/json`, and `400` under `application/graphql-response+json` or when `Accept` asks for a file format such as CSV.
+
 The `extensions` field supports the Automatic Persisted Query (APQ) protocol:
 
 ```json
@@ -66,7 +68,7 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol:
 - `X-Provisa-Redirect-Threshold` — row count above which redirect triggers
 - `X-Provisa-Redirect` — `true` to force redirect unconditionally
 
-**Response cache:** opt-in per request with the `@cached` operation directive (`query @cached(ttl: 60) { ... }`, `ttl` optional); the same directive applies to GraphQL sent over Arrow Flight. Cypher opts in with a `// @provisa cache=true` or `// @provisa cache_ttl=N` line, gRPC with `x-provisa-cache: true` or `x-provisa-cache-ttl: N` call metadata. Without it the request neither reads nor writes the response cache. The `X-Provisa-Cache` response header reports `HIT` or `MISS`. See [Cache](configuration.md#per-request-opt-in).
+**Response cache:** opt-in per request with the `@cached` operation directive (`query @cached(ttl: 60) { ... }`, `ttl` optional); the same directive applies to GraphQL sent over Arrow Flight. Cypher opts in with a `// @provisa cache=true` or `// @provisa cache_ttl=N` line, SPARQL (`/data/sparql`) with a `# @provisa cache=true` or `# @provisa cache_ttl=N` line, gRPC with `x-provisa-cache: true` or `x-provisa-cache-ttl: N` call metadata. Without it the request neither reads nor writes the response cache. The `X-Provisa-Cache` response header reports `HIT` or `MISS`. See [Cache](configuration.md#per-request-opt-in).
 
 #### Response cache request headers
 

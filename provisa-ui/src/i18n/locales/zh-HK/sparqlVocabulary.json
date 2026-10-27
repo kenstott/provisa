@@ -1,0 +1,17 @@
+{
+  "sparqlVocabulary": {
+    "domains": "網域",
+    "classes": "類",
+    "properties": "屬性",
+    "relationships": "關係",
+    "concepts": "概念",
+    "prefixes": "前綴",
+    "none": "你的角色在這裏沒有可顯示的內容。",
+    "domainTip": "宣告此網域的前綴，並把清單縮小到它的詞彙（{{namespace}}）。",
+    "domainPicked": "清單只顯示 {{namespace}}。再次點擊可顯示所有網域。",
+    "classTerm": "類術語 {{term}}",
+    "tableClass": "資料表自身的類",
+    "propertyTerm": "屬性術語 {{term}}",
+    "columnPredicate": "欄位 {{column}}"
+  }
+}

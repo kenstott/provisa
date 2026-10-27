@@ -38,6 +38,22 @@ def grant(monkeypatch, *capabilities: str, state=None):
     identity = types.SimpleNamespace(
         user_id="test-user", roles=["test_role"], acting_roles=["test_role"]
     )
-    request = types.SimpleNamespace(state=types.SimpleNamespace(identity=identity))
+    # The acting role, as the auth middleware binds it on every request (request.state.role).
+    request = types.SimpleNamespace(
+        state=types.SimpleNamespace(identity=identity, role="test_role")
+    )
     info = types.SimpleNamespace(context={"request": request})
     return info, request
+
+
+def serve_every_column(monkeypatch) -> None:
+    """Answer every caller the whole catalog (admin/catalog_scope.py), for a test of a table save
+    whose subject is not which columns its caller is served (REQ-2152 has its own tests)."""
+    from provisa.api.admin.catalog_scope import CatalogScope
+
+    def whole(info):
+        return CatalogScope(whole=True, reach=None, served={}, governance=True, role=None)
+
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", whole)
+    # schema_query binds the name at import, so its reference is replaced too.
+    monkeypatch.setattr("provisa.api.admin.schema_query.catalog_scope", whole)

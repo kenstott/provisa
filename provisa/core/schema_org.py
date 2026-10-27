@@ -186,7 +186,7 @@ domains = Table(
     Column("tenant_id", Uuid),
 )
 
-data_products = Table(  # REQ-1634, REQ-1660
+data_products = Table(  # REQ-1634
     "data_products",
     metadata,
     Column("id", Text, primary_key=True),
@@ -198,13 +198,18 @@ data_products = Table(  # REQ-1634, REQ-1660
     Column("limitations", Text, nullable=False, server_default=""),
     Column("usage", Text, nullable=False, server_default=""),
     Column("version", Text),
-    Column("status", Text),
+    # REQ-1634 STATUS: draft, live, deprecated or retired, each asserted by an action; why, the
+    # planned retirement of a deprecated product, who changed it when, and the product a retired
+    # one's members moved to.
+    Column("status", Text, nullable=False, server_default="draft"),
+    Column("status_reason", Text),
+    Column("retire_on", Date),
+    Column("status_by", Text),
+    Column("status_at", DateTime(timezone=True)),
+    Column("successor_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),
     Column("sla", Text),
     Column("support", Text),
     Column("support_contact", Text),  # REQ-1635: Horizon Catalog listing manifest requirement
-    Column(
-        "publish", Boolean, nullable=False, server_default=false()
-    ),  # REQ-1635: PUBLISH = TRUE vs DRAFT
     Column("custom_properties", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
@@ -454,7 +459,7 @@ metrics = Table(
     Column("datatype", Text),
     Column("description", Text),
     Column("ai_context", Text),  # REQ-1319: definition text for AI consumers
-    Column("visible_to", JSON, nullable=False, default=lambda: ["*"], server_default='["*"]'),
+    Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("from_fact", Text),
 )
 
@@ -608,7 +613,7 @@ tag_assignments = Table(
     Column("column_name", Text),
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
     Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
-    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1660
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1634
     # REQ-2145: the glossary term a tag is on (pii on a Property term).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
     Column("object_key", Text, nullable=False),

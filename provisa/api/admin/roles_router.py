@@ -334,14 +334,17 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
             deleted = await role_repo.delete(conn, role_id)
         except role_repo.RoleDeleteRefused as refused:
             if refused.reason == "dependents":
-                # REQ-1918: nothing is removed; every dependent is named.
+                from provisa.api.admin.read_rights import reader_for_request, refusal
+
+                # REQ-1918: nothing is removed; every dependent the caller may read is named,
+                # and never how many there are (REQ-2152).
+                said, named = await refusal(conn, reader_for_request(request), refused)
                 raise ApiError(
                     409,
                     "roles.has_dependents",
-                    str(refused),
+                    said,
                     role=role_id,
-                    count=len(refused.dependents),
-                    dependents=[d.as_dict() for d in refused.dependents],
+                    dependents=named,
                 ) from refused
             raise ApiError(
                 400, "roles.cannot_delete_system", "Cannot delete system roles"
@@ -355,10 +358,12 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
 
 @router.get("/{role_id}/effective")
 async def effective_rights(role_id: str, request: Request):  # REQ-2161
-    """A role's effective capabilities: its lineage from the standard roles, what each role in it
-    adds, and every capability with the role it comes from. Answered for a role whose definition
-    the caller may read -- a meta-role when it may read every member -- and as not found
-    otherwise, so a role it may not read is not marked as existing."""
+    """A role's effective rights: its lineage from the standard roles, what each role in it adds,
+    every capability with the roles it comes from, and its data access -- per table and column
+    what it reads and writes, masked or row-filtered, with the grant behind it -- as far as the
+    caller may read (REQ-2152). Answered for a role whose definition the caller may read -- a
+    meta-role when it may read every member -- and as not found otherwise, so a role it may not
+    read is not marked as existing."""
     from provisa.core.db import STANDARD_ROLES
     from provisa.security.effective_rights import capabilities_view
     from provisa.security.meta_role import META_PREFIX, is_meta_role_id
@@ -378,4 +383,32 @@ async def effective_rights(role_id: str, request: Request):  # REQ-2161
     known = {r["id"] for r in rows}
     if not all(m in known and full(m) for m in members):
         raise ApiError(404, "roles.not_found", "Role not found")
-    return capabilities_view(role_id, rows, standard=STANDARD_ROLES)
+    view = capabilities_view(role_id, rows, standard=STANDARD_ROLES)
+    return {**view, "data": await _data_access(request, role_id, view["parents"])}
+
+
+async def _data_access(request: Request, role_id: str, parents: dict) -> list[dict]:  # REQ-2161
+    """``role_id``'s data access from what the runtime serves, capped by the caller's reads."""
+    import types
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.app import state
+    from provisa.core.schema_org import table_columns
+    from provisa.security.effective_rights import data_view_from_state
+
+    scope = catalog_scope(types.SimpleNamespace(context={"request": request}))
+    async with _pool(request).acquire() as conn:
+        result = await conn.execute_core(
+            select(
+                table_columns.c.table_id, table_columns.c.column_name, table_columns.c.visible_to
+            )
+        )
+        stored = {(r.table_id, r.column_name): list(r.visible_to or []) for r in result.fetchall()}
+    return data_view_from_state(
+        state,
+        role_id,
+        parents=parents,
+        stored=stored,
+        readable=lambda tid, column: scope.whole or column in scope.served.get(tid, set()),
+        governance=scope.governance,
+    )

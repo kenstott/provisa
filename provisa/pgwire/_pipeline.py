@@ -212,6 +212,10 @@ class _Plan:
     # REQ-2001 (GitHub issue 253): an INSERT ... SELECT written in two steps (_TwoStepInsert): its
     # governed SELECT read as any read, then its rows written through the target's write route.
     two_step: Any = field(default=None)
+    # REQ-2100: a write to a code table (codesource.writes.CodeWrite), with the plan of the read it
+    # needs (an UPDATE's or a DELETE's keys, an INSERT ... SELECT's rows), carried out by the
+    # table's bound command at the terminal.
+    code_write: Any = field(default=None)
     # REQ-1986: the scratch tables landed for this statement alone -- a TTL-0 table's rows too
     # many to inline -- each (CacheLocation, table name), dropped when it ends.
     scratch: tuple = field(default=())
@@ -613,8 +617,22 @@ async def _proxy_plan(
     if proxy is None:
         return {}
     tables = [t for t in getattr(state, "tables", None) or [] if t.get("id") in set(table_ids)]
-    if len(tables) != 1:
+    from provisa.transpiler.router import CODE_SOURCES
+
+    # REQ-2100: a code source answers a statement over any of its tables, joined in DuckDB.
+    if len(tables) != 1 and state.source_types.get(sid, "") not in CODE_SOURCES:
         return {"incomplete": "the statement reads more than one of its tables"}
+    if state.source_types.get(sid, "") in CODE_SOURCES:
+        from provisa.codesource.direct import direct_tables
+
+        # Complete exactly when the statement is read DIRECT from its code: the one test the
+        # materialization step leaves its tables unlanded by. Any other is landed there, and the
+        # engine reads where it landed.
+        if not direct_tables(state, table_ids, governed_sql):
+            return {
+                "complete_dataset": False,
+                "incomplete": "its tables are read where they landed",
+            }
     plan = await proxy.plan(
         state,
         Read(
@@ -1279,6 +1297,15 @@ async def vector_registry(state: Any) -> Any:  # REQ-419, REQ-423
     )
 
 
+def _code_parameters(state: Any, table_ids: Any, sql: str) -> set[str]:  # REQ-2100
+    """The parameters of the code tables whose conditions stay in the statement: those the engine
+    attaches (codesource.attach), which the engine hands to the host, and those of a statement
+    read DIRECT from its code (codesource.direct), whose arguments they are."""
+    from provisa.codesource import attach, direct
+
+    return attach.parameters(state, table_ids) | direct.parameters(state, table_ids, sql)
+
+
 def context_parameters(ctx: Any) -> set[str]:  # REQ-1986
     """The parameter columns of ``ctx``, every table's (``native_filter_columns``)."""
     return {name for columns in ctx.native_filter_columns.values() for name in columns}
@@ -1377,6 +1404,10 @@ async def _govern_and_route_planned(
         )
         plan.temp = _temp
         return plan
+    # REQ-1163: a relation's time given as a bound value is part of the statement it governs.
+    from provisa.mv.time_travel import bind_travel_params
+
+    sql, params = bind_travel_params(sql, params)
     # REQ-2092: what governing costs a request (a kept plan's lookup included), beside the others
     with _stage(_tracer, "pipeline.governance", name="governance", request_only=True):
         governed = await govern_statement(
@@ -1497,6 +1528,9 @@ class _Governed:
     schema_generation: tuple[Any, Any]
     # Governed-provenance: minted by govern_statement, verified by route_governed.
     stamp: str
+    # When it reads each relation that keeps versions: the times its references' arguments said,
+    # by alias, else the request's (provisa.mv.time_travel.Travel).
+    travel: Any
     # Facts derived from this governed statement, kept with it (pgwire's result shape).
     memo: dict[str, Any] = field(default_factory=dict)
     # The time travel it was governed under (``AsOf.key``; REQ-1163): a held statement governed
@@ -1637,6 +1671,31 @@ async def govern_statement(
     raw_sql, embedded_params = extract_params_comment(sql)
     raw_sql, sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
+    built: list[Any] = []
+
+    def _governance() -> Any:
+        if not built:
+            built.append(
+                build_governance_context(
+                    role_id,
+                    rls,
+                    state.masking_rules,
+                    ctx,
+                    getattr(state, "tables", []),
+                    role=role,
+                    relationships=getattr(state, "relationships", None),
+                    source_types=state.source_types,
+                    engine=getattr(state, "federation_engine", None),
+                )
+            )
+        return built[0]
+
+    # REQ-1163: a relation's time-travel arguments are lifted off it before anything else reads
+    # the statement; each reference is read at its own time, the rest at the request's.
+    from provisa.mv.time_travel import lift_statement
+
+    raw_sql, _travel = lift_statement(raw_sql, state, _governance, ctx, as_of)
+
     # REQ-1866: parse + REQ-1159's inline-command-localization check + REQ-1317's metric
     # expansion — the pure pre-governance stage, cached by (role, exact SQL text, schema
     # generation) when the earlier call found no inline command to localize (a hit that DID
@@ -1663,17 +1722,7 @@ async def govern_statement(
     # REQ-1529: and a branch writes only through a binding whose supplier admits it.
     await _reject_unbound_writes(_parsed_input, state)
 
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role,
-        relationships=getattr(state, "relationships", None),
-        source_types=state.source_types,
-        engine=getattr(state, "federation_engine", None),
-    )
+    gov_ctx = _governance()
     # ONE semantic statement: every view the statement reads is replaced by its SQL before
     # governance, so governance judges it whole for this reader (provisa.mv.view_read).
     _validated_sql = normalized_sql
@@ -1684,14 +1733,6 @@ async def govern_statement(
         normalized_sql, _validated_sql = semantic_statement(
             normalized_sql, _view_map, state, gov_ctx
         )
-        _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
-    # REQ-2109: a table whose rows are its versions is read as of the request's time travel.
-    from provisa.mv.bitemporal_tables import read_versions
-
-    _versioned = read_versions(normalized_sql, state, gov_ctx, as_of)
-    if _versioned != normalized_sql:
-        normalized_sql = _versioned
-        _validated_sql = read_versions(_validated_sql, state, gov_ctx, as_of)
         _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
@@ -1786,6 +1827,13 @@ async def govern_statement(
     governed_semantic = await _off_loop(
         apply_governance, normalized_sql, gov_ctx, _session_vars, embedded_params or None
     )
+    # REQ-2109: a table whose rows are its versions is read at each reference's time travel. The
+    # versions read is Provisa's own, like a row rule or a view's internals: it is applied to the
+    # governed statement, so its reads of the recorded time are not judged against the caller's
+    # grants -- the caller is governed on the statement it wrote.
+    from provisa.mv.bitemporal_tables import read_versions
+
+    governed_semantic = read_versions(governed_semantic, state, gov_ctx, _travel)
     if _registry is not None:
         # REQ-430: a text the statement searches for is embedded once, with the statement.
         governed_semantic = await _similarity.embed_text_queries(governed_semantic, _registry)
@@ -1843,6 +1891,7 @@ async def govern_statement(
         stamp=_mint_stamp(),
         memo=_memo,
         as_of=as_of,
+        travel=_travel,
     )
     # Not kept: a write (its admission checks run per call) and a statement that runs a registered
     # command while it is prepared. The slot itself refuses one governed while a schema rebuild
@@ -1955,6 +2004,55 @@ async def _two_step_plan(
     )
 
 
+async def _code_write_plan(
+    governed: "_Governed",
+    table_id: int,
+    *,
+    tree: Any,
+    params: list | None,
+    audit: Any,
+    state: Any,
+    read: Callable[[str], Coroutine[Any, Any, "_Plan"]],
+) -> "_Plan":
+    """REQ-2100: the plan of a governed write ``tree`` to the code table ``table_id``: its command
+    bound, the read it needs planned by ``read`` -- an ordinary read routed by the usual gates,
+    through the same pipeline as the write."""
+    from provisa.codesource import writes
+    from provisa.transpiler.router import Route
+
+    write = await writes.plan(state, table_id, tree, params)
+    read_plan = None
+    if write.read_sql is not None:
+        read_plan = await read(write.read_sql)
+        read_plan.audit = None  # the statement's one record is the write's
+    return _Plan(
+        route=Route.DIRECT,
+        sql=governed.governed_semantic,
+        source_id=write.table["source_id"],
+        dialect="postgres",
+        exec_params=params,
+        audit=audit,
+        stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+        route_reason="a write to a code table, carried out by its source's bound command",
+        role_id=governed.role_id,
+        table_ids=governed.table_ids,
+        sources=frozenset({write.table["source_id"], *(read_plan.sources if read_plan else ())}),
+        writes_tables=True,
+        written_table_id=table_id,
+        code_write=(write, read_plan),
+    )
+
+
+async def _run_code_write(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2100
+    """Read what the write needs, then call the table's command with it: the affected count."""
+    from provisa.codesource import writes
+
+    write, read = plan.code_write
+    rows = (await _execute_plan_bound(read, state)).materialize().rows if read else None
+    count = await writes.run(state, write, rows)
+    return QueryResult(rows=[], column_names=[], rowcount=count)
+
+
 async def _run_two_step(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2001
     """Read the statement's rows, then write them through the target's write route, a batch of
     rows an INSERT ... VALUES under the statement's own target, columns and ON CONFLICT."""
@@ -2038,6 +2136,9 @@ async def route_governed(
     _metric_semantic_sql = governed.metric_semantic_sql
     _table_ids = governed.table_ids
     governed_semantic = governed.governed_semantic
+    # REQ-1163: when each relation that keeps versions is read -- its reference's own time, else
+    # the request's.
+    _travel = governed.travel
 
     embedded_params = governed.comment_params
     if params is not None:
@@ -2108,6 +2209,33 @@ async def route_governed(
             return await _two_step_plan(
                 governed, _two, params=params, as_of=as_of, audit=_audit, state=state
             )
+    from provisa.codesource.writes import is_code_table
+
+    if _is_mutation and is_code_table(state, _written_table_id):
+        assert _written_table_id is not None
+        import dataclasses
+
+        import sqlglot
+
+        async def _read_governed(read_sql: str) -> _Plan:
+            # The key read: the governed write's own FROM and WHERE, read as any read is.
+            read_governed = dataclasses.replace(
+                governed,
+                governed_semantic=read_sql,
+                parsed=sqlglot.parse_one(read_sql, read="postgres"),
+                memo={},
+            )
+            return await route_governed(read_governed, params=params, as_of=as_of)
+
+        return await _code_write_plan(
+            governed,
+            _written_table_id,
+            tree=sqlglot.parse_one(governed.governed_semantic, read="postgres"),
+            params=params,
+            audit=_audit,
+            state=state,
+            read=_read_governed,
+        )
     # REQ-1897: a read whose result is rows — not a write, an EXPLAIN, or a sink delivery.
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
@@ -2141,7 +2269,7 @@ async def route_governed(
     if serve_cached and _raw_cacheable and _row_level.unbound is None:
         _hit, _cache_missed = await _cached_before_routing(
             state,
-            sql=governed_semantic,
+            sql=_travel.cache_sql(governed_semantic),
             params=_cache_params,
             role_id=role_id,
             cache_hint=_cache_hint,
@@ -2150,7 +2278,7 @@ async def route_governed(
         )
         if _hit is not None:
             return _cached_plan(
-                governed_sql=governed_semantic,
+                governed_sql=_travel.cache_sql(governed_semantic),
                 params=embedded_params or None,
                 role_id=role_id,
                 table_ids=_table_ids,
@@ -2196,7 +2324,11 @@ async def route_governed(
     # -- is read under its own (REQ-1983, REQ-1986); a single one is extract_nf_args' as ever.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys()
+    _parameters = (
+        context_parameters(ctx)
+        - _frozen.keys()
+        - _code_parameters(state, _table_ids, _physical_sql)
+    )
     _physical_sql, _read_args = separate_parameter_reads(_physical_sql, _parameters)
     _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _physical_sql, embedded_params or [], _parameters, _frozen
@@ -2267,7 +2399,7 @@ async def route_governed(
     if decision.route != Route.ENGINE:
         from provisa.mv.bitemporal_capture import reads_a_log
 
-        if reads_a_log(_table_ids, state, as_of):
+        if reads_a_log(_table_ids, state, _travel):
             from provisa.transpiler.router import RouteDecision
 
             decision = RouteDecision(
@@ -2440,6 +2572,12 @@ async def route_governed(
 
     await _await_source_servers(decision, _sources, state)
     if decision.route == Route.ENGINE:
+        from provisa.api.data.materialization import land_direct_reads
+
+        # REQ-2100: a code source's own statement the engine runs after all is landed for it.
+        _qualified, exec_params = await land_direct_reads(
+            _qualified, exec_params, state, _table_ids
+        )
         # REQ-135/REQ-1163: optimization — a view governance kept as its reference (its region's
         # copy, an as-of read of a bitemporal view, a materialized view the reader sees whole) is
         # answered here, BEFORE the unknown-catalog check and transpile (mv/view_read.py). Same
@@ -2447,10 +2585,14 @@ async def route_governed(
         # ref is source-less so it survives the rewrites unchanged and still matches its key.
         if _view_map:
             from provisa.compiler.view_expand import expand_view_refs
-            from provisa.mv.view_read import unnarrowed_view_bodies
+            from provisa.mv.view_read import read_views_at, unnarrowed_view_bodies
 
+            # REQ-1163: a bitemporal view reference that says its own time is read at it; the
+            # rest at the request's.
+            _qualified = read_views_at(_qualified, state, _travel)
             _qualified = expand_view_refs(
-                _qualified, unnarrowed_view_bodies(_qualified, _view_map, state, as_of=as_of)
+                _qualified,
+                unnarrowed_view_bodies(_qualified, _view_map, state, as_of=_travel.default),
             )
             # View bodies are stored in semantic form; after expansion, lower any
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
@@ -2459,7 +2601,11 @@ async def route_governed(
         # REQ-2109: a table updated in place is read from its version log under as_of.
         from provisa.mv.bitemporal_capture import read_logs
 
-        _qualified = read_logs(_qualified, state, ctx, as_of)
+        _qualified = read_logs(_qualified, state, ctx, _travel)
+        # REQ-372: an Iceberg or Delta table read at a recorded time reads that snapshot.
+        from provisa.mv.time_travel import read_snapshots
+
+        _qualified = read_snapshots(_qualified, ctx, _travel)
 
         _routed_sql = _qualified
         physical_sql = await _kept_engine_form(
@@ -2495,9 +2641,9 @@ async def route_governed(
             optimizations=_opts,
             pk_bounds=_row_level_bounds(Route.ENGINE, _row_level),  # REQ-1865, REQ-1915
             response_cacheable=_raw_cacheable,  # REQ-1897
-            cache_sql=governed_semantic,
+            cache_sql=_travel.cache_sql(governed_semantic),
             cache_params=_cache_params,
-            cache_as_of=as_of,
+            cache_as_of=_travel.single(),
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
             written_table_id=_written_table_id,
@@ -2589,9 +2735,9 @@ async def route_governed(
             optimizations=_opts,
             pk_bounds=_row_level_bounds(decision.route, _row_level),  # REQ-1865, REQ-1915
             response_cacheable=_raw_cacheable,  # REQ-1897
-            cache_sql=governed_semantic,
+            cache_sql=_travel.cache_sql(governed_semantic),
             cache_params=_cache_params,
-            cache_as_of=as_of,
+            cache_as_of=_travel.single(),
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
             written_table_id=_written_table_id,
@@ -3290,6 +3436,8 @@ def streams_from_terminal(plan: _Plan) -> bool:  # REQ-2002
     read, in :func:`_execute_plan`, which such a plan is run through."""
     if plan.two_step is not None:
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
+    if plan.code_write is not None:
+        return False  # REQ-2100: its command is called by the pipeline terminal
     if plan.scratch:
         return False  # REQ-1986: its scratch tables are dropped when the terminal is done
     if plan.columns is not None:
@@ -3955,6 +4103,8 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         return await keep(plan.kept, state)
     if plan.two_step is not None:
         return await _run_two_step(plan, state)  # REQ-2001
+    if plan.code_write is not None:
+        return await _run_code_write(plan, state)  # REQ-2100
     engine = state.federation_engine
 
     if plan.materialize is not None:
@@ -4528,6 +4678,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
                 _slot.keep(_governed)
     sql, _compiled_tree, gov_ctx = _governed.sql, _governed.parsed, _governed.gov_ctx
     _table_ids, governed_sql = _governed.table_ids, _governed.governed_sql
+    _travel = _governed.travel
     # REQ-203: the approval hook is asked per call, after governance, on every compiled surface.
     approved_sql = await _approval_stage(
         governed_sql, role_id, state, _table_ids, columns, _compiled_tree
@@ -4553,7 +4704,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     if serve_cached and deliver is None and _row_level.unbound is None:
         _hit, _cache_missed = await _cached_before_routing(
             state,
-            sql=governed_sql,
+            sql=_travel.cache_sql(governed_sql),
             params=_cache_params,
             role_id=role_id,
             cache_hint=cache_hint,
@@ -4562,7 +4713,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         )
         if _hit is not None:
             return _cached_plan(
-                governed_sql=governed_sql,
+                governed_sql=_travel.cache_sql(governed_sql),
                 params=exec_params,
                 role_id=role_id,
                 table_ids=_table_ids,
@@ -4600,6 +4751,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             cache_params=_cache_params,
             cache_missed=_cache_missed,
             row_level=_row_level,
+            travel=_travel,
             as_of=as_of,
             steward_hint=steward_hint,
             session_props=session_props,
@@ -4723,6 +4875,8 @@ class _GovernedCompiled:
     gov_ctx: Any
     table_ids: tuple[int, ...]
     governed_sql: str
+    # When it reads each relation that keeps versions (as _Governed.travel).
+    travel: Any
     # Facts derived from this governed statement, kept with it (as _Governed.memo).
     memo: dict[str, Any] = field(default_factory=dict)
 
@@ -4789,7 +4943,10 @@ async def _govern_compiled(
 
     from provisa.security.rights import require_role
 
-    surface = state.surfaces[role_id]  # one snapshot: context and row filters of one build
+    from provisa.api.role_surface import built_surface
+
+    # One snapshot: context and row filters of one build.
+    surface = built_surface(state.surfaces[role_id])
     ctx = surface.context
     rls = surface.rls
 
@@ -4804,6 +4961,15 @@ async def _govern_compiled(
         source_types=state.source_types,
         engine=getattr(state, "federation_engine", None),
     )
+    # REQ-1163: a GraphQL field's as_of/as_recorded are compiled onto its relation's reference
+    # (the SQL call form); lifted here, as on the raw-SQL stage, each reference is read at its
+    # own time.
+    from provisa.mv.time_travel import lift_statement
+
+    _lifted, _travel = lift_statement(sql, state, lambda: gov_ctx, ctx, as_of)
+    if _lifted != sql:
+        sql = _lifted
+        _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
     # ONE semantic statement, as on the raw-SQL stage: every view is replaced by its SQL before
     # governance (provisa.mv.view_read).
     _validated_sql = sql
@@ -4814,14 +4980,6 @@ async def _govern_compiled(
 
         _views = views_read(sql, _view_map)
         sql, _validated_sql = semantic_statement(sql, _view_map, state, gov_ctx)
-        _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
-    # REQ-2109: a table whose rows are its versions is read as of the request's time travel.
-    from provisa.mv.bitemporal_tables import read_versions
-
-    _versioned = read_versions(sql, state, gov_ctx, as_of)
-    if _versioned != sql:
-        sql = _versioned
-        _validated_sql = read_versions(_validated_sql, state, gov_ctx, as_of)
         _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
     # The V-rules every statement meets (a masked column in a filter, a hidden column, tables
@@ -4877,10 +5035,15 @@ async def _govern_compiled(
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # REQ-1882: off-loaded, same rationale as the raw-SQL path's own apply_governance call above.
     governed_sql = await _off_loop(apply_governance, sql, gov_ctx, session_vars, exec_params)
+    # REQ-2109: the versions read is applied to the governed statement, as on the raw-SQL stage:
+    # its reads of the recorded time are Provisa's own, not judged against the caller's grants.
+    from provisa.mv.bitemporal_tables import read_versions
+
+    governed_sql = read_versions(governed_sql, state, gov_ctx, _travel)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
     governed_sql = _resolve_session_settings(governed_sql, session_vars, "postgres")
-    return _GovernedCompiled(sql, _compiled_tree, gov_ctx, _table_ids, governed_sql)
+    return _GovernedCompiled(sql, _compiled_tree, gov_ctx, _table_ids, governed_sql, travel=_travel)
 
 
 def _engine_session_hints(
@@ -4930,6 +5093,7 @@ async def _route_compiled(
     cache_params: list,
     cache_missed: tuple[tuple[int, ...] | None, ...],
     row_level: "_RowLevelBounds",
+    travel: Any,
     as_of: str | None = None,
     steward_hint: str | None = None,
     session_props: dict[str, str] | None = None,
@@ -4966,6 +5130,37 @@ async def _route_compiled(
         _compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
     )
     _written_table_id = written_table_id(_compiled_tree, gov_ctx) if _is_write else None
+    from provisa.codesource.writes import is_code_table
+
+    if _is_write and is_code_table(state, _written_table_id):
+        # REQ-2100: a GraphQL mutation on a code table, carried out by its bound command; its key
+        # read governed and routed as any compiled read is.
+        assert _written_table_id is not None
+        from types import SimpleNamespace
+
+        from provisa.compiler.directives import NO_CACHE_HINT
+
+        async def _read_compiled(read_sql: str) -> _Plan:
+            return await _govern_and_route_compiled(
+                read_sql,
+                role_id,
+                exec_params=exec_params,
+                state=state,
+                cache_hint=NO_CACHE_HINT,
+                sdl_joins=True,
+            )
+
+        return await _code_write_plan(
+            SimpleNamespace(  # type: ignore[arg-type]
+                governed_semantic=governed_sql, role_id=role_id, table_ids=table_ids
+            ),
+            _written_table_id,
+            tree=_compiled_tree,
+            params=exec_params,
+            audit=audit,
+            state=state,
+            read=_read_compiled,
+        )
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then
     # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached
@@ -4976,17 +5171,23 @@ async def _route_compiled(
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs
-        from provisa.mv.view_read import unnarrowed_view_bodies
+        from provisa.mv.view_read import read_views_at, unnarrowed_view_bodies
 
         # Optimization, as on the raw-SQL stage: a view governance kept as its reference is
-        # answered here (REQ-1163: a request-level as-of reads a bitemporal view as of that time).
+        # answered here (REQ-1163: a bitemporal view is read at its reference's time, else the
+        # request's).
+        _exec_sql = read_views_at(_exec_sql, state, travel)
         _exec_sql = expand_view_refs(
-            _exec_sql, unnarrowed_view_bodies(_exec_sql, _view_map, state, as_of=as_of)
+            _exec_sql,
+            unnarrowed_view_bodies(_exec_sql, _view_map, state, as_of=travel.default),
         )
-    # REQ-2109: a table updated in place is read from its version log under as_of.
+    # REQ-2109: a table updated in place is read from its version log at its reference's time.
     from provisa.mv.bitemporal_capture import read_logs
+    from provisa.mv.time_travel import read_snapshots
 
-    _exec_sql = read_logs(_exec_sql, state, ctx, as_of)
+    _exec_sql = read_logs(_exec_sql, state, ctx, travel)
+    # REQ-372: an Iceberg or Delta table read at a recorded time reads that snapshot.
+    _exec_sql = read_snapshots(_exec_sql, ctx, travel)
     from provisa.api.data.materialization import frozen_parameter_filters
     from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
     from provisa.vector import similarity as _similarity
@@ -4998,7 +5199,9 @@ async def _route_compiled(
         )
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys()
+    _parameters = (
+        context_parameters(ctx) - _frozen.keys() - _code_parameters(state, _table_ids, _exec_sql)
+    )
     _exec_sql, _read_args = separate_parameter_reads(_exec_sql, _parameters)
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _exec_sql, exec_params or [], _parameters, _frozen
@@ -5155,6 +5358,10 @@ async def _route_compiled(
     # instead. A single-source neo4j query now always falls through to Route.ENGINE.
     await _await_source_servers(decision, sources, state)
     if decision.route == Route.ENGINE:
+        from provisa.api.data.materialization import land_direct_reads
+
+        # REQ-2100: a code source's own statement the engine runs after all is landed for it.
+        _exec_sql, exec_params = await land_direct_reads(_exec_sql, exec_params, state, _table_ids)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
         _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
         return _Plan(
@@ -5183,7 +5390,7 @@ async def _route_compiled(
             response_cacheable=deliver is None and not _is_write,
             writes_tables=_is_write,
             written_table_id=_written_table_id,
-            cache_sql=governed_sql,
+            cache_sql=travel.cache_sql(governed_sql),
             cache_params=cache_params,
             cache_missed=cache_missed,
             role_id=role_id,  # REQ-1897
@@ -5262,7 +5469,7 @@ async def _route_compiled(
             response_cacheable=deliver is None and not _is_write,
             writes_tables=_is_write,
             written_table_id=_written_table_id,
-            cache_sql=governed_sql,
+            cache_sql=travel.cache_sql(governed_sql),
             cache_params=cache_params,
             cache_missed=cache_missed,
             role_id=role_id,  # REQ-1897

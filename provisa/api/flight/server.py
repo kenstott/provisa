@@ -251,8 +251,7 @@ def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServ
 def _ticket_as_of(request: dict[str, object]) -> str | None:  # REQ-1163
     """The time travel a ticket reads bitemporal materialized views with: its ``as_of`` option,
     an ISO 8601 time or range on the view's clock, and its ``as_recorded`` option, an ISO 8601
-    time (the ``X-Provisa-As-Of`` and ``X-Provisa-As-Recorded`` headers of the HTTP transports),
-    validated to safe SQL timestamp literals; None for a ticket that names neither. One that
+    time (the defaults for references that say no time of their own, REQ-1163), validated to safe SQL timestamp literals; None for a ticket that names neither. One that
     cannot be read is refused by name."""
     from provisa.mv.bitemporal import parse_as_of, parse_as_recorded, request_as_of
 

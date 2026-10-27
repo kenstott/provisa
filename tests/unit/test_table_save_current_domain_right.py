@@ -34,8 +34,15 @@ from tests.unit.test_data_steward_domain_scope import (  # noqa: F401  (plane is
     _input,
     plane,
 )
+from tests.unit.gate_identity import serve_every_column
 
 _EDIT_RIGHTS = ["table_registration", "create_view"]
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 @pytest.fixture

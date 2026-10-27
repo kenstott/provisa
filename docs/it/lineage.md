@@ -225,10 +225,10 @@ La vista legge i record di refresh in `"ops"."traces"` e risponde su ogni motore
 
 ## Una vista com'era, e com'era stata registrata {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Una vista che mappa le colonne della sua origine come `business_key`, `valid_time` e `recorded_time` conserva ogni versione che ha avuto: ogni aggiornamento aggiunge, e nessuna versione viene riscritta, su nessuno store. Una lettura semplice restituisce lo stato attuale. Due header di richiesta leggono il suo passato:
+Una lettura semplice risponde lo stato attuale. Due argomenti della vista, scritti dove l'istruzione la nomina, ne leggono il passato:
 
-- `X-Provisa-As-Of` legge la vista a un momento o su un intervallo.
-- `X-Provisa-As-Recorded` la legge come Provisa l'aveva registrata a una data. Le versioni registrate dopo restano escluse, quindi una correzione registrata in seguito non cambia la riproduzione del passato.
+- `as_of` legge la vista in un momento, o su un intervallo: `"reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00')`.
+- `as_recorded` la legge come Provisa l'aveva registrata in un momento. Le versioni registrate dopo quel momento restano fuori, così una correzione registrata più tardi non cambia una riproduzione del passato.
 
 Al 30 settembre e registrata il 1° ottobre dà il dato originale; registrata il 5 ottobre dà la correzione. Il record di audit di ogni istruzione conserva entrambe le date (`as_of`, `as_recorded`), così un report si può riprodurre com'era stato prodotto la prima volta. [Viste con cronologia](configuration.md#views-with-history-time-travel) descrive le tre dichiarazioni, con esempi, e ogni superficie che accetta i due valori.
 

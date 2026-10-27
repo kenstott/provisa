@@ -372,3 +372,43 @@ def test_a_fresh_filter_is_served_from_the_replica_and_a_stale_one_is_fetched_on
 def test_the_record_key_is_the_canonical_filter_s_digest():
     assert row_filter.filter_hash('"amount" > 100') == row_filter.filter_hash('"amount" > 100')
     assert row_filter.filter_hash('"amount" > 100') != row_filter.filter_hash('"amount" > 101')
+
+
+class _RecordingStore:
+    """The store write face, recording what it is asked: a Postgres store with schemas."""
+
+    def __init__(self):
+        self.statements: list[object] = []
+        self.capabilities = SimpleNamespace(schemas=True, dialect="postgresql")
+
+    async def execute_core(self, statement):
+        self.statements.append(statement)
+        return SimpleNamespace(fetchone=lambda: None)
+
+
+def test_a_filter_s_record_is_created_in_its_schema_when_the_schema_is_not_there_yet(monkeypatch):
+    import asyncio
+    import contextlib
+
+    from sqlalchemy.schema import CreateSchema, CreateTable
+
+    from provisa.federation import row_filter, store_writer
+
+    store = _RecordingStore()
+
+    @contextlib.asynccontextmanager
+    async def _store_connection(_dsn):
+        yield store
+
+    monkeypatch.setattr(store_writer, "store_connection", _store_connection)
+    engine = SimpleNamespace(
+        engine=SimpleNamespace(materialize_store=lambda: "postgresql://u:p@h/db")
+    )
+    backend = SimpleNamespace(dialect="postgres")
+    at = asyncio.run(
+        row_filter.filter_fetched_at(None, backend, engine, "org_o_replicas", "orders", "h1")
+    )
+    assert at is None
+    kinds = [type(s) for s in store.statements]
+    assert kinds.index(CreateSchema) < kinds.index(CreateTable)
+    assert store.statements[kinds.index(CreateSchema)].element == "org_o_replicas"

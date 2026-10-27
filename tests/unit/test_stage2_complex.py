@@ -411,20 +411,20 @@ class TestBuildGovernanceContext:
         assert "id" in vis
         assert "secret" not in vis
 
-    def test_all_columns_visible_when_no_visible_to_restriction(self):
+    def test_all_columns_visible_when_every_column_is_granted_to_the_role(self):
         ctx = _ctx(_meta("orders", "orders", table_id=1))
         tables = [
             {
                 "id": 1,
                 "columns": [
-                    {"column_name": "id"},
-                    {"column_name": "amount"},
+                    {"column_name": "id", "visible_to": ["role-a"]},
+                    {"column_name": "amount", "visible_to": ["role-a"]},
                 ],
             }
         ]
         rls = _FakeRLSContext({})
         gov = build_governance_context("role-a", rls, {}, ctx, tables, role=unscoped_role("role-a"))
-        # visible_to=None on all columns → all_visible=True → None sentinel
+        # every column granted to the role → all_visible=True → None sentinel
         assert gov.visible_columns.get(1) is None
 
     def test_table_map_populated_from_compilation_context(self):

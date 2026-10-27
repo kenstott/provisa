@@ -46,6 +46,8 @@
     "nextPage": "Volgende pagina",
     "firstPage": "Eerste pagina",
     "lastPage": "Laatste pagina",
+    "listedElsewhere": "Vermeld in andere domeinen",
+    "listedElsewhereHint": "Namen die andere domeinen vermelden. Vraag dat domein om toegang om ze te lezen.",
     "pageOf": "Pagina {{page}} / {{totalPages}}",
     "loadFailed": "Kan geregistreerde tabellen niet laden: {{message}}",
     "editViewDefinitionTitle": "Viewdefinitie bewerken",

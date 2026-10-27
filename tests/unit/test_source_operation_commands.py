@@ -551,7 +551,13 @@ def test_its_arguments_and_answer_are_json_on_the_graphql_surface():
     from provisa.compiler.schema_types import SchemaInput
     from provisa.compiler.type_map import JSONScalar
 
-    fn = {**_command(), "domain_id": "eng", "visible_to": [], "kind": "mutation", "returns": ""}
+    fn = {
+        **_command(),
+        "domain_id": "eng",
+        "visible_to": ["dev"],
+        "kind": "mutation",
+        "returns": "",
+    }
     si = SchemaInput(
         tables=[],
         relationships=[],
@@ -585,7 +591,7 @@ class _Hook:
 
 def _registered(state, **over) -> None:
     # The role may write and is granted this command: approval is the one gate left to pass.
-    fn = _command(requires_approval=True, writable_by=["dev"], visible_to=[], **over)
+    fn = _command(requires_approval=True, writable_by=["dev"], visible_to=["dev"], **over)
     state.tracked_functions = {fn["name"]: fn}
     state.roles = {"dev": {"id": "dev", "capabilities": ["write"], "domain_access": ["*"]}}
 

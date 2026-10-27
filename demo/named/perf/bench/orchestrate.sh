@@ -73,6 +73,9 @@ export PROVISA_WORKERS="${PROVISA_WORKERS:-$(nproc)}"
 # call with no bearer acts only as a pinned role (mcp.role).
 export PROVISA_MCP_PORT=8765 PROVISA_MCP_HOST=127.0.0.1 PROVISA_MCP_ROLE=org_admin
 
+# The SPARQL transport: its classes and predicates are IRIs, which start at the public address.
+export PROVISA_PUBLIC_URL=https://bench.provisa.example
+
 # Workers share one response cache: the `redis` service of this demo's compose stack. The native
 # demo's default fakeredis is private to each process.
 BENCH_REDIS_PORT="${PROVISA_BENCH_REDIS_PORT:-26379}"

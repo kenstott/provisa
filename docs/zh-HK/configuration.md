@@ -952,25 +952,35 @@ views:
 
 一個版本由佢嘅時間起生效，直到下一個版本嘅時間。刪除喺 Provisa 記錄佢時生效。
 
-**讀取。** 一般讀取傳回每個鍵目前生效的版本。標頭 `X-Provisa-As-Of` 按某一時刻或某一範圍讀取，範圍以 ISO 8601 區間 `start/end` 表示：
+**讀取。** 普通讀取返回每個鍵現時有效的版本。要讀取另一個時間，請在語句提到該關係的地方給它自己的 `as_of` 參數，可以是一個時間點，也可以是以 ISO 8601 區間 `start/end` 給出的範圍：
 
-```
-X-Provisa-As-Of: 2026-03-01T00:00:00
-X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
-```
-
-時刻傳回每個鍵在當時生效的版本。範圍傳回在其中任何時點生效的每個版本，每個版本一列。
-
-**按記錄時間。** 之後記錄的更正會改變檢視對過去的描述：一旦更正被記錄，9 月 30 日生效的版本就是更正後的版本。若要按 Provisa 在某個時間點記錄的樣子讀取檢視（早於之後的任何更正），請加上 `X-Provisa-As-Recorded`，即一個 ISO 8601 時間：
-
-```
-X-Provisa-As-Of: 2026-09-30T12:00:00
-X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-03-01T00:00:00') AS e
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-01-01T00:00:00/2026-04-01T00:00:00') AS e
 ```
 
-在該時間之後記錄的所有版本都會被排除，然後 as-of 選出在其自身時間生效的版本。只使用 `X-Provisa-As-Recorded` 時，讀取傳回按當時記錄各鍵生效的版本。它只接受一個時間點，不接受範圍；範圍或格式錯誤的值會以 HTTP 400（`data.invalid_as_recorded`）被拒絕。
+時間點返回每個鍵在當時有效的版本。範圍返回其中任一時間有效的每個版本，每個版本一行。
 
-這兩個時間亦可以不經請求標頭傳給 Provisa。as-of 時間是 `resolve` 的 `as_of` 參數（GraphQL、gRPC、MCP）、REST 的 `as_of` 查詢參數以及 Arrow Flight 票證的 `as_of` 選項；傳給 `resolve` 的範圍會傳回資料列的 `versions`，而不是它的 `row`。as-recorded 時間是 `resolve` 的 `as_recorded` 參數、REST 的 `as_recorded` 查詢參數以及 Arrow Flight 票證的 `as_recorded` 選項。每條語句的稽核記錄都會保存它讀取時使用的兩個時間，`as_of` 及 `as_recorded`。權限、遮罩及資料列規則與任何讀取一樣適用。格式錯誤的 as-of 值，或結束時間不晚於開始時間的範圍，會以 HTTP 400（`data.invalid_as_of`）被拒絕。
+**按記錄時。** 之後記錄的更正會改變視圖對過去的說法：一旦更正被記錄，9 月 30 日有效的版本就是更正後的版本。要按 Provisa 在某個時間的記錄讀取視圖，即在任何之後的更正之前，請加上 `as_recorded`，一個 ISO 8601 時間點：
+
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_recorded => '2026-10-01T00:00:00') AS e
+```
+
+在該時間之後記錄的每個版本都被排除，然後 as-of 選出在它自己的時間有效的版本。只有 `as_recorded` 時，讀取返回按當時記錄有效的每個鍵的版本。它接受一個時間點，不接受範圍。
+
+**參數寫在哪裡。** 每個引用攜帶自己的時間，因此一條語句可以透過兩個引用在兩個時間讀取同一視圖，沒有參數的引用讀取現時狀態。時間也可以是綁定值 `(as_recorded => $1)`，其值隨請求的 `params` 發送。只有保留其版本的關係才接受這些參數：有歷史的表或視圖，以及 Iceberg 或 Delta 表，後者按其快照回溯，因此只接受 `as_recorded`（當時有效的快照）。任何其他關係、格式錯誤的時間、給 `as_recorded` 的範圍，或 Iceberg、Delta 表上的 `as_of`，都會以 HTTP 400 拒絕，並指明該關係。
+
+同樣的兩個名稱也是該關係在 GraphQL 中欄位的參數，在根欄位上，也在目標保留其版本的關係欄位上，因此兩個別名可以在兩個時間讀取同一視圖：
+
+```graphql
+{
+  reported: view_eod_totals(as_recorded: "2026-10-01T17:00:00") { branch net_movement }
+  restated: view_eod_totals(as_recorded: "2026-10-12T17:00:00") { branch net_movement }
+}
+```
+
+REST 以表端點的查詢參數 `as_of` 和 `as_recorded` 接收它們，MCP 工具 `describe_table` 說明一張表接受哪些參數。`_resolve` 欄位（GraphQL、REST 和 MCP）也接受 `as_of` 和 `as_recorded`，傳給它的範圍會返回該行的 `versions` 而不是它的 `row`；gRPC 調用 `Resolve` 也是如此。Arrow Flight 票據以其 `as_of` 和 `as_recorded` 選項接收它們，pgwire 會話用 `SET provisa.as_of` 和 `SET provisa.as_recorded` 為其執行的語句設定預設值，引用自身的參數會覆蓋該預設值。SQL 瀏覽器的「As of」和「As recorded at」選擇器會把參數寫入語句。每條語句的審計記錄在語句只在一個時間讀取時保存該時間，`as_of` 和 `as_recorded`。權限、遮罩和行規則與任何讀取一樣適用。
 
 每個帶歷史的檢視還會傳回三個欄位，其授權方式與其數據來源時間欄位相同（沒有時則與第一個鍵欄位相同）：
 
@@ -1732,6 +1742,7 @@ sources:
 | `TRINO_HOST` | `localhost` | Trino 協調器主機 |
 | `TRINO_PORT` | `8080` | Trino 協調器 HTTP 連接埠 |
 | `PROVISA_ENGINE_FILES_GID` | `1000` | 當 Provisa 既不以 root 也不以 Trino 的使用者執行時（例如在 Trino 容器旁執行的原生應用程式），Trino 讀取其機密檔案（Kafka 數據來源的 SASL 設定、程式碼主機的用戶端金鑰）所用的使用者群組。Provisa 的使用者必須屬於該群組，否則檔案會被按名稱拒絕。 |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | 同上，用於讀取程式碼主機用戶端金鑰的 Postgres 引擎伺服器 |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | GCP 服務帳戶金鑰 JSON 的路徑（BigQuery 引擎／數據來源） |
 | `GOOGLE_CLOUD_PROJECT` | — | 預設 GCP 專案（BigQuery；由 URL 覆寫） |
 | `FABRIC_SQL_SERVER` | — | Fabric Warehouse SQL 端點（`PROVISA_ENGINE_URL` 的替代方式） |

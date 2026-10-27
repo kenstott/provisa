@@ -68,9 +68,9 @@ _TABLES = [
         "write_returns_rows": registry_write_returns_rows("postgresql"),
         "write_refused_forms": [],
         "columns": [
-            {"column_name": "id", "visible_to": []},
-            {"column_name": "amount", "visible_to": []},
-            {"column_name": "region", "visible_to": []},
+            {"column_name": "id", "visible_to": ["admin"]},
+            {"column_name": "amount", "visible_to": ["admin"]},
+            {"column_name": "region", "visible_to": ["admin"]},
         ],
     }
 ]

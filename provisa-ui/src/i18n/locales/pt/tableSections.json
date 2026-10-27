@@ -35,6 +35,7 @@
     "classTerm": "As linhas são instâncias de",
     "classTermPlaceholder": "Escolha um termo",
     "noClassTerm": "Nenhum termo",
-    "classTermUnreadable": "Não foi possível ler seu termo: {{error}}"
+    "classTermUnreadable": "Não foi possível ler seu termo: {{error}}",
+    "access": "Acesso"
   }
 }

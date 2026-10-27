@@ -196,52 +196,28 @@ def test_the_page_opens_as_role_all_and_an_explorer_role_reaches_only_statements
     }
 
 
-def test_each_statement_carries_the_time_travel_the_tour_has_set_by_then():
-    """The reproduce tour reads its report as of 30 September, then as recorded when it was first
-    filed (the first refresh's time, read from the refreshes step's answer), then its audit log.
-    Sent with no time travel, the warm-up and the walk read the report as it stands now, and the
-    audit step's ``as_of`` rows were never written."""
+def test_a_recorded_time_from_an_earlier_answer_is_bound_to_the_next_statement_alone():
+    """The reproduce tour reads its report as of 30 September (the time written in its SQL), then
+    as recorded when it was first filed: the first refresh's time, read from the refreshes step's
+    answer and bound to the next statement's $1 (REQ-2083), which names it as the view's
+    as_recorded (REQ-1163). The audit step after it is sent with nothing bound."""
     sent = {
-        what: travel
-        for what, _m, _p, _b, travel, _r in demo_warmup.tour_requests(DEMOS / "reproduce", ALL)
+        what: (body, travel)
+        for what, _m, _p, body, travel, _r in demo_warmup.tour_requests(DEMOS / "reproduce", ALL)
     }
-    assert sent["reproduceNow"] == {}
-    assert sent["reproduceAsOfNow"] == {"as_of": "2026-09-30T12:00:00"}
-    filed = {
-        "as_of": "2026-09-30T12:00:00",
-        "as_recorded_from": {"step": "reproduceRefreshes", "row": 0, "column": "refreshed_at"},
-    }
-    assert sent["reproduceFiled"] == filed
-    assert sent["reproduceAudit"] == filed
+    assert sent["reproduceNow"][1] == {}
+    assert "(as_of => '2026-09-30T12:00:00')" in sent["reproduceAsOfNow"][0]["sql"]
+    filed = {"as_recorded_from": {"step": "reproduceRefreshes", "row": 0, "column": "refreshed_at"}}
+    assert sent["reproduceFiled"][1] == filed
+    assert "as_recorded => $1)" in sent["reproduceFiled"][0]["sql"]
+    assert sent["reproduceAudit"][1] == {}
     answers = {"reproduceRefreshes": [{"refreshed_at": "2026-10-01T09:00:00"}]}
-    assert demo_warmup.travel_headers(filed, answers) == {
-        "X-Provisa-As-Of": "2026-09-30T12:00:00",
-        "X-Provisa-As-Recorded": "2026-10-01T09:00:00",
-    }
-    assert demo_warmup.travel_headers({}, answers) == {}
+    assert demo_warmup.bound_params(filed, answers) == ["2026-10-01T09:00:00"]
+    assert demo_warmup.bound_params({}, answers) == []
 
 
-def test_a_later_recorded_time_replaces_the_one_before(tmp_path):
-    (tmp_path / "tour.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "steps": [
-                    {"key": "from", "as_recorded_from": {"step": "a", "row": 0, "column": "t"}},
-                    {"key": "a", "sql": "SELECT 1"},
-                    {"key": "at", "as_recorded": "2026-10-12T17:00:00"},
-                    {"key": "b", "sql": "SELECT 2"},
-                ]
-            }
-        )
-    )
-    sent = {
-        what: travel for what, _m, _p, _b, travel, _r in demo_warmup.tour_requests(tmp_path, ALL)
-    }
-    assert sent["b"] == {"as_recorded": "2026-10-12T17:00:00"}
-
-
-def test_the_warmup_sends_a_statement_as_recorded_at_an_earlier_statements_answer():
-    seen: dict[str, dict[bytes, bytes]] = {}
+def test_the_warmup_binds_an_earlier_statements_answer_to_the_next_statement():
+    seen: dict[str, dict] = {}
 
     async def app(scope, receive, send):
         body = b""
@@ -250,8 +226,9 @@ def test_the_warmup_sends_a_statement_as_recorded_at_an_earlier_statements_answe
             body += message.get("body", b"")
             if not message.get("more_body"):
                 break
-        sql = json.loads(body)["sql"] if body and scope["path"] == "/data/sql" else ""
-        seen[sql] = dict(scope["headers"])
+        sent = json.loads(body) if body and scope["path"] == "/data/sql" else {}
+        sql = sent.get("sql", "")
+        seen[sql] = {"params": sent.get("params"), "headers": dict(scope["headers"])}
         rows = [{"refreshed_at": "2026-10-01T09:00:00"}] if "mv_refresh_lineage" in sql else []
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send(
@@ -261,6 +238,8 @@ def test_the_warmup_sends_a_statement_as_recorded_at_an_earlier_statements_answe
     asyncio.run(
         demo_warmup._warm(app, "sbxabc", {"Authorization": "Bearer t"}, DEMOS / "reproduce", ALL)
     )
-    [audit] = [h for sql, h in seen.items() if "query_audit_log" in sql]
-    assert audit[b"x-provisa-as-of"] == b"2026-09-30T12:00:00"
-    assert audit[b"x-provisa-as-recorded"] == b"2026-10-01T09:00:00"
+    [filed] = [s for sql, s in seen.items() if "as_recorded => $1)" in sql]
+    assert filed["params"] == ["2026-10-01T09:00:00"]
+    [audit] = [s for sql, s in seen.items() if "query_audit_log" in sql]
+    assert audit["params"] is None
+    assert not [h for s in seen.values() for h in s["headers"] if h.startswith(b"x-provisa-as")]

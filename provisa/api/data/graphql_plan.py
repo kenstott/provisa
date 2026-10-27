@@ -64,7 +64,6 @@ class PlanRequest:
         schema: Any,
         query: str,
         variables: dict | None,
-        as_of: str | None,
         eligible: bool,
     ) -> None:
         self._slot: PlanSlot | None = None
@@ -75,7 +74,6 @@ class PlanRequest:
                 role_id,
                 query,
                 variables or {},
-                as_of,
                 sorted(session_vars_for(role).items()),
                 extra_anchors=(schema,),
             )

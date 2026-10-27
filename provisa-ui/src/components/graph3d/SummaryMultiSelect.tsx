@@ -104,7 +104,15 @@ export function SummaryMultiSelect({
           aria-label={label}
           data-testid={testId}
         >
-          {summary ?? <span className="g3d-placeholder">{prefix ?? label}</span>}
+          {/* One line, whatever the summary's length: what does not fit ends in an ellipsis, and
+              the whole summary is its tooltip. */}
+          {summary !== null ? (
+            <span className="g3d-summary" title={summary}>
+              {summary}
+            </span>
+          ) : (
+            <span className="g3d-placeholder g3d-summary">{prefix ?? label}</span>
+          )}
         </InputBase>
       </Combobox.Target>
       <Combobox.Dropdown>

@@ -871,9 +871,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     # REQ-1319: metrics visible to this role join the matcher vocabulary; REQ-1320: table
     # modeling roles ground the star shape in the prompt and metric resolution.
     _metrics = [
-        m
-        for m in (getattr(app_state, "metrics", {}) or {}).values()
-        if "*" in m.visible_to or role in m.visible_to
+        m for m in (getattr(app_state, "metrics", {}) or {}).values() if role in m.visible_to
     ]
     _table_roles = {
         t["table_name"]: t["modeling_role"]

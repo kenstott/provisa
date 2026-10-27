@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useDomains } from "../../hooks/useAdminQueries";
+import { isAssignableDomain } from "../../lib/internalDomains";
 import { SourceFileUpload } from "./SourceFileUpload";
 import type { SourceFormState } from "./SourceFormFields";
 import { DOWNLOAD_TYPES, FILE_DATABASES, draftTable, fileLocationOf, isUploadPath } from "./sourceUpload";
@@ -100,7 +101,9 @@ function DraftTableFields({ form, setForm }: Omit<Props, "creating">) {
   const { t } = useTranslation();
   const { domains } = useDomains();
   const { registerTableDraft: draft, tableDomainId: domain } = draftTable(form, domains);
-  const choices = domains.map((d) => ({ value: d.id, label: d.id }));
+  const choices = domains
+    .filter((d) => isAssignableDomain(d.id))
+    .map((d) => ({ value: d.id, label: d.id }));
   return (
     <>
       <FormField size="long" help={t("sourceFormFields.draftTableHint")}>

@@ -1692,25 +1692,17 @@
         "title": "Os totais de um dia",
         "description": "O dia 1º de outubro como está agora. Para cada agência, produto e moeda você vê o que entrou, o que saiu e o líquido. Uma ferramenta de BI conectada por pgwire roda este mesmo SQL."
       },
-      "bankingAsReported": {
-        "title": "Como reportado no fechamento",
-        "description": "Registrado em agora está no fechamento de 1º de outubro. Uma ferramenta de BI faz o mesmo com SET provisa.as_recorded na sua sessão pgwire. Registrado em filtra as transações por updated_at e os totais diários pelo fechamento de cada dia, então você vê os números que o banco reportou naquela noite."
-      },
       "bankingReported": {
         "title": "O que foi reportado",
-        "description": "Os totais corporativos de 1º e 2 de outubro, como reportados no fechamento de 1º de outubro. O total em GBP de Londres ainda inclui o pagamento que depois foi estornado. O dia 2 de outubro ainda não tinha fechado, então não tem números."
-      },
-      "bankingAsRestated": {
-        "title": "Como corrigido desde então",
-        "description": "Registrado em passa para o fechamento de 12 de outubro, o último dos trinta dias. Até lá, o estorno lançado em 6 de outubro e a operação atrasada lançada em 7 de outubro já estão registrados."
+        "description": "Os totais corporativos de 1º e 2 de outubro, como reportados no fechamento de 1º de outubro: o argumento as_recorded da view os lê como estavam registrados então, e uma ferramenta de BI via pgwire faz o mesmo com SET provisa.as_recorded. O total em GBP de Londres ainda inclui o pagamento que depois foi estornado. O dia 2 de outubro ainda não tinha fechado, então não tem números."
       },
       "bankingRestated": {
         "title": "O que diz agora",
-        "description": "O mesmo SQL. O total de 1º de outubro de Londres não inclui mais o pagamento estornado, e o total em USD de 2 de outubro de Edimburgo agora inclui a operação atrasada. As versões reportadas em cada fechamento ficam guardadas ao lado das corrigidas, e recorded_at mostra quando cada uma foi registrada."
+        "description": "O mesmo SQL com as_recorded no fechamento de 12 de outubro, o último dos trinta dias. O total de 1º de outubro de Londres não inclui mais o pagamento estornado, e o total em USD de 2 de outubro de Edimburgo agora inclui a operação atrasada. As versões reportadas em cada fechamento ficam guardadas ao lado das corrigidas, e recorded_at mostra quando cada uma foi registrada."
       },
       "bankingAsOpsSql": {
         "title": "De volta a operações",
-        "description": "O explorador agora roda como operações, ainda registrado no fechamento de 12 de outubro."
+        "description": "O explorador agora roda como operações."
       },
       "bankingPostings": {
         "title": "Os lançamentos por trás de um total",

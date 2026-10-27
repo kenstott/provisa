@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "Geen gRPC-query geregistreerd voor tabel '{{table}}'",
       "no_mutation_fields": "Geen mutatievelden gevonden",
       "no_proto_for_role": "Rol '{{role_id}}' heeft geen proto: de rol krijgt geen gegevensoppervlak, omdat deze geen domein bereikt of alleen rechten op het besturingsvlak heeft",
+      "role_served_nothing": "Aan rol '{{role_id}}' wordt geen tabel geleverd: er is geen kolom van welke tabel dan ook aan toegekend",
       "no_query_field_for_proto_type": "Geen queryveld voor proto-type '{{type_name}}' onder rol '{{role_id}}'",
       "no_query_fields": "Geen queryvelden gevonden",
       "no_role": "Geen rol '{{role_id}}'",
@@ -129,7 +130,12 @@
       "address_not_found": "Niets op te lossen: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve kan in één bewerking niet met andere rootvelden worden gecombineerd",
       "source_starting": "De bron {{source}} wordt nog gestart. Probeer het zo opnieuw.",
-      "view_outside_load_window": "De view {{view}} kan alleen binnen het leesvenster worden gelezen. Het opent weer om {{opens_at}}."
+      "view_outside_load_window": "De view {{view}} kan alleen binnen het leesvenster worden gelezen. Het opent weer om {{opens_at}}.",
+      "graphql_body_missing": "Het verzoek heeft geen body: een GraphQL-verzoek is een JSON-object met een query.",
+      "graphql_body_not_json": "De body van het verzoek is geen JSON: {{error}}",
+      "graphql_request_not_object": "Een GraphQL-verzoek is een JSON-object met een query.",
+      "graphql_parameter_type": "De parameter {{parameter}} van het GraphQL-verzoek moet {{expected}} zijn.",
+      "graphql_mutation_over_get": "Een mutatie wordt met POST verstuurd, nooit met GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -278,7 +284,7 @@
     "roles": {
       "cannot_delete_system": "Systeemrollen kunnen niet worden verwijderd",
       "cannot_modify_administrative": "Beheerdersrollen kunnen niet worden gewijzigd",
-      "has_dependents": "Naar rol {{role}} wordt nog verwezen door {{count}} object(en); verwijder eerst die verwijzingen",
+      "has_dependents": "Naar rol {{role}} wordt nog verwezen door andere objecten; verwijder eerst die verwijzingen",
       "not_found": "Rol niet gevonden",
       "org_selection_required": "Organisatieselectie vereist",
       "already_exists": "Rol '{{role}}' bestaat al",
@@ -293,7 +299,7 @@
       "cache_purged": "{{count}} cache-items verwijderd",
       "cache_purged_table": "{{count}} cache-items verwijderd voor tabel {{table}}",
       "calendar_deleted": "kalender '{{calendar}}' verwijderd",
-      "calendar_in_use": "kalender '{{calendar}}' is in gebruik door {{count}} gematerialiseerde view(s) — verwijder eerst hun snapshotschema voordat de kalender wordt verwijderd",
+      "calendar_in_use": "kalender '{{calendar}}' is in gebruik door gematerialiseerde views — verwijder eerst hun snapshotschema voordat de kalender wordt verwijderd",
       "calendar_not_found": "kalender '{{calendar}}' niet gevonden",
       "calendar_saved": "kalender '{{calendar}}' {{version}} opgeslagen",
       "column_natively_nested": "Registreren niet mogelijk: kolom {{column}} is in de bron van nature {{native_type}}, dus het type is json, niet {{type}}.",
@@ -433,6 +439,7 @@
       "relationship_unknown_source": "Brontabel '{{table}}' is niet geregistreerd",
       "relationship_unknown_target": "Doeltabel '{{table}}' is niet geregistreerd",
       "relationship_unknown_junction": "Koppeltabel '{{table}}' is niet geregistreerd",
+      "relationship_column_beyond_reads": "Een relatie kan alleen koppelen op kolommen die uw rol mag lezen.",
       "source_id_taken": "Bron '{{source}}' bestaat al",
       "domain_id_taken": "Domein '{{domain}}' bestaat al",
       "role_id_taken": "Rol '{{role}}' bestaat al",
@@ -459,7 +466,8 @@
       "relationship_same_entity_direct": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: ze koppelt via een koppeltabel of een functie, niet één rij aan één rij",
       "relationship_same_entity_cardinality": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: ze is {{cardinality}}, en dezelfde entiteit is één rij op één rij",
       "relationship_same_entity_not_grounded": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{source}} en {{target}} zijn niet in dezelfde term verankerd",
-      "relationship_same_entity_not_keys": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{columns}} is niet de primaire sleutel of een unieke sleutel van {{table}}"
+      "relationship_same_entity_not_keys": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{columns}} is niet de primaire sleutel of een unieke sleutel van {{table}}",
+      "kaggle_token_missing": "Kaggle-dataset {{owner}}/{{ref}}: de databron bevat geen Kaggle API-token. Voeg het toe in het formulier Databronnen, waar het token wordt ingevoerd."
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",
@@ -489,7 +497,10 @@
       "unknown_encryption_provider": "onbekende encryptieprovider '{{provider}}'",
       "unknown_engine": "onbekende engine '{{engine}}'; geldig: {{valid}}",
       "use_domains_invalid": "use_domains moet true, false of null zijn",
-      "claims_with_multitenancy": "Een multi-tenant-implementatie kan roltoewijzingen niet uit aanmeldclaims lezen: zij kent rollen zelf toe, per organisatie, en claims zouden die overschrijven. Stel de bron van de toewijzingen in op Provisa."
+      "claims_with_multitenancy": "Een multi-tenant-implementatie kan roltoewijzingen niet uit aanmeldclaims lezen: zij kent rollen zelf toe, per organisatie, en claims zouden die overschrijven. Stel de bron van de toewijzingen in op Provisa.",
+      "federation_unknown_field": "Geen federatie-instelling: {{fields}}",
+      "federation_invalid": "Ongeldige federatie-instelling: {{error}}",
+      "federation_role_unknown": "De federatierol '{{role}}' is geen rol van deze organisatie"
     },
     "setup": {
       "admin_credentials_required": "admin_username en admin_password vereist",
@@ -539,7 +550,7 @@
       "invalid_regex": "Het patroon \"{{pattern}}\" in {{expression}} is geen geldige reguliere expressie: {{reason}}. =~ verwacht een reguliere expressie, bijv. \".*{{word}}.*\", of gebruik CONTAINS \"{{word}}\".",
       "unknown_label": "Er is geen label :{{label}}. Geregistreerde labels: {{suggestions}}.",
       "no_labels": "Er is geen label :{{label}}: deze rol kan geen enkele tabel lezen.",
-      "unknown_relationship_type": "Er is geen relatietype {{types}}. Geregistreerde typen: {{suggestions}}.",
+      "unknown_relationship_type": "Er is geen relatietype {{types}}. Dichtstbijzijnde geregistreerde typen: {{suggestions}}.",
       "no_relationship_types": "Er is geen relatietype {{types}}: deze rol kan geen enkele relatie doorlopen.",
       "type_mismatch": "In {{expression}} kan {{value}} niet worden vergeleken met {{property}}, van type {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE kan het aggregaat {{aggregate}} niet gebruiken: WHERE filtert rijen voordat ze worden gegroepeerd. Aggregeer in een WITH en filter daarna.",
@@ -688,6 +699,34 @@
       "also_term_needs_column": "In plaats daarvan de term taggen vraagt een kolom.",
       "inherited_from_term": "Deze kolom is PII omdat hij {{term}} betekent. Haal de markering van die betekenis weg, of verplaats de kolom als hij iets anders betekent.",
       "move_loses": "Deze verplaatsing haalt tags weg van kolommen die ze daarna niet meer dragen. Bevestig het verlies van elke tag, of neem de tags mee naar de term waar de kolommen naartoe gaan."
+    },
+    "data_product": {
+      "status": {
+        "published": "Dataproduct {{data_product}} gepubliceerd.",
+        "deprecated": "Dataproduct {{data_product}} als verouderd gemarkeerd.",
+        "retired": "Dataproduct {{data_product}} buiten gebruik gesteld.",
+        "restored": "Dataproduct {{data_product}} hersteld.",
+        "reason_required": "Een reden is verplicht: geef aan waarom het dataproduct als verouderd wordt gemarkeerd of buiten gebruik wordt gesteld.",
+        "not_found": "Dataproduct {{data_product}} niet gevonden.",
+        "not_draft": "Alleen een dataproduct in concept kan worden gepubliceerd; dit is {{status}}.",
+        "not_live": "Alleen een actief dataproduct kan als verouderd worden gemarkeerd, en alleen een actief of verouderd dataproduct buiten gebruik worden gesteld; dit is {{status}}.",
+        "not_restorable": "Alleen een verouderd of buiten gebruik gesteld dataproduct kan worden hersteld; dit is {{status}}.",
+        "retire_on_past": "De geplande datum van buitengebruikstelling {{retire_on}} ligt in het verleden. Kies vandaag of een latere datum.",
+        "successor_required": "Dit dataproduct heeft {{members}} lid/leden; bij buitengebruikstelling gaan ze naar een opvolger. Kies er een.",
+        "successor_is_self": "Een dataproduct kan niet zijn eigen opvolger zijn.",
+        "successor_retired": "De opvolger '{{successor}}' is buiten gebruik gesteld. Kies een dataproduct dat in gebruik is.",
+        "successor_other_domain": "De opvolger '{{successor}}' hoort bij domein {{domain}}. De leden van een product delen zijn domein, dus kies een opvolger in hetzelfde domein."
+      },
+      "finding": {
+        "no_members": "Er hoort geen tabel, view of opdracht bij dit dataproduct.",
+        "member_deprecated": "Ledentabel {{table}} is verouderd.",
+        "no_owner": "Geen eigenaarsrol is verantwoordelijk voor dit dataproduct.",
+        "no_support_contact": "Dit dataproduct heeft geen supportcontact, wat een geconfigureerd exportdoel vereist.",
+        "retirement_blocked": "Dit dataproduct zou op {{retire_on}} buiten gebruik worden gesteld, maar heeft nog leden. Stel het buiten gebruik met een opvolger die ze overneemt.",
+        "domain_steward_unset": "Domein {{domain}} heeft geen steward.",
+        "no_description": "Dit dataproduct vermeldt doel noch gebruik.",
+        "successor_retired": "Het dataproduct dat de leden van dit product overnam, '{{successor}}', is ook buiten gebruik gesteld."
+      }
     }
   }
 }

@@ -35,6 +35,7 @@ publish — so a reconcile for one org cannot read another's target, let alone p
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 from datetime import datetime, timezone
@@ -46,7 +47,7 @@ from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import metadata_export
-from provisa.api.metadata_export.scope import for_domains
+from provisa.api.metadata_export.scope import for_domains, for_role
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
@@ -54,9 +55,13 @@ from provisa.control_plane.entitlements import (
     require_feature,
 )
 from provisa.core.models import CatalogsConfig, MetadataExportConfig, MetadataExportTarget
+from provisa.dq.contract import model_contexts
 from provisa.events import queue
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from provisa.api.metadata_export.model import TableAsset
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
     from provisa.api.metadata_export.model import MetadataSnapshot
@@ -205,6 +210,18 @@ async def _model_for_export() -> "ProvisaConfig":
     return config
 
 
+def _for_target(snapshot: "MetadataSnapshot", bindings: dict[str, tuple[str, str]]) -> Any:
+    """``snapshot`` as one target is sent it: a retired product goes only where an earlier
+    publish put it, to withdraw it there (REQ-1634 STATUS). Where it was never published there
+    is nothing to withdraw, and sending it would create it retired."""
+    kept = [
+        p for p in snapshot.data_products if p.status != "retired" or p.semantic_uri in bindings
+    ]
+    if len(kept) == len(snapshot.data_products):
+        return snapshot
+    return dataclasses.replace(snapshot, data_products=kept)
+
+
 def _snapshot_uris(snapshot: Any) -> set[str]:
     """Every Provisa URN the snapshot publishes — the bindings worth keeping (REQ-1389)."""
     uris = {source.semantic_uri for source in snapshot.sources}
@@ -250,13 +267,58 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         dialect=GOVERNED_DIALECT,
         glossary=glossary,
         dq_outcomes=dq_outcomes,
-        contexts=state.contexts,
+        contexts=model_contexts(state),
         # REQ-1659: the listing's documentation link points back at the product's page, at
         # the org's public origin -- the one mail.base_url names, for the same reason an
         # invitation cannot derive it from the request that created it.
         documentation_base_url=state.config.mail.base_url if state.config else None,
         owner_emails=owner_emails,
     )
+
+
+async def role_reader(state: Any, role: str) -> "Callable[[TableAsset], set[str] | None]":
+    """The columns of a snapshot table ``role`` is served (REQ-2152): its compiled context's; a
+    table no build compiled is served none."""
+    from provisa.api.flight.catalog import role_visibility
+
+    served = role_visibility(state, role)
+    return await snapshot_reader(state, lambda table_id: served.get(table_id, set()))
+
+
+def role_reach(state: Any, role: str) -> "Callable[[str], bool]":
+    """Whether ``role`` reaches a domain, by its definition: a target's role is one the org
+    defines, checked when the target is saved."""
+    from provisa.security.rights import reaches_domain
+
+    reach = state.roles[role]["domain_access"]
+    return lambda domain_id: reaches_domain(reach, domain_id)
+
+
+async def snapshot_reader(
+    state: Any, served_of: "Callable[[int], set[str] | None]"
+) -> "Callable[[TableAsset], set[str] | None]":
+    """``served_of`` (registered table id → its served columns, None: all) read by a snapshot
+    table's address (source, schema, table); a table with no registered id is served none."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables as rt
+
+    assert state.model_db is not None  # the org's model store is bound with its runtime
+    async with state.model_db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(rt.c.id, rt.c.source_id, rt.c.schema_name, rt.c.table_name)
+            )
+        ).fetchall()
+    ids: dict[tuple[str, ...], int] = {
+        (r.source_id, r.schema_name, r.table_name): r.id for r in rows
+    }
+
+    def _columns(table: "TableAsset") -> set[str] | None:
+        table_id = ids.get(tuple(table.ref.parts))
+        return set() if table_id is None else served_of(table_id)
+
+    return _columns
 
 
 async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
@@ -280,9 +342,29 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
         assert model_db is not None  # _export_config refuses without one
         results: dict[str, PublishResult] = {}
         for target in targets:
+            if target.role is None:
+                # REQ-2152 (Q1): a catalog is published as a role; one naming none is sent nothing.
+                results[target.id] = PublishResult(
+                    provider_name=target.provider,
+                    errors=[
+                        AssetError(
+                            asset=AssetRefStub(target.id),
+                            message=(
+                                f"catalog {target.id!r} names no role to publish as: set the role "
+                                "whose reads it is sent"
+                            ),
+                        )
+                    ],
+                )
+                continue
             exporter = metadata_export(target)
-            # REQ-2122: a catalog is published its domains' tables and data products alone.
-            published = for_domains(snapshot, target.domains)
+            # REQ-2122: a catalog is published its domains' tables and data products alone;
+            # REQ-2152 (Q1): and only what the role it is published as reads.
+            published = for_role(
+                for_domains(snapshot, target.domains),
+                await role_reader(state, target.role),
+                role_reach(state, target.role),
+            )
             async with model_db.acquire() as conn:
                 # REQ-1389: hand the provider the vendor ids captured by its earlier publishes,
                 # so a physically re-addressed asset rebinds the SAME catalog entity instead of
@@ -294,8 +376,9 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
                 from provisa.federation.replica_routing import export_view_addresses
 
                 exporter.export_views = await export_view_addresses(state)
+            sent = _for_target(published, exporter.stored_bindings)
             try:
-                result = await exporter.publish(published)
+                result = await exporter.publish(sent)
             except httpx.HTTPStatusError as exc:
                 # A refusal the adapter does not report per asset (its token, a listing) is the
                 # target's failure, named by the request and the catalog's answer, rather than
@@ -312,6 +395,10 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
                         )
                     ],
                 )
+            if result.ok and not exporter.binds_products:
+                # REQ-1634 STATUS: what this target now holds, so a retirement reaches it later.
+                for product in sent.data_products:
+                    result.bindings.setdefault(product.semantic_uri, (product.id, product.name))
             if result.bindings:
                 async with model_db.acquire() as conn:
                     await catalog_binding.upsert_bindings(conn, target.id, result.bindings)

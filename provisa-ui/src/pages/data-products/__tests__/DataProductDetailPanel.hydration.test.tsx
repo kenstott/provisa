@@ -18,6 +18,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
+import { lifecycleProps } from "./lifecycleProps";
 import type { ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
@@ -28,7 +29,19 @@ vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
 
 /** Each panel input, by where it comes from. */
 const META = ["p", "core", "coreError", "reader"]; // the meta domain: the product, its core, its schema
-const NOT_DATA = ["canEdit", "canSeeLineage", "onEdit", "onDelete"]; // capabilities and callbacks
+const NOT_DATA = [
+  "canEdit",
+  "canSeeLineage",
+  "onEdit",
+  "onDelete",
+  "onStatusChanged",
+  "onStatusFailed",
+  "openProduct",
+  "statusActions",
+]; // capabilities and callbacks
+/** Its lifecycle: the products a successor is chosen from, the members a retirement moves, and
+ * its findings, read by the page for the list's own To review. */
+const LIFECYCLE = ["products", "members", "findings"];
 /** Decided: lineage and Input Ports read the lineage API, scoped to the product. */
 const LINEAGE = [
   "lineageLoading",
@@ -140,6 +153,7 @@ function panelFromMetaAlone() {
       inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }
@@ -177,12 +191,13 @@ describe("a data product's panel hydrates from the meta query", () => {
       source.indexOf("\n}\n", source.indexOf("interface DataProductDetailPanelProps")),
     );
     const names = [...props.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1]).sort();
-    expect(names).toEqual([...META, ...NOT_DATA, ...LINEAGE].sort());
+    expect(names).toEqual([...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE].sort());
   });
 
   it("reads inside its own parts only where named", () => {
     const source = readFileSync(resolve(__dirname, "../DataProductDetailPanel.tsx"), "utf8");
-    const readers = [...source.matchAll(/^import .* from "([^"]+)";$/gm)]
+    // A type import reads nothing.
+    const readers = [...source.matchAll(/^import (?!type ).* from "([^"]+)";$/gm)]
       .map((m) => m[1])
       .filter((from) =>
         /OwnerResolution|DqRulesModal|graph3d|lineage\/LineageDag|api\/|hooks\//.test(from),

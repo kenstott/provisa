@@ -17,7 +17,7 @@ from __future__ import annotations
 
 
 def _masked(mask: dict) -> list[dict]:
-    return [{"to": ["*"], "mask": mask}]
+    return [{"mask": mask}]
 
 
 def test_column_has_mask_type_field():

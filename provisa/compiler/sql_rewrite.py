@@ -21,7 +21,7 @@ from provisa.compiler.sql_literals import sql_literal
 
 import re as _re
 from datetime import datetime, timezone
-from typing import cast
+from typing import Any, cast
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -138,6 +138,31 @@ def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
     if use_catalog:
         return f"{_q(meta.catalog_name)}.{_q(meta.schema_name)}.{_q(meta.table_name)}"
     return f"{_q(meta.schema_name)}.{_q(meta.table_name)}"
+
+
+def travel_ref(ref: str, field_node: Any, variables: dict | None) -> str:  # REQ-1163
+    """``ref`` read at the time its GraphQL field's ``as_of`` / ``as_recorded`` arguments say,
+    in the SQL call form a relation's time travel is written in
+    (``"s"."t"(as_of => '…')``, provisa.mv.time_travel); ``ref`` itself when the field says none.
+    Each value is validated before it is written into the statement."""
+    from provisa.compiler.sql_where import _extract_value
+    from provisa.mv.bitemporal import parse_as_of, parse_as_recorded
+
+    said = {
+        a.name.value: _extract_value(a.value, variables)
+        for a in (field_node.arguments or ())
+        if a.name.value in ("as_of", "as_recorded")
+    }
+    parts: list[str] = []
+    for name, parse in (("as_of", parse_as_of), ("as_recorded", parse_as_recorded)):
+        value = said.get(name)
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise ValueError(f"{name} takes an ISO 8601 time, not {value!r}")
+        parse(value)
+        parts.append(f"{name} => '{value}'")
+    return f"{ref}({', '.join(parts)})" if parts else ref
 
 
 def semantic_table_name(meta: TableMeta) -> str:  # REQ-641

@@ -76,6 +76,7 @@
     "itemPython": "Python",
     "itemNotebook": "Блокнот",
     "itemContainerRegistries": "Реестры контейнеров",
+    "itemSparql": "SPARQL",
     "itemCatalogs": "Каталоги"
   }
 }

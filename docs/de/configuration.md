@@ -952,25 +952,35 @@ Gelesen wie am 3. Oktober erfasst, zeigt der Handel die falsche Menge. Gelesen n
 
 Eine Version gilt von ihrem Zeitpunkt bis zu dem der nächsten Version. Ein Löschen wirkt ab dem Zeitpunkt, zu dem Provisa es erfasst.
 
-**Lesen.** Ein einfacher Lesevorgang liefert die jetzt geltende Version jedes Schlüssels. Der Header `X-Provisa-As-Of` liest zu einem Zeitpunkt oder über einen Bereich, angegeben als ISO-8601-Intervall `start/end`:
+**Lesen.** Ein einfacher Lesevorgang liefert die jetzt geltende Version jedes Schlüssels. Um eine andere Zeit zu lesen, geben Sie der Relation dort, wo die Anweisung sie nennt, ihr eigenes Argument `as_of`, einen Zeitpunkt oder einen Bereich, angegeben als ISO-8601-Intervall `start/end`:
 
-```
-X-Provisa-As-Of: 2026-03-01T00:00:00
-X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-03-01T00:00:00') AS e
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-01-01T00:00:00/2026-04-01T00:00:00') AS e
 ```
 
 Ein Zeitpunkt liefert die damals geltende Version jedes Schlüssels. Ein Bereich liefert jede Version, die zu irgendeinem Zeitpunkt darin galt, eine Zeile pro Version.
 
-**Wie erfasst.** Eine später erfasste Korrektur ändert, was eine Sicht über die Vergangenheit sagt: Die am 30. September geltende Version ist die korrigierte, sobald die Korrektur erfasst ist. Um die Sicht so zu lesen, wie Provisa sie zu einem Zeitpunkt erfasst hatte, vor jeder späteren Korrektur, fügen Sie `X-Provisa-As-Recorded` hinzu, einen ISO-8601-Zeitpunkt:
+**Wie erfasst.** Eine später erfasste Korrektur ändert, was eine Sicht über die Vergangenheit sagt: Die am 30. September geltende Version ist die korrigierte, sobald die Korrektur erfasst ist. Um die Sicht so zu lesen, wie Provisa sie zu einem Zeitpunkt erfasst hatte, vor jeder späteren Korrektur, fügen Sie `as_recorded` hinzu, einen ISO-8601-Zeitpunkt:
 
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_recorded => '2026-10-01T00:00:00') AS e
 ```
-X-Provisa-As-Of: 2026-09-30T12:00:00
-X-Provisa-As-Recorded: 2026-10-01T00:00:00
+
+Jede danach erfasste Version bleibt weg, und das As-of wählt dann die Version, die zu seiner eigenen Zeit galt. Mit `as_recorded` allein liefert der Lesevorgang die Version jedes Schlüssels, die laut damaliger Erfassung galt. Es nimmt einen Zeitpunkt, keinen Bereich.
+
+**Wo die Argumente stehen.** Jede Referenz trägt ihre eigene Zeit, sodass eine Anweisung eine Sicht über zwei Referenzen zu zwei Zeiten lesen kann; eine Referenz ohne Argumente liest den aktuellen Stand. Eine Zeit kann auch ein gebundener Wert sein, `(as_recorded => $1)`, dessen Wert in den `params` der Anfrage mitgesendet wird. Nur eine Relation, die ihre Versionen behält, nimmt die Argumente: eine Tabelle oder Sicht mit Historie und eine Iceberg- oder Delta-Tabelle, die über ihre Snapshots reist und daher nur `as_recorded` nimmt (den damals aktuellen Snapshot). Jede andere Relation, eine fehlerhafte Zeit, ein Bereich für `as_recorded` oder `as_of` auf einer Iceberg- oder Delta-Tabelle wird mit HTTP 400 abgelehnt, unter Nennung der Relation.
+
+Dieselben zwei Namen sind die Argumente des Felds der Relation in GraphQL, auf Root-Feldern und auf einem Beziehungsfeld, dessen Ziel seine Versionen behält, sodass zwei Aliasse eine Sicht zu zwei Zeiten lesen können:
+
+```graphql
+{
+  reported: view_eod_totals(as_recorded: "2026-10-01T17:00:00") { branch net_movement }
+  restated: view_eod_totals(as_recorded: "2026-10-12T17:00:00") { branch net_movement }
+}
 ```
 
-Jede danach aufgezeichnete Version bleibt weg, und das As-of wählt dann die Version, die zu seiner eigenen Zeit galt. Mit `X-Provisa-As-Recorded` allein liefert der Lesezugriff die Version jedes Schlüssels, die laut damaliger Aufzeichnung galt. Es nimmt einen Zeitpunkt, keinen Bereich; ein Bereich oder ein fehlerhafter Wert wird mit HTTP 400 (`data.invalid_as_recorded`) abgelehnt.
-
-Beide Zeiten erreichen Provisa auch ohne die Header. Die As-of-Zeit ist das Argument `as_of` von `resolve` (GraphQL, gRPC, MCP), der REST-Abfrageparameter `as_of` und die Option `as_of` eines Arrow-Flight-Tickets, und ein an `resolve` übergebener Bereich liefert die `versions` der Zeile statt ihrer `row`. Die As-recorded-Zeit ist das Argument `as_recorded` von `resolve`, der REST-Abfrageparameter `as_recorded` und die Option `as_recorded` eines Arrow-Flight-Tickets. Der Audit-Eintrag jeder Anweisung hält beide Zeiten fest, mit denen sie gelesen hat, `as_of` und `as_recorded`. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesezugriff. Ein fehlerhafter As-of-Wert oder ein Bereich, dessen Ende nicht nach seinem Anfang liegt, wird mit HTTP 400 (`data.invalid_as_of`) abgelehnt.
+REST nimmt sie als die Abfrageparameter `as_of` und `as_recorded` des Tabellen-Endpunkts, und das MCP-Tool `describe_table` sagt, welche Argumente eine Tabelle nimmt. Das Feld `_resolve` (GraphQL, REST und MCP) nimmt ebenfalls `as_of` und `as_recorded`, und ein ihm übergebener Bereich liefert die `versions` der Zeile statt ihrer `row`; ebenso der gRPC-Aufruf `Resolve`. Ein Arrow-Flight-Ticket nimmt sie als seine Optionen `as_of` und `as_recorded`, und eine pgwire-Sitzung setzt mit `SET provisa.as_of` und `SET provisa.as_recorded` einen Standard für die Anweisungen, die sie ausführt, den die eigenen Argumente einer Referenz überschreiben. Die Auswahlfelder „As of“ und „As recorded at“ des SQL-Explorers schreiben die Argumente in die Anweisung. Der Audit-Eintrag jeder Anweisung hält die Zeit fest, zu der sie gelesen hat, `as_of` und `as_recorded`, wenn sie zu einer Zeit gelesen hat. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesevorgang.
 
 Jede Sicht mit Historie liefert drei weitere Spalten, freigegeben wie ihre Quellzeit-Spalte (sonst ihre erste Schlüsselspalte):
 
@@ -1732,6 +1742,7 @@ Für Google-Cloud-Quellen setzen Sie `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `TRINO_HOST` | `localhost` | Trino-Coordinator-Host |
 | `TRINO_PORT` | `8080` | Trino-Coordinator-HTTP-Port |
 | `PROVISA_ENGINE_FILES_GID` | `1000` | Gruppe, als die Trino seine geheimen Dateien liest (die SASL-Einstellungen einer Kafka-Quelle, den Client-Schlüssel eines Code-Hosts), wenn Provisa weder als root noch als Benutzer von Trino läuft, wie eine native App neben dem Container von Trino. Der Benutzer von Provisa muss ihr angehören, sonst wird die Datei mit Namen abgelehnt. |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | Dasselbe für den Server einer Postgres-Engine, der den Client-Schlüssel eines Code-Hosts liest |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Pfad zur GCP-Service-Account-Schlüssel-JSON (BigQuery-Engine/-Quelle) |
 | `GOOGLE_CLOUD_PROJECT` | — | Standard-GCP-Projekt (BigQuery; wird von der URL überschrieben) |
 | `FABRIC_SQL_SERVER` | — | Fabric-Warehouse-SQL-Endpunkt (Alternative zu `PROVISA_ENGINE_URL`) |

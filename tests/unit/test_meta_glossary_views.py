@@ -108,7 +108,7 @@ def db() -> sqlite3.Connection:
                 7,
                 "ssn",
                 "social security number",
-                '[{"to": ["*"], "mask": {"type": "regex"}}]',
+                '[{"mask": {"type": "regex"}}]',
                 "sales",
                 "org1",
             ),

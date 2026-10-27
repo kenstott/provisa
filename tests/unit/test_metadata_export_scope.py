@@ -173,3 +173,73 @@ def test_a_catalog_serving_both_domains_gets_everything():
     assert both.relationships == snapshot.relationships
     assert both.model_tags == snapshot.model_tags
     assert both.lineage == snapshot.lineage
+
+
+# --- a target's role (REQ-2152, ruling Q1) --------------------------------------------------------
+
+
+def test_a_role_is_published_only_the_columns_it_reads_and_what_rides_on_them():
+    """Each export target names a role, and it is published exactly what that role reads: the
+    columns it is served, the tables holding one, and every other fact only with them."""
+    from provisa.api.metadata_export.scope import for_role
+
+    def _sales_reader(table: TableAsset) -> set[str] | None:
+        return {"id"} if table.name == "orders" else set()
+
+    narrowed = for_role(_snapshot(), _sales_reader, lambda domain_id: False)
+    assert [t.name for t in narrowed.tables] == ["orders"]
+    assert [c.name for c in narrowed.tables[0].columns] == ["id"]
+    assert [p.id for p in narrowed.data_products] == ["sales_360"]
+    assert [s.id for s in narrowed.sources] == ["pg"]
+    assert narrowed.relationships == []
+    assert [m.tag_id for m in narrowed.model_tags] == ["pii"]
+    assert [r.parts for r in narrowed.glossary_terms[0].refs] == [("pg", "orders", "id")]
+
+
+def test_a_column_the_role_is_not_served_is_not_published():
+    from provisa.api.metadata_export.scope import for_role
+
+    def _no_ids(table: TableAsset) -> set[str] | None:
+        return set()
+
+    assert for_role(_snapshot(), _no_ids, lambda domain_id: False).tables == []
+
+
+def test_a_role_nothing_narrows_is_published_everything():
+    from provisa.api.metadata_export.scope import for_role
+
+    snapshot = _snapshot()
+    assert for_role(snapshot, lambda table: None, lambda domain_id: True) == snapshot
+
+
+def test_a_role_is_published_every_domain_it_reaches_empty_ones_included():
+    """A domain the role reaches is published though it holds nothing the role reads, as the
+    admin catalog lists it (CatalogScope.lists_domain); one it neither reaches nor holds a kept
+    table of is not."""
+    from provisa.api.metadata_export.scope import for_role
+
+    def _nothing(table: TableAsset) -> set[str] | None:
+        return set()
+
+    reached = for_role(_snapshot(), _nothing, lambda domain_id: domain_id == "finance")
+    assert reached.tables == [] and [d.id for d in reached.domains] == ["finance"]
+
+
+def test_a_retired_product_the_role_reaches_is_published_to_be_withdrawn():
+    """REQ-1634 STATUS: a retired product's members went to its successor, so it has none the role
+    reads; it is still sent where the role reaches its domain, so a catalog withdraws it."""
+    from dataclasses import replace
+
+    from provisa.api.metadata_export.scope import for_role
+
+    snapshot = _snapshot()
+    retired = replace(snapshot.data_products[1], members=(), status="retired")
+    snapshot = replace(snapshot, data_products=[snapshot.data_products[0], retired])
+
+    def _nothing(table: TableAsset) -> set[str] | None:
+        return set()
+
+    reached = for_role(snapshot, _nothing, lambda domain_id: domain_id == "finance")
+    assert [p.id for p in reached.data_products] == ["books"]
+    unreached = for_role(snapshot, _nothing, lambda domain_id: False)
+    assert unreached.data_products == []

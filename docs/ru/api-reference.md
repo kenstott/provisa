@@ -49,6 +49,8 @@ GET /auth/provider-type
 
 Запрос выполняется от своей действующей роли: роли аутентифицированного пользователя или, в режиме разработки (без аутентификации), заголовка `X-Provisa-Role`, а при его отсутствии — `org_admin`. Поле `role` в теле не выбирает роль. Если оно есть, оно должно совпадать с действующей ролью; другое значение возвращает `400` с кодом `data.role_mismatch`, называющим обе роли. То же правило действует для `POST /data/sql`, `POST /data/query` и `POST /query/nl`.
 
+**GraphQL поверх HTTP.** Эндпоинт следует спецификации GraphQL-over-HTTP. Он также отвечает на `GET /data/graphql`, где `query`, `operationName`, `variables` и `extensions` закодированы в URL (`variables` и `extensions` — строки JSON); мутация, отправленная через `GET`, возвращает `405`. Запрос, в чьём `Accept` `application/graphql-response+json` указан раньше `application/json`, получает ответ этого типа; любой другой запрос получает `application/json`. Запрос, который не является запросом GraphQL, возвращает `400`: нет тела, тело не является объектом JSON или параметр имеет неверный тип JSON (`query` и `operationName` — строки, `variables` и `extensions` — объекты). Документ, который не разбирается или не проходит проверку либо чьи переменные не приводятся к типам, получает в ответ свои `errors` без `data`: статус `200` при `application/json` и `400` при `application/graphql-response+json` или когда `Accept` запрашивает формат файла, например CSV.
+
 Поле `extensions` поддерживает протокол Automatic Persisted Query (APQ):
 
 ```json

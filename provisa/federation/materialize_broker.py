@@ -39,7 +39,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-import duckdb
+from provisa.core import engine_memory
 
 from provisa.core.host_lock import lock_fd, unlock_fd
 
@@ -96,7 +96,10 @@ class _MemoryStore:
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.generation: StoreCanary = 0
-        self.db = duckdb.connect(_MEMORY_PATH)
+        from provisa.core import engine_memory
+
+        self.db = engine_memory.connect(_MEMORY_PATH)
+        engine_memory.log_limit(self.db, "in-memory store")
         self.db.execute(f"ATTACH '{_MEMORY_PATH}' AS {_MAT_STORE_ALIAS}")
 
 
@@ -191,7 +194,7 @@ def _with_store(
     with open(lock_path, "a+") as lockfile:
         _lock_exclusive(lockfile.fileno(), lock_path)
         try:
-            con = duckdb.connect(":memory:")
+            con = engine_memory.connect()
             con.execute(f"ATTACH '{db_path}' AS {_MAT_STORE_ALIAS} (TYPE duckdb{mode})")
             try:
                 with request_deadline.cancel_on_deadline(con.interrupt):

@@ -36,6 +36,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
 import { ResponseTableOverlay } from "../plugins/table-view";
 import { setLastQueryElapsedMs, subscribeQueryTiming } from "../query-timing";
+import { noteRun } from "../plugins/graphqlResponseStore";
 import { prewarmEngine } from "../lib/engineWake";
 import { HeadersQuickInsert } from "../plugins/headers-quick-insert";
 import {
@@ -774,6 +775,8 @@ export function QueryPage() {
       fetch: createProvisaFetch(settingsRef),
     });
     return async function* (request, opts) {
+      // The response this run shows is kept with this query.
+      noteRun(request.query ?? "");
       // Detect subscription operations and stream via SSE
       let isSubscription = false;
       try {

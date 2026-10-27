@@ -146,6 +146,140 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 - Fields above the threshold are redirected, with per-field entries in `redirects`
 - Binary formats (Parquet, Arrow) are only supported for single-root queries
 
+## Query Pipeline
+
+Every read passes through five stages. GraphQL, Cypher, SPARQL, gRPC and SQL are entry points, not stages — each compiles or lowers to semantic SQL before the pipeline begins.
+
+```mermaid
+flowchart TD
+    REST[REST and JSON:API] --> GQL[GraphQL]
+    GQL --> SEM[Semantic SQL]
+    GRPC[gRPC] --> SEM
+    CY[Cypher] --> GP[Graph pattern form]
+    SP[SPARQL] --> GP
+    GP --> SEM
+    SQL[SQL] --> SEM
+    SEM --> GOV[Governed SQL]
+    GOV --> OPT[Optimized SQL]
+    OPT --> ROUTE{Plan and route}
+    ROUTE -- "one source, direct driver" --> DIRECT[Native SQL in the source's dialect]
+    ROUTE -- "otherwise" --> ENGINE[Native SQL in the engine's dialect]
+```
+
+### Front ends
+
+A front end parses a language and names what it reads in the model's terms. GraphQL compiles straight to semantic SQL. The REST endpoints that the OpenAPI document describes, and the JSON:API endpoints, build a GraphQL query from each request and compile it the same way. gRPC lowers a table request to semantic SQL without going through GraphQL. Cypher and SPARQL parse into one graph pattern form that both graph languages share, and that form compiles to semantic SQL. SQL you write against the model's tables is already semantic SQL, so it enters at the next stage. No front end decides who may read what.
+
+### Semantic SQL
+
+Semantic SQL reads the model. Its tables are domain-qualified (`sales.orders`), its columns are the ones the model publishes, and its joins are the declared relationships. It says nothing about where the data lives.
+
+A nested read compiles to one canonical CTE pipeline, the same for every engine and built from the declared relationships alone. A root CTE reads the root table with its filter, order, limit and offset. Each to-many level is a CTE of its own. It joins its table to the parent CTE on the relationship's keys, takes each parent's first rows with `ROW_NUMBER() OVER (PARTITION BY ...)`, and aggregates them into a JSON list per parent. The final `SELECT` reads the root CTE and left-joins each level on the parent key. GraphQL, Cypher and SPARQL reads that ask the same question compile to the same statement.
+
+The Cypher translator writes one CTE per `WITH` stage; aligning those shapes to the canonical pipeline is follow-on work. Until it is complete, equivalent Cypher and GraphQL reads do not always compile to the same semantic SQL. The GraphQL compiler writes nested fields with arguments as per-parent `LEFT JOIN LATERAL` joins. Both current forms appear in the example below.
+
+### Governed SQL
+
+Governance works on the whole semantic statement at once. Every `SELECT` in it gets the reading role's visibility rules, row-level security and masks, so each nested level is filtered at its own depth. A row-level rule whose condition is a subquery reads another table, so governance can add sources to a statement.
+
+### Optimized SQL
+
+The optimized stage rewrites the governed statement in ways that hold on every engine. It puts materialized views back in where they answer part of the statement, inlines small hot tables as `VALUES`, and drops API-cache and union branches the statement can't reach. Nothing here knows which engine will run the statement. These rewrites can remove sources. A federated read whose other sources are all inlined is left with one live source.
+
+### Plan and route
+
+Landing on the federation engine is the default; routing reads the optimized sources, never the governed ones. A statement runs directly on its source only when it passes all six gates in order. The first gate it fails names the reason.
+
+| Gate | What it checks |
+|---|---|
+| `one_source` | Reads one source after optimization, or reads sources that share a physical database |
+| `dialect_supports` | That source's dialect supports every construct in the statement |
+| `access_path` | A direct driver, an API caller, or a code function exists for the source |
+| `colocated_login` | Sources counted as one database share the same login credential |
+| `not_forced` | No operator floor, faked column, or engine-required condition applies |
+| `trusted_to_answer` | A non-SQL source can answer the complete dataset without further in-process filtering |
+
+See [Request Pipeline](#request-pipeline) for the cache, replica and steward cases.
+
+### Native SQL
+
+The native stage writes the routed statement in the source's dialect for a direct read and in the engine's for a federated one. It picks the spelling of the JSON aggregate and object functions, writes the empty list for a parent with no rows, turns `DISTINCT ON` into `ROW_NUMBER()` where the dialect has none, and chooses engine-specific forms such as a per-parent `LATERAL` join or a CTE materialization hint.
+
+### A worked example
+
+This GraphQL read asks for one customer and that customer's three largest orders:
+
+```graphql
+{
+  customers(where: { name: { eq: "Acme" } }) {
+    id
+    name
+    orders(order_by: { amount: desc }, limit: 3) {
+      id
+      amount
+    }
+  }
+}
+```
+
+In the canonical form, it compiles to this semantic SQL:
+
+```sql
+WITH customers AS (
+  SELECT c.id, c.name
+  FROM sales.customers AS c
+  WHERE c.name = 'Acme'
+),
+customers_orders AS (
+  SELECT ranked.customer_id,
+         JSON_AGG(JSON_OBJECT('id', ranked.id, 'amount', ranked.amount)
+                  ORDER BY ranked.amount DESC, ranked.id) AS orders
+  FROM (
+    SELECT o.customer_id, o.id, o.amount,
+           ROW_NUMBER() OVER (PARTITION BY o.customer_id
+                              ORDER BY o.amount DESC, o.id) AS rn
+    FROM sales.orders AS o
+    JOIN customers AS p ON o.customer_id = p.id
+  ) AS ranked
+  WHERE ranked.rn <= 3
+  GROUP BY ranked.customer_id
+)
+SELECT customers.id, customers.name, customers_orders.orders
+FROM customers
+LEFT JOIN customers_orders ON customers_orders.customer_id = customers.id
+```
+
+The order's id breaks ties in the ranking, so two orders of the same amount always come back in the same order. A customer with no orders gets no row in `customers_orders`; the native stage writes the empty list for it.
+
+The same read in Cypher matches the customer and reads the three largest orders in a subquery:
+
+```cypher
+MATCH (a:Customers)
+WHERE a.name = 'Acme'
+CALL {
+  WITH a
+  OPTIONAL MATCH (a)-[:HAS_ORDERS]->(b:Orders)
+  RETURN b.id AS id, b.amount AS amount
+  ORDER BY b.amount DESC
+  LIMIT 3
+}
+RETURN a.id, a.name, id AS orders__id, amount AS orders__amount
+```
+
+In the canonical form, this Cypher read and the GraphQL read compile to the statement above. That is what lets Open as query hand a GraphQL read to the Cypher page and get the same answer back.
+
+Today the GraphQL compiler writes the nested level as a per-parent lateral join instead:
+
+```sql
+SELECT "t0"."id", "t0"."name", "t1"."id" AS "orders__id", "t1"."amount" AS "orders__amount"
+FROM (SELECT * FROM "sales"."customers" "t0" WHERE "t0"."name" = $2 LIMIT 100) "t0"
+LEFT JOIN LATERAL (
+  SELECT * FROM "sales"."orders" WHERE "customer_id" = "t0"."id" ORDER BY "amount" DESC LIMIT $1
+) "t1" ON TRUE
+```
+
+You can see the semantic SQL for any GraphQL read in the Provisa panel of the GraphQL page.
+
 ## Federation Execution Paths
 
 | Path | Transport | Via | When used |

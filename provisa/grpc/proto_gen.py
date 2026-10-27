@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.aggregate_gen import _classify_columns
 from provisa.compiler.schema_gen import (
-    RESOLVE_FIELD,
     SchemaInput,
     _IMPLICIT_TRAVERSAL_DOMAINS,
     _assign_names,
@@ -91,6 +90,17 @@ def _physical_to_proto(column_type: str) -> str:
 
     if parse_native_type(normalized).nested:
         return "string"
+    # Any other spelling an engine or a source reports (``character varying``, ``character``,
+    # ``timestamp without time zone``): the product's one type vocabulary names it, as the Arrow
+    # catalog's map does (core.catalog_types).
+    from provisa.core.ir_types import to_ir
+
+    try:
+        canonical = to_ir(normalized)
+    except ValueError:
+        canonical = None  # not in the vocabulary either: refused by name below
+    if canonical in _PROTO_TYPE_MAP:
+        return _PROTO_TYPE_MAP[canonical]
     raise ValueError(f"Unmapped column type for proto: {column_type!r}")
 
 
@@ -126,9 +136,10 @@ def _arg_proto_type(arg_type: str) -> str:
     return _ARG_PROTO_TYPE.get((arg_type or "").lower(), "string")
 
 
-#: REQ-1365: the RPC that dereferences a semantic address -- the GraphQL ``resolve`` root field,
-#: which every role's schema carries, so every role's service carries it too (REQ-1929).
-RESOLVE_RPC = RESOLVE_FIELD.capitalize()
+#: REQ-1365: the RPC that dereferences a semantic address -- the GraphQL ``_resolve`` root field,
+#: which every role's schema carries, so every role's service carries it too (REQ-1929). A proto
+#: identifier cannot start with an underscore, so the RPC is ``Resolve``.
+RESOLVE_RPC = "Resolve"
 
 
 def command_rpc_name(fn_name: str) -> str:
@@ -296,7 +307,7 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
     """Commands (tracked functions) visible to this role, deduped by name (REQ-1156).
 
     The commands the role may call (``mutation_authz.command_reachable``): assigned to it
-    (``visible_to`` empty = every role) and in a domain it reaches, as on every other surface."""
+    (``visible_to`` names it) and in a domain it reaches, as on every other surface."""
     from provisa.security.mutation_authz import command_reachable
 
     out: list[dict] = []

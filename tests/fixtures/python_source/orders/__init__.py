@@ -9,7 +9,8 @@
 # permission from the copyright holder.
 
 """A Python source's code, as an organisation would write it: no import of Provisa's, tags in
-docstrings, types in hints (REQ-1993). The same API as the Node fixture's."""
+docstrings, types in hints (REQ-1993). The same API as the Node fixture's. A table or stream takes
+its inputs as one object (REQ-2100), and none here asks for its read context."""
 
 from __future__ import annotations
 
@@ -49,11 +50,18 @@ class Order:
     note: str | None = None
 
 
-def orders(customer_id: str, since: datetime | None = None) -> list[Order]:
+@dataclass
+class OrdersInputs:
+    customer_id: str
+    since: datetime | None = None
+
+
+def orders(inputs: OrdersInputs) -> list[Order]:
     """Orders of one customer.
 
     @table
     """
+    customer_id, since = inputs.customer_id, inputs.since
     note = since.isoformat() if since else None
     placed = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
     return [
@@ -69,19 +77,30 @@ def orders(customer_id: str, since: datetime | None = None) -> list[Order]:
     ]
 
 
-def many(count: int) -> list[dict]:
+@dataclass
+class ManyInputs:
+    count: int
+
+
+def many(inputs: ManyInputs) -> list[dict]:
     """Rows of no declared shape: typed by a preview.
 
     @table
     """
-    return [{"i": i} for i in range(count)]
+    return [{"i": i} for i in range(inputs.count)]
 
 
-async def placed(region: str) -> AsyncIterator[Order]:
+@dataclass
+class PlacedInputs:
+    region: str
+
+
+async def placed(inputs: PlacedInputs) -> AsyncIterator[Order]:
     """Orders as they are placed.
 
     @stream
     """
+    region = inputs.region
     n = 0
     while True:
         yield Order(
@@ -122,24 +141,42 @@ def outside() -> list[dict]:
         return [{"length": len(hosts.read())}]
 
 
-def fetched(url: str) -> list[dict]:
+@dataclass
+class FetchedInputs:
+    url: str
+
+
+def fetched(inputs: FetchedInputs) -> list[dict]:
     """@table"""
     try:
-        with urllib.request.urlopen(url, timeout=10) as response:
+        with urllib.request.urlopen(inputs.url, timeout=10) as response:
             return [{"status": response.status, "body": response.read().decode()}]
     except urllib.error.HTTPError as refused:
         return [{"status": refused.code, "body": refused.read().decode()}]
 
 
-def direct(host: str, port: int) -> list[dict]:
+@dataclass
+class DirectInputs:
+    host: str
+    port: int
+
+
+def direct(inputs: DirectInputs) -> list[dict]:
     """@table"""
-    with socket.create_connection((host, port), timeout=5):
+    with socket.create_connection((inputs.host, inputs.port), timeout=5):
         return [{"connected": True}]
 
 
-def greet(name: str, greeting: str = "hello", punctuation: str = "!") -> list[dict]:
+@dataclass
+class GreetInputs:
+    name: str
+    greeting: str = "hello"
+    punctuation: str = "!"
+
+
+def greet(inputs: GreetInputs) -> list[dict]:
     """@table"""
-    return [{"text": f"{greeting} {name}{punctuation}"}]
+    return [{"text": f"{inputs.greeting} {inputs.name}{inputs.punctuation}"}]
 
 
 @dataclass

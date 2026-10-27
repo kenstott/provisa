@@ -120,6 +120,12 @@ class EngineBackend:
 
         return transpile(pg_sql, self.dialect)
 
+    def exact_reads(self, state: Any, physical_sql: str) -> str:
+        """``physical_sql`` with each read an engine would round at its source made exact there
+        (REQ-2167). An engine whose reads keep a source's values as they are changes nothing."""
+        del state
+        return physical_sql
+
     @property
     def has_otel_catalog(self) -> bool:
         """Whether the engine exposes the ``otel`` telemetry catalog (``otel.signals.*``).

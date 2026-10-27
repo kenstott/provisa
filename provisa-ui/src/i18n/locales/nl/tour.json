@@ -1692,25 +1692,17 @@
         "title": "De totalen van één dag",
         "description": "1 oktober zoals het er nu voor staat. Per vestiging, product en valuta ziet u wat er binnenkwam, wat er uitging en het saldo. Een BI-tool die via pgwire verbonden is, voert precies deze SQL uit."
       },
-      "bankingAsReported": {
-        "title": "Zoals gerapporteerd bij de afsluiting",
-        "description": "Vastgelegd op staat nu op de afsluiting van 1 oktober. Een BI-tool doet hetzelfde met SET provisa.as_recorded in zijn pgwire-sessie. Vastgelegd op filtert de transacties op updated_at en de dagtotalen op de afsluiting van elke dag, zodat u de cijfers ziet die de bank die avond rapporteerde."
-      },
       "bankingReported": {
         "title": "Wat er gerapporteerd werd",
-        "description": "De zakelijke totalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten en heeft dus geen cijfers."
-      },
-      "bankingAsRestated": {
-        "title": "Zoals sindsdien gecorrigeerd",
-        "description": "Vastgelegd op schuift naar de afsluiting van 12 oktober, de laatste van de dertig dagen. Tegen die tijd zijn de terugboeking van 6 oktober en de laat ingevoerde handel van 7 oktober allebei vastgelegd."
+        "description": "De zakelijke totalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober: het argument as_recorded van de view leest ze zoals ze toen waren vastgelegd, en een BI-tool via pgwire doet hetzelfde met SET provisa.as_recorded. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten en heeft dus geen cijfers."
       },
       "bankingRestated": {
         "title": "Wat het nu zegt",
-        "description": "Dezelfde SQL. Het totaal van Londen voor 1 oktober bevat de teruggedraaide betaling niet meer, en het USD-totaal van Edinburgh voor 2 oktober bevat nu de late handel. De versies die bij elke afsluiting zijn gerapporteerd, blijven naast de gecorrigeerde bewaard, en recorded_at toont wanneer elke versie is vastgelegd."
+        "description": "Dezelfde SQL met as_recorded op de afsluiting van 12 oktober, de laatste van de dertig dagen. Het totaal van Londen voor 1 oktober bevat de teruggedraaide betaling niet meer, en het USD-totaal van Edinburgh voor 2 oktober bevat nu de late handel. De versies die bij elke afsluiting zijn gerapporteerd, blijven naast de gecorrigeerde bewaard, en recorded_at toont wanneer elke versie is vastgelegd."
       },
       "bankingAsOpsSql": {
         "title": "Terug naar operations",
-        "description": "De explorer draait nu als operations, nog steeds vastgelegd op de afsluiting van 12 oktober."
+        "description": "De explorer draait nu als operations."
       },
       "bankingPostings": {
         "title": "De boekingen achter een totaal",

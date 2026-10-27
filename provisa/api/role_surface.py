@@ -30,14 +30,24 @@ old mapping holds what was true then.
 ``surfaces`` mapping current when it was taken (:class:`SurfacePart`), reading a role's part in
 one lookup. Product code never writes through one: the build is the one writer
 (tests/unit/test_role_surface.py holds both rules).
+
+A build installs each role's surface LAZILY (:class:`LazySurface`): the role is known at once, and
+its parts are built the first time anything reads them, once, then held. A rebuild's cost is then
+the model-wide parts alone, not every role's schema, context and proto (REQ-1882); the role a
+request acts as is built when it is first asked for. A role whose build fails holds that failure:
+it is logged as an ERROR naming the role, and every read of the role raises it
+(:class:`RoleSurfaceUnbuilt`) -- never "no schema".
 """
 
 from __future__ import annotations
 
+import logging
 import threading
-from collections.abc import Iterator, MutableMapping
+from collections.abc import Callable, Iterator, MutableMapping
 from dataclasses import dataclass, replace
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -51,11 +61,91 @@ class RoleSurface:
     proto: Any = None  # the role's .proto text
 
 
+class RoleSurfaceUnbuilt(RuntimeError):
+    """A role's data surface could not be built; every read of the role raises this."""
+
+    def __init__(self, role_id: str, cause: BaseException) -> None:
+        self.role_id = role_id
+        super().__init__(f"the data surface of role {role_id!r} could not be built: {cause}")
+
+
+class RoleServedNothing(PermissionError):
+    """A role served no table (REQ-2154: no column of any table is granted to it): every read
+    of the role is refused naming it -- the caller's refusal, never a build failure."""
+
+    code = "data.role_served_nothing"
+
+    def __init__(self, role_id: str) -> None:
+        self.role_id = role_id
+        self.params = {"role_id": role_id}
+        super().__init__(
+            f"Role {role_id!r} is served no tables: no column of any table is granted to it"
+        )
+
+
+class LazySurface:
+    """A role's surface, built the first time it is read and held after: one build, however
+    many requests ask at once. A failed build is held too, and raised to every reader; a build a
+    request's deadline cut short is not held, and the next reader builds again."""
+
+    __slots__ = ("_build", "_failure", "_lock", "_surface", "role_id")
+
+    def __init__(self, role_id: str, build: Callable[[], RoleSurface]) -> None:
+        self.role_id = role_id
+        self._build = build
+        self._lock = threading.Lock()
+        self._surface: RoleSurface | None = None
+        self._failure: RoleSurfaceUnbuilt | RoleServedNothing | None = None
+
+    @property
+    def built(self) -> bool:
+        return self._surface is not None or self._failure is not None
+
+    def resolve(self) -> RoleSurface:
+        from provisa.core.request_deadline import DeadlinePassed, RequestTimedOut
+        from provisa.core.runtime_gone import RuntimeNotBuilt
+        from provisa.compiler.schema_gen import NoTablesServed
+
+        with self._lock:
+            if self._surface is not None:
+                return self._surface
+            if self._failure is not None:
+                raise self._failure
+            try:
+                self._surface = self._build()
+            except (DeadlinePassed, RequestTimedOut):
+                raise  # the reader's time ran out, not the role's build: the next one builds
+            except NoTablesServed:
+                self._failure = RoleServedNothing(self.role_id)
+                raise self._failure from None
+            except RuntimeNotBuilt:
+                # The runtime it was registered for is gone (a change of an environment's data,
+                # an engine wake): the role's build did not fail, so nothing is held; the reader
+                # is refused, or a detached pass left to the next runtime (runtime_gone).
+                raise
+            except Exception as exc:
+                self._failure = RoleSurfaceUnbuilt(self.role_id, exc)
+                log.error("%s", self._failure, exc_info=exc)
+                raise self._failure from exc
+            return self._surface
+
+
+def resolved(held: RoleSurface | LazySurface | None) -> RoleSurface | None:
+    """What a ``surfaces`` entry serves: a lazy one is built (or raises its failure) here."""
+    return held.resolve() if isinstance(held, LazySurface) else held
+
+
+def built_surface(held: RoleSurface | LazySurface) -> RoleSurface:
+    """A registered role's surface (an entry that is there): a lazy one is built here."""
+    return held.resolve() if isinstance(held, LazySurface) else held
+
+
 def role_surface(state: Any, role_id: str) -> RoleSurface | None:
     """The surface ``role_id`` is served through now, or None when it has none (a role with no
     data plane, or one this runtime does not know). Taken ONCE per request: every part a request
-    reads comes from the object this returns."""
-    return state.surfaces.get(role_id)
+    reads comes from the object this returns. A role not built yet is built here; one whose build
+    failed raises :class:`RoleSurfaceUnbuilt`."""
+    return resolved(state.surfaces.get(role_id))
 
 
 # Installs are rare (a build, a meta-role's first use) and come from more than one lock's
@@ -63,7 +153,7 @@ def role_surface(state: Any, role_id: str) -> RoleSurface | None:
 _INSTALL = threading.Lock()
 
 
-def install_surface(holder: Any, role_id: str, surface: RoleSurface | None) -> None:
+def install_surface(holder: Any, role_id: str, surface: RoleSurface | LazySurface | None) -> None:
     """Make ``surface`` the role's surface on ``holder`` (an org runtime) — or, given None, leave
     the role with none. ``holder.surfaces`` is replaced by a new mapping, never changed in
     place: one assignment, and a mapping taken earlier still shows what it showed."""
@@ -97,24 +187,38 @@ class SurfacePart(MutableMapping):
         self._part = part
 
     def __getitem__(self, role_id: str) -> Any:
-        value = getattr(self._held[role_id], self._part)
+        value = getattr(built_surface(self._held[role_id]), self._part)
         if value is None:
             raise KeyError(role_id)
         return value
 
     def __setitem__(self, role_id: str, value: Any) -> None:
-        held = self._holder.surfaces.get(role_id) or RoleSurface()
+        held = resolved(self._holder.surfaces.get(role_id)) or RoleSurface()
         install_surface(self._holder, role_id, replace(held, **{self._part: value}))
         self._held = self._holder.surfaces
 
     def __delitem__(self, role_id: str) -> None:
         self[role_id]  # KeyError when the role has no such part
-        remaining = replace(self._holder.surfaces[role_id], **{self._part: None})
+        remaining = replace(built_surface(self._holder.surfaces[role_id]), **{self._part: None})
         install_surface(self._holder, role_id, None if remaining == RoleSurface() else remaining)
         self._held = self._holder.surfaces
 
     def __iter__(self) -> Iterator[str]:
-        return iter([r for r, held in self._held.items() if getattr(held, self._part) is not None])
+        # A role not built yet is listed without building it: a built surface holds every part.
+        return iter(
+            [
+                r
+                for r, held in self._held.items()
+                if isinstance(held, LazySurface) or getattr(held, self._part) is not None
+            ]
+        )
+
+    def __contains__(self, role_id: object) -> bool:
+        # Membership names the role without building it.
+        held = self._held.get(role_id) if isinstance(role_id, str) else None
+        if held is None:
+            return False
+        return isinstance(held, LazySurface) or getattr(held, self._part) is not None
 
     def __len__(self) -> int:
         return sum(1 for _ in self)
@@ -125,7 +229,18 @@ class SurfacePart(MutableMapping):
 
 def set_part(holder: Any, part: str, values: Any) -> None:
     """Make ``part`` across all roles exactly ``values`` (a test replacing a whole map, or its
-    teardown putting an earlier one back)."""
+    teardown putting an earlier one back).
+
+    Given a view of this part (what a teardown puts back), the ``surfaces`` mapping the view
+    shows is made current again whole: a role not built then is put back unbuilt. Reading the
+    view's parts would build every such role, and one whose build fails would fail the teardown
+    -- leaving whatever it was to undo after it (the bound org among them) undone."""
+    if isinstance(values, SurfacePart) and values._part == part:
+        for role_id in [r for r in holder.surfaces if r not in values._held]:
+            install_surface(holder, role_id, None)
+        for role_id, held in values._held.items():
+            install_surface(holder, role_id, held)
+        return
     wanted = dict(values)
     view = SurfacePart(holder, part)
     for role_id in list(view):

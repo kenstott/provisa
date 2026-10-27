@@ -44,6 +44,12 @@ jobs:
         with:
           client: "true"
 
+      # The repo's Node (.nvmrc): tests/unit/test_e2e_provision_argv.py runs a UI e2e helper under
+      # Node's own TypeScript support, which the runner image's default Node 20 does not have.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
       - name: Run unit tests
         # faulthandler_timeout: a test still running after five minutes has every thread's stack
         # written to the log, so a run that stops making progress names the test it stopped in.

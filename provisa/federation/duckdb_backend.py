@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import threading
+
 import duckdb
+
+from provisa.core import engine_memory
 
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 from provisa.federation.native_backend import NativeEngineBackend
@@ -140,6 +144,16 @@ class DuckDBBackend(NativeEngineBackend):
 
         return transpile_to_duckdb(pg_sql)
 
+    def exact_reads(self, state: Any, physical_sql: str) -> str:
+        """REQ-2167: a PostgreSQL numeric registered from an unsized one is read exactly, cast at
+        its source -- DuckDB's PostgreSQL reader would take it as a double (``exact_numeric``)."""
+        from provisa.federation.exact_numeric import exact_numeric_reads, wide_tables_of_build
+
+        wide = wide_tables_of_build(state)
+        if not wide:
+            return physical_sql
+        return exact_numeric_reads(physical_sql, wide, self._runtime_for(state).remote_table)
+
     def _new_runtime(self) -> Any:
         # REQ-1922: the runtime lands in this engine's store — the one an org lane pins on it.
         return DuckDBFederationRuntime(store_engine=self.engine)
@@ -155,7 +169,7 @@ def evaluate_over_arrow(sql: str, relation: str, data: Any) -> Any:
     in-memory connection, and return the result as an Arrow table — a statement over rows already
     in this process (REQ-1921/1922: a region's admission of rows it fetched by key), never a read
     of any store or source."""
-    con = duckdb.connect()
+    con = engine_memory.connect()
     try:
         con.register(relation, data)
         return con.execute(sql).to_arrow_table()
@@ -165,11 +179,27 @@ def evaluate_over_arrow(sql: str, relation: str, data: Any) -> Any:
         con.close()
 
 
+_PARSER = threading.local()
+
+
+def parses(sql: str) -> bool:
+    """Whether DuckDB's parser (PostgreSQL's grammar) reads ``sql``: a syntax check that runs
+    nothing. One connection per thread, kept for the thread's later checks."""
+    conn = getattr(_PARSER, "conn", None)
+    if conn is None:
+        conn = _PARSER.conn = engine_memory.connect()
+    try:
+        conn.extract_statements(sql)
+    except duckdb.ParserException:
+        return False
+    return True
+
+
 def local_catalog_connection() -> duckdb.DuckDBPyConnection:
     """Private in-memory DuckDB connection for pgwire's pg_catalog emulation (REQ-127,
     REQ-128, REQ-363). Independent of any federated engine's dialect — this connection
     only ever serves synthetic catalog tables, never physical source data."""
-    db = duckdb.connect(":memory:")
+    db = engine_memory.connect()
     db.execute("CREATE MACRO pg_backend_pid() AS 0")
     db.execute("CREATE MACRO age(x) AS 0")
     db.execute("CREATE MACRO quote_ident(x) AS '\"' || replace(x, '\"', '\"\"') || '\"'")

@@ -157,6 +157,49 @@ def _timestamp_literal_or_param(
     return collector.add(val)
 
 
+# A comparison value that arrives as text for a column whose registered type is one of these
+# compares as that type: it is bound and cast to it in the statement. A text literal coerces to
+# these implicitly on some engines; a bound text value does not on all (Trino has no varchar to
+# timestamp, timestamptz, date or uuid comparison). The cast is the model's typing, so it is
+# written in the semantic SQL; the native stage spells it per engine.
+_TEXT_BOUND_CASTS = {
+    "timestamp": "TIMESTAMP",
+    "datetime": "TIMESTAMP",
+    "timestamp with time zone": "TIMESTAMPTZ",
+    "timestamptz": "TIMESTAMPTZ",
+    "date": "DATE",
+    "time": "TIME",
+    "time with time zone": "TIMETZ",
+    "timetz": "TIMETZ",
+    "uuid": "UUID",
+}
+_TYPE_PRECISION_RE = _re.compile(r"\s*\([^)]*\)")
+_ISO_T_SEPARATOR_RE = _re.compile(r"^(\d{4}-\d{2}-\d{2})T")
+
+
+def text_cast(data_type: str | None) -> str | None:
+    """The SQL type a text value compared with a column of registered ``data_type`` is cast to,
+    or None when the column takes the value as it is (or its type is not known)."""
+    if data_type is None:
+        return None
+    return _TEXT_BOUND_CASTS.get(_TYPE_PRECISION_RE.sub("", data_type.lower()).strip())
+
+
+def _comparison_value(
+    val: object,  # object-ok: truly-any payload — caller may pass str, int, float, bool, None
+    collector,
+    cast_type: str | None,
+) -> str:
+    """The SQL a comparison value is compared as: bound and cast to ``cast_type`` when it is text
+    for a typed column, else as ``_timestamp_literal_or_param`` reads it."""
+    if cast_type is None or not isinstance(val, str):
+        return _timestamp_literal_or_param(val, collector)
+    if cast_type.startswith("TIMESTAMP"):
+        # ISO 8601's 'T' separator is not accepted by every engine's text-to-timestamp cast.
+        val = _ISO_T_SEPARATOR_RE.sub(r"\1 ", val)
+    return f"CAST({collector.add(val)} AS {cast_type})"
+
+
 def _compile_virtual_col_filter(
     vv: str,
     filter_obj: dict,
@@ -193,30 +236,39 @@ def _compile_column_filter(
     col: str,
     filter_obj: dict,
     collector: ParamCollector,
+    data_type: str | None = None,
 ) -> list[str]:
-    """Compile filter predicates for a physical column expression."""
+    """Compile filter predicates for a physical column expression. ``data_type`` is the column's
+    registered type when known: a text value compared with a typed column is cast to its type
+    (``text_cast``)."""
+    cast_type = text_cast(data_type)
     parts: list[str] = []
     for op, val in filter_obj.items():
         if op == "eq":
-            rhs = _timestamp_literal_or_param(val, collector)
+            rhs = _comparison_value(val, collector, cast_type)
             parts.append(f"{col} = {rhs}")
         elif op == "neq":
-            rhs = _timestamp_literal_or_param(val, collector)
+            rhs = _comparison_value(val, collector, cast_type)
             parts.append(f"{col} != {rhs}")
         elif op == "gt":
-            rhs = _timestamp_literal_or_param(val, collector)
+            rhs = _comparison_value(val, collector, cast_type)
             parts.append(f"{col} > {rhs}")
         elif op == "gte":
-            rhs = _timestamp_literal_or_param(val, collector)
+            rhs = _comparison_value(val, collector, cast_type)
             parts.append(f"{col} >= {rhs}")
         elif op == "lt":
-            rhs = _timestamp_literal_or_param(val, collector)
+            rhs = _comparison_value(val, collector, cast_type)
             parts.append(f"{col} < {rhs}")
         elif op == "lte":
-            rhs = _timestamp_literal_or_param(val, collector)
+            rhs = _comparison_value(val, collector, cast_type)
             parts.append(f"{col} <= {rhs}")
         elif op == "in":
-            placeholders = [collector.add(v) for v in val]
+            placeholders = [
+                collector.add(v)
+                if cast_type is None or not isinstance(v, str)
+                else _comparison_value(v, collector, cast_type)
+                for v in val
+            ]
             parts.append(f"{col} IN ({', '.join(placeholders)})")
         elif op == "like":
             placeholder = collector.add(val)
@@ -330,6 +382,7 @@ class RelationshipConditions:  # REQ-2136
             target.table_id,
             self.ctx.exposed_to_physical,
             deeper,
+            self.ctx.aggregate_columns,
         )
         return (
             f"EXISTS (SELECT 1 FROM {_table_ref(target, self.use_catalog)} {_q(inner)}"
@@ -345,12 +398,16 @@ def _compile_where(
     table_id: int | None = None,
     exposed_to_physical: dict | None = None,
     relationships: RelationshipConditions | None = None,
+    column_types: dict[int, list[tuple[str, str]]] | None = None,
 ) -> str:
     """Compile a where input object to a SQL WHERE clause fragment. A relationship's condition is
     compiled only where ``relationships`` is given (a root field's where, its rows aliased);
-    elsewhere it is refused, never dropped."""
+    elsewhere it is refused, never dropped. ``column_types`` is the context's
+    ``aggregate_columns``: each table's columns with their registered types, by which a text value
+    compared with a typed column is cast to its type."""
     parts: list[str] = []
     _e2p = exposed_to_physical or {}
+    _types = dict(column_types.get(table_id, [])) if column_types and table_id is not None else {}
 
     for key, value in where_obj.items():
         if key == "_and":
@@ -363,6 +420,7 @@ def _compile_where(
                     table_id,
                     exposed_to_physical,
                     relationships,
+                    column_types,
                 )
                 for sub in value
             ]
@@ -379,6 +437,7 @@ def _compile_where(
                     table_id,
                     exposed_to_physical,
                     relationships,
+                    column_types,
                 )
                 for sub in value
             ]
@@ -402,7 +461,7 @@ def _compile_where(
         # Column filter: map GQL name → physical name, then quote
         phys_key = _e2p.get((table_id, key), key) if table_id is not None else key
         col = _q(phys_key) if alias is None else f"{_q(alias)}.{_q(phys_key)}"
-        parts.extend(_compile_column_filter(col, value, collector))
+        parts.extend(_compile_column_filter(col, value, collector, _types.get(phys_key)))
 
     return " AND ".join(parts) if parts else "TRUE"
 

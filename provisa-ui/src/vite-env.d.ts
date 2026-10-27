@@ -18,6 +18,7 @@ declare module "*.graphql" {
   export const DomainsQuery: DocumentNode;
   export const GovdataSubjectsQuery: DocumentNode;
   export const DataProductsQuery: DocumentNode;
+  export const ListedNamesQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
@@ -63,6 +64,11 @@ declare module "*.graphql" {
   export const CreateDataProduct: DocumentNode;
   export const UpdateDataProduct: DocumentNode;
   export const DeleteDataProduct: DocumentNode;
+  export const PublishDataProduct: DocumentNode;
+  export const DeprecateDataProduct: DocumentNode;
+  export const RetireDataProduct: DocumentNode;
+  export const RestoreDataProduct: DocumentNode;
+  export const DataProductFindingsQuery: DocumentNode;
   export const RegisterTable: DocumentNode;
   export const RegisterEntity: DocumentNode;
   export const RegisterFact: DocumentNode;
@@ -148,6 +154,7 @@ declare module "*.gql" {
   export const DomainsQuery: DocumentNode;
   export const GovdataSubjectsQuery: DocumentNode;
   export const DataProductsQuery: DocumentNode;
+  export const ListedNamesQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
@@ -192,6 +199,11 @@ declare module "*.gql" {
   export const CreateDataProduct: DocumentNode;
   export const UpdateDataProduct: DocumentNode;
   export const DeleteDataProduct: DocumentNode;
+  export const PublishDataProduct: DocumentNode;
+  export const DeprecateDataProduct: DocumentNode;
+  export const RetireDataProduct: DocumentNode;
+  export const RestoreDataProduct: DocumentNode;
+  export const DataProductFindingsQuery: DocumentNode;
   export const RegisterTable: DocumentNode;
   export const RegisterEntity: DocumentNode;
   export const RegisterFact: DocumentNode;

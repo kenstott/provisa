@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""As recorded (REQ-1163) wherever as of is taken: each HTTP surface's header, the Flight ticket's
+"""As recorded (REQ-1163) wherever as of is taken: a relation's arguments, the Flight ticket's
 option, the gRPC resolve message; each value validated by name; and the audit row records both."""
 
 # Requirements: REQ-1163
@@ -20,8 +20,6 @@ from datetime import datetime, timezone
 
 import pytest
 
-from provisa.api.data.endpoint_helpers import request_time_travel
-from provisa.api.errors import ApiError
 from provisa.audit.writer import AuditRecord
 from provisa.encryption import NullEncryption
 from provisa.mv.bitemporal import AsOf, request_as_of
@@ -29,33 +27,41 @@ from provisa.mv.bitemporal import AsOf, request_as_of
 pytestmark = pytest.mark.unit
 
 
-def test_the_headers_travel_as_one_value():
-    key = request_time_travel("2026-09-30T12:00:00", "2026-10-02T00:00:00")
+def _lifted(sql: str) -> str | None:
+    """The time a statement's one argument-bearing reference says (provisa.mv.time_travel)."""
+    from provisa.mv.time_travel import lift
+
+    _, travel = lift(sql, lambda _table: "bitemporal")
+    return travel.at("p")
+
+
+def test_a_relations_arguments_travel_as_one_value():
+    key = _lifted(
+        "SELECT * FROM fin.payments(as_of => '2026-09-30T12:00:00', "
+        "as_recorded => '2026-10-02T00:00:00') p"
+    )
     assert key == request_as_of("2026-09-30T12:00:00", "2026-10-02T00:00:00")
     assert AsOf.from_key(key).recorded_sql == "TIMESTAMP '2026-10-02 00:00:00.000000'"
 
 
-def test_no_header_or_an_empty_one_is_no_time_travel():
-    assert request_time_travel(None, None) is None
-    assert request_time_travel("", "") is None
+def test_a_reference_without_arguments_is_no_time_travel():
+    assert _lifted("SELECT * FROM fin.payments p") is None
 
 
 @pytest.mark.parametrize(
-    ("as_of", "as_recorded", "code"),
+    ("args", "named"),
     [
-        ("yesterday", None, "data.invalid_as_of"),
-        (None, "yesterday", "data.invalid_as_recorded"),
-        (None, "2026-10-01/2026-10-05", "data.invalid_as_recorded"),
+        ("as_of => 'yesterday'", "invalid as_of"),
+        ("as_recorded => 'yesterday'", "invalid as_recorded"),
+        ("as_recorded => '2026-10-01/2026-10-05'", "invalid as_recorded"),
     ],
 )
-def test_a_malformed_value_is_refused_naming_its_header(as_of, as_recorded, code):
-    with pytest.raises(ApiError) as refused:
-        request_time_travel(as_of, as_recorded)
-    assert refused.value.status_code == 400
-    assert refused.value.code == code
+def test_a_malformed_value_is_refused_naming_its_argument(args, named):
+    with pytest.raises(ValueError, match=f"fin.payments: {named}"):
+        _lifted(f"SELECT * FROM fin.payments({args}) p")
 
 
-def test_a_flight_ticket_takes_as_recorded_as_the_header_does():
+def test_a_flight_ticket_takes_as_recorded_as_a_relation_does():
     from provisa.api.flight.server import _ticket_as_of
 
     assert _ticket_as_of({"as_of": "2026-09-30T12:00:00", "as_recorded": "2026-10-02"}) == (

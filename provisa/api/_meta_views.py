@@ -794,7 +794,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "data_products": """
         CREATE OR REPLACE VIEW data_products_meta AS
         SELECT id, domain_id, name, owner_role, team_role, purpose, limitations, usage,
-               version, status, sla, support, support_contact, publish, custom_properties
+               version, status, status_reason, retire_on, successor_id, sla, support,
+               support_contact, custom_properties
         FROM data_products
     """,
     "table_columns": """
@@ -824,6 +825,17 @@ _META_TABLE_VIEWS: dict[str, str] = {
                'meta' AS domain_id,
                description
         FROM roles
+    """,
+    # REQ-2153: the names of every listed column, for the catalog of a reader outside its domain --
+    # names only, by construction; what a reader reaches is in registered_tables/table_columns.
+    "listed_names": """
+        CREATE OR REPLACE VIEW listed_names AS
+        SELECT CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS id,
+               rt.domain_id AS listed_domain, rt.table_name, tc.column_name,
+               'meta' AS domain_id
+        FROM table_columns tc
+        JOIN registered_tables rt ON rt.id = tc.table_id
+        WHERE tc.scope = 'listed' AND NOT rt.draft
     """,
     # REQ-2155: a role's parents, one row per (role, parent), in declared order.
     "roles_parents": """

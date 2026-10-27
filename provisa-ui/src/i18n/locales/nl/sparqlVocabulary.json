@@ -1,0 +1,17 @@
+{
+  "sparqlVocabulary": {
+    "domains": "Domeinen",
+    "classes": "Klassen",
+    "properties": "Eigenschappen",
+    "relationships": "Relaties",
+    "concepts": "Concepten",
+    "prefixes": "Voorvoegsels",
+    "none": "Niets hier voor uw rol.",
+    "domainTip": "Declareert het voorvoegsel van dit domein en beperkt de lijsten tot zijn vocabulaire ({{namespace}}).",
+    "domainPicked": "De lijsten tonen alleen {{namespace}}. Klik nogmaals voor alle domeinen.",
+    "classTerm": "Klasseterm {{term}}",
+    "tableClass": "De eigen klasse van een tabel",
+    "propertyTerm": "Eigenschapsterm {{term}}",
+    "columnPredicate": "Kolom {{column}}"
+  }
+}

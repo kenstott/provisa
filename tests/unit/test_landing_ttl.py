@@ -230,7 +230,9 @@ async def test_above_0_the_rows_are_landed_kept_for_the_ttl_and_reused(monkeypat
 def test_a_plan_with_a_scratch_table_runs_through_the_pipeline_terminal():
     from provisa.pgwire._pipeline import streams_from_terminal
 
-    plan = SimpleNamespace(two_step=None, embedded=None, scratch=(("loc", "scratch__x"),))
+    plan = SimpleNamespace(
+        two_step=None, code_write=None, embedded=None, scratch=(("loc", "scratch__x"),)
+    )
     assert not streams_from_terminal(plan)  # type: ignore[arg-type]
 
 
@@ -249,7 +251,7 @@ async def test_the_terminal_drops_the_scratch_tables_however_the_statement_ends(
     monkeypatch.setattr(mat, "drop_scratch", _drop)
     monkeypatch.setattr(_pipeline, "_execute_plan_with_secrets", _fails)
     plan = SimpleNamespace(
-        scratch=(("loc", "scratch__x"),), embedded=None, two_step=None, temp=None
+        scratch=(("loc", "scratch__x"),), embedded=None, two_step=None, code_write=None, temp=None
     )
     with pytest.raises(RuntimeError, match="the engine failed"):
         await _pipeline._execute_plan_bound(plan, object())  # type: ignore[arg-type]

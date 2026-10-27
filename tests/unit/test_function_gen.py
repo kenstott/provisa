@@ -95,6 +95,7 @@ class TestBuildFunctionMutations:
         assert "admin_func" not in fields
 
     def test_function_visible_when_no_role_filter(self):
+        # The full-set build names no role: every function is in it, whatever its grant.
         func = Function(
             name="open_func",
             source_id="pg",
@@ -108,7 +109,7 @@ class TestBuildFunctionMutations:
             functions=[func],
             webhooks=[],
             table_gql_types=table_types,
-            role_id="anyone",
+            role_id=None,
         )
         assert "open_func" in fields
 
@@ -311,3 +312,41 @@ class TestArgumentTypeResolution:
 
         with pytest.raises(ValueError, match="Unknown argument type"):
             _resolve_scalar("UnknownType")
+
+
+class TestAnEmptyGrantNamesNoRole:  # REQ-2153
+    def test_a_function_granted_to_no_role_is_no_roles_field(self):
+        func = Function(
+            name="nobodys_func",
+            source_id="pg",
+            function_name="nobodys_func",
+            returns="pg.public.orders",
+            visible_to=[],
+        )
+        fields = build_function_mutations(
+            functions=[func],
+            webhooks=[],
+            table_gql_types={"pg.public.orders": _make_table_type()},
+            role_id="analyst",
+        )
+        assert "nobodys_func" not in fields
+
+    def test_a_webhook_granted_to_no_role_is_no_roles_field(self):
+        hook = Webhook(
+            name="nobodys_hook",
+            url="https://hooks.example.com/x",
+            visible_to=[],
+            inline_return_type=[InlineType(name="ok", type="Boolean")],
+        )
+        fields = build_function_mutations(functions=[], webhooks=[hook], role_id="analyst")
+        assert "nobodys_hook" not in fields
+
+
+def test_a_metric_granted_to_star_is_seen_by_no_role():  # REQ-2153
+    from types import SimpleNamespace
+
+    from provisa.api.flight.catalog import role_sees_metric
+
+    state = SimpleNamespace(roles={"analyst": {"id": "analyst"}})
+    assert not role_sees_metric(state, "analyst", SimpleNamespace(visible_to=["*"]))
+    assert role_sees_metric(state, "analyst", SimpleNamespace(visible_to=["analyst"]))

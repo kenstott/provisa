@@ -161,6 +161,16 @@ def _first_start(org_id: str, tenant_url: str, config_text: str) -> None:
     first_start._SEEDED_FROM.pop(org_id, None)  # noqa: SLF001
 
 
+def _keep_log(path: Path, org_id: str) -> None:
+    """Copy a launch's stderr where the run keeps its results, when it names such a place
+    (``PROVISA_TEST_SERVER_LOG_DIR``; the CI lanes do, and upload it), before it is removed: a
+    lane's failure otherwise carries only the tail its assertion quoted (as WorkerBoot keeps its)."""
+    kept = os.environ.get("PROVISA_TEST_SERVER_LOG_DIR")
+    if kept and path.exists():
+        Path(kept).mkdir(parents=True, exist_ok=True)
+        shutil.copy(path, Path(kept) / f"isolated-{org_id}-{path.name}")
+
+
 class IsolatedServer:
     """Manages one isolated Provisa server subprocess. ``start()`` blocks until the
     HTTP /health (and, if requested, the Arrow Flight port) is reachable."""
@@ -407,6 +417,7 @@ class IsolatedServer:
         _sf = getattr(self, "_stderr_file", None)
         if _sf is not None:
             _sf.close()
+            _keep_log(Path(_sf.name), self.org_id)
             Path(_sf.name).unlink(missing_ok=True)
             self._stderr_file = None
         self.start(timeout=timeout)
@@ -428,5 +439,6 @@ class IsolatedServer:
         _sf = getattr(self, "_stderr_file", None)
         if _sf is not None:
             _sf.close()
+            _keep_log(Path(_sf.name), self.org_id)
             Path(_sf.name).unlink(missing_ok=True)
             self._stderr_file = None

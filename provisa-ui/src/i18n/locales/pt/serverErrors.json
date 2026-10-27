@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "Nenhuma consulta gRPC registrada para a tabela '{{table}}'",
       "no_mutation_fields": "Nenhum campo de mutação encontrado",
       "no_proto_for_role": "A função '{{role_id}}' não tem proto: nenhuma superfície de dados lhe é fornecida, porque não alcança nenhum domínio ou possui apenas direitos do plano de controle",
+      "role_served_nothing": "A função '{{role_id}}' não recebe nenhuma tabela: nenhuma coluna de nenhuma tabela lhe foi concedida",
       "no_query_field_for_proto_type": "Nenhum campo de consulta para o tipo proto '{{type_name}}' na função '{{role_id}}'",
       "no_query_fields": "Nenhum campo de consulta encontrado",
       "no_role": "Função '{{role_id}}' inexistente",
@@ -129,7 +130,12 @@
       "address_not_found": "Nada a resolver: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve não pode ser combinado com outros campos raiz na mesma operação",
       "source_starting": "A origem {{source}} ainda está sendo iniciada. Tente novamente em instantes.",
-      "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}."
+      "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}.",
+      "graphql_body_missing": "A requisição não tem corpo: uma requisição GraphQL é um objeto JSON com uma consulta.",
+      "graphql_body_not_json": "O corpo da requisição não é JSON: {{error}}",
+      "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
+      "graphql_parameter_type": "O parâmetro {{parameter}} da requisição GraphQL deve ser {{expected}}.",
+      "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -278,7 +284,7 @@
     "roles": {
       "cannot_delete_system": "Não é possível excluir funções do sistema",
       "cannot_modify_administrative": "Não é possível modificar funções administrativas",
-      "has_dependents": "O papel {{role}} ainda é referenciado por {{count}} objeto(s); remova primeiro essas referências",
+      "has_dependents": "O papel {{role}} ainda é referenciado por outros objetos; remova primeiro essas referências",
       "not_found": "Função não encontrada",
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
@@ -293,7 +299,7 @@
       "cache_purged": "{{count}} entradas de cache removidas",
       "cache_purged_table": "{{count}} entradas de cache removidas para a tabela {{table}}",
       "calendar_deleted": "calendário '{{calendar}}' excluído",
-      "calendar_in_use": "o calendário '{{calendar}}' está em uso por {{count}} exibição(ões) materializada(s) — limpe o agendamento de snapshot delas antes de excluir",
+      "calendar_in_use": "o calendário '{{calendar}}' está em uso por exibições materializadas — limpe o agendamento de snapshot delas antes de excluir",
       "calendar_not_found": "calendário '{{calendar}}' não encontrado",
       "calendar_saved": "calendário '{{calendar}}' {{version}} salvo",
       "column_natively_nested": "Não é possível registrar: a coluna {{column}} é nativamente {{native_type}} na sua fonte, portanto o seu tipo é json, não {{type}}.",
@@ -433,6 +439,7 @@
       "relationship_unknown_source": "A tabela de origem '{{table}}' não está registrada",
       "relationship_unknown_target": "A tabela de destino '{{table}}' não está registrada",
       "relationship_unknown_junction": "A tabela de junção '{{table}}' não está registrada",
+      "relationship_column_beyond_reads": "Um relacionamento só pode unir colunas que seu papel pode ler.",
       "source_id_taken": "A origem '{{source}}' já existe",
       "domain_id_taken": "O domínio '{{domain}}' já existe",
       "role_id_taken": "A função '{{role}}' já existe",
@@ -459,7 +466,8 @@
       "relationship_same_entity_direct": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: ela une por uma tabela de junção ou uma função, não uma linha a uma linha",
       "relationship_same_entity_cardinality": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: ela é {{cardinality}}, e a mesma entidade é uma linha para uma linha",
       "relationship_same_entity_not_grounded": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{source}} e {{target}} não estão fundamentadas no mesmo termo",
-      "relationship_same_entity_not_keys": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{columns}} não é a chave primária nem uma chave única de {{table}}"
+      "relationship_same_entity_not_keys": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{columns}} não é a chave primária nem uma chave única de {{table}}",
+      "kaggle_token_missing": "Conjunto de dados do Kaggle {{owner}}/{{ref}}: a fonte de dados não tem nenhum token de API do Kaggle. Adicione-o no formulário de Fontes de dados, onde o token é informado."
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",
@@ -489,7 +497,10 @@
       "unknown_encryption_provider": "provedor de criptografia desconhecido '{{provider}}'",
       "unknown_engine": "mecanismo desconhecido '{{engine}}'; válidos: {{valid}}",
       "use_domains_invalid": "use_domains deve ser true, false ou null",
-      "claims_with_multitenancy": "Uma implantação multilocatário não pode ler as atribuições de funções das claims de início de sessão: ela própria concede as funções, por organização, e as claims iriam substituí-las. Defina a origem das atribuições como Provisa."
+      "claims_with_multitenancy": "Uma implantação multilocatário não pode ler as atribuições de funções das claims de início de sessão: ela própria concede as funções, por organização, e as claims iriam substituí-las. Defina a origem das atribuições como Provisa.",
+      "federation_unknown_field": "Não é uma configuração de federação: {{fields}}",
+      "federation_invalid": "Configuração de federação inválida: {{error}}",
+      "federation_role_unknown": "A função de federação '{{role}}' não é uma função desta organização"
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password obrigatórios",
@@ -539,7 +550,7 @@
       "invalid_regex": "O padrão \"{{pattern}}\" em {{expression}} não é uma expressão regular válida: {{reason}}. =~ espera uma expressão regular, p. ex. \".*{{word}}.*\", ou use CONTAINS \"{{word}}\".",
       "unknown_label": "Não existe o rótulo :{{label}}. Rótulos registrados: {{suggestions}}.",
       "no_labels": "Não existe o rótulo :{{label}}: este papel não pode ler nenhuma tabela.",
-      "unknown_relationship_type": "Não existe o tipo de relacionamento {{types}}. Tipos registrados: {{suggestions}}.",
+      "unknown_relationship_type": "Não existe o tipo de relacionamento {{types}}. Tipos registrados mais próximos: {{suggestions}}.",
       "no_relationship_types": "Não existe o tipo de relacionamento {{types}}: este papel não pode percorrer nenhum relacionamento.",
       "type_mismatch": "Em {{expression}}, {{value}} não pode ser comparado com {{property}}, do tipo {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE não pode usar o agregado {{aggregate}}: WHERE filtra linhas antes de agrupá-las. Agregue em um WITH e filtre depois.",
@@ -688,6 +699,34 @@
       "also_term_needs_column": "Aplicar a tag ao termo em vez disso requer uma coluna.",
       "inherited_from_term": "Esta coluna é PII porque significa {{term}}. Desmarque esse significado, ou mova a coluna se ela significar outra coisa.",
       "move_loses": "Esta movimentação retira tags de colunas que deixariam de tê-las. Confirme a perda de cada tag, ou leve as tags para o termo para o qual as colunas são movidas."
+    },
+    "data_product": {
+      "status": {
+        "published": "Produto de dados {{data_product}} publicado.",
+        "deprecated": "Produto de dados {{data_product}} marcado como obsoleto.",
+        "retired": "Produto de dados {{data_product}} retirado.",
+        "restored": "Produto de dados {{data_product}} restaurado.",
+        "reason_required": "É necessário um motivo: diga por que o produto de dados está sendo marcado como obsoleto ou retirado.",
+        "not_found": "Produto de dados {{data_product}} não encontrado.",
+        "not_draft": "Só um produto de dados em rascunho pode ser publicado; este está {{status}}.",
+        "not_live": "Só um produto de dados ativo pode ser marcado como obsoleto, e só um ativo ou obsoleto pode ser retirado; este está {{status}}.",
+        "not_restorable": "Só um produto de dados obsoleto ou retirado pode ser restaurado; este está {{status}}.",
+        "retire_on_past": "A data de retirada planejada {{retire_on}} já passou. Escolha hoje ou uma data posterior.",
+        "successor_required": "Este produto de dados tem {{members}} membro(s); retirá-lo os passa para um sucessor. Escolha um.",
+        "successor_is_self": "Um produto de dados não pode suceder a si mesmo.",
+        "successor_retired": "O sucessor '{{successor}}' está retirado. Escolha um produto de dados em serviço.",
+        "successor_other_domain": "O sucessor '{{successor}}' está no domínio {{domain}}. Os membros de um produto compartilham o domínio dele, então escolha um sucessor do mesmo domínio."
+      },
+      "finding": {
+        "no_members": "Nenhuma tabela, view ou comando pertence a este produto de dados.",
+        "member_deprecated": "A tabela membro {{table}} está obsoleta.",
+        "no_owner": "Nenhum papel de proprietário é responsável por este produto de dados.",
+        "no_support_contact": "Este produto de dados não tem contato de suporte, exigido por um destino de exportação configurado.",
+        "retirement_blocked": "Este produto de dados deveria ser retirado em {{retire_on}}, mas ainda tem membros. Retire-o com um sucessor que os receba.",
+        "domain_steward_unset": "O domínio {{domain}} não tem steward.",
+        "no_description": "Este produto de dados não informa nem seu propósito nem seu uso.",
+        "successor_retired": "O produto de dados que recebeu os membros deste, '{{successor}}', também foi retirado."
+      }
     }
   }
 }

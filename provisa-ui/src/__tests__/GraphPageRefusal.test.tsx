@@ -35,7 +35,9 @@ vi.mock("../components/graph/GraphCanvas", () => ({ GraphCanvas: () => null }));
 vi.mock("../components/graph/Neo4jExportModal", () => ({ Neo4jExportModal: () => null }));
 
 import { GraphPage } from "../pages/GraphPage";
-import { graphState } from "../components/graph/graph-persistence";
+import { graphStateOf } from "../components/graph/graph-persistence";
+
+const graphState = graphStateOf("cypher");
 
 const VIOLATIONS = [
   { code: "column_not_visible", message: "Column pets.price is not visible to role all" },

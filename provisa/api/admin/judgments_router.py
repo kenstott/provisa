@@ -135,11 +135,26 @@ async def declare_changed(basis_id: str, body: NoteBody, request: Request) -> di
     return {**basis, "review": review}
 
 
+async def _served(request: Request, conn: Any, finding: dict) -> bool:
+    """Whether the caller is served the column the finding is on (REQ-2152); a finding on
+    anything but a column names no column."""
+    from provisa.api.admin.read_rights import served_columns_request
+    from provisa.judgments.resolution import finding_column
+
+    on = finding_column(finding)
+    if on is None:
+        return True
+    served = await served_columns_request(conn, request, on[0])
+    return served is None or on[1] in served
+
+
 async def _visible(request: Request, conn: Any, finding: dict) -> bool:
     from provisa.judgments.resolution import is_sensitive, read_rights
 
     rights = read_rights(await is_sensitive(conn, finding))
-    return any(has_capability_request(request, r) for r in rights)
+    return any(has_capability_request(request, r) for r in rights) and await _served(
+        request, conn, finding
+    )
 
 
 @router.get("/findings")
@@ -153,11 +168,13 @@ async def list_findings(request: Request) -> list[dict[str, Any]]:
         return [_iso(f) for f in found if await _visible(request, conn, f)]
 
 
-async def _finding(conn: Any, finding_id: int) -> dict:
+async def _finding(conn: Any, finding_id: int, request: Request) -> dict:
+    """The open finding ``finding_id``; one on a column the caller is not served is answered as
+    missing (REQ-2152)."""
     from provisa.judgments.findings import jf
 
     row = (await conn.execute_core(select(jf).where(jf.c.id == finding_id))).fetchone()
-    if row is None:
+    if row is None or not await _served(request, conn, dict(row._mapping)):
         raise ApiError(404, "judgments.finding_not_found", f"there is no finding {finding_id}")
     finding = dict(row._mapping)
     if finding["resolved_at"] is not None:
@@ -171,7 +188,7 @@ async def reaffirm(finding_id: int, request: Request) -> dict[str, Any]:
     from provisa.judgments.resolution import reaffirm as _reaffirm
 
     async with _db().acquire() as conn:
-        finding = await _finding(conn, finding_id)
+        finding = await _finding(conn, finding_id, request)
         _require_any(
             request, resolve_rights(finding["judgment"], await is_sensitive(conn, finding))
         )
@@ -191,7 +208,7 @@ async def dismiss(finding_id: int, body: NoteBody, request: Request) -> dict[str
 
     require_capability_request(request, "access_config")
     async with _db().acquire() as conn:
-        finding = await _finding(conn, finding_id)
+        finding = await _finding(conn, finding_id, request)
         try:
             await _dismiss(
                 conn,

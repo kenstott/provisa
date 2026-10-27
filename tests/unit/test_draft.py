@@ -43,7 +43,8 @@ def _row(name: str, *, domain="sales", alias=None, visible_to=None) -> dict:
         "schema_name": "public",
         "table_name": name,
         "alias": alias,
-        "columns": [{"column_name": "id", "visible_to": visible_to or []}],
+        # REQ-2154: a column is read by the roles it names; by default the test's role.
+        "columns": [{"column_name": "id", "visible_to": visible_to or ["analyst"]}],
     }
 
 
@@ -116,7 +117,7 @@ def _govdata_row(*, alias=None) -> dict:
         "schema_name": "sec",
         "table_name": "financial_facts",
         "alias": alias,
-        "columns": [{"column_name": "cik", "visible_to": []}],
+        "columns": [{"column_name": "cik", "visible_to": ["org_admin"]}],
     }
 
 

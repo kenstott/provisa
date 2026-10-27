@@ -1692,25 +1692,17 @@
         "title": "Los totales de un día",
         "description": "El 1 de octubre tal como está ahora. Para cada sucursal, producto y moneda ve lo que entró, lo que salió y el neto. Una herramienta de BI conectada por pgwire ejecuta este mismo SQL."
       },
-      "bankingAsReported": {
-        "title": "Tal como se informó al cierre",
-        "description": "Registrado al está ahora fijado en el cierre del 1 de octubre. Una herramienta de BI hace lo mismo con SET provisa.as_recorded en su sesión pgwire. Registrado al filtra las transacciones por updated_at y los totales diarios por el cierre de cada día, así que ve las cifras que el banco informó esa tarde."
-      },
       "bankingReported": {
         "title": "Lo que se informó",
-        "description": "Los totales corporativos del 1 y el 2 de octubre, tal como se informaron al cierre del 1 de octubre. El total en GBP de Londres aún incluye el pago que luego se anuló. El 2 de octubre todavía no había cerrado, así que no tiene cifras."
-      },
-      "bankingAsRestated": {
-        "title": "Tal como se corrigió después",
-        "description": "Registrado al pasa al cierre del 12 de octubre, el último de los treinta días. Para entonces ya están registradas la anulación introducida el 6 de octubre y la operación tardía introducida el 7 de octubre."
+        "description": "Los totales corporativos del 1 y el 2 de octubre, tal como se informaron al cierre del 1 de octubre: el argumento as_recorded de la vista los lee tal como estaban registrados entonces, y una herramienta de BI por pgwire hace lo mismo con SET provisa.as_recorded. El total en GBP de Londres aún incluye el pago que luego se anuló. El 2 de octubre todavía no había cerrado, así que no tiene cifras."
       },
       "bankingRestated": {
         "title": "Lo que dice ahora",
-        "description": "El mismo SQL. El total del 1 de octubre de Londres ya no incluye el pago anulado, y el total en USD del 2 de octubre de Edimburgo incluye ahora la operación tardía. Las versiones informadas en cada cierre se conservan junto a las corregidas, y recorded_at muestra cuándo se registró cada una."
+        "description": "El mismo SQL con as_recorded al cierre del 12 de octubre, el último de los treinta días. El total del 1 de octubre de Londres ya no incluye el pago anulado, y el total en USD del 2 de octubre de Edimburgo incluye ahora la operación tardía. Las versiones informadas en cada cierre se conservan junto a las corregidas, y recorded_at muestra cuándo se registró cada una."
       },
       "bankingAsOpsSql": {
         "title": "De vuelta a operaciones",
-        "description": "El explorador se ejecuta ahora como operaciones, todavía registrado al cierre del 12 de octubre."
+        "description": "El explorador se ejecuta ahora como operaciones."
       },
       "bankingPostings": {
         "title": "Los asientos detrás de un total",

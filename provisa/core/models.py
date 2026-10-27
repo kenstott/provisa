@@ -529,7 +529,11 @@ class Domain(BaseModel):  # REQ-471, REQ-609
         return data
 
 
-class DataProduct(BaseModel):  # REQ-1634, REQ-1660
+#: A data product's lifecycle (REQ-1634 STATUS): every state is asserted by an action.
+DATA_PRODUCT_STATUSES = ("draft", "live", "deprecated", "retired")
+
+
+class DataProduct(BaseModel):  # REQ-1634
     id: str
     domain_id: str  # required FK — a data product has exactly one owning domain
     name: str
@@ -541,7 +545,13 @@ class DataProduct(BaseModel):  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
+    # REQ-1634 STATUS: draft until published (live); deprecated stays in service until retired.
+    # ``status_reason`` is why it was deprecated or retired; ``retire_on`` the planned retirement
+    # of a deprecated product; ``successor`` the product its members moved to on retirement.
+    status: Literal["draft", "live", "deprecated", "retired"] = "draft"
+    status_reason: str | None = None
+    retire_on: date | None = None
+    successor: str | None = None
     # Prose, not structured: a product spans multiple member tables and a structured SLA
     # can't unambiguously say which member it describes.
     sla: str | None = None
@@ -550,10 +560,17 @@ class DataProduct(BaseModel):  # REQ-1634, REQ-1660
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
     # product this can be derived from (owner_role is a role name, not a contact address).
     support_contact: str | None = None
-    # REQ-1635: Horizon Catalog organization listings default to DRAFT (PUBLISH = FALSE) so a new
-    # listing doesn't surface org-wide before it's reviewed; set true to publish it immediately.
-    publish: bool = False
     custom_properties: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _status_fields_fit(self) -> "DataProduct":
+        if self.status in ("deprecated", "retired") and not (self.status_reason or "").strip():
+            raise ValueError(f"a {self.status} data product states its reason (status_reason)")
+        if self.retire_on is not None and self.status != "deprecated":
+            raise ValueError("retire_on is the planned retirement of a deprecated data product")
+        if self.successor is not None and self.status != "retired":
+            raise ValueError("successor is the data product a retired one's members moved to")
+        return self
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
@@ -880,7 +897,7 @@ class TagAssignment(BaseModel):  # REQ-1377
     relationship_id: str | None = None
     # Commands (tracked functions/webhooks) are identified by their registered name.
     command_name: str | None = None
-    product_id: str | None = None  # REQ-1660: explicit data-product-level tag
+    product_id: str | None = None  # REQ-1634: explicit data-product-level tag
     # Why this tag is on this object; required for 'deprecated' (system semantic).
     reason: str | None = None
     # ISO date the assignment stops being intended — for 'deprecated', the planned removal
@@ -1010,16 +1027,27 @@ class Mask(BaseModel):  # REQ-038, REQ-040, REQ-2059
         return self
 
 
-class MaskEntry(BaseModel):  # REQ-2059
+class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
     """One entry of a column's ordered mask list: the readers it is for (grant entries, as
-    ``visible_to`` takes them, composites included; ``"*"`` is everyone) and the mask they read
-    the column through, or none (``mask`` None: unmasked). A reader reads the column through the
-    first entry it holds; a reader holding none reads it unmasked."""
+    ``visible_to`` takes them, composites included) and the mask they read the column through, or
+    none (``mask`` None: unmasked). A reader reads the column through the first entry it holds; a
+    reader holding none reads it unmasked. An entry with no ``to`` (None) is for every other
+    reader: it is the list's last entry, at most one per list."""
 
-    to: list[str]
+    to: list[str] | None = None
     mask: Mask | None = None
     # REQ-2094: why this entry is what it is (provisa.judgments.why); optional.
     why: dict[str, Any] | None = None
+
+    @field_validator("to")
+    @classmethod
+    def _star_is_no_reader(cls, value: list[str] | None) -> list[str] | None:  # REQ-2153
+        if value is not None and "*" in value:
+            raise ValueError(
+                "'*' names no reader; the last entry of a mask list, with no 'to', is for every "
+                "other reader"
+            )
+        return value
 
 
 class ObjectField(BaseModel):
@@ -1072,7 +1100,7 @@ class Column(
     # relationship, not data (graphql_remote/relation_columns.py).
     gql_object_type: str | None = None
     gql_is_list: bool = False
-    scope: str = "domain"  # "domain" | "public" | "restricted" (core/column_scope.py, REQ-1959)
+    scope: str = "domain"  # "domain" | "listed" | "public" (core/column_scope.py, REQ-2153)
 
     @model_validator(mode="before")
     @classmethod
@@ -1083,6 +1111,18 @@ class Column(
                 "'write_grants' (role, operation, columns, rows, check, presets)"
             )
         return data
+
+    @model_validator(mode="after")
+    def _every_other_reader_is_last(self) -> "Column":  # REQ-2153
+        # The entry for every other reader matches any reader, so one before the end would leave
+        # every entry after it unreached.
+        open_ended = [i for i, e in enumerate(self.masks) if e.to is None]
+        if open_ended and open_ended != [len(self.masks) - 1]:
+            raise ValueError(
+                f"column {self.name!r}: the mask entry with no 'to' is for every other reader, "
+                "so it is the list's last entry, and the only one"
+            )
+        return self
 
     @model_validator(mode="after")
     def _embedding_is_not_masked(self) -> "Column":  # REQ-652
@@ -1373,7 +1413,8 @@ class Metric(BaseModel):  # REQ-1317
     # REQ-1319: definition text written for AI consumers; projected into MCP tool output,
     # GraphQL introspection docs, pg_description, and Ossie ai_context.
     ai_context: str | None = None
-    visible_to: list[str] = Field(default_factory=lambda: ["*"])
+    # REQ-1317: the roles that read the metric; none named is no role.
+    visible_to: list[str] = Field(default_factory=list)
     # REQ-1320: set when this metric was auto-registered from a fact spec's measure.
     from_fact: str | None = None
 
@@ -2653,6 +2694,8 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
     delta_share: whether a unity_catalog target also publishes each product as a Delta Share
         (REQ-2117).
     domains: the domains whose tables and data products this catalog is published (REQ-2122).
+    role: the role the catalog is published as: it is sent exactly what that role reads
+        (REQ-2152, ruling Q1). None until the export names one, and then nothing is published to it.
     """
 
     id: str
@@ -2676,6 +2719,7 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
     delta_share: bool = False
     timeout_seconds: int = 30
     domains: list[str] = Field(default_factory=list)
+    role: str | None = None
 
     @field_validator("id")
     @classmethod
@@ -2766,6 +2810,7 @@ class CatalogConnection(BaseModel):  # REQ-2122
             datazone_project_id=export.datazone_project_id,
             delta_share=export.delta_share,
             domains=list(self.domains),
+            role=export.role,
         )
 
 
@@ -2792,11 +2837,14 @@ class CatalogExport(BaseModel):  # REQ-2118, REQ-2122
     datazone_project_id: the DataZone project that owns the org's data products (REQ-2118).
     delta_share: whether a unity_catalog catalog also gets each product as a Delta Share
         (REQ-2117).
+    role: the role the catalog is published as -- it is sent exactly what that role reads
+        (REQ-2152, ruling Q1); a publish refuses an export that names none.
     """
 
     catalog: str
     datazone_project_id: str = ""
     delta_share: bool = False
+    role: str | None = None
 
 
 class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118, REQ-2122
@@ -2930,6 +2978,25 @@ class OtelConfig(BaseModel):  # REQ-545
     collector_batch_timeout_ms: int = 200
     s3_endpoint: str = "http://minio:9000"
     subsystem_traces: SubsystemTracesConfig = SubsystemTracesConfig()  # REQ-1432
+
+
+class FederationConfig(BaseModel):  # REQ-259
+    """Provisa as an Apollo Federation v2 subgraph. A supergraph cannot pass its caller's
+    identity, so the subgraph is an endpoint with a declared role: the router authenticates as an
+    ordinary client acting as ``role``, and everything it fetches -- ``_entities`` included -- is
+    governed as that role. Disabled by default."""
+
+    enabled: bool = False
+    subgraph_name: str = "provisa"
+    role: str | None = None
+
+    @model_validator(mode="after")
+    def _enabled_names_its_role(self) -> "FederationConfig":
+        if self.enabled and not self.role:
+            raise ValueError(
+                "federation is enabled with no role: name the role the subgraph serves as"
+            )
+        return self
 
 
 class GraphQLRemoteConfig(BaseModel):
@@ -3314,6 +3381,7 @@ class ProvisaConfig(BaseModel):
     catalogs: list[CatalogConnection] = Field(default_factory=list)
     metadata_export: MetadataExportConfig = Field(default_factory=MetadataExportConfig)  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
+    federation: FederationConfig = Field(default_factory=FederationConfig)  # REQ-259
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
     ai_endpoints: list[AiEndpointConfig] = Field(default_factory=list)  # REQ-1790
     nl: NlConfig = Field(default_factory=NlConfig)
@@ -3447,6 +3515,14 @@ class ProvisaConfig(BaseModel):
             problem = role_domain_problem(role.id, capabilities, set(role.domain_access))
             if problem is not None:
                 raise ValueError(problem)
+        return self
+
+    @model_validator(mode="after")
+    def _federation_serves_as_a_role_of_this_config(self) -> "ProvisaConfig":
+        # REQ-259: the subgraph's declared role is one this config defines.
+        role = self.federation.role
+        if self.federation.enabled and role not in {r.id for r in self.roles}:
+            raise ValueError(f"federation.role {role!r} is not a role of this configuration")
         return self
 
     @model_validator(mode="after")
