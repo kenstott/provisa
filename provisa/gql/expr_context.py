@@ -205,6 +205,10 @@ class TranslatorExprContext:
                     this=_anon("element_at", exp.column(var), exp.Literal.string(name)),
                     to=exp.DataType.build("json"),
                 )
+                typed = t._map_unwind_types.get(var, {}).get(name)
+                if typed is not None:
+                    # A key every map gives a value of one type: that value, not its text.
+                    return exp.Cast(this=cast, to=exp.DataType.build(typed))
                 return _anon("JSON_EXTRACT_SCALAR", cast, exp.Literal.string("$"))
             # REQ-1586: an attribute of a junction-backed relationship is a column of the junction
             # row, so r.attr anchors on the junction alias — in RETURN, in expressions, and in a
@@ -367,6 +371,9 @@ class TranslatorExprContext:
                 branches.append(expr.default)
             return all(self.is_list(b) for b in branches)
         return False
+
+    def is_json_value(self, expr: CypherExpr) -> bool:
+        return isinstance(expr, Variable) and expr.name in self._t._json_value_vars
 
     def holds_list_items(self, expr: CypherExpr) -> bool:
         """Whether every item of a list literal is a list (an UNWIND's variable)."""

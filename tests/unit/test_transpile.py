@@ -509,3 +509,13 @@ def test_a_json_value_s_size_is_read_by_trino():
     assert transpile_to_trino("SELECT json_size(x) FROM t") == (
         "SELECT COALESCE(JSON_ARRAY_LENGTH(x), LENGTH(JSON_EXTRACT_SCALAR(x, '$'))) FROM t"
     )
+
+
+def test_a_json_value_s_place_in_order_is_read_by_trino():
+    # json_order_key(x): its kind's rank (map, list, string, boolean, number), its number, then
+    # its text with a list's end first (expr_visitor).
+    assert transpile_to_trino("SELECT json_order_key(x) FROM t") == (
+        "SELECT ROW(CASE SUBSTR(JSON_FORMAT(x), 1, 1) WHEN '{' THEN 0 WHEN '[' THEN 3"
+        " WHEN '\"' THEN 5 WHEN 't' THEN 6 WHEN 'f' THEN 6 ELSE 7 END, TRY_CAST(x AS DOUBLE),"
+        " REPLACE(JSON_FORMAT(x), ']', CHR(1))) FROM t"
+    )

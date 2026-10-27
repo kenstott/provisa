@@ -54,14 +54,45 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     return _rewrite_to_json_for_trino(result)
 
 
+def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """json_order_key(x), a JSON value's place in openCypher's order (expr_visitor): its kind --
+    a map, a list, a string, a boolean, a number, read from the first character of ``text``, its
+    JSON text -- then its number, then its text."""
+    first = exp.Anonymous(
+        this="substr", expressions=[text, exp.Literal.number(1), exp.Literal.number(1)]
+    )
+    ranks = [("{", 0), ("[", 3), ('"', 5), ("t", 6), ("f", 6)]
+    rank = exp.Case(
+        this=first,
+        ifs=[exp.If(this=exp.Literal.string(c), true=exp.Literal.number(r)) for c, r in ranks],
+        default=exp.Literal.number(7),
+    )
+    number = exp.TryCast(this=value.copy(), to=exp.DataType.build("DOUBLE"))
+    # A list's end before anything after it ([] before ['a'], ['a'] before ['a', 1]).
+    ended = exp.Anonymous(
+        this="replace",
+        expressions=[
+            text.copy(),
+            exp.Literal.string("]"),
+            exp.Anonymous(this="chr", expressions=[exp.Literal.number(1)]),
+        ],
+    )
+    return exp.Anonymous(this="ROW", expressions=[rank, number, ended])
+
+
 def _rewrite_json_size_for_trino(sql: str) -> str:
     """json_size(x), a JSON value's size (expr_visitor): a list's items, else a string's
     characters, as Trino reads them."""
-    if "JSON_SIZE" not in sql.upper():
+    if "JSON_SIZE" not in sql.upper() and "JSON_ORDER_KEY" not in sql.upper():
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _sized(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_ORDER_KEY":
+            (value,) = node.expressions
+            return _json_order_key(
+                value, exp.Anonymous(this="json_format", expressions=[value.copy()])
+            )
         if not (isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_SIZE"):
             return node
         (value,) = node.expressions
@@ -504,6 +535,7 @@ _DUCKDB_LIST_FUNCTIONS = frozenset(
         "NONE_MATCH",
         "SEQUENCE",
         "JSON_SIZE",
+        "JSON_ORDER_KEY",
     }
 )
 
@@ -566,6 +598,11 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
             return _fn("len", *args)
         if name == "SEQUENCE":
             return _fn("generate_series", *args)
+        if name == "JSON_ORDER_KEY":
+            (value,) = args
+            return _json_order_key(
+                value, exp.Cast(this=value.copy(), to=exp.DataType.build("VARCHAR"))
+            )
         if name == "JSON_SIZE":
             # A JSON value's size: a list's items, a string's characters (expr_visitor).
             (value,) = args

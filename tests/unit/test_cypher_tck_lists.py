@@ -135,3 +135,32 @@ def test_return_star_returns_its_columns_by_name():
         {},
     )
     assert [s.alias_or_name for s in sql_ast.selects] == ["x", "xs", "y", "ys"]
+
+
+@pytest.mark.parametrize(
+    ("query", "rows"),
+    [
+        # An item of a list of several types answers its value, in openCypher's order.
+        ("UNWIND [1, 'a', [1, 2]] AS x RETURN x", [{"x": 1}, {"x": "a"}, {"x": [1, 2]}]),
+        (
+            "UNWIND [1, 2.0, 5, null, 3.2, 0.1] AS x RETURN max(x) AS hi, min(x) AS lo",
+            [{"hi": 5, "lo": 0.1}],
+        ),
+        ("UNWIND [9, 10.5, 'a'] AS x RETURN max(x) AS hi", [{"hi": 10.5}]),
+        (
+            "UNWIND [1, 'a', null, [1, 2], 0.2, 'b'] AS x RETURN max(x) AS hi, min(x) AS lo",
+            [{"hi": 1, "lo": [1, 2]}],
+        ),
+        (
+            "UNWIND [[], ['a'], ['a', 1], [1], [1, 'a'], [1, null], [null, 1], [null, 2]] AS lists"
+            " RETURN lists ORDER BY lists",
+            [
+                {"lists": v}
+                for v in ([], ["a"], ["a", 1], [1], [1, "a"], [1, None], [None, 1], [None, 2])
+            ],
+        ),
+        ("WITH [1, 'a'] AS l UNWIND l AS x WITH x RETURN x", [{"x": 1}, {"x": "a"}]),
+    ],
+)
+def test_an_item_of_a_list_of_several_types_answers_its_value(query, rows):
+    assert _answer(query) == rows

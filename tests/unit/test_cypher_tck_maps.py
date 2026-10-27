@@ -58,6 +58,17 @@ def _rows(query: str, params: dict | None = None) -> list[tuple]:
         # Graph9 [4]: properties() of a map is the map.
         ("RETURN keys(properties({name: 'Popeye', level: 9001})) AS k", [(["name", "level"],)]),
         ("RETURN properties(null) AS p", [(None,)]),
+        # Quantifier9-12 [5]: a key every unwound map gives a value of one type reads as it.
+        (
+            "UNWIND [{list: [2], fixed: true}, {list: [1, 2, 3], fixed: false}] AS input"
+            " RETURN input.list AS l, input.fixed AS f",
+            [([2], True), ([1, 2, 3], False)],
+        ),
+        (
+            "UNWIND [{list: [2], fixed: true}] AS input"
+            " RETURN CASE WHEN input.fixed THEN input.list ELSE [1] END AS l",
+            [([2],)],
+        ),
         # Map1: keys differing in case are two keys, carried through a WITH.
         (
             "WITH {name: 'Mats', Name: 'Pontus'} AS map RETURN map.Name AS a, map.name AS b",
