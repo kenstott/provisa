@@ -89881,7 +89881,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     some, a label no session node carries is still read exactly as today; only a label with session matches
     is read through the node_labels lookup and the sparse union. The translation is chosen from the session''s
     overlay when the statement is translated, and the cache key carries the session''s generation, so a
-    label''s read changes form only once the session gives it a node.'
+    label''s read changes form only once the session gives it a node. (Amended 2026-10-27, ANCHORS, SEALED
+    DOMAINS AND AMBIGUOUS NAMES:) Maintainer 2026-10-27. (1) An ephemeral node''s anchor (its storage table)
+    is the first label in its CREATE naming an existing ephemeral table; only ephemeral tables anchor, never
+    a model table. With none, the first free label creates the anchor, or the node goes to the default session
+    table when it has no free label. (2) Domains are sealed: a CREATE naming a domain label is refused by
+    name; a session never adds members to a domain. (3) A CREATE naming a bare model table name that resolves
+    to tables in two or more reachable domains is refused as ambiguous, naming the qualified forms; reads
+    of that name union (REQ-572), writes must name one table. (4) An ephemeral relationship may carry a
+    model relationship type''s name; a read of that type unions the model relationships with the session''s
+    own, while between two model nodes the CREATE is a junction write under REQ-665. (5) In a mixed read,
+    a column the session and the model both hold widens by the lattice when their types differ.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
