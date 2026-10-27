@@ -75,6 +75,15 @@ class Graph:
     anchors: dict[str, str] = field(default_factory=dict)
     labels: set[str] = field(default_factory=set)
     types: set[str] = field(default_factory=set)
+    # A label -> the anchor tables holding ephemeral nodes that carry it.
+    label_anchors: dict[str, set[str]] = field(default_factory=dict)
+    # A label -> the model nodes (type names) a session tag gives it to.
+    tag_types: dict[str, set[str]] = field(default_factory=dict)
+    # Each (type, source label, target label) a session relationship was written between: an
+    # ephemeral end by each label it carries ("" for none), a model end by its type name.
+    rel_pairs: set[tuple[str, str, str]] = field(default_factory=set)
+    # An ephemeral node's id -> the labels it carries (as node_labels holds them).
+    node_keys: dict[str, tuple[str, ...]] = field(default_factory=dict)
     last_id: int = 0
 
     def new_id(self, prefix: str = "e") -> str:
@@ -99,6 +108,15 @@ def graph(session: TempSession) -> Graph:
 
 
 @dataclass
+class Tag:
+    """A session label on a model node: its graph identity and its model type name."""
+
+    node_id: str
+    type_name: str
+    label: str
+
+
+@dataclass
 class NewNode:
     node_id: str
     anchor: str  # its anchor table
@@ -113,6 +131,10 @@ class NewRel:
     from_id: str
     to_id: str
     properties: dict[str, Any]
+    # The labels its ends are read by: an ephemeral end's labels ("" for none), a model end's
+    # type name.
+    from_labels: tuple[str, ...] = ()
+    to_labels: tuple[str, ...] = ()
 
 
 @dataclass
@@ -120,7 +142,7 @@ class Writes:
     """What one statement adds to the session's graph."""
 
     nodes: list[NewNode] = field(default_factory=list)
-    tags: list[tuple[str, str]] = field(default_factory=list)  # (a model node's id, label)
+    tags: list[Tag] = field(default_factory=list)
     rels: list[NewRel] = field(default_factory=list)
 
 
@@ -162,7 +184,14 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
             tuple(_FIXED[NODES]),
             [{NODE_ID: n.node_id, "table": n.anchor} for n in writes.nodes],
         )
-    labels = [(n.node_id, label) for n in writes.nodes for label in n.labels] + writes.tags
+    for node in writes.nodes:
+        for label in node.labels or ("",):
+            g.label_anchors.setdefault(label, set()).add(node.anchor)
+        g.node_keys[node.node_id] = node.labels or ("",)
+    for tag in writes.tags:
+        g.tag_types.setdefault(tag.label, set()).add(tag.type_name)
+    labels = [(n.node_id, label) for n in writes.nodes for label in n.labels]
+    labels += [(t.node_id, t.label) for t in writes.tags]
     if labels:
         await _add(
             state,
@@ -195,3 +224,6 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
             ],
         )
         g.types.update(r.rel_type for r in writes.rels)
+        g.rel_pairs.update(
+            (r.rel_type, s, t) for r in writes.rels for s in r.from_labels for t in r.to_labels
+        )

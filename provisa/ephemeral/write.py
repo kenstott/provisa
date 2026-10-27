@@ -64,9 +64,9 @@ def _items(p: CreatePattern, kind: CreateKind, bound: set[str]) -> list[str]:
     return items or ["1 AS _one"]
 
 
-def _identity(node: Any, label_map: Any) -> str:
-    """A node the read returned, as its graph identity: an ephemeral node's id, or a model
-    node's ``Label|key``."""
+def _identity(node: Any, label_map: Any, graph: store.Graph) -> tuple[str, tuple[str, ...]]:
+    """A node the read returned: its graph identity (an ephemeral node's id, or a model node's
+    ``Label|key``) and the labels it is read by."""
     from provisa.gql.assembler import Node
 
     if isinstance(node, Node):
@@ -77,13 +77,14 @@ def _identity(node: Any, label_map: Any) -> str:
         raise CypherParseError("A created relationship's end is a node")
     key = props.get("_id")
     if isinstance(key, str) and key.startswith("e:"):
-        return key
+        return key, graph.node_keys[key]
     owners = [nm for nm in label_map.nodes.values() if nm.label == label]
     if len(owners) != 1:
         raise CypherParseError(f"A created relationship's end, {label}, is no one node")
     nm = owners[0]
     # A compound key's _id is its identity already (select_builder.node_key).
-    return str(key) if len(nm.key_columns) > 1 else f"{nm.label}|{key}"
+    identity = str(key) if len(nm.key_columns) > 1 else f"{nm.label}|{key}"
+    return identity, (nm.type_name,)
 
 
 async def create(
@@ -109,24 +110,30 @@ async def create(
     answer = await read(f"{prefix} RETURN {', '.join(_items(p, kind, bound))}".strip(), params)
     writes = Writes()
     for row in answer:
-        ids: dict[int, str] = {}
+        ids: dict[int, tuple[str, tuple[str, ...]]] = {}
         for c in kind.created:
             node_id = graph.new_id()
-            ids[c.index] = node_id
+            keys = c.labels.keys
+            ids[c.index] = (node_id, keys or ("",))
             anchor = store.anchor_table(c.anchor) if c.anchor is not None else store.DEFAULT_ANCHOR
             props = {k: row[f"_n{c.index}_{k}"] for k, _ in p.nodes[c.index].properties}
-            writes.nodes.append(NewNode(node_id, anchor, c.labels.written, props))
+            writes.nodes.append(NewNode(node_id, anchor, keys, props))
         made = {p.nodes[c.index].variable: c.index for c in kind.created}
         for i, node in enumerate(p.nodes):
             if i in ids:
                 continue
             var = node.variable
             assert var is not None
-            ids[i] = ids[made[var]] if var in made else _identity(row[f"_v_{var}"], label_map)
+            ids[i] = (
+                ids[made[var]] if var in made else _identity(row[f"_v_{var}"], label_map, graph)
+            )
         for j, rel in enumerate(p.rels):
             props = {k: row[f"_r{j}_{k}"] for k, _ in rel.properties}
+            (source, from_labels), (target, to_labels) = ids[rel.source], ids[rel.target]
             writes.rels.append(
-                NewRel(graph.new_id("r"), rel.rel_type, ids[rel.source], ids[rel.target], props)
+                NewRel(
+                    graph.new_id("r"), rel.rel_type, source, target, props, from_labels, to_labels
+                )
             )
     for c in kind.created:
         if c.anchor is not None:

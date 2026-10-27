@@ -108,7 +108,7 @@ def test_a_duration_and_a_time_with_its_offset_land_as_the_text_the_store_reads(
 
 def test_a_tag_on_a_model_node_is_a_label_row_under_its_identity(landed):
     session = TempSession()
-    _write(session, Writes(tags=[("Person|7", "Temp")]))
+    _write(session, Writes(tags=[store.Tag("Person|7", "Person", "Temp")]))
     assert landed[store.NODE_LABELS][1] == [("Person|7", "Temp")]
     assert store.NODES not in landed
 
@@ -134,7 +134,7 @@ def test_a_graph_past_the_sessions_rows_is_refused_by_name(landed):
 
 def test_the_end_of_a_session_ends_its_graph(landed, monkeypatch):
     session = TempSession()
-    _write(session, Writes(tags=[("Person|7", "Temp")]))
+    _write(session, Writes(tags=[store.Tag("Person|7", "Person", "Temp")]))
 
     async def dropped(*_args):
         return None

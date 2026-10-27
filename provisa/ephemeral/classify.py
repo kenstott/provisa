@@ -43,6 +43,12 @@ class Labels:
     free: tuple[str, ...]
     written: tuple[str, ...]
 
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """The labels a node of these carries, as the session holds them: a model label as its
+        node's type name, a free one as written."""
+        return ((self.model,) if self.model else ()) + self.free
+
 
 def _domain(label_map: Any, label: str) -> str | None:
     canonical = label_map.canonical_label(label)
