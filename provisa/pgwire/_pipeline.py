@@ -5234,6 +5234,20 @@ async def _route_compiled(
     await extend_trace_scope_to_sources(state, role_id, frozenset(sources))
     memo["sources"] = frozenset(sources)  # what a later cache hit reports it read
 
+    from provisa.compiler import temp_tables
+
+    if decision.route != Route.ENGINE and temp_tables.reads(compiled_tree):
+        # REQ-615, REQ-2176: a session's temporary table is held in the engine's store, so a
+        # compiled read of one (a Cypher read over the session's ephemeral graph) is computed by
+        # the engine, whatever else it reads -- as on _govern_and_route.
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason="query reads a temporary table of its session",
+        )
     # REQ-135/REQ-1163: a view is replaced by its SQL before governance (view_read.
     # semantic_statement), so the governed statement names only the tables it reads, and the
     # DIRECT lowering below is built from it. A view KEPT through governance -- materialized and

@@ -80,10 +80,18 @@ def _identity(node: Any, label_map: Any, graph: store.Graph) -> tuple[str, tuple
     key = props.get("_id")
     if isinstance(key, str) and key.startswith("e:"):
         return key, graph.node_keys[key]
+    by_label = {nm.label: nm for nm in label_map.nodes.values()}
     owners = [nm for nm in label_map.nodes.values() if nm.label == label]
-    if len(owners) != 1:
+    owner = owners[0] if len(owners) == 1 else None
+    # A model node read under a label not its own (a session tag) is its graph identity
+    # (read.py), ``Label|key``, its own label first.
+    if isinstance(key, str) and "|" in key:
+        named = by_label.get(key.split("|", 1)[0])
+        if named is not None and named is not owner:
+            return key, (named.type_name,)
+    if owner is None:
         raise CypherParseError(f"A created relationship's end, {label}, is no one node")
-    nm = owners[0]
+    nm = owner
     # A compound key's _id is its identity already (select_builder.node_key).
     identity = str(key) if len(nm.key_columns) > 1 else f"{nm.label}|{key}"
     return identity, (nm.type_name,)
@@ -133,13 +141,17 @@ async def create(
     split = pattern.create_clause(statement)
     if split is None:
         return None
-    prefix, patterns = split
+    prefix, patterns, trailing = split
     p = pattern.parse_patterns(patterns)
     bound = pattern.bound(prefix)
     graph = store.graph(session)
     kind = classify_create(p, bound, label_map, graph)
     if kind.governed:
         return None
+    if trailing is not None:
+        raise CypherParseError(
+            f"A CREATE of ephemeral objects ends its statement; it is followed by {trailing}"
+        )
     for rel, governed in zip(p.rels, kind.rels_governed, strict=True):
         if governed:
             source, target = p.nodes[rel.source].variable, p.nodes[rel.target].variable

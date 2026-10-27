@@ -151,6 +151,11 @@ class BoltSession:
         self._last_qid: int | None = None  # the transaction's last RUN's: what qid -1 names
         self._next_qid: int = 0
         self._set_aside: dict[int, _OpenResult] = {}
+        # REQ-2176, REQ-615: the connection's one temporary-table session, bound around each RUN:
+        # the ephemeral graph its statements make lives in it and ends with the connection.
+        from provisa.compiler.temp_tables import TempSession
+
+        self.temp_tables = TempSession()
 
     # ── Response helpers ───────────────────────────────────────────────────────
 
@@ -619,6 +624,21 @@ class BoltSession:
         whose records were never pulled ends with it — its deadline stops (REQ-1905)."""
         self._end_all_requests()
 
+    async def end_temp_tables(self) -> None:
+        """The connection has ended: its temporary tables, and the ephemeral graph held in them,
+        end with it, dropped from the engine's store in its org (REQ-2176, REQ-615)."""
+        if not self.temp_tables.stored:
+            return
+        from provisa.api.app import state as app_state
+        from provisa.core.request_context import reset_current_org, set_current_org
+        from provisa.pgwire.temp_exec import end
+
+        token = set_current_org(self._bound_org())
+        try:
+            await end(self.temp_tables, app_state)
+        finally:
+            reset_current_org(token)
+
     def handle_reset(self) -> None:
         self._end_all_requests()
         self._result_columns = []
@@ -852,8 +872,12 @@ class BoltSession:
             self._end_request()  # a RUN over a result that was never drained ends that request
         shield = request_deadline.shielded()
         deadline = request_deadline.open_request("bolt")
+        from provisa.compiler import temp_tables
         from provisa.core.statement_warnings import collecting
 
+        # REQ-2176, REQ-615: every statement of the connection belongs to its one temporary-table
+        # session.
+        temp_token = temp_tables.bind(self.temp_tables)
         try:
             # REQ-1350: one collector for the RUN; what its statements' answers say about
             # themselves is sent as notifications with the RUN's SUCCESS.
@@ -909,6 +933,7 @@ class BoltSession:
             with shield.lock:  # execution is over: this thread is inside no deadline's scope
                 shield.settle()
                 shield.quiesce()
+            temp_tables.unbind(temp_token)
             reset_current_org(_org_token)
 
         self._result_columns = columns
@@ -1746,7 +1771,40 @@ async def _execute_cypher(
         cypher=cypher,
         params=parameters,
     )
-    translation = kept.cached()
+    # REQ-2176: the connection's ephemeral graph. A CREATE the governing rule does not make
+    # wholly the governed write is done by the ephemeral layer (its governed parts through the
+    # governed write below); a read while the session holds ephemeral objects compiles over the
+    # session's overlay and is never kept, its answer being the session's own.
+    from provisa.compiler import temp_tables
+    from provisa.ephemeral import read as ephemeral_read
+    from provisa.ephemeral import seam
+
+    temp = temp_tables.current()
+    if temp is not None:
+
+        async def run_read(query: str, values: dict) -> list[dict]:
+            cols, value_rows, _ = await _execute_cypher(
+                query, values, role_id, include_ops=include_ops, roles=roles, orgs=orgs
+            )
+            return [dict(zip(cols, row)) for row in value_rows]
+
+        async def run_write(statement: str, values: dict) -> None:
+            await _execute_write_cypher(statement, values, role_id, ctx, include_ops, app_state)
+
+        made = await seam.write(
+            cypher,
+            parameters,
+            _bolt_label_map(ctx, role_id, include_ops, app_state),
+            temp,
+            app_state,
+            run_read,
+            run_write,
+        )
+        if made is not None:
+            return [], [], None
+    involved = ephemeral_read.involved(temp)
+
+    translation = None if involved else kept.cached()
     if translation is None:
         # Try write path first; fall through to read path if it doesn't parse as a write.
         from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
@@ -1762,7 +1820,8 @@ async def _execute_cypher(
         except CypherWriteParseError:
             pass
 
-        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
+        model_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
+        label_map = seam.label_map(model_map, temp)
         try:
             ast = parse_cypher(cypher, label_map)
         except CypherParseError as exc:
@@ -1788,6 +1847,7 @@ async def _execute_cypher(
 
         sql_ast = expand_functions(sql_ast, role_id, app_state)
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+        sql_ast = seam.expand(sql_ast, label_map, model_map, temp)
 
         try:
             sql_str = sql_ast.sql(dialect="postgres")
@@ -1806,7 +1866,7 @@ async def _execute_cypher(
             param_names=tuple(param_names),
             graph_vars=graph_vars,
         )
-        if not composed:
+        if not composed and not involved:
             kept.record(translation)
 
     semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars

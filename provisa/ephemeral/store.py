@@ -84,6 +84,8 @@ class Graph:
     rel_pairs: set[tuple[str, str, str]] = field(default_factory=set)
     # An ephemeral node's id -> the labels it carries (as node_labels holds them).
     node_keys: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # An ephemeral node's id -> its anchor table.
+    node_anchors: dict[str, str] = field(default_factory=dict)
     last_id: int = 0
 
     def new_id(self, prefix: str = "e") -> str:
@@ -138,12 +140,21 @@ class NewRel:
 
 
 @dataclass
+class NewLabel:
+    """A label given to an ephemeral node after it was made."""
+
+    node_id: str
+    label: str
+
+
+@dataclass
 class Writes:
     """What one statement adds to the session's graph."""
 
     nodes: list[NewNode] = field(default_factory=list)
     tags: list[Tag] = field(default_factory=list)
     rels: list[NewRel] = field(default_factory=list)
+    labels: list[NewLabel] = field(default_factory=list)
 
 
 def _engine(state: Any) -> str:
@@ -188,10 +199,16 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
         for label in node.labels or ("",):
             g.label_anchors.setdefault(label, set()).add(node.anchor)
         g.node_keys[node.node_id] = node.labels or ("",)
+        g.node_anchors[node.node_id] = node.anchor
     for tag in writes.tags:
         g.tag_types.setdefault(tag.label, set()).add(tag.type_name)
+    for given in writes.labels:
+        g.label_anchors.setdefault(given.label, set()).add(g.node_anchors[given.node_id])
+        held = tuple(k for k in g.node_keys[given.node_id] if k)
+        g.node_keys[given.node_id] = (*held, given.label)
     labels = [(n.node_id, label) for n in writes.nodes for label in n.labels]
     labels += [(t.node_id, t.label) for t in writes.tags]
+    labels += [(given.node_id, given.label) for given in writes.labels]
     if labels:
         await _add(
             state,
@@ -227,3 +244,38 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
         g.rel_pairs.update(
             (r.rel_type, s, t) for r in writes.rels for s in r.from_labels for t in r.to_labels
         )
+
+
+async def held_labels(state: Any, session: TempSession) -> set[tuple[str, str]]:
+    """Every (node id, label) row of node_labels: each ephemeral node's labels and each tag."""
+    from provisa.pgwire import temp_exec
+
+    if NODE_LABELS not in session.tables:
+        return set()
+    return {
+        (str(n), str(label)) for n, label in await temp_exec.held_rows(state, session, NODE_LABELS)
+    }
+
+
+async def remove_labels(state: Any, session: TempSession, removed: set[tuple[str, str]]) -> None:
+    """Delete the node_labels rows ``removed`` names. An ephemeral node left with no label is an
+    unlabeled node; a node never moves table."""
+    from provisa.pgwire import temp_exec
+
+    g = graph(session)
+    kept = [
+        {NODE_ID: n, "label": label}
+        for n, label in sorted(await held_labels(state, session))
+        if (n, label) not in removed
+    ]
+    columns, rows = types.relanded(
+        session.tables[NODE_LABELS].columns, tuple(_FIXED[NODE_LABELS]), [], kept, _engine(state)
+    )
+    await temp_exec.reland(state, session, NODE_LABELS, columns, rows)
+    for node_id, label in removed:
+        if node_id not in g.node_keys:
+            continue  # a tag on a model node
+        left = tuple(k for k in g.node_keys[node_id] if k != label)
+        g.node_keys[node_id] = left or ("",)
+        if not left:
+            g.label_anchors.setdefault("", set()).add(g.node_anchors[node_id])

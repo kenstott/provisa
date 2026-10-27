@@ -90,12 +90,18 @@ def split_top(text: str, sep: str = ",") -> list[str]:
     return [p.strip() for p in parts]
 
 
-def create_clause(statement: str) -> tuple[str, str] | None:
-    """(the statement before its CREATE, its patterns), or None when it creates nothing. A
-    statement with a clause after its CREATE patterns is refused by name."""
+def create_clause(statement: str) -> tuple[str, str, str | None] | None:
+    """(the statement before its CREATE, its patterns, the clause following them if any), or
+    None when it creates no pattern (no CREATE, or a definition: CREATE INDEX and the like). A
+    clause after the patterns is the governed write's (CREATE ... RETURN) and refused for an
+    ephemeral one by the caller, which knows which it is."""
     scanned = _scan(statement)
     plain = "".join(ch if depth == 0 else " " for depth, ch in scanned)
-    found = list(re.finditer(r"\bCREATE\b", plain, re.IGNORECASE))
+    found = [
+        m
+        for m in re.finditer(r"\bCREATE\b", plain, re.IGNORECASE)
+        if statement[m.end() :].lstrip().startswith("(")
+    ]
     if not found:
         return None
     if len(found) > 1:
@@ -103,12 +109,12 @@ def create_clause(statement: str) -> tuple[str, str] | None:
     at = found[0]
     after = plain[at.end() :]
     trailing = re.search(r"\b(RETURN|WITH|SET|DELETE|REMOVE|MERGE|MATCH|UNWIND)\b", after, re.I)
-    if trailing is not None:
-        raise CypherParseError(
-            f"A CREATE of ephemeral objects ends its statement; it is followed by "
-            f"{trailing.group(1).upper()}"
-        )
-    return statement[: at.start()].strip(), statement[at.end() :].strip()
+    end = at.end() + trailing.start() if trailing is not None else len(statement)
+    return (
+        statement[: at.start()].strip(),
+        statement[at.end() : end].strip(),
+        trailing.group(1).upper() if trailing is not None else None,
+    )
 
 
 def _map_entries(text: str) -> list[tuple[str, str]]:
