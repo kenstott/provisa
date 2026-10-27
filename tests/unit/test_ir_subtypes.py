@@ -324,3 +324,36 @@ def _kept(table_map):
 def test_only_a_statement_reading_a_subtyped_column_derives_its_shape_for_the_wire():
     assert _kept({"net.hosts": 1}).subtyped() == _SHAPE
     assert _kept({"net.ids": 2}).subtyped() is None
+
+
+@pytest.mark.asyncio
+async def test_a_money_column_registers_as_money_and_is_never_sampled_as_an_unsized_numeric():
+    """PostgreSQL has no scale(money): sampling a money column as an unsized numeric failed the
+    pgwire conformance seed (run 40559811408)."""
+    from provisa.api.admin.introspect import native_column_typings
+
+    class _Pool:
+        statements: list[str] = []
+
+        def has(self, _source_id):
+            return True
+
+        async def execute(self, _source_id, sql, _params=None):
+            self.statements.append(sql)
+            if "scale(" in sql:
+                assert '"price"' in sql, sql  # only the unsized numeric is sampled
+                return SimpleNamespace(rows=[(2,)])
+            return SimpleNamespace(
+                rows=[
+                    ("fee", "money", "money", "money", "b"),
+                    ("price", "numeric", "numeric", "numeric", "b"),
+                ]
+            )
+
+    pool = _Pool()
+    typings = await native_column_typings("pg", "postgresql", "public", "t", pool)  # type: ignore[arg-type]
+    assert [(n, t.data_type) for n, t in typings or []] == [
+        ("fee", "money"),
+        ("price", "numeric(38,2)"),
+    ]
+    assert sum("scale(" in s for s in pool.statements) == 1

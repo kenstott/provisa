@@ -256,5 +256,13 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
         1,
         "integer",
     )
-    assert "c_inet" in refused
+    # REQ-2171: a subtype registers as itself; money is no unsized numeric to sample.
+    assert {n: typed[n] for n in ("c_inet", "c_cidr", "c_macaddr", "c_oid", "c_money")} == {
+        "c_inet": "inet",
+        "c_cidr": "cidr",
+        "c_macaddr": "macaddr",
+        "c_oid": "oid",
+        "c_money": "money",
+    }
+    assert set(sampled) == {"c_numeric"}
     assert cfg.sources[0].port == 55432
