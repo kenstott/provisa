@@ -142,6 +142,10 @@ class ExprContext(Protocol):
         """Whether ``expr`` is a string (size() of it counts its characters)."""
         ...
 
+    def is_list(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a list (+ appends an element to it)."""
+        ...
+
     def resolve_term(self, node: Term) -> exp.Expression:
         """``node.value`` as one RDF term of the answer (REQ-2135)."""
         ...
@@ -413,6 +417,12 @@ class ExprLowering:
                 return timed
             if op == "/" and (self._is_float(node.left) or self._is_float(node.right)):
                 return _float_division(left, right)
+            if op == "+" and self._ctx.is_list(node.left) != self._ctx.is_list(node.right):
+                # A list + an element appends it, an element + a list prepends it (SQL's + of a
+                # list and a value is no operator).
+                if self._ctx.is_list(node.left):
+                    return _anon("array_append", left, right)
+                return _anon("array_prepend", left, right)
             if op == "/":
                 # An integer divided by an integer is an integer, as in SQL: typed, so sqlglot does
                 # not cast the dividend to DOUBLE PRECISION.

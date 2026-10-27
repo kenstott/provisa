@@ -45,6 +45,9 @@ class _FakeCtx:
     def is_text(self, expr):
         return False
 
+    def is_list(self, expr):
+        return False
+
     def resolve_function(self, name, args, *, distinct):
         return exp.Anonymous(this=name, expressions=args)
 
