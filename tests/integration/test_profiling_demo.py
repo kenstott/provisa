@@ -201,3 +201,22 @@ def test_each_tour_statement_answers_rows(server, step):
     resp = httpx.get(f"{server.base_url}{path}", headers={"X-Provisa-Role": _ROLE}, timeout=300)
     assert resp.status_code == 200, resp.text
     assert resp.json()["data"], step["key"]
+
+
+@pytest.mark.parametrize(
+    "step", [s for s in _TOUR if "sql" in s], ids=lambda s: f"{s['key']}-as-all"
+)
+def test_each_tour_statement_answers_rows_as_role_all(server, step):
+    """REQ-2052: the tour's SQL steps as the browser runs them, "Role: All" -- in a local start
+    (auth provider none, the UI's dev mode) that is every role of the org (AuthContext's
+    availableRoles), sent as one X-Provisa-Role list and read as their meta-role."""
+    roles = _post(server, "/admin/graphql", {"query": "{ roles { id } }"}).json()["data"]["roles"]
+    every = ",".join(sorted(r["id"] for r in roles))
+    resp = httpx.post(
+        f"{server.base_url}/data/sql",
+        json={"sql": step["sql"]},
+        headers={"X-Provisa-Role": every},
+        timeout=900,
+    )
+    assert resp.status_code == 200, f"{every}: HTTP {resp.status_code}: {resp.text}"
+    assert resp.json()["data"]["sql"], f"{step['key']} as {every}: no rows"

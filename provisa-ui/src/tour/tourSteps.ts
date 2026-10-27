@@ -183,6 +183,12 @@ export interface TourStep {
    * aborts the tour, this only sets how long "never" takes to establish.
    */
   waitMs?: number;
+  /**
+   * REQ-2052: what the page shows when the step's object does not exist (a table never profiled).
+   * Once it appears the step stops at once, stuck, its text naming why, instead of waiting out
+   * `element`.
+   */
+  absent?: string;
 }
 
 const SOURCES_ADD = '[data-tour="sources-add"]';
