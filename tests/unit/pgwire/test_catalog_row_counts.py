@@ -54,7 +54,7 @@ def _ctx_and_idx(n: int):
         for i in range(n)
     }
     ctx = SimpleNamespace(tables=tables)
-    idx = catalog_populate.CatalogIndex()
+    idx = catalog_populate.CatalogIndex("provisa")
     idx.tables = [("c", "s", f"t{i}", i, 1000 + i) for i in range(n)]
     return ctx, idx
 

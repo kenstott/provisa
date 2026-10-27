@@ -63,8 +63,9 @@ def _dedupe_functions(fns: dict) -> list[dict]:
     return unique
 
 
-def populate_functions(db, state, role_id: str) -> None:  # REQ-872
-    """Project role-visible tracked_functions into pg_proc / routines / parameters."""
+def populate_functions(db, state, role_id: str, database: str) -> None:  # REQ-872
+    """Project role-visible tracked_functions into pg_proc / routines / parameters, listed under
+    ``database``, the served database (REQ-588)."""
     fns = getattr(state, "tracked_functions", None)
     if not isinstance(fns, dict):
         return
@@ -89,15 +90,15 @@ def populate_functions(db, state, role_id: str) -> None:  # REQ-872
             "INSERT INTO _is_routines (specific_catalog, specific_schema, specific_name, "
             "routine_catalog, routine_schema, routine_name, routine_type, data_type, "
             "routine_body, external_language, is_deterministic, sql_data_access, security_type) "
-            "VALUES ('provisa', 'public', ?, 'provisa', 'public', ?, 'FUNCTION', ?, "
+            "VALUES (?, 'public', ?, ?, 'public', ?, 'FUNCTION', ?, "
             "'EXTERNAL', 'EXTERNAL', 'NO', 'MODIFIES', 'INVOKER')",
-            [specific, name, ret_sql],
+            [database, specific, database, name, ret_sql],
         )
         for pos, arg in enumerate(args, 1):
             db.execute(
                 "INSERT INTO _is_parameters (specific_catalog, specific_schema, specific_name, "
                 "ordinal_position, parameter_mode, is_result, parameter_name, data_type) "
-                "VALUES ('provisa', 'public', ?, ?, 'IN', 'NO', ?, ?)",
-                [specific, pos, arg.get("name"), _fn_sql_type(arg.get("type"))],
+                "VALUES (?, 'public', ?, ?, 'IN', 'NO', ?, ?)",
+                [database, specific, pos, arg.get("name"), _fn_sql_type(arg.get("type"))],
             )
         oid += 1
