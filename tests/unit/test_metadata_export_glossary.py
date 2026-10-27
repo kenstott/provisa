@@ -255,3 +255,58 @@ def test_a_class_proposal_no_one_has_defined_is_not_exported_or_assigned():
     )
     assert "order" not in {t.name for t in snapshot.glossary_terms}
     assert all(not t.tables for t in snapshot.glossary_terms)
+
+
+def test_axioms_ride_along_with_the_terms_they_state():
+    """REQ-1592 (2026-10-27), REQ-2163: the ontology's axioms reach the snapshot with the terms
+    they state -- one about a withheld term, or naming one, does not."""
+    from provisa.sparql_query.vocabulary import OWL, RDF, RDFS, XSD
+
+    config = _config(
+        [
+            _table("orders", columns=["cust_id"]),
+            _table("staging", product_id=None, columns=["hidden_id"]),
+        ]
+    )
+    glossary = _glossary()
+    glossary["axioms"] = [
+        {
+            "subject_term_id": 1,
+            "predicate": f"{RDFS}subClassOf",
+            "object_term_id": 3,
+            "object_iri": None,
+            "object_literal": None,
+        },
+        {
+            "subject_term_id": 1,
+            "predicate": f"{RDFS}range",
+            "object_term_id": None,
+            "object_iri": f"{XSD}integer",
+            "object_literal": None,
+        },
+        # shadow is withheld: neither its axiom nor one naming it publishes.
+        {
+            "subject_term_id": 2,
+            "predicate": f"{RDF}type",
+            "object_term_id": None,
+            "object_iri": f"{OWL}DatatypeProperty",
+            "object_literal": None,
+        },
+        {
+            "subject_term_id": 3,
+            "predicate": f"{RDFS}subClassOf",
+            "object_term_id": 2,
+            "object_iri": None,
+            "object_literal": None,
+        },
+    ]
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
+    assert [
+        (a.subject_term_id, a.predicate, a.object_term_id, a.object_iri)
+        for a in snapshot.glossary_axioms
+    ] == [
+        (1, f"{RDFS}subClassOf", 3, None),
+        (1, f"{RDFS}range", None, f"{XSD}integer"),
+    ]

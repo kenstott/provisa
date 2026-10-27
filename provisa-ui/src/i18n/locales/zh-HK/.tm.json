@@ -7090,7 +7090,7 @@
   "zh-HK/tablesPage.json::tablesPage.refreshData": "Refresh Data",
   "zh-HK/tablesPage.json::tablesPage.refreshing": "Refreshing...",
   "zh-HK/tablesPage.json::tablesPage.reportXlsx": "Workbook",
-  "zh-HK/tablesPage.json::tablesPage.reportXlsxTitle": "Download the model as a spreadsheet for review — sources, tables, columns, relationships, views, metrics, materialized views and ontology terms, one sheet each",
+  "zh-HK/tablesPage.json::tablesPage.reportXlsxTitle": "Download the model as a spreadsheet for review — sources, tables, columns, relationships, views, metrics, materialized views, ontology, data products, data contracts, data quality and data profiling, one sheet each",
   "zh-HK/tablesPage.json::tablesPage.resizeDetail": "Resize the detail panel",
   "zh-HK/tablesPage.json::tablesPage.restoreDetail": "Restore the panel",
   "zh-HK/tablesPage.json::tablesPage.runNow": "Run Now",

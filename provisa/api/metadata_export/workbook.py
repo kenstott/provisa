@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.api.metadata_export.refs import metric_uri, table_ref, table_uri
+from provisa.sparql_query.vocabulary import OWL, RDF, RDFS, SKOS, XSD
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -59,6 +60,7 @@ METRICS = "Metrics"
 MATERIALIZED_VIEWS = "Materialized Views"
 ONTOLOGY = "Ontology"
 DATA_PRODUCTS = "Data Products"
+DATA_CONTRACTS = "Data Contracts"
 DATA_QUALITY = "Data Quality"
 DATA_PROFILING = "Data Profiling"
 
@@ -72,6 +74,7 @@ OBJECT_SHEETS = (
     MATERIALIZED_VIEWS,
     ONTOLOGY,
     DATA_PRODUCTS,
+    DATA_CONTRACTS,
     DATA_QUALITY,
     DATA_PROFILING,
 )
@@ -126,6 +129,7 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "edges",
         "domains",
         "experts",
+        "axioms",
     ),
     # REQ-1592 (2026-10-27): each product with its lifecycle (REQ-1634 STATUS), its output ports
     # (its members) and its inputs.
@@ -142,6 +146,18 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "output ports",
         "inputs",
         "description",
+    ),
+    # REQ-1592 (2026-10-27): each output port's contract (REQ-2158), its columns those served.
+    DATA_CONTRACTS: (
+        "id",
+        "product",
+        "output port",
+        "version",
+        "status",
+        "purpose",
+        "usage",
+        "limitations",
+        "columns",
     ),
     # REQ-1592 (2026-10-27): each check's latest result on the table or column it checks
     # (REQ-2132/2133); a metric on a column masked to the reader is blank.
@@ -387,9 +403,22 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
     return rows
 
 
+# The vocabularies an axiom is written in, by the prefix the sheet spells them with.
+_PREFIXES = {RDF: "rdf:", RDFS: "rdfs:", OWL: "owl:", SKOS: "skos:", XSD: "xsd:"}
+# skos:prefLabel and skos:definition are the term and definition columns already.
+_STATED_ELSEWHERE = frozenset({f"{SKOS}prefLabel", f"{SKOS}definition"})
+
+
+def _prefixed(iri: str) -> str:
+    for namespace, prefix in _PREFIXES.items():
+        if iri.startswith(namespace):
+            return prefix + iri[len(namespace) :]
+    return iri
+
+
 def _ontology_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
-    """One row per term. An edge is listed on the term it leaves, and only when the term it
-    reaches is shown too (REQ-2163)."""
+    """One row per term. An edge is listed on the term it leaves and an axiom on the term it
+    states, each only when the term it names is shown too (REQ-2163)."""
     names = {term.term_id: term.name for term in snapshot.glossary_terms}
     edges: dict[int, list[str]] = {}
     for edge in snapshot.glossary_edges:
@@ -397,6 +426,19 @@ def _ontology_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
             edges.setdefault(edge.from_term_id, []).append(
                 f"{edge.rel_type} {names[edge.to_term_id]}"
             )
+    axioms: dict[int, list[str]] = {}
+    for axiom in snapshot.glossary_axioms:
+        if axiom.subject_term_id not in names or axiom.predicate in _STATED_ELSEWHERE:
+            continue
+        if axiom.object_term_id is not None:
+            if axiom.object_term_id not in names:
+                continue
+            said = names[axiom.object_term_id]
+        elif axiom.object_iri is not None:
+            said = _prefixed(axiom.object_iri)
+        else:
+            said = f'"{axiom.object_literal}"'
+        axioms.setdefault(axiom.subject_term_id, []).append(f"{_prefixed(axiom.predicate)} {said}")
     return [
         [
             term.semantic_uri,
@@ -410,6 +452,7 @@ def _ontology_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
             ", ".join(edges.get(term.term_id, [])),
             ", ".join(term.domains),
             ", ".join(term.experts),
+            "; ".join(axioms.get(term.term_id, [])),
         ]
         for term in snapshot.glossary_terms
     ]
@@ -438,6 +481,39 @@ def _products_rows(
                 ", ".join(member.parts[-1] for member in product.members),
                 ", ".join(inputs.get(product.id, [])),
                 product.description,
+            ]
+        )
+    return rows
+
+
+def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+    """Each output port's contract: a member of a product the workbook shows, with the contract
+    its owner declared. A promised column the reader is not served is not named."""
+    product_of = {
+        member: product for product in snapshot.data_products for member in product.members
+    }
+    rows: list[list[Any]] = []
+    for table in snapshot.tables:
+        contract = table.contract
+        product = product_of.get(table.ref)
+        if contract is None or product is None:
+            continue
+        served = {column.name for column in table.columns}
+        rows.append(
+            [
+                table.semantic_uri,
+                product.name,
+                table.name,
+                contract.version,
+                contract.status,
+                contract.description or "",
+                contract.terms.usage or "",
+                contract.terms.limitations or "",
+                ", ".join(
+                    f"{column.name} ({column.type}{', required' if column.required else ''})"
+                    for column in contract.columns
+                    if column.name in served
+                ),
             ]
         )
     return rows
@@ -546,6 +622,7 @@ def sheet_rows(  # REQ-1592
         MATERIALIZED_VIEWS: _materialized_rows(org_id, tables, tags, withheld_definitions),
         ONTOLOGY: _ontology_rows(snapshot),
         DATA_PRODUCTS: _products_rows(snapshot, config, inputs),
+        DATA_CONTRACTS: _contracts_rows(snapshot),
         DATA_QUALITY: _quality_rows(snapshot),
         DATA_PROFILING: _profiling_rows(snapshot, profiles),
     }

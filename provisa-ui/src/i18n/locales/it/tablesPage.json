@@ -12,7 +12,7 @@
     "model": "+ Modello",
     "modelTitle": "Modella un'entità o un fatto (schema a stella / Data Vault)",
     "reportXlsx": "Cartella di lavoro",
-    "reportXlsxTitle": "Scarica il modello come foglio di calcolo per la revisione: origini, tabelle, colonne, relazioni, viste, metriche, viste materializzate, ontologia, prodotti dati, qualità dei dati e profili dei dati, un foglio ciascuno",
+    "reportXlsxTitle": "Scarica il modello come foglio di calcolo per la revisione: origini, tabelle, colonne, relazioni, viste, metriche, viste materializzate, ontologia, prodotti dati, contratti dati, qualità dei dati e profili dei dati, un foglio ciascuno",
     "viewErd": "Visualizza ERD",
     "colSource": "Origine",
     "colDomain": "Dominio",

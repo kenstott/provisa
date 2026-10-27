@@ -311,6 +311,7 @@ async def test_a_sheet_the_caller_cannot_read_is_omitted_not_refused(served):
         wb.METRICS,
         wb.ONTOLOGY,
         wb.DATA_PRODUCTS,
+        wb.DATA_CONTRACTS,
         wb.DATA_QUALITY,
         wb.DATA_PROFILING,
     ):

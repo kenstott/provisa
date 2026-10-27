@@ -55,6 +55,7 @@ SHEET_RIGHTS: dict[str, str] = {
     wb.MATERIALIZED_VIEWS: Capability.CREATE_VIEW.value,
     wb.ONTOLOGY: Capability.GLOSSARY_READ.value,
     wb.DATA_PRODUCTS: Capability.DATA_PRODUCT_READ.value,
+    wb.DATA_CONTRACTS: Capability.DATA_PRODUCT_READ.value,
     wb.DATA_QUALITY: Capability.DQ_READ.value,
     wb.DATA_PROFILING: Capability.DQ_READ.value,
 }
@@ -151,6 +152,8 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
         assert model_db is not None  # the admin surface is only mounted with a tenant plane
         async with model_db.acquire() as conn:
             glossary = await glossary_repo.export_graph(conn)
+            # REQ-2163: the Ontology sheet states each term's axioms.
+            glossary["axioms"] = await glossary_repo.axioms(conn)
         dq_outcomes = await read_latest_outcomes(model)
         snapshot = build_snapshot(
             model,

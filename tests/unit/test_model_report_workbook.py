@@ -202,7 +202,7 @@ def test_an_empty_sheet_still_carries_its_filterable_header():
     rows[wb.ONTOLOGY] = []
     sheet = _load(_header(), rows)[wb.ONTOLOGY]
     assert tuple(cell.value for cell in sheet[1]) == wb.HEADERS[wb.ONTOLOGY]
-    assert sheet.auto_filter.ref == "A1:K2"
+    assert sheet.auto_filter.ref == "A1:L2"
 
 
 def test_there_is_no_reader_the_workbook_is_never_an_edit_path():
@@ -1042,3 +1042,107 @@ def test_a_checks_metric_on_a_column_masked_to_the_caller_is_blank():
     assert by_column["salary"].failed_rows == 2
     assert by_column["id"].metric_value == 0.0
     assert report_router._masked_for(snapshot, "hr") is snapshot
+
+
+def test_the_ontology_sheet_states_each_terms_axioms():
+    """REQ-1592 (2026-10-27): a term's axioms (REQ-2163 _axioms) in prefixed form; one naming a
+    term the sheet does not show is absent, and skos:prefLabel and skos:definition are the term
+    and definition columns already."""
+    from provisa.api.metadata_export.model import GlossaryAxiom, MetadataSnapshot
+    from provisa.sparql_query.vocabulary import OWL, RDF, RDFS, SKOS, XSD
+
+    snapshot = MetadataSnapshot(
+        org_id=ORG,
+        glossary_terms=[_term(1, "Customer", role="class"), _term(2, "segment", role="property")],
+        glossary_axioms=[
+            GlossaryAxiom(1, f"{RDF}type", None, f"{OWL}Class", None),
+            GlossaryAxiom(1, f"{RDFS}subClassOf", 9, None, None),
+            GlossaryAxiom(1, f"{SKOS}prefLabel", None, None, "Customer"),
+            GlossaryAxiom(2, f"{RDF}type", None, f"{OWL}DatatypeProperty", None),
+            GlossaryAxiom(2, f"{RDFS}domain", 1, None, None),
+            GlossaryAxiom(2, f"{RDFS}range", None, f"{XSD}string", None),
+            GlossaryAxiom(2, f"{SKOS}definition", None, None, "a segment"),
+        ],
+    )
+    config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}, inputs={}
+    )
+    header = wb.HEADERS[wb.ONTOLOGY]
+    by_term = {row[1]: dict(zip(header, row, strict=True)) for row in rows[wb.ONTOLOGY]}
+    assert by_term["Customer"]["axioms"] == "rdf:type owl:Class"
+    assert by_term["segment"]["axioms"] == (
+        "rdf:type owl:DatatypeProperty; rdfs:domain Customer; rdfs:range xsd:string"
+    )
+
+
+def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_served_columns():
+    """REQ-1592 (2026-10-27): each output port's contract (REQ-2158) -- version, status, purpose,
+    usage, limitations and the columns it promises, a column the caller is not served absent."""
+    from provisa.api.metadata_export.model import (
+        AssetKind,
+        AssetRef,
+        DataProductAsset,
+        MetadataSnapshot,
+    )
+    from provisa.core.models import ContractColumn, ContractTerms, DataContract, DataProduct
+
+    orders = dataclasses.replace(
+        _asset_table("orders", ["id", "total"]),
+        semantic_uri=f"provisa://{ORG}/sales/tables/orders",
+        contract=DataContract(
+            version="1.2.0",
+            status="active",
+            description="every order placed",
+            terms=ContractTerms(usage="reporting", limitations="no PII"),
+            columns=[
+                ContractColumn(name="id", type="integer", required=True),
+                ContractColumn(name="total", type="decimal"),
+                ContractColumn(name="margin", type="decimal"),  # not served to this caller
+            ],
+        ),
+    )
+    drafts = _asset_table("drafts", ["id"])  # a member with no contract declared
+    loose = dataclasses.replace(
+        _asset_table("loose", ["id"]),
+        contract=DataContract(version="0.1.0"),  # in no product the workbook shows
+    )
+    snapshot = MetadataSnapshot(
+        org_id=ORG,
+        tables=[orders, drafts, loose],
+        data_products=[
+            DataProductAsset(
+                ref=AssetRef(kind=AssetKind.DATA_PRODUCT, parts=("orders_prod",)),
+                id="orders_prod",
+                name="Orders",
+                domain_id="sales",
+                owner=None,
+                description="",
+                members=(orders.ref, drafts.ref),
+            )
+        ],
+    )
+    config = ProvisaConfig(
+        sources=[],
+        domains=[],
+        tables=[],
+        roles=[],
+        data_products=[DataProduct(id="orders_prod", domain_id="sales", name="Orders")],
+    )
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}, inputs={}
+    )
+    header = wb.HEADERS[wb.DATA_CONTRACTS]
+    assert [dict(zip(header, r, strict=True)) for r in rows[wb.DATA_CONTRACTS]] == [
+        {
+            "id": f"provisa://{ORG}/sales/tables/orders",
+            "product": "Orders",
+            "output port": "orders",
+            "version": "1.2.0",
+            "status": "active",
+            "purpose": "every order placed",
+            "usage": "reporting",
+            "limitations": "no PII",
+            "columns": "id (integer, required), total (decimal)",
+        }
+    ]

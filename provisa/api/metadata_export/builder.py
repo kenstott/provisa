@@ -34,6 +34,7 @@ from provisa.api.metadata_export.model import (
     DataQualityAssertion,
     DataQualityOutcome,
     DomainAsset,
+    GlossaryAxiom,
     GlossaryTermAsset,
     GlossaryTermEdge,
     JunctionRef,
@@ -562,6 +563,26 @@ def _dq_assertions(
     return assertions
 
 
+def _glossary_axioms(
+    glossary: dict | None, terms: list[GlossaryTermAsset]
+) -> list[GlossaryAxiom]:  # REQ-2163
+    """The ontology's axioms (ontology._axioms) about the published terms: one about a withheld
+    term, or naming one as its object, goes with it."""
+    published = {term.term_id for term in terms}
+    return [
+        GlossaryAxiom(
+            subject_term_id=row["subject_term_id"],
+            predicate=row["predicate"],
+            object_term_id=row["object_term_id"],
+            object_iri=row["object_iri"],
+            object_literal=row["object_literal"],
+        )
+        for row in (glossary or {}).get("axioms", [])
+        if row["subject_term_id"] in published
+        and (row["object_term_id"] is None or row["object_term_id"] in published)
+    ]
+
+
 def _glossary_assets(
     glossary: dict,
     exported: list[Table],
@@ -781,5 +802,6 @@ def build_snapshot(
         ],
         glossary_terms=glossary_terms,
         glossary_edges=glossary_edges,
+        glossary_axioms=_glossary_axioms(glossary, glossary_terms),
         assertions=_dq_assertions(config, keep, published_columns, dq_outcomes or {}, contexts),
     )

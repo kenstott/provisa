@@ -462,6 +462,18 @@ class GlossaryTermEdge:  # REQ-1387
 
 
 @dataclass
+class GlossaryAxiom:  # REQ-2163
+    """One RDFS/OWL/SKOS statement the ontology makes about a published term (ontology._axioms):
+    its object a term, an IRI or a literal -- exactly one is set."""
+
+    subject_term_id: int
+    predicate: str
+    object_term_id: int | None
+    object_iri: str | None
+    object_literal: str | None
+
+
+@dataclass
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
 
@@ -480,6 +492,7 @@ class MetadataSnapshot:  # REQ-1070
     model_tags: list[ModelTag] = field(default_factory=list)  # REQ-1377/1378
     glossary_terms: list[GlossaryTermAsset] = field(default_factory=list)  # REQ-1387
     glossary_edges: list[GlossaryTermEdge] = field(default_factory=list)  # REQ-1387
+    glossary_axioms: list[GlossaryAxiom] = field(default_factory=list)  # REQ-2163
     assertions: list[DataQualityAssertion] = field(default_factory=list)  # REQ-1443
 
     def columns(self) -> list[ColumnAsset]:

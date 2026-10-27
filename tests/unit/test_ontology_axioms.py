@@ -267,3 +267,33 @@ async def test_the_kind_of_closure_is_computed_in_sql(control_plane):
         ("order total", "amount", sub_property, 1),
         # The retired term's kind-of edge states nothing.
     }
+
+
+@pytest.mark.asyncio
+async def test_the_repository_reads_the_axioms_the_view_states(control_plane):
+    """REQ-1592 (2026-10-27): the model workbook's axioms are the view's rows, read by the
+    repository for the metadata-export projection -- SQL's rule, not a second one."""
+    from provisa.api.startup_seed import _adapt_view_ddl
+    from provisa.core.repositories import glossary as glossary_repo
+
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _seed(conn)
+            await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS["table_columns"]))
+            for ddl in ONTOLOGY_TABLE_VIEWS.values():
+                await conn.execute(_adapt_view_ddl(ddl))
+            read = await glossary_repo.axioms(conn)
+            stated = (
+                await conn.execute_core(
+                    text(
+                        "SELECT subject_term_id, predicate, object_term_id, object_iri, "
+                        "object_literal FROM _axioms_ontology"
+                    )
+                )
+            ).fetchall()
+    finally:
+        await db.close()
+    assert read
+    assert len(read) == len(stated)
+    assert {tuple(r.values()) for r in read} == {tuple(r) for r in stated}
