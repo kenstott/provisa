@@ -44,7 +44,6 @@ from provisa.compiler.aggregate_gen import (
 )
 from provisa.compiler.naming import (
     active_gql_convention,
-    domain_gql_alias,
     domain_to_sql_name,
     generate_name,
     refuse_taken_sql_addresses,
@@ -458,11 +457,9 @@ def _dedup_tables(tables: list[_TableInfo]) -> list[_TableInfo]:
 
 
 def _build_domain_alias_map(domains: list[dict]) -> dict[str, str]:
-    return {
-        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
-        for d in domains
-        if domain_gql_alias(d["id"], d.get("graphql_alias"))
-    }
+    from provisa.compiler.naming import domain_alias_map
+
+    return domain_alias_map(domains)
 
 
 def _embedding_columns(t: _TableInfo) -> dict[str, str]:  # REQ-421, REQ-430

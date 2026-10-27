@@ -12,6 +12,7 @@
 
 import type { MaskEntry } from "../lib/masks";
 import type { LifecycleStatus } from "./lifecycle";
+import { domainToSqlName } from "../naming";
 
 // REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
 export interface SourceCdcConfig {
@@ -243,6 +244,23 @@ export function domainGqlAlias(domain: Pick<Domain, "id" | "graphqlAlias">): str
     .join("")
     .toLowerCase();
   return acronym || domain.id[0]?.toLowerCase() || "";
+}
+
+/** Mirror of provisa.compiler.naming.domain_alias_map (REQ-471): each domain's alias, every one its
+ * own. A computed alias another domain's alias also is (ontology's and ops's are both "o") is the
+ * domain's own name instead, so no domain's root fields are grouped as another's. */
+export function domainAliasMap(
+  domains: Pick<Domain, "id" | "graphqlAlias">[],
+): Record<string, string> {
+  const aliases = domains.map((d) => [d, domainGqlAlias(d)] as const);
+  const taken = aliases.map(([, a]) => a).filter(Boolean);
+  const out: Record<string, string> = {};
+  for (const [d, alias] of aliases) {
+    // The no-domain row's alias is "": its tables take no prefix.
+    const shared = taken.filter((a) => a === alias).length > 1;
+    out[d.id] = alias && !d.graphqlAlias && shared ? domainToSqlName(d.id) : alias;
+  }
+  return out;
 }
 
 export interface TableColumn {
