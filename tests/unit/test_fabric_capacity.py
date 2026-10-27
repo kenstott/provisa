@@ -153,6 +153,21 @@ def test_any_other_refusal_is_raised_at_once(configured):
     assert len(tries) == 1
 
 
+class _ServingConnection:
+    """A pyodbc connection whose warehouse serves statements."""
+
+    def add_output_converter(self, *_args) -> None:
+        pass
+
+    def cursor(self) -> SimpleNamespace:
+        cursor = SimpleNamespace(fetchall=lambda: [(1,)], close=lambda: None)
+        cursor.execute = lambda _sql: cursor
+        return cursor
+
+    def close(self) -> None:
+        pass
+
+
 def test_the_fabric_runtime_resumes_before_it_connects_and_synapse_does_not(monkeypatch):
     from provisa.federation import mssql_warehouse_runtime as mwr
 
@@ -162,12 +177,9 @@ def test_the_fabric_runtime_resumes_before_it_connects_and_synapse_does_not(monk
     monkeypatch.setitem(
         __import__("sys").modules,
         "pyodbc",
-        # A connection takes the datetimeoffset converter (REQ-2050), as pyodbc's does.
-        SimpleNamespace(
-            connect=lambda *a, **k: (
-                order.append("connect") or SimpleNamespace(add_output_converter=lambda *_: None)
-            )
-        ),
+        # A connection takes the datetimeoffset converter (REQ-2050), as pyodbc's does, and
+        # answers the probe a managed capacity's connection is asked (await_data_plane).
+        SimpleNamespace(connect=lambda *a, **k: order.append("connect") or _ServingConnection()),
     )
 
     class _Cred:
