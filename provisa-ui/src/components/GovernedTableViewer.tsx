@@ -61,14 +61,10 @@ interface GovernedTableViewerProps {
   showTitle?: boolean;
   /** The role the rows are read as -- one role, or the "Role: All" set (REQ-1620): a DRAFT's
    * pages from the admin preview (REQ-1921), a table in service's by its statement. */
-  role?: string | null;
+  role: string | null;
 }
 
-export function GovernedTableViewer({
-  table,
-  showTitle = false,
-  role = null,
-}: GovernedTableViewerProps) {
+export function GovernedTableViewer({ table, showTitle = false, role }: GovernedTableViewerProps) {
   const { t, i18n } = useTranslation();
   const requiredCols = requiredParamColumns(table);
   const optionalCols = optionalParamColumns(table);
@@ -113,13 +109,10 @@ export function GovernedTableViewer({
     building?: boolean;
     redirect?: ResultRedirect;
   }> => {
-    if (!table.draft) {
-      return runSql(
-        pagedViewerSql(table, params, filters, sorts, groupBy, pageNo, size),
-        role ?? undefined,
-      );
-    }
     if (!role) return Promise.resolve({ columns: [], rows: [], error: "No active role" });
+    if (!table.draft) {
+      return runSql(pagedViewerSql(table, params, filters, sorts, groupBy, pageNo, size), role);
+    }
     return previewTable(
       table.id,
       role,

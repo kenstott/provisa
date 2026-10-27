@@ -51,7 +51,7 @@ describe("GovernedTableViewer — a result landed in the results store", () => {
         ),
       ),
     );
-    render(<GovernedTableViewer table={TABLE} />);
+    render(<GovernedTableViewer table={TABLE} role="analyst" />);
     const notice = await screen.findByTestId("result-redirected");
     expect(notice).toHaveTextContent("2,500,000");
     expect(screen.getByRole("link", { name: /download/i })).toHaveAttribute(

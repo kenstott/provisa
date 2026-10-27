@@ -63,7 +63,7 @@ describe("GovernedTableViewer page size", () => {
 
   it("shows as many rows as the chosen page size", async () => {
     relationOf(300);
-    render(<GovernedTableViewer table={TABLE} />);
+    render(<GovernedTableViewer table={TABLE} role="analyst" />);
     await waitFor(() => expect(bodyRows()).toBeGreaterThan(0));
 
     await choosePageSize(100);
@@ -77,7 +77,7 @@ describe("GovernedTableViewer page size", () => {
 
   it("offers no next or previous page when the relation fits on one", async () => {
     relationOf(10);
-    render(<GovernedTableViewer table={TABLE} />);
+    render(<GovernedTableViewer table={TABLE} role="analyst" />);
     await waitFor(() => expect(bodyRows()).toBe(10));
 
     const pager = within(document.body);

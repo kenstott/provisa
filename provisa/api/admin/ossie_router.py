@@ -52,9 +52,11 @@ async def download_dbt_sources(request: Request, role: str):  # REQ-1967
     from provisa.api.admin.config_export import build_live_config
     from provisa.api.errors import ApiError
     from provisa.core.models import ProvisaConfig
-    from provisa.dbt.sources import FILENAME, UnknownRole, dbt_sources_yaml
+    from provisa.dbt.sources import FILENAME, UnknownRole, dbt_sources_yaml, role_ids
 
-    require_inspectable_role_request(request, role)
+    # REQ-1620: "Role: All" names the selected set; each of its roles is one the caller may inspect.
+    for member in role_ids(role):
+        require_inspectable_role_request(request, member)
     config = ProvisaConfig.model_validate(await build_live_config())
     try:
         content = dbt_sources_yaml(

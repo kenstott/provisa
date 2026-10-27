@@ -116,7 +116,8 @@ const LABELS: Record<Target, string> = {
 
 export function NlPage() {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  // REQ-1620: the selected roles, the "Role: All" set included, as the question is asked.
+  const { actingRoles } = useAuth();
   const navigate = useNavigate();
   const NL_QUESTION_KEY = "nl-question";
   const NL_BRANCHES_KEY = "nl-branches";
@@ -131,7 +132,7 @@ export function NlPage() {
   // strict only, so the switch is held on. The server's answer is kept with the role it was asked
   // for: until the acting role has one, the switch is held on.
   const [nlMode, setNlMode] = useState<{ role: string; nonStrict: boolean } | null>(null);
-  const actingRoleId = role?.id ?? null;
+  const actingRoleId = actingRoles;
   useEffect(() => {
     if (actingRoleId === null) return;
     let live = true;
@@ -186,7 +187,7 @@ export function NlPage() {
   const handleSubmit = useCallback(async () => {
     const q = question.trim();
     if (!q || submitting) return;
-    if (!role) {
+    if (!actingRoles) {
       setGlobalError("No role selected — wait for roles to load before submitting.");
       return;
     }
@@ -194,7 +195,7 @@ export function NlPage() {
     cancelRef.current?.();
     cancelRef.current = null;
 
-    const roleId = role.id;
+    const roleId = actingRoles;
     setGlobalError(null);
     setHasResults(true);
     setSubmitting(true);
@@ -263,7 +264,7 @@ export function NlPage() {
       },
     );
     cancelRef.current = stop;
-  }, [question, submitting, role, effectiveStrict, saveBranches]);
+  }, [question, submitting, actingRoles, effectiveStrict, saveBranches]);
 
   const openInExplorer = useCallback(
     (target: Target, _query: string) => {

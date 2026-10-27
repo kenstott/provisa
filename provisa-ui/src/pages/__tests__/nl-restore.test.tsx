@@ -18,7 +18,7 @@ import { kept } from "../../lib/resultWithQuery";
 
 vi.mock("../../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context/AuthContext")>()),
-  useAuth: () => ({ role: { id: "analyst" } }),
+  useAuth: () => ({ role: { id: "analyst" }, actingRoles: "analyst" }),
 }));
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),

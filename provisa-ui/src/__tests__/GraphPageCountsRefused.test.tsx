@@ -18,13 +18,9 @@ import { MantineProvider } from "@mantine/core";
 import { MemoryRouter } from "react-router-dom";
 import "../i18n";
 
-vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({
-    role: { id: "org_admin" },
-    selectedRoles: [{ id: "org_admin" }],
-    loading: false,
-  }),
-}));
+const ONE = { role: { id: "org_admin" }, selectedRoles: [{ id: "org_admin" }], loading: false };
+let auth = ONE;
+vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({ checkedDomains: new Set<string>() }),
 }));
@@ -118,6 +114,23 @@ describe("GraphPage — a refused graph-counts request (#296)", () => {
     await waitFor(() => expect(screen.getByTestId("graph-all-nodes")).toHaveTextContent("*(12)"));
     expect(screen.queryByTestId("graph-counts-error")).toBeNull();
     expect(storedCounts()).toHaveLength(1);
+  });
+});
+
+describe('GraphPage — counts under "Role: All"', () => {
+  beforeEach(() => localStorage.clear());
+
+  it("are kept for the selected set, never for the first of its roles (REQ-1620)", async () => {
+    auth = {
+      role: { id: "analyst" },
+      selectedRoles: [{ id: "analyst" }, { id: "steward" }],
+      loading: false,
+    };
+    serve(() => ok({ node_count: 5, rel_count: 0, label_counts: {}, rel_counts: {} }));
+    renderPage();
+    await waitFor(() => expect(storedCounts()).toHaveLength(1));
+    expect(storedCounts()[0]).toContain(".analyst,steward.");
+    auth = ONE;
   });
 });
 
