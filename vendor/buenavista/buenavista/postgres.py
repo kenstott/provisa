@@ -318,7 +318,8 @@ BVTYPE_TO_PGTYPE = {
     BVType.BIGINT: (20, str, lambda r: r.to_bytes(8, "big", signed=True)),
     BVType.BOOL: (
         16,
-        lambda v: "true" if v else "false",
+        # boolout: PostgreSQL's text form of a boolean is t / f.
+        lambda v: "t" if v else "f",
         lambda r: b"\x01" if r else b"\x00",
     ),
     BVType.BYTES: (17, lambda v: "\\x" + v.hex(), lambda r: r),
