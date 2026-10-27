@@ -40,7 +40,7 @@ import duckdb
 
 from provisa.federation.duckdb_extensions import install_and_load
 from provisa.federation.file_locks import ReadersWriterGate
-from provisa.executor.drivers.duckdb_driver import fetch_rows
+from provisa.executor.drivers.duckdb_driver import READ_THROUGH_ARROW, fetch_rows
 from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
@@ -1506,9 +1506,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
         # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
         types = [str(d[1]) for d in cur.description] if cur.description else []
-        if "INTERVAL" in types:
-            # DuckDB's own Python rows fold an interval's months into days; its Arrow batches keep
-            # them (duckdb_driver.fetch_rows).
+        if READ_THROUGH_ARROW.intersection(types):
+            # DuckDB's own Python rows fold an interval's months into days and read infinity as
+            # the last date Python holds; its Arrow batches keep both (duckdb_driver.fetch_rows).
             reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
             return stream_rows_from_arrow(
                 reader.schema, iter(reader), on_close=_close, column_types=types

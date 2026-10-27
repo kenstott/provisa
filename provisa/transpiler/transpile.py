@@ -286,13 +286,58 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
-    return _lengths_for_duckdb(
-        _null_order_as_key(
-            _rewrite_list_functions_for_duckdb(
-                _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+    return _postgres_semantics_for_duckdb(
+        _lengths_for_duckdb(
+            _null_order_as_key(
+                _rewrite_list_functions_for_duckdb(
+                    _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+                )
             )
         )
     )
+
+
+#: The error a zero divisor raises on DuckDB: PostgreSQL's own message, reported with its
+#: SQLSTATE 22012 (pgwire.server._sqlstate_of).
+DIVISION_BY_ZERO = "division by zero"
+
+
+def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
+    """What PostgreSQL says, said on DuckDB where the two differ. A division or remainder by zero
+    is PostgreSQL's error: DuckDB answers infinity or NULL, so each divisor is read through a CASE
+    that raises PostgreSQL's message on zero (a nonzero literal divisor is left as it is; any
+    other is evaluated twice). And a set-returning function aliased in FROM with no column list
+    names its one column by the alias, as PostgreSQL's does: DuckDB names the row by it."""
+    tree = sqlglot.parse_one(sql, read="duckdb")
+
+    def _guarded(divisor: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if isinstance(divisor, exp.Literal) and not divisor.is_string and divisor.to_py() != 0:
+            return divisor
+        return exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.EQ(this=divisor.copy(), expression=exp.Literal.number(0)),
+                    true=exp.Anonymous(
+                        this="error", expressions=[exp.Literal.string(DIVISION_BY_ZERO)]
+                    ),
+                )
+            ],
+            default=divisor,
+        )
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if isinstance(node, (exp.Div, exp.IntDiv, exp.Mod)):
+            node.set("expression", _guarded(node.expression))
+        elif isinstance(node, exp.TableAlias) and not node.columns and node.this is not None:
+            parent = node.parent
+            single = (
+                isinstance(parent, exp.Table) and isinstance(parent.this, exp.GenerateSeries)
+            ) or (isinstance(parent, exp.Unnest) and len(parent.expressions) == 1)
+            if single:
+                node.set("columns", [node.this.copy()])
+        return node
+
+    return tree.transform(_transform).sql(dialect="duckdb")
 
 
 def _lengths_for_duckdb(sql: str) -> str:

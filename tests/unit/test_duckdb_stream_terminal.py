@@ -116,3 +116,15 @@ def test_run_sync_reads_an_interval_with_its_months(runtime):
     assert res.column_types == ["INTERVAL", "INTERVAL", "INTEGER"]
     assert res.rows == [(relativedelta(years=1, months=2), timedelta(days=3, seconds=14706), 1)]
     assert res.stats.done
+
+
+def test_run_sync_reads_an_infinite_date_or_timestamp_as_infinite(runtime):
+    """REQ-2167: DuckDB's own rows read infinity as the last date Python holds, a value a table may
+    hold itself; a result with a date or timestamp column streams through Arrow, which keeps it."""
+    from provisa.core.ir_types import infinity_of
+
+    res = runtime.run_sync(
+        "select 'infinity'::date as d, '-infinity'::timestamp as t, date '9999-12-31' as m"
+    )
+    [row] = res.rows
+    assert [infinity_of(v) for v in row] == [1, -1, 0]

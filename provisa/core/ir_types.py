@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from dateutil.relativedelta import relativedelta
@@ -351,6 +351,43 @@ def interval_value(months: int, days: int, microseconds: int) -> timedelta | rel
     if not months:
         return timedelta(days=days, microseconds=microseconds)
     return relativedelta(months=months, days=days, microseconds=microseconds)
+
+
+class _InfiniteDate(date):
+    """PostgreSQL's ``infinity`` or ``-infinity`` date: the nearest date Python holds, marked with
+    its sign (``pg_infinity``) so the wire writes PostgreSQL's own value."""
+
+    pg_infinity: int
+
+
+class _InfiniteDatetime(datetime):
+    """PostgreSQL's ``infinity`` or ``-infinity`` timestamp, as :class:`_InfiniteDate`."""
+
+    pg_infinity: int
+
+
+def infinite_date(sign: int) -> date:
+    """The IR ``date`` value of PostgreSQL's ``infinity`` (``sign`` 1) or ``-infinity`` (-1)."""
+    edge = date.max if sign > 0 else date.min
+    value = _InfiniteDate(edge.year, edge.month, edge.day)
+    value.pg_infinity = sign
+    return value
+
+
+def infinite_timestamp(sign: int, *, aware: bool) -> datetime:
+    """The IR ``timestamp`` (``aware``: ``timestamptz``, in UTC) value of PostgreSQL's
+    ``infinity`` (``sign`` 1) or ``-infinity`` (-1)."""
+    edge = datetime.max if sign > 0 else datetime.min
+    value = _InfiniteDatetime(
+        *edge.timetuple()[:6], edge.microsecond, tzinfo=timezone.utc if aware else None
+    )
+    value.pg_infinity = sign
+    return value
+
+
+def infinity_of(value: object) -> int:
+    """1 for an infinite date or timestamp, -1 for a negatively infinite one, else 0."""
+    return getattr(value, "pg_infinity", 0)
 
 
 def iso8601_duration(value: timedelta | relativedelta) -> str:

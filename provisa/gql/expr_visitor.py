@@ -205,6 +205,47 @@ _BINARY_CMP: dict[str, type[exp.Expression]] = {
 }
 
 
+#: The functions whose value openCypher types a float.
+_FLOAT_FUNCTIONS = frozenset({"tofloat", "tofloatornull"})
+#: The registered types of a column holding a non-integer number.
+_FLOAT_TYPES = re.compile(r"^(real|float|double|decimal|numeric)", re.I)
+
+
+def _float_division(left: exp.Expression, right: exp.Expression) -> exp.Expression:
+    """openCypher's float division: by zero, Infinity of the dividend's sign, or NaN for zero
+    (REQ-2167; SQL's division by zero is an error). Written as PostgreSQL SQL, so every engine
+    answers it so."""
+
+    def _float(text: str) -> exp.Expression:
+        return exp.cast(exp.Literal.string(text), exp.DataType.build("DOUBLE PRECISION"))
+
+    zero = exp.Literal.number(0)
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=right.copy(), expression=zero.copy()),
+                true=exp.Case(
+                    ifs=[
+                        exp.If(
+                            this=exp.GT(this=left.copy(), expression=zero.copy()),
+                            true=_float("Infinity"),
+                        ),
+                        exp.If(
+                            this=exp.LT(this=left.copy(), expression=zero.copy()),
+                            true=_float("-Infinity"),
+                        ),
+                        exp.If(
+                            this=exp.EQ(this=left.copy(), expression=zero.copy()),
+                            true=_float("NaN"),
+                        ),
+                    ]
+                ),
+            )
+        ],
+        default=exp.Div(this=left, expression=right),
+    )
+
+
 def _lam(var: str, body: exp.Expression) -> exp.Lambda:
     """An engine lambda ``var -> body`` (sqlglot ``Lambda``)."""
     return exp.Lambda(this=body, expressions=[exp.to_identifier(var)])
@@ -304,6 +345,24 @@ class ExprLowering:
             return False
         return not self._ctx.property_is_table_column(self.lower(node.obj), node.name)
 
+    def _is_float(self, node: CypherExpr) -> bool:
+        """Whether ``node`` is a float as openCypher types it: a float literal, toFloat, a column
+        registered as a non-integer number, or arithmetic over one."""
+        if isinstance(node, Literal):
+            return isinstance(node.value, float)
+        if isinstance(node, FunctionCall):
+            return node.name.lower() in _FLOAT_FUNCTIONS
+        if isinstance(node, Property):
+            data_type = self._ctx.property_type(self.lower(node.obj), node.name)
+            return data_type is not None and bool(_FLOAT_TYPES.match(data_type))
+        if isinstance(node, Paren):
+            return self._is_float(node.inner)
+        if isinstance(node, Unary) and node.op == "-":
+            return self._is_float(node.operand)
+        if isinstance(node, Binary) and node.op in _BINARY_ARITH:
+            return self._is_float(node.left) or self._is_float(node.right)
+        return False
+
     def _refuse_mismatched_comparison(self, node: Binary) -> None:
         """REQ-778: a property compared with a literal its registered type never equals or orders
         against is the user's mistake, refused here rather than by the engine."""
@@ -339,6 +398,8 @@ class ExprLowering:
             )
             if timed is not None:
                 return timed
+            if op == "/" and (self._is_float(node.left) or self._is_float(node.right)):
+                return _float_division(left, right)
             return _BINARY_ARITH[op](this=left, expression=right)
         left_kind = self._ctx.temporal_kind(node.left)
         right_kind = self._ctx.temporal_kind(node.right)
