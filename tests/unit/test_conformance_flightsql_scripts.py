@@ -9,14 +9,14 @@
 # permission from the copyright holder.
 
 """The Flight SQL conformance job's scripts (REQ-2167): the suite's fixture tables adapted into
-the fixture model, and the cases a page marks adapted or counts as refused by the client before
-any request."""
+the fixture model, and the cases a page marks adapted or counts as not sent by the client."""
 
 # Requirements: REQ-2167
 
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -43,10 +43,14 @@ fixtures = _load("flightsql_fixtures", CONFORMANCE / "flightsql" / "fixtures.py"
 _SELECT = "adbc_drivers_validation/queries/type/select"
 
 
+_SCHEMA = '{"format": "+s", "children": [{"name": "res", "format": "i", "flags": ["nullable"]}]}'
+
+
 def _case(directory: Path, name: str, setup: str, query: str) -> None:
     (directory / f"{name}.txtcase").write_text(
         "// part: metadata\n\n[tags]\n\n"
         f"// part: setup_query\n\n{setup}\n\n// part: query\n\n{query}\n\n"
+        f"// part: expected_schema\n\n{_SCHEMA}\n\n"
         '// part: expected\n\n{"res": 1}\n'
     )
 
@@ -99,36 +103,57 @@ def test_each_case_that_creates_its_table_reads_its_own_in_postgresqls_spelling(
     assert "(3, '\\xdeadbeef'::bytea), (4, '\\x'::bytea)" in binary
 
 
-def test_a_renamed_cases_query_is_overridden_to_read_its_table(validation):
-    """The checked-in override for timestamp3tz reads the case's own table; an override that is
-    not the suite's query with the table renamed, or a missing one, is refused before the
-    instance starts."""
+def test_each_cases_override_lists_its_table_with_the_link_columns(validation):
+    """A case's table is listed with its own columns, then the link columns every model table
+    carries; a renamed case's query and metadata name its own table, which the suite reads the
+    case's rows and table schema from."""
+    found = {c.name: c for c in fixtures.cases(validation)}
+    own = fixtures._parts(fixtures.override(found["int32"]))
+    assert list(own) == ["catalog_schema"]
+    listed = json.loads(own["catalog_schema"])
+    assert [c["name"] for c in listed["children"]] == ["res", "_name_", "_domain_"]
+    assert listed["children"][1:] == [
+        {"name": n, "format": "u", "flags": ["nullable"]} for n in ("_name_", "_domain_")
+    ]
+    renamed = fixtures._parts(fixtures.override(found["timestamp3tz"]))
+    assert list(renamed) == ["metadata", "query", "catalog_schema"]
+    assert renamed["metadata"].strip() == '[setup]\ndrop = "test_timestamp3tz"'
+    assert renamed["query"].strip() == "SELECT res FROM test_timestamp3tz ORDER BY idx"
+
+
+def test_an_override_not_made_from_the_suites_case_is_refused(validation, tmp_path, monkeypatch):
+    """Before the instance starts: a stale, a missing or a stray override."""
+    monkeypatch.setattr(fixtures, "OVERRIDES", tmp_path / "overrides")
     found = fixtures.cases(validation)
+    fixtures.write_overrides(found)
     fixtures.check_overrides(found)
-    (renamed,) = [c for c in found if c.renamed]
-    wrong = fixtures.Case(renamed.name, renamed.table, renamed.setup, "SELECT 1 FROM elsewhere")
-    with pytest.raises(ValueError, match="timestamp3tz.sql: expected 'SELECT 1 FROM elsewhere'"):
-        fixtures.check_overrides([wrong])
-    missing = fixtures.Case("timestamp11", "test_timestamp", "", "SELECT res FROM test_timestamp")
-    with pytest.raises(FileNotFoundError, match="timestamp11 reads test_timestamp11"):
-        fixtures.check_overrides([missing])
+    (fixtures.OVERRIDES / "int32.txtcase").write_text("// part: query\n\nSELECT 2\n")
+    with pytest.raises(ValueError, match="int32.txtcase: not what fixtures.py overrides makes"):
+        fixtures.check_overrides(found)
+    (fixtures.OVERRIDES / "int32.txtcase").unlink()
+    with pytest.raises(FileNotFoundError, match="int32.txtcase: run fixtures.py overrides"):
+        fixtures.check_overrides(found)
+    fixtures.write_overrides(found)
+    (fixtures.OVERRIDES / "int64.sql").write_text("SELECT 1")
+    with pytest.raises(ValueError, match=r"overrides for no adapted case: \['int64.sql'\]"):
+        fixtures.check_overrides(found)
 
 
-def test_every_checked_in_override_is_for_a_renamed_timestamp_case():
-    """Each renamed case has its query, and its metadata naming its table (which the suite reads
-    the case's table schema from); nothing else is overridden."""
-    renamed = sorted(f"timestamp{p}{tz}" for p in range(10) for tz in ("", "tz"))
-    for suffix in ("sql", "toml"):
-        assert sorted(p.stem for p in fixtures.OVERRIDES.glob(f"*.{suffix}")) == renamed
-    assert {p.suffix for p in fixtures.OVERRIDES.iterdir()} == {".sql", ".toml"}
-    assert (fixtures.OVERRIDES / "timestamp3tz.toml").read_text() == (
-        '[setup]\ndrop = "test_timestamp3tz"\n'
-    )
-    names = renamed
-    for name in names:
-        table = "test_timestamptz" if name.endswith("tz") else "test_timestamp"
-        case = fixtures.Case(name, table, "", f"SELECT res FROM {table} ORDER BY idx")
-        fixtures.check_overrides([case])
+def test_the_checked_in_overrides_are_the_suites_select_cases():
+    """One generated override per type/select case; the timestamp precisions, which share two
+    table names, each name their own."""
+    paths = sorted(fixtures.OVERRIDES.iterdir())
+    assert {p.suffix for p in paths} == {".txtcase"}
+    assert len(paths) == 31
+    for path in paths:
+        parts = fixtures._parts(path.read_text())
+        children = json.loads(parts["catalog_schema"])["children"]
+        assert [c["name"] for c in children[-2:]] == ["_name_", "_domain_"], path.name
+        if path.stem.startswith("timestamp"):
+            assert f'drop = "test_{path.stem}"' in parts["metadata"], path.name
+            assert f"FROM test_{path.stem} " in parts["query"], path.name
+        else:
+            assert list(parts) == ["catalog_schema"], path.name
 
 
 _JUNIT = (
@@ -147,39 +172,46 @@ _JUNIT = (
     '<testcase classname="tests.test_connection.TestConnection" '
     'name="test_current_catalog[provisa:flightsql]">'
     '<failure message="NOT_FOUND: GetSessionOptions">t</failure></testcase>'
+    '<testcase classname="tests.test_statement.TestStatement" '
+    'name="test_parameter_execute[provisa:flightsql]">'
+    '<failure message="OperationalError: Invalid Input Error: Values were not provided for the '
+    'following prepared statement parameters: 1">t</failure></testcase>'
+    '<testcase classname="tests.test_query.TestQuery" '
+    'name="test_query[provisa:flightsql:type/select/timestamp9tz]">'
+    '<failure message="AssertionError: Field types do not match: expected res (timestamp[ns, '
+    'tz=UTC]) != actual res (timestamp[us, tz=UTC])">t</failure></testcase>'
     "</testsuite></testsuites>"
 )
 
 
-def test_the_flight_sql_page_marks_adapted_cases_and_counts_client_refusals_apart(tmp_path):
+def test_the_flight_sql_page_marks_adapted_cases_and_counts_unsent_ones_apart(tmp_path):
     """REQ-2167 (amended 2026-10-27): an adapted case runs and counts, marked with what its setup
-    became; a case the client refused before any request is left out of the pass rate in its own
-    group, with the client, its refusal, the evidence and the workaround; any other failure
-    stays a failure."""
+    became; a case whose client did not send what it needs -- refusing before any request, or
+    dropping the values it was given -- is left out of the pass rate in its own group, with the
+    client, what it does, the evidence and the workaround; a case a design decision excludes is
+    counted under its requirement; any other failure stays a failure."""
     xml = tmp_path / "junit.xml"
     xml.write_text(_JUNIT)
     doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
     assert (doc["ran"], doc["passed"], doc["failed"]) == (4, 2, 2)
-    assert (doc["not_runnable"], doc["client_refused"]) == (0, 1)
-    (refusal,) = doc["refused_by_client"]
-    assert refusal["group"] == "Bind before Prepare"
-    assert refusal["count"] == 1
-    assert "sends no RPC" in refusal["evidence"]
-    assert "Prepare the statement before binding" in refusal["workaround"]
+    assert (doc["not_runnable"], doc["client_not_sent"]) == (1, 2)
+    assert [(g["group"], g["requirement"], g["count"]) for g in doc["by_design"]] == [
+        ("Timestamps beyond microseconds", "REQ-1961", 1)
+    ]
+    refused, dropped = doc["not_sent_by_client"]
+    assert (refused["group"], refused["count"]) == ("Bind with no Prepare", 1)
+    assert "sends no RPC" in refused["evidence"]
+    assert "Prepare the statement before binding" in refused["workaround"]
+    assert (dropped["group"], dropped["count"]) == ("Bind before Prepare", 1)
+    assert "send no DoPut" in dropped["evidence"]
+    assert dropped["workaround"] == "Bind after Prepare, as the suite's other bind tests do."
     marks = {m["group"]: m["cases"] for m in doc["adapted"]}
+    query = "tests.test_query.TestQuery::test_query[provisa:flightsql:type/select/"
     assert marks == {
-        "Type cases' tables": [
-            {
-                "case": "tests.test_query.TestQuery::test_query[provisa:flightsql:type/select/int32]",
-                "outcome": "passed",
-            }
-        ],
+        "Type cases' tables": [{"case": f"{query}int32]", "outcome": "passed"}],
         "Timestamp cases' tables": [
-            {
-                "case": "tests.test_query.TestQuery::"
-                "test_query[provisa:flightsql:type/select/timestamp3tz]",
-                "outcome": "failed",
-            }
+            {"case": f"{query}timestamp3tz]", "outcome": "failed"},
+            {"case": f"{query}timestamp9tz]", "outcome": "failed"},
         ],
         "get_objects table": [
             {
@@ -194,14 +226,15 @@ def test_the_flight_sql_page_marks_adapted_cases_and_counts_client_refusals_apar
         "test_current_catalog[provisa:flightsql]",
     ]
     _, _, rate, cases = fill_docs.read(doc)
-    assert rate == "50.0% (2 of 4); 1 refused by the client before any request"
-    assert "## Refused by the client before any request" in cases
+    assert rate == ("50.0% (2 of 4); 1 cases not runnable by design; 2 not sent by the client")
+    assert "## Not sent by the client" in cases
+    assert "| Group | Count | Client | What it does | Evidence | Workaround |" in cases
     assert "| Bind before Prepare | 1 | adbc-driver-flightsql 1.12.0 (the Go driver) |" in cases
+    assert "| Timestamps beyond microseconds | 1 |" in cases
     assert "## Adapted cases" in cases
-    assert "<summary>Timestamp cases' tables (0 of 1 passed)</summary>" in cases
+    assert "<summary>Timestamp cases' tables (0 of 2 passed)</summary>" in cases
     assert "Setup became: The ten precisions" in cases
-    int32 = "tests.test_query.TestQuery::test_query[provisa:flightsql:type/select/int32]"
-    assert f"| {int32} | passed |" in cases
+    assert f"| {query}int32] | passed |" in cases
 
 
 def test_a_surface_with_no_such_groups_has_no_such_sections(tmp_path):
@@ -209,18 +242,18 @@ def test_a_surface_with_no_such_groups_has_no_such_sections(tmp_path):
     xml = tmp_path / "junit.xml"
     xml.write_text(_JUNIT)
     doc = junit.summarise(str(xml), "bolt", "driver tests", "6.2.0", "t")
-    assert (doc["adapted"], doc["refused_by_client"], doc["client_refused"]) == ([], [], 0)
-    assert doc["failed"] == 3
-    artifact = {k: v for k, v in doc.items() if k not in ("adapted", "refused_by_client")}
+    assert (doc["adapted"], doc["not_sent_by_client"], doc["client_not_sent"]) == ([], [], 0)
+    assert doc["failed"] == 5
+    artifact = {k: v for k, v in doc.items() if k not in ("adapted", "not_sent_by_client")}
     _, _, _, cases = fill_docs.read(artifact)
-    assert "Refused by the client" not in cases
+    assert "Not sent by the client" not in cases
     assert "Adapted cases" not in cases
 
 
 @pytest.mark.parametrize(
     ("entry", "match"),
     [
-        ("- kind: client\n  group: g\n  client: c\n  refusal: r\n  reason: x\n", "has no"),
+        ("- kind: client\n  group: g\n  client: c\n  behavior: b\n  reason: x\n", "has no"),
         ("- kind: adapted\n  group: g\n  case: x\n", r"has no \['became'\]"),
         ("- kind: other\n  group: g\n  reason: x\n", "is of no kind"),
         ("- kind: adapted\n  group: g\n  became: b\n", "matches nothing"),
