@@ -147,8 +147,8 @@ def test_a_decimal_keeps_its_precision_and_an_unsupported_type_is_refused(boot):
         "SELECT CAST(SUM(price) AS VARCHAR) AS total FROM prices",
     )
     assert status == 200 and rows == [{"total": "100001.2346"}], rows
-    status, body = _sql(boot, "CREATE TEMP TABLE docs (id INTEGER, doc JSONB)")
-    assert status != 200 and "column 'doc': type JSONB is not supported" in str(body), body
+    status, body = _sql(boot, "CREATE TEMP TABLE spots (id INTEGER, spot POINT)")
+    assert status != 200 and "column 'spot': type POINT is not supported" in str(body), body
 
 
 def _pgwire(boot):
