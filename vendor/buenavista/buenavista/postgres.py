@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import random
+import re
 import socket
 import socketserver
 import struct
@@ -329,14 +330,6 @@ BVTYPE_TO_PGTYPE = {
     BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
     BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
     BVType.INTEGER: (23, str, lambda r: r.to_bytes(4, "big", signed=True)),
-    BVType.INTEGERARRAY: (
-        1007,
-        lambda v: "{" + ",".join(str(x) for x in v) + "}",
-        lambda r: (
-            struct.pack("!iiiii", 1, 0, 23, len(r), 1)
-            + b"".join(struct.pack("!ii", 4, x) for x in r)
-        ),
-    ),
     BVType.INTERVAL: (
         1186,
         _interval_text,
@@ -348,19 +341,6 @@ BVTYPE_TO_PGTYPE = {
         114,
         lambda v: json.dumps(v) if not isinstance(v, str) else v,
         lambda r: (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
-    ),
-    BVType.STRINGARRAY: (
-        1009,
-        lambda v: "{" + ",".join(v) + "}",
-        lambda r: (
-            struct.pack("!iiiii", 1, 0, 25, len(r), 1)
-            + b"".join(
-                (struct.pack("!i", len(s.encode("utf-8"))) + s.encode("utf-8"))
-                if s is not None
-                else struct.pack("!i", -1)
-                for s in r
-            )
-        ),
     ),
     # str(r) in binary too: a declared text-family column may carry a non-str value (a UUID, a
     # driver-specific scalar) — its text form is the wire value in both formats.
@@ -377,6 +357,60 @@ BVTYPE_TO_PGTYPE = {
         lambda r: int.to_bytes(_micros_since_2000(r), 8, "big", signed=True),
     ),
 }
+
+
+_ARRAY_TEXT_SPECIAL = re.compile(r'[{}",\\\s]')
+
+
+def _array_text_element(text: str) -> str:
+    """An array element's text as PostgreSQL's array_out writes it: double-quoted (with \\ and "
+    escaped) when it is empty, spells NULL, or holds a brace, quote, comma, backslash or space."""
+    if text == "" or text.upper() == "NULL" or _ARRAY_TEXT_SPECIAL.search(text):
+        return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return text
+
+
+def _array_entry(element: BVType, array_oid: int, element_text=None):
+    """The (OID, text, binary) entry of a one-dimensional array of ``element``: text as
+    ``{a,b,NULL}``, binary as PostgreSQL's array_send (dimensions, null flag, element OID, then
+    each element length-prefixed, -1 for NULL)."""
+    elem_oid, elem_text, elem_binary = BVTYPE_TO_PGTYPE[element]
+    text_of = element_text or elem_text
+
+    def text(values):
+        return (
+            "{"
+            + ",".join("NULL" if v is None else _array_text_element(text_of(v)) for v in values)
+            + "}"
+        )
+
+    def binary(values):
+        has_null = any(v is None for v in values)
+        out = [struct.pack("!iiiii", 1, 1 if has_null else 0, elem_oid, len(values), 1)]
+        for v in values:
+            if v is None:
+                out.append(struct.pack("!i", -1))
+            else:
+                encoded = elem_binary(v)
+                out.append(struct.pack("!i", len(encoded)) + encoded)
+        return b"".join(out)
+
+    return (array_oid, text, binary)
+
+
+BVTYPE_TO_PGTYPE.update(
+    {
+        BVType.INTEGERARRAY: _array_entry(BVType.INTEGER, 1007),
+        BVType.BIGINTARRAY: _array_entry(BVType.BIGINT, 1016),
+        BVType.SMALLINTARRAY: _array_entry(BVType.SMALLINT, 1005),
+        BVType.FLOATARRAY: _array_entry(BVType.FLOAT, 1022),
+        BVType.REALARRAY: _array_entry(BVType.REAL, 1021),
+        BVType.DECIMALARRAY: _array_entry(BVType.DECIMAL, 1231),
+        # array_out writes a boolean element as t / f.
+        BVType.BOOLARRAY: _array_entry(BVType.BOOL, 1000, lambda v: "t" if v else "f"),
+        BVType.STRINGARRAY: _array_entry(BVType.TEXT, 1009),
+    }
+)
 
 
 class BVBuffer(object):

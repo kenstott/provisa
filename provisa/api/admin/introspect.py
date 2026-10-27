@@ -1389,7 +1389,39 @@ def _pg_column_typing(
         if typtype == "c":
             return composite_typing(formatted or udt_name, kind)
         return ColumnTyping("text")
+    if data_type == "numeric" and formatted and formatted != "numeric":
+        return ColumnTyping(formatted)  # a sized decimal keeps its size (REQ-1961)
     return ColumnTyping(to_ir(data_type))
+
+
+# REQ-2167: an unsized PostgreSQL numeric registers with a precision of 38 -- the widest every
+# engine holds exactly -- and the largest scale its values have, read from at most this many rows.
+_NUMERIC_PRECISION = 38
+_NUMERIC_SCALE_SAMPLE_ROWS = 100_000
+# The scale an unsized numeric registers with when its table has no value to read it from.
+_NUMERIC_SCALE_WITHOUT_VALUES = 10
+
+
+async def _sized_numeric(
+    pool: "SourcePool", source_id: str, schema_name: str, table_name: str, column: str
+) -> "ColumnTyping":
+    """An unsized numeric column as ``numeric(38,s)``: ``s`` the largest scale among its values
+    (a bounded sample), so an engine that cannot hold an unbounded numeric (DuckDB reads one as
+    a double) reads it exactly at the source instead."""
+    from provisa.core.ir_types import ColumnTyping
+
+    def ident(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    result = await pool.execute(
+        source_id,
+        f"SELECT max(scale({ident(column)})) FROM (SELECT {ident(column)} FROM "
+        f"{ident(schema_name)}.{ident(table_name)} LIMIT {_NUMERIC_SCALE_SAMPLE_ROWS}) sampled",
+    )
+    scale = result.rows[0][0] if result.rows else None
+    if scale is None:
+        scale = _NUMERIC_SCALE_WITHOUT_VALUES
+    return ColumnTyping(f"numeric({_NUMERIC_PRECISION},{min(int(scale), _NUMERIC_PRECISION)})")
 
 
 async def native_column_typings(  # REQ-1965
@@ -1412,7 +1444,13 @@ async def native_column_typings(  # REQ-1965
             _PG_COLUMN_TYPES_SQL if kind in _PG_CATALOG_KINDS else _PG_WIRE_COLUMN_TYPES_SQL,
             [schema_name, table_name],
         )
-        return [(row[0], _pg_column_typing(kind, *row[1:5])) for row in result.rows]
+        typings = [(row[0], _pg_column_typing(kind, *row[1:5])) for row in result.rows]
+        return [
+            (name, await _sized_numeric(pool, source_id, schema_name, table_name, name))
+            if typing.data_type == "numeric"
+            else (name, typing)
+            for name, typing in typings
+        ]
     listed = await native_columns(
         source_id, source_type, schema_name, table_name, pool, config_conn
     )

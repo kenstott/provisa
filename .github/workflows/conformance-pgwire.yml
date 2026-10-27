@@ -20,8 +20,9 @@ name: Conformance (pgwire)
 # The instance is the one the core UI lane boots (provisa-ui/playwright.config.ts): the embedded
 # PostgreSQL control plane (provisa.core.control_plane_pg) and `uvicorn main:app` on the DuckDB
 # engine, natively on the runner, its pgwire server on PROVISA_PGWIRE_PORT, the model loaded by
-# PUT /admin/config as global-setup does. No auth provider, so pgwire is in trust mode: the startup
-# user names the role (org_admin) and no password is asked for.
+# PUT /admin/config as global-setup does. Auth is the basic provider with SCRAM-SHA-256: pgwire
+# proves the job user's password (CONFORMANCE_USER, org_admin), and pgspec's auth tests meet a real
+# password exchange.
 
 on:
   workflow_dispatch:
@@ -61,9 +62,18 @@ jobs:
       CONFORMANCE_PG_DATABASE: conformance
       CONFORMANCE_PG_USER: postgres
       CONFORMANCE_PG_PASSWORD: conformance
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
     services:
       postgres:
-        image: postgres:16.4
+        # The PostgreSQL the catalog is generated from (scripts/gen_pgwire_pg17_catalog.py).
+        image: postgres:17.11
         env:
           POSTGRES_PASSWORD: conformance
           POSTGRES_DB: conformance
@@ -129,7 +139,8 @@ jobs:
           home="$RUNNER_TEMP/provisa"
           mkdir -p "$home"
           .venv/bin/python scripts/conformance/pgwire_catalog_types.py config \
-            --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT"
+            --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT" \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
           started=$(.venv/bin/python -m provisa.core.control_plane_pg start "$home/control-pg" --init-sql db/init.sql)
           cp_host=$(sed -n 's/^PG_HOST=//p' <<<"$started")
           cp_port=$(sed -n 's/^PG_PORT=//p' <<<"$started")
@@ -162,8 +173,9 @@ jobs:
           done
           curl -sf "http://127.0.0.1:$PROVISA_API_PORT/health" >/dev/null || { echo "::error::Provisa never answered /health"; tail -n 200 "$home/server.log"; exit 1; }
           # The model, as global-setup.ts bootstraps each backend (PUT /admin/config).
+          su="$PROVISA_SUPERUSER_USERNAME:$PROVISA_SUPERUSER_PASSWORD"
           status=$(curl -s -o "$home/config-response.txt" -w '%{http_code}' --retry 5 --retry-all-errors --retry-delay 3 \
-            -X PUT -H 'Content-Type: application/yaml' --data-binary @"$home/provisa.yaml" \
+            -u "$su" -X PUT -H 'Content-Type: application/yaml' --data-binary @"$home/provisa.yaml" \
             "http://127.0.0.1:$PROVISA_API_PORT/admin/config")
           if [ "${status:0:1}" != "2" ]; then
             echo "::error::PUT /admin/config answered $status"; cat "$home/config-response.txt"; tail -n 200 "$home/server.log"; exit 1
@@ -179,6 +191,15 @@ jobs:
             sleep 2
           done
           (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null || { echo "::error::pgwire never listened on $PROVISA_PGWIRE_PORT"; tail -n 200 "$home/server.log"; exit 1; }
+          # The job user: created by the break-glass account, so its SCRAM verifier is written
+          # with it (REQ-1394); org_admin by the model's default assignment.
+          status=$(curl -s -o "$home/user-response.txt" -w '%{http_code}' -u "$su" \
+            -X POST -H 'Content-Type: application/json' \
+            --data "{\"username\": \"$CONFORMANCE_USER\", \"password\": \"$CONFORMANCE_PASSWORD\"}" \
+            "http://127.0.0.1:$PROVISA_API_PORT/admin/users/")
+          if [ "${status:0:1}" != "2" ]; then
+            echo "::error::POST /admin/users answered $status"; cat "$home/user-response.txt"; tail -n 200 "$home/server.log"; exit 1
+          fi
           echo "Provisa is up: API $PROVISA_API_PORT, pgwire $PROVISA_PGWIRE_PORT"
 
       # One `go test` per top-level test: a failure is data (continue-on-error), and a test that
@@ -187,7 +208,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 30
         env:
-          CELERIS_PG_DSN: postgres://org_admin@127.0.0.1:${{ env.PROVISA_PGWIRE_PORT }}/provisa?sslmode=disable
+          CELERIS_PG_DSN: postgres://${{ env.CONFORMANCE_USER }}:${{ env.CONFORMANCE_PASSWORD }}@127.0.0.1:${{ env.PROVISA_PGWIRE_PORT }}/provisa?sslmode=disable
         run: |
           cd "$PGSPEC_DIR"
           : > "$RUNNER_TEMP/pgspec-results.jsonl"
@@ -210,7 +231,7 @@ jobs:
         run: |
           .venv/bin/python scripts/conformance/pgwire_catalog_types.py probe \
             --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
-            --provisa "host=127.0.0.1 port=$PROVISA_PGWIRE_PORT dbname=provisa user=org_admin sslmode=disable" \
+            --provisa "host=127.0.0.1 port=$PROVISA_PGWIRE_PORT dbname=provisa user=$CONFORMANCE_USER password=$CONFORMANCE_PASSWORD sslmode=disable" \
             --out-json "$RUNNER_TEMP/catalog-types.json" --out-md "$RUNNER_TEMP/catalog-types.md"
 
       - name: Summarise
