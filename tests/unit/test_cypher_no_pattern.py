@@ -170,3 +170,21 @@ def test_the_current_temporal_value_is_the_engines_own():
     assert sql_ast.sql(dialect="postgres") == (
         "SELECT CURRENT_DATE AS d, CURRENT_TIMESTAMP AS t, LOCALTIMESTAMP AS l"
     )
+
+
+def test_size_of_a_list_is_its_length_zero_when_empty_and_null_when_null():
+    """openCypher: size([]) is 0 and size(null) null, on every engine. A list written in the
+    statement is counted where it is written; a computed one by each engine's own function."""
+    from provisa.transpiler.transpile import transpile, transpile_to_duckdb
+
+    query = (
+        "WITH [1, 2, 3] AS three RETURN size(three) AS three, size([]) AS empty, "
+        "size(null) AS nothing, size([1, 2]) AS two"
+    )
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    semantic = sql_ast.sql(dialect="postgres")
+    assert duckdb.sql(transpile_to_duckdb(semantic)).fetchall() == [(3, 0, None, 2)]
+    for dialect in ("postgres", "trino"):
+        written = transpile(semantic, dialect)
+        assert "CARDINALITY(" in written, (dialect, written)
+        assert "ARRAY[]" not in written, (dialect, written)

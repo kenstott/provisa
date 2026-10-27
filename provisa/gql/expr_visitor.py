@@ -459,6 +459,14 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if node.name.lower() == "size" and len(node.args) == 1:
+            # A list written in the statement is counted where it is written (its engine may not
+            # type an empty one), and the size of null is null (openCypher).
+            given = node.args[0]
+            if isinstance(given, ListLiteral):
+                return exp.Literal.number(len(given.items))
+            if isinstance(given, Literal) and given.kind == "null":
+                return exp.Null()
         if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2173
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
                 return exp.Null()
