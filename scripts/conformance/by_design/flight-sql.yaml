@@ -88,3 +88,42 @@
     expects nanoseconds.
   reason: "timestamp\\[ns.*timestamp\\[us"
   case: "\\[provisa:flightsql:type/select/timestamp[789](tz)?\\]"
+
+- group: One catalog per connection
+  requirement: REQ-588
+  decision: >-
+    "Every catalog a client sees is the served database" (REQ-588, amended 2026-10-27): a
+    connection is served one catalog, so there is no second catalog to set as current or to
+    read a table's schema from.
+  case: "TestConnection::test_(set_current_catalog|get_table_schema_catalog)\\["
+
+- kind: client
+  group: GetStatistics not provided
+  client: adbc-driver-flightsql 1.12.0 (the Go driver)
+  behavior: >-
+    Provides no GetStatistics: Flight SQL defines no statistics command, and the driver
+    implements none (go/adbc/driver/flightsql at apache-arrow-adbc-24), so the suite skips the
+    case for every Flight SQL server.
+  evidence: >-
+    The suite gates the case on connection_get_statistics, which a Flight SQL driver cannot
+    claim; no request reaches the server.
+  workaround: >-
+    Read a table's row count with a statement (SELECT count(*) ...).
+  case: "TestConnection::test_get_statistics\\["
+
+- kind: client
+  group: GetObjects reports no constraints
+  client: adbc-driver-flightsql 1.12.0 (the Go driver)
+  behavior: >-
+    Reports no table constraints in GetObjects: GetObjectsTables builds each table from
+    GetTables alone (name, type, schema) and never fetches its keys, so table_constraints is
+    empty whatever the server serves (go/adbc/driver/flightsql/flightsql_connection.go,
+    GetObjectsTables, at apache-arrow-adbc-24).
+  evidence: >-
+    Provisa serves the keys over Flight SQL's key commands -- GetPrimaryKeys, GetImportedKeys,
+    GetExportedKeys and GetCrossReference -- as tests/unit/test_flightsql_catalog.py shows; the
+    driver sends none of them during GetObjects.
+  workaround: >-
+    Read the keys with the key commands (the ADBC driver's GetPrimaryKeys and GetImportedKeys
+    equivalents over Flight SQL).
+  case: "TestConnection::test_get_objects_constraints_"

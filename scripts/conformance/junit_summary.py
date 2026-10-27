@@ -75,8 +75,13 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
     # runnable by design, in a group naming its decision (by_design/<surface>.yaml); one the
     # client driver did not send what it needs is left out too, in its own group; an adapted
     # case counts, marked with what its setup became.
-    failures, excluded = by_design.classify(failures, declared)
-    failures, unsent = by_design.not_sent(failures, declared)
+    # A case the suite skips because a feature is not claimed is classified the same way: under
+    # the design decision or the client behaviour behind it, not as skipped by the suite.
+    tagged = [{**f, "skip": False} for f in failures] + [{**s, "skip": True} for s in skipped]
+    left, excluded = by_design.classify(tagged, declared)
+    left, unsent = by_design.not_sent(left, declared)
+    failures = [{k: c[k] for k in ("feature", "scenario", "reason")} for c in left if not c["skip"]]
+    skipped = [{k: c[k] for k in ("feature", "scenario", "reason")} for c in left if c["skip"]]
     ran = passed + len(failures)
     return {
         "surface": surface,

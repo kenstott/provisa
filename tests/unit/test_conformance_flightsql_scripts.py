@@ -328,3 +328,34 @@ def test_each_case_the_suite_skips_is_named_with_its_reason(tmp_path):
         "| tests.test_statement.TestStatement | test_transaction_toggle[p] | Driver does not "
         "support transactions |" in cases
     )
+
+
+def test_a_skip_a_group_names_is_counted_in_that_group(tmp_path, monkeypatch):
+    """A case the suite skips because a feature is not claimed is counted under the design
+    decision or the client behaviour behind it, not as skipped by the suite; a skip no group
+    names stays a skip."""
+    (tmp_path / "s.yaml").write_text(
+        "- group: Transactions\n  requirement: REQ-883\n  decision: a no-op\n"
+        '  case: "test_transaction_toggle"\n'
+        "- kind: client\n  group: No statistics\n  client: c\n  behavior: b\n  evidence: e\n"
+        '  workaround: w\n  case: "test_get_statistics"\n'
+    )
+    monkeypatch.setattr(by_design, "RULES", tmp_path)
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        '<testcase classname="T" name="test_ok"/>'
+        '<testcase classname="T" name="test_transaction_toggle">'
+        '<skipped message="Driver does not support transactions">s</skipped></testcase>'
+        '<testcase classname="T" name="test_get_statistics">'
+        '<skipped message="connection_get_statistics not supported">s</skipped></testcase>'
+        '<testcase classname="T" name="test_set_current_catalog">'
+        '<skipped message="not implemented">s</skipped></testcase>'
+        "</testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "s", "suite", "1", "t")
+    assert (doc["ran"], doc["passed"], doc["skipped"]) == (1, 1, 1)
+    assert [c["scenario"] for c in doc["skipped_cases"]] == ["test_set_current_catalog"]
+    assert [(g["group"], g["count"]) for g in doc["by_design"]] == [("Transactions", 1)]
+    assert [(g["group"], g["count"]) for g in doc["not_sent_by_client"]] == [("No statistics", 1)]
+    assert (doc["not_runnable"], doc["client_not_sent"], doc["total"]) == (1, 1, 2)
