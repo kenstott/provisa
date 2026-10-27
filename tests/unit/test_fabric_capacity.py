@@ -27,24 +27,6 @@ def configured(monkeypatch):
     monkeypatch.setenv("FABRIC_CAPACITY_NAME", "cap1")
     monkeypatch.setenv("FABRIC_RESOURCE_GROUP", "rg1")
     monkeypatch.setattr(fc, "_POLL_S", 0.0)
-    # Fabric's own listing reports the capacity Active (each test that asks otherwise says so).
-    monkeypatch.setattr(fc, "_fabric_client", lambda: _fabric(["Active"], []))
-
-
-def _fabric(states: list[str], calls: list[str], name: str = "cap1"):
-    """A fake Fabric REST API: ``GET /v1/capacities`` lists ``name``, its state walking
-    ``states``."""
-    seq = iter(states)
-    current = {"state": None}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls.append(f"{request.method} {request.url.path}")
-        assert request.url.path == "/v1/capacities"
-        current["state"] = next(seq, current["state"])
-        listed = [{"id": "c-9", "displayName": name, "state": current["state"]}]
-        return httpx.Response(200, json={"value": listed})
-
-    return httpx.Client(transport=httpx.MockTransport(handler))
 
 
 def _arm(states: list[str], calls: list[str]):
@@ -121,34 +103,54 @@ def test_a_terminal_state_raises(configured, monkeypatch):
         fc.ensure_capacity_resumed()
 
 
-def test_a_capacity_active_in_azure_is_waited_for_until_fabric_serves_it(configured, monkeypatch):
+class _CapacityNotActive(Exception):
+    """A statement Fabric refused while its data plane does not yet serve the capacity, as
+    pyodbc raises it (run 40024234397)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "('42000', '[42000] [Microsoft][ODBC Driver 18 for SQL Server][SQL Server]"
+            "CapacityNotActive (24800) (SQLExecDirectW)')"
+        )
+
+
+def test_the_data_plane_is_waited_for_until_a_statement_is_served(configured, monkeypatch):
     """ARM reports a resumed capacity Active before Fabric's data plane serves it, and a statement
-    in between is refused CapacityNotActive (run 40024234397): the wait ends only when Fabric's
-    own listing says Active too."""
-    fabric_calls: list[str] = []
-    monkeypatch.setattr(
-        fc, "_fabric_client", lambda: _fabric(["Inactive", "Inactive", "Active"], fabric_calls)
-    )
-    monkeypatch.setattr(fc, "_client", lambda: _arm(["Paused", "Active"], []))
-    fc.ensure_capacity_resumed()
-    assert fabric_calls == ["GET /v1/capacities"] * 3
+    in between is refused CapacityNotActive (run 40024234397). The wait is the warehouse's own
+    answer, through the access the engine already has: Fabric's capacity listing shows only
+    capacities its credential holds a Fabric role on (run 40033495801)."""
+    tries: list[int] = []
+
+    def probe() -> str:
+        tries.append(1)
+        if len(tries) < 3:
+            raise _CapacityNotActive()
+        return "connection"
+
+    assert fc.await_data_plane(probe) == "connection"
+    assert len(tries) == 3
 
 
-def test_a_capacity_fabric_never_serves_raises_naming_it(configured, monkeypatch):
+def test_a_data_plane_that_never_serves_raises_naming_the_capacity(configured, monkeypatch):
     monkeypatch.setattr(fc, "_RESUME_TIMEOUT_S", 0.0)
-    monkeypatch.setattr(fc, "_fabric_client", lambda: _fabric(["Inactive"], []))
-    monkeypatch.setattr(fc, "_client", lambda: _arm(["Active"], []))
-    with pytest.raises(RuntimeError, match="'cap1' is Active in Azure but Fabric still reports"):
-        fc.ensure_capacity_resumed()
+
+    def probe() -> None:
+        raise _CapacityNotActive()
+
+    with pytest.raises(RuntimeError, match="'cap1' is Active in Azure but its warehouse"):
+        fc.await_data_plane(probe)
 
 
-def test_a_capacity_fabric_does_not_list_raises_saying_what_access_is_missing(
-    configured, monkeypatch
-):
-    monkeypatch.setattr(fc, "_fabric_client", lambda: _fabric(["Active"], [], name="other"))
-    monkeypatch.setattr(fc, "_client", lambda: _arm(["Active"], []))
-    with pytest.raises(RuntimeError, match="not in Fabric's capacity listing"):
-        fc.ensure_capacity_resumed()
+def test_any_other_refusal_is_raised_at_once(configured):
+    tries: list[int] = []
+
+    def probe() -> None:
+        tries.append(1)
+        raise PermissionError("Login failed for user")
+
+    with pytest.raises(PermissionError, match="Login failed"):
+        fc.await_data_plane(probe)
+    assert len(tries) == 1
 
 
 def test_the_fabric_runtime_resumes_before_it_connects_and_synapse_does_not(monkeypatch):
@@ -178,3 +180,56 @@ def test_the_fabric_runtime_resumes_before_it_connects_and_synapse_does_not(monk
     order.clear()
     mwr.MssqlWarehouseRuntime(server="s", database="d", engine_name="synapse")
     assert order == ["connect"]
+
+
+def test_the_fabric_engine_connects_once_its_warehouse_serves_a_statement(configured, monkeypatch):
+    """The engine's connection is the probe: opened and asked SELECT 1 until the warehouse
+    serves it, each refused connection closed."""
+    import sys
+    import types
+
+    from provisa.federation import mssql_warehouse_runtime as mwr
+
+    opened: list["_Conn"] = []
+
+    class _Cursor:
+        def __init__(self, conn: "_Conn") -> None:
+            self._conn = conn
+
+        def execute(self, sql: str) -> "_Cursor":
+            assert sql == "SELECT 1"
+            if len(opened) < 3:
+                raise _CapacityNotActive()
+            return self
+
+        def fetchall(self) -> list:
+            return [(1,)]
+
+        def close(self) -> None:
+            pass
+
+    class _Conn:
+        closed = False
+
+        def cursor(self) -> _Cursor:
+            return _Cursor(self)
+
+        def close(self) -> None:
+            self.closed = True
+
+    def connect(*args, **kwargs) -> _Conn:
+        opened.append(_Conn())
+        return opened[-1]
+
+    monkeypatch.setitem(sys.modules, "pyodbc", types.SimpleNamespace(connect=connect))
+    monkeypatch.setattr(
+        "azure.identity.DefaultAzureCredential",
+        lambda: types.SimpleNamespace(get_token=lambda scope: types.SimpleNamespace(token="t")),
+    )
+    monkeypatch.setattr("provisa.executor.drivers.zoned.mssql_connection", lambda conn: conn)
+    monkeypatch.setattr(fc, "ensure_capacity_resumed", lambda: None)
+    runtime = object.__new__(mwr.MssqlWarehouseRuntime)
+    runtime._server, runtime._database, runtime._engine_name = "s", "d", "fabric"
+    assert runtime._connect() is opened[-1]
+    assert len(opened) == 3
+    assert [c.closed for c in opened] == [True, True, False]
