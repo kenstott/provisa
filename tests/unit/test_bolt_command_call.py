@@ -139,3 +139,21 @@ async def test_parse_call_arg_types():
     assert _parse_call_arg("'x'") == "x"
     assert _parse_call_arg("true") is True
     assert _parse_call_arg("null") is None
+
+
+async def test_a_map_argument_holding_a_parameter_is_bound():
+    # LangChain's Neo4jGraph (via neo4j-graphrag) calls apoc.meta.data({sample: $SAMPLE}).
+    with _executor([{"id": 1}]) as ran:
+        await _maybe_invoke_command_call(
+            "CALL random_python_set({sample: $SAMPLE, deep: [1, 'a']}, 7)",
+            {"SAMPLE": 1000},
+            "admin",
+            _state(),
+        )
+    assert ran.call_args.args[1]["rows"] == {"sample": 1000, "deep": [1, "a"]}
+
+
+async def test_a_composed_call_with_a_map_argument_is_left_to_the_translator():
+    query = "CALL random_python_set({sample: $SAMPLE}, 7) YIELD id WHERE id > 0 RETURN id"
+    with _executor([{"id": 1}]):
+        assert await _maybe_invoke_command_call(query, {"SAMPLE": 1}, "admin", _state()) is None

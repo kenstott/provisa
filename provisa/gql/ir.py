@@ -252,6 +252,8 @@ class WithClause:
     order_by: list[OrderItem] = field(default_factory=list)
     skip: int | None = None
     limit: int | None = None
+    #: WITH DISTINCT: the rows it carries on are distinct.
+    distinct: bool = False
 
 
 @dataclass

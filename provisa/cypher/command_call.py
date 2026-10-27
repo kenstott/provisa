@@ -157,6 +157,19 @@ def _value(tok: str, params: dict, name: str, position: int) -> Any:
         return _unquote(tok)
     if tok.startswith("[") and tok.endswith("]"):
         return [_value(t, params, name, position) for t in _split_top_level(tok[1:-1])]
+    if tok.startswith("{") and tok.endswith("}"):
+        # A map of values or $parameters ({sample: $SAMPLE}), as LangChain passes apoc.meta.data.
+        out: dict[str, Any] = {}
+        for entry in _split_top_level(tok[1:-1]):
+            key, sep, value = entry.partition(":")
+            key = key.strip().strip("`")
+            if not sep or not re.fullmatch(r"[A-Za-z_]\w*", key):
+                raise CommandCallRefused(
+                    f"CALL {name}: argument {position} is a map whose entry {entry.strip()!r} "
+                    "is not key: value"
+                )
+            out[key] = _value(value, params, name, position)
+        return out
     low = tok.lower()
     if low in ("true", "false"):
         return low == "true"
@@ -195,13 +208,13 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
     if name.lower().startswith(_ANSWERED_ELSEWHERE):
         return None
     close = _scan_parens(text, head.end())
+    rest = text[close + 1 :]
+    if _COMPOSED_RE.match(rest):
+        return None  # REQ-2168: composed in a statement; the translator reads its arguments
     values = [
         _value(tok, params, name, i + 1)
         for i, tok in enumerate(_split_top_level(text[head.end() : close]))
     ]
-    rest = text[close + 1 :]
-    if _COMPOSED_RE.match(rest):
-        return None  # REQ-2168: composed in a statement; the translator reads it
     yields: list[tuple[str, str]] | None = None
     returns: list[tuple[str, str]] | None = None
     m = _YIELD_RE.match(rest)

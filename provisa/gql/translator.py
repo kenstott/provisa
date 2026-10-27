@@ -429,6 +429,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             stage_query = stage_query.where(where_expr)
         for cond in held:
             stage_query = stage_query.where(cond)
+        if with_clause.distinct:
+            stage_query = stage_query.distinct()
         with_group_exprs = self._build_group_by_for_with(with_clause.items)
         if with_group_exprs:
             stage_query = stage_query.group_by(*with_group_exprs)

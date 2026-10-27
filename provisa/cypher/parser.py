@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from provisa.cypher.expr_parser import parse_expression
+from provisa.cypher.expr_parser import CypherExprParseError, parse_expression
 from provisa.gql.expr_ast import Variable
 
 if TYPE_CHECKING:
@@ -65,7 +65,10 @@ class CypherParseMistake(CypherMistake, CypherParseError):
 _TOKEN_SPEC = [
     ("COMMENT", r"//[^\n]*"),
     ("STRING", r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\""),
-    ("NUMBER", r"\d+(?:\.\d+)?"),
+    # Hexadecimal (0x1F), octal (0o17) and decimal numbers, a decimal with or without integer
+    # digits (.5) and with an exponent (1e9, 1.5E-3). A dot needs a digit after it, so the range
+    # of a variable-length pattern (*1..3) stays two numbers.
+    ("NUMBER", r"0[xX][0-9A-Fa-f]+|0o[0-7]+|(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?"),
     # A parameter's name may be a number ($0, $1) as well as a name: $3 is parameter "3", never 3.
     ("PARAM", r"\$\w+"),
     ("ARROW_RIGHT", r"->"),
@@ -85,6 +88,7 @@ _TOKEN_SPEC = [
     ("MINUS", r"-"),
     ("SLASH", r"/"),
     ("PERCENT", r"%"),
+    ("CARET", r"\^"),
     ("REGEX_MATCH", r"=~"),
     ("EQ", r"="),
     ("NEQ", r"<>|!="),
@@ -95,6 +99,8 @@ _TOKEN_SPEC = [
     ("PIPE", r"\|"),
     ("SEMICOLON", r";"),
     ("IDENT", r"[A-Za-z_]\w*"),
+    # A name in backticks (`a name`): read as the name it quotes.
+    ("QUOTED_IDENT", r"`(?:[^`]|``)+`"),
     ("NEWLINE", r"\n"),
     ("SKIP_WS", r"[ \t]+"),
 ]
@@ -117,7 +123,12 @@ class Token:
 def _tokenize(text: str) -> tuple[list[Token], list[str]]:
     tokens: list[Token] = []
     comments: list[str] = []
+    end = 0
     for m in _MASTER_RE.finditer(text):
+        if m.start() != end:
+            # A character no token reads is refused where it stands, never skipped.
+            raise CypherParseError(f"Unexpected character {text[end]!r} at position {end}")
+        end = m.end()
         kind = m.lastgroup
         # A semicolon ends the one statement a query holds (refuse_multiple_statements).
         if kind in ("SKIP_WS", "NEWLINE", "SEMICOLON"):
@@ -126,7 +137,18 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
             comments.append(m.group()[2:].strip())  # strip leading //
             continue
         assert kind is not None
+        if kind == "QUOTED_IDENT":
+            # A compound label a Provisa graph names (`Shop:Orders`) is its two parts, as written
+            # unquoted; any other quoted name is one name.
+            parts = m.group()[1:-1].replace("``", "`").split(":")
+            for n, part in enumerate(parts):
+                if n:
+                    tokens.append(Token("COLON", ":", m.start()))
+                tokens.append(Token("IDENT", part, m.start()))
+            continue
         tokens.append(Token(kind, m.group(), m.start()))
+    if end != len(text):
+        raise CypherParseError(f"Unexpected character {text[end]!r} at position {end}")
     return tokens, comments
 
 
@@ -472,7 +494,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             elif kw == "RETURN":
                 self._advance()
                 _flush_match_step()
-                return_clause = self._parse_return()
+                return_clause = self._parse_return(_in_scope(pipeline))
 
             elif kw == "ORDER":
                 self._advance()
@@ -828,15 +850,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     def _parse_with(self, scope: list[str]) -> WithClause:
         """``scope``: the variables in scope before it, which ``WITH *`` carries on."""
-        items: list[ReturnItem] = []
-        if (t := self._peek()) is not None and t.type == "STAR":
-            self._advance()
-            items = [ReturnItem(expression=Variable(name=n), name=n) for n in scope]
-            if (t := self._peek()) is not None and t.type == "COMMA":
-                self._advance()
-                items.extend(self._parse_return_items())
-        else:
-            items = self._parse_return_items()
+        distinct = self._opt_keyword("DISTINCT")
+        items = self._star_or_items(scope)
         # Its ORDER BY, SKIP and LIMIT are the WITH's own: they pick the rows it carries on.
         order_by: list[OrderItem] = []
         if self._match_keyword("ORDER"):
@@ -855,14 +870,27 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         if self._match_keyword("WHERE"):
             self._advance()
             where = _where(self._parse_where())
-        return WithClause(items=items, where=where, order_by=order_by, skip=skip, limit=limit)
+        return WithClause(
+            items=items, where=where, order_by=order_by, skip=skip, limit=limit, distinct=distinct
+        )
 
     # --- RETURN ---
 
-    def _parse_return(self) -> ReturnClause:
+    def _parse_return(self, scope: list[str]) -> ReturnClause:
+        """``scope``: the variables in scope before it, which ``RETURN *`` returns."""
         distinct = self._opt_keyword("DISTINCT")
-        items = self._parse_return_items()
-        return ReturnClause(items=items, distinct=distinct)
+        return ReturnClause(items=self._star_or_items(scope), distinct=distinct)
+
+    def _star_or_items(self, scope: list[str]) -> list[ReturnItem]:
+        """``*`` -- every variable in ``scope``, then any items after a comma -- or the items."""
+        if (t := self._peek()) is None or t.type != "STAR":
+            return self._parse_return_items()
+        self._advance()
+        items = [ReturnItem(expression=Variable(name=n), name=n) for n in scope]
+        if (t := self._peek()) is not None and t.type == "COMMA":
+            self._advance()
+            items.extend(self._parse_return_items())
+        return items
 
     def _parse_return_items(self) -> list[ReturnItem]:
         items: list[ReturnItem] = []
@@ -1188,7 +1216,12 @@ def _parse_statement(query: str) -> CypherAST:
     query = _normalize_legacy_params(query)
     tokens, comments = _tokenize(query)
     parser = _Parser(tokens, query, comments)
-    return parser.parse()
+    try:
+        return parser.parse()
+    except CypherExprParseError as exc:
+        # An expression the statement holds that is not Cypher: a refusal of the statement,
+        # said as such, never a server error.
+        raise CypherParseError(str(exc)) from exc
 
 
 def parse_pattern(text: str) -> PathPattern:

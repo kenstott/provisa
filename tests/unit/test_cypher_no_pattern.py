@@ -50,3 +50,34 @@ def _rows(query: str, params: dict | None = None) -> list[tuple]:
 )
 def test_a_statement_with_no_pattern_reads_no_table(query, rows):
     assert _rows(query) == rows
+
+
+@pytest.mark.parametrize(
+    ("query", "rows"),
+    [
+        (
+            "RETURN 0x1F AS a, 0o17 AS b, .5 AS c, 1e3 AS d, 2.5E-1 AS e",
+            [(31, 15, 0.5, 1000.0, 0.25)],
+        ),
+        ("RETURN 2 ^ 3 AS a", [(8.0,)]),
+        ("RETURN [[[[[[[]]]]]]] AS literal", [([[[[[[[]]]]]]],)]),
+        ("WITH [1, 2] AS list UNWIND list AS x RETURN *", [([1, 2], 1), ([1, 2], 2)]),
+        ("UNWIND [0, 2, 1, 2, 0, 1] AS x WITH DISTINCT x ORDER BY x LIMIT 1 RETURN x", [(0,)]),
+    ],
+)
+def test_literals_operators_and_clauses_the_tck_reads(query, rows):
+    assert _rows(query) == rows
+
+
+def test_a_character_no_token_reads_is_refused_not_skipped():
+    from provisa.cypher.parser import CypherParseError
+
+    with pytest.raises(CypherParseError, match="Unexpected character '!'"):
+        parse_cypher("RETURN 1 ! 2 AS a")
+
+
+def test_an_expression_that_does_not_parse_is_a_parse_refusal():
+    from provisa.cypher.parser import CypherParseError
+
+    with pytest.raises(CypherParseError, match="cannot parse Cypher expression"):
+        parse_cypher("RETURN 1 + AS a")
