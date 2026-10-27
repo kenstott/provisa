@@ -273,6 +273,73 @@ class ProcedureCall:  # REQ-2168
     where: "WhereClause | None" = None
 
 
+# --------------------------------------------------------------------------- writes (REQ-2176)
+#
+# A graph write is a step of the statement's pipeline, in the order written, after the clauses
+# that bind what it reaches back to. Every value it writes is an expression tree: a write
+# pattern's inline properties (NodePattern.properties, RelPattern.properties) hold a CypherExpr
+# per key, where a read pattern's hold the literal it matches on.
+
+
+@dataclass
+class CreateClause:
+    """``CREATE <pattern>, ...``: each node and relationship its patterns make, a variable it
+    reaches back to (bound before it) named by itself alone."""
+
+    patterns: list[PathPattern]
+
+
+@dataclass
+class SetItem:
+    """One item of a SET: ``v:A:B`` (``labels``), ``v.p = e`` (``property`` and ``value``),
+    ``v = {map}`` or ``v += {map}`` (``value`` alone, ``merge`` for ``+=``)."""
+
+    variable: str
+    labels: list[str] = field(default_factory=list)
+    property: str | None = None
+    value: CypherExpr | None = None
+    merge: bool = False
+
+
+@dataclass
+class SetClause:
+    items: list[SetItem]
+
+
+@dataclass
+class RemoveItem:
+    """One item of a REMOVE: ``v:A:B`` (``labels``) or ``v.p`` (``property``)."""
+
+    variable: str
+    labels: list[str] = field(default_factory=list)
+    property: str | None = None
+
+
+@dataclass
+class RemoveClause:
+    items: list[RemoveItem]
+
+
+@dataclass
+class DeleteClause:
+    """``[DETACH] DELETE e, ...``: each node or relationship the expressions name."""
+
+    expressions: list[CypherExpr]
+    detach: bool = False
+
+
+@dataclass
+class MergeClause:
+    """``MERGE <pattern> [ON CREATE SET ...] [ON MATCH SET ...]``."""
+
+    pattern: PathPattern
+    on_create: list[SetItem] = field(default_factory=list)
+    on_match: list[SetItem] = field(default_factory=list)
+
+
+WriteClause = CreateClause | SetClause | RemoveClause | DeleteClause | MergeClause
+
+
 @dataclass
 class MatchStep:
     """One or more MATCH/OPTIONAL MATCH clauses and their associated WHERE."""
@@ -311,6 +378,15 @@ class CypherAST:  # REQ-347, REQ-348, REQ-571
     comments: list[str] = field(
         default_factory=list
     )  # // comment text (without //) in source order
+
+    @property
+    def writes(self) -> list[WriteClause]:
+        """The statement's write clauses, in the order written (REQ-2176)."""
+        return [
+            s
+            for s in self.pipeline
+            if isinstance(s, (CreateClause, SetClause, RemoveClause, DeleteClause, MergeClause))
+        ]
 
     @property
     def match_clauses(self) -> list[MatchClause]:

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.cypher.expr_parser import CypherExprParseError, parse_expression
-from provisa.gql.expr_ast import Variable
+from provisa.gql.expr_ast import CypherExpr, Variable
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
@@ -35,6 +35,13 @@ from provisa.gql.mistakes import (
 )
 from provisa.gql.translator_types import CypherMistake
 from provisa.gql.ir import (
+    CreateClause,
+    DeleteClause,
+    MergeClause,
+    RemoveClause,
+    RemoveItem,
+    SetClause,
+    SetItem,
     NodePattern,
     RelPattern,
     PathPattern,
@@ -399,13 +406,49 @@ def with_inline_conditions(matches: list[MatchClause], where: str | None) -> str
     return " AND ".join(conditions)
 
 
+#: The clauses an expression of a write clause ends at (REQ-2176).
+_CLAUSE_KEYWORDS = frozenset(
+    {
+        "RETURN",
+        "WITH",
+        "MATCH",
+        "OPTIONAL",
+        "UNWIND",
+        "CALL",
+        "UNION",
+        "WHERE",
+        "ORDER",
+        "SKIP",
+        "LIMIT",
+        "CREATE",
+        "MERGE",
+        "SET",
+        "REMOVE",
+        "DELETE",
+        "DETACH",
+        "ON",
+    }
+)
+
+
 class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
-    def __init__(self, tokens: list[Token], raw: str, comments: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        tokens: list[Token],
+        raw: str,
+        comments: list[str] | None = None,
+        *,
+        writes: bool = False,
+    ) -> None:
         self._tokens = tokens
         self._pos = 0
         self._raw = raw
         self._comments: list[str] = comments or []
         self._inline = 0  # anonymous patterns named for their inline property maps
+        # REQ-2176: whether write clauses are read (parse_cypher_statement); a write pattern's
+        # inline properties are then expressions, and its anonymous nodes stay anonymous.
+        self._writes = writes
+        self._write_pattern = False
 
     # --- helpers ---
 
@@ -565,6 +608,10 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 _flush_match_step()
                 return_clause = self._parse_return(_in_scope(pipeline))
 
+            elif self._writes and kw in _WRITE_KEYWORDS:
+                _flush_match_step()
+                pipeline.append(self._parse_write_clause(kw))
+
             elif kw == "ORDER":
                 self._advance()
                 self._consume_keyword("BY")
@@ -590,7 +637,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         # flush any remaining match clauses (e.g. no RETURN yet flushed them)
         _flush_match_step()
 
-        if return_clause is None and not call_subqueries:
+        if return_clause is None and not call_subqueries and not self._has_write(pipeline):
             raise CypherParseError("Missing RETURN clause")
 
         return CypherAST(
@@ -603,6 +650,132 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             union_parts=union_parts,
             comments=self._comments,
         )
+
+    # --- writes (REQ-2176) ---
+
+    @staticmethod
+    def _has_write(pipeline: list) -> bool:
+        return any(
+            isinstance(s, (CreateClause, SetClause, RemoveClause, DeleteClause, MergeClause))
+            for s in pipeline
+        )
+
+    def _parse_write_clause(
+        self, kw: str
+    ) -> CreateClause | SetClause | RemoveClause | DeleteClause | MergeClause:
+        self._advance()
+        if kw == "CREATE":
+            patterns = [self._parse_write_pattern()]
+            while (_c := self._peek()) and _c.type == "COMMA":
+                self._advance()
+                patterns.append(self._parse_write_pattern())
+            return CreateClause(patterns=patterns)
+        if kw == "MERGE":
+            merge = MergeClause(pattern=self._parse_write_pattern())
+            while self._match_keyword("ON"):
+                self._advance()
+                on_create = self._opt_keyword("CREATE")
+                if not on_create:
+                    self._consume_keyword("MATCH")
+                self._consume_keyword("SET")
+                (merge.on_create if on_create else merge.on_match).extend(self._set_items())
+            return merge
+        if kw == "SET":
+            return SetClause(items=self._set_items())
+        if kw == "REMOVE":
+            return RemoveClause(items=self._remove_items())
+        detach = kw == "DETACH"
+        if detach:
+            self._consume_keyword("DELETE")
+        deleted = [self._write_expression()]
+        while (_c := self._peek()) and _c.type == "COMMA":
+            self._advance()
+            deleted.append(self._write_expression())
+        return DeleteClause(expressions=deleted, detach=detach)
+
+    def _parse_write_pattern(self) -> PathPattern:
+        self._write_pattern = True
+        try:
+            return self._parse_path_pattern()
+        finally:
+            self._write_pattern = False
+
+    def _write_expression(self, stop_types: frozenset[str] = frozenset({"COMMA"})) -> CypherExpr:
+        """The expression up to the next ``stop_types`` token or clause at its own depth."""
+        read: list[Token] = []
+        depth = 0
+        while t := self._peek():
+            if t.type in ("LBRACKET", "LPAREN", "LBRACE"):
+                depth += 1
+            elif t.type in ("RBRACKET", "RPAREN", "RBRACE"):
+                if depth == 0:
+                    break
+                depth -= 1
+            elif depth == 0 and (
+                t.type in stop_types or (t.type == "IDENT" and t.value.upper() in _CLAUSE_KEYWORDS)
+            ):
+                break
+            read.append(self._advance())
+        if not read:
+            _bad = self._peek()
+            raise CypherParseError(
+                f"Invalid input {_bad.value!r} at pos {_bad.pos}"
+                if _bad
+                else "Unexpected end of input"
+            )
+        return parse_expression(self._raw[read[0].pos : read[-1].end])
+
+    def _labels(self) -> list[str]:
+        labels: list[str] = []
+        while (_t := self._peek()) and _t.type == "COLON":
+            self._advance()
+            labels.append(self._expect("IDENT").value)
+        return labels
+
+    def _set_items(self) -> list[SetItem]:
+        items = [self._set_item()]
+        while (_c := self._peek()) and _c.type == "COMMA":
+            self._advance()
+            items.append(self._set_item())
+        return items
+
+    def _set_item(self) -> SetItem:
+        variable = self._expect("IDENT").value
+        t = self._peek()
+        if t is not None and t.type == "COLON":
+            return SetItem(variable=variable, labels=self._labels())
+        if t is not None and t.type == "DOT":
+            self._advance()
+            prop = self._expect("IDENT").value
+            self._expect("EQ")
+            return SetItem(variable=variable, property=prop, value=self._write_expression())
+        merge = t is not None and t.type == "PLUS"
+        if merge:
+            self._advance()
+        self._expect("EQ")
+        return SetItem(variable=variable, value=self._write_expression(), merge=merge)
+
+    def _remove_items(self) -> list[RemoveItem]:
+        items: list[RemoveItem] = []
+        while True:
+            variable = self._expect("IDENT").value
+            if (_t := self._peek()) and _t.type == "DOT":
+                self._advance()
+                items.append(RemoveItem(variable=variable, property=self._expect("IDENT").value))
+            else:
+                labels = self._labels()
+                if not labels:
+                    _bad = self._peek()
+                    raise CypherParseError(
+                        f"Invalid input {_bad.value!r} at pos {_bad.pos}"
+                        if _bad
+                        else "Unexpected end of input"
+                    )
+                items.append(RemoveItem(variable=variable, labels=labels))
+            if (_c := self._peek()) and _c.type == "COMMA":
+                self._advance()
+                continue
+            return items
 
     # --- MATCH ---
 
@@ -709,7 +882,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         text: dict[str, str] = {}
         if (_tnlb := self._peek()) and _tnlb.type == "LBRACE":
             props, text = self._parse_map_literal()
-            if variable is None:
+            if variable is None and not self._write_pattern:
                 variable = self._inline_variable()
 
         self._expect("RPAREN")
@@ -840,7 +1013,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                     "state the condition in WHERE"
                 )
             props, text = self._parse_map_literal()
-            if variable is None:
+            if variable is None and not self._write_pattern:
                 variable = self._inline_variable()
         self._expect("RBRACKET")
         return RelPattern(
@@ -863,9 +1036,15 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             key = self._expect("IDENT").value
             self._expect("COLON")
             written = self._peek()
-            props[key] = self._parse_value()
-            if written is not None:
-                text[key] = written.value
+            if self._write_pattern:
+                # REQ-2176: a value a write writes is any expression.
+                props[key] = self._write_expression(frozenset({"COMMA", "RBRACE"}))
+                if written is not None:
+                    text[key] = self._raw[written.pos : self._tokens[self._pos - 1].end]
+            else:
+                props[key] = self._parse_value()
+                if written is not None:
+                    text[key] = written.value
             if (_tmpc := self._peek()) and _tmpc.type == "COMMA":
                 self._advance()
         self._expect("RBRACE")
@@ -909,6 +1088,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             "CALL",
             "UNWIND",
         }
+        if self._writes:
+            _clause_kws |= _WRITE_KEYWORDS  # REQ-2176: a write clause ends it too
         # WITH is a stop keyword but must not stop STARTS WITH / ENDS WITH predicates
         _string_pred_prefixes = {"STARTS", "ENDS"}
         parts: list[str] = []
@@ -992,6 +1173,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             "UNION",
             "UNWIND",
         }
+        if self._writes:
+            _stop_kws |= _WRITE_KEYWORDS  # REQ-2176: a write clause ends them too
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
             read: list[Token] = []
@@ -1299,6 +1482,25 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
         if mistake is not None:
             raise CypherParseMistake(mistake.code, str(mistake), **mistake.params)
     return ast
+
+
+def parse_cypher_statement(  # REQ-2176, REQ-2135
+    query: str, label_map: CypherLabelMap | None = None
+) -> CypherAST:
+    """Parse a Cypher statement, a read or a write, into the graph IR: its write clauses (CREATE,
+    MERGE, SET, REMOVE, DELETE) steps of its pipeline. A read parses as parse_cypher parses it."""
+    query = _normalize_legacy_params(query)
+    tokens, comments = _tokenize(query)
+    if not any(t.type == "IDENT" and t.value.upper() in _WRITE_KEYWORDS for t in tokens):
+        return parse_cypher(query, label_map)
+    refuse_multiple_statements(query)
+    refuse_cypher_definition(query)
+    try:
+        ast = _Parser(tokens, query, comments, writes=True).parse()
+        _refuse_deep_literals(ast)
+        return ast
+    except CypherExprParseError as exc:
+        raise CypherParseError(str(exc)) from exc
 
 
 def _parse_statement(query: str) -> CypherAST:
