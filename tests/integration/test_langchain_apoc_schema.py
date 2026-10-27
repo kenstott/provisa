@@ -137,8 +137,11 @@ def graph(server):
 
     connected = Neo4jGraph(
         url=f"bolt://127.0.0.1:{server.ports['bolt']}",
+        # Passed, never read from the environment: Neo4jGraph takes an empty password as missing
+        # and falls back to NEO4J_PASSWORD. The instance has no auth provider, so Bolt reads the
+        # principal as the role and does not check the password.
         username="reader",
-        password="",
+        password="unchecked",
         database="provisa_reader",
     )
     yield connected
