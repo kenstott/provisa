@@ -99,7 +99,7 @@ sources:
   description: A Python package that reads the cloud security policy's published HTML into a row a control
   mapping:
     runtime: python
-    code: {kind: upload, upload: 04ae29c7cf01a6479975dbaf9c46079826fa9d9185722ced0e71bb9e9fb5bca5, filename: policy_reader.tar.gz}
+    code: {kind: upload, upload: 0aadbdb2804498f2eeca37ad7717ca95687ed82595d55456f7dc53ab303162ea, filename: policy_reader.tar.gz}
 - id: review-db
   type: postgresql
   host: ${env:CLOUDPOLICY_PG_HOST:-localhost}

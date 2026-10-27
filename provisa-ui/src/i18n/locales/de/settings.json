@@ -882,6 +882,20 @@
         "label": "Höchstzahl der Prädikate einer Prädikatvariable",
         "help": "Ein SPARQL-Muster, dessen Prädikat eine Variable ist, liest jedes zugeordnete Prädikat, das passen könnte, mit je einem Zweig. Eine Abfrage, die mehr Zweige braucht, wird abgelehnt und nennt die Grenze."
       }
+    },
+    "codesource": {
+      "duckdb_memory_mb": {
+        "label": "DuckDB-Speicher der Code-Quelle",
+        "help": "Der Speicher, in dem die DuckDB einer Code-Quelle eine Anweisung beantwortet. Darüber hinaus lagert die Anweisung auf die Festplatte aus."
+      },
+      "duckdb_spill_cap_mb": {
+        "label": "DuckDB-Auslagerungsgrenze der Code-Quelle",
+        "help": "Das Höchstmaß, das die DuckDB einer Code-Quelle auf die Festplatte auslagert. Eine Anweisung, die mehr braucht, wird abgelehnt, mit Nennung dieser Einstellung. Ein gebautes Image setzt sie nur durch, wenn sein Auslagerungs-Volume mit dem Kontingent der Plattform auf diese Grenze bemessen ist. Eine Code-Quelle im Entwicklungsmodus lagert ohne Grenze in das Datenverzeichnis aus."
+      },
+      "duckdb_threads": {
+        "label": "DuckDB-Threads der Code-Quelle",
+        "help": "Die Threads, auf denen die DuckDB einer Code-Quelle ihre Anweisungen beantwortet."
+      }
     }
   }
 }

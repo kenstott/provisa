@@ -3375,6 +3375,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # visible_columns and all_columns; without this assignment the list is always empty and
     # column visibility + masking are silently skipped on every raw-SQL transport.
     state.tables = tables
+    # REQ-2100: the identity a built code host accepts, where the engine attaching it reads it.
+    from provisa.codesource.attach import prepare as _prepare_code_hosts
+
+    await _prepare_code_hosts(state)
     # REQ-1132: publish the resolved relationship registry alongside tables so the raw-SQL
     # governance path can compute 1-hop meta row scoping.
     state.relationships = relationships
