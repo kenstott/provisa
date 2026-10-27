@@ -260,6 +260,8 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(step.element).toBe('[data-testid="strata-stage"][data-ready]');
     expect(step.readySelector).toBe(step.element);
     expect(step.clickAfterNext).toBe('[data-testid="profile-runs-modal"] .mantine-Modal-close');
+    // REQ-2052: a table with no run says so in the window, and the step stops there.
+    expect(step.absent).toBe('[data-testid="profile-runs-none"]');
   });
 
   it("hands a set of roles, a derived role among them, to the SQL explorer", () => {

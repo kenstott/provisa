@@ -70,6 +70,7 @@ import {
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { kept } from "../lib/resultWithQuery";
 import { runUiActions } from "../mcp/uiActions";
+import { ANCHOR_WAIT_MS, waitForElement, watchAbsent } from "./waitForElement";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
  * plane and org (REQ-2008), so each demo, and each fresh start of one, offers its track first. It
@@ -409,7 +410,8 @@ function warmStep(index: number): void {
 export type TourStatus =
   | { kind: "preparing"; resuming: boolean }
   | { kind: "waiting"; step: number }
-  | { kind: "stuck"; step: number }
+  // `reason`: what the page said of a step whose object does not exist (REQ-2052).
+  | { kind: "stuck"; step: number; reason?: string }
   // REQ-2115: the step's own actions running, under its caption, before its popover.
   | { kind: "acting"; step: number; key: string }
   | null;
@@ -436,20 +438,6 @@ interface TourContextValue {
 
 const TourContext = createContext<TourContextValue | null>(null);
 
-/**
- * Resolve when an element matching `selector` is present in the DOM. Rejects
- * after `timeoutMs` so a genuinely missing anchor surfaces as a real error
- * rather than hanging the tour. No silent fallback — a failed wait aborts.
- *
- * The window is generous because each step may navigate to a lazily-loaded
- * route whose chunk is compiled/fetched on first visit; a short cap would abort
- * the whole tour on a cold chunk (observed killing it at the NL step in dev).
- * {@link ANCHOR_WAIT_MS} is sized for a machine under heavy load, where a page's
- * own render and its data round-trip both stretch; the wait is now visible while
- * it runs and recoverable when it expires, so a long one costs the visitor
- * nothing but a spinner.
- */
-const ANCHOR_WAIT_MS = 45000;
 type DriverPopover = NonNullable<DriveStep["popover"]>;
 
 // How long an advance may take before the visitor is told the tour is waiting. Short enough that a
@@ -461,45 +449,6 @@ const WAITING_HINT_MS = 1200;
 // actions open (a modal, a form) is seen whole.
 const ACTION_PACE_MS = 700;
 const ACTING_CLASS = "tour-acting";
-
-function waitForElement(
-  selector: string,
-  timeoutMs = ANCHOR_WAIT_MS,
-  signal?: AbortSignal,
-): Promise<HTMLElement> {
-  const existing = document.querySelector<HTMLElement>(selector);
-  if (existing) return Promise.resolve(existing);
-  // An abort raised before this wait began never fires its event again: without this the observer
-  // would run its whole window against a document the provider has already left.
-  if (signal?.aborted) return Promise.reject(new Error(`Tour: wait for ${selector} abandoned`));
-  return new Promise((resolve, reject) => {
-    const stop = () => {
-      observer.disconnect();
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    const observer = new MutationObserver(() => {
-      const el = document.querySelector<HTMLElement>(selector);
-      if (el) {
-        stop();
-        resolve(el);
-      }
-    });
-    const timer = setTimeout(() => {
-      stop();
-      reject(new Error(`Tour: element not found within ${timeoutMs}ms: ${selector}`));
-    }, timeoutMs);
-    // Without this the observer outlives the step that started it — up to ANCHOR_WAIT_MS of
-    // observing a document the provider has already left.
-    const onAbort = () => {
-      stop();
-      reject(new Error(`Tour: wait for ${selector} abandoned`));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-    // Attributes too: a page marks a hand-off answered on an element already there (REQ-2010).
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-  });
-}
 
 export function TourProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -710,6 +659,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
       clearTimeout(waitingTimer);
     };
     (async () => {
+      // REQ-2052: what the page said of the step's object not existing, once it says so.
+      let absentReason: string | null = null;
       try {
         // Indices only ever advance within range (step 0 has no Back button and
         // the last step calls finish() instead of advancing), so TOUR_STEPS[i]
@@ -827,6 +778,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
           if (cancelled) return;
           clickedRef.current = clickEntry;
           trigger.click();
+        }
+        // REQ-2052: a step whose object does not exist stops when the page says so, that saying its
+        // reason, rather than waiting out an anchor nothing will draw.
+        if (step.absent) {
+          watchAbsent(step.absent, step.waitMs, abort, (said) => (absentReason = said));
         }
         // REQ-2115: act, then explain. A step entered again finds what it built and only explains.
         if (step.actions && !document.querySelector(step.element)) {
@@ -1070,7 +1026,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // hand the choice to the visitor — Retry re-enters the step, Skip moves past it, Exit
         // leaves with the position saved. The tour is not ended and progress is not discarded.
         if (cancelled) return;
-        setStatus({ kind: "stuck", step: i });
+        setStatus(
+          absentReason === null
+            ? { kind: "stuck", step: i }
+            : { kind: "stuck", step: i, reason: absentReason },
+        );
       }
     })();
     return () => {
@@ -1331,7 +1291,7 @@ function TourStatusOverlay({
         : t("tour.status.starting")
       : status.kind === "waiting"
         ? t("tour.status.waiting")
-        : t("tour.status.stuck");
+        : (status.reason ?? t("tour.status.stuck"));
   return (
     <div className="tour-status-overlay" role="status" aria-live="polite">
       <div className="tour-status-card">

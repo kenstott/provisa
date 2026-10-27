@@ -145,6 +145,8 @@ export interface DemoTourStepDef {
 
 /** View Profile Runs' close button: a graph step leaves the window as it found it. */
 const PROFILE_RUNS_CLOSE = '[data-testid="profile-runs-modal"] .mantine-Modal-close';
+/** View Profile Runs on a table with no run: a graph step has nothing to draw (REQ-2052). */
+const PROFILE_RUNS_NONE = '[data-testid="profile-runs-none"]';
 
 /** A Mantine modal's close button: an explain step leaves the explorer as it found it. */
 const MODAL_CLOSE = ".mantine-Modal-close";
@@ -227,6 +229,7 @@ function demoTourStep(
         readySelector: stage,
         element: stage,
         waitMs: RESULT_WAIT_MS,
+        absent: PROFILE_RUNS_NONE,
         clickAfterNext: PROFILE_RUNS_CLOSE,
       };
     }
