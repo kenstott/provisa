@@ -9314,5 +9314,18 @@
   "es/dataProductsTab.json::dataProductsTab.contract.slaValue": "Value",
   "es/dataProductsTab.json::dataProductsTab.contract.slaUnit": "Unit",
   "es/dataProductsTab.json::dataProductsTab.contract.slaRemove": "Remove service level",
-  "es/dataProductsTab.json::dataProductsTab.contract.slaAdd": "Add service level"
+  "es/dataProductsTab.json::dataProductsTab.contract.slaAdd": "Add service level",
+  "es/sparqlExportModal.json::sparqlExportModal.title": "SPARQL export",
+  "es/sparqlExportModal.json::sparqlExportModal.result": "Result",
+  "es/sparqlExportModal.json::sparqlExportModal.format": "Format",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.turtle": "Turtle",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.ntriples": "N-Triples",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.jsonld": "JSON-LD",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.json": "SPARQL Results JSON",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.csv": "CSV",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.tsv": "TSV",
+  "es/sparqlExportModal.json::sparqlExportModal.download": "Download",
+  "es/sparqlExportModal.json::sparqlExportModal.close": "Close",
+  "es/sparqlExportModal.json::sparqlExportModal.empty": "Run a query to export its result.",
+  "es/graphSidebar.json::graphSidebar.tabExportSparql": "Export RDF or SPARQL results"
 }

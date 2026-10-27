@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { MemoryRouter, useNavigate } from "react-router-dom";
+import "../i18n";
 import type { FrameData } from "../components/graph/graph-model";
 import { LITERAL_LABEL } from "../components/graph/sparql";
 
@@ -46,7 +47,9 @@ vi.mock("../components/graph/GraphFrame", () => ({
     return null;
   },
 }));
-vi.mock("../components/graph/Neo4jExportModal", () => ({ Neo4jExportModal: () => null }));
+vi.mock("../components/graph/Neo4jExportModal", () => ({
+  Neo4jExportModal: () => <div data-testid="neo4j-export-modal" />,
+}));
 
 import { GraphPage } from "../pages/GraphPage";
 import { DEFAULT_QUERY } from "../components/graph/graph-persistence";
@@ -194,5 +197,19 @@ describe("the SPARQL tab", () => {
     // Kept apart from Cypher's: the SPARQL history holds the query, Cypher's does not.
     expect(localStorage.getItem("test-cp:test-org:provisa.sparql.state")).toContain("CONSTRUCT");
     expect(localStorage.getItem("test-cp:test-org:provisa.graph.state")).toBeNull();
+  });
+
+  it("exports its results in SPARQL's own formats, never to Neo4j", async () => {
+    page();
+    await screen.findByTestId("sparql-vocabulary");
+    act(() => screen.getByText("run").click());
+    await waitFor(() => expect(framesSeen.some((f) => f.status === "done")).toBe(true));
+    const tab = screen.getByTestId("graph-sidebar-tab-export");
+    expect(tab).toHaveAttribute("aria-label", "Export RDF or SPARQL results");
+    fireEvent.click(tab);
+    const formats = await screen.findByTestId("sparql-export-format");
+    // The CONSTRUCT's graph: RDF, Turtle first.
+    expect(formats).toHaveTextContent("Turtle");
+    expect(screen.queryByTestId("neo4j-export-modal")).toBeNull();
   });
 });

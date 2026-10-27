@@ -62,7 +62,7 @@ import type {
 import { Sidebar } from "../components/graph/GraphSidebar";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
-import { Neo4jExportModal } from "../components/graph/Neo4jExportModal";
+import { GraphExportModal } from "../components/graph/GraphExportModal";
 import { buildDropExpansion, withExpansion } from "./graph-drop";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { useMaxNodes } from "../components/graph/graph-drawing";
@@ -210,7 +210,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     filterColumns: { name: string; type: string }[];
     onConfirm: (params: Record<string, string>) => void;
   } | null>(null);
-  const [showNeo4jModal, setShowNeo4jModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const effectiveDataRef = useRef<
     Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>
   >(new Map());
@@ -956,28 +956,15 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           onCancel={() => setNfModal(null)}
         />
       )}
-      {showNeo4jModal &&
-        (() => {
-          const allNodes = new Map<string, GNode>();
-          const allEdges = new Map<string, GEdge>();
-          for (const f of frames) {
-            const effective = effectiveDataRef.current.get(f.id);
-            if (effective) {
-              effective.nodes.forEach((n, k) => allNodes.set(k, n));
-              effective.edges.forEach((e, k) => allEdges.set(k, e));
-            } else {
-              f.nodes.forEach((n, k) => allNodes.set(k, n));
-              f.edges.forEach((e, k) => allEdges.set(k, e));
-            }
-          }
-          return (
-            <Neo4jExportModal
-              nodes={[...allNodes.values()]}
-              edges={[...allEdges.values()]}
-              onClose={() => setShowNeo4jModal(false)}
-            />
-          );
-        })()}
+      {showExportModal && (
+        <GraphExportModal
+          sparql={sparql}
+          frames={frames}
+          effective={effectiveDataRef.current}
+          roleHeader={roleHeaderValue}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
       <Sidebar
         schemaNodeLabels={visibleNodeLabels}
         schemaRels={visibleSchemaRels}
@@ -1011,7 +998,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         onSizeMultiplierChange={handleSizeMultiplierChange}
         onRelLineChange={handleRelLineChange}
         numericPropsByLabel={numericPropsByLabel}
-        onNeo4jExport={() => setShowNeo4jModal(true)}
+        onExport={() => setShowExportModal(true)}
+        exportLabel={t(sparql ? "graphSidebar.tabExportSparql" : "graphSidebar.tabExport")}
         width={sidebarWidth}
         onWidthChange={setSidebarWidth}
         highlightedLabel={activeLabel}

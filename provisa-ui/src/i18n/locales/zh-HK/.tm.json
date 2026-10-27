@@ -9314,5 +9314,18 @@
   "zh-HK/dataProductsTab.json::dataProductsTab.contract.slaValue": "Value",
   "zh-HK/dataProductsTab.json::dataProductsTab.contract.slaUnit": "Unit",
   "zh-HK/dataProductsTab.json::dataProductsTab.contract.slaRemove": "Remove service level",
-  "zh-HK/dataProductsTab.json::dataProductsTab.contract.slaAdd": "Add service level"
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.slaAdd": "Add service level",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.title": "SPARQL export",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.result": "Result",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.format": "Format",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.formats.turtle": "Turtle",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.formats.ntriples": "N-Triples",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.formats.jsonld": "JSON-LD",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.formats.json": "SPARQL Results JSON",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.formats.csv": "CSV",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.formats.tsv": "TSV",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.download": "Download",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.close": "Close",
+  "zh-HK/sparqlExportModal.json::sparqlExportModal.empty": "Run a query to export its result.",
+  "zh-HK/graphSidebar.json::graphSidebar.tabExportSparql": "Export RDF or SPARQL results"
 }

@@ -4,6 +4,7 @@
     "tabHistory": "History",
     "tabFavorites": "Favorites",
     "tabExport": "Export to Neo4j",
+    "tabExportSparql": "Export RDF or SPARQL results",
     "domainLabels": "Domain Labels",
     "nodeLabels": "Node Labels",
     "relationshipTypes": "Relationship Types",

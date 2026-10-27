@@ -1,0 +1,18 @@
+{
+  "sparqlExportModal": {
+    "title": "SPARQL export",
+    "result": "Result",
+    "format": "Format",
+    "formats": {
+      "turtle": "Turtle",
+      "ntriples": "N-Triples",
+      "jsonld": "JSON-LD",
+      "json": "SPARQL Results JSON",
+      "csv": "CSV",
+      "tsv": "TSV"
+    },
+    "download": "Download",
+    "close": "Close",
+    "empty": "Run a query to export its result."
+  }
+}

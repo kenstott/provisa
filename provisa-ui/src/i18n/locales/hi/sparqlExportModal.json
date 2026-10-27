@@ -1,0 +1,18 @@
+{
+  "sparqlExportModal": {
+    "title": "SPARQL निर्यात",
+    "result": "परिणाम",
+    "format": "फ़ॉर्मेट",
+    "formats": {
+      "turtle": "Turtle",
+      "ntriples": "N-Triples",
+      "jsonld": "JSON-LD",
+      "json": "SPARQL परिणाम (JSON)",
+      "csv": "CSV",
+      "tsv": "TSV"
+    },
+    "download": "डाउनलोड करें",
+    "close": "बंद करें",
+    "empty": "परिणाम निर्यात करने के लिए कोई क्वेरी चलाएँ।"
+  }
+}

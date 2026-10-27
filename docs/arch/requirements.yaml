@@ -87963,7 +87963,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     written as the operator setting so it shows in Deployment settings and can be changed there. SPARQL,
     the vocabulary panel and RDF export then work on a fresh local start. It is an install step, not a read-time
     fallback: a hosted or cluster deployment still sets it deliberately, and with it unset SPARQL still
-    refuses by name. The refusal names the exact field and the address to put in it.'
+    refuses by name. The refusal names the exact field and the address to put in it.
+    (Amended 2026-10-27, THE SPARQL TAB EXPORTS IN SPARQL''S OWN FORMATS:) Each tab of the graph
+    visualizer offers its own language''s exports: the Neo4j export (Cypher CREATE) stays in the
+    Cypher tab only. The SPARQL tab''s export writes a graph answer (a CONSTRUCT''s triples) as RDF,
+    Turtle by default, or N-Triples or JSON-LD, and a SELECT''s rows as SPARQL Results JSON, CSV or
+    TSV (an ASK''s answer as SPARQL Results JSON). The export asks the endpoint the frame''s query
+    again in the chosen format, so the endpoint''s one writer writes it, with IRIs on
+    server.public_url as SPARQL answers them; the endpoint answers a CONSTRUCT as JSON-LD
+    (application/ld+json) as well as Turtle and N-Triples. The newest answer is exported, or the
+    one chosen.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -88001,6 +88010,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa/graphql_front/lower.py
     - provisa/core/settings_catalog.py
     - provisa/api/app_startup.py
+    - provisa-ui/src/components/graph/sparqlExport.ts
+    - provisa-ui/src/components/graph/SparqlExportModal.tsx
+    - provisa-ui/src/components/graph/GraphExportModal.tsx
+    - provisa-ui/src/pages/GraphPage.tsx
   tests:
     - tests/unit/test_sparql_compiler.py
     - tests/unit/test_sparql_protocol.py
@@ -88012,6 +88025,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - tests/unit/test_graphql_golden_sql.py
     - tests/unit/test_graphql_front_answers.py
     - tests/integration/test_sparql_endpoint.py
+    - provisa-ui/src/components/graph/__tests__/SparqlExportModal.test.tsx
+    - provisa-ui/src/__tests__/GraphPageSparql.test.tsx
+    - provisa-ui/src/__tests__/GraphPageCypherExport.test.tsx
 - id: REQ-2136
   value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
   status: proposed

@@ -50,7 +50,9 @@ interface SidebarProps {
   onSizeMultiplierChange: (label: string, multiplier: number) => void;
   onRelLineChange: (type: string, override: RelLineOverride) => void;
   numericPropsByLabel: Record<string, string[]>;
-  onNeo4jExport?: () => void;
+  /** The tab's own language's export: Neo4j for Cypher, RDF and SPARQL results for SPARQL. */
+  onExport?: () => void;
+  exportLabel?: string;
   width: number;
   onWidthChange: (w: number) => void;
   highlightedLabel?: string | null;
@@ -112,7 +114,8 @@ export function Sidebar({
   onSizeMultiplierChange,
   onRelLineChange,
   numericPropsByLabel,
-  onNeo4jExport,
+  onExport,
+  exportLabel,
   width,
   onWidthChange,
   highlightedLabel,
@@ -342,14 +345,14 @@ export function Sidebar({
             </button>
           </Tip>
         </Tip>
-        {onNeo4jExport && (
-          <Tip text={t("graphSidebar.tabExport")}>
-            <Tip text={t("graphSidebar.tabExport")} named>
+        {onExport && exportLabel && (
+          <Tip text={exportLabel}>
+            <Tip text={exportLabel} named>
               <button
                 type="button"
                 className="graph-sidebar-tab"
-                onClick={onNeo4jExport}
-                aria-label={t("graphSidebar.tabExport")}
+                onClick={onExport}
+                aria-label={exportLabel}
                 data-testid="graph-sidebar-tab-export"
               >
                 <ExportIcon size={15} />
