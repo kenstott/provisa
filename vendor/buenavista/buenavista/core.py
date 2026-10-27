@@ -41,6 +41,13 @@ class BVType(enum.Enum):
     TIMESTAMPTZ = 20
     TIMETZ = 21
     UUID = 22
+    # One-dimensional arrays, each with its element type's array OID.
+    BIGINTARRAY = 23
+    SMALLINTARRAY = 24
+    FLOATARRAY = 25
+    REALARRAY = 26
+    BOOLARRAY = 27
+    DECIMALARRAY = 28
 
 
 class RawDataRowBytes(bytes):

@@ -161,3 +161,17 @@ def test_a_statement_is_kept_for_its_session_alone_as_its_tables_stand():
         assert temp_tables.slot_key() != mine
     finally:
         temp_tables.unbind(token)
+
+
+def test_serial_and_bytea_columns_are_taken():
+    from provisa.compiler.temp_tables import TempTable
+    from provisa.pgwire.temp_exec import _batch, _next_serial, landed_type
+
+    assert landed_type("id", "SERIAL") == "bigint"
+    assert landed_type("id", "BIGSERIAL") == "bigint"
+    assert landed_type("b", "BYTEA") == "bytea"
+    table = TempTable("t", [("id", "bigint"), ("val", "text")], {"id": 0})
+    assert [_next_serial(table, "id") for _ in range(3)] == [1, 2, 3]
+    assert _next_serial(table, "val") is None
+    batch = _batch([("b", "bytea")], [("\\xdeadbeef",), ("a\\\\b\\001",), (b"raw",), (None,)])
+    assert batch.column(0).to_pylist() == [b"\xde\xad\xbe\xef", b"a\\b\x01", b"raw", None]
