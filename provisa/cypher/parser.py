@@ -805,6 +805,12 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             if (_trdd := self._peek()) and _trdd.type == "DOTDOT":
                 # *..n
                 self._advance()
+                if not ((_trm2 := self._peek()) and _trm2.type == "NUMBER"):
+                    # [*..], unbounded written out: refused as [*] is (REQ-348)
+                    raise CypherParseError(
+                        "Unbounded variable-length pattern [*] is not allowed. "
+                        "Specify a depth limit, e.g. [*..5]."
+                    )
                 t = self._expect("NUMBER")
                 max_hops = int(float(t.value))
                 min_hops = 1
