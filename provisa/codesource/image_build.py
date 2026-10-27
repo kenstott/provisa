@@ -289,16 +289,10 @@ def _uv_install(arch: str, site: Path) -> list[str]:
 FRONT_RUNTIME = f"{ROOT}/front-runtime"
 #: The front end's programs (provisa/codehost), with the code's name tables beside them.
 FRONT = f"{ROOT}/front"
-#: engine_memory.py is core's (provisa/codehost/engine_memory.py links it): every DuckDB the front
-#: end opens is capped (REQ-2006).
-FRONT_PROGRAMS = (
-    "front.py",
-    "residual.py",
-    "duckdb_sql.py",
-    "engine_memory.py",
-    "pgfront.py",
-    "pgcatalog.py",
-)
+FRONT_PROGRAMS = ("front.py", "residual.py", "duckdb_sql.py", "pgfront.py", "pgcatalog.py")
+#: Provisa's own modules the front end runs with, copied beside its programs: each image path's
+#: source, relative to the provisa package. Every DuckDB the front end opens is capped (REQ-2006).
+FRONT_MODULES = {"engine_memory.py": "core/engine_memory.py"}
 
 
 def _front(
@@ -344,6 +338,10 @@ def _front(
         ),
         [
             *_files(here, FRONT, list(FRONT_PROGRAMS)),
+            *(
+                oci.Entry(f"{FRONT}/{name}", source=here.parent / source)
+                for name, source in FRONT_MODULES.items()
+            ),
             oci.Entry(f"{FRONT}/names.json", data=_names_text(plan.names).encode()),
         ],
     ]

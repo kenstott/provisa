@@ -206,6 +206,8 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "opt/provisa/front/front.py",
         "opt/provisa/front/residual.py",
         "opt/provisa/front/duckdb_sql.py",
+        # Provisa's own engine_memory, which caps every DuckDB the front end opens (REQ-2006).
+        "opt/provisa/front/engine_memory.py",
         "opt/provisa/front/pgfront.py",
         "opt/provisa/front/pgcatalog.py",
         "opt/provisa/front/names.json",

@@ -59,10 +59,29 @@ from sqlglot import exp
 
 # Beside this program in the image, where its modules are top-level; Provisa's, in its package.
 duckdb_sql = importlib.import_module(f"{__package__}.duckdb_sql" if __package__ else "duckdb_sql")
-#: Every DuckDB this process opens is opened capped (REQ-2006): core's, carried beside it.
-engine_memory = importlib.import_module(
-    f"{__package__}.engine_memory" if __package__ else "engine_memory"
-)
+
+
+def _engine_memory() -> Any:
+    """Provisa's engine_memory, which opens every DuckDB capped (REQ-2006): the package's own when
+    this module is Provisa's; else the file beside it, where a built image's front end carries it
+    (image_build.FRONT_MODULES), or core's own, when the front end is run from Provisa's source."""
+    if __package__:
+        return importlib.import_module("provisa.core.engine_memory")
+    from importlib import util
+    from pathlib import Path
+
+    here = Path(__file__).resolve().parent
+    path = here / "engine_memory.py"
+    if not path.is_file():  # the source tree: core's module, not a copy
+        path = here.parent / "core" / "engine_memory.py"
+    spec = util.spec_from_file_location("engine_memory", path)
+    assert spec is not None and spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+engine_memory = _engine_memory()
 
 #: The relation the statement's table is read as.
 ROWS = "__provisa_code_rows"
