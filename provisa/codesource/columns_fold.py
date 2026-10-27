@@ -19,8 +19,10 @@ batches of 1000 rows across the source's workers, streamed, and each call's inpu
 in place, by the output columns the function returned for each row. The output columns take the function's field names;
 an outer projection renames them.
 
-A call anywhere but as an item of the statement's own select list -- a WHERE, a JOIN, a GROUP BY,
-inside another expression -- is refused by name: the rows it needs are not read there. So is an
+A call as an item of a common table expression's select list is a staged step
+(:mod:`provisa.codesource.columns_stage`): the CTE is run on its own and the call folded there. A
+call anywhere else -- a WHERE, a JOIN, a GROUP BY, inside another expression -- is refused by name:
+the rows it needs are not read there. So is an
 aliased call (its outputs are several columns, named by the function) and one given another number
 of arguments than the function's input columns.
 """
