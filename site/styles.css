@@ -280,6 +280,7 @@ code { font-family: var(--mono); font-size: .87rem; line-height: 1.7; color: #cb
 .section-head { max-width: 720px; margin-bottom: 44px; }
 .section-head h2 { margin: 0 0 14px; font-size: clamp(1.7rem, 3.6vw, 2.4rem); letter-spacing: -0.02em; line-height: 1.15; }
 .section-sub { margin: 0; color: var(--text-muted); font-size: 1.06rem; }
+.section-sub + .section-sub { margin-top: 1em; }
 .section-note { margin: 34px 0 0; color: var(--text-muted); max-width: 760px; }
 .section-note strong { color: var(--text); }
 
@@ -310,13 +311,13 @@ code:not(pre code) {
 }
 
 /* ── Interfaces: three languages, then protocols by workload ─ */
-.langs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.langs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .lang {
-  padding: 20px 22px; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 16px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface);
 }
 .lang h4 { margin: 0 0 8px; font-size: 1.02rem; }
-.lang p { margin: 0; color: var(--text-muted); font-size: .93rem; }
+.lang p { margin: 0; color: var(--text-muted); font-size: .88rem; }
 
 .iface-matrix {
   margin-top: 18px; border: 1px solid var(--border); border-radius: var(--radius);

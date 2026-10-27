@@ -37,11 +37,11 @@ export const LIVE_DEMO_URL = "https://cloud.provisa.dev/demos/";
 
 /** Ordered groups with their anchor ids and display labels. */
 export const GROUPS = [
-  { id: "backend",      label: "A backend for your frontend" },
-  { id: "bi",           label: "BI without a warehouse" },
-  { id: "data-science", label: "Data science, connected" },
-  { id: "provision",    label: "Provision data to other teams" },
-  { id: "public-data",  label: "Join your data to public data" },
+  { id: "backend",      label: "App backends" },
+  { id: "bi",           label: "BI across sources" },
+  { id: "data-science", label: "Data science access" },
+  { id: "provision",    label: "Data provisioning" },
+  { id: "public-data",  label: "Public data" },
   { id: "compliance",   label: "Compliance and audit" },
 ];
 
