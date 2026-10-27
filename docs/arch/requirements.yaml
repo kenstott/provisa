@@ -89845,15 +89845,23 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     table; [END SUPERSEDED BLOCK] and a model table is never widened, so a CREATE or SET giving a model
     node a property its table does not declare is refused by name. Session tags on model nodes end with
     the session. (Amended 2026-10-27, A MIXED CREATE IS EPHEMERAL:) Maintainer 2026-10-27 (the rule is conformance
-    to the language, not protecting a careless caller): a CREATE naming only model labels is a model write
-    governed as any (REQ-661). A CREATE whose labels include a free label creates an ephemeral node: its
-    properties go to the free label''s session table, and node_labels holds a row for every label it was
-    given, model labels included. A model label then resolves to its model table together with every session
-    node carrying it, unioned by table into one sparse result: the model rows read under the role''s governance,
-    the session''s nodes beside them, a column one side lacks reading NULL. So MATCH (n:Orders) in that
-    session answers the real orders and the session''s own as Cypher would. The model is never written or
-    widened by such a CREATE, and no marker label is added: a session node carries exactly the labels it
-    was created with.'
+    to the language, not protecting a careless caller): [SUPERSEDED by REQ-2176, 2026-10-27 -- a model write
+    is a CREATE naming exactly one model table (ONE MODEL TABLE IS A MODEL WRITE, below). Kept here for
+    history; do not implement against it.] a CREATE naming only model labels is a model write governed as
+    any (REQ-661). [END SUPERSEDED BLOCK] A CREATE whose labels include a free label creates an ephemeral
+    node: its properties go to the free label''s session table, and node_labels holds a row for every label
+    it was given, model labels included. A model label then resolves to its model table together with every
+    session node carrying it, unioned by table into one sparse result: the model rows read under the role''s
+    governance, the session''s nodes beside them, a column one side lacks reading NULL. So MATCH (n:Orders)
+    in that session answers the real orders and the session''s own as Cypher would. The model is never written
+    or widened by such a CREATE, and no marker label is added: a session node carries exactly the labels
+    it was created with. (Amended 2026-10-27, ONE MODEL TABLE IS A MODEL WRITE:) Maintainer 2026-10-27:
+    a CREATE is a model write (REQ-661) only when its labels name exactly one model table ({Domain}:{Table}
+    or the table alone; the domain only qualifies it) and no free label. Every other CREATE makes an ephemeral
+    node carrying every label it was given: one model table with free labels, two or more model tables (no
+    single model row can be both), or free labels alone. Its properties go to its first free label''s session
+    table, or to the default session table when it has none, and its node_labels rows make it match each
+    model label beside that table''s real rows.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
