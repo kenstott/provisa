@@ -26,9 +26,19 @@
   group: get_objects table
   became: >-
     The table the suite would ingest (ints INTEGER, strs TEXT; rows (1, NULL), (NULL, 'foo'),
-    (42, 'spam')) is getobjects_fixture, declared in the fixture model; dropping a table is a
-    no-op, as the model holds every table.
+    (42, 'spam')) is getobjects_fixture, declared in the fixture model's conformance domain (the
+    suite's would be in the current schema, public); dropping a table is a no-op, as the model
+    holds every table.
   case: "TestConnection::test_get_objects_(table|column)_"
+
+- kind: adapted
+  group: Statement tests' tables
+  became: >-
+    sample_table (id INTEGER, value TEXT) and test_rows_affected (id INTEGER) are seeded empty in
+    the job's PostgreSQL and declared in the fixture model, writable by org_admin; each test's
+    CREATE TABLE is replaced by DELETE FROM the table, which leaves it empty as the CREATE did,
+    and its writes run through the governed pipeline.
+  case: "TestStatement::test_(execute_schema_noalias|parameter_null_typed|rows_affected)\\["
 
 - kind: client
   group: Bind before Prepare

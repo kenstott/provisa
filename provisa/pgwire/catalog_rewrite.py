@@ -29,6 +29,7 @@ from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
     _TABLE_MAP,
 )
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
 # transaction ids; txid_current() clients only require a stable increasing bigint.
@@ -38,6 +39,36 @@ _TXID_COUNTER = itertools.count(1)
 def next_txid() -> int:
     """Return the next monotonic bigint transaction id for txid_current()."""
     return next(_TXID_COUNTER)
+
+
+# REQ-2167: what an emulated pg_catalog function answers, in the DuckDB type that is sent as the
+# type PostgreSQL 17 says it returns (catalog_types names the column that type): a count is 0, as
+# where nothing has happened; anything else is NULL, as for a time that never was.
+_DUCKDB_TYPES = {
+    "bigint": "BIGINT",
+    "integer": "INTEGER",
+    "smallint": "SMALLINT",
+    "oid": "UINTEGER",
+    "xid": "UINTEGER",
+    "double precision": "DOUBLE",
+    "real": "FLOAT",
+    "boolean": "BOOLEAN",
+    "timestamp with time zone": "TIMESTAMPTZ",
+    "text": "VARCHAR",
+    "name": "VARCHAR",
+    "inet": "VARCHAR",
+}
+_COUNTS = frozenset({"BIGINT", "INTEGER", "SMALLINT", "UINTEGER", "DOUBLE", "FLOAT"})
+
+
+def _emulated(fn: str, untyped: exp.Expression) -> exp.Expression:
+    """The answer of a pg_catalog function Provisa has nothing to report for; ``untyped`` where
+    PostgreSQL's return type has no DuckDB counterpart (a record, or overloads that differ)."""
+    duckdb_type = _DUCKDB_TYPES.get(FUNCTION_RETURNS.get(fn, ""))
+    if duckdb_type is None:
+        return untyped
+    value = exp.Literal.number(0) if duckdb_type in _COUNTS else exp.null()
+    return exp.cast(value, exp.DataType.build(duckdb_type, dialect="duckdb"))
 
 
 # _pg_type.typname stores PG's internal type names (int4, bool, varchar, ...).
@@ -286,7 +317,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 )
                 return exp.Subquery(this=subq)
             if fn.startswith("pg_get_") or "pg_tablespace_location" in fn:
-                return exp.null()
+                return _emulated(fn, exp.null())
             if "pg_encoding_to_char" in fn:
                 return exp.Literal.string("UTF8")
             if "format_type" in fn:
@@ -372,9 +403,10 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 "pg_relation_size" in fn
                 or "pg_total_relation_size" in fn
                 or "pg_indexes_size" in fn
-                or "pg_stat_get" in fn
             ):
                 return exp.Literal.number(0)
+            if "pg_stat_get" in fn:
+                return _emulated(fn, exp.Literal.number(0))
             if "pg_table_is_visible" in fn or "pg_has_role" in fn:
                 return exp.true()
             if fn == "encode":

@@ -185,7 +185,8 @@ def test_pg_get_serial_sequence_nested_in_cast_chain_is_nulled():
         "pg_catalog.pg_attribute.attname) AS REGCLASS) AS OID)"
     )
     assert "pg_get_serial_sequence" not in out
-    assert "CAST(NULL AS BIGINT)" in out
+    # Its NULL, typed as the text PostgreSQL's pg_get_serial_sequence returns (REQ-2167).
+    assert "CAST(CAST(NULL AS TEXT) AS BIGINT)" in out
 
 
 def test_format_type_maps_internal_typname_to_display_name():

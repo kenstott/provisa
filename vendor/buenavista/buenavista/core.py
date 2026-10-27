@@ -48,6 +48,8 @@ class BVType(enum.Enum):
     REALARRAY = 26
     BOOLARRAY = 27
     DECIMALARRAY = 28
+    # An unsigned 4-byte integer (oid, xid): its binary form is not int4's past 2**31.
+    OID = 29
 
 
 class RawDataRowBytes(bytes):
@@ -78,6 +80,12 @@ class QueryResult:
 
     def column(self, index: int) -> Tuple[str, BVType]:
         raise NotImplementedError
+
+    def column_type_oid(self, index: int) -> Optional[int]:
+        """The type OID the column is described with, when it is not its BVType's own (a
+        PostgreSQL type sent in its base type's wire form, such as name as text); None for the
+        BVType's."""
+        return None
 
     def rows(self) -> Iterator[List]:
         raise NotImplementedError

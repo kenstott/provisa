@@ -8,5 +8,6 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Protocol bindings generated from the .proto files beside them (REQ-2175): FlightSql_pb2 from
-Apache Arrow's FlightSql.proto (Apache-2.0), by scripts/gen_flightsql_proto.py."""
+"""Protocol bindings generated from the .proto files beside them (REQ-2175): FlightSql_pb2 and
+Flight_pb2 from Apache Arrow's FlightSql.proto and Flight.proto (Apache-2.0), by
+scripts/gen_flightsql_proto.py."""

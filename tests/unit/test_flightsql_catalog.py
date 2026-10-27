@@ -146,7 +146,9 @@ def test_the_catalog_lists_the_roles_tables_in_its_schemas(served):
     with _connect(served.uri) as conn:
         objects = conn.adbc_get_objects(depth="tables").read_all().to_pylist()
     assert [c["catalog_name"] for c in objects] == ["provisa"]
-    (sales,) = objects[0]["catalog_db_schemas"]
+    # The current schema, as pgwire answers current_schema() and lists it, then the domains.
+    public, sales = objects[0]["catalog_db_schemas"]
+    assert (public["db_schema_name"], public["db_schema_tables"]) == ("public", [])
     assert sales["db_schema_name"] == "sales"
     assert [(t["table_name"], t["table_type"]) for t in sales["db_schema_tables"]] == [
         ("customers", "TABLE"),

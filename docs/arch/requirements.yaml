@@ -8824,6 +8824,11 @@
   - tests/unit/test_cypher_graph_fns.py
   - tests/unit/test_cypher_parser.py
   - tests/unit/test_cypher_translator.py
+  - tests/unit/test_cypher_tck_comparison.py
+  - tests/unit/test_cypher_tck_lists.py
+  - tests/unit/test_cypher_tck_maps.py
+  - tests/unit/test_cypher_tck_precedence.py
+  - tests/unit/test_cypher_tck_quantifiers.py
   - tests/unit/test_sql_to_cypher.py
   - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01
@@ -15005,8 +15010,13 @@
   type: behavioral
   description: 'The catalog intercept layer handles scalar expression queries: `current_user` / `session_user`
     → authenticated `role_id`; `current_database()` → `"provisa"`; `current_schema()` → `"public"`; `version()`
-    → `"PostgreSQL 14.0 on Provisa"`; `pg_backend_pid()` → `0`; `current_setting(...)` → value from a
-    fixed settings table; `SHOW <setting>` → value from the same settings table.'
+    → `"PostgreSQL 14.0 on Provisa"`; `pg_backend_pid()` → `0`; `current_setting(...)` → value from a fixed
+    settings table; `SHOW <setting>` → value from the same settings table. (Amended 2026-10-27, THE CATALOG
+    IS THE SERVED DATABASE:) Maintainer 2026-10-27: every catalog a client sees is the served database,
+    as in PostgreSQL where information_schema.table_catalog always equals current_database(): under multi-tenancy
+    the org the client named (database name or TLS hostname), single-tenant "provisa". pgwire''s information_schema,
+    pg_tables and schemata, and Flight SQL''s GetSessionOptions, GetCatalogs and GetObjects all report that
+    one name; no surface lists a hard-coded "provisa" while current_database() answers the org.'
   use_case: Scalar expression intercepts prevent JDBC drivers and ORMs from failing on startup queries
     that probe server identity and settings.
   code:
@@ -24925,17 +24935,22 @@
   type: behavioral
   description: 'Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements
     execute as direct table writes through the same write pipeline as GraphQL and SQL mutations, [SUPERSEDED
-    by REQ-1925, 2026-10-03 -- the row filter is applied by the one write admission and the hooks are
-    its one after-write step. Kept here for history; do not implement against it.] with RLS injection,
-    dialect transpilation, and all post-mutation hooks (response cache invalidation, MV stale marking,
-    Kafka change events, Kafka sink triggers, hot-table reload — absorbs REQ-798) [END SUPERSEDED BLOCK].
-    Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected. All writes are governed
-    by table/view write rights like any other write. This supersedes REQ-346 (read-only constraint), which
-    is now inaccurate. (Amended 2026-10-03, CYPHER WRITES PASS THE ONE WRITE ADMISSION AND BIND THEIR
-    PARAMETERS:) A Cypher write is translated and then admitted by the one write admission (REQ-1925),
-    which applies the role''s row filter to the translated write and runs the one after-write step. A Cypher definition (CREATE, DROP or ALTER of an index, a constraint or another object) is refused before lowering (REQ-1926). Cypher has no TRUNCATE; a statement opening with TRUNCATE is not Cypher and fails to parse (amended 2026-10-19). A Cypher write binds its parameters:
-    `$name` is a bound value and never literal text, and a statement that names a parameter the request
-    did not supply is refused with an error naming it.'
+    by REQ-1925, 2026-10-03 -- the row filter is applied by the one write admission and the hooks are its
+    one after-write step. Kept here for history; do not implement against it.] with RLS injection, dialect
+    transpilation, and all post-mutation hooks (response cache invalidation, MV stale marking, Kafka change
+    events, Kafka sink triggers, hot-table reload — absorbs REQ-798) [END SUPERSEDED BLOCK]. [SUPERSEDED
+    by REQ-2176, 2026-10-27 -- MERGE is MATCH then CREATE, DETACH DELETE is governed when every part is
+    an exact target, and SET/REMOVE of labels write session label rows; all lower through the graph IR.
+    Kept here for history; do not implement against it.] Non-direct write patterns (MERGE, DETACH, REMOVE)
+    are unsupported and rejected. [END SUPERSEDED BLOCK] All writes are governed by table/view write rights
+    like any other write. This supersedes REQ-346 (read-only constraint), which is now inaccurate. (Amended
+    2026-10-03, CYPHER WRITES PASS THE ONE WRITE ADMISSION AND BIND THEIR PARAMETERS:) A Cypher write is
+    translated and then admitted by the one write admission (REQ-1925), which applies the role''s row filter
+    to the translated write and runs the one after-write step. A Cypher definition (CREATE, DROP or ALTER
+    of an index, a constraint or another object) is refused before lowering (REQ-1926). Cypher has no TRUNCATE;
+    a statement opening with TRUNCATE is not Cypher and fails to parse (amended 2026-10-19). A Cypher write
+    binds its parameters: `$name` is a bound value and never literal text, and a statement that names a
+    parameter the request did not supply is refused with an error naming it.'
   use_case: Write support enables graph users to mutate data via Cypher while maintaining governance consistency
     with SQL and GraphQL mutations.
   code:
@@ -89592,7 +89607,43 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     natively, so it still pushes down (e.g. normalising both sides of an inet equality with the engine''s
     own string functions, or ordering by an engine-native sortable expression), the engine driver uses it,
     and the case is not an anomaly. Only what has no straightforward pushdown rewrite is listed as a known
-    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used.'
+    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used. (Amended 2026-10-27,
+    WHICH TYPES ARE SUBTYPES:) Maintainer 2026-10-27: a subtype exists so a client sees a type the base
+    would hide, and pgwire is the surface that reports it, so there is one subtype per distinct PostgreSQL
+    type and every other source''s type maps onto one of those or onto a base. The UI shows a column''s
+    subtype with its base. Added subtypes: geometry (planar, WKT text: MySQL geometry/point/linestring/polygon,
+    SQL Server geometry) and geography (geodetic: SQL Server geography, Elasticsearch geo_shape and geo_point);
+    PostgreSQL''s built-in shapes line, lseg, box, path, polygon and circle (beside point), each in PostgreSQL''s
+    own text form; the range types int4range, int8range, numrange, tsrange, tstzrange and daterange (Elasticsearch
+    integer_range/long_range map to int4range/int8range, float_range/double_range to numrange, date_range
+    to tstzrange); macaddr8; bit and varbit; tsvector. Not subtypes: Cassandra duration is interval, Cassandra
+    varint is decimal(38,0), MySQL year is integer, Elasticsearch ip_range and SQL Server hierarchyid stay
+    on text (no PostgreSQL equivalent with a fixed type). (Amended 2026-10-27, PG CONVENTIONS:) Maintainer
+    2026-10-27: IR types and subtypes follow PostgreSQL''s conventions (PostGIS for geometry and geography).
+    The test for a new subtype: it is a PostgreSQL type the IR does not already hold; a source type that
+    names a concept PostgreSQL already has maps onto that type and never becomes a subtype of its own. (Amended
+    2026-10-27, NO TYPE LEFT UNMAPPED:) Maintainer 2026-10-27: every source type maps onto an IR type or
+    subtype; a type that fits none becomes text (varchar), holding the source''s own text form. Registration
+    never fails on an unknown source type. A native array, struct or map stays json (REQ-1965), which is
+    PostgreSQL''s convention for them. (Amended 2026-10-27, SUBTYPES KEEP NATIVE SEMANTICS:) Maintainer
+    2026-10-27: a subtype keeps its native semantics wherever the serving engine has the type. When a sort,
+    filter, join or operator touches a subtyped column, the dialect layer casts it to the engine''s native
+    type (PostgreSQL/DuckDB inet, Trino ipaddress, the engine''s spatial and range types, and so on) so
+    ordering and the type''s operators (inet containment, range overlap and containment, spatial predicates)
+    behave as on the source; the model and storage stay on the base. Where the engine has no native equivalent,
+    the column keeps its base type''s semantics and an operator that only the native type defines is refused
+    by name, never evaluated over the text form. A source type that maps to text (no IR type or subtype)
+    has text semantics by design: its platform features are not available. (Amended 2026-10-27, WHEN THE
+    ENGINE LACKS THE TYPE:) Maintainer 2026-10-27: when a sort, filter, join or operator touches a subtyped
+    column, the compiler takes the first of these that applies: (1) the serving engine has the native type:
+    cast to it; (2) the operation touches only one source''s columns and that source has the native type:
+    it runs at the source and the engine federates the result; (3) the subtype declares a portable emulation
+    for the engine''s dialect (inet: family, fixed-width hex address and mask length as the ordering key,
+    containment as a range test on it; macaddr: fixed-width hex; ranges: bounds and their inclusivity give
+    overlap and containment), checked against the native answer in tests; (4) otherwise the operation is
+    refused by name (spatial predicates with neither native support nor pushdown, for instance), never evaluated
+    over the text form. Each subtype declares its native type per engine, whether it pushes down, and its
+    emulation if one exists.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -89986,7 +90037,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (a session relationship may end on a model node). Example: CREATE (c:Customer {id: 42}), (n:Note {text:
     ''call back''}), (c)-[:ABOUT]->(n) writes the Customer row to its source and the Note and ABOUT to the
     session. Statements are not atomic across the two paths (transactions are a no-op by design), so the
-    outcome equals running the parts as separate statements.'
+    outcome equals running the parts as separate statements. (Amended 2026-10-27, WRITES LOWER THROUGH THE
+    GRAPH IR:) Maintainer 2026-10-27: graph writes lower through the graph IR (REQ-2135) before MERGE, DETACH
+    DELETE and SPARQL Update are built. The IR gains write clauses (CREATE, SET, REMOVE, DELETE, MERGE);
+    the Cypher parser accepts them and SPARQL INSERT/DELETE DATA lower to them; one classifier over the
+    IR decides governed vs session for every language, and the governed writer takes IR input in place of
+    the regex translator. Reads need no IR change.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

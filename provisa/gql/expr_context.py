@@ -100,6 +100,12 @@ _STRING_FUNCTIONS = frozenset(
 _TEXT_TYPES = ("text", "varchar", "char", "character", "string", "citext", "nvarchar", "nchar")
 
 
+#: The functions whose value is a list.
+_LIST_FUNCTIONS = frozenset(
+    {"range", "tail", "keys", "labels", "nodes", "relationships", "collect", "split"}
+)
+
+
 def is_text_type(registered: str) -> bool:
     """Whether a registered column type holds text (varchar(64), character varying, ...)."""
     return registered.strip().lower().startswith(_TEXT_TYPES)
@@ -326,6 +332,50 @@ class TranslatorExprContext:
             return self.is_text(expr.left) or self.is_text(expr.right)
         return False
 
+    def is_list(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a list as the query writes it: a list literal, a comprehension, a
+        slice, a function answering a list, a list + anything, a CASE every branch of which is a
+        list, or a variable bound to one."""
+        from provisa.gql.expr_ast import (
+            Binary,
+            Case,
+            FunctionCall,
+            ListComprehension,
+            ListLiteral,
+            Paren,
+            Slice,
+        )
+
+        if isinstance(expr, Paren):
+            return self.is_list(expr.inner)
+        if isinstance(expr, (ListLiteral, ListComprehension, Slice)):
+            return True
+        if isinstance(expr, Variable):
+            return expr.name in self._t._list_vars
+        if isinstance(expr, FunctionCall):
+            name = expr.name.lower()
+            if name == "reverse":
+                return len(expr.args) == 1 and self.is_list(expr.args[0])
+            return name in _LIST_FUNCTIONS
+        if isinstance(expr, Binary) and expr.op == "+":
+            return self.is_list(expr.left) or self.is_list(expr.right)
+        if isinstance(expr, Case):
+            branches = [then for _, then in expr.whens]
+            if expr.default is not None:
+                branches.append(expr.default)
+            return all(self.is_list(b) for b in branches)
+        return False
+
+    def holds_list_items(self, expr: CypherExpr) -> bool:
+        """Whether every item of a list literal is a list (an UNWIND's variable)."""
+        from provisa.gql.expr_ast import ListLiteral
+
+        return (
+            isinstance(expr, ListLiteral)
+            and bool(expr.items)
+            and all(self.is_list(i) for i in expr.items)
+        )
+
     def holds_text_items(self, expr: CypherExpr) -> bool:
         """Whether every item of a list literal is a string (an UNWIND's variable)."""
         from provisa.gql.expr_ast import ListLiteral
@@ -361,6 +411,11 @@ class TranslatorExprContext:
             return None
         registered = self.property_type(exp.column(node.obj.name), node.name)
         return temporal.kind_of_type(registered) if registered else None
+
+    def parameter_value(self, name: str) -> object:
+        if name not in self._t._params:
+            raise CypherTranslateError(f"The parameter ${name} was not supplied")
+        return self._t._params[name]
 
     def resolve_parameter(self, name: str) -> exp.Expression:
         from provisa.gql import spatial, temporal
@@ -436,11 +491,17 @@ class TranslatorExprContext:
         if name == "exists":  # exists(x) → x IS NOT NULL — the only fn on an arbitrary expression
             return exp.Not(this=exp.Is(this=args[0], expression=exp.Null()))
         var = self._arg_var(args[0]) if args else None
+        result = None
+        if var is not None:
+            result = self._graph_scalar_fn(name, var)
+            if result is None:
+                result = self._graph_json_fn(name, var)
+        if result is None and name == "keys" and len(args) == 1:
+            # keys() of a map -- a literal, a parameter, a variable bound to one, or null -- is the
+            # map's own keys, in order (null for null).
+            return _anon("map_keys", args[0])
         if var is None:
             raise NotImplementedError(f"graph function {name!r} needs a variable argument")
-        result = self._graph_scalar_fn(name, var)
-        if result is None:
-            result = self._graph_json_fn(name, var)
         if result is None:
             raise NotImplementedError(f"graph function {name!r} unresolved for {var!r}")
         return result

@@ -36,6 +36,7 @@ the keys. What the front end does not lower is refused by name.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import itertools
 import re
@@ -1012,8 +1013,14 @@ class _Lowering:
             return self.expr(e.expr, bindings, labels)
         if name in ("AdditiveExpression", "MultiplicativeExpression"):
             out = self.expr(e.expr, bindings, labels)
+            floating = self._is_floating(e.expr, bindings)
             for op, other in zip(e.op or [], e.other or [], strict=True):
-                out = Binary(op, out, self.expr(other, bindings, labels))
+                operand = self.expr(other, bindings, labels)
+                if op == "/":
+                    out = self._divide(out, operand, floating or self._is_floating(other, bindings))
+                else:
+                    out = Binary(op, out, operand)
+                floating = floating or self._is_floating(other, bindings)
             return out
         return self._builtin(e, bindings, labels)
 
@@ -1145,6 +1152,40 @@ class _Lowering:
         if name == "Function":
             raise SparqlRefused(f"The function <{e.iri}> is not supported")
         return None
+
+    @staticmethod
+    def _divide(dividend: CypherExpr, divisor: CypherExpr, floating: bool) -> CypherExpr:
+        """SPARQL's op:numeric-divide (SPARQL 1.1 17.4.1.4, XPath 3.1): an integer divided by an
+        integer is a decimal, where Cypher's is an integer. Over xsd:float or xsd:double a zero
+        divisor answers INF or NaN; over integers and decimals it is an error, which leaves a BIND
+        unbound and a FILTER false, as null does (the TRY_CAST of a cast that fails is the same)."""
+        quotient = Binary("/", FunctionCall("toFloat", [dividend]), divisor)
+        if floating:
+            return quotient
+        return Case(
+            subject=None,
+            whens=[
+                (Binary("=", copy.deepcopy(divisor), Literal(0, "number")), Literal(None, "null"))
+            ],
+            default=quotient,
+        )
+
+    def _is_floating(self, arg: Any, bindings) -> bool:
+        """Whether ``arg`` is an xsd:float or xsd:double, as far as the query says when it is read:
+        a literal or a column of that datatype, a cast to one, or arithmetic over one."""
+        floating = (f"{XSD}double", f"{XSD}float")
+        if isinstance(arg, RdfLiteral):
+            return str(arg.datatype) in floating
+        if isinstance(arg, RdfVariable):
+            return str(arg) in bindings and bindings[str(arg)][1] in floating
+        name = getattr(arg, "name", None)
+        if name == "Function":
+            return str(arg.iri) in floating
+        if name in ("AdditiveExpression", "MultiplicativeExpression"):
+            return any(self._is_floating(a, bindings) for a in [arg.expr, *(arg.other or [])])
+        if name in ("UnaryMinus", "UnaryPlus"):
+            return self._is_floating(arg.expr, bindings)
+        return False
 
     def _datatype_of(self, arg: Any, bindings) -> str:
         """The datatype ``arg`` is known by when the query is read: a literal's own, or the
