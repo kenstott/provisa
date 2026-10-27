@@ -58,6 +58,7 @@ from provisa.gql.expr_ast import (
     TypedLiteral,
     Unary,
     Variable,
+    walk,
 )
 from provisa.gql import spatial, temporal
 from provisa.gql.translator_helpers import _and_all, _json_valued
@@ -395,6 +396,29 @@ def _written(value: object) -> CypherExpr:
     raise CypherTranslateError(f"{value!r} is no value a statement writes")
 
 
+def _nan_guarded(op: str, left: exp.Expression, right: exp.Expression) -> exp.Expression:
+    """A comparison of floats as openCypher (and IEEE 754) has it: NaN is equal to nothing, itself
+    included, and has no order -- every comparison with it false, <> true -- where an engine
+    (DuckDB, PostgreSQL) reads NaN as equal to itself and the largest value. is_nan is one IR
+    operation each engine renders; a null side leaves the comparison null."""
+
+    def nan(side: exp.Expression) -> exp.Expression:
+        return _anon("is_nan", exp.Cast(this=side.copy(), to=exp.DataType.build("DOUBLE")))
+
+    either_null = exp.Or(
+        this=exp.Is(this=left.copy(), expression=exp.Null()),
+        expression=exp.Is(this=right.copy(), expression=exp.Null()),
+    )
+    either_nan = exp.Or(this=nan(left), expression=nan(right))
+    return exp.Case(
+        ifs=[
+            exp.If(this=either_null, true=exp.Null()),
+            exp.If(this=either_nan, true=exp.true() if op in ("<>", "!=") else exp.false()),
+        ],
+        default=_BINARY_CMP[op](this=left, expression=right),
+    )
+
+
 def _reversed_list(items: exp.Expression) -> exp.Expression:
     """A list's items last to first, in the engine functions the IR names (DuckDB's reverse takes
     a string alone): each index from the last down to 1, read. An empty list is itself, as Trino's
@@ -558,6 +582,17 @@ class ExprLowering:
             return self._is_float(node.left) or self._is_float(node.right)
         return False
 
+    def _may_be_nan(self, node: CypherExpr) -> bool:
+        """Whether ``node`` can be NaN as the statement computes it: a float division (0.0 / 0.0)
+        within it. A column's own float is compared as the source holds it, so a comparison of
+        one still reaches the source."""
+        return any(
+            isinstance(n, Binary)
+            and n.op == "/"
+            and (self._is_float(n.left) or self._is_float(n.right))
+            for n in walk(node)
+        )
+
     def _refuse_mismatched_comparison(self, node: Binary) -> None:
         """REQ-778: a property compared with a literal its registered type never equals or orders
         against is the user's mistake, refused here rather than by the engine."""
@@ -665,6 +700,8 @@ class ExprLowering:
             if op in ("<>", "!="):
                 return exp.true()
             return exp.Null()
+        if op in _BINARY_CMP and (self._may_be_nan(node.left) or self._may_be_nan(node.right)):
+            return _nan_guarded(op, left, right)
         if op in ("=", "<>", "!=") and left_kind == right_kind == temporal.DURATION:
             return temporal.equality("=" if op == "=" else "<>", left, right)
         if op in ("=", "<>", "!="):
