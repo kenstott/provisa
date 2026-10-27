@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import Protocol, cast
 
 import sqlglot.expressions as exp
@@ -434,15 +435,54 @@ def _literal_depth(node: CypherExpr) -> int:
     return 0
 
 
-def _deep_written(node: ListLiteral | MapLiteral) -> exp.Expression | None:
-    """A list or map literal nested deeper than _DEEPEST_NESTED, written wholly in the statement,
-    as one JSON literal (the answer decodes it, GraphVarKind.JSON_VALUE); None for any other."""
+def _deep_written(
+    node: ListLiteral | MapLiteral, lower: Callable[[CypherExpr], exp.Expression]
+) -> exp.Expression | None:
+    """A list or map literal nested deeper than _DEEPEST_NESTED as its JSON (the answer decodes
+    it, GraphVarKind.JSON_VALUE): one JSON literal where the statement writes it wholly, else its
+    JSON text built from flat pieces -- the written structure as text, each computed item's JSON
+    joined in -- so the SQL holds no nesting of the literal's depth. None for a shallower one."""
     if _literal_depth(node) <= _DEEPEST_NESTED:
         return None
     value = _written_value(node)
-    if value is _UNKNOWN:
-        return None
-    return exp.Cast(this=exp.Literal.string(json.dumps(value)), to=exp.DataType.build("JSON"))
+    if value is not _UNKNOWN:
+        return exp.Cast(this=exp.Literal.string(json.dumps(value)), to=exp.DataType.build("JSON"))
+    pieces: list[str | exp.Expression] = []
+
+    def text(part: str) -> None:
+        if pieces and isinstance(pieces[-1], str):
+            pieces[-1] += part
+        else:
+            pieces.append(part)
+
+    def write(item: CypherExpr) -> None:
+        if isinstance(item, ListLiteral):
+            text("[")
+            for n, inner in enumerate(item.items):
+                text(", " if n else "")
+                write(inner)
+            text("]")
+        elif isinstance(item, MapLiteral):
+            text("{")
+            for n, (key, inner) in enumerate(item.entries):
+                text((", " if n else "") + json.dumps(key) + ": ")
+                write(inner)
+            text("}")
+        elif (written := _written_value(item)) is not _UNKNOWN:
+            text(json.dumps(written))
+        else:
+            # A computed item's JSON text; null where it is null (a null joined in is no text).
+            item_json = exp.Cast(
+                this=_anon("to_json", lower(item)), to=exp.DataType.build("VARCHAR")
+            )
+            pieces.append(exp.Coalesce(this=item_json, expressions=[exp.Literal.string("null")]))
+
+    write(node)
+    parts = [exp.Literal.string(p) if isinstance(p, str) else p for p in pieces]
+    joined = parts[0]
+    for part in parts[1:]:
+        joined = exp.DPipe(this=joined, expression=part)
+    return exp.Cast(this=exp.Paren(this=joined), to=exp.DataType.build("JSON"))
 
 
 def _reversed_list(items: exp.Expression) -> exp.Expression:
@@ -999,7 +1039,7 @@ class ExprLowering:
     # -- structures -------------------------------------------------------- #
 
     def _lower_ListLiteral(self, node: ListLiteral) -> exp.Expression:
-        deep = _deep_written(node)
+        deep = _deep_written(node, self.lower)
         if deep is not None:
             return deep
         elements = [
@@ -1021,7 +1061,7 @@ class ExprLowering:
         )
 
     def _lower_MapLiteral(self, node: MapLiteral) -> exp.Expression:
-        deep = _deep_written(node)
+        deep = _deep_written(node, self.lower)
         if deep is not None:
             return deep
         # {k: v, ...} → MAP(ARRAY['k',...], ARRAY[to_json(v), ...]) — encode each value to a JSON value

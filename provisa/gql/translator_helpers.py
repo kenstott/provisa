@@ -780,8 +780,12 @@ def _json_valued(
         e = e.this
     if isinstance(e, exp.Column) and e.name in json_columns:
         return "value"
-    if isinstance(e, exp.Cast) and e.to.is_type("json") and isinstance(e.this, exp.Literal):
-        return "value"  # a deep literal written as its JSON (expr_visitor._deep_written)
+    if (
+        isinstance(e, exp.Cast)
+        and e.to.is_type("json")
+        and isinstance(e.this, (exp.Literal, exp.Paren))
+    ):
+        return "value"  # a deep literal as its JSON (expr_visitor._deep_written)
     if isinstance(e, (exp.Max, exp.Min)):
         return "value" if _json_valued(e.this, json_columns) == "value" else None
     if isinstance(e, exp.Anonymous) and e.name.upper() in ("MAX_BY", "MIN_BY") and e.expressions:
