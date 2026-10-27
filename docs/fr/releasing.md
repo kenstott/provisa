@@ -89,7 +89,6 @@ Dépendances et barrières CVE :
 - Le workflow `CVE Audit` (`.github/workflows/cve-audit.yml`) exécute `pip-audit` sur l'ensemble verrouillé à chaque push sur `main`, à chaque pull request et chaque semaine.
 - À la release, les builds de `provisa` et de `provisa-client` produisent chacun un SBOM CycloneDX et exécutent `pip-audit` sur ce qui est livré. Le pilote JDBC est analysé avec `grype --fail-on medium`. Un résultat fait échouer le job, et la release ne publie rien : les envois vers PyPI et la release GitHub attendent tous deux ces jobs. Les SBOM et les rapports CVE sont joints à chaque release.
 - Les installeurs de bureau construisent le wheel `provisa` depuis les sources sur le runner de release et résolvent ses dépendances avec `pip` au moment du build, et non depuis `uv.lock` ; la barrière CVE de la release analyse l'ensemble verrouillé, pas les dépendances embarquées dans les installeurs.
-- Une exception documentée est ignorée : PYSEC-2026-4114 / CVE-2026-49265 (PKCE oauthlib côté serveur ; Provisa n'utilise oauthlib que côté client).
 - `packaging/pypi/requirements-embedded.lock` est une résolution de `provisa[embedded]` épinglée par hachage pour les miroirs en réseau isolé (voir `packaging/pypi/MIRROR-CHECKLIST.md`). Elle est régénérée à la main, pas à chaque release.
 
 ## Secrets de dépôt requis {: #required-repository-secrets }
