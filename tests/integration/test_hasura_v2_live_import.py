@@ -152,8 +152,12 @@ class TestLiveImport:
         resp = await client.post(
             "/data/graphql", json={"query": f"{{ {field} {{ id }} }}"}, headers=USER
         )
-        assert resp.status_code == 400, resp.text  # id is not in the user's select columns
-        assert "Cannot query field 'id'" in resp.text
+        # id is not in the user's select columns: the document does not validate, answered with
+        # its errors and no data (REQ-2167, GraphQL over HTTP under application/json).
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert "data" not in body, body
+        assert any("Cannot query field 'id'" in e["message"] for e in body["errors"]), body
 
     async def test_unbound_session_variable_denies_every_row(self, client):
         field = await _field(client, "albums", USER_NO_SESSION)

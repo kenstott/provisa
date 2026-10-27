@@ -130,7 +130,12 @@
       "address_not_found": "Nichts aufzulösen: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve kann in einer Operation nicht mit anderen Wurzelfeldern kombiniert werden",
       "source_starting": "Die Quelle {{source}} wird noch gestartet. Versuchen Sie es gleich noch einmal.",
-      "view_outside_load_window": "Die View {{view}} kann nur innerhalb ihres Lesefensters gelesen werden. Es öffnet sich wieder um {{opens_at}}."
+      "view_outside_load_window": "Die View {{view}} kann nur innerhalb ihres Lesefensters gelesen werden. Es öffnet sich wieder um {{opens_at}}.",
+      "graphql_body_missing": "Die Anfrage hat keinen Body: Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
+      "graphql_body_not_json": "Der Body der Anfrage ist kein JSON: {{error}}",
+      "graphql_request_not_object": "Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
+      "graphql_parameter_type": "Der Parameter {{parameter}} der GraphQL-Anfrage muss {{expected}} sein.",
+      "graphql_mutation_over_get": "Eine Mutation wird mit POST gesendet, nie mit GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",

@@ -130,7 +130,12 @@
       "address_not_found": "אין מה לפענח: {{reason}}",
       "mixed_resolve_and_other_fields": "לא ניתן לשלב את resolve עם שדות שורש אחרים באותה פעולה",
       "source_starting": "המקור {{source}} עדיין מופעל. נסה שוב בעוד רגע.",
-      "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}."
+      "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}.",
+      "graphql_body_missing": "לבקשה אין גוף: בקשת GraphQL היא אובייקט JSON עם שאילתה.",
+      "graphql_body_not_json": "גוף הבקשה אינו JSON: {{error}}",
+      "graphql_request_not_object": "בקשת GraphQL היא אובייקט JSON עם שאילתה.",
+      "graphql_parameter_type": "הפרמטר {{parameter}} של בקשת ה-GraphQL חייב להיות {{expected}}.",
+      "graphql_mutation_over_get": "מוטציה נשלחת ב-POST, אף פעם לא ב-GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",

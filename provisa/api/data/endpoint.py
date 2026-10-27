@@ -34,7 +34,7 @@ import time as _time
 from typing import Any, cast
 
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
@@ -60,6 +60,13 @@ from provisa.api.data.mutations import (
     _split_action_fields,
 )
 from provisa.executor.serialize import serialize_aggregate
+from graphql.language.ast import OperationDefinitionNode
+from provisa.api.data.graphql_http import (
+    GraphQLDocumentError,
+    get_parameters,
+    negotiated,
+    post_parameters,
+)
 from provisa.api.data.endpoint_helpers import (
     _format_response,
     _append_mermaid,
@@ -85,6 +92,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 class GraphQLRequest(BaseModel):
     query: str | None = None
+    operationName: str | None = None  # noqa: N815 -- the GraphQL-over-HTTP parameter's own name
     variables: dict | None = None
     role: str = "org_admin"  # test mode: role passed in request
     extensions: dict | None = None  # APQ: {"persistedQuery": {"sha256Hash": "..."}}
@@ -130,6 +138,16 @@ async def _resolve_apq(
         if expected != apq_hash:
             raise ApiError(400, "data.apq_hash_mismatch", "APQ hash mismatch")
     return request
+
+
+async def _graphql_post_request(raw_request: Request) -> GraphQLRequest:
+    """A POST's GraphQL request, from its JSON body; 400 for a request that is not one."""
+    return GraphQLRequest(**await post_parameters(raw_request))
+
+
+def _graphql_get_request(raw_request: Request) -> GraphQLRequest:
+    """A GET's GraphQL request, from its URL; 400 for a request that is not one."""
+    return GraphQLRequest(**get_parameters(raw_request))
 
 
 class CompileRequest(BaseModel):
@@ -221,10 +239,44 @@ def answered_status(exc: BaseException) -> int:
     return getattr(exc, "status_code", 500)
 
 
+@router.get("/graphql")
+async def graphql_get_endpoint(  # REQ-2167
+    raw_request: Request,
+    request: GraphQLRequest = Depends(_graphql_get_request),
+    x_provisa_role: str | None = Header(None),
+    accept: str | None = Header(None),
+    x_provisa_redirect: str | None = Header(None),
+    x_provisa_redirect_threshold: int | None = Header(None),
+    x_provisa_redirect_format: str | None = Header(None),
+    x_provisa_stats: str | None = Header(None),
+    x_provisa_normalized: str | None = Header(None),
+    x_provisa_as_of: str | None = Header(None),
+    x_provisa_as_recorded: str | None = Header(None),
+    x_provisa_trace: str | None = Header(None),
+):
+    """GraphQL over GET: the request's parameters URL-encoded, ``variables`` and ``extensions``
+    each a JSON string; a mutation is refused with 405. Answered as POST is."""
+    return await graphql_endpoint(
+        raw_request,
+        request,
+        x_provisa_role=x_provisa_role,
+        accept=accept,
+        x_provisa_redirect=x_provisa_redirect,
+        x_provisa_redirect_threshold=x_provisa_redirect_threshold,
+        x_provisa_redirect_format=x_provisa_redirect_format,
+        x_provisa_stats=x_provisa_stats,
+        x_provisa_normalized=x_provisa_normalized,
+        x_provisa_as_of=x_provisa_as_of,
+        x_provisa_as_recorded=x_provisa_as_recorded,
+        x_provisa_trace=x_provisa_trace,
+    )
+
+
 @router.post("/graphql")
+@negotiated  # REQ-2167: the answer's media type, and a document error, as Accept asks
 async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-288, REQ-289, REQ-290, REQ-291, REQ-300
     raw_request: Request,
-    request: GraphQLRequest,
+    request: GraphQLRequest = Depends(_graphql_post_request),
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
     x_provisa_redirect: str | None = Header(None),
@@ -315,12 +367,25 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         effective_variables = None
     else:
         # Parse and validate
+        # REQ-2167: a document that does not parse or validate is a GraphQL error, answered as the
+        # media type asks (graphql_http.negotiated).
         try:
             document = parse_query(schema, request.query, request.variables, ctx=ctx)
         except GraphQLValidationError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise GraphQLDocumentError([err.message for err in e.errors]) from e
         except GraphQLSyntaxError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise GraphQLDocumentError([e.message]) from e
+        # REQ-2167: a mutation is never executed over GET.
+        if getattr(raw_request, "method", "POST") == "GET" and any(
+            isinstance(d, OperationDefinitionNode) and d.operation == OperationType.MUTATION
+            for d in document.definitions
+        ):
+            raise ApiError(
+                405,
+                "data.graphql_mutation_over_get",
+                "A mutation is sent with POST, never GET.",
+                headers={"Allow": "POST"},
+            )
 
         directives = _build_directives_with_legacy(request.query, document, _legacy_hints)
         effective_variables = coerce_variable_defaults(document, request.variables)
@@ -333,8 +398,20 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 
             result = _cast(
                 _ExecutionResult,
-                gql_execute(schema, document, variable_values=effective_variables),
+                gql_execute(
+                    schema,
+                    document,
+                    variable_values=effective_variables,
+                    operation_name=request.operationName,
+                ),
             )
+            if result.errors and result.data is None:
+                # Variables that do not coerce, or no operation to run: nothing was executed.
+                raise GraphQLDocumentError([err.message for err in result.errors])
+            if result.errors:
+                return JSONResponse(
+                    {"data": result.data, "errors": [err.formatted for err in result.errors]}
+                )
             return JSONResponse({"data": result.data})
 
     steward_hint = directives.steward_hint

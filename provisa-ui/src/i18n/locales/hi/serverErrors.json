@@ -130,7 +130,12 @@
       "address_not_found": "हल करने के लिए कुछ नहीं: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve को एक ऑपरेशन में अन्य रूट फ़ील्ड के साथ नहीं जोड़ा जा सकता",
       "source_starting": "स्रोत {{source}} अभी शुरू हो रहा है। थोड़ी देर में फिर से प्रयास करें।",
-      "view_outside_load_window": "view {{view}} केवल उसकी पढ़ने की अवधि में पढ़ा जा सकता है। यह अगली बार {{opens_at}} पर खुलेगी।"
+      "view_outside_load_window": "view {{view}} केवल उसकी पढ़ने की अवधि में पढ़ा जा सकता है। यह अगली बार {{opens_at}} पर खुलेगी।",
+      "graphql_body_missing": "अनुरोध में कोई बॉडी नहीं है: GraphQL अनुरोध एक क्वेरी वाला JSON ऑब्जेक्ट होता है।",
+      "graphql_body_not_json": "अनुरोध की बॉडी JSON नहीं है: {{error}}",
+      "graphql_request_not_object": "GraphQL अनुरोध एक क्वेरी वाला JSON ऑब्जेक्ट होता है।",
+      "graphql_parameter_type": "GraphQL अनुरोध का {{parameter}} {{expected}} होना चाहिए।",
+      "graphql_mutation_over_get": "म्यूटेशन POST से भेजा जाता है, कभी GET से नहीं।"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",

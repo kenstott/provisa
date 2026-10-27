@@ -227,4 +227,7 @@ class TestTheImportedAppWorks:
         resp = await client.post(
             "/data/graphql", json={"query": f"{{ {customers} {{ givenName }} }}"}, headers=ANALYST
         )
-        assert resp.status_code == 400 and "givenName" in resp.text
+        # The document does not validate: its errors, no data (REQ-2167).
+        body = resp.json()
+        assert resp.status_code == 200 and "data" not in body, resp.text
+        assert any("givenName" in e["message"] for e in body["errors"]), body

@@ -49,6 +49,8 @@ Executa uma consulta ou mutação GraphQL.
 
 A requisição é executada com sua função atuante: a função do usuário autenticado ou, no modo de desenvolvimento (sem autenticação), o cabeçalho `X-Provisa-Role`, `org_admin` quando o cabeçalho está ausente. O campo `role` no corpo não seleciona uma função. Se estiver presente, deve ser igual à função atuante; um valor diferente retorna `400` com o código `data.role_mismatch`, nomeando as duas funções. A mesma regra vale para `POST /data/sql`, `POST /data/query` e `POST /query/nl`.
 
+**GraphQL sobre HTTP.** O endpoint segue a especificação GraphQL-over-HTTP. Ele também responde a `GET /data/graphql`, com `query`, `operationName`, `variables` e `extensions` codificados na URL (`variables` e `extensions` como strings JSON); uma mutação enviada com `GET` retorna `405`. Uma requisição cujo `Accept` lista `application/graphql-response+json` antes de `application/json` é respondida com esse tipo de mídia; qualquer outra requisição é respondida com `application/json`. Uma requisição que não é uma requisição GraphQL retorna `400`: sem corpo, um corpo que não é um objeto JSON, ou um parâmetro do tipo JSON errado (`query` e `operationName` são strings, `variables` e `extensions` são objetos). Um documento que não é analisado ou validado, ou cujas variáveis não podem ser convertidas, é respondido com seus `errors` e sem `data`: status `200` com `application/json`, e `400` com `application/graphql-response+json` ou quando `Accept` pede um formato de arquivo como CSV.
+
 O campo `extensions` suporta o protocolo Automatic Persisted Query (APQ):
 
 ```json
