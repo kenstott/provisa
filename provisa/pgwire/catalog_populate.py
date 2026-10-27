@@ -359,7 +359,7 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
         relrowsecurity BOOLEAN, relforcerowsecurity BOOLEAN, relispopulated BOOLEAN,
         relreplident VARCHAR, relispartition BOOLEAN, relrewrite INTEGER,
         relfrozenxid INTEGER, relminmxid INTEGER, relacl VARCHAR,
-        reloptions VARCHAR, relpartbound VARCHAR)""")
+        reloptions VARCHAR[], relpartbound VARCHAR)""")
     natts_by_toid: dict[int, int] = {}
     for col in idx.all_cols:
         natts_by_toid[col[0]] = natts_by_toid.get(col[0], 0) + 1
@@ -581,7 +581,7 @@ def _populate_pg_attribute(db, idx: CatalogIndex) -> None:
         attnotnull BOOLEAN, atthasdef BOOLEAN, atthasmissing BOOLEAN,
         attidentity VARCHAR, attgenerated VARCHAR, attisdropped BOOLEAN,
         attislocal BOOLEAN, attinhcount INTEGER, attcollation INTEGER,
-        attacl VARCHAR, attoptions VARCHAR, attfdwoptions VARCHAR)""")
+        attacl VARCHAR, attoptions VARCHAR[], attfdwoptions VARCHAR[])""")
     attr_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
         pg_oid = _physical_to_pg_oid(col_type)
@@ -789,7 +789,7 @@ def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
         oid INTEGER, rolname VARCHAR, rolsuper BOOLEAN, rolinherit BOOLEAN,
         rolcreaterole BOOLEAN, rolcreatedb BOOLEAN, rolcanlogin BOOLEAN,
         rolreplication BOOLEAN, rolconnlimit INTEGER, rolpassword VARCHAR,
-        rolvaliduntil VARCHAR, rolbypassrls BOOLEAN, rolconfig VARCHAR)""")
+        rolvaliduntil TIMESTAMPTZ, rolbypassrls BOOLEAN, rolconfig VARCHAR[])""")
 
     rows: list[tuple] = []
     seen_names: set[str] = set()
@@ -844,7 +844,7 @@ def _populate_pg_settings(db) -> None:
         name VARCHAR, setting VARCHAR, unit VARCHAR, category VARCHAR,
         short_desc VARCHAR, extra_desc VARCHAR, context VARCHAR,
         vartype VARCHAR, source VARCHAR, min_val VARCHAR, max_val VARCHAR,
-        enumvals VARCHAR, boot_val VARCHAR, reset_val VARCHAR,
+        enumvals VARCHAR[], boot_val VARCHAR, reset_val VARCHAR,
         sourcefile VARCHAR, sourceline INTEGER, pending_restart BOOLEAN)""")
     db.executemany(
         f"INSERT INTO _pg_settings VALUES ({','.join(['?'] * 17)})",

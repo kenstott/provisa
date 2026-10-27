@@ -350,7 +350,7 @@ def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
         conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
         confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
         conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
-        conkey INTEGER[], confkey INTEGER[], conpfeqop INTEGER[], conppeqop INTEGER[],
+        conkey SMALLINT[], confkey SMALLINT[], conpfeqop INTEGER[], conppeqop INTEGER[],
         conffeqop INTEGER[], conexclop INTEGER[], conbin VARCHAR)""")
     constraint_rows: list[tuple] = []
     if ctx:

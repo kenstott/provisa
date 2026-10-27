@@ -543,11 +543,13 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "BLOB": BVType.BYTES,
     "BYTEA": BVType.BYTES,
     "INTERVAL": BVType.INTERVAL,
-    # PostgreSQL's unsigned 4-byte integers, and information_schema's domain over integer
+    # PostgreSQL's unsigned 4-byte integers, and information_schema's domains over integer and
+    # timestamp with time zone
     # (REQ-2167: a catalog column is described with the type PostgreSQL declares for it).
     "OID": BVType.OID,
     "XID": BVType.OID,
     "INFORMATION_SCHEMA.CARDINAL_NUMBER": BVType.INTEGER,
+    "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
 }
 _INT_TYPES = {
     "INTEGER",
