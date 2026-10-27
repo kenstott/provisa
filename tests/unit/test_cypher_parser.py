@@ -410,3 +410,10 @@ def test_a_relationship_written_without_brackets_is_read(query, direction):
 def test_a_single_dash_between_nodes_is_not_a_relationship():
     with pytest.raises(CypherParseError):
         parse_cypher("MATCH (a:A)-(b:A) RETURN a")
+
+
+def test_a_statement_that_is_not_cypher_is_invalid_input_as_neo4j_says_it():
+    """A Neo4j client reads a syntax error by its words (the driver's cypher-error example):
+    the token the statement cannot start with is "Invalid input"."""
+    with pytest.raises(CypherParseError, match=r"^Invalid input 'SELECT'"):
+        parse_cypher("SELECT * FROM Employees WHERE name = $name")
