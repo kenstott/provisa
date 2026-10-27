@@ -3,6 +3,7 @@
     "expand": "Expandir vista",
     "webglError": "No se pudo iniciar la vista 3D: {{error}}",
     "hint": "Arrastre para orbitar · desplácese para ampliar · arrastre con el botón derecho para mover",
+    "hintFlat": "Arrastre para mover · desplácese para ampliar",
     "rotate": "Rotar",
     "resetView": "Restablecer vista",
     "zoomTo": "Ampliar a esta columna",

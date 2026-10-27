@@ -16,9 +16,12 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FrameLoop } from "./frameLoop";
 import { TurnPause } from "./turnPause";
+import { bestView, type View, type ViewNode } from "./bestView";
 
 /** How often a stage that only turns is drawn (20 frames a second). */
 const TURN_FRAME_MS = 50;
+/** How fast a stage turns: a full turn in 100 s. */
+const TURN_RAD_PER_MS = (Math.PI * 2) / 100_000;
 
 export interface SceneTheme {
   canvas: string;
@@ -81,11 +84,25 @@ export interface VectorScene {
 }
 
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
+/** Looking straight at the z = 0 plane: a 2D view. */
+const FACE_ON: View = {
+  dir: new THREE.Vector3(0, 0, 1),
+  up: new THREE.Vector3(0, 1, 0),
+  axis: new THREE.Vector3(0, 0, 1),
+};
 
 export abstract class BaseScene<H> {
   protected renderer: THREE.WebGLRenderer;
   protected scene = new THREE.Scene();
-  protected camera = new THREE.PerspectiveCamera(38, 1, 0.1, 600);
+  /** The 3D camera, and the 2D one: face-on, orthographic, panned and zoomed only (setFlat). */
+  protected persp = new THREE.PerspectiveCamera(38, 1, 0.1, 600);
+  protected ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 600);
+  /** The camera the stage is drawn through. */
+  protected camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.persp;
+  /** Whether the stage is in 2D (setFlat). */
+  protected flat = false;
+  /** REQ-2174: the view that shows the most of the content, once computed (settleView). */
+  protected best: View | null = null;
   protected controls: OrbitControls;
   protected hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.7);
   protected sun = new THREE.DirectionalLight(0xffffff, 0.85);
@@ -101,6 +118,9 @@ export abstract class BaseScene<H> {
     p1: THREE.Vector3;
     t0: THREE.Vector3;
     t1: THREE.Vector3;
+    u0: THREE.Vector3;
+    /** Turns u0 to the view's up. */
+    turn: THREE.Quaternion;
     start: number;
     dur: number;
   } | null = null;
@@ -125,6 +145,16 @@ export abstract class BaseScene<H> {
   private turnAsked = false;
   /** Stops the turn while nobody uses the page (turnPause.ts). */
   private turnPause: TurnPause;
+  /** Whether the stage is turning now: asked to, in 3D, motion not reduced, the page in use. */
+  private turning = false;
+  /** What the turn goes about: the best view's axis, so the spread plane keeps facing the viewer. */
+  private turnAxis = UP_AXIS.clone();
+  /** When the turn last moved the camera; 0 while it is not turning. */
+  private turnedAt = 0;
+  /** The stage's width over its height. */
+  private aspectRatio = 1;
+  /** Half the 2D camera's height in world units, before its zoom: set to fit by the scene. */
+  protected orthoHalf = 10;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -154,7 +184,6 @@ export abstract class BaseScene<H> {
     this.controls.screenSpacePanning = true;
     this.controls.minDistance = 2;
     this.controls.maxDistance = 120;
-    this.controls.autoRotateSpeed = 0.6;
     this.frames = new FrameLoop(this.loop);
     this.turnPause = new TurnPause(() => this.applyTurn());
     // The view moved by hand (a drag, the wheel): draw it. The loop's own update() (the turn, the
@@ -245,19 +274,26 @@ export abstract class BaseScene<H> {
     sh.updateProjectionMatrix();
   }
 
-  protected flyTo(pos: THREE.Vector3, tgt: THREE.Vector3, instant: boolean) {
+  /** Moves the camera to look at ``tgt`` from ``pos``, ``up`` up on screen: at once when
+   * ``instant`` or motion is reduced, else eased there. */
+  protected flyTo(pos: THREE.Vector3, tgt: THREE.Vector3, instant: boolean, up = UP_AXIS) {
     if (instant || this.reduced) {
       this.camera.position.copy(pos);
       this.controls.target.copy(tgt);
+      this.setUp(up);
+      this.camera.lookAt(tgt);
       this.tween = null;
       this.invalidate();
       return;
     }
+    const u0 = this.camera.up.clone();
     this.tween = {
       p0: this.camera.position.clone(),
       p1: pos,
       t0: this.controls.target.clone(),
       t1: tgt,
+      u0,
+      turn: new THREE.Quaternion().setFromUnitVectors(u0, up.clone().normalize()),
       start: performance.now(),
       dur: 750,
     };
@@ -265,8 +301,40 @@ export abstract class BaseScene<H> {
   }
 
   protected get aspect(): number {
-    return this.camera.aspect;
+    return this.aspectRatio;
   }
+
+  /** The content a best view is computed for (REQ-2174): its points, their radii and label widths
+   * in world units, and its edges; null keeps the scene's own view (a surface, a cloud). */
+  protected viewContent(): { nodes: ViewNode[]; edges: [number, number][] } | null {
+    return null;
+  }
+
+  /** Computes the content's best view (REQ-2174), the axis a turn goes about, and returns it; in
+   * 2D the view is face-on. A scene calls it once its content is laid out. */
+  protected settleView(): View | null {
+    const content = this.viewContent();
+    this.best = this.flat ? FACE_ON : content ? bestView(content.nodes, content.edges) : null;
+    this.turnAxis.copy(this.best ? this.best.axis : UP_AXIS);
+    this.alignFloor();
+    return this.best;
+  }
+
+  /** The floor grid square to the best view's up, a margin under the content, so it reads as the
+   * ground whichever way the view stands; in 2D, behind the content, facing the camera. A scene
+   * whose own view is kept (no best view) keeps its floor as laid. */
+  protected alignFloor() {
+    const content = this.viewContent();
+    if (!this.floor || !this.best || !content || content.nodes.length === 0) return;
+    const normal = this.flat ? FACE_ON.dir : this.best.up;
+    const lowest = Math.min(...content.nodes.map((n) => n.at.dot(normal) - n.radius));
+    this.floor.quaternion.setFromUnitVectors(UP_AXIS, normal);
+    this.floor.position.copy(normal).multiplyScalar(lowest - 1.5);
+  }
+
+  /** The scene's resting view: where it opens, where Reset puts it, and where it eases back to
+   * when a turn pauses on idle. */
+  abstract resetView(instant?: boolean): void;
 
   /** Lays a size×size floor grid at height ``y`` in ``world``, drawn or not as setGrid last said. */
   protected layFloor(world: THREE.Object3D, size: number, y: number, mat: THREE.LineBasicMaterial) {
@@ -304,6 +372,24 @@ export abstract class BaseScene<H> {
 
   setRotate(on: boolean) {
     this.turnAsked = on;
+    this.applyTurn();
+  }
+
+  /** 2D (REQ-2174): the face-on orthographic camera, panned and zoomed only, never turning; or
+   * back to the 3D camera. The scene lays its content out flat and resets its view after. */
+  setFlat(on: boolean) {
+    if (on === this.flat) return;
+    this.flat = on;
+    const from = this.camera;
+    this.camera = on ? this.ortho : this.persp;
+    this.camera.position.copy(from.position);
+    this.camera.up.copy(from.up);
+    this.controls.object = this.camera;
+    this.controls.enableRotate = !on;
+    // In 2D a drag pans, as a map does; in 3D it orbits.
+    this.controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    this.controls.touches.ONE = on ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+    this.resize();
     this.applyTurn();
   }
 
@@ -349,17 +435,19 @@ export abstract class BaseScene<H> {
   orbit(scale: number): Orbit {
     const position = this.camera.position.clone();
     const target = this.controls.target.clone();
+    const up = this.camera.up.clone();
     const usual = this.renderer.getPixelRatio();
     const offset = position.clone().sub(target);
+    const axis = this.turnAxis.clone();
     this.held = true;
     this.tween = null;
-    this.controls.autoRotate = false;
     this.renderer.setPixelRatio(scale);
     this.resize();
     return {
       frame: (fraction, draw) => {
-        const turned = offset.clone().applyAxisAngle(UP_AXIS, fraction * Math.PI * 2);
-        this.camera.position.copy(target).add(turned);
+        const angle = fraction * Math.PI * 2;
+        this.camera.position.copy(target).add(offset.clone().applyAxisAngle(axis, angle));
+        this.camera.up.copy(up).applyAxisAngle(axis, angle);
         this.camera.lookAt(target);
         this.onFrame();
         this.placeLabels();
@@ -369,6 +457,7 @@ export abstract class BaseScene<H> {
       end: () => {
         this.camera.position.copy(position);
         this.controls.target.copy(target);
+        this.camera.up.copy(up);
         this.camera.lookAt(target);
         this.renderer.setPixelRatio(usual);
         this.resize();
@@ -489,11 +578,36 @@ export abstract class BaseScene<H> {
 
   // ---------- internals ----------
 
-  /** Turns while asked to, motion is not reduced and the page is in use; an export holds it. */
+  /** Turns while asked to, in 3D, motion is not reduced and the page is in use; an export holds
+   * it. A turn paused on idle eases back to the resting view (REQ-2174). */
   private applyTurn() {
     if (this.held) return;
-    this.controls.autoRotate = this.turnAsked && !this.reduced && !this.turnPause.paused;
+    const was = this.turning;
+    this.turning = this.turnAsked && !this.flat && !this.reduced && !this.turnPause.paused;
+    if (was && !this.turning && this.turnPause.paused) this.resetView(false);
     this.invalidate();
+  }
+
+  /** Up on screen is ``up``, and a drag orbits about it: OrbitControls keeps the up it was made
+   * with in a quaternion of its own (three 0.170's _quat and _quatInverse), set here to match. */
+  private setUp(up: THREE.Vector3) {
+    this.camera.up.copy(up).normalize();
+    const orbit = this.controls as unknown as {
+      _quat: THREE.Quaternion;
+      _quatInverse: THREE.Quaternion;
+    };
+    orbit._quat.setFromUnitVectors(this.camera.up, UP_AXIS);
+    orbit._quatInverse.copy(orbit._quat).invert();
+  }
+
+  /** The camera turned ``angle`` about turnAxis through the target, up on screen with it: the
+   * spread plane moves within itself and keeps its face to the viewer. */
+  private turnBy(angle: number) {
+    const target = this.controls.target;
+    const offset = this.camera.position.clone().sub(target).applyAxisAngle(this.turnAxis, angle);
+    this.camera.position.copy(target).add(offset);
+    this.camera.up.applyAxisAngle(this.turnAxis, angle);
+    this.camera.lookAt(target);
   }
 
   private applyBaseTheme() {
@@ -526,6 +640,8 @@ export abstract class BaseScene<H> {
       this.down = { x: e.clientX, y: e.clientY };
       this.dragging = true;
       this.tween = null;
+      // A drag orbits about up as the turn left it.
+      this.setUp(this.camera.up);
       this.callbacks.onUserMove();
     };
     const onUp = (e: PointerEvent) => {
@@ -569,9 +685,20 @@ export abstract class BaseScene<H> {
     const h = parent.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    this.aspectRatio = w / h;
+    this.persp.aspect = w / h;
+    this.persp.updateProjectionMatrix();
+    this.fitOrtho();
     this.frames.invalidate();
+  }
+
+  /** The 2D camera's frustum: orthoHalf high, as wide as the stage's aspect makes it. */
+  protected fitOrtho() {
+    this.ortho.left = -this.orthoHalf * this.aspectRatio;
+    this.ortho.right = this.orthoHalf * this.aspectRatio;
+    this.ortho.top = this.orthoHalf;
+    this.ortho.bottom = -this.orthoHalf;
+    this.ortho.updateProjectionMatrix();
   }
 
   /** One frame: advance what moves, and draw when it moved or ``changed``. Answers whether
@@ -585,14 +712,29 @@ export abstract class BaseScene<H> {
       const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
       this.camera.position.lerpVectors(tw.p0, tw.p1, e);
       this.controls.target.lerpVectors(tw.t0, tw.t1, e);
-      if (k >= 1) this.tween = null;
+      const up = tw.u0
+        .clone()
+        .applyQuaternion(
+          new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(), tw.turn, e),
+        );
+      if (k >= 1) {
+        this.tween = null;
+        this.setUp(up);
+      } else this.camera.up.copy(up);
+      this.camera.lookAt(this.controls.target);
       moving = true;
     }
+    if (this.turning && !this.dragging && !this.tween) {
+      // The first frame of a turn only sets the clock; a frame long delayed moves by at most 0.1 s.
+      if (this.turnedAt) this.turnBy(TURN_RAD_PER_MS * Math.min(100, now - this.turnedAt));
+      this.turnedAt = now;
+      moving = true;
+    } else this.turnedAt = 0;
     this.updating = true;
     if (this.controls.update()) moving = true;
     this.updating = false;
     const animating = this.animating();
-    if (this.controls.autoRotate || animating) moving = true;
+    if (animating) moving = true;
     if (changed || animating) this.renderer.shadowMap.needsUpdate = true;
     // Only turning: the orbit still advances every frame, but it is drawn at a slower rate --
     // a turn reads as smooth at it, at a third of the cost.

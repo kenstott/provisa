@@ -19,7 +19,8 @@ import { Alert, Button, Group, Loader, Modal } from "@mantine/core";
 import { Network } from "lucide-react";
 import { ExpandButton, FitModal } from "../../pages/tables/profile3d/Expandable3D";
 import { GraphExplorer } from "./GraphExplorer";
-import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
+import { useGraphSettings, type GraphKey } from "../../pages/tables/profile3d/graphSettings";
+import { DimensionToggle } from "./DimensionToggle";
 import { GraphStage, type StageState } from "./GraphStage";
 import {
   PRODUCT_SCOPE,
@@ -89,14 +90,17 @@ function PanelStage({
   product,
   productName,
   covered,
+  flat,
 }: {
   graph: GraphData;
   product: string;
   productName: string;
   /** Its expanded view is open over it: it holds still, drawing nothing it would not show. */
   covered: boolean;
+  /** REQ-2174: drawn in 2D, as its expanded view is. */
+  flat: boolean;
 }) {
-  const at = useMemo(() => layoutGraph(graph, "force"), [graph]);
+  const at = useMemo(() => layoutGraph(graph, "force", 1, flat), [graph, flat]);
   const [picked, setSelected] = useState<string | null>(product);
   const [hover, setHover] = useState<GraphHover | null>(null);
   // The card is a glance: it turns and draws no grid, whatever a viewer's saved graph defaults
@@ -107,7 +111,7 @@ function PanelStage({
     graph,
     at,
     frame: 0,
-    frontal: false,
+    flat,
     selected: picked,
     setSelected,
     hover,
@@ -156,15 +160,29 @@ export function GraphPanel({
   const { data, error, scoped, onScope } = useProductGraph(productId, open);
   const product = productNode(productId);
   const graph = useMemo(() => panelGraph(core, product), [core, product]);
+  // The card's 2D/3D choice is its expanded view's: one remembered setting for the product's graph.
+  const settingsKey = useMemo(() => ({ kind: "product-graph", subject: productId }), [productId]);
+  const [view, saveView] = useGraphSettings(settingsKey, { flat: false as boolean });
   return (
     <div className="g3d-panel" ref={ref} data-testid="graph-panel">
       {/* Its card names it; the expand button opens the full graph. */}
       <Group justify="flex-end" gap="xs">
+        <DimensionToggle
+          flat={view.flat}
+          onChange={(on) => saveView("flat", on)}
+          testId="graph-panel"
+        />
         <ExpandButton onClick={() => setOpen(true)} testId="graph-panel-expand" />
       </Group>
       <div className="p3d g3d-panel-view">
         {seen && (
-          <PanelStage graph={graph} product={product} productName={productName} covered={open} />
+          <PanelStage
+            graph={graph}
+            product={product}
+            productName={productName}
+            covered={open}
+            flat={view.flat}
+          />
         )}
       </div>
       {open && !data && (
@@ -183,7 +201,7 @@ export function GraphPanel({
           preset="all"
           exportName={productName}
           focus={product}
-          settingsKey={{ kind: "product-graph", subject: productId }}
+          settingsKey={settingsKey}
         />
       )}
     </div>

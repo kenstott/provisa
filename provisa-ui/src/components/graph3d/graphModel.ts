@@ -604,6 +604,8 @@ export function layoutGraph(
   layout: LayoutKind,
   /** How close a force layout draws the nodes (1 the usual spacing); a tree is fixed. */
   attraction = 1,
+  /** Every node in the z = 0 plane: the graph's 2D view (REQ-2174). A tree is flat already. */
+  flat = false,
 ): Map<string, [number, number, number]> {
   if (layout === "tree") return treeLayout(g);
   const ids = g.nodes.map((n) => n.id);
@@ -613,6 +615,7 @@ export function layoutGraph(
     g.edges.map((e) => ({ a: e.a, b: e.b, strength: PULL[e.kind] })),
     radius,
     attraction,
+    flat,
   );
 }
 

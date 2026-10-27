@@ -17,6 +17,7 @@ import {
   PRESET_ORDER,
   PRODUCT_SCOPE,
   availableLayers,
+  layoutGraph,
   panelGraph,
   visibleGraph,
   type GraphData,
@@ -96,6 +97,25 @@ describe("the data product graph's layers", () => {
   });
 });
 
+describe("a graph laid out flat (REQ-2174, 2D)", () => {
+  it.each(["force", "tree"] as const)("puts every node of a %s layout in one plane", (layout) => {
+    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const at = layoutGraph(g, layout, 1, true);
+    expect(at.size).toBe(g.nodes.length);
+    for (const [, p] of at) expect(p[2]).toBe(0);
+    // No two nodes on one spot.
+    const spots = new Set([...at.values()].map((p) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`));
+    expect(spots.size).toBe(at.size);
+  });
+
+  it("spreads a flat force layout as wide as the 3D one", () => {
+    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const reach = (at: Map<string, [number, number, number]>) =>
+      Math.max(...[...at.values()].map((p) => Math.hypot(...p)));
+    expect(reach(layoutGraph(g, "force", 1, true))).toBeCloseTo(reach(layoutGraph(g, "force")), 6);
+  });
+});
+
 describe("the data product graph's filters", () => {
   const all = new Set<LayerId>(["products", "tables", "commands", "quality", "tags", "ontology"]);
 
@@ -164,13 +184,7 @@ describe("column lineage (REQ-2129)", () => {
   };
 
   it("draws a column's upstream columns once its table is expanded, and not before", () => {
-    const folded = visibleGraph(
-      withColumns,
-      preset("all"),
-      NO_FILTERS,
-      new Set(),
-      PRODUCT_SCOPE,
-    );
+    const folded = visibleGraph(withColumns, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
     expect(kinds(folded)).not.toContain("column_lineage");
     expect(ids(folded)).not.toContain("c:9:amount");
     const open = visibleGraph(

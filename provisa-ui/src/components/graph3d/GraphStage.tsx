@@ -25,8 +25,8 @@ export interface StageState {
   at: Map<string, [number, number, number]>;
   /** Changes when the graph is laid out afresh (a preset), so the camera is reset to fit it. */
   frame: number;
-  /** A flat layout (tree, lanes) is seen from the front. */
-  frontal: boolean;
+  /** REQ-2174: drawn in 2D -- laid out flat, through a face-on orthographic camera. */
+  flat: boolean;
   selected: string | null;
   setSelected: (id: string) => void;
   hover: GraphHover | null;
@@ -90,7 +90,7 @@ export function GraphStage({
           },
           theme,
         );
-        sc.setFrontal(latest.current.frontal);
+        sc.setFlat(latest.current.flat);
         sc.setGrid(latest.current.grid);
         sc.setData(latest.current.graph, latest.current.at, true);
         return sc;
@@ -100,16 +100,18 @@ export function GraphStage({
     graph: GraphData;
     at: Map<string, [number, number, number]>;
     frame: number;
+    flat: boolean;
   } | null>(null);
   useEffect(() => {
     if (!scene) return;
     const was = drawn.current;
-    drawn.current = { graph: s.graph, at: s.at, frame: s.frame };
+    drawn.current = { graph: s.graph, at: s.at, frame: s.frame, flat: s.flat };
     // A new graph, or the same graph laid out anew (the attraction moved), is drawn again.
     if (was === null || (was.graph === s.graph && was.at === s.at)) return;
-    scene.setFrontal(s.frontal);
-    scene.setData(s.graph, s.at, was.frame !== s.frame);
-  }, [scene, s.graph, s.at, s.frame, s.frontal]);
+    // Into or out of 2D the layout changes too, and the camera is reset to the new one.
+    scene.setFlat(s.flat);
+    scene.setData(s.graph, s.at, was.frame !== s.frame || was.flat !== s.flat);
+  }, [scene, s.graph, s.at, s.frame, s.flat]);
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
@@ -163,6 +165,7 @@ export function GraphStage({
       exportName={exportName}
       testId={testId}
       bare={bare}
+      flat={s.flat}
       legend={<GraphLegend graph={s.graph} />}
     />
   );

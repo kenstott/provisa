@@ -99,8 +99,7 @@ async function turningStage() {
   );
   scene.setData(G, AT, true);
   scene.setRotate(true);
-  const turning = () =>
-    (scene as unknown as { controls: { autoRotate: boolean } }).controls.autoRotate;
+  const turning = () => (scene as unknown as { turning: boolean }).turning;
   return { scene, turning };
 }
 
