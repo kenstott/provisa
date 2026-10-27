@@ -89618,7 +89618,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     behave as on the source; the model and storage stay on the base. Where the engine has no native equivalent,
     the column keeps its base type''s semantics and an operator that only the native type defines is refused
     by name, never evaluated over the text form. A source type that maps to text (no IR type or subtype)
-    has text semantics by design: its platform features are not available.'
+    has text semantics by design: its platform features are not available. (Amended 2026-10-27, WHEN THE
+    ENGINE LACKS THE TYPE:) Maintainer 2026-10-27: when a sort, filter, join or operator touches a subtyped
+    column, the compiler takes the first of these that applies: (1) the serving engine has the native type:
+    cast to it; (2) the operation touches only one source''s columns and that source has the native type:
+    it runs at the source and the engine federates the result; (3) the subtype declares a portable emulation
+    for the engine''s dialect (inet: family, fixed-width hex address and mask length as the ordering key,
+    containment as a range test on it; macaddr: fixed-width hex; ranges: bounds and their inclusivity give
+    overlap and containment), checked against the native answer in tests; (4) otherwise the operation is
+    refused by name (spatial predicates with neither native support nor pushdown, for instance), never evaluated
+    over the text form. Each subtype declares its native type per engine, whether it pushes down, and its
+    emulation if one exists.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
