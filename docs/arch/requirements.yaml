@@ -10718,9 +10718,25 @@
   feature: cypher-and-graph-analytics-writes
   priority: MUST
   type: constraint
-  description: Relationships in Cypher cannot be written. They are derived from foreign-key joins in
-    the semantic layer, not stored edges. CREATE, SET, and DELETE cannot target relationship entities.
-    Attempting to write a relationship is a hard error at translation time.
+  description: 'Relationships in Cypher cannot be written. They are derived from foreign-key joins in the
+    semantic layer, not stored edges. CREATE, SET, and DELETE cannot target relationship entities. Attempting
+    to write a relationship is a hard error at translation time. (Amended 2026-10-27, JUNCTION RELATIONSHIPS
+    ARE WRITABLE:) Maintainer 2026-10-27: a relationship backed by a registered junction table (REQ-1586)
+    is a row of that table, so Cypher writes it as one. CREATE of such a relationship between two matched
+    nodes inserts the junction row (its two keys and any properties given), DELETE of it deletes that row,
+    and SET of its properties updates that row; each is governed exactly like any other table write on the
+    junction table (write grants, row rules, masks, the role''s admission). A relationship backed by a foreign
+    key or by columns on one of its end tables stays read-only through Cypher, and writing one is refused
+    by name as before. The rule that write clauses never create new labels or relationship types (REQ-661)
+    is unchanged: only registered junction relationships are writable. (Amended 2026-10-27, JUNCTION WRITES
+    ARE CONSTRAINED:) Maintainer 2026-10-27: a junction write adds or removes an instance of a relationship
+    the model already declares; it never creates a new class of relationship. A CREATE naming a relationship
+    type the model does not register, or one registered between other labels than the two nodes it joins,
+    is refused by name at translation, as is any write that would need a new junction table. Both end nodes
+    must already exist (matched in the statement); a relationship write never creates its end nodes. The
+    junction write is governed as any write to that table (writable source, the role''s write grant, row
+    rules, masks, admission), and a write that would break the relationship''s declared keys or cardinality
+    is refused by name.'
   use_case: Relationship immutability prevents accidental FK manipulation and keeps relationship metadata
     consistent with the declared join paths.
   code:
@@ -89292,7 +89308,24 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     OID and typmod, and its text and binary encodings, compared with what Postgres sends for the same value,
     plus the casts tools issue. Catalog content stays the role''s governed view of the model, stated once
     as a deliberate difference. Keys shown in pg_constraint and pg_index come from the source''s declarations
-    once discovery records them (REQ-2170).'
+    once discovery records them (REQ-2170). (Amended 2026-10-27, BY-DESIGN EXCLUSIONS ARE NOT FAILURES:)
+    Maintainer 2026-10-27: a conformance result separates what the suite cannot meet because of a designed
+    limitation of Provisa from what it fails because of an actual one. A test whose setup or assertion depends
+    on something Provisa does not do by design (the model is the schema, so no ad hoc table, schema or graph
+    creation outside it; nodes and relationships are registered tables, not free-form graph writes; BEGIN/COMMIT/ROLLBACK
+    are a no-op; and the like) is counted as not runnable by design, never as a failure, and never in the
+    pass rate. Each such group names the design decision that excludes it (its requirement), and the surface''s
+    conformance page lists every group with its count and reason, so nothing is hidden. A test excluded
+    with no design decision behind it stays a failure. Every surface''s job (pgwire, Cypher, Bolt, Flight
+    SQL, GraphQL over HTTP, SPARQL, RDF) applies the same rule. (Amended 2026-10-27, SETUP THAT CREATES
+    OBJECTS IS ADAPTED, NOT EXCLUDED:) Maintainer 2026-10-27: Provisa never creates new objects (tables,
+    schemas, graph labels or relationship types, procedures) through a query surface, except session temp
+    tables; that is the design decision. A conformance test that creates an object only as setup for what
+    it actually tests is redefined, not excluded: its setup is replaced by the equivalent objects declared
+    in the job''s fixture model (or a temp table where the surface allows one), and the test then runs its
+    real assertion against them. The adapted test keeps the suite''s own test id and is marked adapted on
+    the conformance page, with what its setup became. Only a test whose subject is the object creation itself
+    is counted as not runnable by design.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -89691,3 +89724,82 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa-ui/src/pages/tables/profile3d/__tests__/sceneBestView.test.tsx
   - provisa-ui/src/pages/tables/profile3d/__tests__/turnPause.test.tsx
   - provisa-ui/src/components/graph3d/__tests__/graphModel.test.ts
+- id: REQ-2175
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Protocol Conformance
+  feature: federation-and-routing-governed-pipeline
+  priority: MUST
+  type: behavioral
+  description: 'Provisa''s Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow''s FlightSql.proto),
+    so standard Flight SQL clients (the ADBC Flight SQL driver, the JDBC Flight SQL driver, tools built
+    on them) connect and query it. It decodes the Flight SQL commands (statement query, prepared statement
+    query and update, SqlInfo, catalogs, database schemas, tables, table types, primary keys, imported
+    and exported keys, cross reference), the actions (create and close a prepared statement, get and set
+    session options) and DoPut for bound parameters, and answers each through the one governed SQL pipeline
+    the endpoint''s native tickets already use, under the caller''s role, so a Flight SQL read is governed
+    exactly as a pgwire or HTTP SQL read is. The endpoint''s native Flight protocol (path descriptors,
+    JSON tickets) keeps working beside it. Catalog answers show what the caller is served. Object creation
+    stays out of scope by design (REQ-2167): a Flight SQL statement may create a session temp table where
+    pgwire allows one. Conformance is measured by the ADBC driver validation suite (REQ-2167).'
+  scenario: 'Given a Flight SQL client using the ADBC Flight SQL driver signed in as a role
+
+    When it runs a prepared statement with a bound parameter and lists the tables
+
+    Then the rows and the table list are those the role is served
+
+    And the same query over pgwire answers the same rows'
+- id: REQ-2176
+  status: proposed
+  target: 2026-Q4
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Mutations
+  feature: cypher-and-graph-analytics-writes
+  priority: SHOULD
+  type: behavioral
+  description: 'Every query language may create EPHEMERAL objects, the way SQL creates a session temp table;
+    the model''s own objects are still never created through a query surface (REQ-661, REQ-665, REQ-2167).
+    In Cypher, a CREATE naming a label or relationship type the model does not have creates it in the session
+    only: a session temp table per new label and a session junction table per new type, so nodes with several
+    new labels and relationships between ephemeral nodes work. In SPARQL, INSERT DATA into a session-local
+    named graph does the same. Ephemeral objects follow the temp-table rules: visible to their own session
+    alone, never in the catalog, the ontology, exports or another session; dropped when the session ends;
+    capped by the session''s memory and size limits. They may be read beside model data, which is still
+    read under the role''s grants, masks and row rules, so nothing governed leaves its governance through
+    them. Writes to model objects keep their own rules (REQ-661, REQ-665). A session is the transport''s
+    own (pgwire, Bolt); on a stateless transport (HTTP Cypher, SPARQL) ephemeral objects live for the one
+    request unless the caller opens a session. An engine with no session temp storage keeps them in the
+    session''s own store. Conformance suites whose tests build their own graph run against it as written
+    (REQ-2167). (Amended 2026-10-27, EPHEMERAL GRAPH OBJECTS ARE JSON BAGS:) [SUPERSEDED by REQ-2176, 2026-10-27
+    -- ephemeral labels and types are typed session tables grown by ALTER TABLE with inferred types (EPHEMERAL
+    TABLES GROW BY ALTER, below). Kept here for history; do not implement against it.] Maintainer 2026-10-27:
+    ephemeral graph objects take a fixed shape instead of a table per label or type, [END SUPERSEDED BLOCK]
+    since a CREATE carries no schema and a label''s properties vary node to node. A session holds one node
+    table (id, labels as a list, props as one JSON value) and one relationship table (id, type, from_id,
+    to_id, props as one JSON value). A label the model registers resolves to its table; any other label
+    resolves to the session node table filtered on its labels. A property of an ephemeral node or relationship
+    is read by JSON extraction, keeping the value''s JSON type, and the translator casts where it is compared
+    or joined with a typed model column. SPARQL''s session-local graph uses the same convention (or one
+    (s, p, o) table). This supersedes the per-label and per-type session tables in this requirement''s first
+    text. (Amended 2026-10-27, EPHEMERAL TABLES GROW BY ALTER:) Maintainer 2026-10-27, replacing the JSON-bag
+    shape: an ephemeral label is a typed session table and an ephemeral relationship type a typed session
+    junction table, exactly like model tables, so the translator, governance, ordering, comparison and joins
+    take their one existing path. A CREATE or SET carrying a property the table lacks first adds its column
+    (ALTER TABLE ADD COLUMN); earlier rows read NULL there, Cypher''s missing property. Column types are
+    inferred from the values written: integer bigint, float double, string text, boolean boolean, temporal
+    values their date, time, timestamp or duration types (microsecond precision, zones as Cypher presents
+    them), a list of one element type a typed list, a map or mixed list JSON. Types only widen: an integer
+    column receiving a float becomes double, and any incompatible value widens the column to JSON; a NULL
+    adds no column. A node carries an id; a node with several labels has a row in each label table under
+    that id, and SET updates every one.'
+  scenario: 'Given a Bolt session as a role
+
+    When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
+    RETURN a.n, b.n
+
+    Then it answers (1, 2)
+
+    And another session sees no Scratch label
+
+    And the label is gone once the session ends'
