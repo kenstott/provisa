@@ -877,7 +877,6 @@ async def create_data_product(  # REQ-1855
     limitations: str = "",
     usage: str = "",
     version: str | None = None,
-    sla: str | None = None,
     support: str | None = None,
 ) -> dict:
     """Create or replace a data product by id (an id that already exists is overwritten in
@@ -929,7 +928,6 @@ async def create_data_product(  # REQ-1855
                 if stored is not None
                 else {}
             ),
-            sla=sla,
             support=support,
         )
         await data_product_repo.upsert(conn, model)
@@ -1114,7 +1112,9 @@ def list_commands(state: Any, role: str) -> list[dict]:
     from provisa.api.data.action_exec import list_visible_commands
 
     require_role(role, state)
-    return list_visible_commands(state, role)
+    # REQ-2168: listed where its MCP command binding offers it, by the SQL name run_sql calls it by.
+    offered = {c["command"] for c in list_visible_commands(state, role, "mcp")}
+    return [c for c in list_visible_commands(state, role, "sql") if c["command"] in offered]
 
 
 async def run_sql(

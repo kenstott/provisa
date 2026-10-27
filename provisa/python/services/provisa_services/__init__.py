@@ -68,6 +68,7 @@ __all__ = [
     "ReadContext",
     "ServiceError",
     "cache",
+    "dq",
     "http",
     "llm",
     "log",
@@ -82,6 +83,13 @@ _call: contextvars.ContextVar[tuple[int, str | None] | None] = contextvars.Conte
     "provisa_services_call", default=None
 )
 _MISSING = object()
+
+#: REQ-1165: where the calls go when this module runs inside Provisa itself (a view's preflight) rather
+#: than in a worker: ``(method, path, body, headers) -> (status, body)``, set by the server for the
+#: call it serves. Unset, the calls go to $PROVISA_SERVICES.
+_transport: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "provisa_services_transport", default=None
+)
 
 
 class ServiceError(Exception):
@@ -120,9 +128,13 @@ def _send(service: str, method: str, path: str, payload: Any = None) -> tuple[in
         headers["X-Provisa-Call"] = str(held[0])
         if held[1]:
             headers["traceparent"] = held[1]
+    data = None if payload is None else json.dumps(payload).encode()
+    inside = _transport.get()
+    if inside is not None:
+        return inside(method, path, data, headers)
     request = urllib.request.Request(
         f"{_base(service)}/{path}",
-        data=None if payload is None else json.dumps(payload).encode(),
+        data=data,
         headers=headers,
         method=method,
     )
@@ -305,6 +317,24 @@ class llm:  # noqa: N801
     @staticmethod
     def embeddings(model: str, input: str | list[str]) -> dict:  # noqa: A002 -- the API's name
         return _json("llm", "POST", "llm/v1/embeddings", {"model": model, "input": input})
+
+
+class dq:  # noqa: N801
+    """Everything about the data quality of a dataset or a data product, as the meta domain shows it
+    to the caller (REQ-2133)."""
+
+    @staticmethod
+    def dataset(name: str | int) -> dict:
+        """A dataset's checker tables -- each one's description, contract, latest run (its outcome,
+        when it ran, its failing checks) and the product it is assigned to -- and its profiles,
+        with each one's latest run. ``name`` is the dataset's ``domain.table``, or its table id."""
+        return _json("dq", "GET", f"dq/dataset/{_q(str(name))}")
+
+    @staticmethod
+    def product(product_id: str) -> dict:
+        """A data product's promises, expectations, partner DQ and orphans, each with its latest
+        run (REQ-1443)."""
+        return _json("dq", "GET", f"dq/product/{_q(product_id)}")
 
 
 def log(message: str, level: str = "info", **fields: Any) -> None:

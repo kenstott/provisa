@@ -15,7 +15,6 @@
 
 import type { TermRole } from "../../api/glossary";
 import { NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
-import { lanesFrom } from "../lineage/lineage-layout";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 
 export type NodeType =
@@ -64,8 +63,8 @@ export type LayerId =
   // The tables of the columns drawn, with the relationships between them (with Columns).
   | "ownerTables";
 
-/** Force; lineage lanes left to right (REQ-1667); or a top-down tree (REQ-2130's Taxonomy). */
-export type LayoutKind = "force" | "lanes" | "tree";
+/** Force, or a top-down tree (REQ-2130's Taxonomy). */
+export type LayoutKind = "force" | "tree";
 
 /** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides draft). */
 export type { TermStatus } from "../../api/glossary";
@@ -86,8 +85,6 @@ export interface GraphNode {
   /** The table a column or a profile belongs to: a column is drawn inside it until the table is
    * expanded; a profile is reached on its page. */
   parent?: string;
-  /** REQ-1667: the lineage lane the node stands in, when the data says (upstream negative). */
-  lane?: number;
   /** REQ-2130: a term's standing; deprecated is drawn dimmed. */
   status?: TermStatus;
   /** REQ-2130: a term's role -- Class (tables), Property (columns), Concept (neither) -- coloured
@@ -158,7 +155,7 @@ export const LAYER_ORDER: LayerId[] = [
   "lineage",
 ];
 
-export type PresetId = "knowledge" | "ontology" | "productMap" | "lineage" | "taxonomy";
+export type PresetId = "all" | "ontology" | "products" | "taxonomy";
 
 export interface Preset {
   layers: LayerId[];
@@ -169,16 +166,14 @@ export interface Preset {
 
 export const PRESETS = {
   // Every layer but relationships to tables outside the product.
-  knowledge: { layers: LAYER_ORDER.filter((l) => l !== "outside"), layout: "force" },
+  all: { layers: LAYER_ORDER.filter((l) => l !== "outside"), layout: "force" },
   // Terms, their edges, the columns bound to them and the products that own those columns.
   ontology: { layers: ["ontology", "products"], layout: "force" },
   // Every product, grouped by domain, joined by data_product_edges.
-  productMap: { layers: ["products"], layout: "force" },
-  // Lineage edges alone, left to right in upstream lanes.
-  lineage: { layers: ["lineage"], layout: "lanes" },
+  products: { layers: ["products"], layout: "force" },
 } satisfies Partial<Record<PresetId, Preset>>;
 
-export const PRESET_ORDER: PresetId[] = ["knowledge", "ontology", "productMap", "lineage"];
+export const PRESET_ORDER: PresetId[] = ["all", "ontology", "products"];
 
 /** What a graph is scoped to: its layers and presets (REQ-2128's product graph, REQ-2130's
  * glossary), on the one engine. */
@@ -531,8 +526,6 @@ const PULL: Record<EdgeKind, number> = {
   column_lineage: 0.4,
 };
 
-const LANE_GAP = 4;
-
 const TREE_GAP = 3;
 /** Wider across than down: a level's names sit side by side. */
 const TREE_SPREAD = 5;
@@ -605,67 +598,25 @@ function treeLayout(g: GraphData): Map<string, [number, number, number]> {
   );
 }
 
-/** Each drawn node's place. Lanes: lineage left to right, members (``zero``) in lane 0. */
+/** Each drawn node's place. */
 export function layoutGraph(
   g: GraphData,
   layout: LayoutKind,
-  zero: string[],
-  /** How close a force layout draws the nodes (1 the usual spacing); other layouts are fixed. */
+  /** How close a force layout draws the nodes (1 the usual spacing); a tree is fixed. */
   attraction = 1,
   /** Every node in the z = 0 plane: the graph's 2D view (REQ-2174). A tree is flat already. */
   flat = false,
 ): Map<string, [number, number, number]> {
+  if (layout === "tree") return treeLayout(g);
   const ids = g.nodes.map((n) => n.id);
   const radius = Math.max(6, Math.cbrt(ids.length) * 3);
-  if (layout === "tree") return treeLayout(g);
-  if (layout === "force") {
-    return forceLayout(
-      ids,
-      g.edges.map((e) => ({ a: e.a, b: e.b, strength: PULL[e.kind] })),
-      radius,
-      attraction,
-      flat,
-    );
-  }
-  const lane = lanesFrom(
-    g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b] as [string, string]),
-    zero.filter((z) => ids.includes(z)),
+  return forceLayout(
+    ids,
+    g.edges.map((e) => ({ a: e.a, b: e.b, strength: PULL[e.kind] })),
+    radius,
+    attraction,
+    flat,
   );
-  const given = new Map(g.nodes.filter((n) => n.lane !== undefined).map((n) => [n.id, n.lane]));
-  const lanes = new Map<number, string[]>();
-  for (const id of ids) {
-    const l = given.get(id) ?? lane.get(id) ?? 0;
-    lanes.set(l, [...(lanes.get(l) ?? []), id]);
-  }
-  const all = [...lanes.keys()];
-  const mid = (Math.min(...all) + Math.max(...all)) / 2;
-  const out = new Map<string, [number, number, number]>();
-  const rowsOf = (members: string[]) => Math.ceil(Math.sqrt(members.length));
-  // Flat, a lane's columns sit side by side within it, so each lane starts past the one before.
-  const start = new Map<number, number>();
-  let x = 0;
-  for (const l of [...all].sort((a, b) => a - b)) {
-    start.set(l, x);
-    const members = lanes.get(l) as string[];
-    x += (Math.ceil(members.length / rowsOf(members)) - 1) * 2 + LANE_GAP;
-  }
-  const centre = (x - LANE_GAP) / 2;
-  for (const [l, members] of lanes) {
-    members.sort();
-    const rows = rowsOf(members);
-    members.forEach((id, i) => {
-      const r = i % rows;
-      const c = Math.floor(i / rows);
-      const y = (r - (rows - 1) / 2) * 2;
-      out.set(
-        id,
-        flat
-          ? [(start.get(l) as number) + c * 2 - centre, y, 0]
-          : [(l - mid) * LANE_GAP, y, c * 2],
-      );
-    });
-  }
-  return out;
 }
 
 /** A node's drawn edges. */

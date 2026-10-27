@@ -555,7 +555,8 @@ def _map_property_label_map() -> CypherLabelMap:
 @pytest.mark.parametrize(
     "cypher, column",
     [
-        ("MATCH (o:Orders) RETURN o.shipTo, o.note", "shipto"),
+        # An unaliased property is named as written (o.shipTo); its kind is keyed lower-cased.
+        ("MATCH (o:Orders) RETURN o.shipTo, o.note", "o.shipto"),
         ("MATCH (o:Orders) RETURN o.shipTo AS address, o.note", "address"),
     ],
 )
@@ -573,9 +574,9 @@ def test_a_returned_map_property_is_a_map_whatever_form_the_engine_gives(cypher,
     _, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
     assert graph_vars == {column: GraphVarKind.MAP}
 
-    as_text = {column: '{"city": "Oslo"}', "note": '{"not": "a map"}'}
-    as_decoded = {column: {"city": "Oslo"}, "note": '{"not": "a map"}'}
+    as_text = {column: '{"city": "Oslo"}', "o.note": '{"not": "a map"}'}
+    as_decoded = {column: {"city": "Oslo"}, "o.note": '{"not": "a map"}'}
     for row in (as_text, as_decoded):
         assert assemble_rows([row], graph_vars) == [
-            {column: {"city": "Oslo"}, "note": '{"not": "a map"}'}
+            {column: {"city": "Oslo"}, "o.note": '{"not": "a map"}'}
         ]

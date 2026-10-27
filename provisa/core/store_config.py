@@ -158,7 +158,7 @@ def _internal_table(row: dict[str, Any]) -> bool:
     from provisa.core.models import DERIVED_SOURCE_ID
 
     seeded = SEEDED_SOURCE_IDS - {DERIVED_SOURCE_ID}
-    return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops")
+    return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops", "ontology")
 
 
 def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
@@ -318,7 +318,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
 
     rls_rules = []
     for row in await rls_repo.list_all(conn):
-        if _refs_internal(row) or row.get("domain_id") in ("meta", "ops"):
+        if _refs_internal(row) or row.get("domain_id") in ("meta", "ops", "ontology"):
             continue
         rule = {
             "role_id": row["role_id"],
@@ -356,7 +356,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
                 )
             )
             for row in await data_product_repo.list_all(conn)
-            if row["domain_id"] not in ("meta", "ops")
+            if row["domain_id"] not in ("meta", "ops", "ontology")
         ],
         "glossary_terms": await _glossary_terms(conn),
         "tables": [

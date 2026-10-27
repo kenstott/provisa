@@ -62,11 +62,7 @@ _META: dict[str, str] = {
     "member tables, commands, tags, glossary terms and profiles are reached by relationship",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
-    "products it reaches through relationships, and the relations upstream and downstream of "
-    "its tables in lineage — one row per product, target and kind",
-    # REQ-2129
-    "column_lineage_edges": "The model's column lineage — each column a view or command derives "
-    "from another registered column, naming the view or command",
+    "products it reaches through relationships — one row per product, target and kind",
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
@@ -74,16 +70,21 @@ _META: dict[str, str] = {
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
     # REQ-1584: the business glossary as queryable metadata.
-    "glossary_terms": "The business vocabulary — one row per term, with the ref count and the "
+    "_terms": "The business vocabulary — one row per term, with the ref count and the "
     "live flag the export's admission rule computes",
     # REQ-1591
-    "glossary_term_domains": "Each glossary term's domains, by the one rule: its refs' domains "
+    "_domains": "Each glossary term's domains, by the one rule: its refs' domains "
     "while it holds refs, the domains declared for it otherwise",
-    "glossary_term_refs": "Each binding of a term to a physical column, resolved to that "
+    "_term_refs": "Each binding of a term to a physical column, resolved to that "
     "column's source, schema, table and domain",
-    "glossary_term_edges": "The term graph — how terms relate to one another, with both "
-    "endpoint names",
-    "glossary_term_experts": "Who owns or authored each term, for routing a definition question",
+    "_term_edges": "The term graph — how terms relate to one another, with both endpoint names",
+    "_experts": "Who owns or authored each term, for routing a definition question",
+    # REQ-2163
+    "_axioms": "The ontology stated as RDFS, OWL and SKOS triples, one a row: each term's class "
+    "or property kind, its super-classes and super-properties, a property's domain and range, "
+    "and each term's label and definition",
+    "_closure": "Each term with every term it is a kind of, as a class or as a property, "
+    "through one or more kind-of relationships, and itself",
 }
 
 _OPS: dict[str, str] = {
@@ -183,42 +184,28 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         # REQ-2130
         "class_term_id": "The glossary term this table's rows are instances of; empty when no "
         "term grounds it",
-    },
-    # REQ-2129
-    "column_lineage_edges": {
-        "id": "Edge identifier",
-        "source_relation": "The relation the derivation reads (domain.table)",
-        "source_column": "The column it reads, by its SQL name",
-        "target_relation": "The relation the derivation produces (domain.table)",
-        "target_column": "The column it produces, by its SQL name",
-        "via": "The view (its relation) or the command (its name) that derives the target",
-        "via_kind": "view or command",
-        "source_table_id": "The registered table the source column belongs to",
-        "source_column_name": "The source column's stored name",
-        "target_table_id": "The registered table the target column belongs to",
-        "target_column_name": "The target column's stored name",
-        "source_column_key": "Synthesized column identity (table_id:column_name) of the source",
-        "target_column_key": "Synthesized column identity (table_id:column_name) of the target",
+        # REQ-2132
+        "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
+        "passed, fail otherwise; empty when it has never run",
+        "latest_run_at": "For a checker table, when its latest scan ran",
+        # REQ-2158
+        "contract": "A data product member's contract: its version, status, terms, service "
+        "levels and the columns it promises; empty for a table in no product",
     },
     # REQ-2126
     "data_product_edges": {
         "id": "Edge identifier: product, kind and target",
         "product_id": "The data product the edge starts from",
-        "kind": "relationship or lineage",
-        "direction": "For a lineage edge, upstream (the product derives from the target) or "
-        "downstream (the target derives from the product); empty for a relationship edge",
+        "kind": "relationship (through tables in no product) or related (one relationship away)",
         "target_product_id": "The other data product the edge reaches, when its end is a member "
         "of one",
         "target_table_id": "The table the edge reaches, when its end is a registered table",
-        "target_relation": "For a lineage edge, the relation it reaches (domain.table)",
-        "direct": "True when one relationship, or one derivation, joins a member to the target",
-        "hops": "The shortest number of relationships or derivations between a member and the "
-        "target",
+        "direct": "True when one relationship joins a member to the target",
+        "hops": "The shortest number of relationships between a member and the target",
         "path_count": "How many paths connect the product to the target",
         "aliases": "The aliases of the relationships on those paths",
         "relationship_ids": "The relationships on those paths",
         "supporting_tables": "Tables in no product that a path runs through",
-        "vias": "For a lineage edge, the views and commands on its paths",
     },
     "dq_rules": {
         "id": "Rule identifier: the table and the check's position in its contract",
@@ -251,7 +238,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "status_reason": "Why the product was deprecated or retired",
         "retire_on": "When a deprecated product is planned to retire",
         "successor_id": "The product that took a retired product's members",
-        "sla": "The service level the product is held to",
         "support": "Where to get support for the product",
         "support_contact": "Who to contact for support",
         "custom_properties": "The product's own named properties",
@@ -264,7 +250,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "column node without joining to registered_tables",
         # REQ-1584: the stable column identity the glossary binds to.
         "column_key": "Synthesized column identity (table_id:column_name), the join key from "
-        "glossary_term_refs",
+        "ontology._term_refs",
         "data_type": "Physical type as reflected from the source",
         "is_primary_key": "Whether the column is part of the table's primary key",
         "alias": "Name the column is exposed under, when it differs from the source name",
@@ -429,7 +415,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object_key": "Canonical key of the tagged object, unique across kinds",
         "reason": "Justification recorded with the assignment",
         "expires_on": "Planned end date of the assignment",
-        # REQ-1585: the join key to table_columns and glossary_term_refs; null unless the
+        # REQ-1585: the join key to table_columns and ontology._term_refs; null unless the
         # assignment is on a column.
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
@@ -506,7 +492,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "tenant_id": _TENANT,
     },
     # REQ-1584
-    "glossary_terms": {
+    "_terms": {
         "id": "Term identifier",
         "name": "The term phrase, unique across the glossary",
         "definition": "What the term means; a term without one is a draft, never live",
@@ -532,9 +518,12 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "relationships do not all join: a curation gap",
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
+        # REQ-2163
+        "is_class": "True when the term is a Class: a table is grounded in it",
+        "is_property": "True when the term is a Property: it is bound to a column",
     },
     # REQ-1591
-    "glossary_term_domains": {
+    "_domains": {
         "id": "Term and domain",
         "term_id": "The term",
         "domain_id": "A domain the term belongs to: the domains of the tables its refs point at "
@@ -543,7 +532,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_refs": {
+    "_term_refs": {
         "id": "Ref identifier",
         "term_id": "Term bound by this ref",
         "table_id": "Table owning the bound column",
@@ -558,7 +547,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_edges": {
+    "_term_edges": {
         "id": "Edge identifier",
         "from_term_id": "Term the edge starts at",
         "to_term_id": "Term the edge ends at",
@@ -571,7 +560,35 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "to_term_domains": "Synthesized: the to term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_experts": {
+    "_axioms": {
+        "id": "The triple: its subject's id, predicate and object",
+        "subject_term_id": "The term the triple is about",
+        "subject": "That term's name; its IRI is its vocabulary IRI",
+        "predicate": "The RDF, RDFS, OWL or SKOS property stated",
+        "object_term_id": "The term the triple points at, when its object is a term",
+        "object": "That term's name",
+        "object_iri": "The object when it is an IRI: an OWL class or an XML Schema datatype",
+        "object_literal": "The object when it is a literal: a label or a definition",
+        "subject_domains": "Synthesized: the subject term's domains as |a|b| — what its "
+        "readable-term scope tests",
+        "object_domains": "Synthesized: the object term's domains as |a|b|; empty when the "
+        "object is no term",
+        "tenant_id": _TENANT,
+    },
+    "_closure": {
+        "id": "The pair: its predicate, both terms' ids and its hops",
+        "predicate": "rdfs:subClassOf between Classes, rdfs:subPropertyOf between Properties",
+        "subject_term_id": "The narrower term",
+        "subject": "That term's name",
+        "object_term_id": "The broader term it is a kind of, or itself",
+        "object": "That term's name",
+        "hops": "0 for the term itself, 1 for one or more kind-of relationships",
+        "subject_domains": "Synthesized: the narrower term's domains as |a|b| — what its "
+        "readable-term scope tests",
+        "object_domains": "Synthesized: the broader term's domains as |a|b|",
+        "tenant_id": _TENANT,
+    },
+    "_experts": {
         "id": "Assignment identifier",
         "term_id": "Term this person owns or authored",
         "term_name": "Name of that term",

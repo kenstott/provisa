@@ -72,7 +72,6 @@ export function GraphExplorer({
   scope,
   preset: initialPreset,
   focus: initialFocus = null,
-  zero,
   onExpand,
   search,
   settingsKey,
@@ -84,8 +83,6 @@ export function GraphExplorer({
   scope: GraphScope;
   preset: PresetId;
   focus?: string | null;
-  /** The member tables lineage lanes are drawn around (lane 0). */
-  zero: string[];
   /** Drawn in place: its expand button opens it at 95% of the viewport. */
   onExpand?: () => void;
   /** The page's search, focusing the graph in place of its own focus field: the terms and
@@ -325,8 +322,8 @@ export function GraphExplorer({
   }, [data, on, filters, narrowed, query, expanded, scope, orphans, search]);
   const layout = presetOf(preset).layout;
   const at = useMemo(
-    () => layoutGraph(shown, layout, zero, attraction, flat),
-    [shown, layout, zero, attraction, flat],
+    () => layoutGraph(shown, layout, attraction, flat),
+    [shown, layout, attraction, flat],
   );
   const focusable = useMemo(
     () =>

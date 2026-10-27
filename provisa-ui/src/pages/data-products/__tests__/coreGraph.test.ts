@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The product page's knowledge graph card is drawn from the panel's own meta read (its core):
+// The product page's graph card is drawn from the panel's own meta read (its core):
 // the product, its member tables, its commands and the terms bound to its columns -- the same graph
 // the product's graph query draws for the card, read once.
 
@@ -57,7 +57,7 @@ const CORE: ProductCore = {
   queries: { graphql: "", sql: "", jsonapi: "" },
 };
 
-describe("the knowledge graph card, from the panel's core", () => {
+describe("the graph card, from the panel's core", () => {
   it("draws the product, its member tables, its commands and its bound terms", () => {
     const g = panelGraph(coreGraph(CORE), productNode("c360"));
     expect(g.nodes.map((n) => `${n.type}:${n.label}`).sort()).toEqual([

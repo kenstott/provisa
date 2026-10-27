@@ -42,8 +42,8 @@ function reader(): MetaReader {
         type("Query", {
           m__dataProducts: list("DP"),
           m__tableColumns: list("TC"),
-          m__glossaryTermEdges: list("TE"),
-          m__glossaryTerms: list("GT"),
+          ont__termEdges: list("TE"),
+          ont__terms: list("GT"),
         }),
         type("DP", {
           id: s,
@@ -75,8 +75,8 @@ function reader(): MetaReader {
     roots: new Map([
       [rootKey("meta", "data_products"), "m__dataProducts"],
       [rootKey("meta", "table_columns"), "m__tableColumns"],
-      [rootKey("meta", "glossary_term_edges"), "m__glossaryTermEdges"],
-      [rootKey("meta", "glossary_terms"), "m__glossaryTerms"],
+      [rootKey("ontology", "_term_edges"), "ont__termEdges"],
+      [rootKey("ontology", "_terms"), "ont__terms"],
     ]),
   };
 }
@@ -95,7 +95,6 @@ const PRODUCT_ROW = {
   status_reason: null,
   retire_on: null,
   successor_id: null,
-  sla: null,
   support: null,
   support_contact: null,
   custom_properties: '{"tier":"gold"}',
@@ -123,7 +122,7 @@ describe("the panel's meta reads", () => {
     expect(q?.graphql).not.toContain("tags");
     expect(q?.graphql).not.toContain("edges");
     expect(q?.sql).toBe(
-      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "status_reason", "retire_on", "successor_id", "sla", "support", "support_contact", "custom_properties" FROM "meta"."data_products" WHERE "id" = \'c360\'',
+      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "status_reason", "retire_on", "successor_id", "support", "support_contact", "custom_properties" FROM "meta"."data_products" WHERE "id" = \'c360\'',
     );
     expect(q?.jsonapi).toBe("/data/jsonapi/meta/data_products?filter[id]=c360");
   });
@@ -163,18 +162,6 @@ describe("the panel's meta reads", () => {
                       table_columns: [
                         { column_name: "email", glossary_ref: [{ term_id: 7, term: CUSTOMER }] },
                       ],
-                      checked_by: [
-                        {
-                          id: 4,
-                          source_id: "dq",
-                          domain_id: "sales",
-                          schema_name: "dq",
-                          table_name: "customers_quality",
-                          description: null,
-                          dq_contract: "dataset: pg/public/customers",
-                          checks: { id: 1, domain_id: "sales", table_name: "customers" },
-                        },
-                      ],
                     },
                   ],
                   commands: [{ name: "refresh", description: null, domain_id: "sales" }],
@@ -185,9 +172,9 @@ describe("the panel's meta reads", () => {
         }
         if (body.includes("TermEdges")) {
           const from7 = body.includes("[7]");
-          return json({ data: { glossary_term_edges: from7 ? [{ to_term_id: 8 }] : [] } });
+          return json({ data: { _term_edges: from7 ? [{ to_term_id: 8 }] : [] } });
         }
-        if (body.includes("query Terms")) return json({ data: { glossary_terms: [PARTY] } });
+        if (body.includes("query Terms")) return json({ data: { _terms: [PARTY] } });
         throw new Error(`unexpected request ${url} ${body}`);
       }),
     );
@@ -198,8 +185,10 @@ describe("the panel's meta reads", () => {
       ownerRole: "steward",
       customProperties: { tier: "gold" },
     });
-    // REQ-1443 clause 10: the checker scanning a member is the product's through that member.
-    expect(core?.tables?.map((t) => t.table_name)).toEqual(["customers", "customers_quality"]);
+    expect(core?.tables?.map((t) => t.table_name)).toEqual(["customers"]);
+    // REQ-2157: the product's checks are its lineage's (the product lineage endpoint), not the panel's
+    // meta read.
+    expect(core).not.toHaveProperty("checks");
     expect(core?.commands?.map((c) => c.name)).toEqual(["refresh"]);
     // The bound term and the abstract term its edge reaches.
     expect(core?.terms?.map((t) => t.name)).toEqual(["Customer", "Party"]);

@@ -92,7 +92,7 @@ def _state() -> SimpleNamespace:
 
 
 def test_webhook_appears_in_command_catalog():
-    out = list_visible_commands(_state(), "admin")
+    out = list_visible_commands(_state(), "admin", "sql")
     by_name = {c["name"]: c for c in out}
     assert "add_pet" in by_name  # a webhook is a discoverable command
     assert [c["name"] for c in out].count("add_pet") == 1  # prefixed alias collapsed
@@ -106,7 +106,7 @@ def test_webhook_appears_in_command_catalog():
 
 
 def test_webhook_visibility_filtered_by_role():
-    names = {c["name"] for c in list_visible_commands(_state(), "guest")}
+    names = {c["name"] for c in list_visible_commands(_state(), "guest", "sql")}
     assert "add_pet" not in names  # visible_to = ["admin"] excludes guest
 
 

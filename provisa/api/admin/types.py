@@ -180,7 +180,47 @@ class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
 
 
 @strawberry.type
-class DataProductType:  # REQ-1634
+class ContractColumnType:  # REQ-2158
+    name: str
+    type: str
+    description: str | None = None
+    required: bool = False
+
+
+@strawberry.type
+class ContractSlaPropertyType:  # REQ-2158
+    property: str
+    value: JsonScalar | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+@strawberry.type
+class ContractTermsType:  # REQ-2158
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None
+
+
+@strawberry.type
+class DataContractType:  # REQ-2158
+    """A product member's contract, its output port: what it promises, at its own version."""
+
+    table_id: int
+    source_id: str
+    schema_name: str
+    table_name: str
+    contract_id: str
+    version: str
+    status: str
+    description: str | None
+    terms: ContractTermsType
+    sla: list[ContractSlaPropertyType]
+    columns: list[ContractColumnType]
+
+
+@strawberry.type
+class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
     name: str
@@ -190,11 +230,11 @@ class DataProductType:  # REQ-1634
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    sla: str | None = None
     support: str | None = None
     # REQ-1635: the support contact (email or URL) a catalog listing requires.
     support_contact: str | None = None
     custom_properties: JsonScalar
+    contracts: list[DataContractType] = strawberry.field(default_factory=list)  # REQ-2158
     # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
     status: str = "draft"
     status_reason: str | None = None
@@ -480,6 +520,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
+    mv_hold_on_failing_checks: bool = False  # REQ-2133: built-in preflight on failing checks
     # REQ-2109: the bitemporal declaration, all three or none.
     business_key: list[str] = strawberry.field(default_factory=list)
     valid_time: str | None = None
@@ -546,39 +587,10 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         )
 
     @strawberry.field
-    async def product_id(self) -> str | None:  # REQ-1634, REQ-1443 clause 10
-        """The data product this table belongs to. A checker table (one carrying a dq_contract —
-        registration admits a contract on no other source type) inherits the product of the table
-        its contract scans, resolved through the compiled contexts the same way dq_dataset is;
-        registration refuses a stored product_id on it, so the row's own column is never the
-        answer there. Every other table answers with its own row."""
-        if self.dq_contract is None:
-            return self.stored_product_id
-        from sqlalchemy import select
-
-        from provisa.api.app import state
-        from provisa.core.schema_org import registered_tables
-        from provisa.dq.contract import contract_dataset, model_contexts, resolve_contract_target
-
-        checker = state.source_types[self.source_id]
-        meta = resolve_contract_target(
-            contract_dataset(self.dq_contract, checker), model_contexts(state)
-        )
-        if state.model_db is None:
-            raise RuntimeError("tenant database not connected")
-        async with state.model_db.acquire() as conn:
-            res = await conn.execute_core(
-                select(registered_tables.c.product_id).where(
-                    registered_tables.c.id == meta.table_id
-                )
-            )
-            row = res.fetchone()
-        if row is None:
-            raise ValueError(
-                f"contract target table {meta.table_id} for {self.schema_name}.{self.table_name} "
-                f"is not registered"
-            )
-        return row._mapping["product_id"]
+    def product_id(self) -> str | None:  # REQ-1634, REQ-1443 PRODUCT ASSIGNMENT
+        """The data product this table is assigned to. A checker table's is its own, as any
+        member's is: the product whose owner controls the check."""
+        return self.stored_product_id
 
     @strawberry.field
     def dq_dataset(self) -> str | None:  # REQ-1443
@@ -1079,7 +1091,6 @@ class DataProductInput:  # REQ-1634
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    sla: str | None = None
     support: str | None = None
     # REQ-1635: the support contact (email or URL) a catalog listing requires.
     support_contact: str | None = None
@@ -1087,6 +1098,39 @@ class DataProductInput:  # REQ-1634
     # default value, and the standard introspection query (which asks every input's defaultValue)
     # then answered with an error. Absent or null means no custom properties.
     custom_properties: JsonScalar | None = None
+
+
+@strawberry.input
+class ContractColumnInput:  # REQ-2158
+    name: str
+    type: str
+    description: str | None = None
+    required: bool = False
+
+
+@strawberry.input
+class ContractSlaPropertyInput:  # REQ-2158
+    property: str
+    value: JsonScalar | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+@strawberry.input
+class ContractTermsInput:  # REQ-2158
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None
+
+
+@strawberry.input
+class DataContractInput:  # REQ-2158
+    version: str
+    status: str
+    description: str | None = None
+    terms: ContractTermsInput
+    sla: list[ContractSlaPropertyInput]
+    columns: list[ContractColumnInput]
 
 
 @strawberry.input
@@ -1288,6 +1332,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
+    mv_hold_on_failing_checks: bool = False  # REQ-2133: built-in preflight on failing checks
     # REQ-2109: the bitemporal declaration, all three or none.
     business_key: list[str] = strawberry.field(default_factory=list)
     valid_time: str | None = None

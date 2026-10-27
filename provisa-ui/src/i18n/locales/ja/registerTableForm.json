@@ -61,7 +61,6 @@
     "dqResultsTableHint": "(スキャン対象のテーブルから導出。スキャンごと、チェックごとに 1 行。すべてのスキャンを保持)",
     "dqResultsTablePlaceholder": "上でスキャンするテーブルを選択してください",
     "dqVisibleToLabel": "結果の公開先",
-    "dqDescription": "{{table}} の品質スキャン結果 — スキャンごと、チェックごとに 1 行で、結果、メトリクス値、しきい値を含みます",
     "errorDqContract": "データ品質パネルでスキャンするテーブルを選択してください。",
     "errorDqVisibleTo": "結果は少なくとも 1 つのロールに公開する必要があります。",
     "dqScanIntervalLabel": "スキャン間隔 (秒)",
@@ -135,6 +134,9 @@
     "qdrantVectors": "{{collection}} のベクトル",
     "qdrantVector": "{{name}}: {{size}} 次元、{{distance}} でスコア付け",
     "qdrantUnnamedVector": "(名前なし)",
-    "continue": "次へ"
+    "continue": "次へ",
+    "checkReasonLabel": "このチェックが存在する理由",
+    "checkReasonHint": "ビジネス用語で表した品質の約束。各プロダクトでチェックの見出しになります。",
+    "checkReasonPlaceholder": "日次売上が財務と一致するよう、注文は欠けがなく一意である"
   }
 }

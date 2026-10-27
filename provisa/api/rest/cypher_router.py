@@ -274,6 +274,8 @@ def _build_sql_from_ast(
     body: CypherRequest,
     cypher_to_sql: Any,
     apply_graph_rewrites: Any,
+    role_id: str,
+    state: Any,
 ) -> tuple[Any, list, dict] | Response:
     """Stages 1-2: translate Cypher AST → SQL AST with graph rewrites. Returns (sql_str, ordered_params, graph_vars) or error Response."""
     try:
@@ -287,6 +289,11 @@ def _build_sql_from_ast(
         if isinstance(exc, (CypherCrossSourceError, CypherTranslateError)):
             return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
         raise
+
+    # REQ-2168: functions named by their Cypher command bindings, as the role may use them.
+    from provisa.api.data.cypher_commands import expand_functions
+
+    sql_ast = expand_functions(sql_ast, role_id, state)
 
     try:
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
@@ -756,13 +763,22 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             )
 
         # Stages 1-2: Translate + graph rewrites
-        _sql_result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
+        _sql_result = _build_sql_from_ast(
+            ast, label_map, body, cypher_to_sql, apply_graph_rewrites, role_id, state
+        )
         if isinstance(_sql_result, Response):
             return _sql_result
         sql_str, ordered_params, graph_vars = _sql_result
 
         # Stage 3: Semantic conversion + access validation (transport responsibility)
         semantic_sql = make_semantic_sql(sql_str, ctx)
+        # REQ-2168: a command composed in the statement runs now, as the role, and its rows take
+        # its place. Its argument values are in the statement, so it is never kept.
+        from provisa.api.data.cypher_commands import calls_commands, put_command_rows
+
+        composed = calls_commands(semantic_sql)
+        if composed:
+            semantic_sql = await put_command_rows(semantic_sql, role_id, state)
         _refusal = access_violations(semantic_sql, surface, role_id, state)
         if _refusal is not None:
             return _refusal
@@ -773,7 +789,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             param_names=tuple(param_names),
             graph_vars=graph_vars,
         )
-        kept.record(translation)
+        if not composed:
+            kept.record(translation)
 
     semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars
     from provisa.api.rest.cypher_drawing import graph_columns
@@ -1032,7 +1049,9 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
         built or run: an uncounted label is said with its reason, never counted as 0 rows."""
         ast = parse_cypher(cypher)
         body = CypherRequest(query=cypher, params={})
-        result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
+        result = _build_sql_from_ast(
+            ast, label_map, body, cypher_to_sql, apply_graph_rewrites, role_id, state
+        )
         if isinstance(result, Response):
             return _uncounted(cypher, result)
         sql_str, _, _ = result

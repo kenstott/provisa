@@ -555,6 +555,18 @@
       "type_mismatch": "ב-{{expression}}, לא ניתן להשוות את {{value}} ל-{{property}}, שסוגו {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE אינו יכול להשתמש בצבירה {{aggregate}}: WHERE מסנן שורות לפני שהן מקובצות. בצעו צבירה ב-WITH וסננו אחריו.",
       "nested_aggregate": "{{outer}} צובר את הצבירה {{inner}}: אי אפשר לצבור צבירה אחרת. בצעו צבירה ב-WITH תחילה.",
+      "node_and_relationship": "{{variable}} מציין גם צומת וגם קשר: משתנה מציין דבר אחד. תנו לכל אחד משתנה משלו.",
+      "path_variable_reused": "{{variable}} מציין את הנתיב וגם צומת או קשר שבו: משתנה מציין דבר אחד. תנו לכל אחד משתנה משלו.",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] צובר בתוך הבנת רשימה, שקוראת רשימה אחת בכל פעם. בצעו צבירה ב-WITH תחילה והשתמשו בתוצאה ברשימה.",
+      "length_of_entity": "length({{variable}}) מקבל נתיב, ו-{{variable}} הוא צומת או קשר. קשרו נתיב, MATCH p = ..., והשתמשו ב-length(p).",
+      "column_name_conflict": "{{clause}} נותן לשתי עמודות את השם {{column}}: לכל עמודה שם משלה. שנו את שם אחת מהן עם AS.",
+      "union_mixed": "UNION ו-UNION ALL מעורבבים במשפט אחד: השתמשו באחד מהם לאורך כל המשפט.",
+      "union_columns_differ": "המשפטים ש-UNION מחבר מחזירים עמודות שונות, {{first}} ו-{{second}}: כל אחד מחזיר את אותם שמות עמודות.",
+      "integer_overflow": "{{value}} מחוץ לטווח של מספר שלם, ‎-9223372036854775808 עד 9223372036854775807.",
+      "invalid_unicode_escape": "רצף הבריחה {{escape}} במחרוזת אינו רצף ש-Cypher קורא. בריחת Unicode היא ‎\\u וארבע ספרות הקסדצימליות, למשל ‎\\u00e9.",
+      "boolean_operand": "{{operator}} מקבל true,‏ false או null, וניתן לו ערך מסוג אחר שנכתב במשפט.",
+      "nondeterministic_aggregate": "{{aggregate}} צובר את rand()‎, שמשתנה בכל קריאה. חשבו אותו תחילה ב-WITH וצברו את התוצאה.",
+      "value_as_node": "MATCH קורא את {{variable}} כצומת או כקשר, והמשפט קושר אותו לערך שאינו אף אחד מהם. תנו לצומת משתנה משלו.",
       "undefined_variable": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}.",
       "invalid_limit": "LIMIT {{value}} אינו מספר שלם של שורות: LIMIT מקבל מספר של 0 ומעלה, למשל LIMIT 10.",
       "invalid_skip": "SKIP {{value}} אינו מספר שלם של שורות: SKIP מקבל מספר של 0 ומעלה, למשל SKIP 10.",
@@ -564,7 +576,7 @@
       "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
       "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
       "non_finite_number": "התשובה מכילה מספר ש-JSON אינו יכול לייצג: {{column}} הוא {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שייתכן שלא יומר דורשים PostgreSQL 16 ומעלה במנוע זה."
+      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה."
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם ליצור קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",
@@ -578,7 +590,7 @@
     "statement": {
       "rows_cut": "התשובה נחתכה ב-{{limit}} שורות, מגבלת השורות החלה על קריאה זו ({{kind}}): יש יותר שורות תואמות מאלה שהוחזרו.",
       "rows_cut_unchecked": "בתשובה יש {{limit}} שורות, מגבלת השורות החלה על קריאה זו ({{kind}}). לא ניתן היה לבדוק אם יש שורות תואמות נוספות: {{reason}}",
-      "list_at_ceiling": "רשימה מכילה את המקסימום של {{limit}} רשומות שמגבלת השורות מתירה לקריאה זו ({{kind}}); ייתכן שיש יותר.",
+      "list_at_ceiling": "רשימה מכילה את המקסימום של {{limit}} רשומות שמגבלת השורות מתירה לקריאה זו ({{kind}}); ייתכן שיש בה יותר.",
       "approximate_index": "השורות הדומות ביותר נמצאו באמצעות אינדקס וקטורי מקורב: ייתכן שחסרה שורה דומה מעט יותר מהשורה האחרונה שהוחזרה.",
       "path_cut": "נתיב ללא גבול עליון נקטע במגבלת עומק הגרף של {{limit}} קפיצות: נתיבים ארוכים יותר חסרים בתשובה."
     },

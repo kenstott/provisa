@@ -547,12 +547,12 @@ jobs:
 
       # GovData's JDBC driver is the calcite engine's govdata jar, from the engine release
       # provisa/runtime_deps/pgwire_bundles.py pins (CONNECTOR_RELEASE["govdata"]); the test loads lib/calcite-govdata-*.jar.
-      - name: GovData engine jar (engine-v0.117.0)
+      - name: GovData engine jar (engine-v0.122.2)
         run: |
           mkdir -p lib
           curl -fsSL -o lib/calcite-govdata-all.jar \
-            https://github.com/kenstott/calcite/releases/download/engine-v0.117.0/sih-govdata.jar
-          echo "9a46588140b7fb9882b5da02df6fb5dea1d95b08dc6ee2b7eb041da3fb7b1a75  lib/calcite-govdata-all.jar" \
+            https://github.com/kenstott/calcite/releases/download/engine-v0.122.2/sih-govdata.jar
+          echo "1caf42720188cbfc2f78f7fd80cf3f826bd594be9a71aad35b5b8232523cba8e  lib/calcite-govdata-all.jar" \
             | sha256sum -c -
 
       - name: Azure CLI login (Synapse provisioning)

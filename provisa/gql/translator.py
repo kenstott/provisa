@@ -30,7 +30,7 @@ from __future__ import annotations
 import copy
 import re
 from dataclasses import replace
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import sqlglot.expressions as exp
 
@@ -41,6 +41,7 @@ from provisa.gql.ir import (
     MatchStep,
     NodePattern,
     PathPattern,
+    ProcedureCall,
     ReturnItem,
     UnwindClause,
     WhereClause,
@@ -66,6 +67,7 @@ from provisa.gql.translator_helpers import (
 )
 from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
+    CALL_MARKER,
     CUT_COLUMN,
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
     CypherTranslateError,
@@ -73,6 +75,10 @@ from provisa.gql.translator_types import (
 )
 from provisa.gql.translator_rel import _RelJoinMixin
 from provisa.gql.translator_union import _UnionMixin
+
+
+if TYPE_CHECKING:
+    from provisa.gql.expr_context import TranslatorExprContext
 
 
 def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
@@ -86,6 +92,19 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     """
     translator = _Translator(ast, label_map, params)
     return translator.translate()
+
+
+def _is_json_list(e: exp.Expression) -> bool:
+    """Whether ``e`` is a list literal of JSON-encoded values (GraphVarKind.JSON_LIST)."""
+    while isinstance(e, (exp.Alias, exp.Paren)):
+        e = e.this
+    return (
+        isinstance(e, exp.Array)
+        and bool(e.expressions)
+        and all(
+            isinstance(x, exp.Anonymous) and str(x.this).upper() == "TO_JSON" for x in e.expressions
+        )
+    )
 
 
 def _holds_json_maps(e: exp.Expression) -> bool:
@@ -386,6 +405,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
         # which m.key reads (#287)
         self._map_vars: dict[str, set[str]] = {}
+        # REQ-2173: a variable a WITH or UNWIND binds to a temporal value -> its kind (temporal.py)
+        self._temporal_kinds: dict[str, str] = {}
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
@@ -473,8 +494,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             from_clause, joins = self._build_unwind_joins(unwinds, has_from=False)
             assert from_clause is not None
         else:
-            raise CypherTranslateError("Pipeline segment has no data source")
-        from_clause, joins = self._expose_split_nodes(from_clause, joins)
+            # A WITH that reads no pattern (WITH 1 AS x): one row, read from no table.
+            from_clause, joins = None, []
+        if from_clause is not None:
+            from_clause, joins = self._expose_split_nodes(from_clause, joins)
 
         select_exprs = self._build_with_select_items(with_clause.items)
         where_expr = self._build_where(stage_where)
@@ -486,7 +509,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 where_expr = _and(where_expr, kept)
             joins = _optional_step_matches_whole(joins, step_vars)
 
-        stage_query = exp.select(*select_exprs).from_(from_clause)
+        stage_query = exp.select(*select_exprs)
+        if from_clause is not None:
+            stage_query = stage_query.from_(from_clause)
         for join in joins:
             stage_query = stage_query.join(
                 join["table"], on=join["on"], join_type=join["join_type"]
@@ -495,6 +520,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             stage_query = stage_query.where(where_expr)
         for cond in held:
             stage_query = stage_query.where(cond)
+        if with_clause.distinct:
+            stage_query = stage_query.distinct()
         with_group_exprs = self._build_group_by_for_with(with_clause.items)
         if with_group_exprs:
             stage_query = stage_query.group_by(*with_group_exprs)
@@ -597,7 +624,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         final_match_steps: list,
         final_unwinds: list,
         cte_defs: list[tuple[str, exp.Expression]],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "_StageWheres"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> tuple[exp.Expression | None, list[dict], list[MatchClause], "_StageWheres"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/joins for the final segment.
 
         Returns (from_clause, joins, all_matches, its WHEREs as _steps_where gives them).
@@ -633,7 +660,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 _, uw_joins = self._build_unwind_joins(final_unwinds, has_from=True)
                 joins = list(joins) + uw_joins
         else:
-            raise CypherTranslateError("Query has no data source")
+            # A statement that reads no pattern (RETURN 1 + 1): one row, read from no table.
+            return None, [], [], stage_where
 
         from_clause, joins = self._expose_split_nodes(from_clause, joins)
         return from_clause, joins, all_matches, stage_where
@@ -675,13 +703,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _build_main_query(
         self,
-        from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        from_clause: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: list[dict],
         where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         select_exprs: list["exp.Expr"],
     ) -> "exp.Select":
-        """Assemble the main SELECT query from components."""
-        query = exp.select(*select_exprs).from_(from_clause)
+        """Assemble the main SELECT query from components. ``from_clause`` is None for a statement
+        that reads no pattern: a SELECT with no FROM."""
+        query = exp.select(*select_exprs)
+        if from_clause is not None:
+            query = query.from_(from_clause)
         if self._ast.return_clause and self._ast.return_clause.distinct:
             query = query.distinct()
         for join in joins:
@@ -731,7 +762,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _construct_union(
         self,
-        from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        from_clause: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: list[dict],
         where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         selects: list[list["exp.Expr"]],
@@ -741,7 +772,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         result: exp.Select | exp.Union | None = None
         for select_exprs in selects:
             query = self._build_main_query(
-                from_clause.copy(),
+                from_clause.copy() if from_clause is not None else None,
                 [{**j, "table": j["table"].copy(), "on": j["on"].copy()} for j in joins],
                 where_expr.copy() if where_expr is not None else None,
                 select_exprs,
@@ -922,8 +953,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             return
         for projection in select.expressions:
             name = projection.alias_or_name
-            if name and name.lower() not in self._graph_vars and _holds_json_maps(projection):
+            if not name or name.lower() in self._graph_vars:
+                continue
+            if _holds_json_maps(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
+            elif _is_json_list(projection):
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
 
     def _reconcile_params_with_placeholders(
         self,
@@ -980,15 +1015,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _group_pipeline(
         self,
-    ) -> list[tuple[list[MatchStep], list[UnwindClause], WithClause | None]]:
+    ) -> list[tuple[list[MatchStep], list[UnwindClause | ProcedureCall], WithClause | None]]:
         segments: list = []
         current_matches: list[MatchStep] = []
-        current_unwinds: list[UnwindClause] = []
+        current_unwinds: list[UnwindClause | ProcedureCall] = []
         for item in self._ast.pipeline:
             if isinstance(item, MatchStep):
                 current_matches.append(item)
-            elif isinstance(item, UnwindClause):
-                current_unwinds.append(item)
+            elif isinstance(item, (UnwindClause, ProcedureCall)):
+                current_unwinds.append(item)  # REQ-2168: a call's rows are a source as UNWIND's
             elif isinstance(item, WithClause):
                 segments.append((list(current_matches), list(current_unwinds), item))
                 current_matches = []
@@ -1012,7 +1047,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _build_unwind_joins(
         self,
-        unwinds: list[UnwindClause],
+        unwinds: list[UnwindClause | ProcedureCall],
         has_from: bool,
     ) -> tuple[exp.Expression | None, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/CROSS JOIN sources for UNWIND clauses.
@@ -1023,6 +1058,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         from_expr: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         cross_joins: list[dict] = []
         for uw in unwinds:
+            if isinstance(uw, ProcedureCall):  # REQ-2168
+                source = self._procedure_source(uw)
+                if not has_from and from_expr is None:
+                    from_expr = source
+                    has_from = True
+                else:
+                    cross_joins.append({"table": source, "on": None, "join_type": "CROSS"})
+                continue
             alias = f"_uw{self._unwind_count}"
             self._unwind_count += 1
             array_expr = self._build_unwind_expr(uw.expression)
@@ -1042,12 +1085,72 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             )
             self._var_table[uw.variable] = (alias, None)
             self._unwind_aliases.add(alias)
+            element = self._temporal_context().temporal_element_kind(uw.expression)
+            if element is not None:
+                self._temporal_kinds[uw.variable] = element
             if not has_from and from_expr is None:
                 from_expr = unnest
                 has_from = True
             else:
                 cross_joins.append({"table": unnest, "on": None, "join_type": "CROSS"})
         return from_expr, cross_joins
+
+    def _call_value(self, arg: CypherExpr, call: ProcedureCall, position: int) -> Any:
+        """A CALL argument's value: a literal, a ``$parameter``'s value, or a list or map of
+        them (``apoc.meta.data({sample: $SAMPLE})``)."""
+        from provisa.gql.expr_ast import ListLiteral, Literal, Parameter
+
+        if isinstance(arg, Literal):
+            return arg.value
+        if isinstance(arg, ListLiteral):
+            return [self._call_value(item, call, position) for item in arg.items]
+        if isinstance(arg, MapLiteral):
+            return {k: self._call_value(v, call, position) for k, v in arg.entries}
+        if isinstance(arg, Parameter):
+            if arg.name not in self._params:
+                raise CypherTranslateError(
+                    f"CALL {call.name}: parameter ${arg.name} (argument {position}) was not supplied"
+                )
+            return self._params[arg.name]
+        raise CypherTranslateError(
+            f"CALL {call.name}: argument {position} is not a value or a $parameter"
+        )
+
+    def _procedure_source(self, call: ProcedureCall) -> exp.Expression:  # REQ-2168
+        """A composed CALL as a source: the marker table function (CALL_MARKER) aliased with the
+        variables it yields, filtered by its WHERE. Each argument's value is written into it, so
+        a statement holding one is translated for its parameters' values."""
+        import json
+
+        alias = f"_call{self._unwind_count}"
+        self._unwind_count += 1
+        variables = [var for _, var in call.yields]
+        values = [self._call_value(a, call, i + 1) for i, a in enumerate(call.args)]
+        marker = exp.Anonymous(
+            this=CALL_MARKER,
+            expressions=[
+                exp.Literal.string(call.name),
+                exp.Literal.string(json.dumps([col for col, _ in call.yields])),
+                exp.Literal.string(json.dumps(values, default=str)),
+            ],
+        )
+        table = exp.Table(
+            this=marker,
+            alias=exp.TableAlias(
+                this=exp.Identifier(this=alias),
+                columns=[exp.Identifier(this=v, quoted=True) for v in variables],
+            ),
+        )
+        for var in variables:
+            self._var_table[var] = (alias, None)
+        self._unwind_aliases.add(alias)
+        condition = self._build_where(call.where)
+        if condition is None:
+            return table
+        return exp.Subquery(
+            this=exp.select(exp.Star()).from_(table).where(condition),
+            alias=exp.TableAlias(this=exp.Identifier(this=alias)),
+        )
 
     def _register_node(self, node: "NodePattern") -> None:
         """Register a single node into var_table and domain_nodes if not already present."""
@@ -1124,6 +1227,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             join_table = _node_table_expr(nm, fv)
             return {"table": join_table, "on": on_clause, "join_type": join_type}
         return None
+
+    def _temporal_context(self) -> "TranslatorExprContext":
+        """The context temporal kinds are read in (REQ-2173)."""
+        from provisa.gql.expr_context import TranslatorExprContext
+
+        return TranslatorExprContext(self)
 
     def _lower_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Lower an expression tree to sqlglot node-to-node against the translator's traversal state
@@ -1259,6 +1368,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                             for key in sorted(keys)
                         )
                     continue
+                if meta is None and held_in in self._unwind_aliases:
+                    # An UNWIND's or a CALL's variable is one column of its source, not a row.
+                    exprs.append(
+                        exp.alias_(self._parse_expr(expr), alias or expr_text, quoted=True)
+                    )
+                    continue
                 tbl_col = exp.Column(
                     this=exp.Star(),
                     table=exp.Identifier(this=held_in),
@@ -1278,9 +1393,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _update_var_table_for_with(self, items: list[ReturnItem], cte_name: str) -> None:
         new_var_table: dict[str, tuple[str, Any]] = {}
+        kinds: dict[str, str] = {}
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
         for item in items:
+            name = item.alias or (
+                item.expression.name if isinstance(item.expression, Variable) else None
+            )
+            found = self._temporal_context().temporal_kind(item.expression)
+            if name and found is not None:
+                kinds[name] = found
             expr = item.expression
             alias = item.alias
             bare = expr.name if isinstance(expr, Variable) else None
@@ -1300,6 +1422,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._map_array_vars.add(key)
         self._var_table = new_var_table
         self._cte_sources = set(new_var_table.keys())
+        self._temporal_kinds = kinds
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
         """Return (type_name_key, domain_label). Raises on ambiguity.

@@ -75,6 +75,7 @@ def table_model_from_input(inp, columns, alias):  # REQ-929, REQ-982
         push_debounce_max_delay=inp.push_debounce_max_delay,  # REQ-1733
         mv_consistency=inp.mv_consistency,  # REQ-879
         mv_preprocess=inp.mv_preprocess,  # REQ-957
+        mv_hold_on_failing_checks=inp.mv_hold_on_failing_checks,  # REQ-2133
         business_key=list(inp.business_key),  # REQ-2109
         valid_time=inp.valid_time,  # REQ-2109
         recorded_time=inp.recorded_time,  # REQ-2109

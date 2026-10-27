@@ -79,7 +79,6 @@ structure {PRODUCT_FORM} {{
     usage: String
     version: String
     status: String
-    serviceLevel: String
     support: String
     supportContact: String
     documentation: String
@@ -107,7 +106,6 @@ def product_form(product: "DataProductAsset") -> dict[str, Any]:
         "usage": product.usage,
         "version": product.version,
         "status": product.status,
-        "serviceLevel": product.sla,
         "support": product.support,
         "supportContact": product.support_contact,
         "documentation": product.documentation_url,

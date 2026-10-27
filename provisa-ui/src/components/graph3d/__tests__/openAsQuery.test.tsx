@@ -38,7 +38,7 @@ vi.mock("../../../hooks/useAdminQueries", () => ({
 
 import { OpenAsQuery } from "../OpenAsQuery";
 
-const QUERY = "query Ontology {\n  glossary_terms: m__glossaryTerms { id: id }\n}";
+const QUERY = "query Ontology {\n  _terms: ont__terms { id: id }\n}";
 
 /** Where the control navigated, and what it handed over. */
 function Landed() {
@@ -62,7 +62,7 @@ beforeEach(() => {
   compiles.answer = {
     queries: [
       {
-        semantic_sql: 'SELECT "id" FROM "meta"."glossary_terms"',
+        semantic_sql: 'SELECT "id" FROM "ontology"."_terms"',
         compiled_cypher: "MATCH (n:GlossaryTerm) RETURN n.id",
         cypher_error: null,
       },
@@ -84,7 +84,7 @@ describe("a graph view's Open as query", () => {
     await waitFor(() => expect(screen.getByTestId("x-open-as-sql")).not.toBeDisabled());
     expect(compiles.calls).toEqual([["analyst", QUERY, true]]);
     fireEvent.click(screen.getByTestId("x-open-as-sql"));
-    expect(landed()).toEqual(["/sql", { sql: 'SELECT "id" FROM "meta"."glossary_terms"' }]);
+    expect(landed()).toEqual(["/sql", { sql: 'SELECT "id" FROM "ontology"."_terms"' }]);
   });
 
   it("opens its Cypher in Cypher, and not when it has none", async () => {
@@ -99,13 +99,13 @@ describe("a graph view's Open as query", () => {
     compiles.answer = {
       queries: [
         {
-          root_field: "glossary_terms",
+          root_field: "_terms",
           semantic_sql: "SELECT 1",
           compiled_cypher: "MATCH (n:GlossaryTerm) RETURN n.id",
           cypher_error: null,
         },
         {
-          root_field: "glossary_term_edges",
+          root_field: "_term_edges",
           semantic_sql: "SELECT 2",
           compiled_cypher: null,
           cypher_error: "no mapping",
@@ -126,7 +126,7 @@ describe("a graph view's Open as query", () => {
       "/graph",
       {
         query:
-          "MATCH (n:GlossaryTerm) RETURN n.id;\n\n// glossary_term_edges: no mapping;\n\n" +
+          "MATCH (n:GlossaryTerm) RETURN n.id;\n\n// _term_edges: no mapping;\n\n" +
           "MATCH (p:DataProduct) RETURN p.id",
       },
     ]);

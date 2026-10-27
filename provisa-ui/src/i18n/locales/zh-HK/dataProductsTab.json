@@ -22,8 +22,6 @@
     "versionLabel": "版本",
     "versionPlaceholder": "例如 1.2.0",
     "statusLabel": "狀態",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "此產品的服務等級承諾",
     "supportLabel": "支援",
     "supportPlaceholder": "如何取得此產品的協助",
     "supportContactLabel": "支援聯絡人",
@@ -103,7 +101,7 @@
         "dataQuality": "數據質素"
       },
       "dataQualityEmpty": "沒有質素掃描",
-      "dataQualityHint": "其合約掃描此產品輸出埠的檢查表。每次執行每項檢查會寫入一行；成員資格跟隨被掃描的數據表。",
+      "dataQualityHint": "產品的檢查：對其輸入的預期、對其成員表的承諾，以及其他方（或無人）對兩者所做的相關檢查。開啟一項檢查即可查看其結果。",
       "dqRulesAria": "顯示 {{table}} 的質素規則",
       "dqRulesTitle": "質素規則 — {{table}}",
       "dqRulesEmpty": "合約未定義任何檢查",
@@ -113,8 +111,6 @@
       "lineageEmpty": "沒有血緣",
       "lineageLoading": "正在載入血緣…",
       "lineageHint": "欄位血緣圖，以此產品的數據表作為發佈端點，並列出用於衍生它們的所有上游數據表。僅供參考，需要 view_governance 能力。",
-      "inputPortsEmpty": "未記錄上游輸入",
-      "inputPortsHint": "此產品直接讀取的表（來自血緣）。展開表可查看其讀取的欄。需要 view_governance 能力。",
       "outputPortsHint": "此產品可查詢的範圍：其成員資料表和指令。每個的範例查詢見「存取模式」。",
       "customPropertiesEmpty": "沒有自訂屬性",
       "lineageLaneUpstream": "上游，第 {{n}} 跳",
@@ -158,6 +154,38 @@
     "findingFix_member_deprecated": "開啟 {{table}}",
     "findingFix_retirement_blocked": "選擇繼任產品…",
     "findingFix_domain_steward_unset": "開啟域 {{domain}}",
-    "findingFix_successor_retired": "開啟 {{successor}}"
+    "findingFix_successor_retired": "開啟 {{successor}}",
+    "contract": {
+      "label": "數據契約",
+      "hint": "每個輸出端口的契約：以其自身版本承諾的內容",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "已提議",
+        "draft": "草稿",
+        "active": "生效",
+        "deprecated": "已棄用",
+        "retired": "已停用"
+      },
+      "usage": "用途",
+      "limitations": "限制",
+      "noticePeriod": "通知期",
+      "noticePeriodPlaceholder": "例如 P3M",
+      "column": "欄",
+      "type": "類型",
+      "required": "從不為空",
+      "yes": "是",
+      "versionLabel": "契約版本",
+      "statusLabel": "契約狀態",
+      "descriptionLabel": "用途說明",
+      "columnsLabel": "承諾的欄",
+      "columnsHelp": "不再承諾某欄或更改其類型，需要新版本。",
+      "requiredLabel": "從不為空",
+      "slaLabel": "服務級別",
+      "slaProperty": "屬性",
+      "slaValue": "值",
+      "slaUnit": "單位",
+      "slaRemove": "移除服務級別",
+      "slaAdd": "新增服務級別"
+    }
   }
 }

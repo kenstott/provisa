@@ -22,8 +22,6 @@
     "versionLabel": "Versie",
     "versionPlaceholder": "bijv. 1.2.0",
     "statusLabel": "Status",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Serviceniveauafspraken voor dit product",
     "supportLabel": "Ondersteuning",
     "supportPlaceholder": "Hoe hulp te krijgen bij dit product",
     "supportContactLabel": "Supportcontact",
@@ -103,7 +101,7 @@
         "dataQuality": "Datakwaliteit"
       },
       "dataQualityEmpty": "Geen kwaliteitsscans",
-      "dataQualityHint": "Checkertabellen waarvan de contracten de uitvoerpoorten van dit product scannen. Elk legt per controle per run één rij vast; lidmaatschap volgt de gescande tabel.",
+      "dataQualityHint": "De controles van het product: zijn verwachtingen van zijn invoer, zijn beloften over zijn lidtabellen en gerelateerde controles die anderen (of niemand) op een van beide uitvoeren. Open een controle om de resultaten te lezen.",
       "dqRulesAria": "Kwaliteitsregels voor {{table}} tonen",
       "dqRulesTitle": "Kwaliteitsregels — {{table}}",
       "dqRulesEmpty": "Het contract definieert geen controles",
@@ -113,8 +111,6 @@
       "lineageEmpty": "Geen lineage",
       "lineageLoading": "Lineage laden…",
       "lineageHint": "Kolomlineagegrafiek met de tabellen van dit product als gepubliceerd endpoint, plus elke upstreamtabel waaruit ze zijn afgeleid. Alleen ter informatie — vereist de capability view_governance.",
-      "inputPortsEmpty": "Geen upstreaminvoer geregistreerd",
-      "inputPortsHint": "De tabellen die dit product rechtstreeks leest, uit lineage. Klap een tabel uit voor de kolommen die het leest. Vereist de capability view_governance.",
       "outputPortsHint": "Het bevraagbare oppervlak van dit product: de lidtabellen en opdrachten. Voorbeeldquery's voor elk staan onder Toegangspatronen.",
       "customPropertiesEmpty": "Geen aangepaste eigenschappen",
       "lineageLaneUpstream": "Stroomopwaarts, stap {{n}}",
@@ -158,6 +154,38 @@
     "findingFix_member_deprecated": "{{table}} openen",
     "findingFix_retirement_blocked": "Opvolger kiezen…",
     "findingFix_domain_steward_unset": "Domein {{domain}} openen",
-    "findingFix_successor_retired": "{{successor}} openen"
+    "findingFix_successor_retired": "{{successor}} openen",
+    "contract": {
+      "label": "Datacontracten",
+      "hint": "Het contract van elke outputpoort: wat het belooft, in een eigen versie",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Voorgesteld",
+        "draft": "Concept",
+        "active": "Actief",
+        "deprecated": "Verouderd",
+        "retired": "Buiten gebruik"
+      },
+      "usage": "Gebruik",
+      "limitations": "Beperkingen",
+      "noticePeriod": "Opzegtermijn",
+      "noticePeriodPlaceholder": "bijv. P3M",
+      "column": "Kolom",
+      "type": "Type",
+      "required": "Nooit null",
+      "yes": "Ja",
+      "versionLabel": "Contractversie",
+      "statusLabel": "Contractstatus",
+      "descriptionLabel": "Waarvoor het dient",
+      "columnsLabel": "Beloofde kolommen",
+      "columnsHelp": "Een kolom niet meer beloven, of het type ervan wijzigen, vraagt een nieuwe versie.",
+      "requiredLabel": "Nooit null",
+      "slaLabel": "Serviceniveaus",
+      "slaProperty": "Eigenschap",
+      "slaValue": "Waarde",
+      "slaUnit": "Eenheid",
+      "slaRemove": "Serviceniveau verwijderen",
+      "slaAdd": "Serviceniveau toevoegen"
+    }
   }
 }

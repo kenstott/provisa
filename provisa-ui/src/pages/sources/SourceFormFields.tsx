@@ -309,7 +309,11 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
         </FormField>
       )}
       {UPLOAD_TYPES.has(form.type) && (
-        <FileLocationFields form={form} setForm={setForm} creating={props.editingSourceId === null} />
+        <FileLocationFields
+          form={form}
+          setForm={setForm}
+          creating={props.editingSourceId === null}
+        />
       )}
       {CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(location) && (
         <ObjectStoreCredentialFields

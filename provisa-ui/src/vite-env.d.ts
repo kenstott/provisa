@@ -64,6 +64,7 @@ declare module "*.graphql" {
   export const CreateDataProduct: DocumentNode;
   export const UpdateDataProduct: DocumentNode;
   export const DeleteDataProduct: DocumentNode;
+  export const SaveDataContract: DocumentNode;
   export const PublishDataProduct: DocumentNode;
   export const DeprecateDataProduct: DocumentNode;
   export const RetireDataProduct: DocumentNode;
@@ -75,6 +76,7 @@ declare module "*.graphql" {
   export const UpdateTable: DocumentNode;
   export const DeleteTable: DocumentNode;
   export const Calendars: DocumentNode;
+  export const HoldOnFailingChecksSource: DocumentNode;
   export const CreateCalendar: DocumentNode;
   export const DeleteCalendar: DocumentNode;
   export const CreateRelationship: DocumentNode;
@@ -199,6 +201,7 @@ declare module "*.gql" {
   export const CreateDataProduct: DocumentNode;
   export const UpdateDataProduct: DocumentNode;
   export const DeleteDataProduct: DocumentNode;
+  export const SaveDataContract: DocumentNode;
   export const PublishDataProduct: DocumentNode;
   export const DeprecateDataProduct: DocumentNode;
   export const RetireDataProduct: DocumentNode;
@@ -210,6 +213,7 @@ declare module "*.gql" {
   export const UpdateTable: DocumentNode;
   export const DeleteTable: DocumentNode;
   export const Calendars: DocumentNode;
+  export const HoldOnFailingChecksSource: DocumentNode;
   export const CreateCalendar: DocumentNode;
   export const DeleteCalendar: DocumentNode;
   export const CreateRelationship: DocumentNode;

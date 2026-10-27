@@ -8,10 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2128: the Data Product detail panel's Knowledge Graph panel — the product, its member tables,
-// its commands and the terms bound to its columns, with no layer controls. three.js loads when the
-// panel scrolls into view; its expand button opens the full graph on the Knowledge graph preset,
-// focused on the product. The Data Products page's own entry point opens it on the Product map.
+// REQ-2128: the Data Product detail panel's Graph panel — the product, its member tables, its
+// commands and the terms bound to its columns, with no layer controls. three.js loads when the
+// panel scrolls into view; its expand button opens the full graph on the All preset, focused on
+// the product. The Data Products page's own entry point opens it on the Products preset.
 
 import { useMemo, useState, type ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
@@ -45,7 +45,6 @@ export function GraphModal({
   scope,
   preset,
   focus,
-  zero,
   search,
   settingsKey,
   exportName,
@@ -58,7 +57,6 @@ export function GraphModal({
   scope: GraphScope;
   preset: PresetId;
   focus: string | null;
-  zero: string[];
   /** The page's search driving the focus (the Ontology View's), as GraphExplorer takes it. */
   search?: string;
   /** Which graph's remembered settings (graphSettings.ts): the same as its in-place view's. */
@@ -76,7 +74,6 @@ export function GraphModal({
           scope={scope}
           preset={preset}
           focus={focus}
-          zero={zero}
           search={search}
           settingsKey={settingsKey}
           exportName={exportName}
@@ -103,7 +100,7 @@ function PanelStage({
   /** REQ-2174: drawn in 2D, as its expanded view is. */
   flat: boolean;
 }) {
-  const at = useMemo(() => layoutGraph(graph, "force", [], 1, flat), [graph, flat]);
+  const at = useMemo(() => layoutGraph(graph, "force", 1, flat), [graph, flat]);
   const [picked, setSelected] = useState<string | null>(product);
   const [hover, setHover] = useState<GraphHover | null>(null);
   // The card is a glance: it turns and draws no grid, whatever a viewer's saved graph defaults
@@ -125,14 +122,9 @@ function PanelStage({
   };
   return (
     <>
-      <GraphStage s={s} command={null} exportName={productName} testId="kg-panel-stage" bare />
+      <GraphStage s={s} command={null} exportName={productName} testId="graph-panel-stage" bare />
     </>
   );
-}
-
-/** The product's member tables: lane 0 of the Lineage preset. */
-function membersOf(data: GraphData, product: string): string[] {
-  return data.edges.filter((e) => e.kind === "member" && e.a === product).map((e) => e.b);
 }
 
 function Loading({ error, testId }: { error: string | null; testId: string }) {
@@ -149,7 +141,7 @@ function Loading({ error, testId }: { error: string | null; testId: string }) {
 // Before a view's first scoped read: nothing drawn yet.
 const EMPTY: GraphData = { nodes: [], edges: [] };
 
-export function KnowledgeGraphPanel({
+export function GraphPanel({
   productId,
   productName,
   graph: core,
@@ -172,15 +164,15 @@ export function KnowledgeGraphPanel({
   const settingsKey = useMemo(() => ({ kind: "product-graph", subject: productId }), [productId]);
   const [view, saveView] = useGraphSettings(settingsKey, { flat: false as boolean });
   return (
-    <div className="g3d-panel" ref={ref} data-testid="kg-panel">
+    <div className="g3d-panel" ref={ref} data-testid="graph-panel">
       {/* Its card names it; the expand button opens the full graph. */}
       <Group justify="flex-end" gap="xs">
         <DimensionToggle
           flat={view.flat}
           onChange={(on) => saveView("flat", on)}
-          testId="kg-panel"
+          testId="graph-panel"
         />
-        <ExpandButton onClick={() => setOpen(true)} testId="kg-panel-expand" />
+        <ExpandButton onClick={() => setOpen(true)} testId="graph-panel-expand" />
       </Group>
       <div className="p3d g3d-panel-view">
         {seen && (
@@ -195,7 +187,7 @@ export function KnowledgeGraphPanel({
       </div>
       {open && !data && (
         <Modal opened onClose={() => setOpen(false)} title={productName} size="sm">
-          <Loading error={error} testId="kg-panel" />
+          <Loading error={error} testId="graph-panel" />
         </Modal>
       )}
       {data && (
@@ -206,10 +198,9 @@ export function KnowledgeGraphPanel({
           data={scoped?.data ?? EMPTY}
           query={{ all: data, onScope, text: scoped?.query ?? null, own: product }}
           scope={PRODUCT_SCOPE}
-          preset="knowledge"
+          preset="all"
           exportName={productName}
           focus={product}
-          zero={membersOf(data, product)}
           settingsKey={settingsKey}
         />
       )}
@@ -217,7 +208,7 @@ export function KnowledgeGraphPanel({
   );
 }
 
-/** The Data Products page's entry point: the full graph on the Product map preset, every product
+/** The Data Products page's entry point: the full graph on the Products preset, every product
  * read when it is opened. */
 export function ProductMapButton() {
   const { t } = useTranslation();
@@ -247,10 +238,9 @@ export function ProductMapButton() {
           data={scoped?.data ?? EMPTY}
           query={{ all: data, onScope, text: scoped?.query ?? null }}
           scope={PRODUCT_SCOPE}
-          preset="productMap"
+          preset="products"
           exportName="product-map"
           focus={null}
-          zero={[]}
           settingsKey={{ kind: "product-map", subject: null }}
         />
       )}

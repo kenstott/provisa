@@ -22,8 +22,6 @@
     "versionLabel": "वर्शन",
     "versionPlaceholder": "जैसे 1.2.0",
     "statusLabel": "स्थिति",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "इस प्रोडक्ट के सेवा-स्तर प्रतिबद्धताएँ",
     "supportLabel": "सहायता",
     "supportPlaceholder": "इस प्रोडक्ट के बारे में सहायता कैसे पाएँ",
     "supportContactLabel": "सहायता संपर्क",
@@ -103,7 +101,7 @@
         "dataQuality": "डेटा क्वालिटी"
       },
       "dataQualityEmpty": "कोई क्वालिटी स्कैन नहीं",
-      "dataQualityHint": "चेकर टेबल जिनके कॉन्ट्रैक्ट इस प्रोडक्ट के आउटपुट पोर्ट को स्कैन करते हैं। हर रन में प्रति चेक एक पंक्ति लैंड होती है; सदस्यता स्कैन की गई टेबल का अनुसरण करती है।",
+      "dataQualityHint": "प्रोडक्ट की जाँचें: इसके इनपुट पर इसकी अपेक्षाएँ, इसकी सदस्य टेबल पर इसके वादे, और संबंधित जाँचें जो दूसरे (या कोई नहीं) इनमें से किसी पर करते हैं। परिणाम पढ़ने के लिए कोई जाँच खोलें।",
       "dqRulesAria": "{{table}} के क्वालिटी नियम दिखाएँ",
       "dqRulesTitle": "क्वालिटी नियम — {{table}}",
       "dqRulesEmpty": "कॉन्ट्रैक्ट कोई चेक परिभाषित नहीं करता",
@@ -113,8 +111,6 @@
       "lineageEmpty": "कोई लिनिएज नहीं",
       "lineageLoading": "लिनिएज लोड हो रहा है…",
       "lineageHint": "कॉलम लिनिएज ग्राफ़ जो इस प्रोडक्ट की टेबल को प्रकाशित एंडपॉइंट के रूप में दिखाता है, साथ ही उन्हें व्युत्पन्न करने में उपयोग हुई हर अपस्ट्रीम टेबल। केवल जानकारी के लिए — view_governance क्षमता आवश्यक है।",
-      "inputPortsEmpty": "कोई अपस्ट्रीम इनपुट दर्ज नहीं",
-      "inputPortsHint": "वे तालिकाएँ जिन्हें यह उत्पाद सीधे पढ़ता है, लिनिएज से। पढ़े गए कॉलम देखने के लिए तालिका खोलें। view_governance क्षमता आवश्यक है।",
       "outputPortsHint": "इस प्रोडक्ट की क्वेरी योग्य सतह: इसकी सदस्य तालिकाएँ और कमांड। हर एक के उदाहरण क्वेरी एक्सेस पैटर्न में हैं।",
       "customPropertiesEmpty": "कोई कस्टम प्रॉपर्टी नहीं",
       "lineageLaneUpstream": "अपस्ट्रीम, चरण {{n}}",
@@ -158,6 +154,38 @@
     "findingFix_member_deprecated": "{{table}} खोलें",
     "findingFix_retirement_blocked": "उत्तराधिकारी चुनें…",
     "findingFix_domain_steward_unset": "डोमेन {{domain}} खोलें",
-    "findingFix_successor_retired": "{{successor}} खोलें"
+    "findingFix_successor_retired": "{{successor}} खोलें",
+    "contract": {
+      "label": "डेटा अनुबंध",
+      "hint": "हर आउटपुट पोर्ट का अनुबंध: वह अपने संस्करण पर क्या वादा करता है",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "प्रस्तावित",
+        "draft": "मसौदा",
+        "active": "सक्रिय",
+        "deprecated": "अप्रचलित",
+        "retired": "सेवानिवृत्त"
+      },
+      "usage": "उपयोग",
+      "limitations": "सीमाएँ",
+      "noticePeriod": "नोटिस अवधि",
+      "noticePeriodPlaceholder": "जैसे P3M",
+      "column": "कॉलम",
+      "type": "प्रकार",
+      "required": "कभी null नहीं",
+      "yes": "हाँ",
+      "versionLabel": "अनुबंध संस्करण",
+      "statusLabel": "अनुबंध स्थिति",
+      "descriptionLabel": "यह किसलिए है",
+      "columnsLabel": "वादा किए गए कॉलम",
+      "columnsHelp": "किसी कॉलम का वादा छोड़ने या उसका प्रकार बदलने के लिए नया संस्करण चाहिए।",
+      "requiredLabel": "कभी null नहीं",
+      "slaLabel": "सेवा स्तर",
+      "slaProperty": "गुण",
+      "slaValue": "मान",
+      "slaUnit": "इकाई",
+      "slaRemove": "सेवा स्तर हटाएँ",
+      "slaAdd": "सेवा स्तर जोड़ें"
+    }
   }
 }

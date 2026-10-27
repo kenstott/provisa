@@ -161,6 +161,6 @@
     "moveManyUnnamed_one": "¿Mover {{count}} columna?",
     "moveManyUnnamed_other": "¿Mover {{count}} columnas?",
     "moveCarryUnnamed": "Mover y marcar sus nuevos términos con {{tags}}",
-    "termGraphTitle": "Grafo del término"
+    "termGraphTitle": "Grafo de términos"
   }
 }

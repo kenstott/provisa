@@ -22,8 +22,6 @@
     "versionLabel": "Versão",
     "versionPlaceholder": "ex.: 1.2.0",
     "statusLabel": "Status",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Compromissos de nível de serviço deste produto",
     "supportLabel": "Suporte",
     "supportPlaceholder": "Como obter ajuda com este produto",
     "supportContactLabel": "Contato de suporte",
@@ -103,7 +101,7 @@
         "dataQuality": "Qualidade de dados"
       },
       "dataQualityEmpty": "Nenhuma verificação de qualidade",
-      "dataQualityHint": "Tabelas verificadoras cujos contratos verificam as portas de saída deste produto. Cada uma grava uma linha por verificação por execução; a associação segue a tabela verificada.",
+      "dataQualityHint": "As verificações do produto: suas expectativas sobre suas entradas, suas promessas sobre suas tabelas membro e as verificações relacionadas que outros (ou ninguém) fazem em qualquer uma delas. Abra uma verificação para ler seus resultados.",
       "dqRulesAria": "Mostrar regras de qualidade de {{table}}",
       "dqRulesTitle": "Regras de qualidade — {{table}}",
       "dqRulesEmpty": "O contrato não define verificações",
@@ -113,8 +111,6 @@
       "lineageEmpty": "Sem linhagem",
       "lineageLoading": "Carregando linhagem…",
       "lineageHint": "Grafo de linhagem de colunas mostrando as tabelas deste produto como o endpoint publicado, mais toda tabela upstream usada para derivá-las. Somente informativo — requer a capacidade view_governance.",
-      "inputPortsEmpty": "Nenhuma entrada upstream registrada",
-      "inputPortsHint": "As tabelas que este produto lê diretamente, segundo a linhagem. Expanda uma tabela para ver as colunas que ele lê. Requer a capacidade view_governance.",
       "outputPortsHint": "A superfície consultável deste produto: suas tabelas membro e seus comandos. Consultas de exemplo para cada uma estão em Padrões de acesso.",
       "customPropertiesEmpty": "Nenhuma propriedade personalizada",
       "lineageLaneUpstream": "A montante, salto {{n}}",
@@ -158,6 +154,38 @@
     "findingFix_member_deprecated": "Abrir {{table}}",
     "findingFix_retirement_blocked": "Escolher um sucessor…",
     "findingFix_domain_steward_unset": "Abrir o domínio {{domain}}",
-    "findingFix_successor_retired": "Abrir {{successor}}"
+    "findingFix_successor_retired": "Abrir {{successor}}",
+    "contract": {
+      "label": "Contratos de dados",
+      "hint": "O contrato de cada porta de saída: o que promete, com versão própria",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Proposto",
+        "draft": "Rascunho",
+        "active": "Ativo",
+        "deprecated": "Obsoleto",
+        "retired": "Retirado"
+      },
+      "usage": "Uso",
+      "limitations": "Limitações",
+      "noticePeriod": "Prazo de aviso prévio",
+      "noticePeriodPlaceholder": "ex.: P3M",
+      "column": "Coluna",
+      "type": "Tipo",
+      "required": "Nunca nulo",
+      "yes": "Sim",
+      "versionLabel": "Versão do contrato",
+      "statusLabel": "Status do contrato",
+      "descriptionLabel": "Para que serve",
+      "columnsLabel": "Colunas prometidas",
+      "columnsHelp": "Deixar de prometer uma coluna, ou mudar seu tipo, exige uma nova versão.",
+      "requiredLabel": "Nunca nulo",
+      "slaLabel": "Níveis de serviço",
+      "slaProperty": "Propriedade",
+      "slaValue": "Valor",
+      "slaUnit": "Unidade",
+      "slaRemove": "Remover nível de serviço",
+      "slaAdd": "Adicionar nível de serviço"
+    }
   }
 }

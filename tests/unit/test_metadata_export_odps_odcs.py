@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2118: a data product's ODPS document and its members' ODCS contracts.
+"""REQ-2118, REQ-2158: a data product's ODPS document and its members' declared ODCS contracts.
 
 Each document is validated against the standard's own JSON Schema (tests/fixtures/standards), so
 what a catalog importing the standard reads is what the standard defines.
@@ -31,7 +31,13 @@ from provisa.api.metadata_export.odps import (
     odps_document,
     product_documents,
 )
-from provisa.core.models import DataProduct
+from provisa.core.models import (
+    ContractColumn,
+    ContractSlaProperty,
+    ContractTerms,
+    DataContract,
+    DataProduct,
+)
 from tests.integration.metadata_export_fixture import MASK_PATTERN, ORG_ID, governed_config
 
 _SCHEMAS = Path(__file__).resolve().parents[1] / "fixtures" / "standards"
@@ -45,9 +51,27 @@ ODPS = _validator("odps-json-schema-v1.0.0.json")
 ODCS = _validator("odcs-json-schema-v3.1.0.json")
 
 
-def _snapshot(**product):
+#: orders' declared contract: a release of its own, apart from the product's version.
+ORDERS_CONTRACT = DataContract(
+    version="2.0.0",
+    status="active",
+    description="Every order placed",
+    terms=ContractTerms(usage="Join on id", limitations="No refunds", notice_period="P3M"),
+    sla=[ContractSlaProperty(property="availability", value=99.9, unit="%")],
+    columns=[
+        ContractColumn(name="id", type="integer", required=True),
+        ContractColumn(name="amount", type="numeric", description="The order's total"),
+        ContractColumn(name="ssn", type="text"),
+        ContractColumn(name="margin", type="numeric"),
+    ],
+)
+
+
+def _snapshot(orders_contract: DataContract | None = None, **product):
     config = governed_config()
     config.tables[0].cache_ttl = 3600  # orders: kept an hour
+    if orders_contract is not None:
+        config.tables[0].contract = orders_contract
     config.data_products = [
         DataProduct(
             id="prod",
@@ -58,7 +82,6 @@ def _snapshot(**product):
             purpose="One view of each customer",
             limitations="No orders before 2020",
             usage="Join on customer_id",
-            sla="Refreshed hourly",
             support="The data team's channel",
             support_contact="data-team@example.com",
             custom_properties={"cost_center": "CC-42"},
@@ -75,7 +98,7 @@ def _errors(validator: Draft201909Validator, document: dict) -> list[str]:
 
 
 def test_the_odps_document_is_valid_odps_and_names_each_members_contract():
-    snapshot, product = _snapshot(version="1.2.0", status="live")
+    snapshot, product = _snapshot(ORDERS_CONTRACT, version="1.2.0", status="live")
     document = odps_document(snapshot, product)
 
     assert _errors(ODPS, document) == []
@@ -94,9 +117,12 @@ def test_the_odps_document_is_valid_odps_and_names_each_members_contract():
     orders = next(t for t in snapshot.tables if t.name == "orders")
     assert ports["orders"]["contractId"] == contract_id(orders)
     assert ports["order_totals"]["type"] == "view"
-    # The SLA stays prose, beside the product's own custom properties.
+    # Each port is versioned by its contract, not by the product.
+    assert ports["orders"]["version"] == "2.0.0"
+    assert ports["customers"]["version"] == "0.1.0"
+    # The product has no SLA of its own: each contract holds its member's.
     custom = {p["property"]: p["value"] for p in document["customProperties"]}
-    assert custom == {"cost_center": "CC-42", "sla": "Refreshed hourly"}
+    assert custom == {"cost_center": "CC-42"}
     assert document["support"] == [
         {
             "channel": "support",
@@ -108,7 +134,7 @@ def test_the_odps_document_is_valid_odps_and_names_each_members_contract():
 
 
 def test_each_member_contract_is_valid_odcs_with_its_schema_freshness_and_tags():
-    snapshot, product = _snapshot(version="1.2.0")
+    snapshot, product = _snapshot(ORDERS_CONTRACT, version="1.2.0")
     _, contracts = product_documents(snapshot, product)
 
     for contract in contracts.values():
@@ -117,24 +143,36 @@ def test_each_member_contract_is_valid_odcs_with_its_schema_freshness_and_tags()
     (schema,) = orders["schema"]
     columns = {p["name"]: p for p in schema["properties"]}
     assert columns["amount"]["logicalType"] == "number"
-    assert columns["amount"]["description"] == "Order total in cents"
+    # A promise's own description; else the member column's.
+    assert columns["amount"]["description"] == "The order's total"
     assert columns["id"]["logicalType"] == "integer"
+    assert columns["id"]["required"] is True
+    # The contract promises its declared columns, and no other of the member's.
+    assert set(columns) == {"id", "amount", "ssn", "margin"}
     # Governance rides as tags: that a rule applies, never the rule itself.
     assert columns["ssn"]["tags"] == ["masked"]
     assert columns["margin"]["tags"] == ["visibility_restricted"]
     assert schema["tags"] == ["rls_restricted"]
     assert MASK_PATTERN not in json.dumps(contracts)
+    # Its freshness, then the service levels it declares.
     assert orders["slaProperties"] == [
         {
             "property": "latency",
             "value": 3600,
             "unit": "s",
             "description": "A read may trail its source by at most this long",
-        }
+        },
+        {"property": "availability", "value": 99.9, "unit": "%"},
     ]
     # A member that declares no freshness makes no freshness promise.
     assert "slaProperties" not in contracts["wh.public.customers"]
-    assert orders["version"] == "1.2.0"
+    assert (orders["version"], orders["status"]) == ("2.0.0", "active")
+    assert orders["description"] == {
+        "purpose": "Every order placed",
+        "usage": "Join on id",
+        "limitations": "No refunds",
+    }
+    assert {"property": "noticePeriod", "value": "P3M"} in orders["customProperties"]
 
 
 def test_an_unversioned_product_says_so_and_an_unpublished_one_is_draft():
@@ -142,8 +180,21 @@ def test_an_unversioned_product_says_so_and_an_unpublished_one_is_draft():
     document, contracts = product_documents(snapshot, product)
     assert document["version"] == UNVERSIONED
     assert document["status"] == "draft"
-    assert {c["version"] for c in contracts.values()} == {UNVERSIONED}
+    # Each member's first contract is a draft at 0.1.0, exported as one.
+    assert {(c["version"], c["status"]) for c in contracts.values()} == {("0.1.0", "draft")}
     assert _errors(ODPS, document) == []
+
+
+def test_a_member_with_no_contract_is_no_output_port():
+    # A checker table the product owns is a member by product_id, with no contract (REQ-2157).
+    config = governed_config()
+    config.tables[1].contract = None  # customers
+    config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
+    snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    (product,) = snapshot.data_products
+    document, contracts = product_documents(snapshot, product)
+    assert {p["name"] for p in document["outputPorts"]} == {"orders", "order_totals"}
+    assert "wh.public.customers" not in contracts
 
 
 def test_a_contract_names_the_product_it_belongs_to():

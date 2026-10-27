@@ -39,6 +39,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import re
+from urllib.parse import unquote
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -52,6 +53,7 @@ from rdflib.plugins.sparql.parserutils import Comp, CompValue, Param
 
 from provisa.core import settings_registry
 from provisa.gql.expr_ast import (
+    AxiomObject,
     Binary,
     Case,
     CypherExpr,
@@ -63,6 +65,7 @@ from provisa.gql.expr_ast import (
     Property,
     SubqueryExpr,
     Term,
+    TermIri,
     TypedLiteral,
     Unary,
     Variable,
@@ -93,9 +96,62 @@ from provisa.gql.iri import parse_subject_iri
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.security import universal_regex
 from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
-from provisa.sparql_query.vocabulary import RDF, RDF_TYPE, XSD, ColumnPredicate, Vocabulary
+from provisa.security.rights import ONTOLOGY_DOMAIN_ID
+from provisa.sparql_query.vocabulary import (
+    OWL,
+    RDF,
+    RDF_TYPE,
+    RDFS,
+    SKOS,
+    XSD,
+    ColumnPredicate,
+    Vocabulary,
+)
 
 _ORDER_PREFIX = "__ord"
+
+# REQ-2163: the ontology schema as RDFS/OWL/SKOS, read from ontology._axioms. A triple is an axiom
+# when its predicate is one of these, or it is rdf:type with an OWL class; its object is a term
+# (TERM), an IRI or term (EITHER), or a literal (LITERAL).
+_TERM, _EITHER, _LITERAL = "term", "either", "literal"
+_AXIOM_OBJECTS = {
+    f"{RDFS}subClassOf": _TERM,
+    f"{RDFS}subPropertyOf": _TERM,
+    f"{RDFS}domain": _TERM,
+    f"{RDFS}range": _EITHER,
+    f"{SKOS}prefLabel": _LITERAL,
+    f"{SKOS}definition": _LITERAL,
+}
+_OWL_CLASSES = frozenset({f"{OWL}Class", f"{OWL}ObjectProperty", f"{OWL}DatatypeProperty"})
+
+
+_KIND_OF = frozenset({f"{RDFS}subClassOf", f"{RDFS}subPropertyOf"})
+
+
+def _closure_path(p: Any) -> tuple[str, bool] | None:
+    """``p`` as a read of ontology._closure -- rdfs:subClassOf or rdfs:subPropertyOf, zero or more
+    (``*``) or one or more (``+``) times -- as (its predicate, one or more); None for any other."""
+    if (
+        isinstance(p, MulPath)
+        and isinstance(p.path, URIRef)
+        and str(p.path) in _KIND_OF
+        and p.mod in ("*", "+")
+    ):
+        return str(p.path), p.mod == "+"
+    return None
+
+
+def _is_axiom(p: Any, o: Any) -> bool:
+    if isinstance(p, Path):
+        return _closure_path(p) is not None
+    if _is_var(p):
+        return False
+    iri = str(p)
+    return iri in _AXIOM_OBJECTS or (
+        iri == RDF_TYPE and isinstance(o, URIRef) and str(o) in _OWL_CLASSES
+    )
+
+
 RDF_NIL = URIRef(f"{RDF}nil")
 
 # The functions the back end lowers by the name given here, each of the arguments named.
@@ -424,6 +480,7 @@ class _Lowering:
         self.vocab = vocab
         self._lm = lm
         self._placed: set[str] = set()
+        self._axioms = 0  # REQ-2163: the ontology._axioms nodes placed so far
 
     # -- node labels ----------------------------------------------------------------------
 
@@ -459,6 +516,8 @@ class _Lowering:
 
         constraints: list[tuple[str, str, str]] = []  # (kind, s, o/iri)
         for s, p, o in group.triples:
+            if _is_axiom(p, o):
+                continue  # read from ontology._axioms: its terms are no nodes of the graph
             sv = self._subject_node(s, named, keys)
             if isinstance(p, Path):
                 path = _path_expr(p, self.vocab)
@@ -558,6 +617,16 @@ class _Lowering:
             return var
 
         for s, p, o in group.triples:
+            if _is_axiom(p, o):
+                closure = _closure_path(p)
+                axiom = self._axiom_node(labels, "_closure" if closure else "_axioms")
+                nodes.append(axiom)
+                conditions.extend(
+                    self._closure_conditions(axiom, s, closure, o, bindings)
+                    if closure
+                    else self._axiom_conditions(axiom, s, p, o, bindings)
+                )
+                continue
             sv = node(s)
             if isinstance(p, Path):
                 path = _path_expr(p, self.vocab)
@@ -625,6 +694,166 @@ class _Lowering:
                 cond = Binary("AND", cond, c)
             where = WhereClause(cond)
         return MatchStep(matches, where)
+
+    # -- the ontology's axioms (REQ-2163) -------------------------------------------------
+
+    def expand_axiom_joins(self, group: _Group) -> list[_Group]:
+        """``group``, with each variable it shares between the ontology's axioms and instance data
+        -- a class an instance has (``?x a ?c``) or a predicate it has (``?x ?p ?v``) -- fixed to
+        each of the role's class terms or property terms in turn: one group each, which the axiom
+        patterns (read in SQL, from ontology._axioms and _closure) keep or answer nothing for. An
+        instance's classes and predicates are the role's vocabulary, so a table the role cannot
+        read gives none."""
+
+        def names(*terms: Any) -> set[str]:
+            return {str(t) for t in terms if _is_var(t)}
+
+        axiom_vars: set[str] = set()
+        data_vars: set[str] = set()
+        for s, p, o in group.triples:
+            if _is_axiom(p, o):
+                axiom_vars |= names(s, o)
+            else:
+                data_vars |= names(s, o) | (set() if isinstance(p, Path) else names(p))
+        shared = sorted(axiom_vars & data_vars)
+        if not shared:
+            return [group]
+        root = f"{self.vocab.base}/vocab/term/"
+        candidates: list[list[str]] = []
+        for var in shared:
+            as_class = any(
+                not _is_axiom(p, o) and str(p) == RDF_TYPE and _is_var(o) and str(o) == var
+                for _s, p, o in group.triples
+            )
+            as_predicate = any(
+                not _is_axiom(p, o) and _is_var(p) and str(p) == var for _s, p, o in group.triples
+            )
+            if as_class == as_predicate:
+                raise SparqlRefused(
+                    f"?{var} joins the ontology's axioms to instance data, and is not a class an "
+                    "instance has (?x a ?c) or a predicate it has (?x ?p ?v)"
+                )
+            terms = self.vocab.classes if as_class else self.vocab.columns
+            candidates.append(sorted(iri for iri in terms if iri.startswith(root)))
+        expanded = []
+        for combo in itertools.product(*candidates):
+            fixed = {var: URIRef(iri) for var, iri in zip(shared, combo)}
+
+            def put(x: Any) -> Any:
+                return fixed.get(str(x), x) if _is_var(x) else x
+
+            expanded.append(
+                _Group(
+                    [(put(s), put(p), put(o)) for s, p, o in group.triples],
+                    list(group.filters),
+                    [*group.binds, *((var, iri) for var, iri in fixed.items())],
+                    list(group.optionals),
+                )
+            )
+        return expanded
+
+    def _axiom_node(self, labels: dict[str, str], table: str) -> str:
+        """A fresh node of ``table`` (ontology._axioms, one row of which is one triple, or
+        ontology._closure, one row of which is one kind-of pair)."""
+        label = self._lm.sql_only_tables.get((ONTOLOGY_DOMAIN_ID, table))
+        if label is None:
+            raise SparqlRefused("The ontology's axioms are not readable here")
+        var = f"_ax{self._axioms}"
+        self._axioms += 1
+        labels[var] = label
+        return var
+
+    def _term_name(self, iri: str) -> str | None:
+        """The name of the term ``iri`` is the vocabulary IRI of; None for any other IRI."""
+        root = f"{self.vocab.base}/vocab/term/"
+        return unquote(iri[len(root) :]) if iri.startswith(root) else None
+
+    def _axiom_conditions(
+        self,
+        var: str,
+        s: Any,
+        p: Any,
+        o: Any,
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """The row ``var`` states the triple ``s p o``: its predicate, and its subject and object
+        each the term, IRI or literal written, or bound to (or by) a variable."""
+        iri = str(p)
+        conditions: list[CypherExpr] = [
+            Binary("=", Property(Variable(var), "predicate"), Literal(iri, "string"))
+        ]
+        if iri == RDF_TYPE:
+            conditions.append(
+                Binary("=", Property(Variable(var), "object_iri"), Literal(str(o), "string"))
+            )
+            objects: tuple[CypherExpr | None, str] = (None, _TERM)
+        else:
+            kind = _AXIOM_OBJECTS[iri]
+            value: CypherExpr = (
+                TermIri(Property(Variable(var), "object"))
+                if kind == _TERM
+                else AxiomObject(var)
+                if kind == _EITHER
+                else Property(Variable(var), "object_literal")
+            )
+            objects = (value, kind)
+        conditions += self._axiom_position(
+            s, TermIri(Property(Variable(var), "subject")), _TERM, bindings
+        )
+        if objects[0] is not None:
+            conditions += self._axiom_position(o, objects[0], objects[1], bindings)
+        return conditions
+
+    def _closure_conditions(
+        self,
+        var: str,
+        s: Any,
+        closure: tuple[str, bool],
+        o: Any,
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """The ontology._closure row ``var`` pairs ``s`` with ``o`` by ``closure``'s predicate,
+        through one or more kind-of steps when it is ``+``."""
+        predicate, one_or_more = closure
+        conditions: list[CypherExpr] = [
+            Binary("=", Property(Variable(var), "predicate"), Literal(predicate, "string"))
+        ]
+        if one_or_more:
+            conditions.append(Binary(">=", Property(Variable(var), "hops"), Literal(1, "number")))
+        for x, column in ((s, "subject"), (o, "object")):
+            conditions += self._axiom_position(
+                x, TermIri(Property(Variable(var), column)), _TERM, bindings
+            )
+        return conditions
+
+    def _axiom_position(
+        self,
+        x: Any,
+        value: CypherExpr,
+        kind: str,
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """``x`` -- a variable, a term's IRI, another IRI or a literal -- is the ``value`` an axiom
+        row holds at one position."""
+        if _is_var(x):
+            name = str(x)
+            if name in bindings:
+                return [Binary("=", value, bindings[name][0])]
+            bindings[name] = (value, None)
+            return [IsNull(value, negated=True)] if not isinstance(value, AxiomObject) else []
+        if isinstance(x, URIRef):
+            term = self._term_name(str(x))
+            if kind == _LITERAL or (term is None and kind == _TERM):
+                return [Literal(False, "boolean")]
+            if term is not None:
+                return [Binary("=", value, Literal(term, "string"))]
+            assert isinstance(value, AxiomObject)
+            return [
+                Binary("=", Property(Variable(value.node), "object_iri"), Literal(str(x), "string"))
+            ]
+        if isinstance(x, RdfLiteral) and kind == _LITERAL:
+            return [Binary("=", value, Literal(str(x), "string"))]
+        return [Literal(False, "boolean")]
 
     def _optional_bindings(
         self,
@@ -1254,8 +1483,11 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
     lowering = _Lowering(vocab, lm)
     parts: list[CypherAST] = []
     for group in _alternatives(pattern):
-        for labels in lowering.interpretations(group, {}):
-            parts.append(lowering.statement(group, labels, mods, form, template, aggregation))
+        for expanded in lowering.expand_axiom_joins(group):
+            for labels in lowering.interpretations(expanded, {}):
+                parts.append(
+                    lowering.statement(expanded, labels, mods, form, template, aggregation)
+                )
     if aggregation is not None and len(parts) > 1:
         raise SparqlRefused(
             "An aggregate over subjects of several classes (or a UNION) is not supported yet; "

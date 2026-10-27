@@ -111,6 +111,7 @@ function table(
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
+    mvHoldOnFailingChecks: false,
     businessKey: [],
     validTime: null,
     recordedTime: null,

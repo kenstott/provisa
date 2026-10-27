@@ -11,7 +11,7 @@
 /** Types matching provisa/api/admin/types.py */
 
 import type { MaskEntry } from "../lib/masks";
-import type { LifecycleStatus } from "../components/lifecycle/StatusBadge";
+import type { LifecycleStatus } from "./lifecycle";
 
 // REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
 export interface SourceCdcConfig {
@@ -83,10 +83,6 @@ export interface Domain {
   isSystem: boolean; // domain_policy.system_domain_ids() (meta/ops/"") -- never end-user-picked
 }
 
-// REQ-1634/REQ-1660: a first-class DataProduct entity; a table joins one via product_id.
-// Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
-// individuals via the existing role machinery, tags/authoritativeDefinitions/inputPorts/
-// outputPorts are derived from existing tag assignments/glossary/lineage rather than stored here.
 // REQ-2153: a listed table in a domain the caller does not reach: its name and its listed
 // columns' names, and nothing more.
 export interface ListedNames {
@@ -95,6 +91,10 @@ export interface ListedNames {
   columnNames: string[];
 }
 
+// REQ-1634: a first-class DataProduct entity; a table joins one via product_id.
+// Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
+// individuals via the existing role machinery; tags, terms, inputs and output ports are read
+// from the meta domain (REQ-2125, REQ-2126) rather than stored here.
 export interface DataProduct {
   id: string;
   domainId: string;
@@ -113,11 +113,47 @@ export interface DataProduct {
   retireOn?: string | null;
   /** The product a retired one's members moved to. */
   successorId?: string | null;
-  sla?: string | null;
   support?: string | null;
   /** The support contact (email or URL) a catalog listing requires. */
   supportContact?: string | null;
   customProperties: Record<string, unknown>;
+}
+
+// REQ-2158: a column an output port promises, of the type it is stored as.
+export interface ContractColumn {
+  name: string;
+  type: string;
+  description?: string | null;
+  required: boolean;
+}
+
+// REQ-2158: a declared ODCS service-level property; freshness is the member's own.
+export interface ContractSlaProperty {
+  property: string;
+  value?: unknown;
+  unit?: string | null;
+  description?: string | null;
+}
+
+export interface ContractTerms {
+  usage?: string | null;
+  limitations?: string | null;
+  noticePeriod?: string | null;
+}
+
+// REQ-2158: a product member's contract, its output port, versioned on its own.
+export interface DataContract {
+  tableId: number;
+  sourceId: string;
+  schemaName: string;
+  tableName: string;
+  contractId: string;
+  version: string;
+  status: string;
+  description?: string | null;
+  terms: ContractTerms;
+  sla: ContractSlaProperty[];
+  columns: ContractColumn[];
 }
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.
@@ -417,6 +453,7 @@ export interface RegisteredTable {
   pushDebounceMaxDelay: number; // REQ-1733: staleness cap under continuous message churn
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
   mvPreprocess: string | null; // REQ-1165: inline preflight(rows, ctx) check source; null = no check
+  mvHoldOnFailingChecks: boolean; // REQ-2133: built-in preflight on its inputs' failing checks
   /** REQ-2109: the columns identifying the same thing across versions; [] = none declared. */
   businessKey: string[];
   /** REQ-2109: the column holding the date the business gives the record. */

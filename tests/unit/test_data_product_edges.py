@@ -11,9 +11,9 @@
 """REQ-2126: data_product_edges, a data product's links to the rest of the model.
 
 Relationship edges walk from a product's members through tables that belong to no product and stop
-at another product's member; every path to one target is one row. Lineage edges are read from the
-lineage edge table the model build writes (REQ-2129), here written by that build step itself. The
-view runs on the real control plane.
+at another product's member; every path to one target is one row. A product's lineage is no row
+here: it is the product lineage endpoint's, cut to its reader (REQ-2156). The view runs on the real
+control plane.
 """
 
 # Requirements: REQ-2126
@@ -107,7 +107,8 @@ async def _edges(conn, product_id: str) -> list[dict]:
 
     # The model build's own step: this model's lineage, written to the edge table.
     await write_lineage_edges(conn, SimpleNamespace(tracked_functions={}))
-    await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS["data_product_edges"]))
+    for name in ("table_inputs", "data_product_edges"):
+        await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
     rows = await conn.execute_core(
         text("SELECT * FROM data_product_edges WHERE product_id = :p ORDER BY kind, id").bindparams(
             p=product_id
@@ -138,18 +139,22 @@ async def test_two_paths_to_another_product_are_one_direct_edge(control_plane):
     assert edge["relationship_ids"] == "a_b, a_c, c_b"
     assert edge["supporting_tables"] == "sales.c"
 
-    # One lineage edge: D, which P1's view reads, upstream of P1.
-    assert [
-        (r["direction"], r["target_relation"], r["target_table_id"], r["hops"], r["vias"])
-        for r in lineage
-    ] == [("upstream", "sales.d", D, 1, "sales.v")]
+    # No lineage row: a product's lineage is the product lineage endpoint's (REQ-2156).
+    assert lineage == []
+
+    # Related: every table one declared relationship from a member, whatever it leads on to.
+    related = sorted(
+        (r["target_table_id"], r["target_product_id"], r["aliases"])
+        for r in rows
+        if r["kind"] == "related"
+    )
+    assert related == [(B, "p2", "toB"), (C, None, None)]
 
 
 @pytest.mark.asyncio
 async def test_every_table_a_row_names_is_named_as_the_model_names_it(control_plane):
-    """A view a lineage edge goes through and a supporting table are named by their domain and
-    their alias (or name), as the Data Products panel names every table -- not by the SQL form the
-    lineage records (sales_ops.v)."""
+    """A supporting table is named by its domain and its alias (or name), as the Data Products
+    panel names every table."""
     db = control_plane.org()
     try:
         async with db.acquire() as conn:
@@ -160,12 +165,6 @@ async def test_every_table_a_row_names_is_named_as_the_model_names_it(control_pl
 
     (edge,) = [r for r in rows if r["kind"] == "relationship"]
     assert edge["supporting_tables"] == "sales-ops.c"
-    (lineage,) = [r for r in rows if r["kind"] == "lineage"]
-    assert (lineage["target_relation"], lineage["target_table_id"], lineage["vias"]) == (
-        "sales_ops.d",
-        D,
-        "sales-ops.revenue",
-    )
 
 
 @pytest.mark.asyncio
@@ -210,9 +209,9 @@ def _gov(capabilities: list[str]):
     )
 
 
-def test_lineage_edges_need_view_governance():
-    """The relationship rows are discovery; the lineage rows are read with view_governance."""
-    assert _gov([]).rls_rules[200] == "kind <> 'lineage'"
+def test_every_row_is_discovery_read_without_view_governance():
+    """The view holds relationship rows only, so no row of it is kept from a reader (REQ-2156)."""
+    assert 200 not in _gov([]).rls_rules
     assert 200 not in _gov(["view_governance"]).rls_rules
 
 
@@ -305,7 +304,8 @@ async def test_the_cost_grows_with_the_model_not_with_the_routes(control_plane):
                     ]
                 )
             )
-            await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS["data_product_edges"]))
+            for name in ("table_inputs", "data_product_edges"):
+                await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
             await conn.execute("SET statement_timeout = '60s'")
             started = time.perf_counter()
             rows = (
@@ -318,7 +318,7 @@ async def test_the_cost_grows_with_the_model_not_with_the_routes(control_plane):
         await db.close()
 
     counts = dict(rows)
-    assert counts.get("relationship") and counts.get("lineage"), counts
+    assert counts.get("relationship") and not counts.get("lineage"), counts
     assert took < 10, (
         f"data_product_edges took {took:.2f}s over {tables} tables, {rels} relationships"
     )

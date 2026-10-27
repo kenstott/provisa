@@ -217,6 +217,14 @@ def _parse_set_assignments(set_text: str, variable: str) -> list[tuple[str, Any]
     return assignments
 
 
+#: The forms a Cypher write takes: each writes rows of one registered table (a node label).
+WRITE_FORMS = (
+    "CREATE (n:Label {key: value}); "
+    "MATCH (n:Label {key: value}) [WHERE ...] SET n.key = value; "
+    "MATCH (n:Label {key: value}) [WHERE ...] DELETE n"
+)
+
+
 def parse_cypher_write(query: str) -> WriteAST:
     """Parse a Cypher write statement into a WriteAST.
 
@@ -304,7 +312,10 @@ def parse_cypher_write(query: str) -> WriteAST:
             match_props=match_props,
         )
 
-    raise CypherWriteParseError(f"Unrecognised write Cypher pattern: {query!r}")
+    raise CypherWriteParseError(
+        f"This write is in a form Provisa does not read: {query!r}. A Cypher write takes one of "
+        f"these forms: {WRITE_FORMS}"
+    )
 
 
 # ---------------------------------------------------------------------------

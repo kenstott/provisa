@@ -89,7 +89,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
         (s.search.length === 0 || s.search.some((i) => t.name.includes(i))),
     );
     return {
-      glossary_terms: s.count ? terms.map((t) => ({ id: t.id, domains: t.domains })) : terms,
+      _terms: s.count ? terms.map((t) => ({ id: t.id, domains: t.domains })) : terms,
     };
   },
 }));

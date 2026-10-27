@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.aggregate_gen import _classify_columns
+from provisa.core import command_bindings
 from provisa.compiler.schema_gen import (
     SchemaInput,
     _IMPLICIT_TRAVERSAL_DOMAINS,
@@ -307,7 +308,9 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
     """Commands (tracked functions) visible to this role, deduped by name (REQ-1156).
 
     The commands the role may call (``mutation_authz.command_reachable``): assigned to it
-    (``visible_to`` names it) and in a domain it reaches, as on every other surface."""
+    (``visible_to`` names it) and in a domain it reaches, as on every other surface. The proto
+    is the GraphQL schema's, so a command excluded from GraphQL has no RPC (REQ-2168)."""
+    from provisa.core.command_bindings import binding_name
     from provisa.security.mutation_authz import command_reachable
 
     out: list[dict] = []
@@ -317,7 +320,7 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
         name = fn.get("name")
         if not name or name in seen:
             continue
-        if not command_reachable(fn, si.role):
+        if not command_reachable(fn, si.role) or binding_name(fn, "graphql") is None:
             continue
         seen.add(name)
         out.append(fn)
@@ -381,7 +384,7 @@ def generate_proto(
 
     # --- Query message (mirrors GraphQL type Query) ---
     _root_ids = si.root_table_ids
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import SQL_ONLY_TABLES, reaches_all_domains
 
     # Same root rule as the GraphQL Query type (schema_gen): an implicit-traversal domain is a
     # root only for a role that reaches it. An empty domain_access reaches no domain.
@@ -391,6 +394,8 @@ def generate_proto(
         t
         for t in sorted(tables, key=lambda t: t.type_name)
         if (_root_ids is None or t.table_id in _root_ids)
+        # REQ-2163: a table SQL alone serves is no gRPC root.
+        and (t.domain_id, t.table_name) not in SQL_ONLY_TABLES
         and (
             _all_access
             or t.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS
@@ -593,10 +598,15 @@ def generate_proto(
     # route through the single invoke_tracked_function executor server-side.
     commands = _visible_commands(si)
     for fn in commands:
-        cmd = command_rpc_name(fn["name"])
+        cmd = command_rpc_name(command_bindings.offered_name(fn, "graphql"))
         lines.append(f"message {cmd}Request {{")
         for i, arg in enumerate([a for a in (fn.get("arguments") or []) if a.get("name")], start=1):
-            lines.append(f"  {_arg_proto_type(arg.get('type', 'String'))} {arg['name']} = {i};")
+            # REQ-2168: an argument with a default is optional, so a call that leaves it out is told
+            # from one that sends its type's zero value.
+            optional = "optional " if "default" in arg else ""
+            lines.append(
+                f"  {optional}{_arg_proto_type(arg.get('type', 'String'))} {arg['name']} = {i};"
+            )
         lines.append("}")
         lines.append("")
 
@@ -607,7 +617,7 @@ def generate_proto(
         f"  rpc {RESOLVE_RPC}({RESOLVE_RPC}AddressRequest) returns ({RESOLVE_RPC}AddressResponse);"
     )
     for fn in commands:
-        cmd = command_rpc_name(fn["name"])
+        cmd = command_rpc_name(command_bindings.offered_name(fn, "graphql"))
         resp = "MutationResponse" if fn.get("kind") == "mutation" else "CommandResponse"
         lines.append(f"  rpc Call{cmd}({cmd}Request) returns ({resp});")
     # The tables a role may CALL are the roots of its Query message above — the root rule of the

@@ -24,9 +24,11 @@ import {
   productGraph,
   productGraphQuery,
   toGraphData,
+  withProductLineage,
   type ProductFilters,
   type ProductRow,
 } from "../productGraphData";
+import type { LineageNode, ProductInput } from "../../../api/lineage";
 import { PRODUCT_SCOPE, visibleGraph, NO_FILTERS, type LayerId } from "../graphModel";
 
 const productsQuery = (
@@ -80,24 +82,24 @@ function reader(opts: { tags: boolean }): MetaReader {
         type("M__TableColumns", {
           columnName: scalar,
           columnKey: scalar,
-          glossaryRef: list("M__GlossaryTermRefs"),
+          glossaryRef: list("ONT__TermRefs"),
           sensitivity: list("M__SensitiveCoverage"),
           ...(opts.tags ? { tags: list("M__TagAssignments") } : {}),
         }),
-        type("M__GlossaryTermRefs", { termId: scalar, term: one("M__GlossaryTerms") }),
-        type("M__GlossaryTerms", {
+        type("ONT__TermRefs", { termId: scalar, term: one("ONT__Terms") }),
+        type("ONT__Terms", {
           id: scalar,
           name: scalar,
-          edgesOut: list("M__GlossaryTermEdges"),
-          edgesIn: list("M__GlossaryTermEdges"),
+          edgesOut: list("ONT__TermEdges"),
+          edgesIn: list("ONT__TermEdges"),
         }),
-        type("M__GlossaryTermEdges", {
+        type("ONT__TermEdges", {
           id: scalar,
           fromTermId: scalar,
           toTermId: scalar,
           relType: scalar,
-          sourceTerm: one("M__GlossaryTerms"),
-          targetTerm: one("M__GlossaryTerms"),
+          sourceTerm: one("ONT__Terms"),
+          targetTerm: one("ONT__Terms"),
         }),
         type("M__SensitiveCoverage", { tags: scalar }),
         type("M__TrackedFunctions", { name: scalar, domainId: scalar }),
@@ -265,33 +267,6 @@ describe("the product graph's data", () => {
     expect(kinds.get("profiled:r:9>t:1")).toBe("profiled");
   });
 
-  it("draws a checker reached through the table it scans, once (REQ-1443 clause 10)", () => {
-    const checker = {
-      id: 4,
-      domain_id: "sales",
-      table_name: "customers_dq",
-      dq_contract: "dataset: x/y/customers",
-      checks: { id: 1 },
-    };
-    const rows: ProductRow[] = [
-      {
-        ...ROWS[0],
-        member_tables: ROWS[0].member_tables!.map((t) =>
-          t.id === 1
-            ? { ...t, checked_by: [checker] }
-            : t.id === 2
-              ? { ...t, checked_by: [checker] }
-              : t,
-        ),
-      },
-    ];
-    const g = toGraphData(rows, null, null);
-    expect(g.nodes.filter((n) => n.id === "k:4").map((n) => n.type)).toEqual(["checker"]);
-    const kinds = new Map(g.edges.map((e) => [e.id, e.kind]));
-    expect(kinds.get("member:p:c360>k:4")).toBe("member");
-    expect(kinds.get("checks:k:4>t:1")).toBe("checks");
-  });
-
   it("reads a one-to-many the server answered null (no rows) as empty", () => {
     const rows = [
       {
@@ -310,7 +285,6 @@ describe("the product graph's data", () => {
             tags: null,
             table_columns: null,
             profile_results: null,
-            checked_by: null,
             source_relationships: null,
           },
         ],
@@ -345,10 +319,8 @@ describe("a product's own graph (REQ-2136)", () => {
         edges: [
           {
             kind: "relationship",
-            direction: null,
             target_product_id: "billing",
             target_table_id: null,
-            target_relation: null,
             hops: 1,
             path_count: 2,
             aliases: "BILLED_TO",
@@ -378,45 +350,12 @@ describe("the product's links (REQ-2126)", () => {
       edges: [
         {
           kind: "relationship",
-          direction: null,
           target_product_id: "p2",
           target_table_id: null,
-          target_relation: null,
           hops: 1,
           path_count: 2,
           aliases: "BOUGHT, PAID",
           target_product: { id: "p2", name: "P2", domain_id: "finance" },
-        },
-        {
-          kind: "lineage",
-          direction: "upstream",
-          target_product_id: null,
-          target_table_id: null,
-          target_relation: "raw.d",
-          hops: 2,
-          path_count: 1,
-          aliases: null,
-        },
-        {
-          kind: "lineage",
-          direction: "downstream",
-          target_product_id: null,
-          target_table_id: null,
-          target_relation: "mart.e",
-          hops: 1,
-          path_count: 1,
-          aliases: null,
-        },
-        {
-          kind: "lineage",
-          direction: "upstream",
-          target_product_id: null,
-          target_table_id: 7,
-          target_relation: "pet_store.pets",
-          hops: 1,
-          path_count: 1,
-          aliases: null,
-          target_table: { domain_id: "pet-store", table_name: "pets" },
         },
       ],
     },
@@ -432,61 +371,147 @@ describe("the product's links (REQ-2126)", () => {
     });
   });
 
-  it("names a registered lineage table as the catalog does, an unregistered relation by its name", () => {
-    const g = toGraphData(linked, null, null);
-    const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
-    expect(label("l:pet_store.pets")).toBe("pet-store.pets");
-    expect(label("l:raw.d")).toBe("raw.d");
-  });
-
-  it("stands lineage in lanes: ancestry by its distance upstream, a consumer one lane down", () => {
-    const g = toGraphData(linked, null, null);
-    const lane = (id: string) => g.nodes.find((n) => n.id === id)?.lane;
-    expect([lane("l:raw.d"), lane("p:p1"), lane("l:mart.e")]).toEqual([-2, 0, 1]);
-    expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
-      ["l:raw.d", "p:p1"],
-      ["p:p1", "l:mart.e"],
-      ["l:pet_store.pets", "p:p1"],
-    ]);
-  });
-});
-
-describe("column lineage (REQ-2129)", () => {
-  it("joins each member column to the columns deriving it, named by their relation", () => {
-    const rows: ProductRow[] = [
+  it("draws the product lineage endpoint's inputs feeding the product, each named as its reader knows it", () => {
+    const base = toGraphData(linked, null, null);
+    const input = (over: Partial<ProductInput>): ProductInput => ({
+      relation: "raw.d",
+      kind: "source_table",
+      table_id: 9,
+      domain_id: "raw",
+      table_name: "d",
+      alias: null,
+      product_id: null,
+      source_id: null,
+      source_type: null,
+      source_schema: null,
+      source_table: null,
+      ...over,
+    });
+    const g = withProductLineage(
+      base,
+      "p1",
       {
-        id: "p1",
-        name: "P1",
-        domain_id: "sales",
-        member_tables: [
-          {
-            id: 1,
+        nodes: [],
+        edges: [],
+        outputs: [],
+        dq: { expectations: [], promises: [], related: [], unattached: [] },
+        members: [],
+        consumers: [],
+        inputs: [
+          input({ relation: "pet_store.pets", domain_id: "pet-store", table_name: "pets" }),
+          input({
+            relation: "native:sales.orders",
+            kind: "source",
             domain_id: "sales",
-            table_name: "a",
-            table_columns: [
-              {
-                column_name: "total",
-                column_key: "1:total",
-                upstream: [
-                  {
-                    source_column_key: "9:amount",
-                    source_relation: "finance.b",
-                    source_column: "amount",
-                    via: "sales.a",
-                  },
-                ],
-              },
-            ],
+            table_name: "orders",
+            source_id: "shop",
+            source_schema: "public",
+            source_table: "Orders",
+          }),
+          input({ relation: "mart.e", domain_id: "mart", table_name: "e", product_id: "p2" }),
+        ],
+      },
+      [],
+    );
+    const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
+    // A registered table by its catalog name; a source read directly by the source's own names.
+    expect(label("l:pet_store.pets")).toBe("pet-store.pets");
+    expect(label("l:native:sales.orders")).toBe("shop · public.Orders");
+    // Another product's member stands for that product: p1 is built from p2.
+    expect(g.nodes.some((n) => n.id === "l:mart.e")).toBe(false);
+    expect(label("p:p2")).toBe("P2");
+    expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
+      ["l:pet_store.pets", "p:p1"],
+      ["l:native:sales.orders", "p:p1"],
+      ["p:p2", "p:p1"],
+    ]);
+    // What the meta read drew is kept as it was.
+    expect(g.nodes.length).toBe(base.nodes.length + 2);
+  });
+
+  it("joins the endpoint's column lineage to the columns it names, by their tables", () => {
+    const member: ProductRow = {
+      id: "p1",
+      name: "P1",
+      domain_id: "pet-store",
+      member_tables: [
+        {
+          id: 3,
+          domain_id: "pet-store",
+          table_name: "pets",
+          table_columns: [{ column_name: "name", column_key: "3:name" }],
+        },
+      ],
+    } as ProductRow;
+    const base = toGraphData([member], null, null);
+    const node = (id: string, relation: string, column: string, kind: LineageNode["kind"]) => ({
+      id,
+      relation,
+      column,
+      kind,
+      materialized: false,
+    });
+    const g = withProductLineage(
+      base,
+      "p1",
+      {
+        nodes: [
+          {
+            ...node("native:raw.d.Name", "native:raw.d", "Name", "native"),
+            source_id: "crm",
+            source_schema: "public",
+            source_table: "D",
+          },
+          node("raw.d.name", "raw.d", "name", "source"),
+          node("pet_store.pets.name", "pet_store.pets", "name", "derived"),
+        ],
+        edges: [
+          { source: "native:raw.d.Name", target: "raw.d.name", transform: "", ops: [] },
+          { source: "raw.d.name", target: "pet_store.pets.name", transform: "", ops: [] },
+        ],
+        outputs: ["pet_store.pets.name"],
+        dq: { expectations: [], promises: [], related: [], unattached: [] },
+        members: ["pet_store.pets"],
+        consumers: [],
+        inputs: [
+          {
+            relation: "raw.d",
+            kind: "source_table",
+            table_id: 9,
+            domain_id: "raw",
+            table_name: "d",
+            alias: null,
+            product_id: null,
+            source_id: null,
+            source_type: null,
+            source_schema: null,
+            source_table: null,
           },
         ],
       },
-    ];
-    const g = toGraphData(rows, null, null);
-    expect(g.nodes.find((n) => n.id === "c:9:amount")?.label).toBe("finance.b.amount");
-    expect(g.edges.find((e) => e.kind === "column_lineage")).toMatchObject({
-      a: "c:9:amount",
-      b: "c:1:total",
-      label: "sales.a",
-    });
+      member.member_tables ?? [],
+    );
+    expect(g.edges.filter((e) => e.kind === "column_lineage").map((e) => [e.a, e.b])).toEqual([
+      ["lc:native:raw.d.Name", "c:9:name"],
+      ["c:9:name", "c:3:name"],
+    ]);
+    const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
+    // The member's column is the one the meta read drew; the others stand alone, by where they are.
+    expect(label("c:3:name")).toBe("pets.name");
+    expect(label("c:9:name")).toBe("raw.d.name");
+    expect(label("lc:native:raw.d.Name")).toBe("crm · public.D.Name");
+  });
+
+  it("draws no lineage from the product's edges: its lineage is the product lineage endpoint's", () => {
+    const g = toGraphData(linked, null, null);
+    expect(g.nodes.some((n) => n.id.startsWith("l:"))).toBe(false);
+    expect(g.edges.some((e) => e.kind === "lineage")).toBe(false);
+  });
+});
+
+describe("column lineage (REQ-2129, REQ-2156)", () => {
+  it("is read from no meta view: a member column carries no upstream edge here", () => {
+    const g = toGraphData(ROWS, null, null);
+    expect(g.edges.some((e) => e.kind === "column_lineage")).toBe(false);
   });
 });

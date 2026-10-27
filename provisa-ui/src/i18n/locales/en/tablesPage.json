@@ -12,7 +12,7 @@
     "model": "+ Model",
     "modelTitle": "Model an entity or fact (star schema / Data Vault)",
     "reportXlsx": "Workbook",
-    "reportXlsxTitle": "Download the model as a spreadsheet for review — sources, tables, columns, relationships, views, metrics, materialized views and ontology terms, one sheet each",
+    "reportXlsxTitle": "Download the model as a spreadsheet for review — sources, tables, columns, relationships, views, metrics, materialized views, ontology, data products, data quality and data profiling, one sheet each",
     "viewErd": "View ERD",
     "colSource": "Source",
     "colDomain": "Domain",

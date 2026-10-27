@@ -207,7 +207,6 @@ data_products = Table(  # REQ-1634
     Column("status_by", Text),
     Column("status_at", DateTime(timezone=True)),
     Column("successor_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),
-    Column("sla", Text),
     Column("support", Text),
     Column("support_contact", Text),  # REQ-1635: Horizon Catalog listing manifest requirement
     Column("custom_properties", JSON, nullable=False, default=dict, server_default="{}"),
@@ -269,6 +268,9 @@ registered_tables = Table(
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
+    # REQ-2158: a data product member's ODCS contract, its output port, declared and versioned on
+    # its own (provisa.core.models.DataContract); NULL for a table in no product.
+    Column("contract", JSON(none_as_null=True)),
     # REQ-2130: the glossary term this table's rows are instances of; one per table (schema.sql).
     Column("class_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
     # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
@@ -303,6 +305,8 @@ registered_tables = Table(
     Column("mv_consistency", Text, nullable=False, server_default="shared"),
     # REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity.
     Column("mv_preprocess", Text),
+    # REQ-2133: the view's Hold on failing checks option, a built-in preflight beside mv_preprocess.
+    Column("mv_hold_on_failing_checks", Boolean, nullable=False, server_default=false()),
     # REQ-2109: the bitemporal declaration of a table or view, all three or none: the business-key
     # column list, the valid-time column and the recorded-time column.
     Column("business_key", JSON(none_as_null=True)),
@@ -914,6 +918,19 @@ checker_targets = Table(
     Column("checked_table_id", Integer, nullable=False),
 )
 
+# REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
+# check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
+# A table with no row has never run. The dry run writes none.
+checker_latest_runs = Table(
+    "checker_latest_runs",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("scan_id", Text, nullable=False),
+    Column("scan_time", DateTime(timezone=True), nullable=False),
+    Column("outcome", Text, nullable=False),
+    CheckConstraint("outcome IN ('pass', 'fail')", name="checker_latest_runs_outcome_check"),
+)
+
 relationship_candidates = Table(
     "relationship_candidates",
     metadata,
@@ -1090,6 +1107,8 @@ tracked_functions = Table(
     Column("requires_approval", Boolean, nullable=False, server_default=false()),
     # REQ-1924, REQ-871: "schema.table" of the registered table the command writes, when known.
     Column("writes_table", Text),
+    # REQ-2168: the command's name per language {language: {name?, exclude?}}.
+    Column("language_bindings", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
 tracked_webhooks = Table(

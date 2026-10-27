@@ -22,8 +22,6 @@
     "versionLabel": "バージョン",
     "versionPlaceholder": "例: 1.2.0",
     "statusLabel": "ステータス",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "このプロダクトのサービスレベルの約束",
     "supportLabel": "サポート",
     "supportPlaceholder": "このプロダクトに関するサポートの受け方",
     "supportContactLabel": "サポート連絡先",
@@ -103,7 +101,7 @@
         "dataQuality": "データ品質"
       },
       "dataQualityEmpty": "品質スキャンはありません",
-      "dataQualityHint": "コントラクトがこのプロダクトの出力ポートをスキャンするチェッカーテーブル。実行ごと、チェックごとに 1 行が格納され、所属はスキャン対象のテーブルに従います。",
+      "dataQualityHint": "プロダクトのチェック: 入力に対する期待、メンバーテーブルに対する約束、そしてそのいずれかに対して他者 (または誰でもない) が行う関連チェック。チェックを開くと結果を確認できます。",
       "dqRulesAria": "{{table}} の品質ルールを表示",
       "dqRulesTitle": "品質ルール — {{table}}",
       "dqRulesEmpty": "コントラクトにチェックが定義されていません",
@@ -113,8 +111,6 @@
       "lineageEmpty": "リネージはありません",
       "lineageLoading": "リネージを読み込んでいます…",
       "lineageHint": "このプロダクトのテーブルを公開エンドポイントとして示し、それらの導出に使われたすべての上流テーブルを含むカラムリネージグラフ。参考情報のみです。view_governance ケイパビリティが必要です。",
-      "inputPortsEmpty": "記録された上流の入力はありません",
-      "inputPortsHint": "このプロダクトが直接読み取るテーブル（リネージより）。テーブルを展開すると読み取る列が表示されます。view_governance ケイパビリティが必要です。",
       "outputPortsHint": "このプロダクトのクエリ可能な範囲：メンバーテーブルとコマンド。それぞれのクエリ例は「アクセスパターン」にあります。",
       "customPropertiesEmpty": "カスタムプロパティはありません",
       "lineageLaneUpstream": "上流、{{n}} ホップ",
@@ -158,6 +154,38 @@
     "findingFix_member_deprecated": "{{table}} を開く",
     "findingFix_retirement_blocked": "後継を選択…",
     "findingFix_domain_steward_unset": "ドメイン {{domain}} を開く",
-    "findingFix_successor_retired": "{{successor}} を開く"
+    "findingFix_successor_retired": "{{successor}} を開く",
+    "contract": {
+      "label": "データコントラクト",
+      "hint": "各出力ポートのコントラクト：独自のバージョンで約束する内容",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "提案中",
+        "draft": "下書き",
+        "active": "有効",
+        "deprecated": "非推奨",
+        "retired": "廃止"
+      },
+      "usage": "用途",
+      "limitations": "制限事項",
+      "noticePeriod": "通知期間",
+      "noticePeriodPlaceholder": "例: P3M",
+      "column": "列",
+      "type": "型",
+      "required": "NULL なし",
+      "yes": "はい",
+      "versionLabel": "コントラクトのバージョン",
+      "statusLabel": "コントラクトのステータス",
+      "descriptionLabel": "目的",
+      "columnsLabel": "約束する列",
+      "columnsHelp": "列の約束をやめる、または型を変えるには新しいバージョンが必要です。",
+      "requiredLabel": "NULL なし",
+      "slaLabel": "サービスレベル",
+      "slaProperty": "プロパティ",
+      "slaValue": "値",
+      "slaUnit": "単位",
+      "slaRemove": "サービスレベルを削除",
+      "slaAdd": "サービスレベルを追加"
+    }
   }
 }

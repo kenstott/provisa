@@ -24,13 +24,12 @@ import {
 } from "../../api/metaGraph";
 import {
   toGraphData,
-  withCheckers,
   type ProductRow as GraphProductRow,
 } from "../../components/graph3d/productGraphData";
 import type { GraphData } from "../../components/graph3d/graphModel";
 import { quoteIdent, tableSqlRef } from "../../naming";
-import type { DataProduct } from "../../types/admin";
-import type { LifecycleStatus } from "../../components/lifecycle/StatusBadge";
+import type { DataContract, DataProduct } from "../../types/admin";
+import type { LifecycleStatus } from "../../types/lifecycle";
 
 /** The product row's own fields, as data_products_meta names them. */
 export const PRODUCT_FIELDS = [
@@ -47,7 +46,6 @@ export const PRODUCT_FIELDS = [
   "status_reason",
   "retire_on",
   "successor_id",
-  "sla",
   "support",
   "support_contact",
   "custom_properties",
@@ -75,30 +73,14 @@ const PANEL: Selection = {
           "domain_id",
           "schema_name",
           "table_name",
+          "alias",
           "description",
           "dq_contract",
+          "contract",
         ],
         rels: {
-          checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name"] } },
+          checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name", "alias"] } },
           dq_rules: DQ_RULES,
-          checked_by: {
-            alias: "checkedBy",
-            sel: {
-              fields: [
-                "id",
-                "source_id",
-                "domain_id",
-                "schema_name",
-                "table_name",
-                "description",
-                "dq_contract",
-              ],
-              rels: {
-                checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name"] } },
-                dq_rules: DQ_RULES,
-              },
-            },
-          },
           table_columns: {
             to: "table_columns",
             sel: {
@@ -113,7 +95,7 @@ const PANEL: Selection = {
           },
           profile_results: {
             alias: "profileResults",
-            sel: { fields: ["id", "domain_id", "table_name"] },
+            sel: { fields: ["id", "domain_id", "table_name", "alias"] },
           },
           // REQ-351: its relationships, under the effective names stored on each (the panel's
           // Relationships card and its Cypher click-through between member tables).
@@ -147,23 +129,21 @@ const PANEL: Selection = {
       alias: "edges",
       sel: {
         fields: [
+          "id",
           "kind",
-          "direction",
           "target_product_id",
           "target_table_id",
-          "target_relation",
           "direct",
           "hops",
           "path_count",
           "aliases",
           "supporting_tables",
-          "vias",
         ],
         rels: {
           target_product: { alias: "targetProduct", sel: { fields: ["id", "name", "domain_id"] } },
           target_table: {
             alias: "targetTable",
-            sel: { fields: ["id", "domain_id", "table_name", "description"] },
+            sel: { fields: ["id", "domain_id", "table_name", "alias", "description"] },
           },
         },
       },
@@ -185,10 +165,12 @@ export interface CoreTable {
   domain_id: string;
   schema_name: string;
   table_name: string;
+  alias: string | null;
   description: string | null;
   dq_contract: string | null;
-  checks?: { id: number; domain_id: string; table_name: string } | null;
-  checked_by?: CoreTable[] | null;
+  // REQ-2158: a member's contract as stored (snake_case JSON); null for a checker table.
+  contract?: StoredContract | string | null;
+  checks?: { id: number; domain_id: string; table_name: string; alias: string | null } | null;
   dq_rules?: CoreDqRule[] | null;
   table_columns?:
     | {
@@ -197,8 +179,60 @@ export interface CoreTable {
         glossary_ref?: { term_id: number; term?: CoreTerm | null }[] | null;
       }[]
     | null;
-  profile_results?: { id: number; domain_id: string; table_name: string }[] | null;
+  profile_results?:
+    | { id: number; domain_id: string; table_name: string; alias: string | null }[]
+    | null;
   source_relationships?: CoreRelationship[] | null;
+}
+
+/** REQ-2158: a member's contract as registered_tables.contract stores it. */
+export interface StoredContract {
+  version: string;
+  status: string;
+  description?: string | null;
+  terms?: { usage?: string | null; limitations?: string | null; notice_period?: string | null };
+  sla?: { property: string; value?: unknown; unit?: string | null; description?: string | null }[];
+  columns?: { name: string; type: string; description?: string | null; required?: boolean }[];
+}
+
+/** REQ-2158: each output port's contract, in the order the members are read. */
+export function coreContracts(core: ProductCore): DataContract[] {
+  return (core.tables ?? []).flatMap((tb) => {
+    if (tb.contract === null || tb.contract === undefined) return [];
+    // The meta schema serves JSON as text where the engine answers it so.
+    const c = (
+      typeof tb.contract === "string" ? JSON.parse(tb.contract) : tb.contract
+    ) as StoredContract;
+    return [
+      {
+        tableId: tb.id,
+        sourceId: tb.source_id,
+        schemaName: tb.schema_name,
+        tableName: tb.table_name,
+        contractId: `${core.product.id}/${tb.schema_name}.${tb.table_name}`,
+        version: c.version,
+        status: c.status,
+        description: c.description ?? null,
+        terms: {
+          usage: c.terms?.usage ?? null,
+          limitations: c.terms?.limitations ?? null,
+          noticePeriod: c.terms?.notice_period ?? null,
+        },
+        sla: (c.sla ?? []).map((x) => ({
+          property: x.property,
+          value: x.value ?? null,
+          unit: x.unit ?? null,
+          description: x.description ?? null,
+        })),
+        columns: (c.columns ?? []).map((x) => ({
+          name: x.name,
+          type: x.type,
+          description: x.description ?? null,
+          required: x.required ?? false,
+        })),
+      },
+    ];
+  });
 }
 
 /** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */
@@ -230,24 +264,36 @@ export interface CoreRelationship {
 }
 
 export interface CoreEdge {
-  kind: "relationship" | "lineage";
-  direction: "upstream" | "downstream" | null;
+  /** REQ-2126: joins (relationship, the graph's) and direct neighbours (related, the panel's).
+   * A product's lineage is the product lineage endpoint's (REQ-2156). */
+  kind: "relationship" | "related";
+  /** The edge's key in data_product_edges, unique per product. */
+  id: string;
   target_product_id: string | null;
   target_table_id: number | null;
-  target_relation: string | null;
   direct: boolean;
   hops: number;
   path_count: number;
   aliases: string | null;
   supporting_tables: string | null;
-  vias: string | null;
   target_product?: { id: string; name: string; domain_id: string } | null;
   target_table?: {
     id: number;
     domain_id: string;
     table_name: string;
+    alias: string | null;
     description: string | null;
   } | null;
+}
+
+/** A registered table as the model names it: its domain, then its alias where it has one. Every
+ * table the panel names is named so -- never by its physical schema or relation. */
+export function modelName(t: {
+  domain_id: string;
+  table_name: string;
+  alias: string | null;
+}): string {
+  return `${t.domain_id}.${t.alias || t.table_name}`;
 }
 
 interface PanelRow {
@@ -288,7 +334,6 @@ export function asProduct(row: ProductRow): DataProduct {
     statusReason: text(row.status_reason),
     retireOn: text(row.retire_on),
     successorId: text(row.successor_id),
-    sla: text(row.sla),
     support: text(row.support),
     supportContact: text(row.support_contact),
     customProperties:
@@ -333,23 +378,19 @@ async function termClosure(m: MetaReader, role: string, bound: CoreTerm[]): Prom
     const eq = rootQuery(
       m,
       "TermEdges",
-      "glossary_term_edges",
+      "_term_edges",
       { fields: ["to_term_id"] },
       { from_term_id: { in: frontier } },
     );
     if (eq === null) break;
-    const { glossary_term_edges: out } = await dataGraphql<{
-      glossary_term_edges: { to_term_id: number }[];
+    const { _term_edges: out } = await dataGraphql<{
+      _term_edges: { to_term_id: number }[];
     }>(eq, {}, role);
     const fresh = [...new Set(out.map((e) => e.to_term_id))].filter((id) => !terms.has(id));
     if (fresh.length === 0) break;
-    const tq = rootQuery(m, "Terms", "glossary_terms", TERM, { id: { in: fresh } });
+    const tq = rootQuery(m, "Terms", "_terms", TERM, { id: { in: fresh } });
     if (tq === null) break;
-    const { glossary_terms: found } = await dataGraphql<{ glossary_terms: CoreTerm[] }>(
-      tq,
-      {},
-      role,
-    );
+    const { _terms: found } = await dataGraphql<{ _terms: CoreTerm[] }>(tq, {}, role);
     const abstract = found.filter((t) => t.is_abstract);
     for (const t of abstract) terms.set(t.id, t);
     frontier = abstract.map((t) => t.id);
@@ -389,7 +430,7 @@ export async function loadProductCore(
       for (const r of c.glossary_ref ?? []) if (r.term) bound.set(r.term.id, r.term);
   return {
     product: asProduct(productRow),
-    tables: members && withCheckers(members),
+    tables: members,
     commands: rowsOf(row.commands),
     tags: rowsOf(row.tags)?.map((t) => t.tag_id),
     terms: (members ?? []).some((t) => t.table_columns !== undefined)
@@ -402,7 +443,7 @@ export async function loadProductCore(
 
 /** The product's graph as its core holds it -- the product, its member tables and checkers, their
  *  columns and the terms bound to them, its commands and its links -- built the way the product's
- *  graph query is (toGraphData), so the knowledge graph card is drawn from the panel's one read. */
+ *  graph query is (toGraphData), so the graph card is drawn from the panel's one read. */
 export function coreGraph(core: ProductCore): GraphData {
   const row: GraphProductRow = {
     id: core.product.id,

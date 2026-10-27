@@ -738,6 +738,7 @@ L'input principale di registrazione tabella. Campi chiave oltre alle basi:
 | `mvRefreshInterval` | Secondi tra i refresh |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Manutenzione incrementale |
+| `mvHoldOnFailingChecks` | Sospendi se i controlli falliscono: un aggiornamento viene annullato, e la vista mantiene la copia precedente, finché una tabella di controllo che analizza uno dei suoi input è fallita all'ultima esecuzione |
 | `businessKey` | Colonne che identificano la stessa cosa tra le versioni; dichiarata con `validTime` e `recordedTime`, tutte e tre o nessuna |
 | `validTime` | Colonna con la data che l'azienda dà al record |
 | `recordedTime` | Colonna con il momento in cui questa versione è stata inserita o modificata |

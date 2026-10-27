@@ -199,7 +199,6 @@ def _decision(route_name: str):
                 dialect="postgres" if direct else None,
                 reason="t",
             ),
-            "pg",
             False,
             {"pg"},
             (),

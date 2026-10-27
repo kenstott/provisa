@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS  # REQ-884
+from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS  # REQ-2163
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig, Source  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
@@ -58,11 +59,6 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "registered_tables": "registered_tables_meta",
     "table_columns": "table_columns_meta",
     "roles": "roles_meta",
-    "glossary_terms": "glossary_terms_meta",  # REQ-1584
-    "glossary_term_refs": "glossary_term_refs_meta",  # REQ-1584
-    "glossary_term_edges": "glossary_term_edges_meta",  # REQ-1584
-    "glossary_term_experts": "glossary_term_experts_meta",  # REQ-1584
-    "glossary_term_domains": "glossary_term_domains_meta",  # REQ-1591
     "tracked_webhooks": "tracked_webhooks_meta",
     "tracked_functions": "tracked_functions_meta",
     "tags": "tags_meta",  # REQ-1373
@@ -1563,9 +1559,14 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
             **dict(r),
             "arguments": _json_list(r["arguments"]),
             "visible_to": _json_list(r["visible_to"]),
+            "language_bindings": _json_dict(r["language_bindings"]),  # REQ-2168
         }
         for r in fn_rows
     ]
+    # REQ-2168: the commands Provisa ships (the APOC set), beside the registered ones.
+    from provisa.core.builtin_commands import declared as _builtin_commands
+
+    tracked_functions = [*_builtin_commands(), *tracked_functions]
     # REQ-1942: the commands backed by a source bound to a synthetic store are not defined in a Test
     # (synthetic) environment -- omitted here, the one place every surface's commands come from,
     # and kept by name so a call to one is refused saying why (action_exec.invoke_command).
@@ -1588,6 +1589,11 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # no longer resolves against the model carries why (contract.broken), and a call is refused.
     from provisa.compiler.statement_contract import derive as _derive_contract
 
+    # REQ-2168: a SQL expression function's template was checked for the deployment's engines when
+    # it was saved (actions_router); a source added since is not a reason to refuse the build.
+    for f in tracked_functions:
+        if f["impl_kind"] == "sql_expression":
+            f["binding"] = _json_dict(f["binding"])
     for f in tracked_functions:
         if f["impl_kind"] == "statement":
             f["binding"] = _json_dict(f["binding"])
@@ -1603,6 +1609,10 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         }
         for r in wh_rows
     ]
+    # REQ-2168: no two commands bound to one name in a language, none shadowing a built-in.
+    from provisa.core.command_bindings import check_names
+
+    check_names([*tracked_functions, *tracked_webhooks])
 
     # The prefixed alias MUST match the GraphQL field name the schema generator emits, which uses
     # domain_gql_alias (e.g. pet-store -> "ps"), NOT domain_to_sql_name (-> "pet_store"). Otherwise
@@ -1626,9 +1636,19 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # AND the convention-cased GraphQL field name, so every surface's lookup resolves (REQ-1156).
     _conv = (raw_config or {}).get("naming", {}).get("convention", "apollo_graphql")
 
+    from provisa.core.command_bindings import binding_name, offered_name
+
     def _register(target: dict, item: dict) -> None:
         target[item["name"]] = item  # raw registered name — non-GraphQL surfaces
-        gql = _apply_conv(item["name"], _conv)
+        # REQ-2168: a SQL command binding that renames the command is the name a statement calls.
+        sql = offered_name(item, "sql")
+        if sql != item["name"]:
+            target[sql] = item
+        # REQ-2168: the GraphQL field is the command's GraphQL command binding; none if excluded.
+        called = binding_name(item, "graphql")
+        if called is None:
+            return
+        gql = _apply_conv(called, _conv)
         key = (
             f"{_domain_prefix(item['domain_id'])}__{gql}" if _dp and item.get("domain_id") else gql
         )
@@ -1825,6 +1845,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         "domain_prefix": domain_prefix,
         "physical_table_map": {
             **_META_TABLE_ALIAS,
+            **ONTOLOGY_TABLE_ALIAS,
             **_OPS_LOG_TABLE_ALIAS,
             **(kafka_physical or {}),
         },
@@ -2020,16 +2041,10 @@ _META_TABLES = [
     "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
     "sensitive_coverage",  # REQ-2091: sensitive columns' fake coverage; view-only
     "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
-    "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
-    "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
-    "glossary_term_edges",  # REQ-1584
-    "glossary_term_experts",  # REQ-1584
-    "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
     "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
     "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
-    "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
-    "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
+    "data_product_edges",  # REQ-2126: a product's relationship links; view-only
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped

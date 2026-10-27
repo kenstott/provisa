@@ -161,6 +161,6 @@
     "moveManyUnnamed_one": "{{count}} kolom verplaatsen?",
     "moveManyUnnamed_other": "{{count}} kolommen verplaatsen?",
     "moveCarryUnnamed": "Verplaatsen en hun nieuwe termen markeren met {{tags}}",
-    "termGraphTitle": "Termgraaf"
+    "termGraphTitle": "Termengraaf"
   }
 }

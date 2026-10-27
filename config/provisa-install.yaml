@@ -1499,10 +1499,11 @@ tables:
       - type: expect_column_values_to_not_be_null
         kwargs:
           column: species
+  product_id: pet_health
   source_id: dq-checker
   table: pets_quality
 # REQ-1443: the Soda counterpart — same results schema, same scan pipeline, the other contract
-# dialect. No product_id: clause 10 derives it from the scanned table (vets → pet_health).
+# dialect. Assigned to pet_health as any member is, like pets_quality.
 - columns:
   - description: Placeholder carrying visible_to; replaced by the shipped results schema at parse
     name: scan_id
@@ -1530,6 +1531,7 @@ tables:
     checks:
       - row_count:
           must_be_greater_than: 0
+  product_id: pet_health
   source_id: dq-soda
   table: vets_quality
 - alias: schedule_by_employee

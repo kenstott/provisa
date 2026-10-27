@@ -18,9 +18,14 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete as _delete, func, select, update
 
 from provisa.core import model_change
-from provisa.core.models import DataProduct
+from provisa.core.models import DataContract, DataProduct
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.schema_org import data_products, registered_tables, tracked_functions
+from provisa.core.schema_org import (
+    data_products,
+    registered_tables,
+    table_columns,
+    tracked_functions,
+)
 
 if TYPE_CHECKING:
     from datetime import date
@@ -51,7 +56,6 @@ async def upsert(  # REQ-1634, REQ-1919
             "status_reason": product.status_reason,
             "retire_on": product.retire_on,
             "successor_id": product.successor,
-            "sla": product.sla,
             "support": product.support,
             "support_contact": product.support_contact,
             "custom_properties": product.custom_properties,
@@ -70,7 +74,6 @@ async def upsert(  # REQ-1634, REQ-1919
             "status_reason",
             "retire_on",
             "successor_id",
-            "sla",
             "support",
             "support_contact",
             "custom_properties",
@@ -131,6 +134,64 @@ async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-
         await remove_parts(conn, ref)
         await conn.execute_core(_delete(data_products).where(data_products.c.id == product_id))
     return True
+
+
+async def member_contracts(conn: "Connection", product_id: str | None = None) -> list[dict]:
+    """REQ-2158: each product member's contract, with its table's id and address: every product's,
+    or ``product_id``'s."""
+    query = select(
+        registered_tables.c.id,
+        registered_tables.c.product_id,
+        registered_tables.c.source_id,
+        registered_tables.c.schema_name,
+        registered_tables.c.table_name,
+        registered_tables.c.contract,
+    ).where(registered_tables.c.contract.is_not(None))
+    if product_id is not None:
+        query = query.where(registered_tables.c.product_id == product_id)
+    result = await conn.execute_core(query.order_by(registered_tables.c.id))
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def save_contract(  # REQ-2158
+    conn: "Connection", table_id: int, contract: DataContract
+) -> dict:
+    """A member's contract replaced: refused (data_contracts.ContractRefused) when the table is no
+    product's output port, when it stops promising a column at the same version, or when it
+    promises a column the member does not hold as that type. The member's row, as it is now."""
+    from provisa.core import data_contracts
+
+    async with conn.transaction():
+        row = (
+            await conn.execute_core(
+                select(registered_tables).where(registered_tables.c.id == table_id)
+            )
+        ).fetchone()
+        if row is None or row.product_id is None or row.contract is None:
+            raise data_contracts.ContractRefused(
+                f"table {table_id} is no data product's output port: it has no contract"
+            )
+        cid = data_contracts.contract_id(row.product_id, row.schema_name, row.table_name)
+        model_change.name("upsert", "data contract", cid)  # REQ-1524
+        contract = data_contracts.as_stored(cid, contract)
+        data_contracts.require_new_version(cid, DataContract.model_validate(row.contract), contract)
+        types = {
+            r.column_name: r.data_type
+            for r in (
+                await conn.execute_core(
+                    select(table_columns.c.column_name, table_columns.c.data_type).where(
+                        table_columns.c.table_id == table_id
+                    )
+                )
+            ).fetchall()
+        }
+        data_contracts.require_provided(cid, contract, types)
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id == table_id)
+            .values(contract=contract.model_dump())
+        )
+    return {**dict(row._mapping), "contract": contract.model_dump()}
 
 
 # REQ-1634 STATUS: a data product's lifecycle. Every state is asserted by an action: publish takes

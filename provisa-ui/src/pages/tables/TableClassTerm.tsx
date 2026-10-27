@@ -40,7 +40,10 @@ async function readClassTerm(role: string, tableId: number): Promise<ClassTerm |
     m,
     "TableClassTerm",
     "registered_tables",
-    { fields: ["id"], rels: { class_term: { alias: "classTerm", sel: { fields: ["id", "name"] } } } },
+    {
+      fields: ["id"],
+      rels: { class_term: { alias: "classTerm", sel: { fields: ["id", "name"] } } },
+    },
     { id: { eq: tableId } },
   );
   if (query === null) throw new Error("registered_tables");

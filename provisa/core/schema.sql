@@ -113,14 +113,19 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO domains (id, description, steward) VALUES ('ops', 'Operational telemetry', 'org_admin')
 ON CONFLICT (id) DO NOTHING;
 
+-- REQ-2163: the ontology system schema (the glossary's definitions). Its GraphQL alias is stored:
+-- the computed one, "o", is ops's.
+INSERT INTO domains (id, description, graphql_alias) VALUES ('ontology', 'System ontology', 'ont')
+ON CONFLICT (id) DO NOTHING;
+
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
 -- REQ-1634: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
 -- already has the underlying source of truth -- team_role/owner_role resolve to individuals
 -- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
--- inputPorts/outputPorts are derived from existing tag assignments/glossary/lineage rather
--- than stored here, and sla/support stay prose because a product spans multiple tables and a
--- structured SLA can't unambiguously attribute which member it describes.
+-- inputPorts are derived from existing tag assignments/glossary/lineage rather than stored here,
+-- and support stays prose. REQ-2158: each output port is a member table, whose declared contract
+-- (registered_tables.contract) holds the SLA.
 CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
@@ -138,7 +143,6 @@ CREATE TABLE IF NOT EXISTS data_products (
     status_by     TEXT,
     status_at     TIMESTAMPTZ,
     successor_id  TEXT REFERENCES data_products(id) ON DELETE SET NULL,
-    sla           TEXT,
     support       TEXT,
     support_contact TEXT,
     custom_properties JSONB NOT NULL DEFAULT '{}'
@@ -157,7 +161,6 @@ DO $$ BEGIN
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_by TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS successor_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;
-    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS sla TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support_contact TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS custom_properties JSONB NOT NULL DEFAULT '{}';
@@ -202,6 +205,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- REQ-1733: CDC push-source debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
+    mv_hold_on_failing_checks BOOLEAN NOT NULL DEFAULT false,  -- REQ-2133: built-in preflight
     business_key JSONB,  -- REQ-2109: columns identifying the same thing across versions
     valid_time TEXT,  -- REQ-2109: the column holding the date the business gives the record
     recorded_time TEXT,  -- REQ-2109: the column holding when this version was entered or changed
@@ -223,6 +227,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
+    -- REQ-2158: a data product member's ODCS contract (its output port), declared and versioned on
+    -- its own: {version, status, description, terms, sla, schema}; NULL for a table in no product.
+    contract    JSONB,
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -956,6 +963,16 @@ CREATE TABLE IF NOT EXISTS checker_targets (
     checked_table_id INTEGER NOT NULL
 );
 
+-- REQ-2132: each checker table's latest scan, written in the scan's own transaction. A table with
+-- no row has never run; the dry run writes none.
+CREATE TABLE IF NOT EXISTS checker_latest_runs (
+    table_id  INTEGER PRIMARY KEY,
+    scan_id   TEXT NOT NULL,
+    scan_time TIMESTAMPTZ NOT NULL,
+    outcome   TEXT NOT NULL CONSTRAINT checker_latest_runs_outcome_check
+              CHECK (outcome IN ('pass', 'fail'))
+);
+
 -- Relationship Discovery Candidates (Phase R)
 CREATE TABLE IF NOT EXISTS relationship_candidates (
     id              SERIAL PRIMARY KEY,
@@ -1115,6 +1132,7 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     output_columns JSONB,  -- REQ-1159: canonical IR-typed output dataset contract [{name,type}]
     requires_approval BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1924: each call approved by the hook
     writes_table  TEXT,  -- REQ-1924, REQ-871: "schema.table" of the registered table it writes
+    language_bindings JSONB NOT NULL DEFAULT '{}',  -- REQ-2168: the command's name per language
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -69,6 +69,10 @@ from provisa.api.admin.types import (
     CrawledFileType,
     CrawledTableType,
     CrawlResultType,
+    ContractColumnType,
+    ContractSlaPropertyType,
+    ContractTermsType,
+    DataContractType,
     DataProductFindingType,
     DataProductFindingsType,
     DataProductType,
@@ -476,6 +480,27 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     return [r for r in rows if visible(r)]
 
 
+def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
+    """A member's stored contract (data_product.member_contracts) as the admin API answers it."""
+    from provisa.core.data_contracts import contract_id
+    from provisa.core.models import DataContract
+
+    c = DataContract.model_validate(member["contract"])
+    return DataContractType(
+        table_id=member["id"],
+        source_id=member["source_id"],
+        schema_name=member["schema_name"],
+        table_name=member["table_name"],
+        contract_id=contract_id(member["product_id"], member["schema_name"], member["table_name"]),
+        version=c.version,
+        status=c.status,
+        description=c.description,
+        terms=ContractTermsType(**c.terms.model_dump()),
+        sla=[ContractSlaPropertyType(**s.model_dump()) for s in c.sla],
+        columns=[ContractColumnType(**col.model_dump()) for col in c.columns],
+    )
+
+
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
@@ -584,6 +609,16 @@ class Query:  # REQ-021, REQ-042
             for r in rows
             if r["id"] in decidable
         ]
+
+    @strawberry.field
+    def hold_on_failing_checks_source(self, info: StrawberryInfo) -> str:  # REQ-2133
+        """The built-in preflight a materialized view's Hold on failing checks option applies, as a
+        steward may copy it into the view's own preflight. Read on the view's edit form, gated as
+        that form's other reads are."""
+        require_capability(info, "table_registration")
+        from provisa.mv.hold_checks import SOURCE
+
+        return SOURCE
 
     @strawberry.field
     async def schema_version(self) -> str:
@@ -754,10 +789,14 @@ class Query:  # REQ-021, REQ-042
         async with pool.acquire() as conn:
             conn = cast("Connection", conn)
             rows = await data_product_repo.list_all(conn)
+            members = await data_product_repo.member_contracts(conn)
             found = await product_findings.findings(
                 conn, await product_findings.context(datetime.date.today())
             )
         names = {r["id"]: r["name"] for r in rows}
+        contracts: dict[str, list[DataContractType]] = {}
+        for m in members:  # REQ-2158
+            contracts.setdefault(m["product_id"], []).append(data_contract_type(m))
         return [
             DataProductType(
                 id=r["id"],
@@ -769,10 +808,10 @@ class Query:  # REQ-021, REQ-042
                 limitations=r["limitations"],
                 usage=r["usage"],
                 version=r["version"],
-                sla=r["sla"],
                 support=r["support"],
                 support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
+                contracts=contracts.get(r["id"], []),
                 status=r["status"],
                 status_reason=r["status_reason"],
                 retire_on=r["retire_on"].isoformat() if r["retire_on"] is not None else None,

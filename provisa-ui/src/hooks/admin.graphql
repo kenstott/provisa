@@ -185,7 +185,6 @@ query DataProductsQuery {
     usage
     version
     status
-    sla
     support
     supportContact
     customProperties
@@ -300,6 +299,7 @@ query TablesQuery {
     pushDebounceMaxDelay
     mvConsistency
     mvPreprocess
+    mvHoldOnFailingChecks
     businessKey
     validTime
     recordedTime
@@ -974,6 +974,12 @@ mutation UpdateDataProduct($input: DataProductInput!) {
   }
 }
 
+mutation SaveDataContract($tableId: Int!, $contract: DataContractInput!) {
+  saveDataContract(tableId: $tableId, contract: $contract) {
+    ...MutationResult
+  }
+}
+
 mutation DeleteDataProduct($id: String!) {
   deleteDataProduct(id: $id) {
     ...MutationResult
@@ -1091,6 +1097,11 @@ mutation DeleteTable($id: Int!) {
 }
 
 # REQ-962: snapshot-boundary calendars — the picker source + create form for the MV snapshot schedule.
+# REQ-2133: the built-in preflight a view's Hold on failing checks option applies.
+query HoldOnFailingChecksSource {
+  holdOnFailingChecksSource
+}
+
 query Calendars {
   calendars {
     name

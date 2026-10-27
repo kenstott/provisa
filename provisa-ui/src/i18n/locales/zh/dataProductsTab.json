@@ -22,8 +22,6 @@
     "versionLabel": "版本",
     "versionPlaceholder": "例如 1.2.0",
     "statusLabel": "状态",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "此产品的服务级别承诺",
     "supportLabel": "支持",
     "supportPlaceholder": "如何获取此产品的帮助",
     "supportContactLabel": "支持联系人",
@@ -103,7 +101,7 @@
         "dataQuality": "数据质量"
       },
       "dataQualityEmpty": "没有质量扫描",
-      "dataQualityHint": "其契约扫描此产品输出端口的检查器表。每次运行每项检查写入一行；成员关系跟随被扫描的表。",
+      "dataQualityHint": "产品的检查：对其输入的预期、对其成员表的承诺，以及其他方（或无人）对二者所做的相关检查。打开一项检查即可查看其结果。",
       "dqRulesAria": "显示 {{table}} 的质量规则",
       "dqRulesTitle": "质量规则 — {{table}}",
       "dqRulesEmpty": "该契约未定义任何检查",
@@ -113,8 +111,6 @@
       "lineageEmpty": "没有血缘",
       "lineageLoading": "正在加载血缘…",
       "lineageHint": "列血缘图，以此产品的表作为发布终结点，并包含用于派生它们的所有上游表。仅供参考，需要 view_governance 能力。",
-      "inputPortsEmpty": "没有记录上游输入",
-      "inputPortsHint": "此产品直接读取的表（来自血缘）。展开表可查看其读取的列。需要 view_governance 能力。",
       "outputPortsHint": "此产品可查询的范围：其成员表和命令。每个的示例查询见“访问模式”。",
       "customPropertiesEmpty": "没有自定义属性",
       "lineageLaneUpstream": "上游，第 {{n}} 跳",
@@ -158,6 +154,38 @@
     "findingFix_member_deprecated": "打开 {{table}}",
     "findingFix_retirement_blocked": "选择继任产品…",
     "findingFix_domain_steward_unset": "打开域 {{domain}}",
-    "findingFix_successor_retired": "打开 {{successor}}"
+    "findingFix_successor_retired": "打开 {{successor}}",
+    "contract": {
+      "label": "数据契约",
+      "hint": "每个输出端口的契约：以其自身版本承诺的内容",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "已提议",
+        "draft": "草稿",
+        "active": "生效",
+        "deprecated": "已弃用",
+        "retired": "已停用"
+      },
+      "usage": "用途",
+      "limitations": "限制",
+      "noticePeriod": "通知期",
+      "noticePeriodPlaceholder": "例如 P3M",
+      "column": "列",
+      "type": "类型",
+      "required": "从不为空",
+      "yes": "是",
+      "versionLabel": "契约版本",
+      "statusLabel": "契约状态",
+      "descriptionLabel": "用途说明",
+      "columnsLabel": "承诺的列",
+      "columnsHelp": "不再承诺某列或更改其类型，需要新版本。",
+      "requiredLabel": "从不为空",
+      "slaLabel": "服务级别",
+      "slaProperty": "属性",
+      "slaValue": "值",
+      "slaUnit": "单位",
+      "slaRemove": "移除服务级别",
+      "slaAdd": "添加服务级别"
+    }
   }
 }

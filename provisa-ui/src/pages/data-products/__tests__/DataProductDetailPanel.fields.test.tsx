@@ -20,8 +20,8 @@ import { lifecycleProps } from "./lifecycleProps";
 // Who an owner role resolves to is its own fetch, held by its own tests.
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 // The panel's 3D graph is its own component, held by its own tests.
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
 }));
 
 const PRODUCT = {
@@ -34,7 +34,6 @@ const PRODUCT = {
   teamRole: null,
   support: "#pet-health",
   supportContact: "vets@petstore.example",
-  sla: "99.5%",
   purpose: "Health records of the pets in care",
   limitations: null,
   usage: "Join on pet_id",
@@ -48,11 +47,11 @@ function fields(p: DataProduct): [string, string][] {
       coreError={null}
       reader={null}
       canEdit={false}
-      canSeeLineage={false}
+      canDelete={false}
+      owner
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}
@@ -75,7 +74,6 @@ describe("a data product's read view", () => {
       ["Team", "—"],
       ["Support", "#pet-health"],
       ["Support contact", "vets@petstore.example"],
-      ["SLA", "99.5%"],
       ["Purpose", "Health records of the pets in care"],
       ["Limitations", "—"],
       ["Usage", "Join on pet_id"],

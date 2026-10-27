@@ -196,10 +196,10 @@ class TestSystemDomainIds:
         assert "ops" in domain_policy.system_domain_ids()
 
     def test_system_domain_ids_stable_set(self):
-        """The canonical set from REQ-808 is {"", "meta", "ops"}."""
+        """The canonical set from REQ-808 is {"", "meta", "ops"}, and ontology (REQ-2163)."""
         from provisa.core.domain_policy import _SYSTEM_DOMAIN_IDS
 
-        assert set(_SYSTEM_DOMAIN_IDS) == {"", "meta", "ops"}
+        assert set(_SYSTEM_DOMAIN_IDS) == {"", "meta", "ops", "ontology"}
 
 
 # ---------------------------------------------------------------------------

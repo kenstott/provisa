@@ -11,7 +11,8 @@
 // REQ-1634 STATUS: a data product's status, as its list and its panel show it.
 
 import { useTranslation } from "react-i18next";
-import { StatusBadge, type LifecycleStatus } from "../../components/lifecycle/StatusBadge";
+import { StatusBadge } from "../../components/lifecycle/StatusBadge";
+import type { LifecycleStatus } from "../../types/lifecycle";
 
 export function ProductStatusBadge({
   status,

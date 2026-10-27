@@ -30616,16 +30616,24 @@
   feature: change-events-and-streams-derived-tables
   priority: SHOULD
   type: behavioral
-  description: 'A node''s processing envelope collapses to ONE optional user hook: preprocess(rows, ctx)
-    -> rows, run after produce (source fetch or MV SQL) and before land. Absent = identity. Returning
-    rows proceeds to land; returning [] is a row-level no-op (nothing lands, no re-post); ctx.warn(reasons)
-    emits an advisory warn event and keeps going (non-fatal); raising emits an error event and short-circuits
-    the land (fatal), fanning the error forward for poison propagation. Reject is not a new outcome. It is an error (REQ-941), just emitted before landing. warn/error severity replaces any separate accept/reject
-    channel. preprocess MUST be deterministic (its output feeds the content hash that gates the re-post;
-    non-determinism ripples forever). Built-ins NOT in the hook: pre-produce poison short-circuit (a claimed
-    upstream error skips produce) and Defer (a lease action, not an emitted event). ctx is read-only:
-    node name/kind, claimed-event summary, columns/schema, per-input frontier, forced flag, last-landed
-    hash/epoch, and window bounds.'
+  description: 'A node''s processing envelope collapses to ONE optional user hook: preprocess(rows, ctx) -> rows,
+    run after produce (source fetch or MV SQL) and before land. Absent = identity. Returning rows
+    proceeds to land; returning [] is a row-level no-op (nothing lands, no re-post); ctx.warn(reasons)
+    emits an advisory warn event and keeps going (non-fatal); raising emits an error event and
+    short-circuits the land (fatal), fanning the error forward for poison propagation. Reject is not a
+    new outcome. It is an error (REQ-941), just emitted before landing. warn/error severity replaces any
+    separate accept/reject channel. [SUPERSEDED by REQ-957, 2026-10-21 -- in part: a preflight that
+    imports provisa_services is not held to determinism. Kept here for history; do not implement against
+    it.] preprocess MUST be deterministic (its output feeds the content hash that gates the re-post;
+    non-determinism ripples forever). [END SUPERSEDED BLOCK] Built-ins NOT in the hook: pre-produce
+    poison short-circuit (a claimed upstream error skips produce) and Defer (a lease action, not an
+    emitted event). ctx is read-only: node name/kind, claimed-event summary, columns/schema, per-input
+    frontier, forced flag, last-landed hash/epoch, and window bounds. (Amended 2026-10-21, SERVICES
+    IMPORT:) A preflight may import exactly one module, provisa_services, the services REQ-1165 gives it
+    in-process. Every other import, and the rest of the registration purity check (no wall-clock,
+    randomness, process identity or dunder access), stays refused. A preflight that imports
+    provisa_services is evaluated by the Python path only and is never translated to an SQL probe, and
+    it is not held to determinism: its verdict is the state its service calls find at refresh time.'
   use_case: Authors express custom data prep, enrichment, validation, quarantine, and rejection through
     a single deterministic transform that folds into the existing event-type vocabulary (delta/append/replace/warn/error),
     with no bespoke gate machinery.
@@ -30982,18 +30990,27 @@
   type: structural
   description: 'The materialization estate is DATA-MODEL-DRIVEN, not process-driven. That is the key differentiator.
     You declare the authoritative, governed data you want represented (each MV as SQL) and the RULES for
-    processing/reprocessing (expected-events freshness contract REQ-961, calendar/grain REQ-962, deadline/debounce
-    REQ-959/REQ-963, preprocess REQ-957); the system DERIVES the process — lineage from SQL (REQ-939),
-    fan-out, scheduling, and failover — with nothing hand-orchestrated. This inverts the imperative pipeline
-    model (dbt/Airflow author the process; the data model is emergent) and yields a single, almost- PROVABLE
-    data estate: a deterministic function of (governed sources, SQL definitions, rules). "Almost" is bounded
-    by five explicit PROOF OBLIGATIONS, each pushable toward mechanical enforcement: (1) transform determinism: MV SQL and preprocess must be pure (reject now()/random at registration; sandbox from wall-clock);
-    (2) source freshness accuracy: the one irreducible trust boundary, "trusted" is relative to what a
-    source reports; (3) land idempotency on the window key: exactly-one-effect under the store/queue
-    two-database split rests on this + ownership CAS (REQ-960), not a distributed transaction; (4) temporal-join correctness: the barrier guarantees input availability, not point-in- time-correct (SCD-2) joins,
-    which are the SQL author''s obligation (lintable); (5) calendar immutability: replay fidelity requires
-    holiday/fiscal data immutable-per-window (REQ-962). Close 1/3/5 mechanically, lint 4, and the estate
-    is provable except where a source lies. That is the strongest guarantee a federated estate can make.'
+    processing/reprocessing (expected-events freshness contract REQ-961, calendar/grain REQ-962,
+    deadline/debounce REQ-959/REQ-963, preprocess REQ-957); the system DERIVES the process — lineage
+    from SQL (REQ-939), fan-out, scheduling, and failover — with nothing hand-orchestrated. This inverts
+    the imperative pipeline model (dbt/Airflow author the process; the data model is emergent) and
+    yields a single, almost- PROVABLE data estate: a deterministic function of (governed sources, SQL
+    definitions, rules). "Almost" is bounded by five explicit PROOF OBLIGATIONS, each pushable toward
+    mechanical enforcement: [SUPERSEDED by REQ-964, 2026-10-21 -- in part: a preflight that imports
+    provisa_services is excluded. Kept here for history; do not implement against it.] (1) transform
+    determinism: MV SQL and preprocess must be pure (reject now()/random at registration; sandbox from
+    wall-clock); [END SUPERSEDED BLOCK] (2) source freshness accuracy: the one irreducible trust
+    boundary, "trusted" is relative to what a source reports; (3) land idempotency on the window key:
+    exactly-one-effect under the store/queue two-database split rests on this + ownership CAS (REQ-960),
+    not a distributed transaction; (4) temporal-join correctness: the barrier guarantees input
+    availability, not point-in- time-correct (SCD-2) joins, which are the SQL author''s obligation
+    (lintable); (5) calendar immutability: replay fidelity requires holiday/fiscal data
+    immutable-per-window (REQ-962). Close 1/3/5 mechanically, lint 4, and the estate is provable except
+    where a source lies. That is the strongest guarantee a federated estate can make. (Amended
+    2026-10-21, SERVICES PREFLIGHTS:) A preflight that imports provisa_services (REQ-957, REQ-1165,
+    REQ-2133) is excluded from replay determinism: its verdict is the state at refresh time (a
+    checker''s latest run, say), and a replay may reach another. It gates landing only and feeds no
+    content hash, so it does not make a landed result non-deterministic; it can only hold one back.'
   use_case: 'Governance and reproducibility are structural properties of the estate, not process hygiene:
     because lineage is derived (cannot drift), outputs are addressable and deterministically replayable,
     and trust is explicit via the freshness contract, the whole data estate is auditable as a function
@@ -37222,24 +37239,34 @@
   priority: MUST
   type: constraint
   since: 2026-07
-  description: 'The inline MV preprocess hook (REQ-957) is RESCOPED from a row transform (rows → rows)
-    to a PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset.
-    Row transforms are explicitly out of scope; they belong in SQL (engine pushdown) or external processors
+  description: 'The inline MV preprocess hook (REQ-957) is RESCOPED from a row transform (rows → rows) to a
+    PREFLIGHT CHECK that returns a verdict (continue / abort / quarantine), not a mutated dataset. Row
+    transforms are explicitly out of scope; they belong in SQL (engine pushdown) or external processors
     (REQ-940). Rationale: a gate does not mutate the landed set, so it does not feed the content hash
-    (REQ-964), eliminating the justification for full in-memory materialization and the max_rows cap (SKIPPED_SIZE)
-    that prevents scaling to large sources. Accepted preflight transports are SQL pushdown (for SQL-expressible
-    checks, evaluated engine-side as probe queries) and Python+Arrow (for non-SQL checks, evaluated in-process
-    with columnar batches). gRPC is out of scope. It only serves out-of-process/remote validators, which
-    introduces unnecessary overhead (separate process, wire framing) disproportionate to a preflight gate''s
-    simplicity and scale requirements. The Python preflight hook input contract is dict[str, pyarrow.RecordBatchReader],
-    keyed by INPUT NODE NAME, providing lazy Arrow streams via FederationEngine.execute_engine_stream.
-    This avoids full materialization of large inputs; the hook consumes batches lazily and short-circuits
-    early. If an engine lacks EngineCapability.ARROW_STREAM and a preflight is declared, the system fails
-    loud at wiring/boot time (no silent skip, no materialize fallback). The land/generate path remains
-    unchanged, using independent streamed reads. A source table''s check runs in its replica build (REQ-1915): once, over the rows the build streams (a bounded queue of batches, the hook reading the whole table lazily), its verdict awaited before the swap; ABORT or a hook that raises fails the build by its reason and QUARANTINE holds it, each leaving the replica as it was; a checked table is streamed, never copied by the engine''s own statement, by a delta, by a pipeline or a part at a time in place. (Amended 2026-10-21, SERVICES:) A Python preflight also receives Provisa''s services, the same
-    provisa_services module a code source''s worker gets (REQ-2106), plus a dq service (REQ-2133). The
-    services run in the server process with the preflight, so the module is shared but a code source''s
-    sandbox does not apply; every service call is metered and audited as for a code source.'
+    (REQ-964), eliminating the justification for full in-memory materialization and the max_rows cap
+    (SKIPPED_SIZE) that prevents scaling to large sources. Accepted preflight transports are SQL
+    pushdown (for SQL-expressible checks, evaluated engine-side as probe queries) and Python+Arrow (for
+    non-SQL checks, evaluated in-process with columnar batches). gRPC is out of scope. It only serves
+    out-of-process/remote validators, which introduces unnecessary overhead (separate process, wire
+    framing) disproportionate to a preflight gate''s simplicity and scale requirements. The Python
+    preflight hook input contract is dict[str, pyarrow.RecordBatchReader], keyed by INPUT NODE NAME,
+    providing lazy Arrow streams via FederationEngine.execute_engine_stream. This avoids full
+    materialization of large inputs; the hook consumes batches lazily and short-circuits early. If an
+    engine lacks EngineCapability.ARROW_STREAM and a preflight is declared, the system fails loud at
+    wiring/boot time (no silent skip, no materialize fallback). The land/generate path remains
+    unchanged, using independent streamed reads. A source table''s check runs in its replica build
+    (REQ-1915): once, over the rows the build streams (a bounded queue of batches, the hook reading the
+    whole table lazily), its verdict awaited before the swap; ABORT or a hook that raises fails the
+    build by its reason and QUARANTINE holds it, each leaving the replica as it was; a checked table is
+    streamed, never copied by the engine''s own statement, by a delta, by a pipeline or a part at a time
+    in place. (Amended 2026-10-21, SERVICES:) A Python preflight also receives Provisa''s services, the
+    same provisa_services module a code source''s worker gets (REQ-2106), plus a dq service (REQ-2133).
+    The services run in the server process with the preflight, so the module is shared but a code
+    source''s sandbox does not apply; every service call is metered and audited as for a code source.
+    (Amended 2026-10-21, ONE IMPORT:) To call its services a Python preflight imports exactly
+    provisa_services; that is the one import the registration check admits (REQ-957). A preflight that
+    imports it is evaluated by the Python path only, never translated to an SQL pushdown probe, and is
+    excluded from replay determinism (REQ-964).'
   use_case: Rescoping from stateful row transform to stateless verdict gate simplifies the contract, improves
     memory efficiency, and allows evaluation to scale via engine pushdown (SQL assertions) or streaming
     short-circuit (non-SQL predicates) rather than buffering the entire dataset in memory before applying
@@ -49112,6 +49139,12 @@
   - provisa-ui/src/pages/DataProductsPage.tsx
   - provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx
   - provisa-ui/src/pages/data-products/DqRulesModal.tsx
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/mcp/table_edit.py
+  - provisa-ui/src/pages/tables/TableEditForm.tsx
+  - provisa-ui/src/pages/tables/helpers.ts
+  - provisa-ui/src/pages/data-products/DataProductFormCard.tsx
   tests:
   - tests/unit/test_app_wiring.py
   - tests/unit/test_metadata_export_data_quality.py
@@ -49127,6 +49160,7 @@
   - tests/integration/test_dq_registration_path.py
   - tests/helpers.py
   - provisa-ui/src/pages/tables/__tests__/DataQualityPanel.test.tsx
+  - tests/unit/test_product_inputs_and_checks.py
   scenario: 'Given a Soda contract whose checks name a governed table
 
     When the contract is registered as a soda source with a debounce window
@@ -58222,12 +58256,12 @@
     status and lifecycle (REQ-2126, the product lifecycle), its output ports and its inputs; a Data Contracts
     sheet lists each output port''s contract (REQ-2158): version, status, purpose, usage, limitations and
     the columns it promises. A Data Quality sheet summarises each check''s latest result per table and column
-    (REQ-2132/2133) and the latest profiling run''s figures per column (rows, nulls, distinct, min and max
-    where the role may read them). Every sheet shows only what the caller is served: a column the caller''s
-    roles are not granted (REQ-2153/2154) is absent from the Columns sheet and from every other sheet that
-    names it, a masked column shows its masked form wherever a value or statistic would reveal it, profiling
-    figures follow the column''s grant and mask, and a product, contract or term outside the caller''s domains
-    is absent, as for every other sheet.'
+    (REQ-2132/2133); a Data Profiling sheet of its own gives the latest profiling run''s figures per column
+    (rows, nulls, distinct, min and max where the role may read them) with the run''s time. Every sheet
+    shows only what the caller is served: a column the caller''s roles are not granted (REQ-2153/2154) is
+    absent from the Columns sheet and from every other sheet that names it, a masked column shows its masked
+    form wherever a value or statistic would reveal it, profiling figures follow the column''s grant and
+    mask, and a product, contract or term outside the caller''s domains is absent, as for every other sheet.'
   tests:
   - tests/unit/test_model_report_workbook.py
   - tests/integration/test_model_report_download.py
@@ -87357,10 +87391,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa/compiler/stage2.py
   - provisa/core/schema_org.py
   - provisa/core/schema.sql
+  - provisa/lineage/inputs.py
   tests:
   - tests/unit/test_data_product_edges.py
   - tests/unit/test_statement_contract.py
   - tests/integration/test_data_product_edges_e2e.py
+  - tests/unit/test_product_inputs_and_checks.py
 - id: REQ-2127
   value: 'Browse and inspect your data products in a dedicated page, with metadata drawn live from the governed model.'
   status: proposed
@@ -87671,7 +87707,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2133
   value: 'A preflight check can call Provisa''s own services—LLM, vectors, cache, data quality—before a source refresh.'
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 9. Live Data & Events
   category: Table Processor (Shared)
@@ -87709,6 +87745,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then the refresh is aborted with a reason naming the checker table and A, the view keeps its previous copy, and views downstream of it are marked blocked upstream
     When the checker's next run on A passes
     Then the next refresh lands
+  code:
+  - provisa/dq/service.py
+  - provisa/mv/preflight_services.py
+  - provisa/mv/hold_checks.py
+  - provisa/mv/preprocess.py
+  - provisa/mv/preflight_eval.py
+  - provisa/codesource/services.py
+  - provisa/python/services/provisa_services/__init__.py
+  tests:
+  - tests/unit/test_preflight_dq_services.py
+  - tests/integration/test_hold_on_failing_checks_e2e.py
+  - provisa-ui/src/pages/tables/__tests__/TableEditForm.holdOnFailingChecks.test.tsx
   relates_to:
   - REQ-1165
   - REQ-941
@@ -89540,6 +89588,50 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - compliance
   docs:
   - named-demos.md
+- id: REQ-2173
+  value: 'Cypher queries that work with dates, times and durations run on Provisa as written.'
+  status: proposed
+  target: 2026-Q4
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Query Frontend (Phase AU)
+  feature: cypher-and-graph-analytics-endpoint
+  priority: SHOULD
+  type: behavioral
+  description: 'Cypher''s temporal values are read as openCypher defines them. A duration is a value
+    of its own (months, days, seconds and nanoseconds), written in the answer in ISO-8601 (P..T..), with
+    its properties (years, quarters, months, weeks, days, hours, minutes, seconds, milliseconds, microseconds,
+    nanoseconds and the openCypher OfX properties). It is built by duration(''P..'') and duration({..})
+    from a map, and by duration.between, duration.inMonths, duration.inDays and duration.inSeconds. Arithmetic
+    adds a duration to or subtracts one from a date, time, local time, local date time or date time, and
+    adds, subtracts, multiplies and divides durations. The temporal values date, time, localtime, localdatetime
+    and datetime are also built from a map of components (date({year: 1984, month: 10, day: 11}), the
+    week, ordinal and quarter forms, and time and datetime with a timezone), and each type''s truncate
+    function (date.truncate, datetime.truncate and so on) truncates to a unit, so these are no longer
+    refused by name. A duration is lowered onto the engine''s own interval type where it has one (DuckDB
+    INTERVAL, PostgreSQL interval, Trino interval day to second and interval year to month); where an
+    engine cannot hold a duration (a duration with both months and seconds on Trino, or nanoseconds beyond
+    the engine''s precision), the statement is refused naming the duration, and the difference is listed
+    on the Cypher Conformance page. (Maintainer, 2026-10-27.) (Amended 2026-10-27, NANOSECONDS PRESENTED
+    AS ZERO:) Maintainer 2026-10-27: there is no temporal type of Provisa''s own. Every temporal value,
+    read from a column or built in a query, has microsecond precision, what the engines and their drivers
+    hold; its nanosecond property is its microseconds times 1000. A literal or constructor written with
+    digits below the microsecond keeps microsecond precision and is not refused, and the answer writes
+    that value as openCypher formats it. A TCK scenario that expects non-zero digits below the microsecond
+    is listed on the Conformance page as a known difference, with this rule. (Amended 2026-10-27, NAMED
+    ZONES ARE PRESENTATION:) Maintainer 2026-10-27: when a query names a zone or an offset, in a literal
+    (''2015-07-21T21:40:32.142+01:00[Europe/Stockholm]'') or with timezone in a constructor or function,
+    the engine computes with it, by its own time zone rules (AT TIME ZONE, its timestamp with time zone,
+    daylight saving included). The zone travels with the compiled expression only so the Cypher answer
+    presents it as openCypher writes it, 2015-07-21T21:40:32.142+01:00[Europe/Stockholm], and .timezone
+    reads its name; where the engine''s type keeps the zone (Trino), that is used. A value read from a
+    column that stores only an instant presents its offset and no zone name: nothing is invented.'
+  scenario: 'Given the Cypher surface
+
+    When RETURN duration.between(date(''1984-10-11''), date(''2015-06-24'')) AS d runs
+
+    Then d is ''P30Y8M13D''
+
+    And RETURN date({year: 1984, month: 10, day: 11}) + duration(''P1M'') AS d answers ''1984-11-11'''
 - id: REQ-2174
   status: in-progress
   target: 2026-Q4

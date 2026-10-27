@@ -738,6 +738,7 @@ mutation {
 | `mvRefreshInterval` | 刷新间隔（秒） |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量维护 |
+| `mvHoldOnFailingChecks` | 检查失败时暂停：只要扫描其某个输入的检查表最近一次运行失败，刷新就会中止，视图保留上一份副本 |
 | `businessKey` | 在各个版本之间标识同一事物的列；与 `validTime`、`recordedTime` 一起声明，三者全有或全无 |
 | `validTime` | 保存业务赋予该记录的日期的列 |
 | `recordedTime` | 保存该版本何时录入或修改的列 |

@@ -33,12 +33,16 @@ vi.mock("../data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../../components/graph3d/KnowledgeGraphPanel", () => ({
+vi.mock("../../components/graph3d/GraphPanel", () => ({
   ProductMapButton: () => null,
-  KnowledgeGraphPanel: () => null,
+  GraphPanel: () => null,
 }));
 vi.mock("../../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
+  useAuth: () => ({
+    role: { id: "admin", capabilities: [] },
+    selectedRoles: [{ id: "admin" }],
+    availableRoles: [],
+  }),
 }));
 vi.mock("../../hooks/useCapability", () => ({
   useCapability: () => false,
@@ -48,7 +52,15 @@ vi.mock("../../api/actions", () => ({
   saveFunction: vi.fn(),
 }));
 vi.mock("../../api/lineage", () => ({
-  fetchFederationGraph: () => Promise.resolve({ nodes: [], edges: [] }),
+  fetchProductLineage: () =>
+    Promise.resolve({
+      nodes: [],
+      edges: [],
+      outputs: [],
+      members: [],
+      inputs: [],
+      dq: { expectations: [], promises: [], related: [], unattached: [] },
+    }),
 }));
 vi.mock("../../api/glossary", () => ({
   fetchRelatedGlossaryTerms: () => Promise.resolve([]),
@@ -98,6 +110,7 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: vi.fn(), loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
+  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: FINDINGS, refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),

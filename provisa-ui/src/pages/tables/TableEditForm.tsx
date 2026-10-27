@@ -193,7 +193,6 @@ export function TableEditForm({
           <TableAssociationsSection
             editingTable={editingTable}
             setEditingTable={setEditingTable}
-            isCheckerTable={isCheckerTable}
             dataProducts={dataProducts}
             relationships={relationships}
           />

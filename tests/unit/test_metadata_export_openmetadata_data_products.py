@@ -27,6 +27,7 @@ from provisa.api.metadata_export.openmetadata import (
     _for_openmetadata,
     to_entities,
 )
+from provisa.core import data_contracts
 from provisa.core.models import (
     Column,
     DataProduct,
@@ -55,6 +56,8 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
                 table_name="orders",
                 product_id="customer_360",
                 columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
+                # REQ-2158: the draft contract the member's first save gives it
+                contract=data_contracts.draft({"id": "integer"}),
             )
         ],
         data_products=[

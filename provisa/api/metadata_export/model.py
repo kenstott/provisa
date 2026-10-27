@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
+from provisa.core.models import DataContract
+
 
 class AssetKind(str, Enum):  # REQ-1070
     """The asset granularities Provisa publishes."""
@@ -108,6 +110,9 @@ class TableAsset:  # REQ-1070
     cache_ttl: int | None = None
     # REQ-2118: a view (defined by SQL over other tables) rather than a table read from a source.
     is_view: bool = False
+    # REQ-2158: the member's declared contract, its output port; None for a table in no product
+    # and for a checker table.
+    contract: DataContract | None = None
 
 
 def listed(product: "DataProductAsset") -> bool:
@@ -146,7 +151,6 @@ class DataProductAsset:  # REQ-1634
     # REQ-1634 STATUS: draft, live, deprecated or retired; a product is listed while it is in
     # service (:func:`listed`).
     status: str = "draft"
-    sla: str | None = None  # prose: a product spans several members
     support: str | None = None
     custom_properties: dict[str, str] = field(default_factory=dict)
     # REQ-2118: the owner role's holders' email addresses -- the product's owners in a catalog
@@ -164,7 +168,6 @@ class DataProductAsset:  # REQ-1634
             "usage": self.usage,
             "version": self.version,
             "status": self.status,
-            "sla": self.sla,
             "support": self.support,
             "supportContact": self.support_contact,
         }
@@ -182,7 +185,6 @@ class DataProductAsset:  # REQ-1634
             "usage": "Usage",
             "version": "Version",
             "status": "Status",
-            "sla": "SLA",
             "support": "Support",
             "supportContact": "Support contact",
         }

@@ -552,9 +552,7 @@ class DataProduct(BaseModel):  # REQ-1634
     status_reason: str | None = None
     retire_on: date | None = None
     successor: str | None = None
-    # Prose, not structured: a product spans multiple member tables and a structured SLA
-    # can't unambiguously say which member it describes.
-    sla: str | None = None
+    # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
@@ -571,6 +569,57 @@ class DataProduct(BaseModel):  # REQ-1634
         if self.successor is not None and self.status != "retired":
             raise ValueError("successor is the data product a retired one's members moved to")
         return self
+
+
+#: REQ-2158: the states of an ODCS contract.
+CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
+#: REQ-2158: the version a member's contract is created at, as a draft.
+FIRST_CONTRACT_VERSION = "0.1.0"
+
+
+class ContractColumn(BaseModel):  # REQ-2158
+    """A column an output port promises: the member's column, of the type it is stored as."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    description: str | None = None
+    required: bool = False  # ODCS: the column is never null
+
+
+class ContractSlaProperty(BaseModel):  # REQ-2158
+    """One declared ODCS service-level property (availability, retention, ...). Freshness is
+    not declared here: it is the member's declared freshness, read when the contract is."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    property: str = Field(min_length=1)
+    value: str | int | float | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+class ContractTerms(BaseModel):  # REQ-2158
+    model_config = ConfigDict(extra="forbid")
+
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None  # ODCS noticePeriod, e.g. P3M
+
+
+class DataContract(BaseModel):  # REQ-2158
+    """A data product member's ODCS contract: its output port, versioned on its own. Its promises
+    are the checks the product owns on the member (REQ-2157), read when the contract is."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(min_length=1)
+    status: Literal["proposed", "draft", "active", "deprecated", "retired"] = "draft"
+    description: str | None = None
+    terms: ContractTerms = Field(default_factory=ContractTerms)
+    sla: list[ContractSlaProperty] = Field(default_factory=list)
+    columns: list[ContractColumn] = Field(default_factory=list)
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
@@ -1645,6 +1694,10 @@ class Table(
     # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
     # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
     mv_preprocess: str | None = None
+    # REQ-2133: Hold on failing checks -- a built-in preflight that holds a refresh while a checker
+    # scanning one of the view's nearest physical inputs failed its latest run; combined with
+    # mv_preprocess, the refresh lands only if both continue.
+    mv_hold_on_failing_checks: bool = False
     # REQ-2109: the bitemporal declaration of a table or a view, all three or none. business_key
     # names the columns identifying the same thing across versions; valid_time the column holding
     # the date the business gives the record (when it was agreed, booked or took effect);
@@ -1661,6 +1714,9 @@ class Table(
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
     product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
+    # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
+    # none is given a draft at FIRST_CONTRACT_VERSION promising its columns.
+    contract: DataContract | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
     # primary key.
@@ -2199,6 +2255,22 @@ class FunctionArgument(BaseModel):
     # a column_value scalar. This is the per-DATASET contract; the output dataset's contract is
     # Function.return_schema. The dataset is what carries the contract, not the command.
     columns: list[DatasetColumn] | None = None
+    # REQ-2168: the value a call that omits the argument passes. Declared or not, as written:
+    # an argument that declares none is required (``default`` absent from the stored argument);
+    # ``default: null`` is a declared default of null.
+    default: Any = None
+
+    @model_validator(mode="after")
+    def _default_fits_the_type(self) -> "FunctionArgument":  # REQ-2168
+        if "default" in self.model_fields_set:
+            from provisa.core.argument_defaults import check_default
+
+            check_default(self.name, self.type, self.default)
+        return self
+
+    def stored(self) -> dict:
+        """The argument as stored: ``default`` only when it declares one."""
+        return self.model_dump(exclude=None if "default" in self.model_fields_set else {"default"})
 
 
 class InlineType(BaseModel):
@@ -2209,6 +2281,27 @@ class InlineType(BaseModel):
     # REQ-1679: per-column governance of the webhook's response — see DatasetColumn.
     visible_to: list[str] | None = None
     masks: list[MaskEntry] = Field(default_factory=list)  # REQ-2059, as a table column's
+
+
+class CommandBinding(BaseModel):  # REQ-2168
+    """A command's name in one language: renamed by ``name``, or left out by ``exclude``. A
+    language a command declares nothing for offers it under its generated name."""
+
+    name: str | None = None
+    exclude: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _a_name_or_left_out(self) -> "CommandBinding":
+        if self.exclude and self.name is not None:
+            raise ValueError(
+                f"a command binding either names the command ({self.name!r}) or excludes it, "
+                "not both"
+            )
+        if self.name is not None and not self.name.strip():
+            raise ValueError("a command binding's name is empty")
+        return self
 
 
 class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
@@ -2266,8 +2359,39 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # "schema.table", where it is known. After a call, what is held of that table's rows stops
     # being served, as after any write to it.
     writes_table: str | None = None
+    # REQ-2168: the command's name per language (sql, cypher, graphql, rest, mcp, sparql). A
+    # language left out offers it under its generated name; SQL cannot be excluded.
+    language_bindings: dict[str, CommandBinding] = Field(default_factory=dict)
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="after")
+    def _command_bindings_name_known_languages(self) -> "Function":  # REQ-2168
+        from provisa.core.command_bindings import check_declared
+
+        check_declared(self.name, {k: v.model_dump() for k, v in self.language_bindings.items()})
+        return self
+
+    @model_validator(mode="after")
+    def _builtin_names_a_builtin(self) -> "Function":  # REQ-2168
+        if self.impl_kind == "builtin":
+            from provisa.core.builtin_commands import check
+
+            check(self.name, self.binding)
+        return self
+
+    @model_validator(mode="after")
+    def _sql_expression_is_a_query_template(self) -> "Function":  # REQ-2168
+        """A function declared as a SQL expression is a query, its binding one PostgreSQL-dialect
+        expression naming each of its arguments as {name} and nothing else."""
+        if self.impl_kind != "sql_expression":
+            return self
+        if self.kind != "query":
+            raise ValueError(f"function {self.name!r}: a sql_expression function is a query")
+        from provisa.core.sql_expression import parse_template
+
+        parse_template(self.name, self.binding, [a.name for a in self.arguments])
+        return self
 
     @model_validator(mode="after")
     def _source_query_is_a_reading_native_query(self) -> "Function":  # REQ-1988
@@ -2279,7 +2403,7 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
             raise ValueError(f"command {self.name!r}: a source_query command is a query")
         from provisa.mongodb.native_query import check_command
 
-        check_command(self.name, self.binding, [a.model_dump() for a in self.arguments])
+        check_command(self.name, self.binding, [a.stored() for a in self.arguments])
         return self
 
     @model_validator(mode="after")

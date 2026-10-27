@@ -79,7 +79,7 @@ async def data_product_contract(product_id: str, member: str, request: Request) 
         raise ApiError(
             404,
             "data_products.no_contract",
-            f"data product {product_id!r} has no member {member!r}; its members are "
+            f"data product {product_id!r} has no output port {member!r}; its output ports are "
             f"{', '.join(sorted(contracts))}",
         )
     return _yaml(contract)

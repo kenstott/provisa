@@ -224,3 +224,121 @@ def test_each_bound_variable_with_the_property_is_offered():
     assert str(refused.value).endswith(
         "Did you mean a.name or o.name? Each is bound to a label with a property name."
     )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "MATCH ()-[r]-(r) RETURN r",
+        "MATCH (r)<-[r]-() RETURN r",
+        "MATCH ()-[]-(r)-[r]-() RETURN r",
+        "MATCH (s)-[r]-(t), (r)-[]-(t) RETURN r",
+    ],
+)
+def test_one_variable_naming_a_node_and_a_relationship_is_refused(query):
+    from provisa.cypher.parser import CypherParseMistake, parse_cypher
+
+    with pytest.raises(CypherParseMistake) as refused:
+        parse_cypher(query)
+    assert refused.value.code == "cypher.node_and_relationship"
+    assert str(refused.value) == (
+        "r names both a node and a relationship: a variable names one thing. "
+        "Give each its own variable."
+    )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "MATCH p = (p)-[]-() RETURN p",
+        "MATCH p = ()<-[]-(p) RETURN p",
+        "MATCH p = ()-[p]-() RETURN p",
+    ],
+)
+def test_a_path_variable_naming_a_part_of_its_path_is_refused(query):
+    from provisa.cypher.parser import CypherParseMistake, parse_cypher
+
+    with pytest.raises(CypherParseMistake) as refused:
+        parse_cypher(query)
+    assert refused.value.code == "cypher.path_variable_reused"
+    assert str(refused.value) == (
+        "p names the path and a node or relationship in it: a variable names one thing. "
+        "Give each its own variable."
+    )
+
+
+def test_a_variable_bound_again_after_with_is_not_a_conflict():
+    from provisa.cypher.parser import parse_cypher
+
+    parse_cypher("MATCH ()-[r]->() WITH count(r) AS n MATCH (r) RETURN r, n")
+
+
+def test_an_aggregate_in_a_list_comprehension_is_refused():
+    from provisa.cypher.parser import CypherParseMistake, parse_cypher
+
+    with pytest.raises(CypherParseMistake) as refused:
+        parse_cypher("MATCH (n) RETURN [x IN [1, 2, 3] | count(*)]")
+    assert refused.value.code == "cypher.aggregate_in_list"
+    assert str(refused.value) == (
+        "[x IN ... | count(*)] aggregates inside a list comprehension, which reads one list at a "
+        "time. Aggregate in a WITH first and use its result in the list."
+    )
+
+
+@pytest.mark.parametrize(
+    "query", ["MATCH (n) RETURN length(n)", "MATCH ()-[r]->() RETURN length(r)"]
+)
+def test_length_of_a_node_or_relationship_is_refused(query):
+    from provisa.cypher.parser import CypherParseMistake, parse_cypher
+
+    with pytest.raises(CypherParseMistake) as refused:
+        parse_cypher(query)
+    var = query.split("length(")[1][0]
+    assert refused.value.code == "cypher.length_of_entity"
+    assert str(refused.value) == (
+        f"length({var}) takes a path, and {var} is a node or relationship. Bind a path, "
+        f"MATCH p = ..., and take length(p)."
+    )
+
+
+@pytest.mark.parametrize(
+    ("query", "code"),
+    [
+        ("RETURN 1 AS a, 2 AS a", "cypher.column_name_conflict"),
+        ("RETURN 1 AS a UNION RETURN 2 AS b", "cypher.union_columns_differ"),
+        ("RETURN 1 AS a UNION ALL RETURN 2 AS b", "cypher.union_columns_differ"),
+        ("RETURN 1 AS a UNION ALL RETURN 2 AS a UNION RETURN 3 AS a", "cypher.union_mixed"),
+        ("RETURN 9223372036854775808 AS literal", "cypher.integer_overflow"),
+        ("RETURN -9223372036854775809 AS literal", "cypher.integer_overflow"),
+        ("RETURN 0x8000000000000000 AS literal", "cypher.integer_overflow"),
+        ("RETURN -0o1000000000000000000001 AS literal", "cypher.integer_overflow"),
+        ("RETURN false AND {x: []}", "cypher.boolean_operand"),
+        ("RETURN NOT 'true'", "cypher.boolean_operand"),
+        ("RETURN '\\uH'", "cypher.invalid_unicode_escape"),
+        ("RETURN count(rand())", "cypher.nondeterministic_aggregate"),
+        ("WITH 123 AS n MATCH (n) RETURN n", "cypher.value_as_node"),
+        ("WITH {x: 1} AS n MATCH (n) RETURN n", "cypher.value_as_node"),
+    ],
+)
+def test_a_statement_cypher_does_not_compile_is_refused_by_name(query, code):
+    from provisa.cypher.parser import CypherParseMistake, parse_cypher
+
+    with pytest.raises(CypherParseMistake) as refused:
+        parse_cypher(query)
+    assert refused.value.code == code
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "RETURN -9223372036854775808 AS literal",
+        "RETURN -0x8000000000000000 AS literal",
+        "RETURN 1 AS a UNION ALL RETURN 2 AS a UNION ALL RETURN 3 AS a",
+        "RETURN 'caf\\u00e9' AS s",
+        "RETURN NOT null AS n, true AND null AS m",
+    ],
+)
+def test_what_cypher_compiles_is_read(query):
+    from provisa.cypher.parser import parse_cypher
+
+    parse_cypher(query)

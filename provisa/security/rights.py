@@ -27,6 +27,9 @@ from typing import Any, cast
 # are structural (names/types/keys) and drive discovery; GOVERNANCE columns expose the security posture
 # (visible_to, masking secrets, view SQL) and require the view_governance capability.
 META_DOMAIN_ID = "meta"
+# REQ-2163: the ontology system schema -- the glossary's definitions (and the Class tables
+# generated from them), as meta holds the model's structure.
+ONTOLOGY_DOMAIN_ID = "ontology"
 GOVERNANCE_META_COLUMNS: frozenset[str] = frozenset(
     {
         "visible_to",
@@ -321,9 +324,22 @@ def reaches_all_domains(domain_access: Iterable[str] | None) -> bool:  # REQ-039
     return domain_policy.single_domain() or ALL_DOMAINS in domain_access
 
 
+# The catalog every role reaches implicitly, whatever its list: the schema build includes its tables
+# for traversal from any domain (REQ-1132), and its commands (the APOC set, REQ-2168) are admitted
+# by their grants alone. Data governance does not read it: direct SQL over the catalog still needs
+# it listed (reaches_domain).
+IMPLICIT_DOMAINS: frozenset[str] = frozenset({META_DOMAIN_ID})
+
+
 def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
     """Whether a role's ``domain_access`` reaches ``domain_id`` (see :func:`reaches_all_domains`)."""
     return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
+
+
+def reaches_implicitly(domain_access: Iterable[str] | None, domain_id: str) -> bool:
+    """:func:`reaches_domain`, or ``domain_id`` is one every role reaches (IMPLICIT_DOMAINS): the
+    reach the schema build and command admission read."""
+    return domain_id in IMPLICIT_DOMAINS or reaches_domain(domain_access, domain_id)
 
 
 # --- which columns a role is served (REQ-039, REQ-1133, REQ-1959) --------------------------------
@@ -606,35 +622,34 @@ def has_capability(
 META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "registered_tables_meta": ("id",),
     "table_columns_meta": ("table_id",),
-    # REQ-2129: an edge is seen only where both of its columns are.
-    "column_lineage_edges": ("source_table_id", "target_table_id"),
     # REQ-2145: a column's tags are seen where the column is.
     "effective_column_tags": ("table_id",),
 }
 
 
-# REQ-2126: the meta views some of whose ROWS are governance metadata, with the predicate a role
-# without view_governance reads them under -- lineage, as REQ-1640's lineage section is.
-GOVERNANCE_META_ROWS: dict[str, str] = {
-    "data_product_edges": "kind <> 'lineage'",
-    # REQ-2129: column lineage is governance metadata whole.
-    "column_lineage_edges": "1 = 0",
-}
-
-
-# REQ-1593: the glossary meta views, each with the columns holding the domains (as |a|b|) of the
-# terms its row is about. A row is read only when each of those terms is readable to the caller
-# by the glossary's own rule (provisa.core.glossary.readable_term): a term with no domains, an
-# enterprise ("*") term, or one sharing a domain with the caller.
 #: REQ-2153: the meta view of listed names; a reader sees those of domains it does not reach.
 LISTED_NAMES_VIEW = "listed_names"
 
-GLOSSARY_SCOPED_META_VIEWS: dict[str, tuple[str, ...]] = {
-    "glossary_terms_meta": ("term_domains",),
-    "glossary_term_refs_meta": ("term_domains",),
-    "glossary_term_edges_meta": ("from_term_domains", "to_term_domains"),
-    "glossary_term_domains_meta": ("term_domains",),
+# REQ-1593, REQ-2163: the ontology schema's definition views, each with the columns holding the
+# domains (as |a|b|) of the terms its row is about. A row is read only when each of those terms is
+# readable to the caller by the glossary's own rule (provisa.core.glossary.readable_term): a term
+# with no domains, an enterprise ("*") term, or one sharing a domain with the caller.
+GLOSSARY_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
+    "_terms_ontology": ("term_domains",),
+    "_term_refs_ontology": ("term_domains",),
+    "_term_edges_ontology": ("from_term_domains", "to_term_domains"),
+    "_domains_ontology": ("term_domains",),
+    # A triple is read where both its terms are (an IRI or literal object names no term).
+    "_axioms_ontology": ("subject_domains", "object_domains"),
+    "_closure_ontology": ("subject_domains", "object_domains"),
 }
+
+# REQ-2163: registered tables SQL alone serves: no GraphQL field and no Cypher label (other
+# languages reach them only where a language means to, as SPARQL lowers its RDFS/OWL/SKOS
+# patterns to ontology._axioms). Each is (domain id, table name).
+SQL_ONLY_TABLES: frozenset[tuple[str, str]] = frozenset(
+    {(ONTOLOGY_DOMAIN_ID, "_axioms"), (ONTOLOGY_DOMAIN_ID, "_closure")}
+)
 
 
 def compute_meta_row_scope(

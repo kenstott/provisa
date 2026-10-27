@@ -48,6 +48,7 @@ from provisa.api.admin.types import (
     ColumnAliasType,
     CompileQueryInput,
     CompileQueryResult,
+    DataContractInput,
     DataProductInput,
     DomainInput,
     DqDryRunCheckType,
@@ -617,7 +618,6 @@ async def _save_data_product(
                 if stored is not None
                 else {}
             ),
-            sla=input.sla,
             support=input.support,
             support_contact=input.support_contact or None,
             # Absent or null is "no custom properties" (DataProductInput says why).
@@ -636,6 +636,68 @@ async def _save_data_product(
         message=f"Data product {input.id!r} updated",
         code="schema.data_product_updated",
         params={"data_product": input.id},
+    )
+
+
+async def _save_data_contract(
+    info: StrawberryInfo, table_id: int, contract: DataContractInput
+) -> MutationResult:  # REQ-2158
+    """A product member's contract replaced, by whoever may curate its product's domain. A change
+    that breaks the stored contract at its version, or a promise the member cannot keep, is
+    refused by name and writes nothing."""
+    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+    from provisa.core.data_contracts import ContractRefused
+    from provisa.core.models import DataContract
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import table as table_repo
+
+    require_capability(info, "data_product_rw")
+    try:
+        declared = DataContract.model_validate(
+            {
+                "version": contract.version,
+                "status": contract.status,
+                "description": contract.description,
+                "terms": vars(contract.terms),
+                "sla": [vars(s) for s in contract.sla],
+                "columns": [vars(c) for c in contract.columns],
+            }
+        )
+    except ValueError as invalid:
+        return MutationResult(
+            success=False,
+            message=str(invalid),
+            code="schema.data_contract_invalid",
+            params={"table_id": table_id},
+        )
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        conn = cast("Connection", conn)
+        stored = await table_repo.get(conn, table_id)
+        if stored is None or stored.get("product_id") is None:
+            return MutationResult(
+                success=False,
+                message=f"Table {table_id} is no data product's member",
+                code="schema.data_contract_no_member",
+                params={"table_id": table_id},
+            )
+        product = await data_product_repo.get(conn, stored["product_id"])
+        assert product is not None  # registered_tables.product_id is a foreign key
+        require_right_in_domains(info, "data_product_rw", {product["domain_id"]})
+        try:
+            await data_product_repo.save_contract(conn, table_id, declared)
+        except ContractRefused as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code="schema.data_contract_refused",
+                params={"table_id": table_id},
+            )
+    return MutationResult(
+        success=True,
+        message=f"Contract of table {table_id} saved at version {declared.version}",
+        code="schema.data_contract_saved",
+        params={"table_id": table_id, "version": declared.version},
     )
 
 
@@ -3203,6 +3265,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await _save_data_product(info, input, creating=False)
 
     @strawberry.mutation
+    async def save_data_contract(
+        self, info: StrawberryInfo, table_id: int, contract: DataContractInput
+    ) -> MutationResult:  # REQ-2158
+        return await _save_data_contract(info, table_id, contract)
+
+    @strawberry.mutation
     async def delete_data_product(
         self, info: StrawberryInfo, id: str
     ) -> MutationResult:  # REQ-1634
@@ -4196,6 +4264,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     debounce_max_delay=input.mv_debounce_max_delay,  # REQ-963
                     consistency=input.mv_consistency,  # REQ-879
                     preprocess=input.mv_preprocess,  # REQ-957
+                    hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
+                    table_id=table_id,  # REQ-2133
+                    product_id=input.product_id,  # REQ-2133
                     business_key=list(input.business_key),  # REQ-2109
                     valid_time=input.valid_time,  # REQ-2109
                     recorded_time=input.recorded_time,  # REQ-2109

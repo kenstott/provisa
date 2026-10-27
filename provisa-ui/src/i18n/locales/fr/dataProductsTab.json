@@ -22,8 +22,6 @@
     "versionLabel": "Version",
     "versionPlaceholder": "p. ex. 1.2.0",
     "statusLabel": "Statut",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Engagements de niveau de service pour ce produit",
     "supportLabel": "Support",
     "supportPlaceholder": "Comment obtenir de l'aide sur ce produit",
     "supportContactLabel": "Contact de support",
@@ -103,7 +101,7 @@
         "dataQuality": "Qualité des données"
       },
       "dataQualityEmpty": "Aucune analyse de qualité",
-      "dataQualityHint": "Tables de vérification dont les contrats analysent les ports de sortie de ce produit. Chacune enregistre une ligne par contrôle et par exécution ; l'appartenance suit la table analysée.",
+      "dataQualityHint": "Les contrôles du produit : ses attentes sur ses entrées, ses promesses sur ses tables membres et les contrôles associés que d'autres (ou personne) font sur les unes ou les autres. Ouvrez un contrôle pour lire ses résultats.",
       "dqRulesAria": "Afficher les règles de qualité de {{table}}",
       "dqRulesTitle": "Règles de qualité : {{table}}",
       "dqRulesEmpty": "Le contrat ne définit aucun contrôle",
@@ -113,8 +111,6 @@
       "lineageEmpty": "Aucune traçabilité",
       "lineageLoading": "Chargement de la traçabilité…",
       "lineageHint": "Graphe de traçabilité des colonnes montrant les tables de ce produit comme endpoint publié, ainsi que chaque table en amont utilisée pour les dériver. À titre informatif uniquement ; nécessite la capacité view_governance.",
-      "inputPortsEmpty": "Aucune entrée en amont enregistrée",
-      "inputPortsHint": "Les tables que ce produit lit directement, d'après la traçabilité. Dépliez une table pour voir les colonnes lues. Nécessite la capacité view_governance.",
       "outputPortsHint": "La surface interrogeable de ce produit : ses tables membres et ses commandes. Des exemples de requêtes pour chacune se trouvent sous Modèles d'accès.",
       "customPropertiesEmpty": "Aucune propriété personnalisée",
       "lineageLaneUpstream": "En amont, saut {{n}}",
@@ -158,6 +154,38 @@
     "findingFix_member_deprecated": "Ouvrir {{table}}",
     "findingFix_retirement_blocked": "Choisir un successeur…",
     "findingFix_domain_steward_unset": "Ouvrir le domaine {{domain}}",
-    "findingFix_successor_retired": "Ouvrir {{successor}}"
+    "findingFix_successor_retired": "Ouvrir {{successor}}",
+    "contract": {
+      "label": "Contrats de données",
+      "hint": "Le contrat de chaque port de sortie : ce qu'il promet, dans sa propre version",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Proposé",
+        "draft": "Brouillon",
+        "active": "Actif",
+        "deprecated": "Obsolète",
+        "retired": "Retiré"
+      },
+      "usage": "Utilisation",
+      "limitations": "Limites",
+      "noticePeriod": "Délai de préavis",
+      "noticePeriodPlaceholder": "p. ex. P3M",
+      "column": "Colonne",
+      "type": "Type",
+      "required": "Jamais nul",
+      "yes": "Oui",
+      "versionLabel": "Version du contrat",
+      "statusLabel": "Statut du contrat",
+      "descriptionLabel": "À quoi il sert",
+      "columnsLabel": "Colonnes promises",
+      "columnsHelp": "Ne plus promettre une colonne, ou changer son type, exige une nouvelle version.",
+      "requiredLabel": "Jamais nul",
+      "slaLabel": "Niveaux de service",
+      "slaProperty": "Propriété",
+      "slaValue": "Valeur",
+      "slaUnit": "Unité",
+      "slaRemove": "Retirer le niveau de service",
+      "slaAdd": "Ajouter un niveau de service"
+    }
   }
 }

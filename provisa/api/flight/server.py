@@ -601,7 +601,10 @@ class ProvisaFlightServer(
         def _infos(role: str | None) -> list[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             return [
                 *(catalog_table_to_flight_info(t) for t in build_catalog_tables(self._state, role)),
-                *(command_to_flight_info(c) for c in list_visible_commands(self._state, role)),
+                *(
+                    command_to_flight_info(c)
+                    for c in list_visible_commands(self._state, role, "sql")
+                ),
             ]
 
         yield from _run_rpc(lambda: self._as_catalog_role(context, _infos))
@@ -637,7 +640,7 @@ class ProvisaFlightServer(
         if len(path) == 3 and path[0] == "commands":
             from provisa.api.data.action_exec import list_visible_commands
 
-            for cmd in list_visible_commands(self._state, role):
+            for cmd in list_visible_commands(self._state, role, "sql"):
                 if cmd["domain"] == path[1] and cmd["name"] == path[2]:
                     return command_to_flight_info(cmd)
             raise _flight_error(f"Command not found: {path[1]}.{path[2]}")

@@ -91,6 +91,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from provisa.core import request_deadline
+from provisa.core.request_context import current_acting_role
 from provisa.otel_compat import CarriedScope, carried_scope, current_traceparent, get_tracer, stage
 
 if TYPE_CHECKING:
@@ -140,6 +141,9 @@ _tracer = get_tracer(__name__)
 #: REQ-2106: the call a worker's services request names, by its worker's services token and the
 #: call's id: the request's tracing scope, which the services' stages report into.
 _scopes: dict[tuple[str, int], CarriedScope] = {}
+#: REQ-2133: the role the request a call serves acts as, beside its scope: the dq service answers
+#: what the meta domain shows that role.
+_roles: dict[tuple[str, int], str | None] = {}
 _scopes_lock = threading.Lock()
 
 
@@ -147,6 +151,13 @@ def call_scope(token: str, call_id: int) -> CarriedScope | None:
     """The tracing scope of the call ``call_id`` of the worker holding ``token``, while it runs."""
     with _scopes_lock:
         return _scopes.get((token, call_id))
+
+
+def call_role(token: str, call_id: int) -> str | None:
+    """The role the request served by call ``call_id`` of the worker holding ``token`` acts as,
+    while the call runs; None when it names none or is not running."""
+    with _scopes_lock:
+        return _roles.get((token, call_id))
 
 
 _HEAD = struct.Struct(">I")
@@ -627,6 +638,7 @@ class Worker:
         if self._services_token is not None:
             with _scopes_lock:
                 _scopes.pop((self._services_token, call_id), None)
+                _roles.pop((self._services_token, call_id), None)
 
     def _cancel(self, lane: _Lane, call_id: int) -> None:
         """Tell the host to stop the call, and release the thread waiting for it. Called from the
@@ -891,6 +903,7 @@ class Worker:
         if self._services_token is not None:
             with _scopes_lock:
                 _scopes[(self._services_token, call_id)] = carried_scope()
+                _roles[(self._services_token, call_id)] = current_acting_role.get()
         extra: dict = {}
         if takes is not None:
             extra = {"takes": list(takes), "context": encode(context)}

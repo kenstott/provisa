@@ -12,7 +12,7 @@
     "model": "+ 建模",
     "modelTitle": "对实体或事实建模（星型架构 / Data Vault）",
     "reportXlsx": "工作簿",
-    "reportXlsxTitle": "将模型下载为电子表格以供审阅——数据源、表、列、关系、视图、指标、物化视图和本体术语，各占一个工作表",
+    "reportXlsxTitle": "将模型下载为电子表格以供审阅——数据源、表、列、关系、视图、指标、物化视图、本体、数据产品、数据质量和数据画像，各占一个工作表",
     "viewErd": "查看 ERD",
     "colSource": "数据源",
     "colDomain": "域",

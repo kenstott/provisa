@@ -571,7 +571,6 @@ _TOOLS: list[Any] = [
                 "limitations": {"type": "string"},
                 "usage": {"type": "string"},
                 "version": {"type": "string"},
-                "sla": {"type": "string"},
                 "support": {"type": "string"},
             },
             "required": ["id", "domain_id", "name"],
@@ -1127,8 +1126,8 @@ _SYSTEM = (
     "backticked -- and relate nodes only along the typed, directed relationships it lists, e.g. "
     "`(o:Shop:Orders)-[:PLACED_BY]->(c:Shop:Customers)`. Write a pattern as one path, e.g. "
     "`(o:Shop:Orders)<-[:ON_ORDER]-(i:Shop:OrderItems)-[:OF_PRODUCT]->(p:Shop:Products)`, or one "
-    "MATCH per path: comma-separated patterns and a bare `--` do not parse here, an untyped "
-    "`-[]-` matches every relationship, and a join on columns in WHERE draws no relationship. "
+    "MATCH per path: comma-separated patterns do not parse here, an untyped `--` or `-[]-` "
+    "matches every relationship, and a join on columns in WHERE draws no relationship. "
     "A statement for the Graph page that matches a path binds every relationship on it and "
     "returns it with the nodes, e.g. `MATCH (l:Poems:Line)-[e:EVOKES]->(t:Poems:Theme) RETURN l, "
     "e, t`: returning only the nodes draws no edges, so the page can neither connect nor group "
@@ -1573,7 +1572,6 @@ async def _execute_tool(
                 limitations=args.get("limitations", ""),
                 usage=args.get("usage", ""),
                 version=args.get("version"),
-                sla=args.get("sla"),
                 support=args.get("support"),
             )
         if name == "delete_data_product":
