@@ -497,7 +497,10 @@
       "unknown_encryption_provider": "अज्ञात एन्क्रिप्शन प्रोवाइडर '{{provider}}'",
       "unknown_engine": "अज्ञात इंजन '{{engine}}'; मान्य: {{valid}}",
       "use_domains_invalid": "use_domains true, false या null होना चाहिए",
-      "claims_with_multitenancy": "बहु-किरायेदार डिप्लॉयमेंट साइन-इन क्लेम से भूमिका असाइनमेंट नहीं पढ़ सकता: वह स्वयं, प्रति संगठन, भूमिकाएँ देता है और क्लेम उन्हें बदल देंगे। असाइनमेंट स्रोत को Provisa पर सेट करें।"
+      "claims_with_multitenancy": "बहु-किरायेदार डिप्लॉयमेंट साइन-इन क्लेम से भूमिका असाइनमेंट नहीं पढ़ सकता: वह स्वयं, प्रति संगठन, भूमिकाएँ देता है और क्लेम उन्हें बदल देंगे। असाइनमेंट स्रोत को Provisa पर सेट करें।",
+      "federation_unknown_field": "यह फ़ेडरेशन सेटिंग नहीं है: {{fields}}",
+      "federation_invalid": "अमान्य फ़ेडरेशन सेटिंग: {{error}}",
+      "federation_role_unknown": "फ़ेडरेशन भूमिका '{{role}}' इस संगठन की भूमिका नहीं है"
     },
     "setup": {
       "admin_credentials_required": "admin_username और admin_password आवश्यक हैं",

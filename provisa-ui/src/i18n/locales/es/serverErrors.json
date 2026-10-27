@@ -497,7 +497,10 @@
       "unknown_encryption_provider": "proveedor de cifrado desconocido: '{{provider}}'",
       "unknown_engine": "motor desconocido: '{{engine}}'; válidos: {{valid}}",
       "use_domains_invalid": "use_domains debe ser true, false o null",
-      "claims_with_multitenancy": "Un despliegue multiinquilino no puede leer las asignaciones de roles de los claims de inicio de sesión: concede los roles por sí mismo, por organización, y los claims los anularían. Establezca el origen de las asignaciones en Provisa."
+      "claims_with_multitenancy": "Un despliegue multiinquilino no puede leer las asignaciones de roles de los claims de inicio de sesión: concede los roles por sí mismo, por organización, y los claims los anularían. Establezca el origen de las asignaciones en Provisa.",
+      "federation_unknown_field": "No es un ajuste de federación: {{fields}}",
+      "federation_invalid": "Ajuste de federación no válido: {{error}}",
+      "federation_role_unknown": "El rol de federación '{{role}}' no es un rol de esta organización"
     },
     "setup": {
       "admin_credentials_required": "admin_username y admin_password son obligatorios",

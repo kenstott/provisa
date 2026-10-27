@@ -497,7 +497,10 @@
       "unknown_encryption_provider": "fournisseur de chiffrement « {{provider}} » inconnu",
       "unknown_engine": "moteur « {{engine}} » inconnu ; valides : {{valid}}",
       "use_domains_invalid": "use_domains doit être true, false ou null",
-      "claims_with_multitenancy": "Un déploiement multi-locataire ne peut pas lire les attributions de rôles dans les claims de connexion : il accorde lui-même les rôles, par organisation, et les claims les écraseraient. Définissez la source des attributions sur Provisa."
+      "claims_with_multitenancy": "Un déploiement multi-locataire ne peut pas lire les attributions de rôles dans les claims de connexion : il accorde lui-même les rôles, par organisation, et les claims les écraseraient. Définissez la source des attributions sur Provisa.",
+      "federation_unknown_field": "Ce n'est pas un paramètre de fédération : {{fields}}",
+      "federation_invalid": "Paramètre de fédération non valide : {{error}}",
+      "federation_role_unknown": "Le rôle de fédération '{{role}}' n'est pas un rôle de cette organisation"
     },
     "setup": {
       "admin_credentials_required": "admin_username et admin_password requis",

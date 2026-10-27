@@ -238,7 +238,7 @@ _NAMING_ORG_SUBKEYS = ("use_domains", "default_domain")
 
 # The PUT blocks an org administrator may write with ``org_settings`` alone. A body touching
 # anything else is checked against ``platform_settings`` as well.
-_ORG_BLOCKS = ("redirect", "cache")
+_ORG_BLOCKS = ("redirect", "cache", "federation")
 
 
 @router.get("/admin/settings")
@@ -255,6 +255,7 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
     )
 
     from provisa.core import domain_policy
+    from provisa.api.data import federation as _federation
 
     rc = RedirectConfig.from_env()
     cfg = read_config()
@@ -302,6 +303,8 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
         "cache": {
             "default_ttl": state.response_cache_default_ttl,
         },
+        # REQ-259: the org's Apollo Federation subgraph and the role it serves as.
+        "federation": _federation.subgraph(state).model_dump(),
         "naming": {
             "domain_prefix": naming_cfg.get("domain_prefix", False),
             "convention": naming_cfg.get("convention", "apollo_graphql"),
@@ -351,8 +354,38 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
 _REDIRECT_ORG_KEYS = ("enabled", "threshold", "default_format", "ttl")
 
 
+def _org_federation(state, f: dict) -> dict:
+    """The org's whole ``federation`` block after this save (REQ-259): its current subgraph with
+    the fields ``f`` names applied, refused by name when it is not one the org can serve."""
+    from provisa.api.data.federation import subgraph
+    from provisa.core.models import FederationConfig
+
+    current = subgraph(state).model_dump()
+    unknown = set(f) - set(current)
+    if unknown:
+        raise ApiError(
+            400,
+            "settings.federation_unknown_field",
+            f"not a federation setting: {', '.join(sorted(unknown))}",
+            fields=", ".join(sorted(unknown)),
+        )
+    try:
+        block = FederationConfig.model_validate({**current, **f})
+    except ValueError as exc:
+        raise ApiError(400, "settings.federation_invalid", str(exc), error=str(exc))
+    if block.enabled and block.role not in (state.roles or {}):
+        raise ApiError(
+            400,
+            "settings.federation_role_unknown",
+            f"federation role {block.role!r} is not a role of this organization",
+            role=str(block.role),
+        )
+    return block.model_dump()
+
+
 async def _apply_org_blocks(request, body: dict, updated: list) -> None:
-    """Persist the blocks whose subject is the ACTING ORG: `redirect` and `cache.default_ttl`.
+    """Persist the blocks whose subject is the ACTING ORG: `redirect`, `cache.default_ttl` and
+    `federation`.
 
     Written to the org's ``org_settings`` rows rather than to process env or the deployment YAML.
     On a shared shard those are one storage location for every org, so the previous env-backed
@@ -399,6 +432,10 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
             merged["default_ttl"] = int(ttl)
         updates["cache"] = merged or None
         updated.append("cache.default_ttl")
+
+    if "federation" in body:
+        updates["federation"] = _org_federation(state, body["federation"] or {})
+        updated.extend(f"federation.{k}" for k in body["federation"] or {})
 
     if not updates:
         return

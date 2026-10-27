@@ -497,7 +497,10 @@
       "unknown_encryption_provider": "unknown encryption provider '{{provider}}'",
       "unknown_engine": "unknown engine '{{engine}}'; valid: {{valid}}",
       "use_domains_invalid": "use_domains must be true, false, or null",
-      "claims_with_multitenancy": "A multi-tenant deployment cannot read role assignments from sign-in claims: it grants roles itself, per org, and claims would override them. Set the assignments source to Provisa."
+      "claims_with_multitenancy": "A multi-tenant deployment cannot read role assignments from sign-in claims: it grants roles itself, per org, and claims would override them. Set the assignments source to Provisa.",
+      "federation_unknown_field": "Not a federation setting: {{fields}}",
+      "federation_invalid": "Invalid federation setting: {{error}}",
+      "federation_role_unknown": "Federation role '{{role}}' is not a role of this organization"
     },
     "setup": {
       "admin_credentials_required": "admin_username and admin_password required",

@@ -497,7 +497,10 @@
       "unknown_encryption_provider": "不明な暗号化プロバイダー「{{provider}}」です",
       "unknown_engine": "不明なエンジン「{{engine}}」です。有効な値：{{valid}}",
       "use_domains_invalid": "use_domains は true、false、または null である必要があります",
-      "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。"
+      "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。",
+      "federation_unknown_field": "フェデレーションの設定ではありません: {{fields}}",
+      "federation_invalid": "フェデレーション設定が無効です: {{error}}",
+      "federation_role_unknown": "フェデレーションのロール '{{role}}' はこの組織のロールではありません"
     },
     "setup": {
       "admin_credentials_required": "admin_username と admin_password が必要です",

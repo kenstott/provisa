@@ -63,7 +63,10 @@ vi.mock("../../context/AuthContext", () => ({
 
 vi.mock("../../api/admin", async (orig) => ({
   ...(await orig<typeof import("../../api/admin")>()),
-  fetchSettings: vi.fn(async () => ({ naming: { use_domains: true } })),
+  fetchSettings: vi.fn(async () => ({
+    naming: { use_domains: true },
+    federation: { enabled: false, subgraph_name: "provisa", role: null },
+  })),
 }));
 
 import { AdminPage } from "../AdminPage";

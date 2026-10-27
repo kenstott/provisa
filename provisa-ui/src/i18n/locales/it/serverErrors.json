@@ -497,7 +497,10 @@
       "unknown_encryption_provider": "provider di crittografia '{{provider}}' sconosciuto",
       "unknown_engine": "motore '{{engine}}' sconosciuto; validi: {{valid}}",
       "use_domains_invalid": "use_domains deve essere true, false o null",
-      "claims_with_multitenancy": "Una distribuzione multi-tenant non può leggere le assegnazioni dei ruoli dai claim di accesso: assegna i ruoli da sé, per organizzazione, e i claim li sovrascriverebbero. Imposta l'origine delle assegnazioni su Provisa."
+      "claims_with_multitenancy": "Una distribuzione multi-tenant non può leggere le assegnazioni dei ruoli dai claim di accesso: assegna i ruoli da sé, per organizzazione, e i claim li sovrascriverebbero. Imposta l'origine delle assegnazioni su Provisa.",
+      "federation_unknown_field": "Non è un'impostazione di federazione: {{fields}}",
+      "federation_invalid": "Impostazione di federazione non valida: {{error}}",
+      "federation_role_unknown": "Il ruolo di federazione '{{role}}' non è un ruolo di questa organizzazione"
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password richiesti",

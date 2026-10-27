@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 import time as _time
 from typing import Any, cast
@@ -345,6 +346,19 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     ctx = surface.context
     rls = surface.rls
 
+    # REQ-259: the role the org's subgraph serves as is served the federated form of its own
+    # schema -- its tables plus _service and _entities -- and no other role is.
+    from provisa.api.data import federation as _federation
+
+    _subgraph = _federation.subgraph(state)
+    fed = (
+        _federation.federated(surface, state.active_org_id, role_id)
+        if _subgraph.enabled and _subgraph.role == role_id
+        else None
+    )
+    if fed is not None:
+        schema = fed.schema
+
     # REQ-1877 (amended 2026-09-30): a plain query whose governed plan is already cached skips
     # parse, validation, the complexity guard, compilation and governance — the plan is their
     # result. A normalized read needs the document itself, so it is not offered the plan path.
@@ -361,6 +375,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     )
     plan = plan_request.cached()
 
+    fed_read = None
     if plan is not None:
         document = None
         directives = plan.directives
@@ -389,6 +404,11 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 
         directives = _build_directives_with_legacy(request.query, document, _legacy_hints)
         effective_variables = coerce_variable_defaults(document, request.variables)
+
+        if fed is not None:
+            fed_read = _federation.federation_read(document, effective_variables, fed)
+            if isinstance(fed_read, _federation.ServiceRead):
+                return JSONResponse(fed_read.answer(fed.sdl))
 
         # Introspection: execute directly against GraphQL schema
         if _detect_introspection(document):
@@ -513,6 +533,26 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
                         role_id,
                         raw_request,
                     )
+                elif isinstance(fed_read, _federation.EntitiesRead):
+                    # REQ-259: _entities is read as the governed query it was rewritten into, as
+                    # the subgraph's declared role, and answered in the router's shape.
+                    governed = await _handle_query(
+                        fed_read.document,
+                        ctx,
+                        state,
+                        fed_read.variables,
+                        role,
+                        "json",
+                        role_id,
+                        redirect_threshold=effective_threshold,
+                        steward_hint=steward_hint,
+                        query_session_props=directives.to_session_props(),
+                        cache_ttl=cache_hint.ttl,
+                        cache_opt_in=cache_hint.opt_in,
+                        debug_trace=trace_hint,
+                        directives=directives,
+                    )
+                    response = JSONResponse(fed_read.answer(json.loads(bytes(governed.body))))
                 else:
                     response = await _handle_query(
                         document,

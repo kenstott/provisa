@@ -57,6 +57,7 @@ ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
         "derived_roles",  # REQ-2057: the attributes that become the org's derived roles
         "redaction",  # REQ-2087: the org's own redaction rules
         "classification",  # REQ-2147: the profiler's classification kinds the org disabled
+        "federation",  # REQ-259: the org's subgraph and the role it serves as
     }
 )
 

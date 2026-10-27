@@ -8168,5 +8168,16 @@
   "ja/navBar.json::navBar.itemSparql": "SPARQL",
   "ja/graph3d.json::graph3d.openAsQueryNoSparql": "This query has no SPARQL form.",
   "ja/graph3d.json::graph3d.openAsQuerySparqlRoots": "Each root of this query is its own SPARQL query: open the GraphQL to read them one by one.",
-  "graphPage.json::graphPage.emptyStateHintSparql": "Run a SPARQL query to explore the graph"
+  "graphPage.json::graphPage.emptyStateHintSparql": "Run a SPARQL query to explore the graph",
+  "ja/graph3d.json::graph3d.openAsQuerySparqlLater": "SPARQL opens once its endpoint is available.",
+  "ja/adminPage.json::adminPage.apolloSubgraph": "Apollo Federation subgraph",
+  "ja/adminPage.json::adminPage.apolloSubgraphEnabled": "Serve as a subgraph",
+  "ja/adminPage.json::adminPage.apolloSubgraphEnabledHint": "Adds _service and _entities to /data/graphql for the role below, so an Apollo Router can compose this organization into a supergraph.",
+  "ja/adminPage.json::adminPage.apolloSubgraphName": "Subgraph name",
+  "ja/adminPage.json::adminPage.apolloSubgraphNameHint": "The name the supergraph knows this subgraph by.",
+  "ja/adminPage.json::adminPage.apolloSubgraphRole": "Serves as role",
+  "ja/adminPage.json::adminPage.apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role and every entity it fetches is governed as this role: its row rules, masks and visibility.",
+  "ja/serverErrors.json::serverErrors.settings.federation_unknown_field": "Not a federation setting: {{fields}}",
+  "ja/serverErrors.json::serverErrors.settings.federation_invalid": "Invalid federation setting: {{error}}",
+  "ja/serverErrors.json::serverErrors.settings.federation_role_unknown": "Federation role '{{role}}' is not a role of this organization"
 }
