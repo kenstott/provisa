@@ -250,6 +250,24 @@ def _float_division(left: exp.Expression, right: exp.Expression) -> exp.Expressi
     )
 
 
+def _reversed_list(items: exp.Expression) -> exp.Expression:
+    """A list's items last to first, in the engine functions the IR names (DuckDB's reverse takes
+    a string alone): each index from the last down to 1, read. An empty list is itself, as Trino's
+    sequence takes no step down from 0 to 1."""
+    size = _anon("cardinality", items.copy())
+    indexes = _anon("sequence", size, exp.Literal.number(1), exp.Literal.number(-1))
+    read = _lam("_i", _anon("element_at", items.copy(), exp.column("_i")))
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=size.copy(), expression=exp.Literal.number(0)),
+                true=items.copy(),
+            )
+        ],
+        default=_anon("transform", indexes, read),
+    )
+
+
 def _lam(var: str, body: exp.Expression) -> exp.Lambda:
     """An engine lambda ``var -> body`` (sqlglot ``Lambda``)."""
     return exp.Lambda(this=body, expressions=[exp.to_identifier(var)])
@@ -561,6 +579,12 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if (
+            node.name.lower() == "reverse"
+            and len(node.args) == 1
+            and self._ctx.is_list(node.args[0])
+        ):
+            return _reversed_list(self.lower(node.args[0]))
         if node.name.lower() == "size" and len(node.args) == 1:
             # A list written in the statement is counted where it is written (its engine may not
             # type an empty one), and the size of null is null (openCypher).

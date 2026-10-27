@@ -8,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Cypher's list + element, as the openCypher TCK writes it (Precedence3, Quantifier9-12),
-answered on the DuckDB engine through the governed path: a list + an element appends it, an
-element + a list prepends it, and a list + a list concatenates them -- whether the list is
-written there or carried by a WITH or an UNWIND (REQ-345, REQ-2167)."""
+"""Cypher's list + element and reverse() of a list, as the openCypher TCK writes them
+(Precedence3, Quantifier9-12), answered on the DuckDB engine through the governed path: a list +
+an element appends it, an element + a list prepends it, a list + a list concatenates them, and
+reverse() of a list reads it last to first -- whether the list is written there or carried by a
+WITH or an UNWIND (REQ-345, REQ-2167)."""
 
 # Requirements: REQ-345, REQ-2167
 
@@ -64,6 +65,16 @@ def _rows(query: str) -> list[tuple]:
             [(True,)],
         ),
         ("RETURN 1 + 2 AS a", [(3,)]),
+        # reverse() of a list is its items last to first; of a string, its characters.
+        (
+            "RETURN reverse([1, 2, 3]) AS a, reverse('abc') AS b, reverse([]) AS c",
+            [([3, 2, 1], "cba", [])],
+        ),
+        ("WITH [1, 2] AS xs RETURN reverse(xs) + 0 AS a", [([2, 1, 0],)]),
+        (
+            "WITH [1, 2] AS xs RETURN CASE WHEN true THEN reverse(xs) ELSE xs END + 3 AS a",
+            [([2, 1, 3],)],
+        ),
     ],
 )
 def test_a_list_plus_an_element_appends_it(query, rows):
