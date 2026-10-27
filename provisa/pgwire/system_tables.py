@@ -41,12 +41,12 @@ def _populate_empty_system_tables(db) -> None:
         proargtypes INTEGER[], proallargtypes INTEGER[], proargmodes VARCHAR[],
         proargnames VARCHAR[], proargdefaults VARCHAR, protrftypes INTEGER[],
         prosrc VARCHAR, probin VARCHAR, prosqlbody VARCHAR,
-        proconfig VARCHAR[], proacl VARCHAR)""")
+        proconfig VARCHAR[], proacl VARCHAR[])""")
     db.execute(
         "CREATE TABLE _pg_auth_members (roleid INTEGER, member INTEGER, grantor INTEGER, admin_option BOOLEAN)"
     )
     db.execute(
-        "CREATE TABLE _pg_tablespace (oid INTEGER, spcname VARCHAR, spcowner INTEGER, spcacl VARCHAR, spcoptions VARCHAR[])"
+        "CREATE TABLE _pg_tablespace (oid INTEGER, spcname VARCHAR, spcowner INTEGER, spcacl VARCHAR[], spcoptions VARCHAR[])"
     )
     db.execute("INSERT INTO _pg_tablespace VALUES (1663, 'pg_default', 10, NULL, NULL)")
     db.execute("INSERT INTO _pg_tablespace VALUES (1664, 'pg_global', 10, NULL, NULL)")
@@ -106,7 +106,7 @@ def _populate_empty_system_tables(db) -> None:
         "CREATE TABLE _pg_aggregate (aggfnoid INTEGER, aggkind VARCHAR, aggnumdirectargs SMALLINT, aggtransfn INTEGER, aggfinalfn INTEGER, aggcombinefn INTEGER, aggserialfn INTEGER, aggdeserialfn INTEGER, aggmtransfn INTEGER, aggminvtransfn INTEGER, aggmfinalfn INTEGER, aggfinalextra BOOLEAN, aggmfinalextra BOOLEAN, aggfinalmodify VARCHAR, aggmfinalmodify VARCHAR, aggsortop INTEGER, aggtranstype INTEGER, aggtransspace INTEGER, aggmtranstype INTEGER, aggmtransspace INTEGER, agginitval VARCHAR, aggminitval VARCHAR)"
     )
     db.execute(
-        "CREATE TABLE _pg_language (oid INTEGER, lanname VARCHAR, lanowner INTEGER, lanispl BOOLEAN, lanpltrusted BOOLEAN, lanplcallfoid INTEGER, laninline INTEGER, lanvalidator INTEGER, lanacl VARCHAR)"
+        "CREATE TABLE _pg_language (oid INTEGER, lanname VARCHAR, lanowner INTEGER, lanispl BOOLEAN, lanpltrusted BOOLEAN, lanplcallfoid INTEGER, laninline INTEGER, lanvalidator INTEGER, lanacl VARCHAR[])"
     )
     db.execute(
         "CREATE TABLE _pg_operator (oid INTEGER, oprname VARCHAR, oprnamespace INTEGER, oprowner INTEGER, oprkind VARCHAR, oprcanmerge BOOLEAN, oprcanhash BOOLEAN, oprleft INTEGER, oprright INTEGER, oprresult INTEGER, oprcom INTEGER, oprnegate INTEGER, oprcode INTEGER, oprrest INTEGER, oprjoin INTEGER)"
@@ -136,7 +136,7 @@ def _populate_empty_system_tables(db) -> None:
         "CREATE TABLE _pg_foreign_table (ftrelid INTEGER, ftserver INTEGER, ftoptions VARCHAR[])"
     )
     db.execute(
-        "CREATE TABLE _pg_foreign_server (oid INTEGER, srvname VARCHAR, srvowner INTEGER, srvfdw INTEGER, srvtype VARCHAR, srvversion VARCHAR, srvacl VARCHAR, srvoptions VARCHAR[])"
+        "CREATE TABLE _pg_foreign_server (oid INTEGER, srvname VARCHAR, srvowner INTEGER, srvfdw INTEGER, srvtype VARCHAR, srvversion VARCHAR, srvacl VARCHAR[], srvoptions VARCHAR[])"
     )
     db.execute(
         "CREATE TABLE _pg_user_mapping (oid INTEGER, umuser INTEGER, umserver INTEGER, umoptions VARCHAR[])"
@@ -145,7 +145,7 @@ def _populate_empty_system_tables(db) -> None:
         "CREATE TABLE _pg_user_mappings (umid INTEGER, srvid INTEGER, srvname VARCHAR, umuser INTEGER, usename VARCHAR, umoptions VARCHAR[])"
     )
     db.execute(
-        "CREATE TABLE _pg_foreign_data_wrapper (oid INTEGER, fdwname VARCHAR, fdwowner INTEGER, fdwhandler INTEGER, fdwvalidator INTEGER, fdwacl VARCHAR, fdwoptions VARCHAR[])"
+        "CREATE TABLE _pg_foreign_data_wrapper (oid INTEGER, fdwname VARCHAR, fdwowner INTEGER, fdwhandler INTEGER, fdwvalidator INTEGER, fdwacl VARCHAR[], fdwoptions VARCHAR[])"
     )
     db.execute(
         "CREATE TABLE _pg_sequence (seqrelid INTEGER, seqtypid INTEGER, seqstart BIGINT, seqincrement BIGINT, seqmax BIGINT, seqmin BIGINT, seqcache BIGINT, seqcycle BOOLEAN)"

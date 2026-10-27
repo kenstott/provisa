@@ -142,6 +142,10 @@ _STORED_AS_POSTGRESQL_DOES = frozenset(
         "oid[]",
         "oidvector",
         "int2vector",
+        "aclitem[]",
+        '"char"[]',
+        "inet",
+        "pg_lsn",
     }
 )
 
@@ -203,3 +207,27 @@ def test_an_oid_array_and_the_vectors_are_written_as_postgresql_writes_them():
     assert oidvector[2]([23]) == header(26, 1) + struct.pack("!iI", 4, 23)
     assert int2vector[0] == 22 and int2vector[1]([1, 3]) == "1 3"
     assert int2vector[2]([1]) == header(21, 1) + struct.pack("!ih", 2, 1)
+
+
+def test_acl_char_array_inet_and_lsn_are_written_and_sent_as_postgresql_does():
+    import pytest
+    from buenavista.core import BVType
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    acl = BVTYPE_TO_PGTYPE[BVType.ACLITEMARRAY]
+    assert acl[0] == 1034 and acl[1](["=r/postgres", "app=arw/postgres"]) == (
+        "{=r/postgres,app=arw/postgres}"
+    )
+    with pytest.raises(TypeError, match="aclitem"):  # PostgreSQL has no binary aclitem either
+        acl[2](["=r/postgres"])
+    chars = BVTYPE_TO_PGTYPE[BVType.CHARARRAY]
+    assert chars[0] == 1002 and chars[1](["i", "o"]) == "{i,o}"
+    assert chars[2](["i"]) == struct.pack("!iiiii", 1, 0, 18, 1, 1) + struct.pack("!i", 1) + b"i"
+    inet = BVTYPE_TO_PGTYPE[BVType.INET]
+    assert inet[0] == 869 and inet[1]("10.0.0.1") == "10.0.0.1"
+    assert inet[2]("10.0.0.1") == bytes([2, 32, 0, 4, 10, 0, 0, 1])
+    assert inet[2]("192.168.0.0/16") == bytes([2, 16, 0, 4, 192, 168, 0, 0])
+    lsn = BVTYPE_TO_PGTYPE[BVType.PG_LSN]
+    assert lsn[0] == 3220 and lsn[1]("16/B374D848") == "16/B374D848"
+    assert lsn[2]("16/B374D848") == ((0x16 << 32) | 0xB374D848).to_bytes(8, "big")
+    assert lsn[1]((0x16 << 32) | 0xB374D848) == "16/B374D848"  # asyncpg reads a pg_lsn as int
