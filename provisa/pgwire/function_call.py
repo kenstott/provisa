@@ -79,7 +79,8 @@ def detect_sql_function_call(sql: str, state, role_id: str) -> tuple[str, list] 
         if not (isinstance(inner, exp.Anonymous) and inner.name in callables):
             return None  # a non-command table source is present → composed
     node = cmd_nodes[0]
-    return node.name, [_literal_value(a) for a in node.expressions]
+    # REQ-2168: written as its SQL command binding; answered as the command it names.
+    return callables[node.name]["name"], [_literal_value(a) for a in node.expressions]
 
 
 def rows_to_query_result(rows: list[dict]) -> QueryResult:
@@ -103,7 +104,8 @@ async def maybe_invoke_registered_function(sql: str, role_id: str, state):
 
     name, values = hit
     # Admitted and its count checked against the signature here; passed on by position (a0, a1 …),
-    # the form the executor reads a SQL call's literal arguments in (function_dispatch).
+    # the form the executor reads a SQL call's literal arguments in (function_dispatch), each
+    # argument left out taking its default there (REQ-2168).
     bind_command_args(name, values, state, role_id)
     args = {f"a{i}": v for i, v in enumerate(values)}
     rows = await invoke_tracked_function(name, args, state, role_id)

@@ -565,6 +565,18 @@ _CYPHER_CAST_FNS: dict[str, tuple[str, bool]] = {
     "TODATETIME": ("TIMESTAMP", True),
 }
 
+# Cypher's temporal values: from a string, a cast to the type (date('2015-07-21')); with no
+# argument, the engine's current value of the type (datetime()).
+_CYPHER_TEMPORAL_FNS: dict[str, tuple[str, exp.Expression]] = {
+    "DATE": ("DATE", exp.CurrentDate()),
+    "DATETIME": ("TIMESTAMPTZ", exp.CurrentTimestamp()),
+    "LOCALDATETIME": ("TIMESTAMP", exp.Localtimestamp()),
+    "TIME": ("TIMETZ", exp.CurrentTime()),
+    "LOCALTIME": ("TIME", exp.Localtime()),
+}
+
+_MINUTE_ONLY = re.compile(r"((?:^|T)\d{2}:\d{2})(?=$|[-+Z])")
+
 # SPARQL's date parts (REQ-2135): its function → the field extracted.
 _DATE_PARTS: dict[str, str] = {
     "YEAR": "YEAR",
@@ -704,6 +716,17 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         sql_type, use_try = _CYPHER_CAST_FNS[name]
         cls = exp.TryCast if use_try else exp.Cast
         return cls(this=args[0], to=exp.DataType.build(sql_type))
+
+    if name in _CYPHER_TEMPORAL_FNS and len(args) <= 1:
+        sql_type, current = _CYPHER_TEMPORAL_FNS[name]
+        if not args:
+            return current.copy()
+        value = args[0].transform(_rewrite_cypher_fn_node)
+        if isinstance(value, exp.Literal) and value.is_string:
+            # A time written to the minute (16:30, 16:30+0100) is the minute's first second, which
+            # an engine reads only written out (16:30:00).
+            value = exp.Literal.string(_MINUTE_ONLY.sub(r"\1:00", value.this))
+        return exp.Cast(this=value, to=exp.DataType.build(sql_type))
 
     if name in _DATE_PARTS and len(args) == 1:
         return exp.Extract(this=exp.var(_DATE_PARTS[name]), expression=args[0])

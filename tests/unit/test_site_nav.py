@@ -33,7 +33,14 @@ def _as_from_elsewhere(href: str) -> str:
 
 def test_every_page_has_the_home_pages_navigation():
     home = [(_as_from_elsewhere(h), label) for h, label in _links(_SITE / "index.html")]
-    pages = sorted([*_SITE.glob("*.html"), *_SITE.glob("vs/*.html"), *_SITE.glob("why/*.html")])
+    pages = sorted(
+        [
+            *_SITE.glob("*.html"),
+            *_SITE.glob("vs/*.html"),
+            *_SITE.glob("why/*.html"),
+            *_SITE.glob("start/*.html"),
+        ]
+    )
     assert len(pages) > 1
     for page in pages:
         if page.name == "index.html" and page.parent == _SITE:

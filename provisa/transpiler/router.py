@@ -147,6 +147,8 @@ def _database(dsn: str) -> str:
 def _one_source(i: RouteInputs) -> str | None:
     if len(i.sources) == 1:
         return None
+    if not i.sources:
+        return "reads no source"
     if i.source_dsns:
         keys = [i.source_dsns.get(s) for s in i.sources]
         if None not in keys and len({_database(k) for k in keys if k is not None}) == 1:
@@ -165,8 +167,31 @@ def _dialect_supports(i: RouteInputs) -> str | None:
     if i.source_types.get(sid, "") in API_SOURCES:
         return None  # no SQL is sent to it: its access path is the API caller
     # REQ-2100: a code source runs the statement in DuckDB over its functions' rows.
-    construct = unsupported(i.statement, i.source_dialects.get(sid) or "", json_path=i.json_path)
+    dialect = i.source_dialects.get(sid) or ""
+    construct = unsupported(i.statement, dialect, json_path=i.json_path)
+    if construct is None:
+        construct = _unwritable_function(i.statement, dialect)  # REQ-2168
     return None if construct is None else f"source {sid!r} cannot run {construct}"
+
+
+def _unwritable_function(statement: str, dialect: str) -> str | None:
+    """A SQL expression function the statement calls that ``dialect`` cannot write (REQ-2168):
+    the statement goes to the engine, which can (core/sql_expression.refuse_unless_writable).
+    Asked only of a statement that calls one."""
+    from provisa.core.sql_expression import MARKER
+
+    if MARKER not in statement:
+        return None
+    import sqlglot
+    from sqlglot.errors import ErrorLevel, SqlglotError
+
+    try:
+        sqlglot.parse_one(statement, read="postgres").sql(
+            dialect=dialect, unsupported_level=ErrorLevel.RAISE
+        )
+    except SqlglotError as exc:
+        return f"a function its dialect cannot write ({exc})"
+    return None
 
 
 def _access_path(i: RouteInputs) -> str | None:

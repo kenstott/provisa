@@ -1,8 +1,10 @@
 # Bolt Conformance
 
-**Suite:** Neo4j driver test kit. TBD: version recorded from CI.
+**Suite:** neo4j-python-driver integration tests. TBD: version recorded from CI.
 
 **Pass rate:** TBD: generated from CI.
+
+The official Neo4j Python driver's own integration tests (`tests/integration` of github.com/neo4j/neo4j-python-driver, Apache-2.0), at a pinned release tag, run against Provisa's Bolt endpoint. The driver's tests assume an empty Neo4j database they may write to; a test that creates its own labels fails here, because a Provisa graph's labels and relationship types are its model's.
 
 ## Deliberate differences
 

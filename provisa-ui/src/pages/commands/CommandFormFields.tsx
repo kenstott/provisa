@@ -32,6 +32,8 @@ import {
   ARG_KINDS,
   DATASET_ARG_KINDS,
   EMPTY_ARG,
+  defaultText,
+  withDefaultText,
   EMPTY_INLINE,
   EMPTY_DATASET_COLUMN,
   OPERATION_SCHEMA,
@@ -174,6 +176,10 @@ export function CommandFormFields({
   // REQ-2001: a statement command's statement declares its kind, its written table and its
   // output, so the form asks for none of them.
   const isStatement = form.implKind === "statement";
+  // REQ-2168: a SQL expression function is a query answering one value, its template its whole
+  // definition, so the form asks for its arguments and its template alone.
+  const isTemplate = form.implKind === "sql_expression";
+  const declaresItsShape = isStatement || isTemplate;
 
   return (
     <>
@@ -371,6 +377,23 @@ export function CommandFormFields({
                   />
                 </FormField>
               )}
+              {isTemplate && (
+                <FormField
+                  help={t("commandFormFields.bindingTemplateHint", { placeholder: "{name}" })}
+                  size="long"
+                >
+                  <Textarea
+                    label={t("commandFormFields.bindingTemplate")}
+                    required
+                    autosize
+                    minRows={2}
+                    value={bindingStr("sql")}
+                    onChange={(e) => setBinding("sql", e.currentTarget.value)}
+                    placeholder="array_to_string({list}, {delimiter})"
+                    data-testid="command-binding-template"
+                  />
+                </FormField>
+              )}
               {form.implKind === "python" && (
                 <FormField size="long">
                   <TextInput
@@ -386,20 +409,22 @@ export function CommandFormFields({
               {!essential && (
                 <>
                   <FormChecks>
-                    {form.implKind !== "source_procedure" && !isSourceOperation && !isStatement && (
-                      <FormField help={t("commandFormFields.materializeHint")} size="long">
-                        <Switch
-                          label={t("commandFormFields.materialize")}
-                          checked={form.materialize}
-                          onChange={(e) =>
-                            setForm({ ...form, materialize: e.currentTarget.checked })
-                          }
-                          data-testid="command-materialize-switch"
-                        />
-                      </FormField>
-                    )}
+                    {form.implKind !== "source_procedure" &&
+                      !isSourceOperation &&
+                      !declaresItsShape && (
+                        <FormField help={t("commandFormFields.materializeHint")} size="long">
+                          <Switch
+                            label={t("commandFormFields.materialize")}
+                            checked={form.materialize}
+                            onChange={(e) =>
+                              setForm({ ...form, materialize: e.currentTarget.checked })
+                            }
+                            data-testid="command-materialize-switch"
+                          />
+                        </FormField>
+                      )}
                   </FormChecks>
-                  {!isSourceOperation && !isStatement && (
+                  {!isSourceOperation && !declaresItsShape && (
                     <FormField size="medium">
                       <Select
                         label={t("commandFormFields.returnType")}
@@ -420,7 +445,7 @@ export function CommandFormFields({
                       />
                     </FormField>
                   )}
-                  {!isSourceOperation && !isStatement && form.returnSchemaMode === "table" && (
+                  {!isSourceOperation && !declaresItsShape && form.returnSchemaMode === "table" && (
                     <FormField size="medium">
                       <Select
                         label={t("commandFormFields.returnsTable")}
@@ -446,7 +471,7 @@ export function CommandFormFields({
             {/* REQ-1924, REQ-871: the table a call changes; what is held of it is refreshed after. */}
             {!essential && (
               <>
-                {!isStatement && (
+                {!declaresItsShape && (
                   <FormLayout>
                     <FormField help={t("commandFormFields.writesTableHint")} size="medium">
                       <Select
@@ -627,7 +652,7 @@ export function CommandFormFields({
         </FormField>
         {!essential && (
           <>
-            {!isSourceOperation && !isStatement && (
+            {!isSourceOperation && !declaresItsShape && (
               <FormField size="medium">
                 <Select
                   label={t("commandFormFields.kind")}
@@ -691,9 +716,24 @@ export function CommandFormFields({
                           allowDeselect={false}
                         />
                       </FormField>
+                      <FormField size="medium">
+                        <TextInput
+                          aria-label={t("commandFormFields.argDefault", {
+                            name: arg.name || i + 1,
+                          })}
+                          value={defaultText(arg)}
+                          onChange={(e) => {
+                            const args = [...form.arguments];
+                            args[i] = withDefaultText(arg, e.currentTarget.value);
+                            setForm({ ...form, arguments: args });
+                          }}
+                          placeholder={t("commandFormFields.argDefaultPlaceholder")}
+                          data-testid={`command-arg-default-${i}`}
+                        />
+                      </FormField>
                       {form.actionType === "function" &&
                         form.implKind !== "source_procedure" &&
-                        !isStatement && (
+                        !declaresItsShape && (
                           <FormField size="medium">
                             <Select
                               aria-label={t("commandFormFields.argKind")}
@@ -792,7 +832,7 @@ export function CommandFormFields({
             {form.actionType === "function" &&
               form.implKind !== "source_procedure" &&
               !isSourceOperation &&
-              !isStatement &&
+              !declaresItsShape &&
               form.returnSchemaMode === "dataset" && (
                 // The output dataset's columns: each an entry of its row and who sees it and how it
                 // is masked, set apart from the next.

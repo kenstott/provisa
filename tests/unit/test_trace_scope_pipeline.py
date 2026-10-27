@@ -71,7 +71,6 @@ def served(control_plane, monkeypatch):
         return (
             exec_sql,
             RouteDecision(route=Route.DIRECT, source_id="pg", dialect="postgres", reason="t"),
-            "pg",
             False,
             {"pg"},
             (),

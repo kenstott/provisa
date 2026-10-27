@@ -214,7 +214,6 @@ async def _route(exec_sql, governed_sql, gov_ctx, ctx, state, **kwargs):
     return (
         exec_sql,
         RouteDecision(route=Route.DIRECT, source_id="pg", dialect="postgres", reason="t"),
-        "pg",
         False,
         {"pg"},
         (),
@@ -477,7 +476,6 @@ async def _engine_route(exec_sql, governed_sql, gov_ctx, ctx, state, **kwargs):
     return (
         exec_sql,
         RouteDecision(route=Route.ENGINE, source_id=None, dialect=None, reason="t"),
-        "pg",
         False,
         {"pg"},
         (),
@@ -659,7 +657,7 @@ async def test_the_kept_engine_form_follows_the_optimized_text_and_the_engine(en
 
     async def _rewritten(exec_sql, governed_sql, gov_ctx, ctx, state, role_id, **kwargs):
         out = await _engine_route(exec_sql, governed_sql, gov_ctx, ctx, state, **kwargs)
-        return (exec_sql.replace("$1", "$1 AND 1 = 1"), *out[1:3], True, *out[4:])
+        return (exec_sql.replace("$1", "$1 AND 1 = 1"), out[1], True, *out[3:])
 
     with patch.object(p.mod, "_optimize_and_route_cached", new=AsyncMock(side_effect=_rewritten)):
         rewritten = await p.mod._govern_and_route_compiled(

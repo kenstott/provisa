@@ -40,6 +40,17 @@ Each argument declares an `arg_kind`:
 An external command receiving only scalar arguments would be invoked once per row, which defeats
 batching. The dispatcher rejects this configuration at call time (422).
 
+An argument may declare a `default`. A call on any surface may leave that argument out, and it
+takes the default; an argument without one is required, and a call missing it is refused naming
+it. The default is checked against the argument's type when the command is saved.
+
+```yaml
+    arguments:
+      - name: config
+        type: json
+        default: {}
+```
+
 A command that returns a set (declared via `output_columns` and `return_schema`) is a
 table-valued function. Use it in a `FROM` clause or a `JOIN`.
 
@@ -348,6 +359,8 @@ Commands appear in each environment's git projection. See [Environments](environ
 
 A command binding is the name a command or function uses in a specific language. Every command gets a generated default binding in each surface Provisa exposes: SQL, Cypher, GraphQL, REST, MCP, SPARQL and the others. Rename a binding in one language, or exclude the command from a language entirely, and you are making an explicit declaration. Omit a language from the declaration, and the command appears there under its generated name.
 
+A SPARQL binding is accepted and checked like the others, but the SPARQL endpoint does not call commands yet, so it has no effect there.
+
 SQL is the one language you cannot exclude. Every other surface compiles to SQL, so a command targeted only to Cypher still has a SQL binding.
 
 A variant that returns a different result shape is its own command. When APOC's `apoc.text.join` returns a plain string but your general `text_join` command returns a row set, those are two commands with two implementations. Producing results in the shape the caller expects is the command developer's responsibility. A command binding is a name. Arguments, governance and grants are declared once on the command, and every binding shares them.
@@ -456,39 +469,28 @@ functions:
 
 Every command runs under its own grants. The caller must hold rights to both the domain and the command. A function declared as a SQL expression template is different: it runs inside the governed query rather than as a separate call, carrying exactly the same row-level security as the rest of the statement. Either way, a third-party library calling an emulated function never reads rows the caller's role cannot see.
 
-### APOC example end to end
+### The APOC set Provisa ships
 
-LangChain's Neo4j integration calls `apoc.meta.data()` before it generates Cypher. It expects a specific map format listing node labels, their properties and relationships. Register two commands: a general `meta_schema` command that answers from the acting role's label map, and a Cypher-targeted `apoc.meta.data` command that calls it and reshapes the result into the format APOC callers expect.
+Cypher tools and agent frameworks call APOC before they write Cypher. LangChain's Neo4j integration, for example, reads the graph's schema with `apoc.meta.data`. Provisa ships the APOC calls these tools make as command declarations on this same mechanism, in `provisa/core/apoc_commands.yaml`. Each is bound in Cypher to its APOC name, offered in SQL under its own name, and excluded from GraphQL, REST, MCP and SPARQL.
 
-The general command:
+| Kind | APOC names | How it runs |
+| --- | --- | --- |
+| Introspection | `apoc.meta.data`, `apoc.meta.schema`, `apoc.schema.nodes` | A `builtin` command, answered from the acting role's label map |
+| Functions | `apoc.text.join`, `capitalize`, `decapitalize`, `lpad`, `rpad`, `indexOf`; `apoc.coll.sum`, `max`, `min`, `contains`, `toSet`, `union`, `flatten`; `apoc.map.fromLists`; `apoc.date.currentTimestamp`; `apoc.convert.toString`, `toInteger`, `toFloat`, `toBoolean`, `toJson` | A `sql_expression` function, pushed down with the query |
+| Traversal | `apoc.path.expand`, `apoc.path.subgraphNodes` | Compiled to the variable-length pattern they walk, the same recursive SQL |
+
+A `builtin` command runs code that ships with Provisa, named in its binding:
 
 ```yaml
 functions:
-  - name: meta_schema
-    description: Returns the acting role's label map — node labels, properties and relationships
-    kind: query
-    impl_kind: python
-    binding:
-      callable: provisa.apoc:meta_schema
-    visible_to: []
-    output_columns:
-      - {name: label, type: text}
-      - {name: property_keys, type: json}
-      - {name: relationships, type: json}
-```
-
-`visible_to: []` makes the command available to every role that can reach its domain.
-
-The Cypher-targeted variant:
-
-```yaml
   - name: apoc_meta_data
-    description: Reshapes meta_schema output into the apoc.meta.data format for Cypher tools
     kind: query
-    impl_kind: python
+    impl_kind: builtin
     binding:
-      callable: provisa.apoc:meta_data_compat
-    visible_to: []
+      callable: apoc.meta.data
+    arguments:
+      - name: config
+        type: json
     language_bindings:
       cypher:
         name: apoc.meta.data
@@ -498,19 +500,32 @@ The Cypher-targeted variant:
         exclude: true
       mcp:
         exclude: true
-    output_columns:
-      - {name: label, type: text}
-      - {name: type, type: text}
-      - {name: elementType, type: text}
-      - {name: array, type: boolean}
-      - {name: count, type: bigint}
+      sparql:
+        exclude: true
 ```
 
-From a LangChain session over Bolt:
+An argument may declare a default, so a call can leave it out: `apoc.meta.data()` with no argument takes its default configuration, as older LangChain versions call it.
+
+A command called inside a larger Cypher statement names the columns it yields, and the rest of the statement reads them. This is the statement LangChain sends:
 
 ```cypher
-CALL apoc.meta.data() YIELD label, type, count
-RETURN label, type, count
+CALL apoc.meta.data({sample: $SAMPLE})
+YIELD label, other, elementType, type, property
+WHERE NOT type = 'RELATIONSHIP' AND elementType = 'node'
+  AND NOT label IN $EXCLUDED_LABELS
+WITH label AS nodeLabel, collect({property: property, type: type}) AS properties
+RETURN {label: nodeLabel, properties: properties} AS output
 ```
 
-The governance model does the filtering. A role that can read `Employees` but not `Payroll` sees `Employees` and its relationships in the result. `Payroll` is absent, and any Cypher LangChain generates next cannot reference it.
+The governance model does the filtering. A role that can read `Employees` but not `Payroll` sees `Employees` and its relationships in the result. `Payroll` is absent, and any Cypher LangChain generates next cannot reference it. Counts in the answer are null: a schema read never scans the data.
+
+The path procedures take a start node the statement has matched with a label, a label the walk ends at and a bounded depth. A relationship type is walked out (`TYPE>`), in (`<TYPE`), or either way when the walk ends at the start's own label:
+
+```cypher
+MATCH (p:Person {name: 'Ada'})
+CALL apoc.path.subgraphNodes(p, {relationshipFilter: 'KNOWS>', labelFilter: '+Person', maxLevel: 3})
+YIELD node
+RETURN DISTINCT node.name
+```
+
+A namespaced function no function is bound to, such as `apoc.util.sleep`, is refused by name. The procedures that act outside the model, such as `apoc.create.*`, `apoc.periodic.iterate` and `apoc.load.*`, are listed on the Cypher Conformance page with their workarounds.

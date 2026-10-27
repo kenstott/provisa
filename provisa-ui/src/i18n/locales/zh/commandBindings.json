@@ -1,0 +1,21 @@
+{
+  "commandBindings": {
+    "sectionsLabel": "命令部分",
+    "section_command": "命令",
+    "section_bindings": "绑定",
+    "language": "语言",
+    "name": "名称",
+    "leaveOut": "已排除",
+    "nameIn": "{{language}} 中的名称",
+    "leaveOutOf": "从 {{language}} 中排除",
+    "notOffered": "不提供",
+    "sqlAlways": "始终提供",
+    "hint": "命令在每种语言中都以其自身名称提供。可在某种语言中重命名，或从某种语言中排除。SQL 始终提供。",
+    "lang_sql": "SQL",
+    "lang_cypher": "Cypher",
+    "lang_graphql": "GraphQL",
+    "lang_rest": "REST",
+    "lang_mcp": "MCP",
+    "lang_sparql": "SPARQL"
+  }
+}

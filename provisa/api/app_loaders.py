@@ -1563,9 +1563,14 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
             **dict(r),
             "arguments": _json_list(r["arguments"]),
             "visible_to": _json_list(r["visible_to"]),
+            "language_bindings": _json_dict(r["language_bindings"]),  # REQ-2168
         }
         for r in fn_rows
     ]
+    # REQ-2168: the commands Provisa ships (the APOC set), beside the registered ones.
+    from provisa.core.builtin_commands import declared as _builtin_commands
+
+    tracked_functions = [*_builtin_commands(), *tracked_functions]
     # REQ-1942: the commands backed by a source bound to a synthetic store are not defined in a Test
     # (synthetic) environment -- omitted here, the one place every surface's commands come from,
     # and kept by name so a call to one is refused saying why (action_exec.invoke_command).
@@ -1588,6 +1593,11 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # no longer resolves against the model carries why (contract.broken), and a call is refused.
     from provisa.compiler.statement_contract import derive as _derive_contract
 
+    # REQ-2168: a SQL expression function's template was checked for the deployment's engines when
+    # it was saved (actions_router); a source added since is not a reason to refuse the build.
+    for f in tracked_functions:
+        if f["impl_kind"] == "sql_expression":
+            f["binding"] = _json_dict(f["binding"])
     for f in tracked_functions:
         if f["impl_kind"] == "statement":
             f["binding"] = _json_dict(f["binding"])
@@ -1603,6 +1613,10 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         }
         for r in wh_rows
     ]
+    # REQ-2168: no two commands bound to one name in a language, none shadowing a built-in.
+    from provisa.core.command_bindings import check_names
+
+    check_names([*tracked_functions, *tracked_webhooks])
 
     # The prefixed alias MUST match the GraphQL field name the schema generator emits, which uses
     # domain_gql_alias (e.g. pet-store -> "ps"), NOT domain_to_sql_name (-> "pet_store"). Otherwise
@@ -1626,9 +1640,19 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # AND the convention-cased GraphQL field name, so every surface's lookup resolves (REQ-1156).
     _conv = (raw_config or {}).get("naming", {}).get("convention", "apollo_graphql")
 
+    from provisa.core.command_bindings import binding_name, offered_name
+
     def _register(target: dict, item: dict) -> None:
         target[item["name"]] = item  # raw registered name — non-GraphQL surfaces
-        gql = _apply_conv(item["name"], _conv)
+        # REQ-2168: a SQL command binding that renames the command is the name a statement calls.
+        sql = offered_name(item, "sql")
+        if sql != item["name"]:
+            target[sql] = item
+        # REQ-2168: the GraphQL field is the command's GraphQL command binding; none if excluded.
+        called = binding_name(item, "graphql")
+        if called is None:
+            return
+        gql = _apply_conv(called, _conv)
         key = (
             f"{_domain_prefix(item['domain_id'])}__{gql}" if _dp and item.get("domain_id") else gql
         )

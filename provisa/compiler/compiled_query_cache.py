@@ -169,7 +169,6 @@ class RoutingOutcome:
     source_id: str | None
     dialect: str | None
     reason: str
-    default_source: str
     sources: frozenset[str]
 
 

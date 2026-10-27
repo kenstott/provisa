@@ -337,6 +337,12 @@ async def prepare_front_end(
     # that creates, alters or drops a relation is refused here, as soon as its kind is known and
     # before any of the pipeline's work on it.
     refuse_definition(parsed_input)
+    # REQ-2168: each SQL expression function the role may use is its template from here on, so
+    # the shape cached, the statement governed and the SQL routed are the expanded one.
+    from provisa.compiler.sql_expression_expand import expand
+
+    if expand(parsed_input, raw_sql, role_id, state):
+        raw_sql = parsed_input.sql(dialect="postgres")
     shape_digest = _shape_digest_from_tree(parsed_input)
     key = _cache_key(shape_digest, role_id, generation)
 

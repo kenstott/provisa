@@ -643,7 +643,12 @@ def test_the_flag_is_kept_with_the_command():
     from provisa.core.repositories.function import function_from_dict
 
     stored = function_from_dict(
-        {**_command(requires_approval=True), "returns": "", "arguments": []}
+        {
+            **_command(requires_approval=True),
+            "returns": "",
+            "arguments": [],
+            "language_bindings": {},
+        }
     )
     assert stored.requires_approval is True
 
