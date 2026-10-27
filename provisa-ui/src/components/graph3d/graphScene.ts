@@ -145,6 +145,7 @@ export class GraphScene extends BaseScene<GraphHover> {
   // ---------- public ----------
 
   setData(graph: GraphData, at: Map<string, [number, number, number]>, resetCamera: boolean) {
+    this.invalidate();
     this.graph = graph;
     this.at = at;
     this.rebuild();
@@ -164,11 +165,13 @@ export class GraphScene extends BaseScene<GraphHover> {
   }
 
   setSelected(id: string | null) {
+    this.invalidate();
     this.selected = id;
     this.paint();
   }
 
   setHover(h: GraphHover | null) {
+    this.invalidate();
     if (h?.kind === this.hover?.kind && h?.id === this.hover?.id) return;
     this.hover = h;
     this.paint();
@@ -176,10 +179,12 @@ export class GraphScene extends BaseScene<GraphHover> {
 
   /** A flat layout (a tree, lineage lanes) is seen from the front; a force layout from above. */
   setFrontal(on: boolean) {
+    this.invalidate();
     this.frontal = on;
   }
 
   resetView(instant = false) {
+    this.invalidate();
     if (this.frontal) {
       // Back far enough that the whole layout, and a margin round it, fits the field of view.
       const half = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
@@ -198,6 +203,7 @@ export class GraphScene extends BaseScene<GraphHover> {
   }
 
   focus(id: string) {
+    this.invalidate();
     const n = this.nodes.find((x) => x.node.id === id);
     if (!n) return;
     const tgt = n.mesh.position.clone();
