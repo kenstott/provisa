@@ -134,6 +134,10 @@ class ExprContext(Protocol):
         """The temporal kind ``expr`` has (REQ-2173: date, time, ..., duration), or None."""
         ...
 
+    def temporal_zone(self, expr: CypherExpr) -> str | None:
+        """The zone a time or date time the query builds names (REQ-2173), or None."""
+        ...
+
     def resolve_term(self, node: Term) -> exp.Expression:
         """``node.value`` as one RDF term of the answer (REQ-2135)."""
         ...
@@ -272,7 +276,8 @@ class ExprLowering:
         if held == temporal.DURATION:
             return temporal.duration_property(self.lower(node.obj), node.name)
         if held is not None:  # REQ-2173: a date's, a time's or a date time's own parts
-            return temporal.value_property(held, self.lower(node.obj), node.name)
+            zone = self._ctx.temporal_zone(node.obj)
+            return temporal.value_property(held, self.lower(node.obj), node.name, zone)
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:
@@ -322,20 +327,25 @@ class ExprLowering:
         right = self.lower(node.right)
         if op in _BINARY_ARITH:
             # REQ-2173: a duration with a temporal value or another duration, as openCypher reads it.
+            left_kind = self._ctx.temporal_kind(node.left)
+            right_kind = self._ctx.temporal_kind(node.right)
+            moved = node.left if left_kind != temporal.DURATION else node.right
             timed = temporal.arithmetic(
-                op,
-                left,
-                self._ctx.temporal_kind(node.left),
-                right,
-                self._ctx.temporal_kind(node.right),
+                op, left, left_kind, right, right_kind, self._ctx.temporal_zone(moved)
             )
             if timed is not None:
                 return timed
             return _BINARY_ARITH[op](this=left, expression=right)
-        if op in ("=", "<>", "!=") and (
-            self._ctx.temporal_kind(node.left) == temporal.DURATION
-            and self._ctx.temporal_kind(node.right) == temporal.DURATION
-        ):
+        left_kind = self._ctx.temporal_kind(node.left)
+        right_kind = self._ctx.temporal_kind(node.right)
+        if left_kind and right_kind and left_kind != right_kind and op in _BINARY_CMP:
+            # REQ-2173: values of two temporal kinds are never equal, and have no order.
+            if op == "=":
+                return exp.false()
+            if op in ("<>", "!="):
+                return exp.true()
+            return exp.Null()
+        if op in ("=", "<>", "!=") and left_kind == right_kind == temporal.DURATION:
             return temporal.equality("=" if op == "=" else "<>", left, right)
         if op in ("=", "<>", "!="):
             # The `id` of a node drawn from several tables is the graph's synthetic identity —
@@ -434,6 +444,18 @@ class ExprLowering:
 
     # -- calls / case ------------------------------------------------------ #
 
+    def _wall(self, node: CypherExpr, zone: str | None) -> exp.Expression:
+        """A date time as its wall clock in ``zone``, or in its own zone (REQ-2173)."""
+        return temporal.wall_clock(
+            self.lower(node), zone if zone is not None else self._ctx.temporal_zone(node)
+        )
+
+    def _wall_or_value(self, node: CypherExpr) -> exp.Expression:
+        """A date time's wall clock in its own zone; any other value as it is."""
+        if self._ctx.temporal_kind(node) == temporal.DATETIME:
+            return self._wall(node, None)
+        return self.lower(node)
+
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
@@ -441,7 +463,8 @@ class ExprLowering:
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
                 return exp.Null()
             kinds = [self._ctx.temporal_kind(a) for a in node.args]
-            return temporal.duration_function(node.name, node.args, kinds, self.lower)
+            zones = [self._ctx.temporal_zone(a) for a in node.args]
+            return temporal.duration_function(node.name, node.args, kinds, self.lower, zones)
         kind, _, clock = node.name.lower().partition(".")
         if kind in temporal.SQL_TYPES and clock in ("transaction", "statement", "realtime"):
             # REQ-2173: the current value, as the engine's clock reads it.
@@ -452,10 +475,18 @@ class ExprLowering:
             return self._ctx.resolve_function(kind, [], distinct=False)
         if kind in temporal.SQL_TYPES and clock == "truncate":  # REQ-2173
             value_kind = self._ctx.temporal_kind(node.args[1]) if len(node.args) > 1 else None
-            return temporal.truncated(kind, node.args, value_kind, self.lower)
+            return temporal.truncated(
+                kind, node.args, value_kind, self._wall_or_value, zone=self._ctx.temporal_zone(node)
+            )
         if node.name.lower() in temporal.SQL_TYPES:  # REQ-2173: from text or a map
             built = temporal.temporal_value(
-                node.name.lower(), node.args, self.lower, self._ctx.temporal_kind
+                node.name.lower(),
+                node.args,
+                self.lower,
+                self._ctx.temporal_kind,
+                zone=self._ctx.temporal_zone(node),
+                lower_wall=self._wall,
+                zone_of_entry=self._ctx.temporal_zone,
             )
             if built is not None:
                 return built

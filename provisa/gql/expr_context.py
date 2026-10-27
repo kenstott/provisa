@@ -258,6 +258,21 @@ class TranslatorExprContext:
 
         return temporal.element_kind(expr, self._t._temporal_kinds, self._property_kind)
 
+    def temporal_zone(self, expr: CypherExpr) -> str | None:
+        """The zone a time or date time the query builds names (REQ-2173), or None."""
+        from provisa.gql import temporal
+
+        return temporal.zone_of(expr, self._t._temporal_zones, self.temporal_kind)
+
+    def temporal_element_zone(self, expr: CypherExpr) -> str | None:
+        """The zone every item of a list literal names (an UNWIND's variable), or None."""
+        from provisa.gql.expr_ast import ListLiteral
+
+        if not isinstance(expr, ListLiteral) or not expr.items:
+            return None
+        zones = {self.temporal_zone(item) for item in expr.items}
+        return zones.pop() if len(zones) == 1 else None
+
     def _property_kind(self, node: Property) -> str | None:
         """A registered column's temporal kind, by its registered type."""
         from provisa.gql import temporal

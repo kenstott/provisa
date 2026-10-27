@@ -327,6 +327,7 @@ def arithmetic(
     left_kind: str | None,
     right: exp.Expression,
     right_kind: str | None,
+    zone: str | None = None,
 ) -> exp.Expression | None:
     """``left op right`` where one side is a duration, as openCypher reads it; None where
     neither is."""
@@ -357,6 +358,9 @@ def arithmetic(
             this=cls(this=left, expression=_seconds_part(right)),
             to=exp.DataType.build(SQL_TYPES[left_kind]),
         )
+    if left_kind == DATETIME and zone is not None:
+        # Moved on its wall clock in its zone, by the zone's rules (REQ-2173).
+        return zoned(cls(this=wall_clock(left, zone), expression=right), zone)
     return cls(this=left, expression=right)
 
 
@@ -406,9 +410,11 @@ def duration_function(
     written: list[CypherExpr],
     kinds: list[str | None],
     lower: Callable[[CypherExpr], exp.Expression],
+    zones: list[str | None] | None = None,
 ) -> exp.Expression:
     """duration(..), duration.between, duration.inMonths, duration.inDays, duration.inSeconds.
-    ``lower`` lowers an argument; a duration written wholly in the statement is folded here."""
+    ``lower`` lowers an argument (a date time as its instant), ``zones`` each one's zone; a
+    duration written wholly in the statement is folded here."""
     name = name.lower()
     if name == "duration":
         if len(written) != 1:
@@ -427,27 +433,88 @@ def duration_function(
     if len(args) != 2 or None in kinds or DURATION in kinds:
         raise CypherTranslateError(f"{name}() takes two temporal values")
     (start, end), (start_kind, end_kind) = args, kinds
+    start_zone, end_zone = (zones or [None, None])[:2]
     assert start_kind is not None and end_kind is not None
+    zoned_kinds = (TIME, DATETIME)
     dated = start_kind in _DATED and end_kind in _DATED
-    if name == "duration.inmonths" and not dated:
-        return interval(0, 0, 0)
-    if name == "duration.indays" and not dated:
+    if name in ("duration.inmonths", "duration.indays") and not dated:
         return interval(0, 0, 0)
     if not dated:
-        # Without a date on both, only the times of day are compared.
-        later, earlier = _micros_of_day(end, end_kind), _micros_of_day(start, start_kind)
-        if start_kind == TIME and end_kind == TIME:
-            # Two times with offsets are compared as the same instant of the day.
-            later, earlier = _at_utc(later, end), _at_utc(earlier, start)
-        micros = exp.Sub(this=later, expression=earlier)
-        return _times(micros, "microsecond")
-    a, b = _as_timestamp(start), _as_timestamp(end)
-    age = exp.Anonymous(this="AGE", expressions=[b, a])
-    if name == "duration.between":
-        return age
+        # Without a date on both, only the times of day are compared: two values with zones as
+        # the same instant of the day, a value with a zone beside a local one on its wall clock.
+        both_zoned = start_kind in zoned_kinds and end_kind in zoned_kinds
+
+        def of_day(value: exp.Expression, kind: str, zone: str | None) -> exp.Expression:
+            if kind == DATETIME:
+                value = (
+                    exp.Cast(this=value, to=exp.DataType.build("TIMESTAMP"))
+                    if both_zoned
+                    else wall_clock(value, zone)
+                )
+                return _micros_of_day(value, LOCALDATETIME)
+            micros = _micros_of_day(value, kind)
+            return _at_utc(micros, value) if kind == TIME and both_zoned else micros
+
+        kinds_given = {start_kind, end_kind}
+        if DATETIME in kinds_given and kinds_given & {LOCALTIME}:
+            # A local time of day beside a date time is that time on its date, in its zone: the
+            # instants are compared, so a change of offset between them counts.
+            dt, dt_zone = (start, start_zone) if start_kind == DATETIME else (end, end_zone)
+
+            def instant_of(value: exp.Expression, kind: str) -> exp.Expression:
+                if kind == DATETIME:
+                    return exp.Cast(this=value, to=exp.DataType.build("TIMESTAMP"))
+                day = exp.Cast(this=wall_clock(dt.copy(), dt_zone), to=exp.DataType.build("DATE"))
+                wall = exp.Add(
+                    this=exp.Cast(this=day, to=exp.DataType.build("TIMESTAMP")),
+                    expression=_times(_micros_of_day(value, kind), "microsecond"),
+                )
+                return exp.Cast(this=zoned(wall, dt_zone), to=exp.DataType.build("TIMESTAMP"))
+
+            between = exp.Sub(
+                this=_epoch(instant_of(end, end_kind)),
+                expression=_epoch(instant_of(start, start_kind)),
+            )
+            micros = exp.Cast(
+                this=exp.Anonymous(
+                    this="ROUND",
+                    expressions=[
+                        exp.Mul(
+                            this=exp.Paren(this=between), expression=exp.Literal.number(_MICROS)
+                        )
+                    ],
+                ),
+                to=exp.DataType.build("BIGINT"),
+            )
+            return _times(micros, "microsecond")
+        later = of_day(end, end_kind, end_zone)
+        earlier = of_day(start, start_kind, start_zone)
+        return _times(exp.Sub(this=later, expression=earlier), "microsecond")
+    if start_kind == DATETIME and end_kind == DATETIME:
+        # Two instants, compared as such.
+        wall_a = instant_a = exp.Cast(this=start, to=exp.DataType.build("TIMESTAMP"))
+        wall_b = instant_b = exp.Cast(this=end, to=exp.DataType.build("TIMESTAMP"))
+    else:
+        # A date time beside a local value: the local value is read in the date time's zone.
+        zone = start_zone if start_kind == DATETIME else end_zone
+
+        def wall(value: exp.Expression, kind: str, own: str | None) -> exp.Expression:
+            if kind == DATETIME:
+                return exp.Cast(this=wall_clock(value, own), to=exp.DataType.build("TIMESTAMP"))
+            return _as_timestamp(value)
+
+        def instant(value: exp.Expression, kind: str) -> exp.Expression:
+            if kind == DATETIME:
+                return exp.Cast(this=value, to=exp.DataType.build("TIMESTAMP"))
+            moment = zoned(_as_timestamp(value), zone)
+            return exp.Cast(this=moment, to=exp.DataType.build("TIMESTAMP"))
+
+        wall_a, wall_b = wall(start, start_kind, start_zone), wall(end, end_kind, end_zone)
+        instant_a, instant_b = instant(start, start_kind), instant(end, end_kind)
+    age = exp.Anonymous(this="AGE", expressions=[wall_b, wall_a])
+    seconds = exp.Sub(this=_epoch(instant_b.copy()), expression=_epoch(instant_a.copy()))
     if name == "duration.inmonths":
         return _times(parts(age)[0], "month")
-    seconds = exp.Sub(this=_epoch(b.copy()), expression=_epoch(a.copy()))
     if name == "duration.indays":
         days = exp.Cast(
             this=exp.Anonymous(
@@ -462,16 +529,25 @@ def duration_function(
             to=exp.DataType.build("BIGINT"),
         )
         return _times(days, "day")
-    micros = exp.Cast(
-        this=exp.Anonymous(
-            this="ROUND",
-            expressions=[
-                exp.Mul(this=exp.Paren(this=seconds), expression=exp.Literal.number(_MICROS))
-            ],
-        ),
-        to=exp.DataType.build("BIGINT"),
-    )
-    return _times(micros, "microsecond")
+
+    def micros_of(e: exp.Expression) -> exp.Expression:
+        return exp.Cast(
+            this=exp.Anonymous(
+                this="ROUND",
+                expressions=[
+                    exp.Mul(this=exp.Paren(this=e), expression=exp.Literal.number(_MICROS))
+                ],
+            ),
+            to=exp.DataType.build("BIGINT"),
+        )
+
+    if name == "duration.inseconds":
+        return _times(micros_of(seconds), "microsecond")
+    # between: the calendar difference of the wall clocks, and the hours a zone's change of
+    # offset (daylight saving) adds or takes between the two instants.
+    walls = exp.Sub(this=_epoch(wall_b.copy()), expression=_epoch(wall_a.copy()))
+    shift = exp.Sub(this=exp.Paren(this=seconds.copy()), expression=exp.Paren(this=walls))
+    return exp.Add(this=age, expression=_times(micros_of(shift), "microsecond"))
 
 
 # --------------------------------------------------------------------------- properties
@@ -507,6 +583,8 @@ def duration_property(value: exp.Expression, name: str) -> exp.Expression:
     if found is None:
         raise CypherTranslateError(f"a duration has no property {name!r}")
     index, divisor, modulo = found
+    if index == 2:
+        return _time_property(parts(value)[2], name.lower())
     part = parts(value)[index]
     if isinstance(divisor, Fraction):
         counted: exp.Expression = exp.Mul(
@@ -525,6 +603,46 @@ def duration_property(value: exp.Expression, name: str) -> exp.Expression:
     if modulo is None:
         return counted
     return exp.Mod(this=exp.Paren(this=counted), expression=exp.Literal.number(modulo))
+
+
+def _time_property(micros: exp.Expression, key: str) -> exp.Expression:
+    """A duration's time part in a unit, as openCypher counts it: its seconds the whole seconds
+    at or below it, the part of a second after them never negative (-0.9s is -1s and 0.1s)."""
+    seconds = _whole(
+        exp.Anonymous(
+            this="FLOOR",
+            expressions=[exp.Div(this=micros, expression=exp.Literal.number(float(_MICROS)))],
+        )
+    )
+    fraction = exp.Paren(
+        this=exp.Sub(
+            this=micros.copy(),
+            expression=exp.Mul(this=seconds.copy(), expression=exp.Literal.number(_MICROS)),
+        )
+    )
+
+    def mod(e: exp.Expression, n: int) -> exp.Expression:
+        return exp.Mod(this=exp.Paren(this=e), expression=exp.Literal.number(n))
+
+    def times(e: exp.Expression, n: int) -> exp.Expression:
+        return exp.Mul(this=e, expression=exp.Literal.number(n))
+
+    built = {
+        "hours": lambda: _int_div(seconds, 3600),
+        "minutes": lambda: _int_div(seconds, 60),
+        "seconds": lambda: seconds,
+        "milliseconds": lambda: exp.Add(
+            this=times(seconds, 1000), expression=_int_div(fraction, 1000)
+        ),
+        "microseconds": lambda: micros,
+        "nanoseconds": lambda: times(micros, 1000),
+        "minutesofhour": lambda: mod(_int_div(seconds, 60), 60),
+        "secondsofminute": lambda: mod(seconds, 60),
+        "millisecondsofsecond": lambda: _int_div(fraction, 1000),
+        "microsecondsofsecond": lambda: fraction,
+        "nanosecondsofsecond": lambda: times(fraction, 1000),
+    }
+    return built[key]()
 
 
 #: A registered column's type -> the temporal kind its values have.
@@ -948,6 +1066,9 @@ def composed_value(
     *,
     base: exp.Expression | None = None,
     base_kind: str | None = None,
+    zone: str | None = None,
+    source_zone: str | None = None,
+    source_offset: exp.Expression | None = None,
 ) -> exp.Expression:
     """A value of ``kind`` from a map whose components are computed or taken from another value
     ({date: d, day: 28}, {time: t, timezone: '+05:00'}): each component the map names, else the
@@ -1018,19 +1139,25 @@ def composed_value(
         local = exp.Anonymous(this="MAKE_TIMESTAMP", expressions=[y, m, d, hour, minute, seconds])
     if kind in (LOCALTIME, LOCALDATETIME):
         return local
-    # A time or date time: at the zone the map names, else the other value's, else UTC. A value
+    if kind == DATETIME:
+        # The wall clock the map gives (its time of day the other value's, in that value's own
+        # zone), as an instant; it is presented in the zone the map names (REQ-2173).
+        if time_kind == TIME and source_offset is not None:
+            text = exp.DPipe(this=_text(local), expression=_offset_text(source_offset))
+            return exp.Cast(this=text, to=exp.DataType.build("TIMESTAMPTZ"))
+        if time_kind == DATETIME:
+            return zoned(local, source_zone)
+        return zoned(local, zone)
+    # A time: at the zone the map names, else the other value's, else UTC. A value
     # that has a zone, given another, is the same instant there.
-    zone = entries.get("timezone")
+    named = entries.get("timezone")
     zoned_source = time_sql is not None and time_kind in (TIME, DATETIME)
-    if zone is not None:
-        if not (isinstance(zone, Literal) and zone.kind == "string"):
+    if named is not None:
+        if not (isinstance(named, Literal) and named.kind == "string"):
             raise CypherTranslateError(f"{kind}() takes its timezone written in the statement")
-        target = _offset_seconds(str(zone.value))
-        if zoned_source and time_kind == TIME:
-            assert time_sql is not None
-            shift = exp.Sub(
-                this=exp.Literal.number(target), expression=_field(time_sql, "TIMEZONE")
-            )
+        target = _offset_seconds(str(named.value))
+        if zoned_source and source_offset is not None:
+            shift = exp.Sub(this=exp.Literal.number(target), expression=source_offset)
             local = exp.Add(
                 this=local,
                 expression=_times(
@@ -1041,9 +1168,8 @@ def composed_value(
             if kind == TIME:
                 local = exp.Cast(this=local, to=exp.DataType.build("TIME"))
         offset = exp.Literal.string(_offset_text_of(target))
-    elif zoned_source and time_kind == TIME:
-        assert time_sql is not None
-        offset = _offset_text(_field(time_sql, "TIMEZONE"))
+    elif zoned_source and source_offset is not None:
+        offset = _offset_text(source_offset)
     else:
         offset = exp.Literal.string("+00:00")
     text = exp.DPipe(this=_text(local), expression=offset)
@@ -1126,8 +1252,9 @@ def _other_date_form(
 
 def _offset_text_of(seconds: int) -> str:
     sign = "-" if seconds < 0 else "+"
-    hours, minutes = divmod(abs(seconds) // 60, 60)
-    return f"{sign}{hours:02d}:{minutes:02d}"
+    minutes, rest = divmod(abs(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{sign}{hours:02d}:{minutes:02d}" + (f":{rest:02d}" if rest else "")
 
 
 def temporal_value(
@@ -1135,9 +1262,15 @@ def temporal_value(
     written: list[CypherExpr],
     lower: Callable[[CypherExpr], exp.Expression],
     entry_kind: Callable[[CypherExpr], str | None],
+    *,
+    zone: str | None = None,
+    lower_wall: Callable[[CypherExpr, str | None], exp.Expression] | None = None,
+    zone_of_entry: Callable[[CypherExpr], str | None] | None = None,
 ) -> exp.Expression | None:
-    """date(..), localtime(..), time(..), localdatetime(..) and datetime(..) of text or a map of
-    components; None for the forms the engine's own cast reads (no argument, another value)."""
+    """date(..), localtime(..), time(..), localdatetime(..) and datetime(..) of text, a map of
+    components or another value; None for the forms the engine's own cast reads (no argument, a
+    value with no zone of its own). ``zone`` is the zone the value names (:func:`zone_of`);
+    ``lower_wall`` lowers a date time as its wall clock in a zone (None for its own)."""
     if len(written) != 1:
         return None
     given = written[0]
@@ -1146,8 +1279,24 @@ def temporal_value(
     if isinstance(given, Literal) and given.kind == "string":
         value = text_value(kind, str(given.value))
         return exp.Cast(this=exp.Literal.string(value), to=exp.DataType.build(SQL_TYPES[kind]))
+
+    def lowered(e: CypherExpr, at: str | None) -> exp.Expression:
+        if lower_wall is not None and entry_kind(e) == DATETIME:
+            return lower_wall(e, at)
+        return lower(e)
+
     if not isinstance(given, MapLiteral):
-        return None
+        if entry_kind(given) != DATETIME or kind == DATETIME:
+            return None
+        # A date time's date, time of day or wall clock, read in its own zone.
+        wall = lowered(given, None)
+        if kind != TIME:
+            return exp.Cast(this=wall, to=exp.DataType.build(SQL_TYPES[kind]))
+        clock = _text(exp.Cast(this=wall, to=exp.DataType.build("TIME")))
+        offset = _offset_text(offset_seconds_of(lower(given), zone))
+        return exp.Cast(
+            this=exp.DPipe(this=clock, expression=offset), to=exp.DataType.build("TIMETZ")
+        )
     entries = dict(given.entries)
     written_whole = all(
         isinstance(v, Literal) and (v.kind == "number" or (k == "timezone" and v.kind == "string"))
@@ -1157,7 +1306,24 @@ def temporal_value(
         value = map_value(kind, {k: v.value for k, v in entries.items()})  # type: ignore[union-attr]
         return exp.Cast(this=exp.Literal.string(value), to=exp.DataType.build(SQL_TYPES[kind]))
     sources = {k: entry_kind(v) for k, v in entries.items() if k in ("date", "time", "datetime")}
-    return composed_value(kind, entries, sources, lower)
+    clock = entries.get("time", entries.get("datetime"))
+    clock_kind = entry_kind(clock) if clock is not None else None
+    source_offset: exp.Expression | None = None
+    if clock is not None and clock_kind == DATETIME:
+        source_offset = offset_seconds_of(
+            lower(clock), zone_of_entry(clock) if zone_of_entry else None
+        )
+    elif clock is not None and clock_kind == TIME:
+        source_offset = _whole(_field(lower(clock), "TIMEZONE"))
+    return composed_value(
+        kind,
+        entries,
+        sources,
+        lambda e: lowered(e, None),
+        zone=zone,
+        source_zone=zone_of_entry(clock) if zone_of_entry and clock is not None else None,
+        source_offset=source_offset,
+    )
 
 
 # --------------------------------------------------------------------------- truncate
@@ -1182,10 +1348,13 @@ def truncated(
     written: list[CypherExpr],
     value_kind: str | None,
     lower: Callable[[CypherExpr], exp.Expression],
+    *,
+    zone: str | None = None,
 ) -> exp.Expression:
     """<kind>.truncate(unit, value[, components]): ``value`` cut to the start of its ``unit``
     (millennium, century, decade, year, weekYear, quarter, month, week, day, hour, minute,
-    second, millisecond, microsecond), as a ``kind``, then the components given put in."""
+    second, millisecond, microsecond), as a ``kind``, then the components given put in. ``lower``
+    gives a date time's wall clock; a date time result is in ``zone``."""
     if len(written) not in (2, 3):
         raise CypherTranslateError(f"{kind}.truncate() takes a unit, a value and a map")
     unit_given, value_given = written[0], written[1]
@@ -1250,8 +1419,10 @@ def truncated(
         raise CypherTranslateError(f"{kind}.truncate() takes its components as a map")
     entries = dict(components.entries) if components is not None else {}
     if not entries:
+        if kind == DATETIME:
+            return zoned(cut, zone)
         return exp.Cast(this=cut, to=exp.DataType.build(SQL_TYPES[kind]))
-    return composed_value(kind, entries, {}, lower, base=cut, base_kind=LOCALDATETIME)
+    return composed_value(kind, entries, {}, lower, base=cut, base_kind=LOCALDATETIME, zone=zone)
 
 
 # --------------------------------------------------------------------------- date and time properties
@@ -1261,12 +1432,30 @@ def _whole(e: exp.Expression) -> exp.Expression:
     return exp.Cast(this=e, to=exp.DataType.build("BIGINT"))
 
 
-def value_property(kind: str, value: exp.Expression, name: str) -> exp.Expression:
+def value_property(
+    kind: str, value: exp.Expression, name: str, zone: str | None = None
+) -> exp.Expression:
     """``v.name`` of a date, time or date time (openCypher's accessors): year, quarter, month,
     week, weekYear, day, ordinalDay, weekDay/dayOfWeek, dayOfQuarter, hour, minute, second,
     millisecond, microsecond, nanosecond, offsetSeconds, offsetMinutes, offset, epochSeconds,
     epochMillis."""
     key = name.lower()
+    instant = value
+    if kind == DATETIME:
+        if key == "timezone":
+            return exp.Literal.string(zone or "Z")
+        if key in ("offsetseconds", "offsetminutes", "offset"):
+            seconds = offset_seconds_of(instant, zone)
+            if key == "offsetseconds":
+                return seconds
+            if key == "offsetminutes":
+                return _int_div(seconds, 60)
+            return _offset_text(seconds) if zone else exp.Literal.string("Z")
+        if key not in ("epochseconds", "epochmillis"):
+            # Its parts are its wall clock's, in its zone.
+            value = wall_clock(value, zone)
+    if kind == TIME and key == "timezone":
+        return _offset_text(_whole(_field(value, "TIMEZONE")))
     fields = {
         "year": "YEAR",
         "quarter": "QUARTER",
@@ -1303,7 +1492,7 @@ def value_property(kind: str, value: exp.Expression, name: str) -> exp.Expressio
         if key == "microsecond":
             return _whole(within)
         return exp.Mul(this=_whole(within), expression=exp.Literal.number(1000))
-    if kind in (TIME, DATETIME) and key in ("offsetseconds", "offsetminutes", "offset"):
+    if kind == TIME and key in ("offsetseconds", "offsetminutes", "offset"):
         seconds = _whole(_field(value, "TIMEZONE"))
         if key == "offsetseconds":
             return seconds
@@ -1311,7 +1500,7 @@ def value_property(kind: str, value: exp.Expression, name: str) -> exp.Expressio
             return _int_div(seconds, 60)
         return _offset_text(seconds)
     if kind in (DATETIME, LOCALDATETIME) and key in ("epochseconds", "epochmillis"):
-        epoch = _field(value, "EPOCH")
+        epoch = _field(instant, "EPOCH")
         if key == "epochseconds":
             return _whole(exp.Anonymous(this="FLOOR", expressions=[epoch]))
         return _whole(
@@ -1320,3 +1509,138 @@ def value_property(kind: str, value: exp.Expression, name: str) -> exp.Expressio
             )
         )
     raise CypherTranslateError(f"a {kind} has no property {name!r}")
+
+
+# --------------------------------------------------------------------------- zones
+#
+# A zone a query names (an offset or a region, in a literal or with timezone:) is computed with by
+# the engine and travels with the expression only so the answer presents it as openCypher writes
+# it: 2015-07-21T21:40:32.142+01:00[Europe/Stockholm]. A column's value names none (REQ-2173).
+
+
+def _named_zone(text: str) -> str | None:
+    """A zone as a query writes it, in one form: a region name, or an offset +hh:mm[:ss]; None
+    for UTC, which the answer writes as Z."""
+    import datetime as _dt
+
+    if text in ("Z", "UTC") or re.fullmatch(r"[-+]00(:?00)?(:?00)?", text):
+        return None
+    tz = _offset_of(text)
+    if isinstance(tz, _dt.timezone):
+        offset = tz.utcoffset(None)
+        return _offset_text_of(int(offset.total_seconds())) if offset else None
+    return text
+
+
+def _zone_of_text(text: str) -> str | None:
+    m = re.search(r"\[([^\]]+)\]$", text)
+    if m is not None:
+        return _named_zone(m.group(1))
+    m = re.search(r"(Z|[-+]\d{2}(?::?\d{2}(?::?\d{2})?)?)$", text.split("T")[-1])
+    return _named_zone(m.group(1)) if m is not None else None
+
+
+def zone_of(
+    expr: CypherExpr,
+    zones: Mapping[str, str],
+    kind: Callable[[CypherExpr], str | None],
+) -> str | None:
+    """The zone ``expr`` names, for a time or date time a query builds; None for UTC or none."""
+    if isinstance(expr, Paren):
+        return zone_of(expr.inner, zones, kind)
+    if isinstance(expr, Variable):
+        return zones.get(expr.name)
+    if isinstance(expr, Binary) and expr.op in ("+", "-"):
+        for side in (expr.left, expr.right):
+            if kind(side) in (TIME, DATETIME):
+                return zone_of(side, zones, kind)
+        return None
+    if not isinstance(expr, FunctionCall):
+        return None
+    name, _, clock = expr.name.lower().partition(".")
+    if name not in (TIME, DATETIME):
+        return None
+    args = expr.args
+    if clock == "truncate":
+        given = args[2] if len(args) == 3 else None
+        if isinstance(given, MapLiteral):
+            for key, value in given.entries:
+                if key == "timezone" and isinstance(value, Literal):
+                    return _named_zone(str(value.value))
+        return zone_of(args[1], zones, kind) if len(args) > 1 else None
+    if clock or len(args) != 1:
+        return None
+    given = args[0]
+    if isinstance(given, Literal) and given.kind == "string":
+        return _zone_of_text(str(given.value))
+    if isinstance(given, MapLiteral):
+        entries = dict(given.entries)
+        zone = entries.get("timezone")
+        if isinstance(zone, Literal) and zone.kind == "string":
+            return _named_zone(str(zone.value))
+        source = entries.get("datetime", entries.get("time"))
+        return zone_of(source, zones, kind) if source is not None else None
+    return zone_of(given, zones, kind)
+
+
+def is_region(zone: str | None) -> bool:
+    return zone is not None and not re.match(r"[-+]", zone)
+
+
+def wall_clock(value: exp.Expression, zone: str | None) -> exp.Expression:
+    """A date time's wall clock in its zone (a timestamp without one): the engine's zone rules for
+    a region, its offset added for an offset, UTC for none."""
+    if is_region(zone):
+        return exp.AtTimeZone(this=exp.Paren(this=value), zone=exp.Literal.string(str(zone)))
+    as_utc = exp.Cast(this=value, to=exp.DataType.build("TIMESTAMP"))
+    if zone is None:
+        return as_utc
+    seconds = _offset_seconds(zone)
+    return exp.Add(
+        this=as_utc, expression=_times(exp.Literal.number(seconds * _MICROS), "microsecond")
+    )
+
+
+def zoned(wall: exp.Expression, zone: str | None) -> exp.Expression:
+    """A wall clock (a timestamp without a zone) in ``zone``: the instant it is there."""
+    if is_region(zone):
+        return exp.AtTimeZone(this=exp.Paren(this=wall), zone=exp.Literal.string(str(zone)))
+    text = exp.DPipe(this=_text(wall), expression=exp.Literal.string(zone or "+00:00"))
+    return exp.Cast(this=text, to=exp.DataType.build("TIMESTAMPTZ"))
+
+
+def returned_in_zone(value: exp.Expression, zone: str) -> exp.Expression:
+    """A date time with a zone as it leaves the engine: its instant (microseconds since the epoch)
+    and the zone, which :func:`zoned_text` writes it in."""
+    if isinstance(value, exp.Null):
+        return value
+    micros = exp.Cast(
+        this=exp.Anonymous(
+            this="ROUND",
+            expressions=[
+                exp.Mul(this=_field(value, "EPOCH"), expression=exp.Literal.number(_MICROS))
+            ],
+        ),
+        to=exp.DataType.build("BIGINT"),
+    )
+    return exp.Array(expressions=[_text(micros), exp.Literal.string(zone)])
+
+
+def zoned_text(micros: int, zone: str) -> str:
+    """openCypher's text of an instant in a zone: 2015-07-21T21:40:32.142+01:00[Europe/Stockholm]."""
+    import datetime as _dt
+
+    instant = _dt.datetime(1970, 1, 1, tzinfo=_dt.timezone.utc) + _dt.timedelta(microseconds=micros)
+    tz = _offset_of(zone)
+    assert tz is not None
+    text = cypher_text(instant.astimezone(tz))
+    return f"{text}[{zone}]" if is_region(zone) else text
+
+
+def offset_seconds_of(value: exp.Expression, zone: str | None) -> exp.Expression:
+    """A date time's offset from UTC, in seconds, in its zone at its instant."""
+    if zone is None:
+        return exp.Literal.number(0)
+    wall = exp.Cast(this=wall_clock(value, zone), to=exp.DataType.build("TIMESTAMP"))
+    utc = exp.Cast(this=value.copy(), to=exp.DataType.build("TIMESTAMP"))
+    return _whole(exp.Sub(this=_field(wall, "EPOCH"), expression=_field(utc, "EPOCH")))
