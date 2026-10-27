@@ -26567,3 +26567,15 @@ Every 3D stage (BaseScene: the graph explorer, the inline product graph, the Ont
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2175 · Protocol Conformance {#REQ-2175}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Provisa's Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow's FlightSql.proto), so standard Flight SQL clients (the ADBC Flight SQL driver, the JDBC Flight SQL driver, tools built on them) connect and query it. It decodes the Flight SQL commands (statement query, prepared statement query and update, SqlInfo, catalogs, database schemas, tables, table types, primary keys, imported and exported keys, cross reference), the actions (create and close a prepared statement, get and set session options) and DoPut for bound parameters, and answers each through the one governed SQL pipeline the endpoint's native tickets already use, under the caller's role, so a Flight SQL read is governed exactly as a pgwire or HTTP SQL read is. The endpoint's native Flight protocol (path descriptors, JSON tickets) keeps working beside it. Catalog answers show what the caller is served. Object creation stays out of scope by design ([REQ-2167](#REQ-2167)): a Flight SQL statement may create a session temp table where pgwire allows one. Conformance is measured by the ADBC driver validation suite ([REQ-2167](#REQ-2167)).
+
+**Code:** —
+
+**Tests:** —

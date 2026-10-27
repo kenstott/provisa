@@ -89545,3 +89545,29 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And no two node labels overlap on screen
 
     And when turning pauses after idle the camera eases back to that view'
+- id: REQ-2175
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Protocol Conformance
+  feature: federation-and-routing-governed-pipeline
+  priority: MUST
+  type: behavioral
+  description: 'Provisa''s Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow''s FlightSql.proto),
+    so standard Flight SQL clients (the ADBC Flight SQL driver, the JDBC Flight SQL driver, tools built
+    on them) connect and query it. It decodes the Flight SQL commands (statement query, prepared statement
+    query and update, SqlInfo, catalogs, database schemas, tables, table types, primary keys, imported
+    and exported keys, cross reference), the actions (create and close a prepared statement, get and set
+    session options) and DoPut for bound parameters, and answers each through the one governed SQL pipeline
+    the endpoint''s native tickets already use, under the caller''s role, so a Flight SQL read is governed
+    exactly as a pgwire or HTTP SQL read is. The endpoint''s native Flight protocol (path descriptors,
+    JSON tickets) keeps working beside it. Catalog answers show what the caller is served. Object creation
+    stays out of scope by design (REQ-2167): a Flight SQL statement may create a session temp table where
+    pgwire allows one. Conformance is measured by the ADBC driver validation suite (REQ-2167).'
+  scenario: 'Given a Flight SQL client using the ADBC Flight SQL driver signed in as a role
+
+    When it runs a prepared statement with a bound parameter and lists the tables
+
+    Then the rows and the table list are those the role is served
+
+    And the same query over pgwire answers the same rows'
