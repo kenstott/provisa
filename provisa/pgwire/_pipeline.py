@@ -3330,8 +3330,11 @@ async def _execute_plan_bound(plan: _Plan, state: Any) -> QueryResult:
     if plan.columns is not None and plan.two_step is None:
         from provisa.codesource.columns_fold import apply as _apply_columns
 
-        # REQ-2131: each call's input columns become the outputs its function returned per row.
-        result = await _apply_columns(result, plan.columns.calls, state)
+        # REQ-2131: each call's input columns become the outputs its function returned per row,
+        # the read streamed through the source's workers. This terminal answers whole (such a plan
+        # is not streamable), so the answered batches are gathered here: the read itself is never
+        # held whole beside them.
+        result = (await _apply_columns(result, plan.columns.calls, state)).materialize()
     if plan.temp is not None:
         from provisa.pgwire.temp_exec import apply
 

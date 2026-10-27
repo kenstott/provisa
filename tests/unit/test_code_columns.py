@@ -22,15 +22,16 @@ lineage."""
 from __future__ import annotations
 
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
 
 from provisa.codesource import columns as columns_mod
-from provisa.codesource.columns import BATCH, ColumnTransformRefused, contract, transform
+from provisa.codesource.columns import BATCH, ColumnTransformRefused, contract
 from provisa.codesource.columns_fold import ColumnsCall, apply, fold, reshape
 from provisa.codesource.manifest import NODE_RULES, read_manifest
-from provisa.executor.result import QueryResult
+from provisa.executor.result import QueryResult, StreamingQueryResult
 
 pytestmark = pytest.mark.unit
 
@@ -125,16 +126,112 @@ def test_the_contract_is_the_functions_input_and_output_columns():
     )
 
 
+def _streamed(rows: int, chunk: int, read: list) -> StreamingQueryResult:
+    """A read of ``rows`` addresses, streamed in record batches of ``chunk`` rows; ``read`` holds
+    the rows pulled so far, after each pull."""
+
+    def batches():
+        for at in range(0, rows, chunk):
+            batch = [(i, f"{i} Main St,Springfield,US") for i in range(at, min(at + chunk, rows))]
+            read.append(at + len(batch))
+            yield batch
+
+    return StreamingQueryResult(
+        batches(), ["id", "__provisa_columns_0_0"], column_types=["integer", "text"]
+    )
+
+
+async def _applied(read: StreamingQueryResult):
+    folded = fold(
+        "SELECT id, clean_address(raw_address) FROM t",
+        {"clean_address": COMMAND},
+        lambda c, n: None,
+    )
+    return await apply(
+        read, folded.calls, SimpleNamespace(column_transforms={"clean_address": COMMAND})
+    )
+
+
+def _expected(rows: int) -> list[tuple]:
+    return [(i, f"{i} Main St", "Springfield", "US") for i in range(rows)]
+
+
 @pytest.mark.asyncio
 async def test_batches_run_in_parallel_across_the_sources_workers_each_row_its_own_result(
     monkeypatch,
 ):
     rows = 3 * BATCH + 5
     seen = _prepared(monkeypatch, workers=3, barrier=threading.Barrier(3))
-    raw = [f"{i} Main St,Springfield,US" for i in range(rows)]
-    results = await transform(None, COMMAND, [raw])
-    assert results == [_split(r) for r in raw]  # each row's values, in order
+    done = await _applied(_streamed(rows, BATCH, []))
+    assert done.column_names == ["id", "street", "city", "country"]
+    assert done.rows == _expected(rows)  # each row's values, in order
     assert sorted(seen) == [(0, 5), (0, BATCH), (1, BATCH), (2, BATCH)]
+
+
+@pytest.mark.asyncio
+async def test_record_batches_are_cut_again_into_batches_of_1000_rows(monkeypatch):
+    seen = _prepared(monkeypatch, workers=2)
+    done = await _applied(_streamed(2 * BATCH + 300, 700, []))
+    assert done.rows == _expected(2 * BATCH + 300)  # read through: the batches run as it is
+    assert sorted(n for _, n in seen) == [300, BATCH, BATCH]
+
+
+@pytest.mark.asyncio
+async def test_the_first_rows_are_answered_before_the_last_are_read(monkeypatch):
+    _prepared(monkeypatch, workers=2)
+    read: list = []
+    batches = (await _applied(_streamed(20 * BATCH, BATCH, read))).batches()
+    assert next(batches) == _expected(BATCH)
+    assert read[-1] < 20 * BATCH  # the result is not read whole first
+    batches.close()
+
+
+@pytest.mark.asyncio
+async def test_no_more_batches_are_held_than_the_source_has_workers(monkeypatch):
+    workers, rows = 3, 30 * BATCH
+    running, most = [0], [0]
+    lock = threading.Lock()
+
+    class Counting(_Worker):
+        def columns(self, export, columns, names, *, schema):
+            with lock:
+                running[0] += 1
+                most[0] = max(most[0], running[0])
+            time.sleep(0.002)
+            with lock:
+                running[0] -= 1
+            return [_split(raw) for raw in columns[0]]
+
+    async def prepared(_state, _source_id):
+        return SimpleNamespace(
+            manifest=MANIFEST, workers=workers, worker=lambda slot: Counting(slot, [], None, False)
+        )
+
+    monkeypatch.setattr(columns_mod, "_prepared", prepared)
+    read: list = []
+    out = []
+    for k, batch in enumerate((await _applied(_streamed(rows, BATCH, read))).batches()):
+        # Before the k-th answered batch is passed on, at most ``workers`` more were read for it.
+        assert read[-1] <= (k + 1 + workers) * BATCH
+        out.extend(batch)
+    assert most[0] <= workers
+    assert out == _expected(rows)
+
+
+@pytest.mark.asyncio
+async def test_rows_keep_their_order_whichever_worker_answers_first(monkeypatch):
+    class Slow(_Worker):
+        def columns(self, export, columns, names, *, schema):
+            time.sleep(0.05 if self.slot == 0 else 0)  # the first batch answered last
+            return [_split(raw) for raw in columns[0]]
+
+    async def prepared(_state, _source_id):
+        return SimpleNamespace(
+            manifest=MANIFEST, workers=4, worker=lambda slot: Slow(slot, [], None, False)
+        )
+
+    monkeypatch.setattr(columns_mod, "_prepared", prepared)
+    assert (await _applied(_streamed(8 * BATCH, BATCH, []))).rows == _expected(8 * BATCH)
 
 
 @pytest.mark.asyncio
@@ -142,8 +239,9 @@ async def test_a_batch_answered_with_fewer_results_than_rows_is_refused_naming_t
     monkeypatch,
 ):
     _prepared(monkeypatch, workers=1, short=True)
+    done = await _applied(_streamed(2, 2, []))
     with pytest.raises(ColumnTransformRefused) as refused:
-        await transform(None, COMMAND, [["1 Main St,Springfield,US", "2 High St,Leeds,UK"]])
+        done.rows
     assert refused.value.params["function"] == "clean_address"
     assert "returned 1 results for a batch of 2 rows" in str(refused.value)
 
@@ -213,11 +311,7 @@ def test_a_statement_that_calls_none_is_left_as_it_is():
 
 @pytest.mark.asyncio
 async def test_once_read_each_rows_inputs_become_its_output_columns(monkeypatch):
-    async def run(_state, command, inputs):
-        assert command is COMMAND
-        return [_split(raw) for raw in inputs[0]]
-
-    monkeypatch.setattr(columns_mod, "transform", run)
+    _prepared(monkeypatch, workers=1)
     folded = _fold("SELECT id, clean_address(raw_address), name FROM sales.suppliers")
     read = QueryResult(
         rows=[(1, "1 Main St,Springfield,US", "Acme"), (2, "2 High St,Leeds,UK", "Brit")],
