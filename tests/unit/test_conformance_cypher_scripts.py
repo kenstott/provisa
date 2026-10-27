@@ -152,8 +152,9 @@ def test_each_scenario_passes_fails_or_is_not_runnable(scenarios, monkeypatch):
         "passed",
     ]
     doc = tck.report(outcomes, "2024.3")
-    assert (doc["ran"], doc["passed"], doc["not_runnable"]) == (4, 3, 1)
-    assert doc["pass_rate"] == 0.75
+    # [3] builds its graph only as setup: adapted, not excluded, so a failure until it is.
+    assert (doc["ran"], doc["passed"], doc["not_runnable"]) == (5, 3, 0)
+    assert doc["pass_rate"] == 0.6
     assert doc["failures"][0]["scenario"] == "[2] Add numbers #2"
 
 
@@ -218,7 +219,7 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
         '<testsuites><testsuite name="pytest">'
         '<testcase classname="tests.integration.examples" name="test_ok"/>'
         '<testcase classname="tests.integration.examples" name="test_detach">'
-        "<failure message=\"CypherSyntaxError: Cypher write pattern 'DETACH' is not supported\">"
+        '<failure message="CypherSyntaxError: Cypher write patterns cannot target relationships">'
         "t</failure></testcase>"
         '<testcase classname="tests.integration.examples" name="test_bookmark">'
         '<failure message="assert Bookmarks">t</failure></testcase>'
@@ -228,18 +229,18 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
     assert (doc["ran"], doc["passed"], doc["failed"], doc["not_runnable"]) == (2, 1, 1, 1)
     assert doc["by_design"] == [
         {
-            "group": "DETACH DELETE",
-            "requirement": "REQ-671",
-            "decision": "DETACH DELETE is not supported; a client deletes each table in "
-            "dependency order.",
+            "group": "Writes to relationships",
+            "requirement": "REQ-665",
+            "decision": '"CREATE, SET, and DELETE cannot target relationship entities. '
+            'Attempting to write a relationship is a hard error at translation time."',
             "count": 1,
         }
     ]
     assert [f["scenario"] for f in doc["failures"]] == ["test_bookmark"]
     _, _, rate, cases = fill_docs.read(doc)
     assert rate == "50.0% (1 of 2); 1 cases not runnable by design"
-    assert "| DETACH DELETE | 1 | DETACH DELETE is not supported" in cases
-    assert "| REQ-671 |" in cases
+    assert "| Writes to relationships | 1 |" in cases
+    assert "| REQ-665 |" in cases
 
 
 def test_a_group_with_no_requirement_is_refused(tmp_path, monkeypatch):
@@ -250,15 +251,18 @@ def test_a_group_with_no_requirement_is_refused(tmp_path, monkeypatch):
 
 
 def test_a_scenario_not_run_with_no_decision_behind_it_is_a_failure():
+    """A setup that builds its graph is adapted, not excluded (REQ-2167, amended 2026-10-27):
+    until it is, it is a failure, as a scenario with no decision behind it is."""
     outcomes = [
         tck.Outcome("F", "built", "not_runnable", "its setup builds its graph with a statement"),
         tck.Outcome("F", "control", "not_runnable", "checks state with a control query"),
+        tck.Outcome("F", "label", "failed", "refused (400): There is no label :Person."),
         tck.Outcome("F", "ok", "passed"),
     ]
     doc = tck.report(outcomes, "2024.3")
-    assert (doc["passed"], doc["failed"], doc["not_runnable"]) == (1, 1, 1)
-    assert doc["by_design"][0]["requirement"] == "REQ-351, REQ-661"
-    assert doc["failures"][0]["scenario"] == "control"
+    assert (doc["passed"], doc["failed"], doc["not_runnable"]) == (1, 2, 1)
+    assert [g["requirement"] for g in doc["by_design"]] == ["REQ-778"]
+    assert [f["scenario"] for f in doc["failures"]] == ["built", "control"]
 
 
 def test_an_expected_value_below_the_microsecond_is_named():
