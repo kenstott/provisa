@@ -653,12 +653,17 @@ export default defineConfig({
               ...PROVISIONING_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
+            // Reduced motion: no 3D stage turns while a spec reads its page, and a camera jumps
+            // where it would fly (profile3d/baseScene.ts). CI draws WebGL in software, and a stage
+            // turning for a whole test held SwiftShader's GPU process at most of a core.
+            use: { reducedMotion: "reduce" },
           },
           {
             // Run with --workers=1, after "core" (see PROVISIONING_SPECS).
             name: "core-provisioning",
             testMatch: PROVISIONING_SPECS,
             testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
+            use: { reducedMotion: "reduce" },
           },
         ]
       : []),
