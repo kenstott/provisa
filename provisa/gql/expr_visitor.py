@@ -1093,6 +1093,11 @@ class ExprLowering:
         ):
             # m['k'] is m.k: the key's value as it is, not its JSON.
             return self.lower(Property(obj=node.obj, name=str(node.index.value)))
+        if self._ctx.is_text(node.obj):
+            # openCypher's TypeError (InvalidArgumentType): a string has no elements to index.
+            raise CypherTranslateError(
+                "A string cannot be indexed like a list; use substring(s, i, 1) for a character"
+            )
         # Cypher lists are 0-indexed; the engine element_at is 1-indexed → shift positive indices.
         base = self.lower(node.obj)
         idx = self.lower(node.index)

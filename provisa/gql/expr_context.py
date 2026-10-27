@@ -30,6 +30,7 @@ from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
 from provisa.gql.expr_ast import (
     CypherExpr,
     MapProjection,
+    Parameter,
     PatternComprehension,
     Property,
     SubqueryExpr,
@@ -330,6 +331,9 @@ class TranslatorExprContext:
             return expr.kind == "string"
         if isinstance(expr, Variable):
             return expr.name in self._t._text_vars
+        if isinstance(expr, Parameter):
+            # The value the client gives it, a string.
+            return expr.name in self._t._params and isinstance(self._t._params[expr.name], str)
         if isinstance(expr, Property):
             if not isinstance(expr.obj, Variable):
                 return False

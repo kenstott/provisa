@@ -252,3 +252,18 @@ def test_a_slice_counts_a_negative_bound_from_the_end(query, row):
 )
 def test_a_computed_index_is_zero_based(query, rows):
     assert _rows(query) == rows
+
+
+@pytest.mark.parametrize(
+    ("query", "params"),
+    [
+        # List1 [6], [7]: openCypher's TypeError, a string indexed like a list.
+        ("WITH '1' AS list, 0 AS idx RETURN list[idx]", {}),
+        ("WITH $expr AS list, $idx AS idx RETURN list[idx]", {"expr": "1", "idx": 0}),
+    ],
+)
+def test_a_string_indexed_like_a_list_is_refused(query, params):
+    from provisa.gql.translator_types import CypherTranslateError
+
+    with pytest.raises(CypherTranslateError, match="cannot be indexed like a list"):
+        cypher_to_sql(parse_cypher(query), _EMPTY, params)
