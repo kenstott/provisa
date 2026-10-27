@@ -36,6 +36,7 @@ from provisa.gql.expr_ast import (
     CypherExpr,
     FunctionCall,
     Index,
+    AxiomObject,
     IriConst,
     IsNull,
     LabelPredicate,
@@ -53,6 +54,7 @@ from provisa.gql.expr_ast import (
     Slice,
     SubqueryExpr,
     Term,
+    TermIri,
     TypedLiteral,
     Unary,
     Variable,
@@ -512,6 +514,20 @@ class ExprLowering:
     def _lower_IriConst(self, node: IriConst) -> exp.Expression:
         raise CypherTranslateError(
             f"<{node.iri}> is a value of the answer only: a subject is compared through its key"
+        )
+
+    def _lower_TermIri(self, node: TermIri) -> exp.Expression:
+        # Compared, ordered or filtered on, a term is its name (REQ-2163).
+        return self.lower(node.value)
+
+    def _lower_AxiomObject(self, node: AxiomObject) -> exp.Expression:
+        # Compared, ordered or filtered on, an axiom's object is whichever value its row holds.
+        return exp.Coalesce(
+            this=self.lower(Property(Variable(node.node), "object")),
+            expressions=[
+                self.lower(Property(Variable(node.node), "object_iri")),
+                self.lower(Property(Variable(node.node), "object_literal")),
+            ],
         )
 
     def _lower_Term(self, node: Term) -> exp.Expression:

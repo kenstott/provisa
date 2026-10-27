@@ -21,6 +21,7 @@ import pytest
 
 from provisa.api._meta_seed import META_RELATIONSHIPS
 from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 
 # The base tables the glossary and tag views read, with exactly the columns they select.
 _BASE_DDL = """
@@ -58,11 +59,11 @@ CREATE TABLE tag_assignments (
 
 _VIEWS = (
     # First: the other glossary views read each term's domains from it (REQ-1593).
-    "glossary_term_domains",
-    "glossary_terms",
-    "glossary_term_refs",
-    "glossary_term_edges",
-    "glossary_term_experts",
+    "_domains",
+    "_terms",
+    "_term_refs",
+    "_term_edges",
+    "_experts",
     "table_columns",
     "tag_assignments",
 )
@@ -91,7 +92,11 @@ def db() -> sqlite3.Connection:
     for name in _VIEWS:
         # SQLite has no CREATE OR REPLACE VIEW — startup_seed adapts the same way.
         conn.executescript(
-            re.sub(r"CREATE\s+OR\s+REPLACE\s+VIEW", "CREATE VIEW", _META_TABLE_VIEWS[name])
+            re.sub(
+                r"CREATE\s+OR\s+REPLACE\s+VIEW",
+                "CREATE VIEW",
+                {**_META_TABLE_VIEWS, **ONTOLOGY_TABLE_VIEWS}[name],
+            )
         )
 
     conn.execute(
@@ -152,7 +157,7 @@ class TestGlossaryMetaViews:
     ) -> None:
         rows = {
             r["id"]: r
-            for r in db.execute("SELECT id, ref_count, is_rooted, live FROM glossary_terms_meta")
+            for r in db.execute("SELECT id, ref_count, is_rooted, live FROM _terms_ontology")
         }
         assert (rows["t-user"]["ref_count"], rows["t-user"]["is_rooted"]) == (1, 1)
         assert rows["t-user"]["live"] == 1
@@ -175,7 +180,7 @@ class TestGlossaryMetaViews:
         db.execute("INSERT INTO relationships VALUES ('r79', 7, 9, 0, 'org1')")
         gap = lambda: {  # noqa: E731
             r["id"]: r["identity_gap"]
-            for r in db.execute("SELECT id, identity_gap FROM glossary_terms_meta")
+            for r in db.execute("SELECT id, identity_gap FROM _terms_ontology")
         }
         assert gap() == {"t-user": 0, "t-party": 1, "t-old": 0}
         db.execute("INSERT INTO relationships VALUES ('r98', 9, 8, 1, 'org1')")
@@ -185,7 +190,7 @@ class TestGlossaryMetaViews:
         self, db: sqlite3.Connection
     ) -> None:
         row = db.execute(
-            "SELECT retired, export_excluded, live FROM glossary_terms_meta WHERE id = 't-old'"
+            "SELECT retired, export_excluded, live FROM _terms_ontology WHERE id = 't-old'"
         ).fetchone()
         assert (row["retired"], row["export_excluded"]) == (1, 1)
         # Retired means out of service, so it grounds nothing — but it is still returned.
@@ -196,7 +201,7 @@ class TestGlossaryMetaViews:
     ) -> None:
         row = db.execute(
             "SELECT r.column_key, c.alias, c.masks"
-            " FROM glossary_term_refs_meta r"
+            " FROM _term_refs_ontology r"
             " JOIN table_columns_meta c ON c.column_key = r.column_key"
         ).fetchone()
         assert row["column_key"] == "7:usr_nm"
@@ -205,9 +210,7 @@ class TestGlossaryMetaViews:
     def test_the_edge_view_names_both_endpoints_beside_their_ids(
         self, db: sqlite3.Connection
     ) -> None:
-        row = db.execute(
-            "SELECT from_term, to_term, rel_type FROM glossary_term_edges_meta"
-        ).fetchone()
+        row = db.execute("SELECT from_term, to_term, rel_type FROM _term_edges_ontology").fetchone()
         assert (row["from_term"], row["to_term"], row["rel_type"]) == (
             "user name",
             "party",
@@ -229,8 +232,8 @@ class TestTagGraphMetaJoins:
         self, db: sqlite3.Connection
     ) -> None:
         rows = db.execute(
-            "SELECT a.id, a.tag_id FROM glossary_terms_meta t"
-            " JOIN glossary_term_refs_meta r ON r.term_id = t.id"
+            "SELECT a.id, a.tag_id FROM _terms_ontology t"
+            " JOIN _term_refs_ontology r ON r.term_id = t.id"
             " JOIN tag_assignments_meta a ON a.column_key = r.column_key"
             " WHERE t.id = 't-user'"
         ).fetchall()
@@ -240,8 +243,8 @@ class TestTagGraphMetaJoins:
     @pytest.mark.parametrize(
         "rel_id,source,target",
         [
-            ("meta:table_columns:glossary_term_refs", "table_columns", "glossary_term_refs"),
-            ("meta:glossary_term_refs:table_columns", "glossary_term_refs", "table_columns"),
+            ("meta:table_columns:_term_refs", "table_columns", "_term_refs"),
+            ("ontology:_term_refs:table_columns", "_term_refs", "table_columns"),
             ("meta:table_columns:tag_assignments", "table_columns", "tag_assignments"),
             ("meta:tag_assignments:table_columns", "tag_assignments", "table_columns"),
         ],
@@ -255,10 +258,8 @@ class TestTagGraphMetaJoins:
         assert (rel[3], rel[4]) == ("column_key", "column_key")
 
     def test_a_columns_tags_hang_off_the_column_not_its_glossary_ref(self) -> None:
-        """glossary_term_refs is a junction (term -> column): nothing hangs off it, so a column's
+        """_term_refs is a junction (term -> column): nothing hangs off it, so a column's
         tags are reached from table_columns alone."""
         assert not [
-            r[0]
-            for r in META_RELATIONSHIPS
-            if {r[2], r[7]} == {"glossary_term_refs", "tag_assignments"}
+            r[0] for r in META_RELATIONSHIPS if {r[2], r[7]} == {"_term_refs", "tag_assignments"}
         ]

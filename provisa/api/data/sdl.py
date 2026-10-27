@@ -57,7 +57,7 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
     return reachable
 
 
-_ALWAYS_VISIBLE_DOMAINS = {"meta", "ops"}
+_ALWAYS_VISIBLE_DOMAINS = {"meta", "ops", "ontology"}
 
 
 def require_reached_domains(role_id: str, role: dict, domain_ids: list[str]) -> None:  # REQ-039

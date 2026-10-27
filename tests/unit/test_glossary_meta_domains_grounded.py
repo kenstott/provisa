@@ -10,8 +10,8 @@
 
 """REQ-1591, REQ-1387: a term's domains and its groundedness in the meta domain.
 
-glossary_term_domains_meta restates provisa.core.repositories.glossary.term_domains (a term's
-refs' domains while it holds refs, its declared domains otherwise) and glossary_terms_meta.grounded
+_domains_ontology restates provisa.core.repositories.glossary.term_domains (a term's
+refs' domains while it holds refs, its declared domains otherwise) and _terms_ontology.grounded
 restates provisa.core.glossary.grounded_term_ids (connected over in-service edges to a term holding
 a ref, defined or not). Both run on the real control plane and are checked against the Python rule
 they restate.
@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.api._meta_seed import META_RELATIONSHIPS
-from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 
 # Terms: ROOTED holds a ref (and a stale declared domain); ABSTRACT declares the enterprise scope;
 # BARE has neither; UNDEFINED has no definition but an edge to ROOTED; RETIRED is out of service.
@@ -87,21 +87,17 @@ async def test_domains_and_groundedness_restate_the_python_rules(control_plane):
     try:
         async with db.acquire() as conn:
             await _seed(conn)
-            for name in ("glossary_term_domains", "glossary_terms"):
-                await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
+            for name in ("_domains", "_terms"):
+                await conn.execute(_adapt_view_ddl(ONTOLOGY_TABLE_VIEWS[name]))
             view_domains: dict[int, set[str]] = {}
             for r in (
-                await conn.execute_core(
-                    text("SELECT term_id, domain_id FROM glossary_term_domains_meta")
-                )
+                await conn.execute_core(text("SELECT term_id, domain_id FROM _domains_ontology"))
             ).fetchall():
                 view_domains.setdefault(r.term_id, set()).add(r.domain_id)
             flags = {
                 r.id: (r.grounded, r.live)
                 for r in (
-                    await conn.execute_core(
-                        text("SELECT id, grounded, live FROM glossary_terms_meta")
-                    )
+                    await conn.execute_core(text("SELECT id, grounded, live FROM _terms_ontology"))
                 ).fetchall()
             }
             python_domains = await term_domains(conn)
@@ -129,18 +125,8 @@ async def test_domains_and_groundedness_restate_the_python_rules(control_plane):
 
 def test_a_term_reaches_its_domains_and_back():
     edges = {r[0]: (r[2], r[3], r[4], r[7]) for r in META_RELATIONSHIPS}
-    assert edges["meta:glossary_terms:domains"] == (
-        "glossary_terms",
-        "id",
-        "term_id",
-        "glossary_term_domains",
-    )
-    assert edges["meta:glossary_term_domains:term"] == (
-        "glossary_term_domains",
-        "term_id",
-        "id",
-        "glossary_terms",
-    )
+    assert edges["ontology:_terms:domains"] == ("_terms", "id", "term_id", "_domains")
+    assert edges["ontology:_domains:term"] == ("_domains", "term_id", "id", "_terms")
 
 
 # REQ-1593: the readable-term scope. SALES binds a sales column, FINANCE a finance one, ENTERPRISE
@@ -199,42 +185,35 @@ async def test_a_sales_caller_reads_only_the_terms_the_glossary_lets_it_read(con
 
     from provisa.api.startup_seed import _adapt_view_ddl
     from provisa.compiler.stage2 import _readable_term_predicate
-    from provisa.security.rights import GLOSSARY_SCOPED_META_VIEWS
+    from provisa.security.rights import GLOSSARY_SCOPED_VIEWS
 
     def where(view: str) -> str:
         return " AND ".join(
             _readable_term_predicate(col, frozenset({"sales"}))
-            for col in GLOSSARY_SCOPED_META_VIEWS[view]
+            for col in GLOSSARY_SCOPED_VIEWS[view]
         )
 
     db = control_plane.org()
     try:
         async with db.acquire() as conn:
             await _seed_scoped(conn)
-            for name in (
-                "glossary_term_domains",
-                "glossary_terms",
-                "glossary_term_refs",
-                "glossary_term_edges",
-            ):
-                await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
+            for name in ("_domains", "_terms", "_term_refs", "_term_edges"):
+                await conn.execute(_adapt_view_ddl(ONTOLOGY_TABLE_VIEWS[name]))
 
             async def ids(sql: str) -> set:
                 return {tuple(r) for r in (await conn.execute_core(text(sql))).fetchall()}
 
-            terms = await ids(
-                f"SELECT id FROM glossary_terms_meta WHERE {where('glossary_terms_meta')}"
-            )
+            terms = await ids(f"SELECT id FROM _terms_ontology WHERE {where('_terms_ontology')}")
             refs = await ids(
-                f"SELECT term_id FROM glossary_term_refs_meta WHERE {where('glossary_term_refs_meta')}"
+                f"SELECT term_id FROM _term_refs_ontology WHERE {where('_term_refs_ontology')}"
             )
             edges = await ids(
-                "SELECT from_term_id, to_term_id FROM glossary_term_edges_meta "
-                f"WHERE {where('glossary_term_edges_meta')}"
+                "SELECT from_term_id, to_term_id FROM _term_edges_ontology "
+                f"WHERE {where('_term_edges_ontology')}"
             )
             scopes = await ids(
-                "SELECT term_id, domain_id FROM glossary_term_domains_meta "
-                f"WHERE {where('glossary_term_domains_meta')}"
+                "SELECT term_id, domain_id FROM _domains_ontology "
+                f"WHERE {where('_domains_ontology')}"
             )
     finally:
         await db.close()
@@ -251,10 +230,10 @@ def test_the_scope_is_injected_for_a_narrowed_role_and_not_for_an_unlimited_one(
 
     from provisa.compiler.sql_types import CompilationContext, TableMeta
     from provisa.compiler.stage2 import build_governance_context
-    from provisa.security.rights import GLOSSARY_SCOPED_META_VIEWS, META_DOMAIN_ID
+    from provisa.security.rights import GLOSSARY_SCOPED_VIEWS, ONTOLOGY_DOMAIN_ID
 
     ctx = CompilationContext()
-    for i, view in enumerate(GLOSSARY_SCOPED_META_VIEWS, start=400):
+    for i, view in enumerate(GLOSSARY_SCOPED_VIEWS, start=400):
         ctx.tables[view] = TableMeta(
             table_id=i,
             field_name=view,
@@ -263,7 +242,7 @@ def test_the_scope_is_injected_for_a_narrowed_role_and_not_for_an_unlimited_one(
             catalog_name="main",
             schema_name="public",
             table_name=view,
-            domain_id=META_DOMAIN_ID,
+            domain_id=ONTOLOGY_DOMAIN_ID,
         )
 
     def rules(domain_access: list[str]) -> dict:
@@ -272,11 +251,11 @@ def test_the_scope_is_injected_for_a_narrowed_role_and_not_for_an_unlimited_one(
             "r", SimpleNamespace(rules={}), {}, ctx, [], role, relationships=[]
         ).rls_rules
 
-    ids = {view: i for i, view in enumerate(GLOSSARY_SCOPED_META_VIEWS, start=400)}
-    narrowed = rules([META_DOMAIN_ID, "sales"])
+    ids = {view: i for i, view in enumerate(GLOSSARY_SCOPED_VIEWS, start=400)}
+    narrowed = rules([ONTOLOGY_DOMAIN_ID, "sales"])
     assert set(narrowed) == set(ids.values())
     assert "POSITION('|sales|' IN term_domains) > 0" in narrowed[400]
     assert "POSITION('|*|' IN term_domains) > 0" in narrowed[400]
-    edges = narrowed[ids["glossary_term_edges_meta"]]
+    edges = narrowed[ids["_term_edges_ontology"]]
     assert "from_term_domains" in edges and "to_term_domains" in edges
     assert rules(["*"]) == {}

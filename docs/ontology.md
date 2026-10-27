@@ -243,6 +243,48 @@ From the ✨ menu, **Definitions** fills every blank definition in one pass and 
 
 The **Draft** banner on a term tells you whether it is undefined (alias the column or add a definition) or ungrounded (relate it to a term that has data). While you see it, agents and catalogs can't reach the term.
 
+## Querying the ontology
+
+The ontology is a schema you can query, named `ontology`, beside the `meta` schema that describes the model's structure. Its tables start with an underscore, so a Class's own table never shares a name with one of them.
+
+| Table | One row per |
+|---|---|
+| `_terms` | Term, with its status, its definition and whether it is a Class, a Property or both |
+| `_term_refs` | Binding of a Property to a column, with the column's table and domain |
+| `_term_edges` | Relationship between two terms |
+| `_domains` | Domain a term belongs to |
+| `_experts` | Expert or author assigned to a term |
+| `_axioms` | Statement of the ontology in RDFS, OWL and SKOS |
+
+A binding links a term to a column in the `meta` schema, so you can join `ontology._term_refs` to `meta.table_columns` and `meta.registered_tables`. The ontology's tables are read-only. They change as you curate terms.
+
+You read a term only when you reach one of its domains. A term with no domain is visible to everyone, and an enterprise term (`*`) is too. A relationship or an axiom is visible when both of its terms are.
+
+### The ontology in SPARQL
+
+SPARQL answers the ontology in the standard vocabularies, so an RDF tool reads it as it reads any OWL ontology:
+
+- a Class is an `owl:Class`, and a kind-of relationship between Classes is `rdfs:subClassOf`;
+- a Property is an `owl:DatatypeProperty`, or an `owl:ObjectProperty` when every column it binds is a key to a table with a Class;
+- a Property's `rdfs:domain` is the Class of each table it binds a column of, and its `rdfs:range` is the Class its keys lead to or the XML Schema type of its columns;
+- a kind-of relationship between Properties is `rdfs:subPropertyOf`;
+- every term has its name as `skos:prefLabel` and its definition as `skos:definition`.
+
+A term is named by its vocabulary IRI, `<your Provisa address>/vocab/term/<name>`, the IRI that types the rows of the tables it grounds. A retired term states nothing.
+
+```sparql
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+SELECT ?class ?parent ?label WHERE {
+  ?class a owl:Class ; rdfs:subClassOf ?parent .
+  ?parent skos:prefLabel ?label .
+}
+```
+
+The same statements are rows of `ontology._axioms` in SQL. GraphQL, Cypher and the other query languages don't offer `_axioms`. Query a term's statements and its tables' rows in separate SPARQL queries.
+
 ## See also
 
 - [Metadata Export](metadata-export.md) covers how terms and relationships publish to external data catalogs.

@@ -28,6 +28,7 @@ from provisa.api._meta_views import (
     _OPS_LOG_TABLE_VIEWS,
     _OPS_REPORT_VIEWS,
 )
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.app_loaders import _META_TABLES
 from provisa.core.org_registry_view import VIEW_COLUMNS as ORG_REGISTRY_COLUMNS
 from provisa.core.org_registry_view import VIEW_NAME as ORG_REGISTRY_VIEW
@@ -56,6 +57,9 @@ def _exposed_columns() -> dict[str, list[str]]:
             exposed[tbl] = [c.name for c in getattr(schema_org, tbl).columns]
         else:
             exposed[tbl] = _view_columns(ddl)
+    # REQ-2163: the ontology schema's definition views.
+    for tbl, ddl in ONTOLOGY_TABLE_VIEWS.items():
+        exposed[tbl] = _view_columns(ddl)
     for tbl, ddl in _OPS_LOG_TABLE_VIEWS.items():
         exposed[tbl] = _view_columns(ddl)
     for view_name, ddl in _OPS_REPORT_VIEWS.items():

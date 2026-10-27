@@ -3,10 +3,293 @@ naming:
 domains:
 - id: meta
   description: System metadata
+- id: ontology
+  description: System ontology
+  graphql_alias: ont
 sources:
 - id: provisa-admin
   type: postgresql
 tables:
+- source_id: provisa-admin
+  domain_id: ontology
+  schema: org_default
+  table: _axioms
+  columns:
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: object
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_iri
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_literal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_term_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: predicate
+    data_type: text
+    visible_to:
+    - viewer
+  - name: subject
+    data_type: text
+    visible_to:
+    - viewer
+  - name: subject_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: subject_term_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: tenant_id
+    data_type: uuid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: ontology
+  schema: org_default
+  table: _domains
+  columns:
+  - name: domain_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: tenant_id
+    data_type: uuid
+    visible_to:
+    - viewer
+  - name: term_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: term_id
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: ontology
+  schema: org_default
+  table: _experts
+  columns:
+  - name: id
+    data_type: integer
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: kind
+    data_type: text
+    visible_to:
+    - viewer
+  - name: tenant_id
+    data_type: uuid
+    visible_to:
+    - viewer
+  - name: term_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: term_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: user_id
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: ontology
+  schema: org_default
+  table: _term_edges
+  columns:
+  - name: from_term
+    data_type: text
+    visible_to:
+    - viewer
+  - name: from_term_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: from_term_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: id
+    data_type: integer
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: rel_type
+    data_type: text
+    visible_to:
+    - viewer
+  - name: tenant_id
+    data_type: uuid
+    visible_to:
+    - viewer
+  - name: to_term
+    data_type: text
+    visible_to:
+    - viewer
+  - name: to_term_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: to_term_id
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: ontology
+  schema: org_default
+  table: _term_refs
+  columns:
+  - name: column_key
+    data_type: text
+    visible_to:
+    - viewer
+  - name: column_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: domain_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: integer
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: schema_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: source_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: tenant_id
+    data_type: uuid
+    visible_to:
+    - viewer
+  - name: term_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: term_id
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: ontology
+  schema: org_default
+  table: _terms
+  columns:
+  - name: definition
+    data_type: text
+    visible_to:
+    - viewer
+  - name: deprecated
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: export_excluded
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: grounded
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: id
+    data_type: integer
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: identity_gap
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: is_abstract
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: is_class
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: is_property
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: is_rooted
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: live
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: ref_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: retire_on
+    data_type: date
+    visible_to:
+    - viewer
+  - name: retired
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: status
+    data_type: text
+    visible_to:
+    - viewer
+  - name: status_reason
+    data_type: text
+    visible_to:
+    - viewer
+  - name: tenant_id
+    data_type: uuid
+    visible_to:
+    - viewer
+  - name: term_domains
+    data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -357,228 +640,6 @@ tables:
     visible_to:
     - viewer
   - name: via
-    data_type: text
-    visible_to:
-    - viewer
-- source_id: provisa-admin
-  domain_id: meta
-  schema: org_default
-  table: glossary_term_domains
-  columns:
-  - name: domain_id
-    data_type: text
-    visible_to:
-    - viewer
-  - name: id
-    data_type: text
-    visible_to:
-    - viewer
-    is_primary_key: true
-  - name: tenant_id
-    data_type: uuid
-    visible_to:
-    - viewer
-  - name: term_domains
-    data_type: text
-    visible_to:
-    - viewer
-  - name: term_id
-    data_type: integer
-    visible_to:
-    - viewer
-- source_id: provisa-admin
-  domain_id: meta
-  schema: org_default
-  table: glossary_term_edges
-  columns:
-  - name: from_term
-    data_type: text
-    visible_to:
-    - viewer
-  - name: from_term_domains
-    data_type: text
-    visible_to:
-    - viewer
-  - name: from_term_id
-    data_type: integer
-    visible_to:
-    - viewer
-  - name: id
-    data_type: integer
-    visible_to:
-    - viewer
-    is_primary_key: true
-  - name: rel_type
-    data_type: text
-    visible_to:
-    - viewer
-  - name: tenant_id
-    data_type: uuid
-    visible_to:
-    - viewer
-  - name: to_term
-    data_type: text
-    visible_to:
-    - viewer
-  - name: to_term_domains
-    data_type: text
-    visible_to:
-    - viewer
-  - name: to_term_id
-    data_type: integer
-    visible_to:
-    - viewer
-- source_id: provisa-admin
-  domain_id: meta
-  schema: org_default
-  table: glossary_term_experts
-  columns:
-  - name: id
-    data_type: integer
-    visible_to:
-    - viewer
-    is_primary_key: true
-  - name: kind
-    data_type: text
-    visible_to:
-    - viewer
-  - name: tenant_id
-    data_type: uuid
-    visible_to:
-    - viewer
-  - name: term_id
-    data_type: integer
-    visible_to:
-    - viewer
-  - name: term_name
-    data_type: text
-    visible_to:
-    - viewer
-  - name: user_id
-    data_type: text
-    visible_to:
-    - viewer
-- source_id: provisa-admin
-  domain_id: meta
-  schema: org_default
-  table: glossary_term_refs
-  columns:
-  - name: column_key
-    data_type: text
-    visible_to:
-    - viewer
-  - name: column_name
-    data_type: text
-    visible_to:
-    - viewer
-  - name: domain_id
-    data_type: text
-    visible_to:
-    - viewer
-  - name: id
-    data_type: integer
-    visible_to:
-    - viewer
-    is_primary_key: true
-  - name: schema_name
-    data_type: text
-    visible_to:
-    - viewer
-  - name: source_id
-    data_type: text
-    visible_to:
-    - viewer
-  - name: table_id
-    data_type: integer
-    visible_to:
-    - viewer
-  - name: table_name
-    data_type: text
-    visible_to:
-    - viewer
-  - name: tenant_id
-    data_type: uuid
-    visible_to:
-    - viewer
-  - name: term_domains
-    data_type: text
-    visible_to:
-    - viewer
-  - name: term_id
-    data_type: integer
-    visible_to:
-    - viewer
-- source_id: provisa-admin
-  domain_id: meta
-  schema: org_default
-  table: glossary_terms
-  columns:
-  - name: definition
-    data_type: text
-    visible_to:
-    - viewer
-  - name: deprecated
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: export_excluded
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: grounded
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: id
-    data_type: integer
-    visible_to:
-    - viewer
-    is_primary_key: true
-  - name: identity_gap
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: is_abstract
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: is_rooted
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: live
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: name
-    data_type: text
-    visible_to:
-    - viewer
-  - name: ref_count
-    data_type: bigint
-    visible_to:
-    - viewer
-  - name: retire_on
-    data_type: date
-    visible_to:
-    - viewer
-  - name: retired
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: status
-    data_type: text
-    visible_to:
-    - viewer
-  - name: status_reason
-    data_type: text
-    visible_to:
-    - viewer
-  - name: tenant_id
-    data_type: uuid
-    visible_to:
-    - viewer
-  - name: term_domains
     data_type: text
     visible_to:
     - viewer
@@ -1733,441 +1794,21 @@ relationships:
   needs_review: false
   source_table_id: effective_column_tags
   target_table_id: tags
-- id: meta:glossary_term_domains:term
-  source_column: term_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: term
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_domains
-  target_table_id: glossary_terms
-- id: meta:glossary_term_edges:source_term
-  source_column: from_term_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: sourceTerm
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_edges
-  target_table_id: glossary_terms
-- id: meta:glossary_term_edges:target_term
-  source_column: to_term_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: targetTerm
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_edges
-  target_table_id: glossary_terms
-- id: meta:glossary_term_refs:registered_tables
-  source_column: table_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_refs
-  target_table_id: registered_tables
-- id: meta:glossary_term_refs:table_columns
-  source_column: column_key
-  target_column: column_key
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: column
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_refs
-  target_table_id: table_columns
-- id: meta:glossary_term_refs:term
-  source_column: term_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: term
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_refs
-  target_table_id: glossary_terms
-- id: meta:glossary_terms:antonym_of
+- id: meta:registered_tables:_term_refs
   source_column: id
-  target_column: id
+  target_column: table_id
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: ANTONYM_OF
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:columns
-  source_column: id
-  target_column: column_key
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: REFERENCED_BY
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: term_id
-  via_target_column: column_key
-  via_label_source: fixed
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: table_columns
-  via_table: glossary_term_refs
-- id: meta:glossary_terms:derived_from
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: DERIVED_FROM
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:domains
-  source_column: id
-  target_column: term_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: domains
+  graphql_alias: glossaryRefs
   disable_cypher: false
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_term_domains
-- id: meta:glossary_terms:edges_in
-  source_column: id
-  target_column: to_term_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: edgesIn
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_term_edges
-- id: meta:glossary_terms:edges_out
-  source_column: id
-  target_column: from_term_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: edgesOut
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_term_edges
-- id: meta:glossary_terms:experts
-  source_column: id
-  target_column: term_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: EXPERTS
-  graphql_alias: experts
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_term_experts
-- id: meta:glossary_terms:kind_of
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: KIND_OF
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:part_of
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: PART_OF
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:preferred_term_for
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: PREFERRED_TERM_FOR
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:refs
-  source_column: id
-  target_column: term_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: refs
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_term_refs
-- id: meta:glossary_terms:related_to
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: RELATED_TO
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:replaces
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: REPLACES
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:synonym_of
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: SYNONYM_OF
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:tables
-  source_column: id
-  target_column: class_term_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: GROUNDS
-  graphql_alias: tables
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: registered_tables
-- id: meta:glossary_terms:tag_assignments
-  source_column: id
-  target_column: term_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: TERM_TAGS
-  graphql_alias: termTags
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: tag_assignments
-- id: meta:glossary_terms:term_domains
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: IN_DOMAIN
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: term_id
-  via_target_column: domain_id
-  via_label_source: fixed
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: domains
-  via_table: glossary_term_domains
-- id: meta:glossary_terms:translation_of
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: TRANSLATION_OF
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
-- id: meta:glossary_terms:valid_value_of
-  source_column: id
-  target_column: id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  via_source_column: from_term_id
-  via_target_column: to_term_id
-  via_type_column: rel_type
-  via_type_value: VALID_VALUE_OF
-  via_label_source: column
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_terms
-  target_table_id: glossary_terms
-  via_table: glossary_term_edges
+  source_table_id: registered_tables
+  target_table_id: _term_refs
 - id: meta:registered_tables:checked_by
   source_column: id
   target_column: checked_table_id
@@ -2215,7 +1856,7 @@ relationships:
   version: 1
   needs_review: false
   source_table_id: registered_tables
-  target_table_id: glossary_terms
+  target_table_id: _terms
 - id: meta:registered_tables:data_products
   source_column: product_id
   target_column: id
@@ -2278,21 +1919,6 @@ relationships:
   needs_review: false
   source_table_id: registered_tables
   target_table_id: dq_rules
-- id: meta:registered_tables:glossary_term_refs
-  source_column: id
-  target_column: table_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: glossaryRefs
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: registered_tables
-  target_table_id: glossary_term_refs
 - id: meta:registered_tables:profile_results
   source_column: id
   target_column: profiled_table_id
@@ -2609,6 +2235,21 @@ relationships:
   needs_review: false
   source_table_id: roles_parents
   target_table_id: roles
+- id: meta:table_columns:_term_refs
+  source_column: column_key
+  target_column: column_key
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: glossaryRef
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: table_columns
+  target_table_id: _term_refs
 - id: meta:table_columns:downstream_lineage
   source_column: column_key
   target_column: source_column_key
@@ -2641,21 +2282,6 @@ relationships:
   needs_review: false
   source_table_id: table_columns
   target_table_id: effective_column_tags
-- id: meta:table_columns:glossary_term_refs
-  source_column: column_key
-  target_column: column_key
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  graphql_alias: glossaryRef
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: table_columns
-  target_table_id: glossary_term_refs
 - id: meta:table_columns:sensitive_coverage
   source_column: column_key
   target_column: column_key
@@ -2855,3 +2481,438 @@ relationships:
   needs_review: false
   source_table_id: tracked_webhooks
   target_table_id: domains
+- id: ontology:_domains:term
+  source_column: term_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: term
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _domains
+  target_table_id: _terms
+- id: ontology:_term_edges:source_term
+  source_column: from_term_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: sourceTerm
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _term_edges
+  target_table_id: _terms
+- id: ontology:_term_edges:target_term
+  source_column: to_term_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: targetTerm
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _term_edges
+  target_table_id: _terms
+- id: ontology:_term_refs:registered_tables
+  source_column: table_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _term_refs
+  target_table_id: registered_tables
+- id: ontology:_term_refs:table_columns
+  source_column: column_key
+  target_column: column_key
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: column
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _term_refs
+  target_table_id: table_columns
+- id: ontology:_term_refs:term
+  source_column: term_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: term
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _term_refs
+  target_table_id: _terms
+- id: ontology:_terms:antonym_of
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: ANTONYM_OF
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:columns
+  source_column: id
+  target_column: column_key
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: REFERENCED_BY
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: term_id
+  via_target_column: column_key
+  via_label_source: fixed
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: table_columns
+  via_table: _term_refs
+- id: ontology:_terms:derived_from
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: DERIVED_FROM
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:domains
+  source_column: id
+  target_column: term_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: domains
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _domains
+- id: ontology:_terms:edges_in
+  source_column: id
+  target_column: to_term_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: edgesIn
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _term_edges
+- id: ontology:_terms:edges_out
+  source_column: id
+  target_column: from_term_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: edgesOut
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _term_edges
+- id: ontology:_terms:experts
+  source_column: id
+  target_column: term_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: EXPERTS
+  graphql_alias: experts
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _experts
+- id: ontology:_terms:kind_of
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: KIND_OF
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:part_of
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: PART_OF
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:preferred_term_for
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: PREFERRED_TERM_FOR
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:refs
+  source_column: id
+  target_column: term_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  graphql_alias: refs
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _term_refs
+- id: ontology:_terms:related_to
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: RELATED_TO
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:replaces
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: REPLACES
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:synonym_of
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: SYNONYM_OF
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:tables
+  source_column: id
+  target_column: class_term_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: GROUNDS
+  graphql_alias: tables
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: registered_tables
+- id: ontology:_terms:tag_assignments
+  source_column: id
+  target_column: term_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: TERM_TAGS
+  graphql_alias: termTags
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: tag_assignments
+- id: ontology:_terms:term_domains
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: IN_DOMAIN
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: term_id
+  via_target_column: domain_id
+  via_label_source: fixed
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: domains
+  via_table: _domains
+- id: ontology:_terms:translation_of
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: TRANSLATION_OF
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges
+- id: ontology:_terms:valid_value_of
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: from_term_id
+  via_target_column: to_term_id
+  via_type_column: rel_type
+  via_type_value: VALID_VALUE_OF
+  via_label_source: column
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: _terms
+  target_table_id: _terms
+  via_table: _term_edges

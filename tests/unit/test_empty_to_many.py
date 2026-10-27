@@ -36,14 +36,14 @@ def pg(embedded_postgres):
     with psycopg.connect(embedded_postgres.dsn(), autocommit=True) as admin:
         admin.execute(pgsql.SQL("CREATE DATABASE {}").format(pgsql.Identifier(name)))
     con = psycopg.connect(embedded_postgres.dsn(name), autocommit=True)
-    con.execute("CREATE SCHEMA meta")
-    con.execute("CREATE TABLE meta.glossary_terms (id INTEGER, name VARCHAR)")
-    con.cursor().executemany("INSERT INTO meta.glossary_terms VALUES (%s, %s)", _TERMS)
+    con.execute("CREATE SCHEMA ontology")
+    con.execute("CREATE TABLE ontology.terms (id INTEGER, name VARCHAR)")
+    con.cursor().executemany("INSERT INTO ontology.terms VALUES (%s, %s)", _TERMS)
     con.execute(
-        "CREATE TABLE meta.glossary_term_edges (id INTEGER, from_term_id INTEGER, "
+        "CREATE TABLE ontology.term_edges (id INTEGER, from_term_id INTEGER, "
         "to_term_id INTEGER, rel_type VARCHAR)"
     )
-    con.cursor().executemany("INSERT INTO meta.glossary_term_edges VALUES (%s, %s, %s, %s)", _EDGES)
+    con.cursor().executemany("INSERT INTO ontology.term_edges VALUES (%s, %s, %s, %s)", _EDGES)
     yield con
     con.close()
     with psycopg.connect(embedded_postgres.dsn(), autocommit=True) as admin:
@@ -69,13 +69,13 @@ def answer(request, meta):  # noqa: F811
         tree = sqlglot.parse_one(make_semantic_sql(root.sql, ctx), read="postgres")
         sql = tree.transform(lambda n: _bound(n, root.params)).sql(dialect="postgres")
         rows = con.execute(sql).fetchall()
-        return serialize_rows(rows, root.columns, "glossaryTerms")["data"]["glossaryTerms"]
+        return serialize_rows(rows, root.columns, "terms")["data"]["terms"]
 
     return _on_postgres
 
 
 def _ledger(body: str) -> str:
-    return f'{{ glossaryTerms(where: {{ name: {{ eq: "ledger" }} }}) {{ id {body} }} }}'
+    return f'{{ terms(where: {{ name: {{ eq: "ledger" }} }}) {{ id {body} }} }}'
 
 
 def test_a_to_many_below_a_to_one_keeps_every_row(answer):
@@ -130,23 +130,23 @@ def test_sibling_to_many_fields_are_each_their_own_list(answer):
     "query, path",
     [
         # A JSON value at the root.
-        ('{ glossaryTerms(where: { name: { eq: "old" } }) { id edgesOut { id } } }', ()),
+        ('{ terms(where: { name: { eq: "old" } }) { id edgesOut { id } } }', ()),
         # A lateral join: the field takes a where.
         (
-            '{ glossaryTerms(where: { name: { eq: "old" } }) { id '
+            '{ terms(where: { name: { eq: "old" } }) { id '
             'edgesOut(where: { relType: { eq: "KIND_OF" } }) { id } } }',
             (),
         ),
         # A JSON value under a lateral join: customer -RELATED_TO-> old has no edges.
         (
-            '{ glossaryTerms(where: { name: { eq: "customer" } }) { id '
+            '{ terms(where: { name: { eq: "customer" } }) { id '
             'edgesOut(where: { relType: { eq: "RELATED_TO" } }) { id targetTerm { id '
             "edgesOut { id } } } } }",
             ("edgesOut", 0, "targetTerm"),
         ),
         # A JSON value inside a JSON value: party -KIND_OF-> old has no edges.
         (
-            '{ glossaryTerms(where: { name: { eq: "party" } }) { id '
+            '{ terms(where: { name: { eq: "party" } }) { id '
             "edgesOut { id targetTerm { id edgesOut { id } } } } }",
             ("edgesOut", 0, "targetTerm"),
         ),
@@ -163,7 +163,7 @@ def test_on_trino_the_empty_default_is_an_empty_list_and_the_subquery_is_still_j
     from provisa.transpiler.transpile import transpile_to_trino
 
     _schema, ctx, _con = meta
-    root = _compiled(meta, "{ glossaryTerms { id edgesOut { id } } }")
+    root = _compiled(meta, "{ terms { id edgesOut { id } } }")
     trino = transpile_to_trino(make_semantic_sql(root.sql, ctx))
     # The correlated JSON subquery is still rewritten to a joined aggregate for Trino...
     assert "_grel_" in trino and "LEFT JOIN" in trino

@@ -347,7 +347,7 @@ def test_the_export_carries_the_status():
 
 @pytest.mark.asyncio
 async def test_the_meta_view_states_the_status(control_plane, monkeypatch):
-    from provisa.api._meta_views import _META_TABLE_VIEWS
+    from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         note = await _note(db, ids)
@@ -356,13 +356,11 @@ async def test_the_meta_view_states_the_status(control_plane, monkeypatch):
             await glossary_repo.deprecate_term(
                 conn, note, reason="Old.", retire_on=None, by=None, today=TODAY
             )
-            await conn.execute(_META_TABLE_VIEWS["glossary_term_domains"])
-            await conn.execute(_META_TABLE_VIEWS["glossary_terms"])
+            await conn.execute(ONTOLOGY_TABLE_VIEWS["_domains"])
+            await conn.execute(ONTOLOGY_TABLE_VIEWS["_terms"])
             rows = {
                 r[0]: (r[1], r[2])
-                for r in await conn.fetch(
-                    "SELECT name, status, status_reason FROM glossary_terms_meta"
-                )
+                for r in await conn.fetch("SELECT name, status, status_reason FROM _terms_ontology")
             }
         assert rows["note"] == ("deprecated", "Old.")
         assert rows["ledger"] == ("draft", None)

@@ -76,7 +76,10 @@ _MODELS = {
 }
 
 
-_ADDED_AFTER_THE_SPLIT = frozenset({"property_types", "key_columns"})
+# REQ-2163: the label map's SQL-only tables (sql_only_nodes, sql_only_tables) came after it too.
+_ADDED_AFTER_THE_SPLIT = frozenset(
+    {"property_types", "key_columns", "sql_only_nodes", "sql_only_tables"}
+)
 
 
 def _structure(value):
@@ -102,7 +105,10 @@ def _structure(value):
     if isinstance(value, (set, frozenset)):
         return sorted(map(repr, value))
     if hasattr(value, "__dict__") and type(value).__module__.startswith("provisa"):
-        return (type(value).__name__, _structure(vars(value)))
+        return (
+            type(value).__name__,
+            {k: _structure(v) for k, v in vars(value).items() if k not in _ADDED_AFTER_THE_SPLIT},
+        )
     return value
 
 

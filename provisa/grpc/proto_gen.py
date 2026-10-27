@@ -381,7 +381,7 @@ def generate_proto(
 
     # --- Query message (mirrors GraphQL type Query) ---
     _root_ids = si.root_table_ids
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import SQL_ONLY_TABLES, reaches_all_domains
 
     # Same root rule as the GraphQL Query type (schema_gen): an implicit-traversal domain is a
     # root only for a role that reaches it. An empty domain_access reaches no domain.
@@ -391,6 +391,8 @@ def generate_proto(
         t
         for t in sorted(tables, key=lambda t: t.type_name)
         if (_root_ids is None or t.table_id in _root_ids)
+        # REQ-2163: a table SQL alone serves is no gRPC root.
+        and (t.domain_id, t.table_name) not in SQL_ONLY_TABLES
         and (
             _all_access
             or t.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS

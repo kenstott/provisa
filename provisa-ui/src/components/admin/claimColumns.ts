@@ -33,14 +33,14 @@ interface Row {
 
 /** Each column with a term, keyed by ``columnKey``; null when the roles cannot read the glossary. */
 export async function columnTerms(role: string): Promise<Map<string, ColumnTerm> | null> {
-  const query = rootQuery(await metaReader(role), "ColumnTerms", "glossary_terms", {
+  const query = rootQuery(await metaReader(role), "ColumnTerms", "_terms", {
     fields: ["id", "name", "live"],
     rels: { refs: { alias: "refs", sel: { fields: ["table_id", "column_name"] } } },
   });
   if (query === null) return null;
-  const rows = await dataGraphql<{ glossary_terms: Row[] }>(query, {}, role);
+  const rows = await dataGraphql<{ _terms: Row[] }>(query, {}, role);
   const out = new Map<string, ColumnTerm>();
-  for (const t of rows.glossary_terms)
+  for (const t of rows._terms)
     for (const r of t.refs ?? [])
       out.set(columnKey(r.table_id, r.column_name), { id: t.id, name: t.name, draft: !t.live });
   return out;

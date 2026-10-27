@@ -47,7 +47,7 @@ def _terms() -> CypherLabelMap:
         pk_columns=[],
         catalog_name="provisa_admin",
         schema_name="org_default",
-        table_name="glossary_terms_meta",
+        table_name="_terms_ontology",
         properties={"id": "id", "name": "name", "retired": "retired"},
     )
     return CypherLabelMap(nodes={"GlossaryTerms": terms}, relationships={})
@@ -91,11 +91,12 @@ def engine(control_plane):
     """The engine over a control plane whose org holds the meta views, as startup seeds them,
     with two terms."""
     from provisa.api._meta_views import _META_TABLE_VIEWS
+    from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
     from provisa.api.startup_seed import _seed_view
 
     async def _seed() -> None:
         async with control_plane.org().acquire() as conn:
-            for ddl in _META_TABLE_VIEWS.values():
+            for ddl in [*_META_TABLE_VIEWS.values(), *ONTOLOGY_TABLE_VIEWS.values()]:
                 await _seed_view(conn, ddl)
             await conn.execute_core(
                 insert(schema_org.glossary_terms).values(

@@ -42,8 +42,8 @@ function reader(): MetaReader {
         type("Query", {
           m__dataProducts: list("DP"),
           m__tableColumns: list("TC"),
-          m__glossaryTermEdges: list("TE"),
-          m__glossaryTerms: list("GT"),
+          ont__termEdges: list("TE"),
+          ont__terms: list("GT"),
         }),
         type("DP", {
           id: s,
@@ -75,8 +75,8 @@ function reader(): MetaReader {
     roots: new Map([
       [rootKey("meta", "data_products"), "m__dataProducts"],
       [rootKey("meta", "table_columns"), "m__tableColumns"],
-      [rootKey("meta", "glossary_term_edges"), "m__glossaryTermEdges"],
-      [rootKey("meta", "glossary_terms"), "m__glossaryTerms"],
+      [rootKey("ontology", "_term_edges"), "ont__termEdges"],
+      [rootKey("ontology", "_terms"), "ont__terms"],
     ]),
   };
 }
@@ -185,9 +185,9 @@ describe("the panel's meta reads", () => {
         }
         if (body.includes("TermEdges")) {
           const from7 = body.includes("[7]");
-          return json({ data: { glossary_term_edges: from7 ? [{ to_term_id: 8 }] : [] } });
+          return json({ data: { _term_edges: from7 ? [{ to_term_id: 8 }] : [] } });
         }
-        if (body.includes("query Terms")) return json({ data: { glossary_terms: [PARTY] } });
+        if (body.includes("query Terms")) return json({ data: { _terms: [PARTY] } });
         throw new Error(`unexpected request ${url} ${body}`);
       }),
     );
