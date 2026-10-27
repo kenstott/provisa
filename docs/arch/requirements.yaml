@@ -90155,7 +90155,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     so the page''s statements see each other''s ephemeral objects. Its left-hand label and relationship-type
     pills include the session''s labels and types (tags on model nodes among them), marked apart from the
     model''s and showing their counts; clicking one runs the same MATCH as a model pill does. A clear-session
-    action ends the session''s objects on demand.'
+    action ends the session''s objects on demand. (Amended 2026-10-27, THE PAGE''S SESSION IS PER TAB, ENDED
+    AFTER 2 HOURS IDLE:) Maintainer 2026-10-27: the Cypher page''s session is one per browser tab (it survives
+    a reload of that tab; another tab has its own), keyed by the org, the principal and the tab''s session
+    id, so no principal ever reaches another''s. A session unused for the idle expiry (a deployment setting
+    with its own field, default 2 hours) is ended and its temporary objects dropped; the page also ends
+    it on sign-out and from its clear-session action.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
