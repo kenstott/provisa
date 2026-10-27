@@ -35,7 +35,16 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 import sqlglot.expressions as exp
 
 from provisa.gql import temporal
-from provisa.gql.expr_ast import Binary, CypherExpr, MapLiteral, Paren, Property, Variable, walk
+from provisa.gql.expr_ast import (
+    Binary,
+    CypherExpr,
+    Literal as ExprLiteral,
+    MapLiteral,
+    Paren,
+    Property,
+    Variable,
+    walk,
+)
 from provisa.gql.ir import (
     CypherAST,
     MatchClause,
@@ -57,6 +66,7 @@ from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
 from provisa.gql.group_by import GroupByMixin
 from provisa.gql.translator_helpers import (
+    _json_valued,
     _collects_maps,
     _properties_of,
     _fold_where_into_optional_joins,
@@ -100,54 +110,6 @@ def _is_json_list(e: exp.Expression) -> bool:
     """Whether ``e`` is a list of JSON-encoded values (GraphVarKind.JSON_LIST): a list literal of
     them, or a list built from one -- appended to, prepended to, joined, sliced or reversed."""
     return _json_valued(e) == "list"
-
-
-def _json_valued(e: exp.Expression) -> str | None:
-    """ "list" for a list of JSON-encoded values, "value" for one value read from one (its JSON),
-    else None."""
-    while isinstance(e, (exp.Alias, exp.Paren)):
-        e = e.this
-    called = str(e.this).upper() if isinstance(e, exp.Anonymous) else None
-    if isinstance(e, exp.Array):
-        return (
-            "list"
-            if e.expressions
-            and all(
-                isinstance(x, exp.Anonymous) and str(x.this).upper() == "TO_JSON"
-                for x in e.expressions
-            )
-            else None
-        )
-    if called in ("ARRAY_APPEND", "SLICE") and e.expressions:
-        return "list" if _json_valued(e.expressions[0]) == "list" else None
-    if called == "ARRAY_PREPEND" and len(e.expressions) == 2:
-        return "list" if _json_valued(e.expressions[1]) == "list" else None
-    if called == "ELEMENT_AT" and e.expressions:
-        return "value" if _json_valued(e.expressions[0]) == "list" else None
-    if called == "TRANSFORM" and e.expressions:
-        # reverse() of a list: its items read back in turn (expr_visitor._reversed_list).
-        return _json_valued(e.expressions[0]) if _reads_items(e) else None
-    if isinstance(e, (exp.Add, exp.DPipe)):
-        sides = {_json_valued(e.this), _json_valued(e.expression)}
-        return "list" if "list" in sides else None
-    if isinstance(e, exp.Case):
-        results = [i.args["true"] for i in e.args.get("ifs") or []] + [e.args.get("default")]
-        found = {_json_valued(r) for r in results if r is not None}
-        return "list" if found == {"list"} or ("list" in found and None not in found) else None
-    return None
-
-
-def _reads_items(e: exp.Expression) -> bool:
-    """Whether a TRANSFORM over indexes reads a list's items (reverse()): its lambda is an
-    ELEMENT_AT of a list of JSON-encoded values."""
-    if len(e.expressions) != 2 or not isinstance(e.expressions[1], exp.Lambda):
-        return False
-    body = e.expressions[1].this
-    return (
-        isinstance(body, exp.Anonymous)
-        and str(body.this).upper() == "ELEMENT_AT"
-        and _json_valued(body.expressions[0]) == "list"
-    )
 
 
 def _holds_json_maps(e: exp.Expression) -> bool:
@@ -1103,6 +1065,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         ``@N`` in some), and a variable is its bare name, resolved by the engine."""
         if isinstance(expr, Variable):
             return exp.Column(this=exp.Identifier(this=expr.name, quoted=False))
+        if isinstance(expr, ExprLiteral) and expr.kind == "null":
+            # UNWIND null is no rows, as UNWIND [] is (openCypher).
+            return exp.Array(expressions=[])
 
         def _placeholder(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             if isinstance(node, exp.Parameter):

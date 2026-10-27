@@ -60,7 +60,7 @@ from provisa.gql.expr_ast import (
     Variable,
 )
 from provisa.gql import spatial, temporal
-from provisa.gql.translator_helpers import _and_all
+from provisa.gql.translator_helpers import _and_all, _json_valued
 from provisa.gql.translator_types import CypherTranslateError
 
 #: A regex's leading inline flags, which PostgreSQL takes only at the regex's start.
@@ -454,6 +454,21 @@ class ExprLowering:
 
     def __init__(self, ctx: ExprContext) -> None:
         self._ctx = ctx
+        #: The variables a comprehension or quantifier binds to an item of a list of JSON-encoded
+        #: values ([[1, 2], ['a']]): each item is its JSON.
+        self._json_vars: set[str] = set()
+
+    def _over(self, var: str, source: exp.Expression, body: CypherExpr) -> exp.Expression:
+        """``body`` lowered with ``var`` bound to each item of ``source``."""
+        if _json_valued(source) != "list":
+            return self.lower(body)
+        held = var in self._json_vars
+        self._json_vars.add(var)
+        try:
+            return self.lower(body)
+        finally:
+            if not held:
+                self._json_vars.discard(var)
 
     def lower(self, node: CypherExpr) -> exp.Expression:
         method = getattr(self, f"_lower_{type(node).__name__}", None)
@@ -565,6 +580,12 @@ class ExprLowering:
         if isinstance(node, Binary) and node.op in ("-", "*", "/", "%", "^"):
             left, right = self._value_kind(node.left), self._value_kind(node.right)
             return "number" if left == right == "number" else None
+        if isinstance(node, Binary) and node.op in ("AND", "OR", "XOR", *_BINARY_CMP):
+            return "boolean"
+        if isinstance(node, (IsNull, LabelPredicate)) or (
+            isinstance(node, Unary) and node.op == "NOT"
+        ):
+            return "boolean"
         if self._ctx.is_text(node):
             return "text"
         return None
@@ -675,6 +696,12 @@ class ExprLowering:
             )
         if op == "IN":
             return self._lower_in(left, node.right, right)
+        if op in ("STARTS WITH", "ENDS WITH", "CONTAINS") and {
+            self._value_kind(node.left),
+            self._value_kind(node.right),
+        } & {"number", "boolean"}:
+            # A string predicate of a value that is no string is null (openCypher).
+            return exp.Null()
         if op == "STARTS WITH":
             return _anon("starts_with", left, right)
         if op == "ENDS WITH":
@@ -797,6 +824,10 @@ class ExprLowering:
                 return exp.Literal.number(len(given.items))
             if isinstance(given, Literal) and given.kind == "null":
                 return exp.Null()
+            if isinstance(given, Variable) and given.name in self._json_vars:
+                # An item of a list of several types is its JSON: a list's items or a string's
+                # characters, counted by the engine from it.
+                return _anon("json_size", self.lower(given))
             if self._ctx.is_text(given) and not isinstance(given, Literal):
                 # A string's size is its character count: counted as text on every engine, never
                 # as a list (PostgreSQL refuses CARDINALITY of text).
@@ -844,7 +875,19 @@ class ExprLowering:
         return self._ctx.resolve_function(node.name, args, distinct=node.distinct)
 
     def _lower_Case(self, node: Case) -> exp.Expression:
-        ifs = [exp.If(this=self.lower(cond), true=self.lower(res)) for cond, res in node.whens]
+        whens = node.whens
+        if node.subject is not None:
+            # A WHEN of another kind than the subject ('0' and 0) never matches (openCypher): never
+            # the engine's cast of one to the other.
+            subject_kind = self._value_kind(node.subject)
+            whens = [
+                (cond, res)
+                for cond, res in whens
+                if not (subject_kind and self._value_kind(cond) not in (None, subject_kind))
+            ]
+            if not whens:
+                return self.lower(node.default) if node.default is not None else exp.Null()
+        ifs = [exp.If(this=self.lower(cond), true=self.lower(res)) for cond, res in whens]
         case = exp.Case(ifs=ifs)
         if node.subject is not None:
             case.set("this", self.lower(node.subject))
@@ -883,6 +926,8 @@ class ExprLowering:
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
+        if any(isinstance(n, Literal) and n.kind == "null" for n in (node.obj, node.index)):
+            return exp.Null()  # null[k] and m[null] are null (openCypher)
         if (
             isinstance(node.obj, (MapLiteral, Variable))
             and isinstance(node.index, Literal)
@@ -920,14 +965,20 @@ class ExprLowering:
         source = self.lower(node.source)
         result = source
         if node.predicate is not None:
-            result = _anon("filter", result, _lam(node.var, self.lower(node.predicate)))
+            predicate = self._over(node.var, source, node.predicate)
+            result = _anon("filter", result, _lam(node.var, predicate))
         if node.projection is not None:
-            result = _anon("transform", result, _lam(node.var, self.lower(node.projection)))
+            projection = self._over(node.var, source, node.projection)
+            result = _anon("transform", result, _lam(node.var, projection))
         return result
 
     def _lower_Quantifier(self, node: Quantifier) -> exp.Expression:
         source = self.lower(node.source)
-        pred = _lam(node.var, self.lower(node.predicate)) if node.predicate is not None else None
+        pred = (
+            _lam(node.var, self._over(node.var, source, node.predicate))
+            if node.predicate is not None
+            else None
+        )
         if node.kind == "ANY":
             return _anon("any_match", source, pred) if pred else _anon("any_match", source)
         if node.kind == "ALL":
@@ -941,7 +992,11 @@ class ExprLowering:
             return one
         # Three-valued: a second true decides false; otherwise a null predicate value leaves it null.
         unknown = _lam(
-            node.var, exp.Is(this=exp.Paren(this=self.lower(node.predicate)), expression=exp.Null())
+            node.var,
+            exp.Is(
+                this=exp.Paren(this=self._over(node.var, source, node.predicate)),
+                expression=exp.Null(),
+            ),
         )
         return exp.Case(
             ifs=[

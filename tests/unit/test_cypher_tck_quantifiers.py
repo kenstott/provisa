@@ -65,3 +65,18 @@ def _value(query: str):
 )
 def test_a_quantifier_over_nulls_is_three_valued(quantifier, items, condition, answer):
     assert _value(f"RETURN {quantifier}(x IN {items} WHERE {condition}) AS result") is answer
+
+
+@pytest.mark.parametrize(
+    ("query", "answer"),
+    [
+        # Quantifier1-3 [6]: an item of a list of several types counts its own items.
+        ("RETURN none(x IN [[1, 2, 3], ['a']] WHERE size(x) = 3) AS result", False),
+        ("RETURN single(x IN [['a'], [1, 2, 3]] WHERE size(x) = 3) AS result", True),
+        ("RETURN any(x IN [['a'], [1, 2, 3], ['a']] WHERE size(x) = 3) AS result", True),
+        ("RETURN all(x IN [[1, 2], ['abc', 'd']] WHERE size(x) = 2) AS result", True),
+        ("RETURN [x IN [[1, 2, 3], 'ab'] | size(x)] AS sizes", [3, 2]),
+    ],
+)
+def test_an_item_of_a_list_of_several_types_has_its_size(query, answer):
+    assert _value(query) == answer

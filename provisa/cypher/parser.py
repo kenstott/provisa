@@ -965,7 +965,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         if (t := self._peek()) is None or t.type != "STAR":
             return self._parse_return_items()
         self._advance()
-        items = [ReturnItem(expression=Variable(name=n), name=n) for n in scope]
+        # By name, as openCypher orders the columns RETURN * returns.
+        items = [ReturnItem(expression=Variable(name=n), name=n) for n in sorted(scope)]
         if (t := self._peek()) is not None and t.type == "COMMA":
             self._advance()
             items.extend(self._parse_return_items())
@@ -1003,7 +1004,14 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                         continue
                     break
                 if depth == 0:
-                    if t.type == "COMMA" or t.value.upper() in (_stop_kws | {"AS"}):
+                    # STARTS WITH and ENDS WITH are operators, not a WITH clause.
+                    in_operator = (
+                        t.value.upper() == "WITH"
+                        and bool(read)
+                        and read[-1].value.upper() in ("STARTS", "ENDS")
+                    )
+                    stops = t.type == "COMMA" or t.value.upper() in (_stop_kws | {"AS"})
+                    if stops and not in_operator:
                         break
                 read.append(self._advance())
                 expr_parts.append(read[-1].value)
