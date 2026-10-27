@@ -393,3 +393,30 @@ def test_visibility_tags_say_what_the_one_column_rule_serves():
     assert [t.asset.fqn() for t in tags] == ["wh.public.customers.id"]
     assert tags[0].restricted_roles == ("hr_only",)
     assert tags[0].exempt_roles == _but("hr_only", extra=("hr_only",))
+
+
+def test_a_mask_names_only_the_roles_the_column_is_served_to():
+    config = _config(
+        tables=[
+            _table(
+                "customers",
+                [
+                    Column(
+                        name="ssn",
+                        data_type="text",
+                        visible_to=["clerk", "admin"],
+                        masks=[
+                            {"to": ["admin"], "mask": None},
+                            {"mask": {"type": "constant", "value": "x"}},
+                        ],
+                    )
+                ],
+            )
+        ]
+    )
+    [masked] = _tags(config, GovernanceSignal.MASKED)
+    # The roles not served ssn read nothing through its mask: the visibility tag names them.
+    assert masked.restricted_roles == ("clerk",)
+    assert masked.exempt_roles == ("admin",)
+    [hidden] = _tags(config, GovernanceSignal.VISIBILITY_RESTRICTED)
+    assert hidden.restricted_roles == _but("admin", "clerk")

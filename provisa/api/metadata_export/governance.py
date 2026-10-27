@@ -171,13 +171,16 @@ def build_governance_tags(
     tags: list[GovernanceTag] = []
     for table in config.tables:
         for column in table.columns:
-            tags.extend(_mask_tags(table, column, all_roles, chains, org_id))
             served = served_roles(
                 definitions,
                 chains,
                 table.domain_id,
                 {"visible_to": column.visible_to, "scope": column.scope},
             )
+            # A mask applies only to a role the column is served to: one not served it reads
+            # nothing through the mask, and is named by the visibility tag instead.
+            readers = tuple(r for r in all_roles if r in served)
+            tags.extend(_mask_tags(table, column, readers, chains, org_id))
             tags.extend(_visibility_tags(table, column, all_roles, served, org_id))
     tags.extend(_rls_tags(config, index, all_roles, org_id))
     return tags

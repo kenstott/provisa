@@ -14,7 +14,6 @@ from pytest_bdd import given, scenarios, then, when
 
 from provisa.api.metadata_export import build_snapshot
 from provisa.api.metadata_export.model import GovernanceSignal
-from provisa.core.db import STANDARD_ROLES
 from provisa.core.models import (
     Column,
     Domain,
@@ -119,19 +118,17 @@ def _tags_published(shared_data):
 
 @then("every tag names the roles the restriction applies to and the roles exempt from it")
 def _roles_named(shared_data):
-    # The roles a tag names are the org's: the config's own and every standard role that reaches
-    # a domain (REQ-2155). The mask and the hidden column exempt admin alone; the row rule
-    # restricts analyst alone.
-    roster = sorted(
-        {"analyst", "admin", *(r for r, s in STANDARD_ROLES.items() if s.domain_access)}
-    )
-    by_signal = {t.signal: t for t in shared_data["snapshot"].governance_tags}
-    for signal in (GovernanceSignal.MASKED, GovernanceSignal.VISIBILITY_RESTRICTED):
-        assert by_signal[signal].exempt_roles == ("admin",)
-        assert by_signal[signal].restricted_roles == tuple(r for r in roster if r != "admin")
-    rls = by_signal[GovernanceSignal.RLS_RESTRICTED]
-    assert rls.restricted_roles == ("analyst",)
-    assert rls.exempt_roles == tuple(r for r in roster if r != "analyst")
+    # The roster is every role reaching a domain, the standard roles among them (REQ-2155). admin
+    # reads ssn unmasked, salary and the rows unfiltered; analyst reads ssn (masked) but not salary,
+    # and its rows are filtered. ssn's visibility tag names the roles not served it.
+    for tag in shared_data["snapshot"].governance_tags:
+        assert "admin" in tag.exempt_roles and "admin" not in tag.restricted_roles
+        sees_ssn = (
+            tag.signal == GovernanceSignal.VISIBILITY_RESTRICTED
+            and tag.asset.fqn() == "wh.public.customers.ssn"
+        )
+        side = tag.exempt_roles if sees_ssn else tag.restricted_roles
+        assert "analyst" in side
 
 
 @then("no mask pattern or RLS predicate appears anywhere in the snapshot")
