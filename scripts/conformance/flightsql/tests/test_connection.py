@@ -76,6 +76,15 @@ class TestConnection(_SuiteConnection):
         assert sorted(set(columns)) == sorted(columns)
         assert columns == [(*table_id, c) for c in ("ints", "strs", *LINK_COLUMNS)]
 
+    def test_get_table_schema_schema(self, conn, driver) -> None:
+        """The suite's assertion on the table it would create in the secondary schema, which the
+        fixture model declares there (spam INTEGER, eggs TEXT), with the link columns after its
+        own."""
+        schema = conn.adbc_get_table_schema(
+            "test_get_table_schema_schema", db_schema_filter=driver.features.secondary_schema
+        )
+        assert schema.names == ["spam", "eggs", *LINK_COLUMNS]
+
     def test_get_objects_column_filter_table(self, conn, driver, get_objects_table) -> None:
         """The suite's assertions, in the fixture's schema, with the link columns after the
         table's own."""

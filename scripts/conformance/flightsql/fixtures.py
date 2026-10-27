@@ -55,6 +55,11 @@ GET_OBJECTS_TABLE = "getobjects_fixture"
 GET_OBJECTS_SETUP = f"""CREATE TABLE {GET_OBJECTS_TABLE} (ints INTEGER, strs TEXT);
 INSERT INTO {GET_OBJECTS_TABLE} (ints, strs) VALUES (1, NULL), (NULL, 'foo'), (42, 'spam');"""
 
+#: The table test_get_table_schema_schema would create in the secondary schema (conformance):
+#: declared in the fixture model with the same columns.
+TABLE_SCHEMA_TABLE = "test_get_table_schema_schema"
+TABLE_SCHEMA_SETUP = f"CREATE TABLE {TABLE_SCHEMA_TABLE} (spam INTEGER, eggs TEXT);"
+
 #: The statement tests' tables, which they would create empty and then write: seeded empty and
 #: writable by org_admin. The tests' CREATE TABLE is replaced by emptying the table
 #: (tests/provisa.py's query_override), as a rerun starts from the empty table the CREATE made.
@@ -224,6 +229,7 @@ def seed(validation: Path, pg_dsn: str, out: Path) -> None:
     check_overrides(found)
     setups = [(c.adapted_table, c.adapted_setup) for c in found]
     setups.append((GET_OBJECTS_TABLE, GET_OBJECTS_SETUP))
+    setups.append((TABLE_SCHEMA_TABLE, TABLE_SCHEMA_SETUP))
     setups.extend(WRITTEN_TABLES.items())
     tables = []
     with psycopg.connect(pg_dsn, autocommit=True) as conn:

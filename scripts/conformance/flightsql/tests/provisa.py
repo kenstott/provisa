@@ -49,6 +49,8 @@ class ProvisaQuirks(model.DriverQuirks):
         statement_rows_affected_ddl=True,
         current_catalog=model.FromEnv("PROVISA_FLIGHT_CATALOG"),
         current_schema=model.FromEnv("PROVISA_FLIGHT_SCHEMA"),
+        # The fixture model's domain: a schema besides the current one (public).
+        secondary_schema="conformance",
     )
     setup = model.DriverSetup(
         database={
