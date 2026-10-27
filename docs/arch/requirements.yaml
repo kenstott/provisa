@@ -15006,8 +15006,13 @@
   type: behavioral
   description: 'The catalog intercept layer handles scalar expression queries: `current_user` / `session_user`
     → authenticated `role_id`; `current_database()` → `"provisa"`; `current_schema()` → `"public"`; `version()`
-    → `"PostgreSQL 14.0 on Provisa"`; `pg_backend_pid()` → `0`; `current_setting(...)` → value from a
-    fixed settings table; `SHOW <setting>` → value from the same settings table.'
+    → `"PostgreSQL 14.0 on Provisa"`; `pg_backend_pid()` → `0`; `current_setting(...)` → value from a fixed
+    settings table; `SHOW <setting>` → value from the same settings table. (Amended 2026-10-27, THE CATALOG
+    IS THE SERVED DATABASE:) Maintainer 2026-10-27: every catalog a client sees is the served database,
+    as in PostgreSQL where information_schema.table_catalog always equals current_database(): under multi-tenancy
+    the org the client named (database name or TLS hostname), single-tenant "provisa". pgwire''s information_schema,
+    pg_tables and schemata, and Flight SQL''s GetSessionOptions, GetCatalogs and GetObjects all report that
+    one name; no surface lists a hard-coded "provisa" while current_database() answers the org.'
   use_case: Scalar expression intercepts prevent JDBC drivers and ORMs from failing on startup queries
     that probe server identity and settings.
   code:
