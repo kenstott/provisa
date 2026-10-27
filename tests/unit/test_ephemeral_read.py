@@ -74,3 +74,35 @@ def test_a_label_without_session_matches_compiles_as_it_does_without_the_session
     before = s.sql("MATCH (p:Pet) WHERE p.name = 'Rex' RETURN p.name")
     s.run("CREATE (:Person:Temp {name: 'Cy'})")
     assert s.sql("MATCH (p:Pet) WHERE p.name = 'Rex' RETURN p.name") == before
+
+
+def test_a_match_of_any_node_returns_each_node_once(monkeypatch):
+    # Ann is tagged by no session label; Cy carries Person and Temp; Dee carries two free labels;
+    # the last node carries none. Each is one row (REQ-2176).
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("CREATE (:Person:Temp {name: 'Cy'}), (:Temp:Scratch {name: 'Dee'}), ({name: 'Eve'})")
+    rows = s.run("MATCH (n) RETURN n.name")
+    assert _values(rows) == [("Ann",), ("Bo",), ("Cy",), ("Dee",), ("Eve",)]
+
+
+def test_a_node_of_two_model_tables_is_one_node_of_any_match(monkeypatch):
+    s = Session(monkeypatch, {**_PEOPLE, "Pet": ({"id": "integer", "name": "text"}, "(1, 'Rex')")})
+    s.run("CREATE (:Person:Pet {name: 'Zed'})")
+    assert _values(s.run("MATCH (n) WHERE n.name = 'Zed' RETURN n.name")) == [("Zed",)]
+    assert _values(s.run("MATCH (n:Pet) RETURN n.name")) == [("Rex",), ("Zed",)]
+
+
+def test_a_match_of_any_node_keeps_a_model_nodes_identity(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    before = s.run("MATCH (n) WHERE n.name = 'Ann' RETURN id(n) AS i")
+    s.run("CREATE (:Temp {name: 'Cy'})")
+    assert s.run("MATCH (n) WHERE n.name = 'Ann' RETURN id(n) AS i") == before
+
+
+def test_a_mixed_create_lands_its_governed_row_and_its_session_parts(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("CREATE (c:Person {id: 42, name: 'Cy'}), (n:Note {text: 'x'}), (c)-[:ABOUT]->(n)")
+    assert s.duck.execute("SELECT id, name FROM s.person WHERE id = 42").fetchall() == [(42, "Cy")]
+    assert _values(s.run("MATCH (n:Note) RETURN n.text")) == [("x",)]
+    rows = s.run("MATCH (p:Person)-[:ABOUT]->(n:Note) RETURN p.name, n.text")
+    assert _values(rows) == [("Cy", "x")]

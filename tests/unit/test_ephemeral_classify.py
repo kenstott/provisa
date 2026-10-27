@@ -147,14 +147,36 @@ def test_a_node_naming_two_model_tables_carries_both():
 @pytest.mark.parametrize(
     ("statement", "match"),
     [
-        ("CREATE (:Person), (:Temp)", "model rows or session nodes, not both"),
-        (
-            "MATCH (a:Person), (b:Person) CREATE (a)-[:KNOWS]->(b), (a)-[:LIKES]->(b)",
-            "model relationships or session relationships, not both",
-        ),
         ("MATCH (a:Person) CREATE (a:Temp)", "already declared"),
     ],
 )
 def test_what_has_no_one_reading_is_refused_by_name(statement, match):
     with pytest.raises(CypherParseError, match=match):
         _classify(statement)
+
+
+@pytest.mark.parametrize(
+    ("statement", "nodes", "rels"),
+    [
+        ("CREATE (:Person {id: 1}), (:Temp)", [True, False], []),
+        (
+            "MATCH (a:Person), (b:Person) CREATE (a)-[:KNOWS]->(b), (a)-[:LIKES]->(b)",
+            [],
+            [True, False],
+        ),
+        ("CREATE (c:Person {id: 42}), (n:Note), (c)-[:ABOUT]->(n)", [True, False], [False]),
+        ("CREATE (a:Person {id: 1}), (b:Temp), (a)-[:KNOWS]->(b)", [True, False], [False]),
+    ],
+)
+def test_a_mixed_create_splits_each_part_to_its_own_path(statement, nodes, rels):
+    # A node naming one model table is a governed row; a relationship is governed only when it
+    # is the model's between governed ends; everything else is the session's (REQ-2176).
+    kind = _classify(statement)
+    assert not kind.governed
+    assert [c.governed for c in kind.created] == nodes
+    assert list(kind.rels_governed) == rels
+
+
+def test_a_create_of_governed_rows_and_model_relationships_alone_is_the_governed_write():
+    kind = _classify("CREATE (a:Person {id: 1}), (b:Person {id: 2}), (a)-[:KNOWS]->(b)")
+    assert kind.governed
