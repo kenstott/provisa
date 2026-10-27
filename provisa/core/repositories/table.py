@@ -134,15 +134,43 @@ def _nested_attributes(
     return {"array_depth": 0, "element_type": None, "native_type": None, "native_platform": None}
 
 
-def _stored_subtype(data_type: str, existing: tuple[str, str] | None) -> tuple[str, str | None]:
+class _NotASubtype(ValueError):
+    """The declared subtype; named with its column where the column is written."""
+
+
+class SubtypeRefused(ValueError):
+    """A column declared with a subtype that is no subtype, or not of its data_type (REQ-2171)."""
+
+    def __init__(self, table_name: str, column: str, declared: str, data_type: str) -> None:
+        self.table_name, self.column, self.declared, self.data_type = (
+            table_name,
+            column,
+            declared,
+            data_type,
+        )
+        super().__init__(
+            f"Column {table_name}.{column} declares the subtype {declared!r}, which is no "
+            f"subtype of its type {data_type!r}."
+        )
+
+
+def _stored_subtype(
+    data_type: str, declared: str | None, existing: tuple[str, str] | None
+) -> tuple[str, str | None]:
     """``(data_type, subtype)`` to store for a column registered as ``data_type`` (REQ-2171): a
-    subtype is stored as its base carrying the subtype; the stored base restated keeps the stored
-    subtype; any other type has none."""
-    from provisa.core.ir_types import base_type, subtype_named
+    subtype is stored as its base carrying the subtype; a declared subtype is kept with the base
+    it is a subtype of; the stored base restated keeps the stored subtype; any other type has
+    none."""
+    from provisa.core.ir_types import base_type, subtype_named, to_ir
 
     named = subtype_named(data_type)
     if named is not None:
         return base_type(data_type), named
+    if declared:
+        named = subtype_named(declared)
+        if named is None or to_ir(base_type(named)) != to_ir(data_type):
+            raise _NotASubtype(declared)
+        return data_type, named
     if existing is not None and existing[0] == data_type:
         return data_type, existing[1]
     return data_type, None
@@ -754,7 +782,12 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         # REQ-1961: a numeric's precision and scale are stored in one spelling, whoever writes
         # the registration and however they spelled it; a size no numeric can have is refused
         # here, the one place a column's type is written.
-        _data_type, _subtype = _stored_subtype(_data_type, _existing_subtypes.get(col.name))
+        try:
+            _data_type, _subtype = _stored_subtype(
+                _data_type, getattr(col, "subtype", None), _existing_subtypes.get(col.name)
+            )
+        except _NotASubtype as refused:
+            raise SubtypeRefused(table.table_name, col.name, str(refused), _data_type) from None
         try:
             _data_type = stored_type_of(_data_type)
         except ReportedNumericMalformed as malformed:

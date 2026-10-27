@@ -39,6 +39,8 @@ export interface Registration {
 interface ColumnInput {
   name: string;
   dataType?: string;
+  /** REQ-2171: the subtype of dataType the column registers as. */
+  subtype?: string;
   visibleTo?: string[];
   masks?: MaskEntry[];
   alias?: string;
@@ -72,6 +74,7 @@ function draftColumn(c: ColumnInput, i: number): TableColumn {
     computedGqlAlias: c.alias || c.name,
     description: c.description ?? null,
     dataType: c.dataType ?? null,
+    subtype: c.subtype ?? null,
     nativeFilterType: c.nativeFilterType ?? null,
     nativeFilterRequired: c.nativeFilterRequired ?? null,
     requiredBySteward: c.requiredBySteward ?? false,

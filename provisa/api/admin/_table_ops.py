@@ -47,6 +47,7 @@ def _build_column_models(columns: list) -> list:
             alias=c.alias,
             description=c.description,
             data_type=getattr(c, "data_type", None),
+            subtype=getattr(c, "subtype", None),  # REQ-2171
             path=getattr(c, "path", None),
             native_filter_type=c.native_filter_type,
             native_filter_required=c.native_filter_required,

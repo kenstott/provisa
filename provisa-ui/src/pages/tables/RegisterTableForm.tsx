@@ -97,6 +97,7 @@ interface RegisterTableFormProps {
     {
       name: string;
       dataType: string;
+      subtype?: string | null; // REQ-2171
       comment?: string | null;
       nativeFilterType?: string | null;
       nativeFilterRequired?: boolean | null;
@@ -408,6 +409,7 @@ export function RegisterTableForm({
             nativeFilterType: c.nativeFilterType ?? null,
             nativeFilterRequired: c.nativeFilterRequired ?? null,
             dataType: c.dataType,
+            subtype: c.subtype ?? null, // REQ-2171
             isPrimaryKey: c.isPrimaryKey ?? false,
             // REQ-1959: nothing is public by default. A parameter column is an argument, not
             // data, and its scope publishes nothing whatever it says.
@@ -484,7 +486,8 @@ export function RegisterTableForm({
     value: string | boolean | string[] | MaskEntry[],
   ) => {
     const next = [...columns];
-    next[i] = { ...next[i], [key]: value };
+    // REQ-2171: a subtype describes the type it came with; a new type has none.
+    next[i] = { ...next[i], [key]: value, ...(key === "dataType" ? { subtype: null } : {}) };
     setColumns(next);
   };
 

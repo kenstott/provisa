@@ -610,7 +610,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     if (!editingTable) return;
     const next = { ...editingTable };
     next.columns = [...next.columns];
-    next.columns[i] = { ...next.columns[i], [key]: value };
+    // REQ-2171: a subtype describes the type it came with; a new type has none.
+    next.columns[i] = {
+      ...next.columns[i],
+      [key]: value,
+      ...(key === "dataType" ? { subtype: null } : {}),
+    };
     setEditingTable(next);
   };
 

@@ -28,6 +28,7 @@ fragment ColumnFields on TableColumnType {
   computedGqlAlias
   description
   dataType
+  subtype
   nativeFilterType
   nativeFilterRequired
   requiredBySteward
@@ -719,6 +720,7 @@ query AvailableColumnsMetadata($sourceId: String!, $schemaName: String!, $tableN
   availableColumnsMetadata(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) {
     name
     dataType
+    subtype
     comment
     nativeFilterType
     nativeFilterRequired

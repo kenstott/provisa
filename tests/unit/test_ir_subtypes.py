@@ -479,3 +479,56 @@ def test_geometry_and_geography_are_sent_in_text_form_only():
     assert _text("geometry", "POINT(1 2)") == "POINT(1 2)"
     with pytest.raises(ValueError, match="text format only"):
         _binary("geography", "POINT(1 2)")
+
+
+# --- the UI shows a column's subtype with its base -----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_column_saved_with_its_base_and_subtype_keeps_both_and_a_wrong_one_is_refused(
+    org_plane,
+):
+    hosts = _hosts(("ip", "text"), ("fee", "numeric(21,4)"))
+    hosts.columns[0].subtype = "inet"
+    hosts.columns[1].subtype = "money"
+    async with org_plane.acquire() as conn:
+        await table_repo.upsert(conn, hosts)
+    assert await _stored(org_plane) == {"ip": ("text", "inet"), "fee": ("numeric(21,4)", "money")}
+    wrong = _hosts(("ip", "integer"))
+    wrong.columns[0].subtype = "inet"
+    async with org_plane.acquire() as conn:
+        with pytest.raises(table_repo.SubtypeRefused, match=r"hosts\.ip .*'inet'.*'integer'"):
+            await table_repo.upsert(conn, wrong)
+
+
+def test_the_column_types_the_ui_reads_carry_the_subtype():
+    from provisa.api.admin.types import AvailableColumnType, ColumnInput, TableColumnType
+
+    for gql_type in (AvailableColumnType, ColumnInput, TableColumnType):
+        assert "subtype" in {f.name for f in gql_type.__strawberry_definition__.fields}
+
+
+@pytest.mark.asyncio
+async def test_a_suggested_column_of_a_subtype_is_offered_as_its_base_carrying_the_subtype(
+    monkeypatch,
+):
+    from provisa.api.admin import schema_query
+    from provisa.api.admin.types import AvailableColumnType
+
+    async def _listed(*_args):
+        return [
+            AvailableColumnType(name="ip", data_type="inet", comment=None),
+            AvailableColumnType(name="n", data_type="integer", comment=None),
+        ]
+
+    async def _remember(*_args):
+        return None
+
+    monkeypatch.setattr(schema_query, "resolve_available_columns_metadata", _listed)
+    monkeypatch.setattr(schema_query, "_remember_selected_columns", _remember)
+    monkeypatch.setattr(schema_query, "require_capability", lambda *_a: None)
+    columns = await schema_query.Query().available_columns_metadata(None, "pg", "public", "t")
+    assert [(c.name, c.data_type, c.subtype) for c in columns] == [
+        ("ip", "text", "inet"),
+        ("n", "integer", None),
+    ]

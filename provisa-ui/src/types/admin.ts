@@ -258,6 +258,8 @@ export interface TableColumn {
   computedGqlAlias: string;
   description: string | null;
   dataType: string | null;
+  /** REQ-2171: the subtype the column was registered as; dataType is its base. */
+  subtype?: string | null;
   nativeFilterType: string | null;
   /** Whether the source requires a value for this parameter; null where it is not recorded. */
   nativeFilterRequired?: boolean | null;

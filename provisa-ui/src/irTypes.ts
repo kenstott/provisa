@@ -62,6 +62,12 @@ export function toIrType(native: string): string {
   return NATIVE_TO_IR[base] ?? base;
 }
 
+/** REQ-2171: a column's type as shown: its base, with its subtype beside it when it has one. */
+export function shownType(dataType: string | null | undefined, subtype?: string | null): string {
+  if (!dataType) return "";
+  return subtype ? `${toIrType(dataType)} · ${subtype}` : toIrType(dataType);
+}
+
 // REQ-1961: a numeric column's size. Stored in one spelling, `numeric(p,s)`; a bare `numeric`
 // declares none and is read as floating point.
 export const NUMERIC_MAX_PRECISION = 76;

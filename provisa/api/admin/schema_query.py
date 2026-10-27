@@ -1422,6 +1422,13 @@ class Query:  # REQ-021, REQ-042
         require_capability(info, "table_registration")
         columns = await resolve_available_columns_metadata(source_id, schema_name, table_name)
         await _remember_selected_columns(source_id, schema_name, table_name, columns)
+        from provisa.core.ir_types import base_type, subtype_named
+
+        for column in columns:
+            # REQ-2171: a subtype is offered as its base carrying the subtype.
+            named = subtype_named(column.data_type) if column.data_type else None
+            if named is not None:
+                column.data_type, column.subtype = base_type(column.data_type), named
         return columns
 
     @strawberry.field

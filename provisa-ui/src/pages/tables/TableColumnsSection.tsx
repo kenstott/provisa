@@ -17,7 +17,7 @@ import { MaskListEditor } from "../../components/MaskListEditor";
 import type { RegisteredTable, Source, TableColumn } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import { fetchIrTypes } from "../../api/admin";
-import { IR_TYPES_FALLBACK, toIrType } from "../../irTypes";
+import { IR_TYPES_FALLBACK, shownType, toIrType } from "../../irTypes";
 import { NumericSizeInputs } from "./NumericSizeInputs";
 import { TestDataColumns } from "./testdata/TestDataColumns";
 import { DescriptionField } from "./DescriptionField";
@@ -97,7 +97,7 @@ export function TableColumnsSection({
     ...(editSource?.type === "ingest"
       ? [{ label: t("tableEditForm.jsonPathHeader"), value: c.path || "" }]
       : []),
-    { label: t("tableEditForm.dataTypeHeader"), value: c.dataType ? toIrType(c.dataType) : "" },
+    { label: t("tableEditForm.dataTypeHeader"), value: shownType(c.dataType, c.subtype) },
     { label: t("tableEditForm.pkHeader"), value: c.isPrimaryKey ? "✓" : "" },
     { label: t("tableEditForm.scopeHeader"), value: c.scope || "domain" },
     ...(governanceHidden
@@ -221,6 +221,17 @@ export function TableColumnsSection({
                             comboboxProps={{ withinPortal: true }}
                             styles={{ input: { fontFamily: "monospace" } }}
                           />
+                          {c.subtype && (
+                            // REQ-2171: the subtype the column was registered as, beside its base.
+                            <Text
+                              size="xs"
+                              ff="monospace"
+                              c="dimmed"
+                              data-testid={`edit-table-col-subtype-${c.columnName}`}
+                            >
+                              {shownType(c.dataType, c.subtype)}
+                            </Text>
+                          )}
                           {c.dataType && toIrType(c.dataType) === "numeric" && (
                             <NumericSizeInputs
                               key={c.columnName}

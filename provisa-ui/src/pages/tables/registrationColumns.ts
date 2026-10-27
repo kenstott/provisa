@@ -25,6 +25,7 @@ export function registeredColumns(columns: ColumnForm[], searchQuery: string | n
     .map((c) => ({
       name: c.name,
       dataType: c.dataType,
+      subtype: c.subtype || undefined, // REQ-2171
       visibleTo: c.visibleTo,
       masks: c.masks,
       alias: c.alias || undefined,
