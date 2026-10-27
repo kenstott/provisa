@@ -106,6 +106,40 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     return translator.translate()
 
 
+#: A value's type as a map literal writes it (expr_visitor._literal_kind) -> its engine type.
+_KIND_TYPES = {
+    "integer": "BIGINT",
+    "float": "DOUBLE",
+    "boolean": "BOOLEAN",
+    "list<integer>": "BIGINT[]",
+    "list<float>": "DOUBLE[]",
+    "list<boolean>": "BOOLEAN[]",
+    "list<string>": "VARCHAR[]",
+}
+
+
+def _map_key_types(source: CypherExpr) -> dict[str, str]:
+    """For an UNWIND of map literals written in the statement, each key whose every value is of
+    one type, other than a string, -> that type's engine type."""
+    from provisa.gql.expr_ast import ListLiteral
+    from provisa.gql.expr_visitor import _literal_kind
+
+    if not isinstance(source, ListLiteral) or not all(
+        isinstance(item, MapLiteral) for item in source.items
+    ):
+        return {}
+    kinds: dict[str, set[str | None]] = {}
+    for item in source.items:
+        for key, value in cast(MapLiteral, item).entries:
+            kinds.setdefault(key, set()).add(_literal_kind(value))
+    found: dict[str, str] = {}
+    for key, of_key in kinds.items():
+        written = {k for k in of_key if k is not None and k != "list<>"}
+        if len(written) == 1 and (only := written.pop()) in _KIND_TYPES:
+            found[key] = _KIND_TYPES[only]
+    return found
+
+
 def _is_json_list(e: exp.Expression) -> bool:
     """Whether ``e`` is a list of JSON-encoded values (GraphVarKind.JSON_LIST): a list literal of
     them, or a list built from one -- appended to, prepended to, joined, sliced or reversed."""
@@ -408,6 +442,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._unwind_count: int = 0
         # UNWIND variables whose source array contains MAP elements (e.g. collect({...}))
         self._map_unwind_vars: set[str] = set()
+        # An UNWIND of map literals written in the statement -> each key's engine type, where every
+        # map gives that key a value of one type (a key's value is otherwise read as its text).
+        self._map_unwind_types: dict[str, dict[str, str]] = {}
         # Variables whose value is a MAP array (from collect({...}) or similar)
         self._map_array_vars: set[str] = set()
         # Each UNWIND's UNNEST alias (``UNNEST(a) AS _uw0(x)``): its variable is that alias's column
@@ -1107,6 +1144,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 isinstance(source, Variable) and source.name in self._map_array_vars
             ):
                 self._map_unwind_vars.add(uw.variable)
+                self._map_unwind_types[uw.variable] = _map_key_types(source)
             unnest = exp.Unnest(
                 expressions=[array_expr],
                 alias=exp.TableAlias(

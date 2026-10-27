@@ -205,6 +205,10 @@ class TranslatorExprContext:
                     this=_anon("element_at", exp.column(var), exp.Literal.string(name)),
                     to=exp.DataType.build("json"),
                 )
+                typed = t._map_unwind_types.get(var, {}).get(name)
+                if typed is not None:
+                    # A key every map gives a value of one type: that value, not its text.
+                    return exp.Cast(this=cast, to=exp.DataType.build(typed))
                 return _anon("JSON_EXTRACT_SCALAR", cast, exp.Literal.string("$"))
             # REQ-1586: an attribute of a junction-backed relationship is a column of the junction
             # row, so r.attr anchors on the junction alias — in RETURN, in expressions, and in a
