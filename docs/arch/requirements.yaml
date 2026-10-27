@@ -89795,8 +89795,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     values their date, time, timestamp or duration types (microsecond precision, zones as Cypher presents
     them), a list of one element type a typed list, a map or mixed list JSON. Types only widen: an integer
     column receiving a float becomes double, and any incompatible value widens the column to JSON; a NULL
-    adds no column. A node carries an id; a node with several labels has a row in each label table under
-    that id, and SET updates every one.'
+    adds no column. [SUPERSEDED by REQ-2176, 2026-10-27 -- Cypher labels are {Domain}:{Table} (REQ-572);
+    extra labels are alias views (LABELS ARE DOMAIN:TABLE; EXTRA LABELS ARE VIEWS, below). Kept here for
+    history; do not implement against it.] A node carries an id; a node with several labels has a row in
+    each label table under that id, and SET updates every one. [END SUPERSEDED BLOCK] (Amended 2026-10-27,
+    LABELS ARE DOMAIN:TABLE; EXTRA LABELS ARE VIEWS:) Maintainer 2026-10-27: a Provisa node''s labels are
+    {Domain}:{Table} (REQ-572), so ephemeral labels follow that structure. Ephemeral tables live in one
+    reserved session domain (Session): CREATE (:Scratch) makes Session:Scratch, and :Scratch resolves to
+    it when no model table has that name, the model winning any clash. When a CREATE''s first label names
+    a domain, the pair is domain and table as everywhere else, and a domain other than the session domain
+    is refused by name (REQ-661). When its labels name no domain, the first is the node''s base table in
+    the session domain and each further label is a label alias: a session view over the base table selecting
+    the nodes that carry it. Views are tables to the label map, so MATCH on any of a node''s labels finds
+    it and labels(n) lists its base label and aliases. A node lives in exactly one base table; SET and DELETE
+    act on that table and its aliases follow. Relationship types follow the same rule: an ephemeral type
+    is a junction in the session domain and never shadows a model type.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
