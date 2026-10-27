@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 21720d9d-244c-4598-aede-0d440b9e1eb3
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2135: the SPARQL tab's exports, in SPARQL's own formats. A graph answer (a CONSTRUCT's
 // triples) is RDF -- Turtle, N-Triples or JSON-LD -- and a SELECT's or an ASK's is SPARQL results.
 // An export asks /data/sparql the frame's query again in the chosen format, so the server's one

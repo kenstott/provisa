@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 1dacd8c5-fb88-4999-a44c-b2ac368bd7bb
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // Each tab offers its own language's exports: the Cypher tab's is the Neo4j export, never the
 // SPARQL tab's RDF and SPARQL results.
 

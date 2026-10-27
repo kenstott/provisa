@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 4b96129a-0294-4ed6-9594-cd34c5544400
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2135: each tab of the graph visualizer offers its own language's exports. The Cypher tab's
 // is the Neo4j export of every frame's drawing; the SPARQL tab's writes a frame's answer as RDF or
 // SPARQL results.
