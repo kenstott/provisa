@@ -87764,7 +87764,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     rewrite is applied only where it provably leaves the answer unchanged (never across an outer join, an
     aggregate over the CTE, or a LIMIT on it); otherwise the CTE runs as written. A filter on a computed
     column cannot reach the CTE''s read. A call anywhere else (a WHERE, a JOIN, a GROUP BY, inside another
-    expression) is still refused by name.'
+    expression) is still refused by name. (Amended 2026-10-27, EACH CTE IS CLASSIFIED BEFORE IT IS STAGED:)
+    Maintainer 2026-10-27: before a CTE holding a transform is staged, it is classified by what restricts
+    it: a filter, a join, both or neither; and each restricting condition by whether its values are known
+    in advance. A condition whose values are known before anything runs (literals, bound parameters, session
+    variables) is pushed into the CTE''s read at once. A condition whose values come from another relation
+    (a join key) is known only once that relation is read, so that side runs first and its keys restrict
+    the CTE''s read. A condition naming a computed column is known only after the transform and is not pushed.
+    The classification decides the plan; with nothing known in advance and no join to run first, the CTE
+    runs as written.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
