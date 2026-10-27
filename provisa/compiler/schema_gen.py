@@ -59,6 +59,7 @@ from provisa.compiler.schema_types import SchemaInput, _TableInfo
 from provisa.security.rights import (
     GOVERNANCE_META_COLUMNS,
     META_DOMAIN_ID,
+    SQL_ONLY_TABLES,
     Capability,
     column_served,
     has_capability,
@@ -94,9 +95,10 @@ from provisa.compiler.schema_inputs import (
 # Domains implicitly reachable via JOIN from any data domain (traversal only).
 # Tables in these domains are included in all role contexts so SQL JOINs
 # can reference them, but V001 still blocks direct FROM-clause access.
-# Only the meta (catalog) domain is implicitly discoverable by every role (REQ-1132). Ops is a normal
-# domain a role must reach, like any other.
-_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = IMPLICIT_DOMAINS
+# The meta (catalog) domain is implicitly discoverable by every role (REQ-1132), and so is the
+# ontology schema, the glossary's definitions moved from meta (REQ-2163), whose rows the glossary's
+# own rule scopes. Ops is a normal domain a role must reach, like any other.
+_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = IMPLICIT_DOMAINS | {"ontology"}
 
 
 def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
@@ -991,6 +993,8 @@ def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
             "domain_description": domain_descs.get(t.domain_id),
         }
         for t in tables
+        # REQ-2163: a table SQL alone serves has no root field and no REST path.
+        if (t.domain_id, t.table_name) not in SQL_ONLY_TABLES
     }
 
 
@@ -1113,6 +1117,9 @@ def generate_schema(
             and t.domain_id not in _accessible_domains
         ):
             continue
+        # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
+        if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
+            continue
         gql_type = gql_types[t.table_id]
         query_fields[t.field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_type)),
@@ -1184,6 +1191,9 @@ def generate_schema(
             and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
             and t.domain_id not in _accessible_domains
         ):
+            continue
+        # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
+        if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
             continue
         # REQ-1157: a view_sql/MV-backed relation is derived, not a base table. Writes either fail
         # at the source (non-updatable view) or land in the mv_cache snapshot the next refresh

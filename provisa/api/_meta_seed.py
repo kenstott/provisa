@@ -371,30 +371,32 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
     # REQ-1584: the business glossary graph — terms to their physical refs, to each other over the
     # closed edge set, and to their experts. The ref -> registered_tables edge is what joins the
     # vocabulary to the ops traces, which already reach registered_tables by table_name above.
-    # glossary_term_refs and glossary_term_domains are junctions (META_JUNCTION_RELATIONSHIPS):
+    # REQ-2163: the glossary's tables are the ontology schema's (_terms, _term_refs, ...); a ref
+    # still binds a column in meta, across the two schemas.
+    # _term_refs and _domains are junctions (META_JUNCTION_RELATIONSHIPS):
     # their edges here are GraphQL's path through them and name no Cypher type -- the graph drops
     # them with the junction's node and traverses term -> column and term -> domain directly.
     (
-        "meta:glossary_terms:refs",
+        "ontology:_terms:refs",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "term_id",
         "one-to-many",
         _ADMIN,
-        "glossary_term_refs",
+        "_term_refs",
         None,
         "refs",
     ),
     (
-        "meta:glossary_term_refs:term",
+        "ontology:_term_refs:term",
         _ADMIN,
-        "glossary_term_refs",
+        "_term_refs",
         "term_id",
         "id",
         "many-to-one",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         None,
         "term",
     ),
@@ -402,58 +404,58 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
     # term with an edge of these types to a term kept" by (the Ontology View's Orphans). The
     # junction-backed edges below traverse term to term; these reach the edge rows themselves.
     (
-        "meta:glossary_terms:edges_out",
+        "ontology:_terms:edges_out",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "from_term_id",
         "one-to-many",
         _ADMIN,
-        "glossary_term_edges",
+        "_term_edges",
         None,
         "edgesOut",
     ),
     (
-        "meta:glossary_terms:edges_in",
+        "ontology:_terms:edges_in",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "to_term_id",
         "one-to-many",
         _ADMIN,
-        "glossary_term_edges",
+        "_term_edges",
         None,
         "edgesIn",
     ),
     (
-        "meta:glossary_term_edges:source_term",
+        "ontology:_term_edges:source_term",
         _ADMIN,
-        "glossary_term_edges",
+        "_term_edges",
         "from_term_id",
         "id",
         "many-to-one",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         None,
         "sourceTerm",
     ),
     (
-        "meta:glossary_term_edges:target_term",
+        "ontology:_term_edges:target_term",
         _ADMIN,
-        "glossary_term_edges",
+        "_term_edges",
         "to_term_id",
         "id",
         "many-to-one",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         None,
         "targetTerm",
     ),
     # REQ-2130: a class term's tables, and a table's class term -- registered_tables.class_term_id.
     (
-        "meta:glossary_terms:tables",
+        "ontology:_terms:tables",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "class_term_id",
         "one-to-many",
@@ -470,51 +472,51 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "id",
         "many-to-one",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "CLASS_TERM",
         "classTerm",
     ),
     # REQ-1591: a term's domains, and back.
     (
-        "meta:glossary_terms:domains",
+        "ontology:_terms:domains",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "term_id",
         "one-to-many",
         _ADMIN,
-        "glossary_term_domains",
+        "_domains",
         None,
         "domains",
     ),
     (
-        "meta:glossary_term_domains:term",
+        "ontology:_domains:term",
         _ADMIN,
-        "glossary_term_domains",
+        "_domains",
         "term_id",
         "id",
         "many-to-one",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         None,
         "term",
     ),
     (
-        "meta:glossary_terms:experts",
+        "ontology:_terms:experts",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "term_id",
         "one-to-many",
         _ADMIN,
-        "glossary_term_experts",
+        "_experts",
         "EXPERTS",
         "experts",
     ),
     (
-        "meta:glossary_term_refs:registered_tables",
+        "ontology:_term_refs:registered_tables",
         _ADMIN,
-        "glossary_term_refs",
+        "_term_refs",
         "table_id",
         "id",
         "many-to-one",
@@ -524,14 +526,14 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         None,
     ),
     (
-        "meta:registered_tables:glossary_term_refs",
+        "meta:registered_tables:_term_refs",
         _ADMIN,
         "registered_tables",
         "id",
         "table_id",
         "one-to-many",
         _ADMIN,
-        "glossary_term_refs",
+        "_term_refs",
         None,
         "glossaryRefs",
     ),
@@ -539,21 +541,21 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
     # joins on the synthesized column_key both views emit (table_id || ':' || column_name) rather
     # than on table_columns.id, which the table upsert replaces wholesale.
     (
-        "meta:table_columns:glossary_term_refs",
+        "meta:table_columns:_term_refs",
         _ADMIN,
         "table_columns",
         "column_key",
         "column_key",
         "one-to-many",
         _ADMIN,
-        "glossary_term_refs",
+        "_term_refs",
         None,
         "glossaryRef",
     ),
     (
-        "meta:glossary_term_refs:table_columns",
+        "ontology:_term_refs:table_columns",
         _ADMIN,
-        "glossary_term_refs",
+        "_term_refs",
         "column_key",
         "column_key",
         "many-to-one",
@@ -724,9 +726,9 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "tag",
     ),
     (
-        "meta:glossary_terms:tag_assignments",
+        "ontology:_terms:tag_assignments",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "term_id",
         "one-to-many",
@@ -737,7 +739,7 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
     ),
     # REQ-2125: a data product and its parts. data_products_meta holds only the product's own
     # fields; its domain, member tables, commands and tags are reached over these edges, its
-    # glossary terms from its member tables' columns (table_columns -> glossary_term_refs) and its
+    # glossary terms from its member tables' columns (table_columns -> ontology._term_refs) and its
     # profiles from each member table to the result tables the profiler registered for it.
     (
         "meta:data_products:domains",
@@ -950,13 +952,13 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
 ]
 
 
-# REQ-1586: junction-backed edges. glossary_term_edges is an associative table, not an entity, so
+# REQ-1586: junction-backed edges. _term_edges is an associative table, not an entity, so
 # it is declared as first-class relationships rather than reached through a reified node — one row
 # per rel_type value, each naming itself from that value ("column" nomination). This is what makes
 # (t:GlossaryTerm)-[:KIND_OF*1..3]->(:GlossaryTerm) count whole hops. Nothing here is glossary
 # machinery: these are ordinary `relationships` rows whose via_* columns are filled, seeded by the
 # same loop and read by the same label map as a junction a modeller declares on their own table.
-# glossary_term_refs (a term's columns) and glossary_term_domains (a term's domains, by the one
+# _term_refs (a term's columns) and _domains (a term's domains, by the one
 # rule) are associative too, each one untyped edge named by its alias ("fixed" nomination).
 # (id, src_source, src_table, src_col, tgt_col, cardinality, tgt_source, tgt_table,
 #  via_table, via_source_column, via_target_column, via_type_column, via_type_value,
@@ -966,15 +968,15 @@ _JunctionRow = tuple[
 ]
 _TERM_EDGE_JUNCTIONS: list[_JunctionRow] = [
     (
-        f"meta:glossary_terms:{_rt.lower()}",
+        f"ontology:_terms:{_rt.lower()}",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "id",
         "one-to-many",
         _ADMIN,
-        "glossary_terms",
-        "glossary_term_edges",
+        "_terms",
+        "_term_edges",
         "from_term_id",
         "to_term_id",
         "rel_type",
@@ -990,15 +992,15 @@ META_JUNCTION_RELATIONSHIPS: list[_JunctionRow] = [
     *_TERM_EDGE_JUNCTIONS,
     # REQ-1584: a term's columns. The ref binds a column by its synthesized column_key.
     (
-        "meta:glossary_terms:columns",
+        "ontology:_terms:columns",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "column_key",
         "one-to-many",
         _ADMIN,
         "table_columns",
-        "glossary_term_refs",
+        "_term_refs",
         "term_id",
         "column_key",
         None,
@@ -1008,15 +1010,15 @@ META_JUNCTION_RELATIONSHIPS: list[_JunctionRow] = [
     ),
     # REQ-1591: a term's domains.
     (
-        "meta:glossary_terms:term_domains",
+        "ontology:_terms:term_domains",
         _ADMIN,
-        "glossary_terms",
+        "_terms",
         "id",
         "id",
         "one-to-many",
         _ADMIN,
         "domains",
-        "glossary_term_domains",
+        "_domains",
         "term_id",
         "domain_id",
         None,

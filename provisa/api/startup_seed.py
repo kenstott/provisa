@@ -44,7 +44,14 @@ from provisa.api._meta_views import (
     _OPS_REPORT_VIEWS,
     _ops_table_usage_ddl,
 )
+from provisa.api._ontology_views import (
+    ONTOLOGY_BASE_TABLE,
+    ONTOLOGY_TABLE_ALIAS,
+    ONTOLOGY_TABLE_VIEWS,
+    ONTOLOGY_TABLES,
+)
 from provisa.core.control_plane import bring_up_platform
+from provisa.security.rights import ONTOLOGY_DOMAIN_ID
 from provisa.core.database import Connection, create_engine_from_url
 from provisa.api._catalog_descriptions import (
     COLUMN_DESCRIPTIONS as _COL_DESC,
@@ -240,6 +247,95 @@ async def _drop_sibling_environment_registrations(
     )
 
 
+async def _register_admin_view(
+    conn: "Connection",
+    domain_id: str,
+    schema_name: str,
+    tbl: str,
+    *,
+    base_table: str | None,
+    view_name: str,
+) -> None:
+    """Register one of the control plane's own views as table ``tbl`` of a system schema (meta,
+    ontology): its columns are the view's, its primary key the base table's it restates (a view
+    restating none, ontology._axioms, is keyed by its own id), and descriptions are seeded without
+    overwriting an edited one."""
+    table_id = await conn.upsert_returning(
+        _registered_tables_t,
+        {
+            "source_id": "provisa-admin",
+            "domain_id": domain_id,
+            "schema_name": schema_name,
+            "table_name": tbl,
+            "description": _TBL_DESC[tbl],
+        },
+        index_elements=["source_id", "schema_name", "table_name"],
+        returning="id",
+        update_columns=["domain_id"],
+        set_extra=_keep_edited_description(_registered_tables_t.c.description, _TBL_DESC[tbl]),
+    )
+    # Portable reflection (SQLAlchemy Inspector) instead of information_schema. The org
+    # schema is honoured only on schema-capable backends — the abstraction decides.
+    pk_cols = (
+        {"id"}
+        if base_table is None
+        else {
+            c["column_name"]
+            for c in await conn.reflect_columns(base_table, schema=schema_name)
+            if c["is_primary_key"]
+        }
+    )
+    cols = await conn.reflect_columns(view_name, schema=schema_name)
+    col_names = {col["column_name"] for col in cols}
+    # Remove stale columns that no longer appear in the view.
+    await conn.execute_core(
+        _delete(_table_columns_t).where(
+            _table_columns_t.c.table_id == table_id,
+            _table_columns_t.c.column_name.not_in(list(col_names)),
+        )
+    )
+    for col in cols:
+        await conn.upsert(
+            _table_columns_t,
+            {
+                "table_id": table_id,
+                "domain_id": domain_id,
+                "column_name": col["column_name"],
+                # REQ-2154: the catalog is read by every role built on Viewer.
+                "visible_to": [VIEWER_ROLE],
+                "data_type": col["data_type"],
+                "is_primary_key": col["column_name"] in pk_cols,
+                "description": _COL_DESC[tbl].get(col["column_name"]),
+            },
+            index_elements=["table_id", "column_name"],
+            update_columns=[],
+            set_extra=_keep_edited_description(
+                _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+            ),
+        )
+
+
+async def _seed_ontology_domain(
+    conn: "Connection", org_id: str = "default", env: str | None = None
+) -> None:  # REQ-2163
+    """Register the glossary's definition views as the ontology system schema's tables
+    (idempotent), as :func:`_seed_meta_domain` registers meta's. The Class tables generated from
+    the glossary are the schema's too, and are not written here."""
+    schema_name = org_schema(org_id, env)
+    for ddl in ONTOLOGY_TABLE_VIEWS.values():
+        await _seed_view(conn, ddl)
+    await _drop_sibling_environment_registrations(conn, ONTOLOGY_DOMAIN_ID, org_id, schema_name)
+    for tbl in ONTOLOGY_TABLES:
+        await _register_admin_view(
+            conn,
+            ONTOLOGY_DOMAIN_ID,
+            schema_name,
+            tbl,
+            base_table=ONTOLOGY_BASE_TABLE[tbl],
+            view_name=ONTOLOGY_TABLE_ALIAS[tbl],
+        )
+
+
 async def _seed_meta_domain(
     conn: "Connection", org_id: str = "default", env: str | None = None
 ) -> None:  # REQ-012, REQ-016, REQ-695
@@ -266,57 +362,14 @@ async def _seed_meta_domain(
         )
 
     for tbl in _META_TABLES:
-        table_id = await conn.upsert_returning(
-            _registered_tables_t,
-            {
-                "source_id": "provisa-admin",
-                "domain_id": "meta",
-                "schema_name": schema_name,
-                "table_name": tbl,
-                "description": _TBL_DESC[tbl],
-            },
-            index_elements=["source_id", "schema_name", "table_name"],
-            returning="id",
-            update_columns=["domain_id"],
-            set_extra=_keep_edited_description(_registered_tables_t.c.description, _TBL_DESC[tbl]),
+        await _register_admin_view(
+            conn,
+            "meta",
+            schema_name,
+            tbl,
+            base_table=tbl,
+            view_name=_META_TABLE_ALIAS.get(tbl, tbl),
         )
-        # Portable reflection (SQLAlchemy Inspector) instead of information_schema. The org
-        # schema is honoured only on schema-capable backends — the abstraction decides.
-        pk_cols = {
-            c["column_name"]
-            for c in await conn.reflect_columns(tbl, schema=schema_name)
-            if c["is_primary_key"]
-        }
-        # Use the view name when available so column list reflects the exposed schema.
-        view_name = _META_TABLE_ALIAS.get(tbl, tbl)
-        cols = await conn.reflect_columns(view_name, schema=schema_name)
-        col_names = {col["column_name"] for col in cols}
-        # Remove stale columns that no longer appear in the view.
-        await conn.execute_core(
-            _delete(_table_columns_t).where(
-                _table_columns_t.c.table_id == table_id,
-                _table_columns_t.c.column_name.not_in(list(col_names)),
-            )
-        )
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "meta",
-                    "column_name": col["column_name"],
-                    # REQ-2154: the catalog is read by every role built on Viewer.
-                    "visible_to": [VIEWER_ROLE],
-                    "data_type": col["data_type"],
-                    "is_primary_key": col["column_name"] in pk_cols,
-                    "description": _COL_DESC[tbl].get(col["column_name"]),
-                },
-                index_elements=["table_id", "column_name"],
-                update_columns=[],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
-                ),
-            )
 
     # Register registered_tables → table_columns relationship (table_id FK)
     _rt_id = (
@@ -948,6 +1001,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         async with _conn.advisory_lock(_SEED_DOMAIN_ADVISORY_LOCK_KEY):
             await _seed_tag_param_values(_conn)  # REQ-1467
             await _seed_meta_domain(_conn, org_id=org_id, env=env)
+            await _seed_ontology_domain(_conn, org_id=org_id, env=env)  # REQ-2163
             await _seed_ops_pg(_conn)
             await _seed_ops_domain(_conn, org_id=org_id, env=env)  # REQ-884
             await _ensure_ops_steward_grant(_conn)  # REQ-1386

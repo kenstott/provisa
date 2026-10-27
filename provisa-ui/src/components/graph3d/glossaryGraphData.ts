@@ -8,10 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2130: the glossary's Ontology View data, read from the meta domain as the signed-in user --
-// glossary_terms_meta (its standing columns), the domains each term is in, its refs to columns
+// REQ-2130: the glossary's Ontology View data, read from the ontology schema (REQ-2163) as the
+// signed-in user -- ontology._terms (its standing columns), the domains each term is in, its refs to columns
 // with those columns' tables and the relationships declared from them, and the edges leaving it
-// (glossary_term_edges_meta, read with the term); and the data products with their datasets, the datasets' columns and
+// (ontology._term_edges, read with the term); and the data products with their datasets, the datasets' columns and
 // the terms those columns are -- turned into the graph's nodes and edges.
 
 import { termRole } from "../../api/glossary";
@@ -79,7 +79,7 @@ function termKept(s: QueryScope): Where | undefined {
     s.domains.length === 0
       ? undefined
       : {
-          // term_domains is the term's domains as |a|b| (glossary_term_domains_meta); an
+          // term_domains is the term's domains as |a|b| (ontology._domains); an
           // enterprise-wide term ("*") is in every one.
           _or: [...s.domains, ENTERPRISE_DOMAIN].map((d) => ({
             term_domains: { like: `%|${d}|%` },
@@ -240,7 +240,7 @@ function rootWhere(s: QueryScope): Where | undefined {
 }
 
 function termsField(m: MetaReader, s: QueryScope): string | null {
-  return rootField(m, "glossary_terms", termSelection(s, 0), rootWhere(s));
+  return rootField(m, "_terms", termSelection(s, 0), rootWhere(s));
 }
 
 /** REQ-2143: how many terms the view's query would read at its root -- the matches under a search,
@@ -249,7 +249,7 @@ export function ontologyCountQuery(m: MetaReader, s: QueryScope): string | null 
   // Each term's domains with it: the overview counts the terms in each.
   const field = rootField(
     m,
-    "glossary_terms",
+    "_terms",
     { fields: ["id"], rels: { domains: { alias: "domains", sel: { fields: ["domain_id"] } } } },
     rootWhere(s),
   );
@@ -360,7 +360,7 @@ export function termEdges(terms: TermRow[]): TermEdgeRow[] {
 
 /** What the Ontology View's query answers: a part not read is absent. */
 export interface OntologyRows {
-  glossary_terms: TermRow[];
+  _terms: TermRow[];
   data_products?: ProductRow[];
 }
 

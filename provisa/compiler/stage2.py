@@ -218,11 +218,12 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # every column regardless (REQ-1327). The lockdown domains (ops) need an explicit grant; the
     # meta domain is governed by the tiered rule below.
     from provisa.security.rights import (
-        GLOSSARY_SCOPED_META_VIEWS,
+        GLOSSARY_SCOPED_VIEWS,
         GOVERNANCE_META_COLUMNS,
         META_DOMAIN_ID,
         LISTED_NAMES_VIEW,
         META_ROW_SCOPED_VIEWS,
+        ONTOLOGY_DOMAIN_ID,
         Capability,
         column_served,
         compute_meta_row_scope,
@@ -289,8 +290,13 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # published column (REQ-1959).
             _tbl_domain = tbl.get("domain_id")
             # A table registered with no domain is gated by none, as the direct-read check
-            # (V001) treats it.
-            _reaches = not _tbl_domain or reaches_domain(role["domain_access"], _tbl_domain)
+            # (V001) treats it. Every role reaches the ontology schema, as it does meta (REQ-2163):
+            # its rows are scoped by the glossary's own rule below.
+            _reaches = (
+                not _tbl_domain
+                or _tbl_domain == ONTOLOGY_DOMAIN_ID
+                or reaches_domain(role["domain_access"], _tbl_domain)
+            )
             _subject = {"id": role_id}
             visible = {
                 c["column_name"]
@@ -374,17 +380,17 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
 
-    # REQ-1593: the glossary meta views answer what the glossary API does -- a term is read where
-    # glossary.readable_term admits it -- by the same WHERE-injection.
+    # REQ-1593, REQ-2163: the ontology schema's definition views answer what the glossary API
+    # does -- a term is read where glossary.readable_term admits it -- by the same WHERE-injection.
     from provisa.core import domain_policy
     from provisa.core.env_authority import domains_within
 
     readable_in = None if domain_policy.single_domain() else domains_within(role["domain_access"])
     if readable_in is not None:
         for tm in ctx.tables.values():
-            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+            if getattr(tm, "domain_id", None) != ONTOLOGY_DOMAIN_ID:
                 continue
-            scope_cols = GLOSSARY_SCOPED_META_VIEWS.get(getattr(tm, "table_name", ""))
+            scope_cols = GLOSSARY_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
             if scope_cols is None:
                 continue
             predicate = " AND ".join(

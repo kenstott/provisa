@@ -82,24 +82,24 @@ function reader(opts: { tags: boolean }): MetaReader {
         type("M__TableColumns", {
           columnName: scalar,
           columnKey: scalar,
-          glossaryRef: list("M__GlossaryTermRefs"),
+          glossaryRef: list("ONT__TermRefs"),
           sensitivity: list("M__SensitiveCoverage"),
           ...(opts.tags ? { tags: list("M__TagAssignments") } : {}),
         }),
-        type("M__GlossaryTermRefs", { termId: scalar, term: one("M__GlossaryTerms") }),
-        type("M__GlossaryTerms", {
+        type("ONT__TermRefs", { termId: scalar, term: one("ONT__Terms") }),
+        type("ONT__Terms", {
           id: scalar,
           name: scalar,
-          edgesOut: list("M__GlossaryTermEdges"),
-          edgesIn: list("M__GlossaryTermEdges"),
+          edgesOut: list("ONT__TermEdges"),
+          edgesIn: list("ONT__TermEdges"),
         }),
-        type("M__GlossaryTermEdges", {
+        type("ONT__TermEdges", {
           id: scalar,
           fromTermId: scalar,
           toTermId: scalar,
           relType: scalar,
-          sourceTerm: one("M__GlossaryTerms"),
-          targetTerm: one("M__GlossaryTerms"),
+          sourceTerm: one("ONT__Terms"),
+          targetTerm: one("ONT__Terms"),
         }),
         type("M__SensitiveCoverage", { tags: scalar }),
         type("M__TrackedFunctions", { name: scalar, domainId: scalar }),

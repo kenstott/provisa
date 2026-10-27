@@ -166,14 +166,14 @@ def test_an_empty_or_holds_for_no_row_and_an_empty_and_for_every_row(schema_and_
 def test_the_glossary_s_terms_and_edges_reach_each_other_both_ways():
     from provisa.api._meta_seed import META_RELATIONSHIPS
 
-    by_alias = {r[9]: r for r in META_RELATIONSHIPS if r[0].startswith("meta:glossary_term")}
+    by_alias = {r[9]: r for r in META_RELATIONSHIPS if r[0].startswith("ontology:_term")}
     assert by_alias["edgesOut"][2:8] == (
-        "glossary_terms",
+        "_terms",
         "id",
         "from_term_id",
         "one-to-many",
         by_alias["edgesOut"][6],
-        "glossary_term_edges",
+        "_term_edges",
     )
     assert by_alias["edgesIn"][4] == "to_term_id"
     assert by_alias["sourceTerm"][3] == "from_term_id"

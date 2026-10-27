@@ -149,8 +149,8 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
           ? edges.filter((e) => e.from_term_id === t.id)
           : undefined,
       }));
-    if (s.count) return { glossary_terms: terms.map((t) => ({ id: t.id, domains: t.domains })) };
-    return { glossary_terms: terms };
+    if (s.count) return { _terms: terms.map((t) => ({ id: t.id, domains: t.domains })) };
+    return { _terms: terms };
   },
 }));
 

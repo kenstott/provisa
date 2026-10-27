@@ -24,7 +24,7 @@ SCHEMA_SQL = Path(__file__).resolve().parents[2] / "provisa" / "core" / "schema.
 
 
 def test_only_the_systems_own_domains_are_seeded() -> None:
-    assert SEEDED_DOMAIN_IDS == {"", "meta", "ops"}
+    assert SEEDED_DOMAIN_IDS == {"", "meta", "ops", "ontology"}
 
 
 def test_schema_sql_seeds_the_same_domains() -> None:

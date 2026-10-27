@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2128: a meta view's root field is the one /data/graph-schema names, for every table the
-// role has one for -- a junction a relationship traverses (glossary_term_edges) is no node label,
+// role has one for -- a junction a relationship traverses (_term_edges) is no node label,
 // and is still queried by its root field.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,17 +26,17 @@ describe("the role's root fields", () => {
         asked.push(new Headers(init?.headers).get("X-Provisa-Role"));
         return new Response(
           JSON.stringify({
-            node_labels: [{ label: "GlossaryTerms", domain_id: "meta" }],
+            node_labels: [{ label: "Terms", domain_id: "ontology" }],
             root_fields: [
               {
-                domain_id: "meta",
-                table_name: "glossary_terms",
-                graphql_field: "m__glossaryTerms",
+                domain_id: "ontology",
+                table_name: "_terms",
+                graphql_field: "ont__terms",
               },
               {
-                domain_id: "meta",
-                table_name: "glossary_term_edges",
-                graphql_field: "m__glossaryTermEdges",
+                domain_id: "ontology",
+                table_name: "_term_edges",
+                graphql_field: "ont__termEdges",
               },
             ],
             relationship_types: [],
@@ -47,7 +47,7 @@ describe("the role's root fields", () => {
     );
     const roots = await rootFields("steward");
     expect(asked).toEqual(["steward"]);
-    expect(roots.get(rootKey("meta", "glossary_term_edges"))).toBe("m__glossaryTermEdges");
-    expect(roots.get(rootKey("meta", "glossary_terms"))).toBe("m__glossaryTerms");
+    expect(roots.get(rootKey("ontology", "_term_edges"))).toBe("ont__termEdges");
+    expect(roots.get(rootKey("ontology", "_terms"))).toBe("ont__terms");
   });
 });

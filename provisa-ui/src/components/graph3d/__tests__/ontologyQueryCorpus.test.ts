@@ -134,9 +134,9 @@ describe("the Ontology View's and the product graph's queries, as the GraphQL co
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(produced);
   });
 
-  it("each read the meta model's real root fields", () => {
+  it("each read the system catalog's real root fields", () => {
     const queries = Object.values(corpus());
     expect(queries.length).toBeGreaterThan(10);
-    for (const q of queries) expect(q).toMatch(/m__(glossaryTerms|dataProducts)/);
+    for (const q of queries) expect(q).toMatch(/ont__terms|m__dataProducts/);
   });
 });

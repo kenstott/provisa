@@ -38,6 +38,9 @@ if TYPE_CHECKING:
 # Catalog domain id — local constant (kept in sync with provisa.security.rights.META_DOMAIN_ID) to
 # avoid importing a higher layer into the cypher package.
 _META_DOMAIN_ID = "meta"
+# The domains every role may traverse but only a role granted them may root a MATCH in: meta and
+# the ontology schema (provisa.compiler.schema_gen._IMPLICIT_TRAVERSAL_DOMAINS).
+_IMPLICIT_DOMAINS = frozenset({_META_DOMAIN_ID, "ontology"})
 
 # REQ-1320: star-schema modeling role → the additional node label Neo4j clients see.
 _ROLE_LABELS = {"fact": "Fact", "dimension": "Dimension"}
@@ -185,8 +188,15 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         domains: dict[str, list[str]] | None = None,
         nodes_by_table: dict[str, list[str]] | None = None,
         aliases: dict[str, list[RelationshipMapping]] | None = None,
+        sql_only_nodes: dict[str, NodeMapping] | None = None,
+        sql_only_tables: dict[tuple[str, str], str] | None = None,
     ) -> None:
         self.nodes = nodes
+        # REQ-2163: the nodes of tables SQL alone serves (security.rights.SQL_ONLY_TABLES): no
+        # Cypher label, kept for a language that lowers to them (with_sql_only), each found by
+        # its (domain id, registered table name).
+        self.sql_only_nodes: dict[str, NodeMapping] = sql_only_nodes or {}
+        self.sql_only_tables: dict[tuple[str, str], str] = sql_only_tables or {}
         # keyed by rel_type (can map multiple if different source/target pairs)
         self.relationships = relationships
         # domain_label (PascalCase) → [type_name, ...]
@@ -199,6 +209,24 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         self._nodes_ci: dict[str, str] = {k.lower(): k for k in self.nodes}
         self._domains_ci: dict[str, str] = {k.lower(): k for k in self.domains}
         self._nodes_by_table_ci: dict[str, str] = {k.lower(): k for k in self.nodes_by_table}
+
+    def with_sql_only(self) -> "CypherLabelMap":
+        """This map with the SQL-only tables' nodes in it, for SPARQL's lowering of its
+        RDFS/OWL/SKOS patterns to ontology._axioms (REQ-2163); the Cypher surface never has them."""
+        nodes_by_table = {k: list(v) for k, v in self.nodes_by_table.items()}
+        domains = {k: list(v) for k, v in self.domains.items()}
+        for type_name, nm in self.sql_only_nodes.items():
+            nodes_by_table.setdefault(nm.table_label, []).append(type_name)
+            if nm.domain_label:
+                domains.setdefault(nm.domain_label, []).append(type_name)
+        return CypherLabelMap(
+            nodes={**self.nodes, **self.sql_only_nodes},
+            relationships=self.relationships,
+            domains=domains,
+            nodes_by_table=nodes_by_table,
+            aliases=self.aliases,
+            sql_only_tables=self.sql_only_tables,
+        )
 
     def display_label(self, nm: "NodeMapping") -> str:  # REQ-572
         """Return the shortest unambiguous label for a node.
@@ -394,10 +422,28 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         # — it may not be a bare MATCH (n) root (which would emit a direct meta FROM and be V001-blocked,
         # the same rule SQL enforces). Mark meta nodes traversal_only so MATCH (mine)-[]->(meta) still
         # works while MATCH (n) roots on the role's own domains only. A meta grant / "*" keeps it direct.
-        if not _all_access and _META_DOMAIN_ID not in domain_access:
+        # REQ-2163: the ontology schema (the glossary's definitions moved from meta) likewise.
+        if not _all_access:
             for nm in nodes.values():
-                if nm.domain_id == _META_DOMAIN_ID:
+                if nm.domain_id in _IMPLICIT_DOMAINS and nm.domain_id not in domain_access:
                     nm.traversal_only = True
+
+        # REQ-2163: a table SQL alone serves is no label of the graph (security.rights).
+        from provisa.security.rights import SQL_ONLY_TABLES
+
+        sql_only_domains = {domain for domain, _table in SQL_ONLY_TABLES}
+        sql_only_tables = {
+            (tm.domain_id, tm.original_table_name or tm.table_name): tm.type_name
+            for tm in ctx_typed.tables.values()
+            if tm.domain_id in sql_only_domains
+            and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_ONLY_TABLES
+        }
+        sql_only_types = set(sql_only_tables.values())
+        sql_only = {t: nodes.pop(t) for t in list(nodes) if t in sql_only_types}
+        for listed in (*domains.values(), *nodes_by_table.values()):
+            listed[:] = [t for t in listed if t not in sql_only]
+        for key in [k for k, v in nodes_by_table.items() if not v]:
+            del nodes_by_table[key]
 
         return cls(
             nodes=nodes,
@@ -405,6 +451,8 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             domains=domains,
             nodes_by_table=nodes_by_table,
             aliases=aliases,
+            sql_only_nodes=sql_only,
+            sql_only_tables={k: t for k, t in sql_only_tables.items() if t in sql_only},
         )
 
 

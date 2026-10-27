@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS  # REQ-884
+from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS  # REQ-2163
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig, Source  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
@@ -58,11 +59,6 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "registered_tables": "registered_tables_meta",
     "table_columns": "table_columns_meta",
     "roles": "roles_meta",
-    "glossary_terms": "glossary_terms_meta",  # REQ-1584
-    "glossary_term_refs": "glossary_term_refs_meta",  # REQ-1584
-    "glossary_term_edges": "glossary_term_edges_meta",  # REQ-1584
-    "glossary_term_experts": "glossary_term_experts_meta",  # REQ-1584
-    "glossary_term_domains": "glossary_term_domains_meta",  # REQ-1591
     "tracked_webhooks": "tracked_webhooks_meta",
     "tracked_functions": "tracked_functions_meta",
     "tags": "tags_meta",  # REQ-1373
@@ -1849,6 +1845,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         "domain_prefix": domain_prefix,
         "physical_table_map": {
             **_META_TABLE_ALIAS,
+            **ONTOLOGY_TABLE_ALIAS,
             **_OPS_LOG_TABLE_ALIAS,
             **(kafka_physical or {}),
         },
@@ -2044,11 +2041,6 @@ _META_TABLES = [
     "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
     "sensitive_coverage",  # REQ-2091: sensitive columns' fake coverage; view-only
     "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
-    "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
-    "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
-    "glossary_term_edges",  # REQ-1584
-    "glossary_term_experts",  # REQ-1584
-    "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
     "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
     "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only

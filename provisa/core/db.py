@@ -58,6 +58,7 @@ _SEED_DOMAINS: tuple[tuple[str, str, str | None], ...] = (
     ("", "No domain", None),
     ("meta", "System metadata", None),
     ("ops", "Operational telemetry", "org_admin"),
+    ("ontology", "System ontology", None),  # REQ-2163
 )
 
 # REQ-2155: Provisa's standard roles, as provisa/core/standard_roles.yaml defines them (the one

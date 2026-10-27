@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-_SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
+_SYSTEM_DOMAIN_IDS = ["", "meta", "ops", "ontology"]
 
 
 @dataclass

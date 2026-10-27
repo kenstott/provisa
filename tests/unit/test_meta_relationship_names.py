@@ -22,6 +22,7 @@ import sqlglot
 
 from provisa.api._meta_seed import META_RELATIONSHIPS
 from provisa.api._meta_views import _META_TABLE_VIEWS, _OPS_LOG_TABLE_VIEWS, _OPS_REPORT_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.compiler.naming import apply_gql_name, rel_field_name
 
 
@@ -37,7 +38,7 @@ def _columns(table: str) -> list[str] | None:
     control-plane table's own."""
     from provisa.core import schema_org
 
-    for views in (_META_TABLE_VIEWS, _OPS_LOG_TABLE_VIEWS, _OPS_REPORT_VIEWS):
+    for views in (_META_TABLE_VIEWS, ONTOLOGY_TABLE_VIEWS, _OPS_LOG_TABLE_VIEWS, _OPS_REPORT_VIEWS):
         if table in views:
             return _view_columns(views[table])
     found = getattr(schema_org, table, None)

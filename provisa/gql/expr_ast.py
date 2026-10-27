@@ -250,6 +250,22 @@ class TypedLiteral(CypherExpr):
 
 
 @dataclass
+class TermIri(CypherExpr):
+    """A glossary term's name (``value``), answered as the term's vocabulary IRI -- the writer
+    builds it, as it builds a subject's (REQ-2163); compared and ordered as the name."""
+
+    value: CypherExpr
+
+
+@dataclass
+class AxiomObject(CypherExpr):
+    """The object of the ontology._axioms row ``node`` binds: a term (answered as its IRI), an
+    IRI or a literal, whichever the row holds (REQ-2163)."""
+
+    node: str
+
+
+@dataclass
 class Term(CypherExpr):
     """``value`` as an RDF term of the answer: a node variable as its subject (its table and key
     values, the IRI built outside SQL), an IriConst as that IRI, anything else as a literal with
@@ -261,6 +277,8 @@ class Term(CypherExpr):
 
 
 AnyExpr = Union[
+    TermIri,
+    AxiomObject,
     Literal,
     Variable,
     Parameter,

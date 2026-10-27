@@ -25,6 +25,7 @@ import pytest
 import pytest_asyncio
 
 from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.startup_seed import _adapt_view_ddl
 from provisa.core import domain_policy
 from provisa.core.config_loader import apply_config, parse_config_dict
@@ -40,11 +41,11 @@ _VIEWS = (
     "table_columns",
     "tag_assignments",
     # First of the glossary views: the others read each term's domains from it (REQ-1593).
-    "glossary_term_domains",
-    "glossary_terms",
-    "glossary_term_refs",
-    "glossary_term_edges",
-    "glossary_term_experts",
+    "_domains",
+    "_terms",
+    "_term_refs",
+    "_term_edges",
+    "_experts",
 )
 
 
@@ -138,7 +139,7 @@ def _config(tables: dict) -> dict:
 async def _setup(conn, tables: dict) -> None:
     await apply_config(parse_config_dict(_config(tables)), conn)
     for tbl in _VIEWS:
-        await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[tbl]))
+        await conn.execute(_adapt_view_ddl({**_META_TABLE_VIEWS, **ONTOLOGY_TABLE_VIEWS}[tbl]))
 
 
 async def _terms(conn) -> dict[str, dict]:
@@ -161,7 +162,7 @@ async def test_live_flag_agrees_with_the_python_admission_rule(tenant_db):
         await glossary_repo.set_definition(conn, floating, "Wired to no column.")
 
         expected = await glossary_repo.live_ids(conn)
-        rows = await conn.fetch("SELECT id, name, live FROM glossary_terms_meta")
+        rows = await conn.fetch("SELECT id, name, live FROM _terms_ontology")
 
     from_view = {r["id"] for r in rows if r["live"]}
     by_name = {r["name"]: r for r in rows}
@@ -180,8 +181,8 @@ async def test_column_key_resolves_a_ref_to_its_column_and_address(tenant_db):
             """
             SELECT t.name AS term, r.table_name, r.schema_name, r.source_id, r.domain_id,
                    c.column_name, c.data_type
-            FROM glossary_term_refs_meta r
-            JOIN glossary_terms_meta t ON t.id = r.term_id
+            FROM _term_refs_ontology r
+            JOIN _terms_ontology t ON t.id = r.term_id
             JOIN table_columns_meta c ON c.column_key = r.column_key
             """
         )
@@ -207,7 +208,7 @@ async def test_retired_and_export_excluded_terms_are_flagged_not_withheld(tenant
         rows = {
             r["name"]: r
             for r in await conn.fetch(
-                "SELECT name, retired, export_excluded, live FROM glossary_terms_meta"
+                "SELECT name, retired, export_excluded, live FROM _terms_ontology"
             )
         }
     assert set(rows) == {"customer", "order date", "client"}
@@ -225,12 +226,8 @@ async def test_edges_and_experts_carry_their_endpoint_names(tenant_db):
         abstract = await glossary_repo.create_abstract_term(conn, "party", domains=set())
         await glossary_repo.add_edge(conn, abstract, terms["customer"]["id"], "KIND_OF")
         await glossary_repo.add_expert(conn, abstract, "dana", kind="author")
-        edges = await conn.fetch(
-            "SELECT from_term, to_term, rel_type FROM glossary_term_edges_meta"
-        )
-        experts = await conn.fetch(
-            "SELECT term_name, user_id, kind FROM glossary_term_experts_meta"
-        )
+        edges = await conn.fetch("SELECT from_term, to_term, rel_type FROM _term_edges_ontology")
+        experts = await conn.fetch("SELECT term_name, user_id, kind FROM _experts_ontology")
     assert [(e["from_term"], e["to_term"], e["rel_type"]) for e in edges] == [
         ("party", "customer", "KIND_OF")
     ]
@@ -265,8 +262,8 @@ async def test_a_term_reaches_the_tags_on_the_columns_it_binds(tenant_db):
         rows = await conn.fetch(
             """
             SELECT t.name AS term, a.tag_id, a.column_name
-            FROM glossary_terms_meta t
-            JOIN glossary_term_refs_meta r ON r.term_id = t.id
+            FROM _terms_ontology t
+            JOIN _term_refs_ontology r ON r.term_id = t.id
             JOIN tag_assignments_meta a ON a.column_key = r.column_key
             ORDER BY t.name, a.tag_id
             """
