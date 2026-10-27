@@ -17,6 +17,7 @@ _recursive_ctes, _shortestpath_hops_col, _shortestpath_is_all.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any, cast
 
 import sqlglot
@@ -156,10 +157,12 @@ def _needs_recursive_cte(
     Recursive is needed when src==tgt label (same-type start/end) OR any
     allowed rel loops back to the same node type (e.g. KNOWS: Person→Person).
     """
-    return (
-        variable_length
-        and not is_undirected
-        and (src_type == tgt_type or any(r.source_label == r.target_label for r in allowed_rels))
+    if is_undirected:
+        # #310: a walk from a type back to the same type, either way, recurses; one between two
+        # types follows the schema's paths between them, flat.
+        return variable_length and src_type == tgt_type
+    return variable_length and (
+        src_type == tgt_type or any(r.source_label == r.target_label for r in allowed_rels)
     )
 
 
@@ -198,6 +201,52 @@ def _hop_on(rel: RelationshipMapping, src_ref: str, tgt_alias: str) -> Any:
                 table=exp.Identifier(this=tgt_alias),
             )
         ),
+    )
+
+
+def _reversed(rel: RelationshipMapping) -> RelationshipMapping:
+    """``rel`` walked from its target to its source: an undirected pattern's step the other way
+    (#310). Its key columns, join expressions and junction foreign keys trade places."""
+    via = rel.via
+    return dataclasses.replace(
+        rel,
+        source_label=rel.target_label,
+        target_label=rel.source_label,
+        join_source_column=rel.join_target_column,
+        join_target_column=rel.join_source_column,
+        source_expr=rel.target_expr,
+        target_expr=rel.source_expr,
+        via=None
+        if via is None
+        else dataclasses.replace(
+            via, source_columns=via.target_columns, target_columns=via.source_columns
+        ),
+    )
+
+
+def _text(expr: Any) -> Any:
+    return exp.cast(expr, "VARCHAR")
+
+
+def _edge_key(rel: RelationshipMapping, from_key: Any, to_key: Any, backward: bool) -> Any:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The edge a hop walks, named the same whichever way it is walked: its type and its two ends
+    in the relationship's own direction. A hop walked backward (``backward``) names its ends the
+    other way round, so walking an edge back is walking the same edge."""
+    first, last = (to_key, from_key) if backward else (from_key, to_key)
+    return exp.DPipe(
+        this=exp.DPipe(
+            this=exp.DPipe(this=exp.Literal.string(f"{rel.rel_type}:"), expression=_text(first)),
+            expression=exp.Literal.string(">"),
+        ),
+        expression=_text(last),
+    )
+
+
+def _bar(expr: Any) -> Any:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``|expr|``: one edge of a trail, delimited so one edge's name never matches inside another."""
+    return exp.DPipe(
+        this=exp.DPipe(this=exp.Literal.string("|"), expression=expr),
+        expression=exp.Literal.string("|"),
     )
 
 
@@ -265,6 +314,13 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         if clause.variable and src_var and tgt_var:
             self._path_vars[clause.variable] = (src_var, tgt_var, needs_recursive)
 
+        # #310: an undirected walk takes each relationship either way. A link from a constant
+        # (HAS_TABLE's anchor) has no row to walk back from.
+        backward: list[RelationshipMapping] = []
+        if needs_recursive and is_undirected:
+            backward = [_reversed(r) for r in allowed_rels if not r.constant_source]
+            allowed_rels = [*allowed_rels, *backward]
+
         is_all_paths = pf.func_name.lower() == "allpaths"
 
         if needs_recursive:
@@ -283,6 +339,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 by_limit,
                 is_all_paths,
                 CypherTranslateError,
+                backward=frozenset(id(r) for r in backward),
             )
 
         return self._translate_path_flat_branch(
@@ -318,8 +375,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         by_limit: bool,
         is_all_paths: bool,
         CypherTranslateError: type,
+        *,
+        backward: frozenset[int] = frozenset(),
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Dispatch to recursive CTE translation after validating base rels exist."""
+        """Dispatch to recursive CTE translation after validating base rels exist. ``backward``:
+        the ids of the relationships an undirected walk takes from target to source (#310)."""
         base_rels = [r for r in allowed_rels if r.source_label == src_type]
         if not base_rels:
             raise CypherTranslateError(
@@ -339,6 +399,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             by_limit,
             is_all=pf.func_name.lower() in ("allshortestpaths", "allpaths"),
             suppress_hops_order=is_all_paths,
+            backward=backward,
         )
 
     def _translate_path_flat_branch(
@@ -609,6 +670,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         by_limit: bool,
         is_all: bool,
         suppress_hops_order: bool = False,
+        backward: frozenset[int] = frozenset(),
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Emit WITH RECURSIVE CTE for paths that may repeat edge traversals in data.
 
@@ -626,6 +688,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             max_hops + 1 if by_limit else max_hops,
             zero_length=min_hops == 0,
             textual=textual,
+            backward=backward,
         )
         self._recursive_ctes.append((cte_name, cte_expr))
 
@@ -740,6 +803,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         max_hops: int,
         _tbl: Any,
         textual: bool,
+        backward: frozenset[int] = frozenset(),
     ) -> exp.Select:
         """The recursive step over several relationships as one term: the traversal joined to
         the union of every candidate hop, each a (from_type, from_id, cur_type, cur_id) row."""
@@ -761,10 +825,35 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
                 exp.alias_(self._path_key(tgt_node_m, "_nxt", textual), alias="cur_id"),
             ).from_(_tbl(src_node_m, "_cur"))
+            if backward:
+                hop = hop.select(
+                    exp.alias_(
+                        _edge_key(
+                            rel,
+                            self._path_key(src_node_m, "_cur", textual),
+                            self._path_key(tgt_node_m, "_nxt", textual),
+                            id(rel) in backward,
+                        ),
+                        alias="edge",
+                    )
+                )
             hop = _apply_hop(hop, rel, "_cur", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
             hops = hop if hops is None else exp.Union(this=hops, expression=hop, distinct=False)
         assert hops is not None  # called with more than one branch built from these rels
-        return (
+        trail = (
+            [
+                exp.alias_(
+                    exp.DPipe(
+                        this=exp.DPipe(this=col("trail", "t"), expression=col("edge", "_hop")),
+                        expression=exp.Literal.string("|"),
+                    ),
+                    alias="trail",
+                )
+            ]
+            if backward
+            else []
+        )
+        step = (
             exp.select(
                 col("src_id", "t"),
                 col("cur_type", "_hop"),
@@ -772,6 +861,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 exp.alias_(
                     exp.Add(this=col("hops", "t"), expression=exp.Literal.number(1)), alias="hops"
                 ),
+                *trail,
             )
             .from_(exp.alias_(exp.Table(this=exp.Identifier(this=cte_name)), alias="t"))
             .join(
@@ -784,6 +874,16 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             )
             .where(exp.LT(this=col("hops", "t"), expression=exp.Literal.number(max_hops)))
         )
+        if backward:
+            # A walk never takes an edge it has already taken (openCypher: a path repeats no
+            # relationship), so an undirected walk does not go back over the edge it came by.
+            step = step.where(
+                exp.EQ(
+                    this=exp.StrPosition(this=col("trail", "t"), substr=_bar(col("edge", "_hop"))),
+                    expression=exp.Literal.number(0),
+                )
+            )
+        return step
 
     def _build_recursive_cte(
         self,
@@ -793,6 +893,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         max_hops: int,
         zero_length: bool = False,
         textual: bool = False,
+        backward: frozenset[int] = frozenset(),
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build the UNION ALL body of the recursive CTE.
 
@@ -806,6 +907,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
           cur_type — label of the current frontier node
           cur_id   — id of the current frontier node
           hops     — number of edges traversed so far (>= 1)
+          trail    — an undirected walk only (``backward`` names the relationships it takes
+                     from target to source, #310): the edges it has taken, ``|edge|edge|``, so it
+                     takes none twice
         """
 
         def _tbl(nm: NodeMapping, alias: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -833,6 +937,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                     exp.alias_(exp.Literal.string(src_nm.type_name), alias="cur_type"),
                     exp.alias_(seed_id.copy(), alias="cur_id"),
                     exp.alias_(exp.Literal.number(0), alias="hops"),
+                    *([exp.alias_(exp.Literal.string("|"), alias="trail")] if backward else []),
                 ).from_(_tbl(src_nm, "_seed"))
             )
         for rel in allowed_rels:
@@ -851,6 +956,14 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 exp.alias_(self._path_key(tgt_node_m, "_nxt", textual), alias="cur_id"),
                 exp.alias_(exp.Literal.number(1), alias="hops"),
             ).from_(_tbl(src_node_m, "_seed"))
+            if backward:
+                edge = _edge_key(
+                    rel,
+                    self._path_key(src_node_m, "_seed", textual),
+                    self._path_key(tgt_node_m, "_nxt", textual),
+                    id(rel) in backward,
+                )
+                branch = branch.select(exp.alias_(_bar(edge), alias="trail"))
             branch = _apply_hop(branch, rel, "_seed", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
             base_branches.append(branch)
 
@@ -925,11 +1038,14 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             )
             rec_branches.append(branch)
 
-        if len(rec_branches) > 1:
+        if len(rec_branches) > 1 or backward:
             # One recursive term, reading the traversal once (#158): engines admit a single
-            # recursive term, and one that names the traversal a single time.
+            # recursive term, and one that names the traversal a single time. An undirected walk
+            # always has two (each relationship either way), and keeps its trail there.
             rec_branches = [
-                self._one_recursive_term(cte_name, allowed_rels, max_hops, _tbl, textual)
+                self._one_recursive_term(
+                    cte_name, allowed_rels, max_hops, _tbl, textual, backward=backward
+                )
             ]
 
         all_branches = base_branches + rec_branches
