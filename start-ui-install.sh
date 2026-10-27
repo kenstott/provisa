@@ -244,6 +244,9 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
 fi
 
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
+# REQ-2135: a local install's public address. The boot stores this as server.public_url, the
+# operator setting in Deployment settings, when nothing sets it, so SPARQL works on a fresh start.
+export PROVISA_LOCAL_ADDRESS="http://localhost:$PROVISA_API_PORT"
 # REQ-1494: the platform fake key directory, written by this uvicorn and mounted into Trino.
 export PROVISA_FAKE_KEY_DIR="${PROVISA_FAKE_KEY_DIR:-$SCRIPT_DIR/.provisa/fake-key}"
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"

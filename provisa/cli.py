@@ -227,6 +227,14 @@ async def _announce_ready(
 KEEP_ALIVE_SECONDS = 620
 
 
+def _name_local_address(host: str, api_port: int) -> None:
+    """REQ-2135: a local start names the address its API listens on; the boot stores it as
+    server.public_url when that is unset (provisa/core/local_install.py)."""
+    from provisa.core.local_install import LOCAL_ADDRESS_ENV
+
+    os.environ.setdefault(LOCAL_ADDRESS_ENV, f"http://{host}:{api_port}")
+
+
 async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool) -> None:
     import uvicorn
 
@@ -235,6 +243,7 @@ async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_bro
     # ui_server reads PROVISA_API_URL at import time to build its reverse-proxy target,
     # so it must be set before the module is imported.
     os.environ.setdefault("PROVISA_API_URL", f"http://127.0.0.1:{api_port}")
+    _name_local_address(host, api_port)
     from provisa import ui_server
 
     api = uvicorn.Server(

@@ -776,6 +776,42 @@ describe("SettingsCatalogPanel", () => {
     updateMock.mockReset();
   });
 
+  it("renders the Public address field in Network and TLS > General and HTTP", async () => {
+    // REQ-2135: the catalog the dev-mode caller of a local start is served (GET as anonymous).
+    fetchMock.mockResolvedValue({
+      snapshot_ttl_seconds: 5,
+      pending_restart: [],
+      cards: [
+        {
+          id: "network",
+          settings: [
+            mk({ key: "server.hostname", type: "str", value: "localhost", stored: null }),
+            mk({
+              key: "server.public_url",
+              type: "str",
+              value: null,
+              stored: null,
+              default: null,
+              source: "default",
+              min: undefined,
+              max: undefined,
+            }),
+          ],
+        },
+      ],
+    });
+    wrap(<SettingsCatalogPanel />);
+    const general = await screen.findByTestId("settings-group-general-flow");
+    const field = screen.getByTestId("setting-server.public_url");
+    expect(general).toContainElement(field);
+    expect(field).toBeEnabled();
+    expect(screen.getByTestId("settings-group-general-toggle")).toHaveTextContent(
+      "General and HTTP",
+    );
+    expect(screen.getByTestId("catalog-card-network")).toHaveTextContent("Network and TLS");
+    expect(within(general).getByText("Public address")).toBeInTheDocument();
+  });
+
   it("groups the network card by transport", async () => {
     fetchMock.mockResolvedValue({
       snapshot_ttl_seconds: 5,
