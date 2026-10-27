@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "Aucune requête gRPC enregistrée pour la table « {{table}} »",
       "no_mutation_fields": "Aucun champ de mutation trouvé",
       "no_proto_for_role": "Le rôle '{{role_id}}' n'a pas de proto : aucune surface de données ne lui est fournie, car il n'atteint aucun domaine ou ne détient que des droits du plan de contrôle",
+      "role_served_nothing": "Le rôle '{{role_id}}' ne reçoit aucune table : aucune colonne d'aucune table ne lui est accordée",
       "no_query_field_for_proto_type": "Aucun champ de requête pour le type proto « {{type_name}} » sous le rôle « {{role_id}} »",
       "no_query_fields": "Aucun champ de requête trouvé",
       "no_role": "Aucun rôle « {{role_id}} »",

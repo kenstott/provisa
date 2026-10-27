@@ -124,9 +124,9 @@ _TABLES = [
         "schema_name": "public",
         "table_name": "orders",
         "columns": [
-            # visible to everyone (empty visible_to)
-            {"column_name": "id", "visible_to": []},
-            {"column_name": "amount", "visible_to": []},
+            # granted to both roles
+            {"column_name": "id", "visible_to": ["admin", "analyst"]},
+            {"column_name": "amount", "visible_to": ["admin", "analyst"]},
             # restricted to admin only
             {"column_name": "customer_pii", "visible_to": ["admin"]},
             # restricted to analyst only

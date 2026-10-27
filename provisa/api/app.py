@@ -4270,7 +4270,10 @@ def create_app() -> FastAPI:
         content: dict = {"detail": str(exc)}
         if isinstance(code, str):
             reason = getattr(exc, "reason", None)
-            content.update(code=code, params={} if reason is None else {"reason": reason})
+            params = getattr(exc, "params", None)
+            if params is None:
+                params = {} if reason is None else {"reason": reason}
+            content.update(code=code, params=params)
         return _JSONResponse(status_code=403, content=content)
 
     from provisa.compiler.context import ModelNotServable as _ModelNotServable

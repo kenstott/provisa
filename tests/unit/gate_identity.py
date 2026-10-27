@@ -38,7 +38,10 @@ def grant(monkeypatch, *capabilities: str, state=None):
     identity = types.SimpleNamespace(
         user_id="test-user", roles=["test_role"], acting_roles=["test_role"]
     )
-    request = types.SimpleNamespace(state=types.SimpleNamespace(identity=identity))
+    # The acting role, as the auth middleware binds it on every request (request.state.role).
+    request = types.SimpleNamespace(
+        state=types.SimpleNamespace(identity=identity, role="test_role")
+    )
     info = types.SimpleNamespace(context={"request": request})
     return info, request
 

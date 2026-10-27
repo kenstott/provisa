@@ -71,7 +71,12 @@ def _request(role_id: str | None) -> Any:
         if role_id is None
         else types.SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
     )
-    return types.SimpleNamespace(state=types.SimpleNamespace(identity=identity, active_org_id="a"))
+    # The acting role the auth middleware binds on every request; with no auth provider, the
+    # deployment's default one.
+    role = role_id if role_id is not None else "org_admin"
+    return types.SimpleNamespace(
+        state=types.SimpleNamespace(identity=identity, active_org_id="a", role=role)
+    )
 
 
 async def _domain_of(db: Database, table, name: str) -> str | None:
@@ -143,6 +148,39 @@ SAVES = [
         id="webhook",
     ),
 ]
+
+
+async def _grant_of(db: Database, table, name: str) -> list[str]:
+    async with db.acquire() as conn:
+        row = (
+            await conn.execute_core(select(table.c.visible_to).where(table.c.name == name))
+        ).fetchone()
+    assert row is not None
+    return list(row[0])
+
+
+@pytest.mark.parametrize(("create", "update", "table"), SAVES)
+async def test_one_created_naming_no_role_reaches_its_registrant_and_viewer(
+    plane, create, update, table
+):
+    # REQ-2154: a registration grants the registering role and Viewer, a command's as a table's.
+    await create(_request("everywhere"), "granted", "sales")
+    assert await _grant_of(plane, table, "granted") == ["everywhere", "viewer"]
+
+
+@pytest.mark.parametrize("kind", ["command", "webhook"])
+async def test_one_created_naming_its_roles_reaches_those_alone(plane, kind):
+    if kind == "command":
+        body = _function("named", "sales")
+        body.visibleTo = ["sales_admin"]
+        await actions_router.create_function(_request("everywhere"), body)
+        table = tracked_functions
+    else:
+        hook = _webhook("named", "sales")
+        hook.visibleTo = ["sales_admin"]
+        await actions_router.create_webhook(_request("everywhere"), hook)
+        table = tracked_webhooks
+    assert await _grant_of(plane, table, "named") == ["sales_admin"]
 
 
 @pytest.mark.parametrize(("create", "update", "table"), SAVES)

@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "לא רשומה שאילתת gRPC עבור הטבלה '{{table}}'",
       "no_mutation_fields": "לא נמצאו שדות מוטציה",
       "no_proto_for_role": "לתפקיד '{{role_id}}' אין proto: לא ניתן לו משטח נתונים, מפני שאינו מגיע לאף תחום או שיש לו רק הרשאות של מישור הבקרה",
+      "role_served_nothing": "לתפקיד '{{role_id}}' לא מוגשת אף טבלה: לא הוענקה לו אף עמודה של אף טבלה",
       "no_query_field_for_proto_type": "אין שדה שאילתה עבור סוג ה-proto '{{type_name}}' תחת התפקיד '{{role_id}}'",
       "no_query_fields": "לא נמצאו שדות שאילתה",
       "no_role": "אין תפקיד '{{role_id}}'",

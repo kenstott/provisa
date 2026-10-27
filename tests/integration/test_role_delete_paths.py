@@ -166,7 +166,9 @@ def test_a_created_role_is_deleted_through_the_other_entry_point(
 ):
     role_id = f"loose_{create.__name__}"
     with _client(server) as c:
-        create(c, role_id)
+        # Built on Viewer, as an organisation's own roles are (REQ-2155): the catalog it is
+        # served is granted to Viewer (REQ-2154), so its schema has something to serve.
+        create(c, role_id, "viewer")
         assert role_id in _role_ids(c)
         if create is _create_graphql:  # createRole rebuilds, so the role is served at once
             served = c.get("/data/sdl", headers={"x-provisa-role": role_id})

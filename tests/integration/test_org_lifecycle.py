@@ -24,6 +24,7 @@ control-plane engines are driven only inside the TestClient's event loop.
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 from types import SimpleNamespace
 
@@ -33,6 +34,7 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, delete, insert, select, text
 
+from provisa.api.admin import orgs_router as orgs_module
 from provisa.api.admin.local_users_router import router as users_router
 from provisa.api.admin.orgs_router import router as orgs_router
 from provisa.api.org_runtime import ActiveOrgPool
@@ -580,6 +582,8 @@ def test_only_a_failed_org_can_be_retried(planes):  # REQ-1315
         retried = client.post("/admin/orgs/acme/retry", headers=_alice_in_acme())
         assert retried.status_code == 200, retried.text
         assert retried.json()["provisioning_state"] == "provisioning"
+        # The build runs detached, on a background worker (spawn_background): wait for it.
+        concurrent.futures.wait(list(orgs_module._provisioning_tasks), timeout=30)
 
     assert [p[0] for p in planes.provisioned] == ["acme"]
     # The partial schema the failure left behind is dropped before the rebuild starts.

@@ -14,6 +14,7 @@ from pytest_bdd import given, scenarios, then, when
 
 from provisa.api.metadata_export import build_snapshot
 from provisa.api.metadata_export.model import GovernanceSignal
+from provisa.core.db import STANDARD_ROLES
 from provisa.core.models import (
     Column,
     Domain,
@@ -118,9 +119,19 @@ def _tags_published(shared_data):
 
 @then("every tag names the roles the restriction applies to and the roles exempt from it")
 def _roles_named(shared_data):
-    for tag in shared_data["snapshot"].governance_tags:
-        assert tag.restricted_roles == ("analyst",)
-        assert tag.exempt_roles == ("admin",)
+    # The roles a tag names are the org's: the config's own and every standard role that reaches
+    # a domain (REQ-2155). The mask and the hidden column exempt admin alone; the row rule
+    # restricts analyst alone.
+    roster = sorted(
+        {"analyst", "admin", *(r for r, s in STANDARD_ROLES.items() if s.domain_access)}
+    )
+    by_signal = {t.signal: t for t in shared_data["snapshot"].governance_tags}
+    for signal in (GovernanceSignal.MASKED, GovernanceSignal.VISIBILITY_RESTRICTED):
+        assert by_signal[signal].exempt_roles == ("admin",)
+        assert by_signal[signal].restricted_roles == tuple(r for r in roster if r != "admin")
+    rls = by_signal[GovernanceSignal.RLS_RESTRICTED]
+    assert rls.restricted_roles == ("analyst",)
+    assert rls.exempt_roles == tuple(r for r in roster if r != "analyst")
 
 
 @then("no mask pattern or RLS predicate appears anywhere in the snapshot")

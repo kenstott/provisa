@@ -173,6 +173,55 @@ def test_a_build_cut_short_by_the_readers_deadline_is_not_held(monkeypatch) -> N
     assert lazy.resolve() == "surface" and len(attempts) == 2
 
 
+def test_a_role_served_no_table_is_refused_naming_it_not_failed(caplog) -> None:
+    # A role no column of any table is granted to (REQ-2154) has nothing to serve: its reads are
+    # refused naming the role, as the caller's 403, not a build failure answered as a 500.
+    from provisa.api.role_surface import RoleServedNothing
+    from provisa.compiler.schema_gen import NoTablesServed
+
+    def _build():
+        raise NoTablesServed("loose")
+
+    lazy = LazySurface("loose", _build)
+    with caplog.at_level("ERROR", logger="provisa.api.role_surface"):
+        for _ in range(2):
+            with pytest.raises(RoleServedNothing) as refused:
+                lazy.resolve()
+    assert isinstance(refused.value, PermissionError)
+    assert refused.value.code == "data.role_served_nothing"
+    assert refused.value.params == {"role_id": "loose"}
+    assert "'loose'" in str(refused.value) and "no tables" in str(refused.value)
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+def test_the_ui_has_the_served_nothing_message_in_every_locale() -> None:
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "provisa-ui/src/i18n/locales"
+    locales = sorted(root.glob("*/serverErrors.json"))
+    assert len(locales) == 13
+    for path in locales:
+        data = json.loads(path.read_text(encoding="utf-8"))["serverErrors"]["data"]
+        assert "{{role_id}}" in data["role_served_nothing"], path
+
+
+def test_a_build_whose_runtime_is_gone_is_not_held_or_logged_as_a_failure(caplog) -> None:
+    # A pass detached from a build reads a surface after its environment's runtime was dropped:
+    # the role's build did not fail, there is no runtime to build it for (REQ-1529).
+    from provisa.core.runtime_gone import RuntimeNotBuilt
+
+    def _build():
+        raise RuntimeNotBuilt("default", "recopied", "no runtime built for environment")
+
+    lazy = LazySurface("viewer", _build)
+    with caplog.at_level("ERROR", logger="provisa.api.role_surface"):
+        with pytest.raises(RuntimeNotBuilt):
+            lazy.resolve()
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+    assert not lazy.built
+
+
 @pytest.mark.asyncio
 async def test_the_warm_up_builds_every_role_and_stops_when_superseded(builds, monkeypatch) -> None:
     from provisa.api import app_loaders

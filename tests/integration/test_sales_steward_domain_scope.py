@@ -80,8 +80,8 @@ async def plane(monkeypatch):
                     table_name=table_name,
                     governance="pre-approved",
                     columns=[
-                        Column(name="id", visible_to=[], data_type="integer"),
-                        Column(name="amount", visible_to=[], data_type="integer"),
+                        Column(name="id", visible_to=["sales_steward"], data_type="integer"),
+                        Column(name="amount", visible_to=["sales_steward"], data_type="integer"),
                     ],
                 ),
             )

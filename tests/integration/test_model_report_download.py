@@ -84,6 +84,10 @@ async def _clean(tenant_db, _init_schema):
     domain_policy.reset()
 
 
+# Every role the test acts as reads the model's columns: a grant names its roles (REQ-2153).
+_READERS = list(_ROLES)
+
+
 def _config() -> dict:
     """Two domains, a base table in each, a view and a materialized view, and one metric.
 
@@ -111,8 +115,8 @@ def _config() -> dict:
                 "table": "orders",
                 "product_id": "prod-sales",
                 "columns": [
-                    {"name": "id", "data_type": "integer", "visible_to": ["*"]},
-                    {"name": "amount", "data_type": "numeric", "visible_to": ["*"]},
+                    {"name": "id", "data_type": "integer", "visible_to": _READERS},
+                    {"name": "amount", "data_type": "numeric", "visible_to": _READERS},
                 ],
             },
             {
@@ -121,14 +125,14 @@ def _config() -> dict:
                 "schema": "public",
                 "table": "pets",
                 "product_id": "prod-petstore",
-                "columns": [{"name": "order_id", "data_type": "integer", "visible_to": ["*"]}],
+                "columns": [{"name": "order_id", "data_type": "integer", "visible_to": _READERS}],
             },
             {
                 "source_id": "pg1",
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "staging",
-                "columns": [{"name": "id", "data_type": "integer", "visible_to": ["*"]}],
+                "columns": [{"name": "id", "data_type": "integer", "visible_to": _READERS}],
             },
             {
                 "source_id": "pg1",
@@ -137,7 +141,7 @@ def _config() -> dict:
                 "table": "order_totals",
                 "product_id": "prod-sales",
                 "view_sql": "SELECT id FROM orders",
-                "columns": [{"name": "id", "data_type": "integer", "visible_to": ["*"]}],
+                "columns": [{"name": "id", "data_type": "integer", "visible_to": _READERS}],
             },
             {
                 "source_id": "pg1",
@@ -150,7 +154,7 @@ def _config() -> dict:
                 "mv_refresh_interval": 900,
                 # REQ-1907: a table that lands on a TTL signal names its refresh clock.
                 "cache_ttl": 900,
-                "columns": [{"name": "order_id", "data_type": "integer", "visible_to": ["*"]}],
+                "columns": [{"name": "order_id", "data_type": "integer", "visible_to": _READERS}],
             },
         ],
         "metrics": [

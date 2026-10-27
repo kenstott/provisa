@@ -298,6 +298,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 for c in cols
                 if column_served(_subject, _tbl_domain, c, reaches=_reaches)
             }
+            # A parameter column is an argument, not data: it carries no grant of its own, and a
+            # role served the table's data may pass it (REQ-1614, as the schema build serves it),
+            # or its condition would read NULL and the argument never reach the source (REQ-1986).
+            if visible - {c["column_name"] for c in cols if c.get("native_filter_type")}:
+                visible |= {c["column_name"] for c in cols if c.get("native_filter_type")}
             all_visible = len(visible) == len(cols)
             if not _reaches and served_across_domains(_subject, tbl):
                 _public.add(table_id)

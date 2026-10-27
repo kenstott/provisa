@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "資料表「{{table}}」沒有已註冊的 gRPC 查詢",
       "no_mutation_fields": "找不到變更欄位",
       "no_proto_for_role": "角色「{{role_id}}」沒有 proto：它沒有資料介面，因為它未涵蓋任何網域，或只擁有控制平面權限",
+      "role_served_nothing": "角色 '{{role_id}}' 未獲提供任何表：未授予其任何表的任何欄",
       "no_query_field_for_proto_type": "角色「{{role_id}}」下的 proto 類型「{{type_name}}」沒有查詢欄位",
       "no_query_fields": "找不到查詢欄位",
       "no_role": "沒有角色「{{role_id}}」",
