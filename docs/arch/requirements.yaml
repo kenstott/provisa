@@ -89592,7 +89592,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     natively, so it still pushes down (e.g. normalising both sides of an inet equality with the engine''s
     own string functions, or ordering by an engine-native sortable expression), the engine driver uses it,
     and the case is not an anomaly. Only what has no straightforward pushdown rewrite is listed as a known
-    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used.'
+    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used. (Amended 2026-10-27,
+    WHICH TYPES ARE SUBTYPES:) Maintainer 2026-10-27: a subtype exists so a client sees a type the base
+    would hide, and pgwire is the surface that reports it, so there is one subtype per distinct PostgreSQL
+    type and every other source''s type maps onto one of those or onto a base. The UI shows a column''s
+    subtype with its base. Added subtypes: geometry (planar, WKT text: MySQL geometry/point/linestring/polygon,
+    SQL Server geometry) and geography (geodetic: SQL Server geography, Elasticsearch geo_shape and geo_point);
+    PostgreSQL''s built-in shapes line, lseg, box, path, polygon and circle (beside point), each in PostgreSQL''s
+    own text form; the range types int4range, int8range, numrange, tsrange, tstzrange and daterange (Elasticsearch
+    integer_range/long_range map to int4range/int8range, float_range/double_range to numrange, date_range
+    to tstzrange); macaddr8; bit and varbit; tsvector. Not subtypes: Cassandra duration is interval, Cassandra
+    varint is decimal(38,0), MySQL year is integer, Elasticsearch ip_range and SQL Server hierarchyid stay
+    on text (no PostgreSQL equivalent with a fixed type).'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
