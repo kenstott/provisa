@@ -144,11 +144,26 @@ def _json_maps(col: str, value: Any) -> Any:
     raise CypherAssemblyError(f"Unexpected map column value type for {col!r}: {type(value)}")
 
 
+def _json_list(col: str, value: Any) -> Any:
+    """A list literal of values of several types, each decoded from the JSON it was encoded to --
+    whether the engine hands the list back as a list or as its JSON text."""
+    try:
+        if isinstance(value, str):
+            value = json.loads(value)
+        if isinstance(value, list):
+            return [json.loads(v) if isinstance(v, str) else v for v in value]
+    except json.JSONDecodeError as exc:
+        raise CypherAssemblyError(f"Malformed JSON in list column {col!r}: {exc}") from exc
+    raise CypherAssemblyError(f"Unexpected list column value type for {col!r}: {type(value)}")
+
+
 def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
     if value is None:
         return None
     if kind == GraphVarKind.JSON_MAP:
         return _json_maps(col, value)
+    if kind == GraphVarKind.JSON_LIST:
+        return _json_list(col, value)
     if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
         # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
         # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.
@@ -560,6 +575,8 @@ def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
     if isinstance(obj, datetime.datetime):
         return obj.isoformat()
     if isinstance(obj, datetime.date):
+        return obj.isoformat()
+    if isinstance(obj, datetime.time):  # a localtime/time value: ISO 8601, as a date is
         return obj.isoformat()
     if isinstance(obj, Decimal):
         return float(obj)

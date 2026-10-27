@@ -1202,26 +1202,59 @@ def _parse_statement(query: str) -> CypherAST:
     """
     refuse_multiple_statements(query)
     refuse_cypher_definition(query)
-    # Reject write clauses (case-insensitive)
+    # A write reached the read parser: the write path did not read it. Its refusal says why --
+    # the form it is in, or MERGE / DETACH DELETE / REMOVE -- never that writes are unsupported.
     tokens_raw = re.findall(r"\b\w+\b", query)
-    for tok in tokens_raw:
-        if tok.upper() in _WRITE_KEYWORDS:
-            raise CypherParseError(
-                f"Write clause {tok.upper()!r} is not supported. "
-                "Provisa Cypher executes CREATE, DELETE, and SET as direct table "
-                "writes (governed like any other write); MERGE, DETACH DELETE, and "
-                "REMOVE are not supported."
-            )
+    written = next((tok.upper() for tok in tokens_raw if tok.upper() in _WRITE_KEYWORDS), None)
+    if written is not None:
+        from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
+
+        try:
+            parse_cypher_write(query)
+        except CypherWriteParseError as exc:
+            raise CypherParseError(str(exc)) from exc
+        raise CypherParseError(f"{written} is a write: it runs on the write path, not as a read")
 
     query = _normalize_legacy_params(query)
     tokens, comments = _tokenize(query)
     parser = _Parser(tokens, query, comments)
     try:
-        return parser.parse()
+        ast = parser.parse()
+        _refuse_deep_literals(ast)
+        return ast
     except CypherExprParseError as exc:
         # An expression the statement holds that is not Cypher: a refusal of the statement,
         # said as such, never a server error.
         raise CypherParseError(str(exc)) from exc
+
+
+#: The deepest a list or map literal may nest. The SQL a statement becomes is parsed again on its
+#: way to the engine, and the SQL parser's time doubles with every two levels of ARRAY[ (40 levels
+#: would not finish), so a deeper literal is refused by name rather than stalling the server.
+MAX_LITERAL_DEPTH = 12
+
+
+def _literal_depth(node: object) -> int:
+    import dataclasses
+
+    from provisa.gql.expr_ast import ListLiteral, MapLiteral
+
+    if isinstance(node, (list, tuple)):
+        return max((_literal_depth(n) for n in node), default=0)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return 0
+    inner = max(
+        (_literal_depth(getattr(node, f.name)) for f in dataclasses.fields(node)), default=0
+    )
+    return inner + 1 if isinstance(node, (ListLiteral, MapLiteral)) else inner
+
+
+def _refuse_deep_literals(ast: CypherAST) -> None:
+    depth = _literal_depth(ast)
+    if depth > MAX_LITERAL_DEPTH:
+        raise CypherParseError(
+            f"A list or map literal nests {depth} deep; at most {MAX_LITERAL_DEPTH} are read"
+        )
 
 
 def parse_pattern(text: str) -> PathPattern:

@@ -89,6 +89,19 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     return translator.translate()
 
 
+def _is_json_list(e: exp.Expression) -> bool:
+    """Whether ``e`` is a list literal of JSON-encoded values (GraphVarKind.JSON_LIST)."""
+    while isinstance(e, (exp.Alias, exp.Paren)):
+        e = e.this
+    return (
+        isinstance(e, exp.Array)
+        and bool(e.expressions)
+        and all(
+            isinstance(x, exp.Anonymous) and str(x.this).upper() == "TO_JSON" for x in e.expressions
+        )
+    )
+
+
 def _holds_json_maps(e: exp.Expression) -> bool:
     """Whether ``e`` answers a map literal (``MAP(keys, to_json values)``) or a list of them: an
     ARRAY[...] of maps, an ARRAY_AGG of one, or an ARRAY(SELECT map) -- COLLECT { }'s rows -- or a
@@ -806,8 +819,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             return
         for projection in select.expressions:
             name = projection.alias_or_name
-            if name and name.lower() not in self._graph_vars and _holds_json_maps(projection):
+            if not name or name.lower() in self._graph_vars:
+                continue
+            if _holds_json_maps(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
+            elif _is_json_list(projection):
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
 
     def _reconcile_params_with_placeholders(
         self,

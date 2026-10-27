@@ -29,6 +29,9 @@ class GraphVarKind(str, Enum):
     # with each value JSON-encoded (so a map of several types is one engine type); the answer
     # decodes them.
     JSON_MAP = "JSON_MAP"
+    # A list literal of values of several types ([1, 'a', true]): each value JSON-encoded, so the
+    # list is one engine type; the answer decodes them.
+    JSON_LIST = "JSON_LIST"
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
     # column off the rows and reports it beside them.
     CUT = "CUT"

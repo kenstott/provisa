@@ -81,3 +81,57 @@ def test_an_expression_that_does_not_parse_is_a_parse_refusal():
 
     with pytest.raises(CypherParseError, match="cannot parse Cypher expression"):
         parse_cypher("RETURN 1 + AS a")
+
+
+def test_a_list_of_values_of_several_types_is_one_list_in_the_answer():
+    from provisa.gql.assembler import assemble_rows
+
+    query = "RETURN [2E-01, 'a', null, 71034856, false] AS literal"
+    sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    sql = sqlglot.transpile(sql_ast.sql(dialect="postgres"), read="postgres", write="duckdb")[0]
+    raw = duckdb.sql(sql).fetchall()
+    rows = assemble_rows([{"literal": raw[0][0]}], graph_vars)
+    assert rows == [{"literal": [0.2, "a", None, 71034856, False]}]
+
+
+def test_a_literal_nested_deeper_than_the_sql_parser_reads_in_time_is_refused_by_name():
+    from provisa.cypher.parser import MAX_LITERAL_DEPTH, CypherParseError
+
+    assert _rows("RETURN " + "[" * MAX_LITERAL_DEPTH + "]" * MAX_LITERAL_DEPTH + " AS l")
+    deep = MAX_LITERAL_DEPTH + 1
+    with pytest.raises(CypherParseError, match=f"nests {deep} deep"):
+        parse_cypher("RETURN " + "[" * deep + "]" * deep + " AS l")
+
+
+def test_a_time_value_is_written_in_the_answer_as_iso_8601():
+    import datetime
+
+    from provisa.gql.assembler import to_serializable
+
+    assert to_serializable({"t": datetime.time(10, 35, 1, 500)}) == {"t": "10:35:01.000500"}
+
+
+def test_a_temporal_value_built_from_a_map_is_refused_by_name():
+    from provisa.gql.translator_types import CypherTranslateError
+
+    with pytest.raises(CypherTranslateError, match=r"localtime\(\) built from a map"):
+        _rows("RETURN localtime({hour: 10, minute: 35}) AS t")
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "CREATE ()",
+        "CREATE (:A)",
+        "CREATE (n:A {name: 'x'}) RETURN n",
+        "UNWIND [1] AS i CREATE (:A)",
+    ],
+)
+def test_a_write_in_a_form_not_read_is_refused_naming_the_forms_that_are(query):
+    from provisa.cypher.parser import CypherParseError
+
+    with pytest.raises(CypherParseError) as refused:
+        parse_cypher(query)
+    message = str(refused.value)
+    assert "is not supported" not in message
+    assert "CREATE (n:Label {key: value})" in message

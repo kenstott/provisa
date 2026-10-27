@@ -199,6 +199,32 @@ def _anon(name: str, *args: exp.Expression) -> exp.Anonymous:
     return exp.Anonymous(this=name, expressions=list(args))
 
 
+def _literal_kind(item: CypherExpr) -> str | None:
+    """A literal's Cypher type, None for null or an expression whose type is not written."""
+    if isinstance(item, Literal):
+        if item.value is None:
+            return None
+        if isinstance(item.value, bool):
+            return "boolean"
+        if isinstance(item.value, int):
+            return "integer"
+        if isinstance(item.value, float):
+            return "float"
+        return "string"
+    if isinstance(item, ListLiteral):
+        return "list"
+    if isinstance(item, MapLiteral):
+        return "map"
+    return None
+
+
+def _mixed_literal_kinds(items: list[CypherExpr]) -> bool:
+    """Whether a list literal's items are literals of more than one type."""
+    if not all(isinstance(i, (Literal, ListLiteral, MapLiteral)) for i in items):
+        return False
+    return len({k for k in map(_literal_kind, items) if k is not None}) > 1
+
+
 class ExprLowering:
     """Lowers ``CypherExpr`` nodes to ``sqlglot.exp`` using an ``ExprContext`` for scoped leaves."""
 
@@ -404,6 +430,9 @@ class ExprLowering:
             for i in node.items
         ]
         if all(e is None for e in elements):
+            if _mixed_literal_kinds(node.items):
+                # [1, 'a', true]: one engine type only as each value's JSON (GraphVarKind.JSON_LIST).
+                return exp.Array(expressions=[_anon("to_json", self.lower(i)) for i in node.items])
             return exp.Array(expressions=[self.lower(i) for i in node.items])
         # A list of nodes and relationships ([r, m]) holds each as its JSON object, and anything
         # beside them as JSON too: one list of one type.
