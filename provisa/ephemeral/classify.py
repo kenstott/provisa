@@ -13,7 +13,7 @@
 The governing rule: a governed model write needs an exact, unambiguous target -- one model table
 (and for a relationship one registered junction) -- and nothing else. A CREATE of a node naming
 exactly one model table and no free label is the governed write it is today; any other CREATE
-makes an ephemeral node carrying every label given. A label resolves as the model's (a
+(a free label, no label, or two model tables) makes an ephemeral node carrying every label given. A label resolves as the model's (a
 ``Domain:Table`` pair, or a table label) before the session's; a domain label otherwise is
 refused, since domains are sealed.
 
@@ -36,18 +36,23 @@ from provisa.ephemeral.store import Graph
 
 @dataclass(frozen=True)
 class Labels:
-    """A node pattern's labels, resolved: the model node it names (its type name), and the
+    """A node pattern's labels, resolved: the model nodes they name (type names), and the
     labels that are not the model's, in the order written."""
 
-    model: str | None
+    models: tuple[str, ...]
     free: tuple[str, ...]
     written: tuple[str, ...]
+
+    @property
+    def exact(self) -> bool:
+        """Whether these name one model table and nothing else -- the governed write's target."""
+        return len(self.models) == 1 and not self.free
 
     @property
     def keys(self) -> tuple[str, ...]:
         """The labels a node of these carries, as the session holds them: a model label as its
         node's type name, a free one as written."""
-        return ((self.model,) if self.model else ()) + self.free
+        return self.models + self.free
 
 
 def _domain(label_map: Any, label: str) -> str | None:
@@ -65,11 +70,15 @@ def _model_node(label_map: Any, label: str) -> str | None:
 
 
 def resolve(labels: list[str], label_map: Any) -> Labels:
-    """Resolve a written node pattern's labels against the model (``label_map``, the role's)."""
+    """Resolve a written node pattern's labels against the model (``label_map``, the role's).
+
+    Labels naming two model tables are not refused: no single model row can be both, so such a
+    node is the session's, carrying both (REQ-2176)."""
     written = tuple(labels)
-    if labels and _domain(label_map, labels[0]) is not None:
-        domain = _domain(label_map, labels[0])
-        assert domain is not None
+    models: list[str] = []
+    rest = labels
+    domain = _domain(label_map, labels[0]) if labels else None
+    if domain is not None:
         table = labels[1] if len(labels) > 1 else None
         in_domain = [
             t
@@ -82,17 +91,16 @@ def resolve(labels: list[str], label_map: Any) -> Labels:
                 f"{labels[0]} is a domain: a node of it is written as {labels[0]}:<Table>, one of "
                 f"its tables (domains are sealed)"
             )
-        return Labels(in_domain[0], tuple(labels[2:]), written)
-    model: list[str] = []
+        models.append(in_domain[0])
+        rest = labels[2:]
     free: list[str] = []
-    for label in labels:
+    for label in rest:
         node = _model_node(label_map, label)
-        (model if node is not None else free).append(node or label)
-    if len(model) > 1:
-        raise CypherParseError(
-            f"A node is one model table at most: {', '.join(model)} are each the model's"
-        )
-    return Labels(model[0] if model else None, tuple(free), written)
+        if node is None:
+            free.append(label)
+        elif node not in models:
+            models.append(node)
+    return Labels(tuple(models), tuple(free), written)
 
 
 @dataclass(frozen=True)
@@ -132,7 +140,7 @@ def classify_create(
             named.add(node.variable)
         labels = resolve(node.labels, label_map)
         created.append(Created(i, labels, _anchor(labels, graph)))
-    exact = [c.labels.model is not None and not c.labels.free for c in created]
+    exact = [c.labels.exact for c in created]
     model_types = [_model_type(label_map, r.rel_type) for r in pattern.rels]
     if not created:
         # Relationships between nodes the statement matched: each a registered junction's row

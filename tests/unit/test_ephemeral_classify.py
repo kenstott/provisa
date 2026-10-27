@@ -66,20 +66,22 @@ def _model() -> CypherLabelMap:
 
 
 @pytest.mark.parametrize(
-    ("labels", "model", "free"),
+    ("labels", "models", "free"),
     [
-        (["Person"], "Person", ()),
-        (["Orders"], "Sales_Orders", ()),
-        (["Sales", "Orders"], "Sales_Orders", ()),
-        (["Sales", "Orders", "Temp"], "Sales_Orders", ("Temp",)),
-        (["Person", "Temp"], "Person", ("Temp",)),
-        (["Temp", "Scratch"], None, ("Temp", "Scratch")),
-        ([], None, ()),
+        (["Person"], ("Person",), ()),
+        (["Orders"], ("Sales_Orders",), ()),
+        (["Sales", "Orders"], ("Sales_Orders",), ()),
+        (["Sales", "Orders", "Temp"], ("Sales_Orders",), ("Temp",)),
+        (["Person", "Temp"], ("Person",), ("Temp",)),
+        (["Person", "Orders"], ("Person", "Sales_Orders"), ()),
+        (["Sales", "Orders", "Person"], ("Sales_Orders", "Person"), ()),
+        (["Temp", "Scratch"], (), ("Temp", "Scratch")),
+        ([], (), ()),
     ],
 )
-def test_a_label_resolves_as_the_models_before_the_sessions(labels, model, free):
+def test_a_label_resolves_as_the_models_before_the_sessions(labels, models, free):
     resolved = resolve(labels, _model())
-    assert (resolved.model, resolved.free) == (model, free)
+    assert (resolved.models, resolved.free) == (models, free)
 
 
 @pytest.mark.parametrize("labels", [["Sales"], ["Sales", "Temp"]])
@@ -112,6 +114,8 @@ def test_one_exact_model_target_is_the_governed_write(statement):
     [
         ("CREATE (:Temp {k: 1})", ["Temp"]),
         ("CREATE (:Person:Temp)", ["Temp"]),
+        ("CREATE (:Person:Orders)", [None]),
+        ("CREATE (:Sales:Orders:Person:Temp)", ["Temp"]),
         ("CREATE ()", [None]),
         ("CREATE (:Temp)-[:LINK]->(:Scratch)", ["Temp", "Scratch"]),
         ("MATCH (a:Person), (b:Person) CREATE (a)-[:LIKES]->(b)", []),
@@ -134,6 +138,12 @@ def test_a_node_carries_every_label_given():
     assert created.labels.written == ("Person", "Temp", "Other")
 
 
+def test_a_node_naming_two_model_tables_carries_both():
+    # No single model row can be both, so the node is the session's (REQ-2176).
+    [created] = _classify("CREATE (:Person:Orders)").created
+    assert created.labels.keys == ("Person", "Sales_Orders")
+
+
 @pytest.mark.parametrize(
     ("statement", "match"),
     [
@@ -142,7 +152,6 @@ def test_a_node_carries_every_label_given():
             "MATCH (a:Person), (b:Person) CREATE (a)-[:KNOWS]->(b), (a)-[:LIKES]->(b)",
             "model relationships or session relationships, not both",
         ),
-        ("CREATE (:Person:Orders)", "one model table at most"),
         ("MATCH (a:Person) CREATE (a:Temp)", "already declared"),
     ],
 )
