@@ -148,7 +148,7 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 
 ## Query Pipeline
 
-Every read passes through six stages, whatever language you write it in. Each stage hands the next one a SQL statement. The language you write only decides where the read enters.
+Every read passes through five stages. GraphQL, Cypher, SPARQL, gRPC and SQL are entry points, not stages — each compiles or lowers to semantic SQL before the pipeline begins.
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ Semantic SQL reads the model. Its tables are domain-qualified (`sales.orders`), 
 
 A nested read compiles to one canonical CTE pipeline, the same for every engine and built from the declared relationships alone. A root CTE reads the root table with its filter, order, limit and offset. Each to-many level is a CTE of its own. It joins its table to the parent CTE on the relationship's keys, takes each parent's first rows with `ROW_NUMBER() OVER (PARTITION BY ...)`, and aggregates them into a JSON list per parent. The final `SELECT` reads the root CTE and left-joins each level on the parent key. GraphQL, Cypher and SPARQL reads that ask the same question compile to the same statement.
 
-Today's compilers have not reached that form yet. The GraphQL compiler reads a nested field with arguments through a per-parent `LEFT JOIN LATERAL`, and the Cypher translator writes one CTE per `WITH` stage. The example below shows both forms.
+The Cypher translator writes one CTE per `WITH` stage; aligning those shapes to the canonical pipeline is follow-on work. Until it is complete, equivalent Cypher and GraphQL reads do not always compile to the same semantic SQL. The GraphQL compiler writes nested fields with arguments as per-parent `LEFT JOIN LATERAL` joins. Both current forms appear in the example below.
 
 ### Governed SQL
 
@@ -188,7 +188,18 @@ The optimized stage rewrites the governed statement in ways that hold on every e
 
 ### Plan and route
 
-Routing reads the optimized statement's sources, never the governed one's, so a read that optimization narrowed to one source can still run direct. A statement goes direct when it reads one source and that source has a direct driver. Otherwise the federation engine runs it. The rule has a third condition, that the source supports every construct in the statement. The router doesn't check that one yet, and decides on the source count and the driver. See [Route decisions](#request-pipeline) for the cache, replica and steward cases.
+Landing on the federation engine is the default; routing reads the optimized sources, never the governed ones. A statement runs directly on its source only when it passes all six gates in order. The first gate it fails names the reason.
+
+| Gate | What it checks |
+|---|---|
+| `one_source` | Reads one source after optimization, or reads sources that share a physical database |
+| `dialect_supports` | That source's dialect supports every construct in the statement |
+| `access_path` | A direct driver, an API caller, or a code function exists for the source |
+| `colocated_login` | Sources counted as one database share the same login credential |
+| `not_forced` | No operator floor, faked column, or engine-required condition applies |
+| `trusted_to_answer` | A non-SQL source can answer the complete dataset without further in-process filtering |
+
+See [Request Pipeline](#request-pipeline) for the cache, replica and steward cases.
 
 ### Native SQL
 

@@ -148,7 +148,7 @@ Consultas GraphQL com múltiplos campos raiz (ex.: `{ orders { id } customers { 
 
 ## Pipeline de consulta {: #query-pipeline }
 
-Toda leitura passa por seis etapas, seja qual for a linguagem em que você a escreve. Cada etapa entrega à seguinte uma instrução SQL. A linguagem só decide onde a leitura entra.
+Toda leitura passa por cinco etapas. GraphQL, Cypher, SPARQL, gRPC e SQL são pontos de entrada, não etapas — cada um compila ou traduz para SQL semântico antes de a pipeline começar.
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ O SQL semântico lê o modelo. Suas tabelas são qualificadas pelo domínio (`sa
 
 Uma leitura aninhada é compilada para um único pipeline canônico de CTEs, o mesmo para todos os motores e construído só a partir dos relacionamentos declarados. Uma CTE raiz lê a tabela raiz com seu filtro, sua ordenação, seu limite e seu deslocamento. Cada nível para-muitos é uma CTE própria. Ela junta sua tabela à CTE do pai pelas chaves do relacionamento, pega as primeiras linhas de cada pai com `ROW_NUMBER() OVER (PARTITION BY ...)` e as agrega numa lista JSON por pai. O `SELECT` final lê a CTE raiz e faz um left join de cada nível pela chave do pai. Leituras GraphQL, Cypher e SPARQL que fazem a mesma pergunta são compiladas para a mesma instrução.
 
-Os compiladores atuais ainda não chegaram a essa forma. O compilador GraphQL lê um campo aninhado com argumentos por um `LEFT JOIN LATERAL` por pai, e o tradutor de Cypher escreve uma CTE por etapa `WITH`. O exemplo abaixo mostra as duas formas.
+O tradutor de Cypher escreve uma CTE por etapa `WITH`; alinhar essas formas com a pipeline canónica é trabalho futuro. Até que esteja concluído, leituras equivalentes em Cypher e GraphQL nem sempre compilam para o mesmo SQL semântico. O compilador GraphQL escreve campos aninhados com argumentos como `LEFT JOIN LATERAL` por pai. Ambas as formas atuais aparecem no exemplo abaixo.
 
 ### SQL governado {: #governed-sql }
 
@@ -188,7 +188,18 @@ A etapa de otimização reescreve a instrução governada de maneiras que valem 
 
 ### Planejar e rotear {: #plan-and-route }
 
-O roteamento lê as fontes da instrução otimizada, nunca as da governada. Por isso uma leitura que a otimização reduziu a uma fonte ainda pode rodar em direto. Uma instrução vai em direto quando lê uma fonte e essa fonte tem um driver direto. Caso contrário, o motor de federação a executa. A regra tem uma terceira condição: que a fonte suporte cada construção da instrução. O roteador ainda não a verifica e decide pelo número de fontes e pelo driver. Os casos de cache, réplica e steward estão em [Decisões de roteamento](#request-pipeline).
+Aterrar no motor de federação é o comportamento predefinido; o roteamento lê as fontes otimizadas, nunca as governadas. Uma instrução só corre diretamente na sua fonte quando passa todas as seis portas em ordem. A primeira que falha indica o motivo.
+
+| Porta | O que verifica |
+|---|---|
+| `one_source` | Lê uma fonte após a otimização, ou fontes que partilham uma base de dados física |
+| `dialect_supports` | O dialeto dessa fonte suporta cada construção da instrução |
+| `access_path` | Existe um driver direto, um chamador de API ou uma função de código para a fonte |
+| `colocated_login` | As fontes contadas como uma única base de dados partilham as mesmas credenciais de acesso |
+| `not_forced` | Nenhum piso de operador, coluna falsa ou condição que exija o motor se aplica |
+| `trusted_to_answer` | Uma fonte não SQL pode responder ao conjunto de dados completo sem mais filtragem em processo |
+
+Os casos de cache, réplica e steward estão em [Pipeline de Requisição](#request-pipeline).
 
 ### SQL nativo {: #native-sql }
 

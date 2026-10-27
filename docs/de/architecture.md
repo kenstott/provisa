@@ -148,7 +148,7 @@ GraphQL-Abfragen mit mehreren Root-Feldern (z. B. `{ orders { id } customers { n
 
 ## Abfrage-Pipeline {: #query-pipeline }
 
-Jeder Lesezugriff durchläuft sechs Stufen, gleich in welcher Sprache Sie ihn schreiben. Jede Stufe übergibt der nächsten eine SQL-Anweisung. Die Sprache entscheidet nur, wo der Lesezugriff einsteigt.
+Jeder Lesezugriff durchläuft fünf Stufen. GraphQL, Cypher, SPARQL, gRPC und SQL sind Einstiegspunkte, keine Stufen — jeder kompiliert oder wird in semantisches SQL übersetzt, bevor die Pipeline beginnt.
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ Semantisches SQL liest das Modell. Seine Tabellen sind mit der Domäne qualifizi
 
 Ein verschachtelter Lesezugriff wird zu einer kanonischen CTE-Pipeline kompiliert, die für jede Engine gleich ist und allein aus den deklarierten Beziehungen entsteht. Eine Wurzel-CTE liest die Wurzeltabelle mit ihrem Filter, ihrer Sortierung, ihrem Limit und ihrem Offset. Jede To-many-Ebene ist eine eigene CTE. Sie verbindet ihre Tabelle über die Schlüssel der Beziehung mit der CTE des Elternteils, nimmt mit `ROW_NUMBER() OVER (PARTITION BY ...)` die ersten Zeilen jedes Elternteils und fasst sie pro Elternteil zu einer JSON-Liste zusammen. Das abschließende `SELECT` liest die Wurzel-CTE und verbindet jede Ebene per Left Join über den Elternschlüssel. GraphQL-, Cypher- und SPARQL-Lesezugriffe, die dieselbe Frage stellen, ergeben dieselbe Anweisung.
 
-Die heutigen Compiler haben diese Form noch nicht erreicht. Der GraphQL-Compiler liest ein verschachteltes Feld mit Argumenten über ein `LEFT JOIN LATERAL` pro Elternteil, und der Cypher-Übersetzer schreibt eine CTE pro `WITH`-Stufe. Das Beispiel unten zeigt beide Formen.
+Der Cypher-Übersetzer schreibt eine CTE pro `WITH`-Stufe; die Anpassung dieser Formen an die kanonische Pipeline ist noch ausstehende Arbeit. Bis sie abgeschlossen ist, kompilieren äquivalente Cypher- und GraphQL-Lesezugriffe nicht immer zu demselben semantischen SQL. Der GraphQL-Compiler schreibt verschachtelte Felder mit Argumenten als `LEFT JOIN LATERAL`-Joins pro Elternteil. Beide aktuellen Formen sind im folgenden Beispiel zu sehen.
 
 ### Geregeltes SQL {: #governed-sql }
 
@@ -188,7 +188,18 @@ Die Optimierungsstufe schreibt die geregelte Anweisung so um, dass es auf jeder 
 
 ### Planen und routen {: #plan-and-route }
 
-Das Routing liest die Quellen der optimierten Anweisung, nie die der geregelten. Ein Lesezugriff, den die Optimierung auf eine Quelle verengt hat, kann deshalb trotzdem direkt laufen. Eine Anweisung läuft direkt, wenn sie eine Quelle liest und diese Quelle einen direkten Treiber hat. Andernfalls führt die Federation-Engine sie aus. Zur Regel gehört eine dritte Bedingung, nämlich dass die Quelle jedes Konstrukt der Anweisung unterstützt. Der Router prüft diese noch nicht und entscheidet nach der Zahl der Quellen und dem Treiber. Die Fälle für Cache, Replikat und Steward finden Sie unter [Routing-Entscheidungen](#request-pipeline).
+Die Federation-Engine ist der Standard; das Routing liest die optimierten Quellen, nie die geregelten. Eine Anweisung läuft nur dann direkt auf ihrer Quelle, wenn sie alle sechs Gatter der Reihe nach besteht. Das erste Gatter, das sie nicht besteht, benennt den Grund.
+
+| Gatter | Was wird geprüft |
+|---|---|
+| `one_source` | Liest nach der Optimierung eine Quelle oder Quellen, die eine gemeinsame physische Datenbank teilen |
+| `dialect_supports` | Der Dialekt dieser Quelle unterstützt jedes Konstrukt der Anweisung |
+| `access_path` | Ein direkter Treiber, ein API-Aufrufer oder eine Code-Funktion ist für die Quelle vorhanden |
+| `colocated_login` | Als eine Datenbank gezählte Quellen teilen dieselben Anmeldedaten |
+| `not_forced` | Kein Operator-Floor, keine gefälschte Spalte oder engine-erzwingende Bedingung liegt vor |
+| `trusted_to_answer` | Eine Nicht-SQL-Quelle kann das vollständige Dataset ohne weitere In-Process-Filterung liefern |
+
+Die Fälle für Cache, Replikat und Steward finden Sie unter [Anfrage-Pipeline](#request-pipeline).
 
 ### Natives SQL {: #native-sql }
 
