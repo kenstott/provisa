@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 import sqlglot.expressions as exp
 
 from provisa.gql import spatial, temporal
-from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Term, Variable
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
@@ -682,7 +682,14 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                     continue
 
             # Graph function expression: register alias kind for assembler deserialization
-            if isinstance(expr, FunctionCall) and alias:
+            null_arg = (
+                isinstance(expr, FunctionCall)
+                and len(expr.args) == 1
+                and isinstance(expr.args[0], Literal)
+                and expr.args[0].kind == "null"
+            )
+            # nodes(null) and its like are null, no graph value to decode.
+            if isinstance(expr, FunctionCall) and alias and not null_arg:
                 kind = _GRAPH_FUNCTIONS.get(expr.name.lower())
                 if kind is not None:
                     self._graph_vars[alias.lower()] = GraphVarKind[kind]

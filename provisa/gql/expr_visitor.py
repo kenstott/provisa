@@ -24,6 +24,7 @@ starts_with()``, ``ENDS WITH → (right(x, length(y)) = y)``, ``CONTAINS → (st
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Protocol, cast
 
@@ -417,6 +418,31 @@ def _nan_guarded(op: str, left: exp.Expression, right: exp.Expression) -> exp.Ex
         ],
         default=_BINARY_CMP[op](this=left, expression=right),
     )
+
+
+#: The deepest a list or map literal is written as nested ARRAY[ / MAP(: the SQL a statement
+#: becomes is parsed again on its way to the engine, and that parse's time doubles with every two
+#: levels of ARRAY[ (40 would not finish).
+_DEEPEST_NESTED = 8
+
+
+def _literal_depth(node: CypherExpr) -> int:
+    if isinstance(node, ListLiteral):
+        return 1 + max((_literal_depth(i) for i in node.items), default=0)
+    if isinstance(node, MapLiteral):
+        return 1 + max((_literal_depth(v) for _, v in node.entries), default=0)
+    return 0
+
+
+def _deep_written(node: ListLiteral | MapLiteral) -> exp.Expression | None:
+    """A list or map literal nested deeper than _DEEPEST_NESTED, written wholly in the statement,
+    as one JSON literal (the answer decodes it, GraphVarKind.JSON_VALUE); None for any other."""
+    if _literal_depth(node) <= _DEEPEST_NESTED:
+        return None
+    value = _written_value(node)
+    if value is _UNKNOWN:
+        return None
+    return exp.Cast(this=exp.Literal.string(json.dumps(value)), to=exp.DataType.build("JSON"))
 
 
 def _reversed_list(items: exp.Expression) -> exp.Expression:
@@ -939,6 +965,14 @@ class ExprLowering:
         ):
             return temporal.iso_text(self.lower(node.args[0]))
         args = [self.lower(a) for a in node.args]
+        if (
+            node.name.lower() == "range"
+            and len(args) == 3
+            and not isinstance(node.args[2], Literal)
+        ):
+            # A step the query computes is refused at 0 by the engine (range_step, one IR
+            # operation each engine renders), never stepped as the engine's own range would.
+            args[2] = _anon("range_step", args[2])
         return self._ctx.resolve_function(node.name, args, distinct=node.distinct)
 
     def _lower_Case(self, node: Case) -> exp.Expression:
@@ -965,6 +999,9 @@ class ExprLowering:
     # -- structures -------------------------------------------------------- #
 
     def _lower_ListLiteral(self, node: ListLiteral) -> exp.Expression:
+        deep = _deep_written(node)
+        if deep is not None:
+            return deep
         elements = [
             self._ctx.resolve_graph_element(i.name) if isinstance(i, Variable) else None
             for i in node.items
@@ -984,6 +1021,9 @@ class ExprLowering:
         )
 
     def _lower_MapLiteral(self, node: MapLiteral) -> exp.Expression:
+        deep = _deep_written(node)
+        if deep is not None:
+            return deep
         # {k: v, ...} → MAP(ARRAY['k',...], ARRAY[to_json(v), ...]) — encode each value to a JSON value
         # so a heterogeneous map survives as a single array type (matches the text path's bare-map
         # rewrite). to_json, NOT CAST(v AS JSON): in the IR dialect (Postgres) CAST AS JSON *parses*

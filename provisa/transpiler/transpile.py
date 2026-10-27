@@ -54,6 +54,20 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     return _rewrite_to_json_for_trino(result)
 
 
+#: openCypher's ArgumentError (NumberOutOfRange) for a range's zero step, as the engine raises it.
+RANGE_STEP_ZERO = "range() takes a step other than 0"
+
+
+def _range_step(step: exp.Expression, raise_with: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """range_step(s), a range's step the query computes (expr_visitor): ``s``, or the engine's
+    own error (``raise_with``: DuckDB's error, Trino's fail) where it is 0."""
+    failed = exp.Anonymous(this=raise_with, expressions=[exp.Literal.string(RANGE_STEP_ZERO)])
+    return exp.Case(
+        ifs=[exp.If(this=exp.EQ(this=step.copy(), expression=exp.Literal.number(0)), true=failed)],
+        default=step,
+    )
+
+
 def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     """json_order_key(x), a JSON value's place in openCypher's order (expr_visitor): its kind --
     a map, a list, a string, a boolean, a number, read from the first character of ``text``, its
@@ -83,11 +97,14 @@ def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expressi
 def _rewrite_json_size_for_trino(sql: str) -> str:
     """json_size(x), a JSON value's size (expr_visitor): a list's items, else a string's
     characters, as Trino reads them."""
-    if "JSON_SIZE" not in sql.upper() and "JSON_ORDER_KEY" not in sql.upper():
+    if not any(name in sql.upper() for name in ("JSON_SIZE", "JSON_ORDER_KEY", "RANGE_STEP")):
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _sized(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "RANGE_STEP":
+            (step,) = node.expressions
+            return _range_step(step, "fail")
         if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_ORDER_KEY":
             (value,) = node.expressions
             return _json_order_key(
@@ -536,6 +553,7 @@ _DUCKDB_LIST_FUNCTIONS = frozenset(
         "SEQUENCE",
         "JSON_SIZE",
         "JSON_ORDER_KEY",
+        "RANGE_STEP",
     }
 )
 
@@ -598,6 +616,9 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
             return _fn("len", *args)
         if name == "SEQUENCE":
             return _fn("generate_series", *args)
+        if name == "RANGE_STEP":
+            (step,) = args
+            return _range_step(step, "error")
         if name == "JSON_ORDER_KEY":
             (value,) = args
             return _json_order_key(

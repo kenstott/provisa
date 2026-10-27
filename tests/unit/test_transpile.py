@@ -519,3 +519,11 @@ def test_a_json_value_s_place_in_order_is_read_by_trino():
         " WHEN '\"' THEN 5 WHEN 't' THEN 6 WHEN 'f' THEN 6 ELSE 7 END, TRY_CAST(x AS DOUBLE),"
         " REPLACE(JSON_FORMAT(x), ']', CHR(1))) FROM t"
     )
+
+
+def test_a_range_s_computed_step_fails_on_trino_at_zero():
+    # range_step(s): Trino's fail where the step is 0 (expr_visitor).
+    assert transpile_to_trino("SELECT SEQUENCE(2, 8, RANGE_STEP(s)) FROM t") == (
+        "SELECT SEQUENCE(2, 8, CASE WHEN s = 0 THEN FAIL('range() takes a step other than 0')"
+        " ELSE s END) FROM t"
+    )
