@@ -88039,16 +88039,24 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     written as the operator setting so it shows in Deployment settings and can be changed there. SPARQL,
     the vocabulary panel and RDF export then work on a fresh local start. It is an install step, not a read-time
     fallback: a hosted or cluster deployment still sets it deliberately, and with it unset SPARQL still
-    refuses by name. The refusal names the exact field and the address to put in it.
-    (Amended 2026-10-27, THE SPARQL TAB EXPORTS IN SPARQL''S OWN FORMATS:) Each tab of the graph
-    visualizer offers its own language''s exports: the Neo4j export (Cypher CREATE) stays in the
-    Cypher tab only. The SPARQL tab''s export writes a graph answer (a CONSTRUCT''s triples) as RDF,
-    Turtle by default, or N-Triples or JSON-LD, and a SELECT''s rows as SPARQL Results JSON, CSV or
-    TSV (an ASK''s answer as SPARQL Results JSON). The export asks the endpoint the frame''s query
-    again in the chosen format, so the endpoint''s one writer writes it, with IRIs on
-    server.public_url as SPARQL answers them; the endpoint answers a CONSTRUCT as JSON-LD
-    (application/ld+json) as well as Turtle and N-Triples. The newest answer is exported, or the
-    one chosen.'
+    refuses by name. The refusal names the exact field and the address to put in it. (Amended 2026-10-27,
+    THE SPARQL TAB EXPORTS IN SPARQL''S OWN FORMATS:) Each tab of the graph visualizer offers its own language''s
+    exports: the Neo4j export (Cypher CREATE) stays in the Cypher tab only. The SPARQL tab''s export writes
+    a graph answer (a CONSTRUCT''s triples) as RDF, Turtle by default, or N-Triples or JSON-LD, and a SELECT''s
+    rows as SPARQL Results JSON, CSV or TSV (an ASK''s answer as SPARQL Results JSON). The export asks the
+    endpoint the frame''s query again in the chosen format, so the endpoint''s one writer writes it, with
+    IRIs on server.public_url as SPARQL answers them; the endpoint answers a CONSTRUCT as JSON-LD (application/ld+json)
+    as well as Turtle and N-Triples. The newest answer is exported, or the one chosen. (Amended 2026-10-27,
+    THE IR STATES SEMANTICS; EACH LANGUAGE PICKS:) Maintainer 2026-10-27: where query languages differ in
+    an operation''s semantics, the graph IR has one operation whose options state the semantics, and each
+    front end lowers to the options its language defines; no front end composes another language''s functions
+    to fake its own rules. Casts: one ToInteger (and its siblings) with how a number is cut (toward zero),
+    how a string is read (lenient: ''2.9'' is 2, as Cypher; lexical: only an integer''s own form, as XPath/SPARQL)
+    and what a failure gives (null). Likewise division (integer division truncating vs a decimal quotient),
+    division by zero (error, null, or IEEE infinity for floating operands), comparison across types (false
+    vs a type error) and + on strings (concatenation vs undefined). The back end renders each option once
+    per engine dialect, so every surface lowering to the IR gets its language''s semantics through one back
+    end.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
