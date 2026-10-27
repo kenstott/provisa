@@ -93,6 +93,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
+    timeTravel: null,
     dqDataset: null,
     qualityCheckers: [],
     rowMaterialize: false,
