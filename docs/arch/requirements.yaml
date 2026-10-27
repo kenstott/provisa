@@ -89265,7 +89265,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     pass rate. Each such group names the design decision that excludes it (its requirement), and the surface''s
     conformance page lists every group with its count and reason, so nothing is hidden. A test excluded
     with no design decision behind it stays a failure. Every surface''s job (pgwire, Cypher, Bolt, Flight
-    SQL, GraphQL over HTTP, SPARQL, RDF) applies the same rule.'
+    SQL, GraphQL over HTTP, SPARQL, RDF) applies the same rule. (Amended 2026-10-27, SETUP THAT CREATES
+    OBJECTS IS ADAPTED, NOT EXCLUDED:) Maintainer 2026-10-27: Provisa never creates new objects (tables,
+    schemas, graph labels or relationship types, procedures) through a query surface, except session temp
+    tables; that is the design decision. A conformance test that creates an object only as setup for what
+    it actually tests is redefined, not excluded: its setup is replaced by the equivalent objects declared
+    in the job''s fixture model (or a temp table where the surface allows one), and the test then runs its
+    real assertion against them. The adapted test keeps the suite''s own test id and is marked adapted on
+    the conformance page, with what its setup became. Only a test whose subject is the object creation itself
+    is counted as not runnable by design.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
