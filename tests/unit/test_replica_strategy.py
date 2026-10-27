@@ -311,6 +311,11 @@ def test_a_port_a_stopped_server_left_closed_connections_on_is_free():
         # the kernel hands out none another process's socket (another xdist worker's) holds on
         # some address, which the probe's own every-address bind would meet.
         server.bind(("0.0.0.0", 0))  # nosec B104 -- a test socket, closed below
+        # Then reusable, as the replica server's listener is (socketserver allow_reuse_address):
+        # each connection it accepts takes the option, and so does the TIME_WAIT it leaves. Linux
+        # refuses a bind beside a TIME_WAIT whose socket lacked it, SO_REUSEADDR or not; macOS
+        # does not look.
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.listen()
         port = server.getsockname()[1]
         client = socket.create_connection(("127.0.0.1", port))
