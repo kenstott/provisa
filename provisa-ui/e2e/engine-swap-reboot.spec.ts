@@ -16,9 +16,9 @@ import path from "node:path";
 import { WebSocketServer } from "ws";
 
 import { test, expect } from "./coverage";
+import { seedWarehouse } from "./cloud-warehouse";
 import { startDemoSources, removeDemoSources } from "./demo-source-containers";
 import {
-  CLOUD_WAREHOUSE_SEED,
   E2E_DRUID_BROKER_PORT,
   E2E_DRUID_COORD_PORT,
   E2E_EXASOL_FINGERPRINT_FILE,
@@ -578,10 +578,10 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
       "no live Snowflake credentials in this environment",
     );
     test.beforeAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "up"], { stdio: "pipe" });
+      seedWarehouse("snowflake", "up");
     });
     test.afterAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "down"], { stdio: "pipe" });
+      seedWarehouse("snowflake", "down");
     });
 
     test("snowflake registered once under DuckDB resolves under every rebooted engine, no replay", async ({
@@ -599,10 +599,10 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
       "no live Databricks credentials in this environment",
     );
     test.beforeAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "up"], { stdio: "pipe" });
+      seedWarehouse("databricks", "up");
     });
     test.afterAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "down"], { stdio: "pipe" });
+      seedWarehouse("databricks", "down");
     });
 
     test("databricks registered once under DuckDB resolves under every rebooted engine, no replay", async ({
@@ -620,10 +620,10 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
       "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured",
     );
     test.beforeAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "up"], { stdio: "pipe" });
+      seedWarehouse("fabric", "up");
     });
     test.afterAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "down"], { stdio: "pipe" });
+      seedWarehouse("fabric", "down");
     });
 
     test("fabric registered once under DuckDB resolves under every rebooted engine, no replay", async ({
@@ -637,10 +637,10 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
       "no live GCP credentials in this environment",
     );
     test.beforeAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "up"], { stdio: "pipe" });
+      seedWarehouse("bigquery", "up");
     });
     test.afterAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "down"], { stdio: "pipe" });
+      seedWarehouse("bigquery", "down");
     });
 
     test("bigquery registered once under DuckDB resolves under every rebooted engine, no replay", async ({

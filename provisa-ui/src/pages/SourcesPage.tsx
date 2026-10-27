@@ -48,9 +48,7 @@ import {
   useRenameSource,
   useDeleteSource,
   useUpdateSourceCache,
-  useUpdateSourceReplicate,
   useUpdateSourceLoadProtection,
-  useUpdateSourceNaming,
   useUpdateSourceAllowedDomains,
   useDomains,
   useTables,
@@ -160,10 +158,8 @@ export function SourcesPage() {
   const { renameSource } = useRenameSource();
   const { deleteSource } = useDeleteSource();
   const { updateSourceCache } = useUpdateSourceCache();
-  const { updateSourceReplicate } = useUpdateSourceReplicate();
   const setSourceRegion = useSetSourceRegion();
   const { updateSourceLoadProtection } = useUpdateSourceLoadProtection();
-  const { updateSourceNaming } = useUpdateSourceNaming();
   const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -758,48 +754,48 @@ export function SourcesPage() {
             : form.type === "cloudops"
               ? cloudopsMappingJson(authFields) // REQ-1947
               : form.type === "sparql"
-              ? sparqlMappingJson(authFields) // REQ-2138
-              : form.type === GOOGLE_WORKSPACE
-                ? JSON.stringify(gwMapping(authFields)) // REQ-1923
-                : form.type === MICROSOFT_365
-                  ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
-                  : form.type === LOGS
-                    ? JSON.stringify(logsMapping(authFields)) // REQ-1996
-                    : form.type === "salesforce"
-                      ? salesforceMappingJson(authFields) // REQ-1946
-                      : form.type === "sharepoint"
-                        ? JSON.stringify({
-                            auth_type: spAuthType,
-                            ...(spAuthType === "CERTIFICATE"
-                              ? {
-                                  certificate_path: spCertPath,
-                                  certificate_password: spCertPassword,
-                                }
-                              : {}),
-                            ...(spAuthType === "USERNAME_PASSWORD"
-                              ? { sp_username: spUsername, sp_password: spPassword }
-                              : {}),
-                          })
-                        : form.type === "splunk"
+                ? sparqlMappingJson(authFields) // REQ-2138
+                : form.type === GOOGLE_WORKSPACE
+                  ? JSON.stringify(gwMapping(authFields)) // REQ-1923
+                  : form.type === MICROSOFT_365
+                    ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
+                    : form.type === LOGS
+                      ? JSON.stringify(logsMapping(authFields)) // REQ-1996
+                      : form.type === "salesforce"
+                        ? salesforceMappingJson(authFields) // REQ-1946
+                        : form.type === "sharepoint"
                           ? JSON.stringify({
-                              use_token: splunkAuthMode === "token",
-                              ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                              auth_type: spAuthType,
+                              ...(spAuthType === "CERTIFICATE"
+                                ? {
+                                    certificate_path: spCertPath,
+                                    certificate_password: spCertPassword,
+                                  }
+                                : {}),
+                              ...(spAuthType === "USERNAME_PASSWORD"
+                                ? { sp_username: spUsername, sp_password: spPassword }
+                                : {}),
                             })
-                          : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-                            // sheet id (which rides in `database`), so it travels in the mapping like the other
-                            // connectors' extra options.
-                            form.type === "google_sheets"
+                          : form.type === "splunk"
                             ? JSON.stringify({
-                                credentials_json: authFields.credentials_json ?? "",
+                                use_token: splunkAuthMode === "token",
+                                ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
                               })
-                            : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                              // region/endpoint) are a mapping-discriminated config choice read by
-                              // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                              // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                              // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                              form.type === "hive" || form.type === "hive_s3"
-                              ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                              : undefined;
+                            : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                              // sheet id (which rides in `database`), so it travels in the mapping like the other
+                              // connectors' extra options.
+                              form.type === "google_sheets"
+                              ? JSON.stringify({
+                                  credentials_json: authFields.credentials_json ?? "",
+                                })
+                              : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                                // region/endpoint) are a mapping-discriminated config choice read by
+                                // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                                // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                                // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                                form.type === "hive" || form.type === "hive_s3"
+                                ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                                : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,
@@ -810,6 +806,16 @@ export function SourcesPage() {
         // in THIS input, so a source whose tables always land (a mail source) was refused at the
         // save although its TTL was filled in — it used to travel only in the call that follows.
         cacheTtl: sourceFormCacheTtl(_ct),
+        // The other settings that also have mutations of their own travel with the source too, so
+        // a save is one createSource / updateSource and one schema rebuild (REQ-2109's rule for a
+        // table): each of those mutations rebuilt the schema, seven rebuilds for one save.
+        cacheEnabled: _ce,
+        replicate: _rep,
+        gqlNamingConvention: _nc === "" ? null : _nc,
+        allowedDomains: coreForm.allowedDomains
+          .split(",")
+          .map((d) => d.trim())
+          .filter(Boolean),
         sentinelPath: coreForm.sentinelPath.trim() || null,
         // REQ-2113: read in place, or downloaded into the organization's folder from here; a new
         // single-file source's table set up with it, as a draft.
@@ -876,87 +882,16 @@ export function SourcesPage() {
         }
         const result = await updateSource({ ...sourcePayload, id: effectiveId });
         if (!result.success) throw refusalError(result);
-        const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
-        if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
-        const cacheResult = await updateSourceCache(effectiveId, form.cacheEnabled, ttlValue);
-        if (!cacheResult.success) throw refusalError(cacheResult);
-        // REQ-826: the server refuses load protection with Replicate = Never, judged against what
-        // is stored at each save. Turning load protection off goes first, so a following Never is
-        // accepted; turning it on goes last, after the Replicate value it is compatible with.
-        const saveReplicate = async () => {
-          const replicateResult = await updateSourceReplicate(effectiveId, form.replicate);
-          if (!replicateResult.success) throw refusalError(replicateResult);
-        };
-        const saveLoadProtection = async () => {
-          const loadProtResult = await updateSourceLoadProtection(
-            effectiveId,
-            form.loadProtected,
-            form.offPeakWindow.trim() || null,
-            form.offPeakTz.trim() || "UTC",
-          );
-          if (!loadProtResult.success) throw refusalError(loadProtResult);
-        };
-        if (form.loadProtected) {
-          await saveReplicate();
-          await saveLoadProtection();
-        } else {
-          await saveLoadProtection();
-          await saveReplicate();
-        }
-        const namingResult = await updateSourceNaming(
-          effectiveId,
-          form.gqlNamingConvention === "" ? null : form.gqlNamingConvention,
-        );
-        if (!namingResult.success) throw refusalError(namingResult);
         // REQ-1921: the region its new tables start in, saved on its own when it changed.
         const savedRegion = sources.find((s) => s.id === effectiveId)?.region ?? null;
         if (form.region !== savedRegion) {
           const regionResult = await setSourceRegion(effectiveId, form.region);
           if (!regionResult.success) throw refusalError(regionResult);
         }
-        const parsedDomains = form.allowedDomains
-          .split(",")
-          .map((d) => d.trim())
-          .filter(Boolean);
-        const domainsResult = await updateSourceAllowedDomains(effectiveId, parsedDomains);
-        if (!domainsResult.success) throw refusalError(domainsResult);
       } else {
-        const { allowedDomains: _ad, ...createPayload } = sourcePayload as typeof sourcePayload & {
-          allowedDomains?: unknown;
-        };
-        void _ad;
-        const createResult = await createSource(
-          createPayload as Parameters<typeof createSource>[0],
-        );
+        // REQ-1921: a new source's region is created with it.
+        const createResult = await createSource({ ...sourcePayload, region: form.region });
         if (!createResult.success) throw refusalError(createResult);
-        // REQ-1907: the cache and Replicate settings offered at create are saved with it.
-        const createTtl = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
-        if (createTtl !== null && isNaN(createTtl)) throw new Error("TTL must be a number");
-        const createCache = await updateSourceCache(form.id, form.cacheEnabled, createTtl);
-        if (!createCache.success) throw refusalError(createCache);
-        const createReplicate = await updateSourceReplicate(form.id, form.replicate);
-        if (!createReplicate.success) throw refusalError(createReplicate);
-        if (form.region !== null) {
-          const createRegion = await setSourceRegion(form.id, form.region); // REQ-1921
-          if (!createRegion.success) throw refusalError(createRegion);
-        }
-        if (form.loadProtected) {
-          const lp = await updateSourceLoadProtection(
-            form.id,
-            true,
-            form.offPeakWindow.trim() || null,
-            form.offPeakTz.trim() || "UTC",
-          );
-          if (!lp.success) throw refusalError(lp);
-        }
-        const parsedDomainsCreate = form.allowedDomains
-          .split(",")
-          .map((d) => d.trim())
-          .filter(Boolean);
-        if (parsedDomainsCreate.length > 0) {
-          const domainsResult = await updateSourceAllowedDomains(form.id, parsedDomainsCreate);
-          if (!domainsResult.success) throw refusalError(domainsResult);
-        }
       }
       const created = editingSourceId ? null : form.id.trim();
       if (created) keepFolderAs(created); // REQ-2121
