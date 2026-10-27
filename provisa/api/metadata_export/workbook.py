@@ -41,9 +41,10 @@ from typing import TYPE_CHECKING, Any
 from provisa.api.metadata_export.refs import metric_uri, table_ref, table_uri
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
-    from provisa.api.metadata_export.model import MetadataSnapshot
+    from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot
     from provisa.core.models import ProvisaConfig, Table
 
 # The sheet names, in workbook order. Named constants because the router gates on them and the
@@ -56,7 +57,9 @@ RELATIONSHIPS = "Relationships"
 VIEWS = "Views"
 METRICS = "Metrics"
 MATERIALIZED_VIEWS = "Materialized Views"
-GLOSSARY = "Glossary Terms"
+ONTOLOGY = "Ontology"
+DATA_PRODUCTS = "Data Products"
+DATA_PROFILING = "Data Profiling"
 
 OBJECT_SHEETS = (
     SOURCES,
@@ -66,7 +69,9 @@ OBJECT_SHEETS = (
     VIEWS,
     METRICS,
     MATERIALIZED_VIEWS,
-    GLOSSARY,
+    ONTOLOGY,
+    DATA_PRODUCTS,
+    DATA_PROFILING,
 )
 
 HEADERS: dict[str, tuple[str, ...]] = {
@@ -105,7 +110,50 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "tags",
         "definition",
     ),
-    GLOSSARY: ("id", "term", "definition", "abstract", "deprecated", "refs", "experts"),
+    # REQ-1592 (2026-10-27): the ontology model (REQ-2163) -- a Class's tables (its union), a
+    # Property's columns, each term's edges to the other terms shown, its domains and experts.
+    ONTOLOGY: (
+        "id",
+        "term",
+        "kind",
+        "definition",
+        "status",
+        "abstract",
+        "tables",
+        "columns",
+        "edges",
+        "domains",
+        "experts",
+    ),
+    # REQ-1592 (2026-10-27): each product with its lifecycle (REQ-1634 STATUS), its output ports
+    # (its members) and its inputs.
+    DATA_PRODUCTS: (
+        "id",
+        "product",
+        "domain",
+        "owner",
+        "status",
+        "status reason",
+        "retire on",
+        "successor",
+        "version",
+        "output ports",
+        "inputs",
+        "description",
+    ),
+    # REQ-1592 (2026-10-27): the latest profiling run's figures per column, as the reader may
+    # see them (governance.safe_run): a restricted column's figures are blank.
+    DATA_PROFILING: (
+        "id",
+        "table",
+        "column",
+        "run time",
+        "rows",
+        "nulls",
+        "distinct",
+        "min",
+        "max",
+    ),
 }
 
 
@@ -321,19 +369,99 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
     return rows
 
 
-def _glossary_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+def _ontology_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+    """One row per term. An edge is listed on the term it leaves, and only when the term it
+    reaches is shown too (REQ-2163)."""
+    names = {term.term_id: term.name for term in snapshot.glossary_terms}
+    edges: dict[int, list[str]] = {}
+    for edge in snapshot.glossary_edges:
+        if edge.from_term_id in names and edge.to_term_id in names:
+            edges.setdefault(edge.from_term_id, []).append(
+                f"{edge.rel_type} {names[edge.to_term_id]}"
+            )
     return [
         [
             term.semantic_uri,
             term.name,
+            term.role,
             term.definition or "",
+            term.status,
             term.is_abstract,
-            term.deprecated,
-            ", ".join("/".join(ref.parts) for ref in term.refs),
+            ", ".join(ref.parts[-1] for ref in term.tables),
+            ", ".join(".".join(ref.parts[-2:]) for ref in term.refs),
+            ", ".join(edges.get(term.term_id, [])),
+            ", ".join(term.domains),
             ", ".join(term.experts),
         ]
         for term in snapshot.glossary_terms
     ]
+
+
+def _inputs(snapshot: "MetadataSnapshot", members: tuple["AssetRef", ...]) -> list[str]:
+    """The tables one lineage hop upstream of a product's members, other than its members: the
+    Input Ports the product's panel lists."""
+    tables = {member.parts for member in members}
+    inputs: list[str] = []
+    for edge in snapshot.lineage:
+        upstream = edge.upstream.parts[:-1]
+        if edge.downstream.parts[:-1] in tables and upstream not in tables:
+            if upstream[-1] not in inputs:
+                inputs.append(upstream[-1])
+    return inputs
+
+
+def _products_rows(snapshot: "MetadataSnapshot", config: "ProvisaConfig") -> list[list[Any]]:
+    # The lifecycle's reason, planned retirement and successor are the product's own (REQ-1634
+    # STATUS); the snapshot carries its status alone.
+    declared = {product.id: product for product in config.data_products}
+    rows: list[list[Any]] = []
+    for product in snapshot.data_products:
+        own = declared[product.id]
+        rows.append(
+            [
+                product.semantic_uri,
+                product.name,
+                product.domain_id,
+                product.owner.id if product.owner is not None else "",
+                product.status,
+                own.status_reason or "",
+                own.retire_on.isoformat() if own.retire_on is not None else "",
+                own.successor or "",
+                product.version or "",
+                ", ".join(member.parts[-1] for member in product.members),
+                ", ".join(_inputs(snapshot, product.members)),
+                product.description,
+            ]
+        )
+    return rows
+
+
+def _profiling_rows(
+    snapshot: "MetadataSnapshot", profiles: "Mapping[tuple[str, ...], list[dict]]"
+) -> list[list[Any]]:
+    """Each served column's figures from its table's latest profiling run. A profiled column the
+    Columns sheet does not name is not named here either."""
+    rows: list[list[Any]] = []
+    for table in snapshot.tables:
+        columns = {column.name: column for column in table.columns}
+        for figures in profiles.get(table.ref.parts, []):
+            column = columns.get(figures["physical_column"])
+            if column is None:
+                continue
+            rows.append(
+                [
+                    column.semantic_uri,
+                    table.name,
+                    column.name,
+                    figures["run_time"].isoformat(),
+                    figures["row_count"],
+                    figures["null_count"],
+                    figures["distinct_count"],
+                    figures["min_value"],
+                    figures["max_value"],
+                ]
+            )
+    return rows
 
 
 def sheet_rows(  # REQ-1592
@@ -342,11 +470,13 @@ def sheet_rows(  # REQ-1592
     *,
     org_id: str,
     withheld_definitions: frozenset[str],
+    profiles: "Mapping[tuple[str, ...], list[dict]]",
 ) -> dict[str, list[list[Any]]]:
     """Every object sheet's rows, keyed by sheet name, from an ALREADY-NARROWED snapshot.
 
     ``withheld_definitions``: the views (by table URI) whose definition names a column its reader
-    is not served, printed with a blank definition (REQ-2152).
+    is not served, printed with a blank definition (REQ-2152). ``profiles``: each profiled
+    table's latest run's columns rows, by the table's ref parts, already made safe for the reader.
 
     Narrowing (rights, domains) is the router's job and has happened before this is called; this
     function's only filtering is the snapshot-to-config alignment described in the module docstring.
@@ -368,7 +498,9 @@ def sheet_rows(  # REQ-1592
         VIEWS: _views_rows(org_id, tables, tags, withheld_definitions),
         METRICS: _metrics_rows(org_id, config, metric_names),
         MATERIALIZED_VIEWS: _materialized_rows(org_id, tables, tags, withheld_definitions),
-        GLOSSARY: _glossary_rows(snapshot),
+        ONTOLOGY: _ontology_rows(snapshot),
+        DATA_PRODUCTS: _products_rows(snapshot, config),
+        DATA_PROFILING: _profiling_rows(snapshot, profiles),
     }
 
 

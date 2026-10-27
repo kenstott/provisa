@@ -6125,7 +6125,7 @@
   "he/tablesPage.json::tablesPage.refreshData": "Refresh Data",
   "he/tablesPage.json::tablesPage.refreshing": "Refreshing...",
   "he/tablesPage.json::tablesPage.reportXlsx": "Workbook",
-  "he/tablesPage.json::tablesPage.reportXlsxTitle": "Download the model as a spreadsheet for review — sources, tables, columns, relationships, views, metrics, materialized views and ontology terms, one sheet each",
+  "he/tablesPage.json::tablesPage.reportXlsxTitle": "Download the model as a spreadsheet for review — sources, tables, columns, relationships, views, metrics, materialized views, ontology, data products and data profiling, one sheet each",
   "he/tablesPage.json::tablesPage.resizeDetail": "Resize the detail panel",
   "he/tablesPage.json::tablesPage.restoreDetail": "Restore the panel",
   "he/tablesPage.json::tablesPage.runNow": "Run Now",

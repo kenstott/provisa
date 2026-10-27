@@ -12,7 +12,7 @@
     "model": "+ Model",
     "modelTitle": "Een entiteit of feit modelleren (sterschema / Data Vault)",
     "reportXlsx": "Werkmap",
-    "reportXlsxTitle": "Download het model als spreadsheet voor review — bronnen, tabellen, kolommen, relaties, views, metrics, gematerialiseerde views en ontologietermen, elk op een eigen blad",
+    "reportXlsxTitle": "Download het model als spreadsheet voor review — bronnen, tabellen, kolommen, relaties, views, metrics, gematerialiseerde views, ontologie, dataproducten en dataprofielen, elk op een eigen blad",
     "viewErd": "ERD bekijken",
     "colSource": "Bron",
     "colDomain": "Domein",

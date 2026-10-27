@@ -95,7 +95,7 @@ def _rows(withheld: frozenset[str] = frozenset()) -> dict[str, list[list]]:
     snapshot = build_snapshot(
         config, org_id=ORG, dialect="postgres", contexts={}, data_products_only=False
     )
-    return wb.sheet_rows(snapshot, config, org_id=ORG, withheld_definitions=withheld)
+    return wb.sheet_rows(snapshot, config, org_id=ORG, withheld_definitions=withheld, profiles={})
 
 
 def _header(**kwargs) -> wb.ReportHeader:
@@ -116,7 +116,7 @@ def _load(header: wb.ReportHeader, rows: dict[str, list[list]]):
 
 
 def test_report_sheet_leads_and_names_the_scope():
-    book = _load(_header(domains="sales", omitted=(wb.GLOSSARY,), included=(wb.TABLES,)), _rows())
+    book = _load(_header(domains="sales", omitted=(wb.ONTOLOGY,), included=(wb.TABLES,)), _rows())
     assert book.sheetnames[0] == wb.REPORT
     stated = {row[0]: row[1] for row in book[wb.REPORT].iter_rows(min_row=2, values_only=True)}
     assert stated["Organization"] == ORG
@@ -125,7 +125,7 @@ def test_report_sheet_leads_and_names_the_scope():
     assert stated["Generated"] == "2026-08-26T12:00:00+00:00"
     assert stated["Sheets included"] == wb.TABLES
     # A partial workbook says so on its face — otherwise it reads as a complete model.
-    assert stated["Sheets omitted"] == wb.GLOSSARY
+    assert stated["Sheets omitted"] == wb.ONTOLOGY
 
 
 def test_every_object_sheet_is_frozen_filtered_and_id_led():
@@ -186,7 +186,7 @@ def test_a_taggable_row_carries_one_comma_delimited_tags_cell():
     for sheet in (wb.SOURCES, wb.COLUMNS, wb.RELATIONSHIPS, wb.VIEWS, wb.MATERIALIZED_VIEWS):
         assert "tags" in wb.HEADERS[sheet], sheet
     # Neither is taggable — `applies_to` never names them, so a tags column would always be blank.
-    for sheet in (wb.METRICS, wb.GLOSSARY):
+    for sheet in (wb.METRICS, wb.ONTOLOGY, wb.DATA_PRODUCTS):
         assert "tags" not in wb.HEADERS[sheet], sheet
 
 
@@ -197,10 +197,10 @@ def test_an_omitted_sheet_is_absent_rather_than_empty():
 
 def test_an_empty_sheet_still_carries_its_filterable_header():
     rows = _rows()
-    rows[wb.GLOSSARY] = []
-    sheet = _load(_header(), rows)[wb.GLOSSARY]
-    assert tuple(cell.value for cell in sheet[1]) == wb.HEADERS[wb.GLOSSARY]
-    assert sheet.auto_filter.ref == "A1:G2"
+    rows[wb.ONTOLOGY] = []
+    sheet = _load(_header(), rows)[wb.ONTOLOGY]
+    assert tuple(cell.value for cell in sheet[1]) == wb.HEADERS[wb.ONTOLOGY]
+    assert sheet.auto_filter.ref == "A1:K2"
 
 
 def test_there_is_no_reader_the_workbook_is_never_an_edit_path():
@@ -377,3 +377,445 @@ async def test_a_view_reading_a_table_its_caller_is_not_served_all_of_is_withhel
         types.SimpleNamespace(state=types.SimpleNamespace()), config, ORG
     )
     assert withheld == frozenset({table_uri(ORG, held_view)})
+
+
+def _asset_table(name: str, columns: list[str], domain: str = "sales"):
+    from provisa.api.metadata_export.model import AssetKind, AssetRef, ColumnAsset, TableAsset
+
+    return TableAsset(
+        ref=AssetRef(kind=AssetKind.TABLE, parts=("pg", "public", name)),
+        name=name,
+        source_id="pg",
+        domain_id=domain,
+        description="",
+        columns=[
+            ColumnAsset(
+                ref=AssetRef(kind=AssetKind.COLUMN, parts=("pg", "public", name, c)),
+                name=c,
+                data_type="int",
+                description="",
+            )
+            for c in columns
+        ],
+    )
+
+
+def _term(term_id: int, name: str, **kwargs):
+    from provisa.api.metadata_export.model import GlossaryTermAsset
+
+    return GlossaryTermAsset(
+        term_id=term_id,
+        name=name,
+        definition=kwargs.pop("definition", f"a {name}"),
+        is_abstract=kwargs.pop("is_abstract", False),
+        deprecated=False,
+        status=kwargs.pop("status", "live"),
+        semantic_uri=f"provisa://{ORG}/terms/{name}",
+        **kwargs,
+    )
+
+
+def test_the_ontology_sheet_carries_each_terms_kind_bindings_edges_domains_and_experts():
+    """REQ-1592 (2026-10-27): the Glossary sheet is the Ontology sheet (REQ-2163) -- a Class with
+    the tables it is a union of, a Property with its columns, the term edges, domains, experts."""
+    from provisa.api.metadata_export.model import GlossaryTermEdge, MetadataSnapshot
+
+    orders = _asset_table("orders", ["id", "cust_id"])
+    accounts = _asset_table("accounts", ["cust_id"])
+    snapshot = MetadataSnapshot(
+        org_id=ORG,
+        tables=[orders, accounts],
+        glossary_terms=[
+            _term(
+                1, "Customer", role="class", tables=(orders.ref, accounts.ref), domains=("sales",)
+            ),
+            _term(
+                2,
+                "customer id",
+                role="property",
+                refs=(orders.columns[1].ref, accounts.columns[0].ref),
+                experts=("ann",),
+            ),
+            _term(3, "Party", role="concept", is_abstract=True),
+        ],
+        glossary_edges=[
+            GlossaryTermEdge(from_term_id=1, to_term_id=3, rel_type="KIND_OF"),
+            GlossaryTermEdge(from_term_id=2, to_term_id=1, rel_type="PART_OF"),
+        ],
+    )
+    config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}
+    )
+    assert wb.ONTOLOGY == "Ontology" and not hasattr(wb, "GLOSSARY")
+    header = wb.HEADERS[wb.ONTOLOGY]
+    by_term = {row[1]: dict(zip(header, row, strict=True)) for row in rows[wb.ONTOLOGY]}
+    assert by_term["Customer"]["kind"] == "class"
+    assert by_term["Customer"]["tables"] == "orders, accounts"
+    assert by_term["Customer"]["edges"] == "KIND_OF Party"
+    assert by_term["Customer"]["domains"] == "sales"
+    assert by_term["customer id"]["kind"] == "property"
+    assert by_term["customer id"]["columns"] == "orders.cust_id, accounts.cust_id"
+    assert by_term["customer id"]["edges"] == "PART_OF Customer"
+    assert by_term["customer id"]["experts"] == "ann"
+    assert by_term["Party"]["kind"] == "concept" and by_term["Party"]["abstract"] is True
+    assert by_term["Party"]["id"] == f"provisa://{ORG}/terms/Party"
+
+
+def test_an_edge_to_a_term_not_shown_is_absent():
+    """REQ-2163: an edge is shown only when both its terms are."""
+    from provisa.api.metadata_export.model import GlossaryTermEdge, MetadataSnapshot
+
+    snapshot = MetadataSnapshot(
+        org_id=ORG,
+        glossary_terms=[_term(1, "Customer")],
+        glossary_edges=[GlossaryTermEdge(from_term_id=1, to_term_id=9, rel_type="KIND_OF")],
+    )
+    config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}
+    )
+    edges = wb.HEADERS[wb.ONTOLOGY].index("edges")
+    assert rows[wb.ONTOLOGY][0][edges] == ""
+
+
+def test_the_data_products_sheet_lists_lifecycle_output_ports_and_inputs():
+    """REQ-1592 (2026-10-27): each product with its domain, owner, status and lifecycle
+    (REQ-1634), its output ports (its members) and its inputs (one lineage hop upstream)."""
+    from datetime import date
+
+    from provisa.api.metadata_export.model import (
+        AssetKind,
+        AssetRef,
+        DataProductAsset,
+        LineageEdge,
+        MetadataSnapshot,
+        OwnerRef,
+    )
+    from provisa.core.models import DataProduct
+
+    raw = _asset_table("raw_orders", ["id"])
+    orders = _asset_table("orders", ["id"])
+    totals = _asset_table("order_totals", ["id"])
+    snapshot = MetadataSnapshot(
+        org_id=ORG,
+        tables=[raw, orders, totals],
+        data_products=[
+            DataProductAsset(
+                ref=AssetRef(kind=AssetKind.DATA_PRODUCT, parts=("orders_prod",)),
+                id="orders_prod",
+                name="Orders",
+                domain_id="sales",
+                owner=OwnerRef(id="sales_owner", kind="data_product_owner"),
+                description="every order",
+                members=(orders.ref, totals.ref),
+                semantic_uri=f"provisa://{ORG}/sales/products/orders_prod",
+                version="2.0",
+                status="deprecated",
+            )
+        ],
+        lineage=[
+            LineageEdge(upstream=raw.columns[0].ref, downstream=orders.columns[0].ref),
+            # A member reading another member is not an input.
+            LineageEdge(upstream=orders.columns[0].ref, downstream=totals.columns[0].ref),
+        ],
+    )
+    config = ProvisaConfig(
+        sources=[],
+        domains=[],
+        tables=[],
+        roles=[],
+        data_products=[
+            DataProduct(
+                id="orders_prod",
+                domain_id="sales",
+                name="Orders",
+                status="deprecated",
+                status_reason="moved to v3",
+                retire_on=date(2026, 12, 31),
+            )
+        ],
+    )
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}
+    )
+    header = wb.HEADERS[wb.DATA_PRODUCTS]
+    [row] = [dict(zip(header, r, strict=True)) for r in rows[wb.DATA_PRODUCTS]]
+    assert row["id"] == f"provisa://{ORG}/sales/products/orders_prod"
+    assert row["product"] == "Orders"
+    assert row["domain"] == "sales"
+    assert row["owner"] == "sales_owner"
+    assert row["status"] == "deprecated"
+    assert row["status reason"] == "moved to v3"
+    assert row["retire on"] == "2026-12-31"
+    assert row["successor"] == ""
+    assert row["version"] == "2.0"
+    assert row["output ports"] == "orders, order_totals"
+    assert row["inputs"] == "raw_orders"
+    assert row["description"] == "every order"
+
+
+async def test_the_workbook_names_no_column_term_or_edge_its_caller_is_not_served(monkeypatch):
+    """REQ-1592 (2026-10-27): an ungranted column is absent from every sheet that names it -- a
+    relationship on it, a term's binding to it -- a term outside the caller's domains is absent,
+    and so is an edge to it; a Class lists only the tables the caller is served."""
+    import types
+
+    from provisa.api.admin import report_router
+    from provisa.api.admin.catalog_scope import CatalogScope
+    from provisa.api.metadata_export.model import (
+        GlossaryTermEdge,
+        MetadataSnapshot,
+        RelationshipEdge,
+    )
+
+    orders = _asset_table("orders", ["id", "cust_id", "secret"])
+    payroll = _asset_table("payroll", ["id"], domain="hr")
+    snapshot = MetadataSnapshot(
+        org_id=ORG,
+        tables=[orders, payroll],
+        relationships=[
+            RelationshipEdge(
+                id="r1",
+                source=orders.ref,
+                target=orders.ref,
+                source_column="id",
+                target_column="id",
+                cardinality="one-to-one",
+                alias="self",
+                owner=None,
+                version=1,
+                needs_review=False,
+            ),
+            RelationshipEdge(
+                id="r2",
+                source=orders.ref,
+                target=orders.ref,
+                source_column="secret",
+                target_column="id",
+                cardinality="many-to-one",
+                alias="by_secret",
+                owner=None,
+                version=1,
+                needs_review=False,
+            ),
+        ],
+        glossary_terms=[
+            _term(1, "Order", role="class", tables=(orders.ref, payroll.ref), domains=("sales",)),
+            _term(
+                2,
+                "secret code",
+                role="property",
+                refs=(orders.columns[1].ref, orders.columns[2].ref),
+                domains=("sales",),
+            ),
+            _term(3, "Salary", domains=("hr",)),
+            _term(4, "Thing"),
+        ],
+        glossary_edges=[
+            GlossaryTermEdge(from_term_id=1, to_term_id=4, rel_type="KIND_OF"),
+            GlossaryTermEdge(from_term_id=3, to_term_id=4, rel_type="KIND_OF"),
+        ],
+    )
+    config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[], metrics=[])
+    scope = CatalogScope(
+        whole=False,
+        reach=frozenset({"sales"}),
+        served={1: {"id", "cust_id"}},
+        governance=False,
+        role="analyst",
+        compiled=frozenset({1, 2}),
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+
+    async def _reader(state, served_of):
+        ids = {"orders": 1, "payroll": 2}
+        return lambda table: served_of(ids[table.name])
+
+    monkeypatch.setattr("provisa.api.metadata_export.publishing.snapshot_reader", _reader)
+
+    class _Model:
+        def acquire(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def execute_core(self, stmt):  # noqa: ARG002
+            rows = [types.SimpleNamespace(id=1), types.SimpleNamespace(id=2)]
+            return types.SimpleNamespace(fetchall=lambda: rows)
+
+    monkeypatch.setattr("provisa.api.app.state.model_db", _Model(), raising=False)
+    narrowed, narrowed_config = await report_router._as_served(
+        types.SimpleNamespace(state=types.SimpleNamespace()), snapshot, config
+    )
+    rows = wb.sheet_rows(
+        narrowed, narrowed_config, org_id=ORG, withheld_definitions=frozenset(), profiles={}
+    )
+    assert [row[1] for row in rows[wb.RELATIONSHIPS]] == ["self"]
+    header = wb.HEADERS[wb.ONTOLOGY]
+    by_term = {row[1]: dict(zip(header, row, strict=True)) for row in rows[wb.ONTOLOGY]}
+    # Salary is outside the caller's domains; Thing has none, so every reader is shown it.
+    assert set(by_term) == {"Order", "secret code", "Thing"}
+    assert by_term["Order"]["tables"] == "orders"
+    assert by_term["Order"]["edges"] == "KIND_OF Thing"
+    assert by_term["secret code"]["columns"] == "orders.cust_id"
+    assert by_term["Thing"]["edges"] == ""
+
+
+def test_the_data_profiling_sheet_lists_the_latest_runs_figures_per_column():
+    """REQ-1592 (2026-10-27): the latest profiling run's figures per column with the run's time,
+    as its reader may see them -- a restricted column's figures arrive blank (safe_run) and stay
+    blank; a column not on the Columns sheet is not named."""
+    from provisa.api.metadata_export.model import MetadataSnapshot
+
+    orders = _asset_table("orders", ["id", "email"])
+    orders = dataclasses.replace(
+        orders,
+        semantic_uri=f"provisa://{ORG}/sales/tables/orders",
+        columns=[
+            dataclasses.replace(
+                c, semantic_uri=f"provisa://{ORG}/sales/tables/orders#field:{c.name}"
+            )
+            for c in orders.columns
+        ],
+    )
+    run_time = datetime(2026, 10, 26, 9, 30, tzinfo=UTC)
+    figures = dict(row_count=100, null_count=0, distinct_count=100, min_value="1", max_value="100")
+    blank = dict(
+        row_count=None, null_count=None, distinct_count=None, min_value=None, max_value=None
+    )
+    profiles = {
+        orders.ref.parts: [
+            dict(run_time=run_time, physical_column="id", column_name="id", **figures),
+            dict(run_time=run_time, physical_column="email", column_name="email", **blank),
+            dict(run_time=run_time, physical_column="gone", column_name="gone", **figures),
+        ]
+    }
+    snapshot = MetadataSnapshot(org_id=ORG, tables=[orders])
+    config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles=profiles
+    )
+    header = wb.HEADERS[wb.DATA_PROFILING]
+    assert header == (
+        "id",
+        "table",
+        "column",
+        "run time",
+        "rows",
+        "nulls",
+        "distinct",
+        "min",
+        "max",
+    )
+    got = [dict(zip(header, r, strict=True)) for r in rows[wb.DATA_PROFILING]]
+    assert got == [
+        {
+            "id": f"provisa://{ORG}/sales/tables/orders#field:id",
+            "table": "orders",
+            "column": "id",
+            "run time": "2026-10-26T09:30:00+00:00",
+            "rows": 100,
+            "nulls": 0,
+            "distinct": 100,
+            "min": "1",
+            "max": "100",
+        },
+        {
+            "id": f"provisa://{ORG}/sales/tables/orders#field:email",
+            "table": "orders",
+            "column": "email",
+            "run time": "2026-10-26T09:30:00+00:00",
+            "rows": None,
+            "nulls": None,
+            "distinct": None,
+            "min": None,
+            "max": None,
+        },
+    ]
+
+
+async def test_the_profiles_are_the_latest_measured_runs_made_safe_for_the_caller(monkeypatch):
+    """REQ-1592 (2026-10-27): each served profiled table's latest measured run, its columns rows
+    through governance.safe_run for the caller's role -- the View Profile Runs rule."""
+    import types
+
+    from provisa.api.admin import report_router
+    from provisa.api.admin.catalog_scope import CatalogScope
+    from provisa.api.metadata_export.model import MetadataSnapshot
+    from provisa.profiler.governance import ColumnRule
+
+    orders = _asset_table("orders", ["id", "email"])
+    scope = CatalogScope(
+        whole=False, reach=None, served={}, governance=False, role="analyst", compiled=frozenset()
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+    run_time = datetime(2026, 10, 26, 9, 30, tzinfo=UTC)
+    stored = [
+        dict(
+            run_id="r2",
+            run_time=run_time,
+            column_name=name,
+            physical_column=name,
+            row_count=100,
+            null_count=3,
+            distinct_count=90,
+            min_value="a",
+            max_value="z",
+        )
+        for name in ("id", "email")
+    ]
+
+    class _Conn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def execute_core(self, stmt):  # noqa: ARG002
+            return types.SimpleNamespace(
+                fetchall=lambda: [
+                    types.SimpleNamespace(
+                        id=7, source_id="pg", schema_name="public", table_name="orders"
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(
+        "provisa.api.app.state.model_db",
+        types.SimpleNamespace(acquire=lambda: _Conn()),
+        raising=False,
+    )
+    asked: list = []
+
+    async def _previous(conn, table_name, table_id, before, limit):  # noqa: ARG001
+        asked.append((table_name, table_id, limit))
+        return [("r2", run_time)]
+
+    async def _columns(conn, table_name, table_id, run_id):  # noqa: ARG001
+        assert (table_name, table_id, run_id) == ("orders", 7, "r2")
+        return stored
+
+    async def _rules(conn, state, table_id):  # noqa: ARG001
+        return [
+            ColumnRule("id", "id", frozenset({"analyst"}), (), False),
+            ColumnRule("email", "email", frozenset({"analyst"}), (), True),
+        ]
+
+    monkeypatch.setattr("provisa.profiler.history.previous_runs", _previous)
+    monkeypatch.setattr(report_router, "_run_columns", _columns)
+    monkeypatch.setattr("provisa.profiler.governance.column_rules", _rules)
+    profiles = await report_router._profiles(
+        types.SimpleNamespace(state=types.SimpleNamespace()),
+        MetadataSnapshot(org_id=ORG, tables=[orders]),
+    )
+    assert asked == [("orders", 7, 1)]
+    by_column = {row["physical_column"]: row for row in profiles[orders.ref.parts]}
+    assert by_column["id"]["min_value"] == "a" and by_column["id"]["row_count"] == 100
+    # pii: its shape only, so no count or value.
+    assert by_column["email"]["min_value"] is None and by_column["email"]["null_count"] is None

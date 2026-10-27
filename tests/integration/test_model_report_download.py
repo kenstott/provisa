@@ -53,6 +53,8 @@ _ALL_RIGHTS = [
     "create_relationship",
     "create_view",
     "glossary_read",
+    "data_product_read",
+    "dq_read",
 ]
 _ROLES = {
     "steward": {"capabilities": _ALL_RIGHTS, "domain_access": ["*"]},
@@ -302,7 +304,15 @@ async def test_a_sheet_the_caller_cannot_read_is_omitted_not_refused(served):
     assert book.sheetnames == [wb.REPORT, wb.TABLES, wb.COLUMNS]
     stated = {row[0]: row[1] for row in book[wb.REPORT].iter_rows(min_row=2, values_only=True)}
     # A partial workbook says on its face what is missing from it.
-    for name in (wb.SOURCES, wb.RELATIONSHIPS, wb.VIEWS, wb.METRICS, wb.GLOSSARY):
+    for name in (
+        wb.SOURCES,
+        wb.RELATIONSHIPS,
+        wb.VIEWS,
+        wb.METRICS,
+        wb.ONTOLOGY,
+        wb.DATA_PRODUCTS,
+        wb.DATA_PROFILING,
+    ):
         assert name in stated["Sheets omitted"]
 
 
@@ -330,7 +340,7 @@ async def test_the_domains_parameter_narrows_but_never_widens(served):
 async def test_narrowing_carries_the_glossary_and_the_source_list_with_it(served):
     """Every sheet follows the tables it addresses — a narrowed workbook leaks no wider shape."""
     _, book = await _book("steward", domains=["petstore"])
-    refs = _values(book[wb.GLOSSARY], wb.HEADERS[wb.GLOSSARY].index("refs"))
+    refs = _values(book[wb.ONTOLOGY], wb.HEADERS[wb.ONTOLOGY].index("columns"))
     assert refs, "the derivation produced no terms; the narrowing assertion would be vacuous"
     assert not [ref for ref in refs if "orders" in (ref or "")]
     assert set(_values(book[wb.SOURCES], 1)) == {"pg1"}
