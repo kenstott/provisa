@@ -39,7 +39,7 @@ import pyarrow as pa
 import pyarrow.flight as flight
 
 from provisa.auth import bearer
-from provisa.api.flight import flightsql
+from provisa.api.flight import flightsql, flightsql_catalog
 from provisa.api.flight.compression import generator_stream, record_batch_stream
 from provisa.api.flight.catalog import (
     CatalogTable,
@@ -734,6 +734,10 @@ class ProvisaFlightServer(
             return flightsql.prepared_info(descriptor, command.prepared_statement_handle)
         if isinstance(command, flightsql.pb.CommandGetSqlInfo):
             return flightsql.sql_info_info(descriptor)
+        if isinstance(command, flightsql_catalog.CATALOG_COMMANDS):
+            endpoint = flight.FlightEndpoint(descriptor.command, [])  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            schema = flightsql_catalog.answer_schema(command)
+            return flight.FlightInfo(schema, descriptor, [endpoint], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         raise NotImplementedError(f"Flight SQL {_command_name(command, descriptor.command)}")
 
     def _flightsql_get(
@@ -753,7 +757,27 @@ class ProvisaFlightServer(
             )
         if isinstance(command, flightsql.pb.CommandGetSqlInfo):
             return record_batch_stream(flightsql.sql_info_table(command))
+        if isinstance(command, flightsql_catalog.CATALOG_COMMANDS):
+            return record_batch_stream(self._catalog_answer(context, command))
         raise NotImplementedError(f"Flight SQL {_command_name(command, ticket.ticket)}")
+
+    def _catalog_answer(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        command: Any,
+    ) -> pa.Table:
+        """A Flight SQL catalog command's answer (REQ-2175): the catalog pgwire lists to the role
+        the call's statements run as (:meth:`_caller_request`'s caller), so what it lists is what
+        that role is served."""
+        request = self._caller_headers(context)
+
+        def _answer() -> pa.Table:
+            if not request.get("role"):
+                raise _flight_error("role is required")
+            catalog = flightsql_catalog.role_catalog(self._state, str(request["role"]))
+            return flightsql_catalog.answer(catalog, command)
+
+        return _run_rpc(lambda: self._as_ticket_caller(request, _answer))
 
     @staticmethod
     def _caller_request(
@@ -767,9 +791,18 @@ class ProvisaFlightServer(
             # The native ticket reads a ticket without a query as a catalog fetch; a statement
             # always has one.
             raise _flight_error("a Flight SQL statement query needs a statement")
+        return {"query": query, **ProvisaFlightServer._caller_headers(context)}
+
+    @staticmethod
+    def _caller_headers(
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> dict[str, object]:
+        """The caller a Flight SQL call's headers name, as a native ticket's ``token`` and
+        ``role``: the credential of ``authorization: Bearer`` and the role of
+        ``x-provisa-role``."""
         middleware = context.get_middleware(_HEADERS)
         headers = middleware.headers if middleware is not None else {}
-        request: dict[str, object] = {"query": query}
+        request: dict[str, object] = {}
         token = _bearer(headers)
         if token is not None:
             request["token"] = token
