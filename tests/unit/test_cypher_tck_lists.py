@@ -184,3 +184,10 @@ def test_a_range_never_steps_by_zero(args):
 
     with pytest.raises(CypherTranslateError, match="step other than 0"):
         _rows(f"RETURN range({args}) AS r")
+
+
+def test_a_range_s_computed_step_is_refused_at_zero_by_the_engine():
+    # The step a query computes: refused by the engine (range_step), never DuckDB's [].
+    with pytest.raises(duckdb.InvalidInputException, match="step other than 0"):
+        _rows("WITH 0 AS s RETURN range(2, 8, s) AS r")
+    assert _rows("WITH 2 AS s RETURN range(2, 8, s) AS r") == [([2, 4, 6, 8],)]

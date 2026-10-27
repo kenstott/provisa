@@ -965,6 +965,14 @@ class ExprLowering:
         ):
             return temporal.iso_text(self.lower(node.args[0]))
         args = [self.lower(a) for a in node.args]
+        if (
+            node.name.lower() == "range"
+            and len(args) == 3
+            and not isinstance(node.args[2], Literal)
+        ):
+            # A step the query computes is refused at 0 by the engine (range_step, one IR
+            # operation each engine renders), never stepped as the engine's own range would.
+            args[2] = _anon("range_step", args[2])
         return self._ctx.resolve_function(node.name, args, distinct=node.distinct)
 
     def _lower_Case(self, node: Case) -> exp.Expression:
