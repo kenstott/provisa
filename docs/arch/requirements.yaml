@@ -89861,7 +89861,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     node carrying every label it was given: one model table with free labels, two or more model tables (no
     single model row can be both), or free labels alone. Its properties go to its first free label''s session
     table, or to the default session table when it has none, and its node_labels rows make it match each
-    model label beside that table''s real rows.'
+    model label beside that table''s real rows. (Amended 2026-10-27, AN EXPANDED READ, ONLY WHERE THE SESSION
+    HAS MATCHES:) Maintainer 2026-10-27: ephemeral objects expand the read syntax; they do not change today''s
+    reads. A session holding no ephemeral object compiles every read to exactly the SQL it compiles today:
+    no join through nodes or node_labels, and the same plan, route and governance. In a session that holds
+    some, a label no session node carries is still read exactly as today; only a label with session matches
+    is read through the node_labels lookup and the sparse union. The translation is chosen from the session''s
+    overlay when the statement is translated, and the cache key carries the session''s generation, so a
+    label''s read changes form only once the session gives it a node.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
