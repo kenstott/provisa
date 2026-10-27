@@ -50,8 +50,11 @@ test("Done on the core tour and on a topic both return to the menu", async ({ pa
   const title = page.locator(".driver-popover-title");
   await expect(title).toHaveText("That's the five-minute core", { timeout: 60000 });
   await page.locator(".driver-popover-next-btn").click(); // Done
+  // The menu opens once its read of what the org has answers (useTour openMenu): its tables read
+  // took 4.6 s on the loaded CI runner (run 40434830192), so each wait for it budgets as the
+  // reload's below does.
   const menu = page.locator('[data-testid="tour-menu"]');
-  await expect(menu).toBeVisible();
+  await expect(menu).toBeVisible({ timeout: 60000 });
   await expect(page.locator('[data-testid^="tour-topic-done-"]')).toHaveCount(0);
 
   // Govern it: step through every card the viewer may open, then Done on the last.
@@ -64,7 +67,7 @@ test("Done on the core tour and on a topic both return to the menu", async ({ pa
     await expect(title).not.toHaveText(before ?? "", { timeout: 30000 });
   }
   await next.click(); // Done
-  await expect(menu).toBeVisible();
+  await expect(menu).toBeVisible({ timeout: 60000 });
   await expect(page.locator('[data-testid="tour-topic-done-govern"]')).toBeVisible();
 
   // The mark outlives a reload: the tour button, with the core tour seen, reopens the menu. After

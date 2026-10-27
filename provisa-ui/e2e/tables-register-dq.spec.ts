@@ -74,8 +74,11 @@ for (const c of CHECKERS) {
     await expect(page.getByPlaceholder("Semantic name override")).toHaveValue(
       `${scannedTable}_quality`,
     );
-    // The name stays editable — keep the row unique across retries and workers.
+    // The name stays editable — keep the row unique across retries and workers. So does the alias,
+    // derived from the scanned table: left as it is, a retry's registration is refused, since the
+    // attempt before it registered the same alias in the same domain (run 40434830192).
     await page.getByTestId("register-table-dq-results-table").fill(resultsTable);
+    await page.getByTestId("register-table-alias").fill(resultsTable);
 
     // Add one rule: the picker offers the scanned table's own columns.
     await page.getByTestId("dq-column").click();
@@ -103,7 +106,9 @@ for (const c of CHECKERS) {
       .getByRole("searchbox", { name: /Filter by source, domain, or table/ })
       .fill(relation);
     const badge = page.getByTestId(`tables-checker-${relation}`);
-    await expect(badge).toBeVisible({ timeout: 20000 });
+    // A registration took 13 s and the list's refetch after it 6 s on the loaded CI runner (load
+    // 14-16, run 40434830192).
+    await expect(badge).toBeVisible({ timeout: 60000 });
     await expect(badge).toHaveText(c.checker);
   });
 }

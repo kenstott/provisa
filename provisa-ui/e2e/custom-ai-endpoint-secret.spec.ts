@@ -32,6 +32,10 @@ test.describe("custom AI endpoint via a Secrets-vault key, verified through /exp
   test("secret-backed OpenRouter endpoint answers a real /explore chat turn with a tool call", async ({
     page,
   }) => {
+    // Four full page loads and a live model turn: on the loaded CI runner (load 14-16, run
+    // 40434830192) each load took 11-16 s, and the 90 s default ran out on the way to /explore,
+    // before the turn was sent.
+    test.setTimeout(240000);
     const stamp = Date.now();
     const secretName = `e2e_openrouter_key_${stamp}`;
     const endpointId = `e2e-openrouter-${stamp}`;

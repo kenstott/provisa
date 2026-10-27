@@ -296,7 +296,9 @@ for (const c of [
       // 2026-09-15: was unconditionally skipped here pending re-verification of the browser-driven
       // flow after the google_sheets test crashed the shared backend in the same run (see that
       // test's own history — root-caused and fixed). Un-skipped.
-      test.setTimeout(120000);
+      // Two forms, a dry run and a registration: on the loaded CI runner (load 14-16, run
+      // 40434830192) a dry run answered in up to 30 s and a registration in 15 s.
+      test.setTimeout(240000);
       const stamp = Date.now();
       const sourceId = `e2e_${c.type}_${stamp}`;
       const resultsTable = `e2e_${c.type}_vets_scan_${stamp}`;
@@ -354,7 +356,7 @@ for (const c of [
         (r) =>
           r.url().includes("/admin/graphql") &&
           (r.request().postData() ?? "").includes("DryRunDqContract"),
-        { timeout: 30000 },
+        { timeout: 60000 },
       );
       await page.getByTestId("dq-dry-run").click();
       // The server's own answer, asserted whole: the panel renders only its message and checks,
@@ -382,7 +384,7 @@ for (const c of [
         .getByRole("searchbox", { name: /Filter by source, domain, or table/ })
         .fill(relation);
       const badge = page.getByTestId(`tables-checker-${relation}`);
-      await expect(badge).toBeVisible({ timeout: 20000 });
+      await expect(badge).toBeVisible({ timeout: 60000 });
       await expect(badge).toHaveText(c.checker);
     });
   });
