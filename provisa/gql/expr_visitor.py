@@ -342,10 +342,16 @@ class ExprLowering:
         return exp.Neg(this=operand)
 
     def _is_text_identity(self, node: CypherExpr) -> bool:
-        """``x.id`` where ``x`` is not bound to one registered table — see ``_lower_Binary``."""
+        """``x.id`` where ``x`` is not bound to one registered table and is read as text — see
+        ``_lower_Binary``. A node drawn from several tables whose ``id`` is one number in each
+        reads it as that number."""
         if not (isinstance(node, Property) and node.name == "id"):
             return False
-        return not self._ctx.property_is_table_column(self.lower(node.obj), node.name)
+        obj = self.lower(node.obj)
+        if self._ctx.property_is_table_column(obj, node.name):
+            return False
+        held = self._ctx.property_type(obj, node.name)
+        return held is None or held.upper() in ("VARCHAR", "TEXT")
 
     def _is_float(self, node: CypherExpr) -> bool:
         """Whether ``node`` is a float as openCypher types it: a float literal, toFloat, a column

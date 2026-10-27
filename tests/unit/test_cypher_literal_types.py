@@ -12,8 +12,8 @@
 
 A property of one registered table is that table's own typed column, so the literal or parameter
 compared to it reaches the source as written: an integer stays an integer, a parameter stays a
-bare bound placeholder. Only the graph identity of a node drawn from several tables — a VARCHAR
-built by the translator itself — is compared in string space."""
+bare bound placeholder. Only the graph identity of a node drawn from tables that key it by
+different types -- read as text -- is compared in string space."""
 
 # Requirements: REQ-345, REQ-352
 
@@ -36,24 +36,34 @@ _COLUMNS = [
 ]
 
 
-def _label_map() -> CypherLabelMap:
-    table = SimpleNamespace(
-        type_name="Sales_Orders",
-        table_id=1,
+def _table(table_id: int, name: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        type_name=f"Sales_{name.title()}",
+        table_id=table_id,
         source_id="pg",
         catalog_name="postgresql",
         source_type="postgresql",
         schema_name="public",
-        table_name="orders",
+        table_name=name,
         domain_id="sales",
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
-        field_name="orders",
+        field_name=name,
         display_name="",
     )
+
+
+def _label_map(text_keyed: bool = False) -> CypherLabelMap:
+    """Sales:Orders, keyed by an integer id; with ``text_keyed`` also Sales:Codes, keyed by a
+    text id."""
+    tables = {"sales__orders": _table(1, "orders")}
+    columns = {1: _COLUMNS}
+    if text_keyed:
+        tables["sales__codes"] = _table(2, "codes")
+        columns[2] = [("id", "varchar"), ("name", "varchar")]
     ctx = SimpleNamespace(
-        tables={"sales__orders": table},
+        tables=tables,
         joins={},
-        aggregate_columns={1: _COLUMNS},
+        aggregate_columns=columns,
         pk_columns={},
         native_filter_columns={},
         physical_to_sql={},
@@ -64,8 +74,10 @@ def _label_map() -> CypherLabelMap:
     return CypherLabelMap.from_schema(ctx, domain_access=["*"])
 
 
-def _where(cypher: str, params: dict | None = None) -> tuple[str, list[str]]:
-    ast, ordered, _ = cypher_to_sql(parse_cypher(cypher), _label_map(), params or {})
+def _where(
+    cypher: str, params: dict | None = None, text_keyed: bool = False
+) -> tuple[str, list[str]]:
+    ast, ordered, _ = cypher_to_sql(parse_cypher(cypher), _label_map(text_keyed), params or {})
     return ast.sql(dialect="postgres").split("WHERE", 1)[1].strip(), ordered
 
 
@@ -120,13 +132,22 @@ def test_a_parameter_compared_to_a_table_column_stays_a_bare_placeholder(predica
 
 
 @pytest.mark.parametrize("match", ["(n)", "(n:Sales)"])
-def test_the_identity_of_a_node_drawn_from_several_tables_is_compared_as_text(match):
-    """That identity is a column the translator builds as VARCHAR (CAST(pk AS VARCHAR)) so nodes
-    of differently keyed tables fit one column; a value compared to it is put in the same space."""
+def test_the_identity_of_a_node_drawn_from_differently_keyed_tables_is_compared_as_text(match):
+    """Tables keyed by an integer and by text share one column only as text, so a value compared
+    to that identity is put in the same space."""
     cypher = f"MATCH {match} WHERE n.id = 7 RETURN n.id AS i"
-    ast, _, _ = cypher_to_sql(parse_cypher(cypher), _label_map(), {})
+    ast, _, _ = cypher_to_sql(parse_cypher(cypher), _label_map(text_keyed=True), {})
     assert 'CAST("id" AS VARCHAR) AS "id"' in ast.sql(dialect="postgres")
-    literal, _ = _where(cypher)
+    literal, _ = _where(cypher, text_keyed=True)
     assert literal.endswith('n."id" = CAST(7 AS TEXT)')
-    bound, ordered = _where(f"MATCH {match} WHERE n.id = $p RETURN n.id AS i", {"p": 7})
+    bound, ordered = _where(
+        f"MATCH {match} WHERE n.id = $p RETURN n.id AS i", {"p": 7}, text_keyed=True
+    )
     assert bound.endswith('n."id" = CAST($1 AS TEXT)') and ordered == ["p"]
+
+
+@pytest.mark.parametrize("match", ["(n)", "(n:Sales)"])
+def test_the_identity_of_a_node_drawn_from_integer_keyed_tables_is_compared_as_a_number(match):
+    """Where every table holding it keys it by an integer, the identity is that integer."""
+    literal, _ = _where(f"MATCH {match} WHERE n.id = 7 RETURN n.id AS i")
+    assert literal.endswith('n."id" = 7')

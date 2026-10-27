@@ -32,7 +32,41 @@ from provisa.gql.translator_helpers import (
 from provisa.gql.translator_types import NODE_COLUMN, CypherTranslateError
 
 if TYPE_CHECKING:
-    from provisa.gql.label_map import NodeMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping
+
+
+_INTEGERS = frozenset({"smallint", "integer", "bigint"})
+_NUMBERS = _INTEGERS | {"float", "double", "numeric"}
+
+
+def union_labels(lm: "CypherLabelMap", domain_name: str) -> list[str]:
+    """The node types a node matched by a domain alone (or by no label, ``__all__``) is drawn
+    from."""
+    return list(lm.nodes.keys()) if domain_name == "__all__" else lm.domains[domain_name]
+
+
+def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.DataType | None:
+    """The one type a property of a node drawn from several tables has: the type every table
+    holding it registers it as; integers of several widths a bigint, integers and floats a
+    double. None when the tables disagree or one does not say: the UNION then reads it as text."""
+    from provisa.core.ir_types import to_ir
+
+    registered = []
+    for label in labels:
+        nm = lm.nodes.get(label)
+        if nm is None or not nm.physical_properties.get(prop):
+            continue
+        registered.append(dict(nm.property_types).get(prop))
+    if not registered or None in registered:
+        return None
+    if len(set(registered)) == 1:
+        return exp.DataType.build(str(registered[0]), dialect="postgres")
+    kinds = {to_ir(str(t)) for t in registered}
+    if kinds <= _INTEGERS:
+        return exp.DataType.build("BIGINT")
+    if kinds <= _NUMBERS:
+        return exp.DataType.build("DOUBLE")
+    return None
 
 
 def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -326,15 +360,14 @@ class _UnionMixin:  # mixin for _Translator
 
     def _build_domain_union(self, var: str, domain_name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build UNION ALL subquery over all types in a domain."""
-        type_labels = (
-            list(self._lm.nodes.keys())
-            if domain_name == "__all__"
-            else self._lm.domains[domain_name]
-        )
+        type_labels = union_labels(self._lm, domain_name)
         # A node returned bare is one JSON value per arm, of that type's own properties (NODE_COLUMN).
         as_one_value = self._node_as_one_value(var)
         props = [] if as_one_value else self._collect_var_props(var)
 
+        held_as = {
+            p: union_type(p, type_labels, self._lm) or exp.DataType.build("VARCHAR") for p in props
+        }
         branches: list[exp.Select] = []
         had_resolvable = False
         for label in type_labels:
@@ -363,20 +396,18 @@ class _UnionMixin:  # mixin for _Translator
                 select_items.append(exp.alias_(_node_value(nm), alias=NODE_COLUMN))
             for prop in props:
                 phys_col = nm.physical_properties.get(prop)
-                if phys_col:
-                    select_items.append(
-                        exp.alias_(
-                            exp.Cast(
-                                this=exp.Column(this=exp.Identifier(this=phys_col, quoted=True)),
-                                to=exp.DataType(this=exp.DataType.Type.VARCHAR),
-                            ),
-                            alias=exp.Identifier(this=prop, quoted=True),
-                        )
+                value = (
+                    exp.Column(this=exp.Identifier(this=phys_col, quoted=True))
+                    if phys_col
+                    else exp.null()
+                )
+                # Each arm's value as the one type the property has in every table holding it.
+                select_items.append(
+                    exp.alias_(
+                        exp.Cast(this=value, to=held_as[prop]),
+                        alias=exp.Identifier(this=prop, quoted=True),
                     )
-                else:
-                    select_items.append(
-                        exp.alias_(exp.null(), alias=exp.Identifier(this=prop, quoted=True))
-                    )
+                )
             branch = exp.select(*select_items).from_(
                 exp.alias_(
                     exp.Table(
