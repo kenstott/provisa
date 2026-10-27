@@ -861,8 +861,12 @@ async def test_a_local_call_naming_a_role_beyond_its_pin_is_recorded_and_ends_it
     mcp_server._ended_sessions.pop("session-1", None)
 
 
-async def test_a_request_in_an_ended_session_is_told_its_session_is_over():  # REQ-2076
+async def test_a_request_in_an_ended_session_is_told_its_session_is_over(monkeypatch):  # REQ-2076
     from provisa.api.mcp import server as mcp_server
+
+    # The tombstones' bounds are the built server's; set here, not left to an earlier test.
+    monkeypatch.setattr(mcp_server, "_ended_sessions", {})
+    monkeypatch.setattr(mcp_server, "_session_bounds", (30.0, 2))
 
     reached: list = []
 
@@ -875,13 +879,10 @@ async def test_a_request_in_an_ended_session_is_told_its_session_is_over():  # R
         sent.append(message)
 
     mcp_server._end_session("over")
-    try:
-        middleware = mcp_server._wrap_role_auth(
-            _app, SimpleNamespace(org_id="root"), require_token=False
-        )
-        await middleware({"type": "http", "headers": [(b"mcp-session-id", b"over")]}, None, _send)
-    finally:
-        mcp_server._ended_sessions.pop("over", None)
+    middleware = mcp_server._wrap_role_auth(
+        _app, SimpleNamespace(org_id="root"), require_token=False
+    )
+    await middleware({"type": "http", "headers": [(b"mcp-session-id", b"over")]}, None, _send)
     assert reached == [] and sent[0]["status"] == 404
 
 
