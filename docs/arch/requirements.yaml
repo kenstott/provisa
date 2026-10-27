@@ -90161,7 +90161,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a reload of that tab; another tab has its own), keyed by the org, the principal and the tab''s session
     id, so no principal ever reaches another''s. A session unused for the idle expiry (a deployment setting
     with its own field, default 2 hours) is ended and its temporary objects dropped; the page also ends
-    it on sign-out and from its clear-session action.'
+    it on sign-out and from its clear-session action. (Amended 2026-10-27, A SESSION SURVIVES SIGN-OUT UNTIL
+    ITS ROLES CHANGE:) Maintainer 2026-10-27: when the Cypher page''s session ends by sign-out or idle expiry,
+    its tables and its lookup index are saved in the control-plane PostgreSQL for that org and principal,
+    one saved session per principal (the last to end), before its temporary objects are dropped. The next
+    time that principal opens the Cypher page it is offered the saved session to restore into a fresh one.
+    A saved session is deleted when its retention lapses (a deployment setting with its own field), when
+    the principal clears the session, and whenever that principal''s roles or their grants change, since
+    it may hold copies of governed values read under the old rights. The idle expiry is configurable as
+    stated above.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
