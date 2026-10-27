@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "Remove {{tableName}} from canvas",
     "toggleColumn": "Toggle selection of column {{columnName}}",
-    "connectColumn": "Start relationship from {{columnName}}"
+    "connectColumn": "Start relationship from {{columnName}}",
+    "allColumns": "All columns ({{selected}} of {{total}})",
+    "unjoined": "{{tables}} isn't joined to the other tables",
+    "joinsUnavailable": "The joins this role may write could not be read: {{reason}}"
   }
 }

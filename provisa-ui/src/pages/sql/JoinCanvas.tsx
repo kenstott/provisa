@@ -8,16 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Network, Sigma, X } from "lucide-react";
 import { ActionIcon, Checkbox, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { CanvasTableCard } from "./CanvasTableCard";
 import { autoAliasConflicts, buildSemanticMetricSql, metricDimensionTables } from "./sqlHelpers";
-import { CARD_W, CARD_HEADER_H, COL_ROW_H } from "./types";
+import { CanvasTableCard } from "../../components/canvas/CanvasTableCard";
+import { CARD_W, CARD_HEADER_H, COL_ROW_H, columnsTop } from "../../components/canvas/geometry";
+import { approvedEdges, buildJoinSql, type ApprovedJoin } from "../../components/canvas/joinGraph";
+import { fetchApprovedJoins } from "../../api/admin";
 import type { CanvasTable, CanvasJoin, CanvasMetric, JoinCanvasProps } from "./types";
 import type { Metric, RegisteredTable, Relationship } from "../../types/admin";
-import { tableSqlRef } from "../../naming";
 
 // REQ-1322: metric card on the canvas. Distinct accent styling; checkboxes pick
 // the dimensions the semantic query groups by. The UI never generates joins or
@@ -156,6 +157,27 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
   const [canvasMetrics, setCanvasMetrics] = useState<CanvasMetric[]>([]);
   const [selectedDims, setSelectedDims] = useState<Map<string, Set<string>>>(new Map());
   const [selectedColumns, setSelectedColumns] = useState<Map<string, Set<string>>>(new Map());
+  // The tables no join reaches, named when → SQL was asked for (buildJoinSql).
+  const [unjoined, setUnjoined] = useState<string[]>([]);
+  const { t } = useTranslation();
+  // The joins the acting role's statements may write (GET /data/sql/approved-joins).
+  const [approvedJoins, setApprovedJoins] = useState<ApprovedJoin[]>([]);
+  const [joinsError, setJoinsError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetchApprovedJoins().then(
+      (joins) => {
+        if (live) setApprovedJoins(joins);
+      },
+      (err: unknown) => {
+        if (live) setJoinsError(err instanceof Error ? err.message : String(err));
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const tableNames = useMemo(() => new Map(tables.map((tbl) => [tbl.id, tbl.tableName])), [tables]);
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null);
   const connectingRef = useRef<{ tableName: string; colName: string; colIdx: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -200,33 +222,14 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
     const y = e.clientY - rect.top - CARD_HEADER_H / 2;
     setCanvasTables((prev) => {
       const next = [...prev, { tableName, x: Math.max(0, x), y: Math.max(0, y) }];
-      // Auto-wire PK/FK joins between the new table and tables already on the canvas
+      // Draw the joins the server approves between the new table and the tables already on the
+      // canvas: exactly the joins a statement may write (components/canvas/joinGraph.approvedEdges).
       const existingNames = new Set(prev.map((ct) => ct.tableName));
-      const newJoins: CanvasJoin[] = [];
-      for (const rel of existingRels) {
-        const isNew = rel.sourceTableName === tableName || rel.targetTableName === tableName;
-        const otherTable =
-          rel.sourceTableName === tableName ? rel.targetTableName : rel.sourceTableName;
-        if (!isNew || !existingNames.has(otherTable) || !rel.targetColumn) continue;
-        // Always orient FK→PK: the FK column (many side) references the PK column (one side).
-        // one-to-many: source=parent(PK), target=child(FK) → fromTable=target, fromCol=targetColumn
-        // many-to-one: source=child(FK), target=parent(PK) → fromTable=source, fromCol=sourceColumn
-        const isFkOnTarget = rel.cardinality === "one-to-many";
-        const fkTable = isFkOnTarget ? rel.targetTableName : rel.sourceTableName;
-        const fkCol = isFkOnTarget ? rel.targetColumn : rel.sourceColumn;
-        const pkTable = isFkOnTarget ? rel.sourceTableName : rel.targetTableName;
-        const pkCol = isFkOnTarget ? rel.sourceColumn : rel.targetColumn;
-        // Canonical join ID normalizes direction so forward+reverse config entries dedup correctly.
-        const joinId = `${fkTable}__${fkCol}__${pkTable}__${pkCol}`;
-        newJoins.push({
-          id: joinId,
-          fromTable: fkTable,
-          fromCol: fkCol,
-          toTable: pkTable,
-          toCol: pkCol,
-          cardinality: "many-to-one",
-        });
-      }
+      const newJoins: CanvasJoin[] = approvedEdges(
+        approvedJoins,
+        tableNames,
+        new Set([...existingNames, tableName]),
+      ).filter((e) => e.fromTable === tableName || e.toTable === tableName);
       if (newJoins.length > 0) {
         setCanvasJoins((prevJ) => {
           // One join per canonical id: a relationship registered in both directions yields the same
@@ -325,67 +328,27 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
       return;
     }
     if (canvasTables.length === 0) return;
-    const aliasOf = (name: string) => name.replace(/\W/g, "_").toLowerCase();
-    const tbl0 = canvasTables[0];
-    const tblObj0 = tableMap[tbl0.tableName];
-    // Build SELECT clause: use checked columns if any, otherwise SELECT *.
-    // When the same column name appears in multiple checked tables, alias as table_column.
-    const checkedEntries = canvasTables.flatMap((ct) =>
-      [...(selectedColumns.get(ct.tableName) ?? [])].map((col) => ({ tbl: ct.tableName, col })),
+    // The first table, then every table the joins reach from it, each joined on the join that
+    // reached it (components/canvas/joinGraph.buildJoinSql); a table none reaches is named.
+    const built = buildJoinSql(
+      canvasTables.map((ct) => tableMap[ct.tableName]),
+      canvasJoins,
+      new Map(
+        canvasTables.map((ct) => [
+          ct.tableName,
+          new Set(
+            tableMap[ct.tableName].columns.filter((c) => c.isPrimaryKey).map((c) => c.columnName),
+          ),
+        ]),
+      ),
+      selectedColumns,
     );
-    let selectClause: string;
-    if (checkedEntries.length > 0) {
-      const colFreq = new Map<string, number>();
-      checkedEntries.forEach(({ col }) => colFreq.set(col, (colFreq.get(col) ?? 0) + 1));
-      selectClause = checkedEntries
-        .map(({ tbl, col }) =>
-          colFreq.get(col)! > 1
-            ? `${aliasOf(tbl)}."${col}" ${tbl}_${col}`
-            : `${aliasOf(tbl)}."${col}"`,
-        )
-        .join(", ");
-    } else {
-      selectClause = "*";
+    if ("unjoined" in built) {
+      setUnjoined(built.unjoined);
+      return;
     }
-    let s = `SELECT ${selectClause}\nFROM ${tableSqlRef(tblObj0)} ${aliasOf(tbl0.tableName)}`;
-    const inQuery = new Set([tbl0.tableName]);
-    // Track emitted ON/AND conditions as canonical "tA.cA=tB.cB" keys (both directions) to skip duplicates.
-    const emittedConds = new Set<string>();
-    const condKey = (t1: string, c1: string, t2: string, c2: string) =>
-      [t1, c1, t2, c2].join("\x00") < [t2, c2, t1, c1].join("\x00")
-        ? `${t1}\x00${c1}\x00${t2}\x00${c2}`
-        : `${t2}\x00${c2}\x00${t1}\x00${c1}`;
-    for (const join of canvasJoins) {
-      const toInQuery = inQuery.has(join.toTable);
-      const fromInQuery = inQuery.has(join.fromTable);
-      let newTable: string, newCol: string, existingTable: string, existingCol: string;
-      if (!toInQuery) {
-        newTable = join.toTable;
-        newCol = join.toCol;
-        existingTable = join.fromTable;
-        existingCol = join.fromCol;
-      } else if (!fromInQuery) {
-        newTable = join.fromTable;
-        newCol = join.fromCol;
-        existingTable = join.toTable;
-        existingCol = join.toCol;
-      } else {
-        // Both tables already in query — emit AND only if condition is genuinely new.
-        const key = condKey(join.fromTable, join.fromCol, join.toTable, join.toCol);
-        if (!emittedConds.has(key)) {
-          s += `\n  AND ${aliasOf(join.fromTable)}."${join.fromCol}" = ${aliasOf(join.toTable)}."${join.toCol}"`;
-          emittedConds.add(key);
-        }
-        continue;
-      }
-      const key = condKey(existingTable, existingCol, newTable, newCol);
-      if (emittedConds.has(key)) continue; // duplicate join entry — skip
-      const newTbl = tableMap[newTable];
-      s += `\nJOIN ${tableSqlRef(newTbl)} ${aliasOf(newTable)} ON ${aliasOf(existingTable)}."${existingCol}" = ${aliasOf(newTable)}."${newCol}"`;
-      emittedConds.add(key);
-      inQuery.add(newTable);
-    }
-    onGenerateSql(autoAliasConflicts(s));
+    setUnjoined([]);
+    onGenerateSql(autoAliasConflicts(built.sql));
   };
 
   const handleClear = () => {
@@ -399,11 +362,11 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
 
   const fromPort = (ct: CanvasTable, colIdx: number) => ({
     x: ct.x + CARD_W,
-    y: ct.y + CARD_HEADER_H + colIdx * COL_ROW_H + COL_ROW_H / 2,
+    y: ct.y + columnsTop(true) + colIdx * COL_ROW_H + COL_ROW_H / 2,
   });
   const toPort = (ct: CanvasTable, colIdx: number) => ({
     x: ct.x,
-    y: ct.y + CARD_HEADER_H + colIdx * COL_ROW_H + COL_ROW_H / 2,
+    y: ct.y + columnsTop(true) + colIdx * COL_ROW_H + COL_ROW_H / 2,
   });
 
   const bezierPath = (from: { x: number; y: number }, to: { x: number; y: number }) => {
@@ -467,6 +430,24 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
             ? `${canvasTables.length} table${canvasTables.length !== 1 ? "s" : ""}, ${canvasJoins.length} join${canvasJoins.length !== 1 ? "s" : ""}`
             : ""}
         </span>
+        {joinsError && (
+          <span
+            role="alert"
+            data-testid="join-canvas-joins-error"
+            style={{ fontSize: "0.72rem", color: "var(--danger, #c0392b)" }}
+          >
+            {t("sqlCanvasTableCard.joinsUnavailable", { reason: joinsError })}
+          </span>
+        )}
+        {unjoined.length > 0 && (
+          <span
+            role="alert"
+            data-testid="join-canvas-unjoined"
+            style={{ fontSize: "0.72rem", color: "var(--danger, #c0392b)" }}
+          >
+            {t("sqlCanvasTableCard.unjoined", { tables: unjoined.join(", ") })}
+          </span>
+        )}
       </div>
 
       <div
@@ -700,17 +681,20 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
               onMove={(x, y) => handleMoveCard(ct.tableName, x, y)}
               onRemove={() => handleRemoveCard(ct.tableName)}
               onStartConnect={(colName) => handleStartConnect(ct.tableName, colName)}
-              selectedCols={selectedColumns.get(ct.tableName) ?? new Set()}
-              onToggleCol={(colName) =>
-                setSelectedColumns((prev) => {
-                  const next = new Map(prev);
-                  const cols = new Set(next.get(ct.tableName) ?? []);
-                  if (cols.has(colName)) cols.delete(colName);
-                  else cols.add(colName);
-                  next.set(ct.tableName, cols);
-                  return next;
-                })
-              }
+              selection={{
+                selected: selectedColumns.get(ct.tableName) ?? new Set(),
+                onToggle: (colName) =>
+                  setSelectedColumns((prev) => {
+                    const next = new Map(prev);
+                    const cols = new Set(next.get(ct.tableName) ?? []);
+                    if (cols.has(colName)) cols.delete(colName);
+                    else cols.add(colName);
+                    next.set(ct.tableName, cols);
+                    return next;
+                  }),
+                onSetAll: (cols) =>
+                  setSelectedColumns((prev) => new Map(prev).set(ct.tableName, new Set(cols))),
+              }}
             />
           );
         })}

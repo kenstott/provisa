@@ -51,20 +51,6 @@ export interface JoinCanvasProps {
   metrics: Metric[];
   onGenerateSql: (sql: string) => void;
 }
-export interface CanvasTableCardProps {
-  ct: CanvasTable;
-  tbl: RegisteredTable;
-  onMove: (x: number, y: number) => void;
-  onRemove: () => void;
-  onStartConnect: (colName: string) => void;
-  selectedCols: Set<string>;
-  onToggleCol: (colName: string) => void;
-}
-
-export const CARD_W = 200;
-export const CARD_HEADER_H = 34;
-export const COL_ROW_H = 27;
-
 export const HISTORY_KEY = "sql_modeling_history";
 export const HISTORY_MAX = 50;
 export const SQL_QUERY_KEY = "provisa.sql.query"; // legacy single-doc key (migration source)

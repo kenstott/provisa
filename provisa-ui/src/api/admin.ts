@@ -13,6 +13,7 @@ import type { ViewerRequest } from "../components/nativeParams";
 import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
+import type { ApprovedJoin } from "../components/canvas/joinGraph";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
@@ -1701,6 +1702,15 @@ export interface StatementAnswer {
   error?: string;
   /** REQ-1194 / REQ-1224: landed in the results store, not in `rows`. */
   redirect?: ResultRedirect;
+}
+
+/** The joins the acting role's statements may write: what the SQL canvas draws. */
+export async function fetchApprovedJoins(): Promise<ApprovedJoin[]> {
+  const resp = await fetch(`${API_BASE_RAW}/data/sql/approved-joins`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(await refusal(resp, "fetchApprovedJoins"));
+  return ((await resp.json()) as { joins: ApprovedJoin[] }).joins;
 }
 
 /** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a
