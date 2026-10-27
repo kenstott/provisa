@@ -249,6 +249,13 @@ class TranslatorExprContext:
             return exp.column(
                 map_key_column(obj.name, t._map_vars[obj.name][name]), table=obj.table, quoted=True
             )
+        if isinstance(obj, exp.Column) and obj.name in t._map_key_maps:
+            # A map literal inside a map a WITH carries: its key's value, from its JSON.
+            cast = exp.Cast(
+                this=_anon("element_at", obj.copy(), exp.Literal.string(name)),
+                to=exp.DataType.build("json"),
+            )
+            return _anon("JSON_EXTRACT_SCALAR", cast, exp.Literal.string("$"))
         # Nested/computed object: attach the property as a quoted member of the lowered object.
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)

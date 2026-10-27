@@ -160,6 +160,17 @@ def test_return_star_returns_its_columns_by_name():
             ],
         ),
         ("WITH [1, 'a'] AS l UNWIND l AS x WITH x RETURN x", [{"x": 1}, {"x": "a"}]),
+        # TypeConversion4 [5]: toString() of an item is its text, a string's unquoted.
+        (
+            "RETURN [x IN [1, 2.3, true, 'apa'] | toString(x)] AS list",
+            [{"list": ["1", "2.3", "true", "apa"]}],
+        ),
+        ("UNWIND [1, 'a'] AS x RETURN toString(x) AS s", [{"s": "1"}, {"s": "a"}]),
+        # With2 [2]: a key of a map literal inside a map a WITH carries.
+        (
+            "WITH {name: {name2: 'baz'}} AS nestedMap RETURN nestedMap.name.name2 AS n",
+            [{"n": "baz"}],
+        ),
     ],
 )
 def test_an_item_of_a_list_of_several_types_answers_its_value(query, rows):

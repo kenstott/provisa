@@ -809,6 +809,16 @@ class ExprLowering:
             value = self.lower(node.args[0])
             by = "max_by" if node.name.lower() == "max" else "min_by"
             return _anon(by, value, _anon("json_order_key", value.copy()))
+        if node.name.lower() in ("tostring", "tostringornull") and len(node.args) == 1:
+            given = node.args[0]
+            if (
+                isinstance(given, Variable) and given.name in self._json_vars
+            ) or self._ctx.is_json_value(given):
+                # An item of a list of several types is its JSON: a string is its own text, never
+                # its quoted JSON ('apa', not '"apa"').
+                # Bracketed: DuckDB writes it x ->> '$', which in a lambda reads as (x -> x) ->> '$'.
+                text = _anon("JSON_EXTRACT_SCALAR", self.lower(given), exp.Literal.string("$"))
+                return exp.Paren(this=text)
         if node.name.lower() == "properties" and len(node.args) == 1:
             given = node.args[0]
             # properties() of a map is the map itself; of null, null.
