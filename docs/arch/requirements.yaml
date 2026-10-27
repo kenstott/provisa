@@ -90116,7 +90116,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     DELETE and SPARQL Update are built. The IR gains write clauses (CREATE, SET, REMOVE, DELETE, MERGE);
     the Cypher parser accepts them and SPARQL INSERT/DELETE DATA lower to them; one classifier over the
     IR decides governed vs session for every language, and the governed writer takes IR input in place of
-    the regex translator. Reads need no IR change.'
+    the regex translator. Reads need no IR change. (Amended 2026-10-27, A LABEL''S UNION IS ONE CTE:) Maintainer
+    2026-10-27: a label or relationship type the session overlays is expanded once per statement, as a common
+    table expression holding its union (the model table''s rows, the session''s anchor rows carrying the
+    label, and the model rows the session tags with it), referenced by name wherever the compiled statement
+    reads it, including inside a variable-length path''s recursive CTE, rather than written out as a subquery
+    at every reference. The model arm stays the registered table inside the CTE, so the one governed pipeline
+    still applies row filters and masks to it.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
