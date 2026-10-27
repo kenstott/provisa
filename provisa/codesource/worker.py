@@ -298,6 +298,8 @@ class Worker:
         self._process: subprocess.Popen | None = None
         self._stderr_thread: threading.Thread | None = None
         self._services_token: str | None = None
+        #: Set once the reader thread has left the socket (_read): only then is it closed.
+        self._read_done: threading.Event | None = None
         self.exports: list[str] = []
 
     # -- lifecycle ------------------------------------------------------------------------------
@@ -349,9 +351,7 @@ class Worker:
         conn.settimeout(None)
         self._conn = conn
         self.exports = list(hello.get("exports") or [])
-        threading.Thread(
-            target=self._read, name=f"code-worker-{self.source_id}", daemon=True
-        ).start()
+        self._start_reader(f"code-worker-{self.source_id}")
 
     def _spawn(self, address: str, pass_fds: tuple[int, ...]) -> None:
         env = {**self._command.env, CODE_HASH_ENV: self.content_hash}
@@ -405,12 +405,7 @@ class Worker:
     def stop(self) -> None:
         """End the host: its socket is closed (the host exits when it closes), then the process."""
         self._end("the worker was stopped")
-        if self._conn is not None:
-            try:
-                self._conn.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass  # already closed by the host's exit: nothing left to shut
-            self._conn.close()
+        self._close_conn()
         if self._process is not None and self._process.poll() is None:
             self._process.terminate()
             try:
@@ -447,9 +442,27 @@ class Worker:
         for waiting in calls:
             waiting.put(_Ended(self._ended))
 
+    def _start_reader(self, name: str) -> None:
+        self._read_done = threading.Event()
+        threading.Thread(target=self._read, name=name, daemon=True).start()
+
+    def _close_conn(self) -> None:
+        """Shut the socket, which wakes the reader, and close it once the reader has left it. A
+        closed socket's number is the next one opened: a reader still in its recv would read
+        that connection's bytes (a TLS handshake fails with a bad record MAC)."""
+        if self._conn is None:
+            return
+        try:
+            self._conn.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # already closed by the host: nothing left to shut
+        if self._read_done is not None:
+            self._read_done.wait()
+        self._conn.close()
+
     def _read(self) -> None:
         conn = self._conn
-        assert conn is not None
+        assert conn is not None and self._read_done is not None
         try:
             while (message := _read_frame(conn)) is not None:
                 with self._calls_lock:
@@ -458,6 +471,8 @@ class Worker:
                     waiting.put(message)
         except OSError:
             pass  # the socket closed under the read: the worker has ended, said below
+        finally:
+            self._read_done.set()
         if self._process is not None:
             try:
                 self._process.wait(timeout=5)

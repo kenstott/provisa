@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 
 import pyarrow as pa
@@ -173,3 +174,32 @@ def test_a_host_that_is_not_there_is_named():
 def test_a_pairing_code_that_is_not_one_is_refused_by_name():
     with pytest.raises(remote.PairingRefused, match="the line the remote host printed"):
         remote.parse_pairing_code("hello")
+
+
+def test_stop_closes_the_connection_only_once_its_reader_has_left_it():
+    """A closed socket's number is the next dial's: were it closed while the reader thread was
+    still in its recv, that thread would read the next connection's bytes (a TLS handshake's
+    "bad record MAC"). stop() wakes the reader, and closes the socket once it has left."""
+    in_recv, woken = threading.Event(), threading.Event()
+    order: list[str] = []
+
+    class Conn:
+        def recv(self, size: int) -> bytes:
+            in_recv.set()
+            woken.wait(5)
+            time.sleep(0.05)  # still in the call when the socket is shut
+            order.append("read ended")
+            return b""
+
+        def shutdown(self, how: int) -> None:
+            woken.set()
+
+        def close(self) -> None:
+            order.append("closed")
+
+    worker = _worker(1, "0" * 64, remote.new_identity())
+    worker._conn = Conn()  # pyright: ignore[reportAttributeAccessIssue]  # a socket's stand-in
+    worker._start_reader("code-remote-test")
+    assert in_recv.wait(5)
+    worker.stop()
+    assert order == ["read ended", "closed"]
