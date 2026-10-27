@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Term, Variable
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
@@ -570,7 +570,11 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         return None
 
     def _select_prop_expr(
-        self, expr: CypherExpr, alias: str | None, shared: frozenset[str] = frozenset()
+        self,
+        expr: CypherExpr,
+        alias: str | None,
+        shared: frozenset[str] = frozenset(),
+        written: str = "",
     ) -> exp.Expr:
         """Emit SELECT expression for a property access or arbitrary expression. An unaliased
         property is named by the property, or, where another item of the RETURN would take the
@@ -592,6 +596,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             return exp.alias_(parsed, alias)
         if _cypher_alias:
             return exp.alias_(parsed, _cypher_alias)
+        if written and _prop_m is None and not isinstance(expr, (Variable, Literal)):
+            # An unaliased expression (min(x), count(a) > 1) is named as the statement writes it.
+            return exp.alias_(parsed, written, quoted=True)
         return parsed
 
     def _select_varlen_rel_var(
@@ -685,6 +692,6 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                     self._graph_vars[alias.lower()] = GraphVarKind[kind]
 
             # Property access or expression
-            exprs.append(self._select_prop_expr(expr, alias, shared))
+            exprs.append(self._select_prop_expr(expr, alias, shared, item.name.strip()))
 
         return exprs

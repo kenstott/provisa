@@ -135,3 +135,10 @@ def test_a_write_in_a_form_not_read_is_refused_naming_the_forms_that_are(query):
     message = str(refused.value)
     assert "is not supported" not in message
     assert "CREATE (n:Label {key: value})" in message
+
+
+def test_an_unaliased_expression_is_named_as_the_statement_writes_it():
+    sql_ast, _, _ = cypher_to_sql(
+        parse_cypher("UNWIND [1, 3, 2] AS x RETURN min(x), count(x) > 1"), _EMPTY, {}
+    )
+    assert [s.alias_or_name for s in sql_ast.expressions] == ["min(x)", "count(x) > 1"]

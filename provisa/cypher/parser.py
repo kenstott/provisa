@@ -118,6 +118,12 @@ class Token:
     type: str
     value: str
     pos: int
+    #: Where the token ends in the statement: a quoted name's value is shorter than its text.
+    end: int = -1
+
+    def __post_init__(self) -> None:
+        if self.end < 0:
+            self.end = self.pos + len(self.value)
 
 
 def _tokenize(text: str) -> tuple[list[Token], list[str]]:
@@ -143,8 +149,8 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
             parts = m.group()[1:-1].replace("``", "`").split(":")
             for n, part in enumerate(parts):
                 if n:
-                    tokens.append(Token("COLON", ":", m.start()))
-                tokens.append(Token("IDENT", part, m.start()))
+                    tokens.append(Token("COLON", ":", m.start(), m.end()))
+                tokens.append(Token("IDENT", part, m.start(), m.end()))
             continue
         tokens.append(Token(kind, m.group(), m.start()))
     if end != len(text):
@@ -908,27 +914,34 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         }
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
+            read: list[Token] = []
             depth = 0
             while t := self._peek():
                 if t.type in ("LBRACKET", "LPAREN", "LBRACE"):
                     depth += 1
-                    expr_parts.append(self._advance().value)
+                    read.append(self._advance())
+                    expr_parts.append(read[-1].value)
                     continue
                 if t.type in ("RBRACKET", "RPAREN", "RBRACE"):
                     if depth > 0:
                         depth -= 1
-                        expr_parts.append(self._advance().value)
+                        read.append(self._advance())
+                        expr_parts.append(read[-1].value)
                         continue
                     break
                 if depth == 0:
                     if t.type == "COMMA" or t.value.upper() in (_stop_kws | {"AS"}):
                         break
-                expr_parts.append(self._advance().value)
+                read.append(self._advance())
+                expr_parts.append(read[-1].value)
             expr = " ".join(expr_parts)
             alias: str | None = None
             if self._opt_keyword("AS"):
                 alias = self._expect("IDENT").value
-            items.append(ReturnItem(expression=parse_expression(expr), alias=alias, name=expr))
+            # The item as the statement writes it (min(x), count(a) > 1): an unaliased item's
+            # column is named by it, as Cypher names it.
+            written = self._raw[read[0].pos : read[-1].end] if read else expr
+            items.append(ReturnItem(expression=parse_expression(expr), alias=alias, name=written))
             if (_tri := self._peek()) and _tri.type == "COMMA":
                 self._advance()
             else:

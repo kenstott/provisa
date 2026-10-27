@@ -303,7 +303,8 @@ def test_tolower_rewritten():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) RETURN toLower(n.name)")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
+    # The column is named as the statement writes it (toLower(n.name)); its expression is lower().
+    sql = sql_ast.expressions[0].this.sql(dialect="trino")
     assert "lower(" in sql.lower()
     assert "tolower" not in sql.lower()
 
