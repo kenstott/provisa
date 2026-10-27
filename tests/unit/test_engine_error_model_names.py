@@ -131,6 +131,36 @@ async def test_a_physical_address_in_a_json_body_is_named_as_the_model_does(org)
     )
 
 
+async def test_a_json_body_stays_json_when_a_bare_address_is_named(org):
+    """A bare physical address is named as the model quotes it; written into a JSON body as text,
+    those quotes ended the string, so the body a client was answered was no longer JSON."""
+
+    async def app(scope, receive, send):
+        scope["state"]["active_org_id"] = _ORG
+        body = {
+            "detail": "the replica of pet_store_sqlite.pet_store.pets is still being built",
+            "code": "data.replica_building",
+            "params": {"replica": "pet_store_sqlite.pet_store.pets", "running_s": 2},
+        }
+        headers = [(b"content-type", b"application/json")]
+        await send({"type": "http.response.start", "status": 503, "headers": headers})
+        await send({"type": "http.response.body", "body": json.dumps(body).encode()})
+
+    sent: list[dict] = []
+
+    async def send(message):
+        sent.append(message)
+
+    await error_redaction.ErrorRedactionMiddleware(app)({"type": "http", "state": {}}, None, send)
+    assert json.loads(sent[-1]["body"]) == {
+        "detail": 'the replica of "pet_store"."pets" is still being built',
+        "code": "data.replica_building",
+        "params": {"replica": '"pet_store"."pets"', "running_s": 2},
+    }
+    length = dict(sent[0]["headers"])[b"content-length"]
+    assert int(length) == len(sent[-1]["body"])
+
+
 def _told(text: str) -> None:
     """``text`` is the binder error as a client is told it: no physical address, no excerpt."""
     assert "pet_store_sqlite" not in text and "LINE 1" not in text, text
