@@ -31,10 +31,10 @@ Two further kinds are declared in the same file, each with ``kind:`` and a ``rea
       became: the table is declared in the fixture model, seeded by the case's setup.
       case: "TestQuery::test_query\\["
 
-    - kind: client           # the client driver refuses before any request reaches Provisa:
-      group: Bind before Prepare   # left out of the pass rate, in its own group
-      client: adbc-driver-flightsql 1.12 (Go)
-      refusal: "must set IngestTargetTable before bulk ingestion"
+    - kind: client           # the client driver does not send what the case needs -- it
+      group: Bind with no Prepare  # refuses before any request, or drops what it was given:
+      client: adbc-driver-flightsql 1.12 (Go)  # left out of the pass rate, in its own group
+      behavior: refuses Bind ("must set IngestTargetTable before bulk ingestion")
       evidence: with Bind and no Prepare, the driver sends no RPC.
       workaround: prepare the statement before binding.
       reason: "must set IngestTargetTable"
@@ -58,7 +58,7 @@ RULES = Path(__file__).resolve().parent / "by_design"
 FIELDS = {
     "design": ("requirement", "decision"),
     "adapted": ("became",),
-    "client": ("client", "refusal", "evidence", "workaround"),
+    "client": ("client", "behavior", "evidence", "workaround"),
 }
 
 
@@ -142,9 +142,9 @@ def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], l
     return left, excluded
 
 
-def refused(failures: list[dict], declared: list[Group]) -> tuple[list[dict], list[dict]]:
+def not_sent(failures: list[dict], declared: list[Group]) -> tuple[list[dict], list[dict]]:
     """(the failures no client group names, each client group that named any: its fields and
-    count) -- refused by the client before any request, left out of the pass rate."""
+    count) -- what the case needs was not sent by the client, left out of the pass rate."""
     clients = [g for g in declared if g.kind == "client"]
     left = []
     for failure in failures:
@@ -188,21 +188,21 @@ def table(excluded: list[dict]) -> list[str]:
     ]
 
 
-def refused_table(refusals: list[dict]) -> list[str]:
-    """The client-refused groups as a Markdown table."""
-    if not refusals:
+def not_sent_table(groups: list[dict]) -> list[str]:
+    """The client groups as a Markdown table."""
+    if not groups:
         return ["None."]
     return [
-        "| Group | Count | Client | Its refusal | Evidence | Workaround |",
+        "| Group | Count | Client | What it does | Evidence | Workaround |",
         "| --- | --- | --- | --- | --- | --- |",
         *(
             "| "
             + " | ".join(
                 str(g[k]).replace("|", "/")
-                for k in ("group", "count", "client", "refusal", "evidence", "workaround")
+                for k in ("group", "count", "client", "behavior", "evidence", "workaround")
             )
             + " |"
-            for g in refusals
+            for g in groups
         ),
     ]
 
