@@ -71,6 +71,11 @@ function titleScopedNeeds(file: string, grep: string | undefined): DemoSource[] 
   return DEMO_SOURCES.filter((s) => leadingNames.includes(s));
 }
 
+/** The demo sources source-to-query.spec.ts reads: one per test whose title names one. */
+export function sourceToQueryNeeds(): DemoSource[] {
+  return titleScopedNeeds(SOURCE_TO_QUERY_FILE, undefined);
+}
+
 export interface NeededSources {
   /** The exact demo-source-containers.ts subset this invocation needs. */
   sources: DemoSource[];
@@ -98,14 +103,18 @@ function argProjects(): string[] {
  * Splunk, Fuseki and Mongo up for its whole run with no spec in it reading them (run
  * 38050265191: about 5 GB and a share of four cores on a runner at load 15-20).
  */
-function projectNeeds(projects: string[], grep: string | undefined): NeededSources | undefined {
+function projectNeeds(projects: string[]): NeededSources | undefined {
   if (projects.length !== 1) return undefined;
   if (projects[0] === "core") {
     const fixed = new Set<DemoSource>(Object.values(FIXED_FILE_NEEDS).flat());
     return { sources: DEMO_SOURCES.filter((s) => fixed.has(s)), neo4jExport: true };
   }
   if (projects[0] === "core-provisioning") {
-    return { sources: titleScopedNeeds(SOURCE_TO_QUERY_FILE, grep), neo4jExport: false };
+    // None: source-to-query.spec.ts starts its demo sources itself and removes them when it ends
+    // (sourceToQueryNeeds), so the project's other specs -- each starting a source of its own --
+    // never run beside the whole set (run 40120866556: Exasol beside Elasticsearch, Cassandra and
+    // Splunk ran the 16 GB runner out of memory).
+    return { sources: [], neo4jExport: false };
   }
   return undefined;
 }
@@ -113,7 +122,7 @@ function projectNeeds(projects: string[], grep: string | undefined): NeededSourc
 export function resolveNeededSources(): NeededSources {
   const files = argSpecFiles();
   if (files.length === 0) {
-    const byProject = projectNeeds(argProjects(), grepPattern());
+    const byProject = projectNeeds(argProjects());
     if (byProject) return byProject;
     // No positional spec-file filter — a whole-suite run. Every prior behavior is preserved:
     // start everything, since some file in the run needs each of them.

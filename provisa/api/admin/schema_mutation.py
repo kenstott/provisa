@@ -2637,9 +2637,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
 
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
+        from provisa.core.secrets_store import bound_to_request_org
 
+        # The token as typed: a value, or a reference resolved in the org's vault.
+        async with bound_to_request_org():
+            resolved = resolve_secrets(token)
         try:
-            staged_root = await stage_dataset(token, owner, ref)
+            staged_root = await stage_dataset(resolved, owner, ref)
         except UnsupportedKaggleDataset as exc:
             return KaggleStageResultType(
                 success=False, message=str(exc), directory="", suggested_source_id=""
@@ -2657,9 +2662,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def refresh_kaggle_source(  # REQ-1780/1781/1782/1783
-        self, info: StrawberryInfo, source_id: str, token: str
+        self, info: StrawberryInfo, source_id: str
     ) -> MutationResult:
-        """Re-fetch a Kaggle-derived source's dataset in place. stage_dataset's own contract
+        """Re-fetch a Kaggle-derived source's dataset in place, with the source's own token. stage_dataset's own contract
         (downloader.py) is idempotent -- re-running it overwrites each file at the SAME directory
         registerSource already points at.
 
@@ -2670,8 +2675,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         the directory on disk without also evicting that cache would silently keep serving
         whatever schema the server saw at its first attach — the exact bug `stop_endpoint`
         (pgwire_replica.py) was added THIS SESSION to close for delete+recreate; a refresh needs
-        the identical fix. The Kaggle token is deliberately never persisted server-side (REQ-1783)
-        -- the caller re-enters it for this call, same as the original staging step."""
+        the identical fix. The token is the source's credential field as the operator entered it
+        (a value, or a reference they typed), resolved here as at its creation."""
         from datetime import datetime, timezone
         from pathlib import Path
 
@@ -2704,6 +2709,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.not_a_kaggle_source",
                 params={"source": source_id},
             )
+        from provisa.core.secrets import resolve_secrets
+        from provisa.core.secrets_store import bound_to_request_org
+
+        if not row.get("password_ref"):
+            return MutationResult(
+                success=False,
+                message=f"Kaggle dataset {owner}/{ref}: the source holds no Kaggle API token; "
+                "add it on the Sources form, where its token is entered",
+                code="schema.kaggle_token_missing",
+                params={"owner": owner, "ref": ref},
+            )
+        async with bound_to_request_org():
+            token = resolve_secrets(row["password_ref"])
         # REQ-1787: skip the re-download (and the pgwire endpoint teardown it would otherwise
         # force) when Kaggle has nothing newer than what's already on disk -- the staged files'
         # own mtime IS the "last refreshed at" record; no separate timestamp needs to be stored.

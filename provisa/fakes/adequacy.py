@@ -194,7 +194,7 @@ def fake_pairs(
     """(real, fake) for each of ``values``: the column's faked projection, the same statement a
     faked read runs, over the sample in this process's embedded engine, the real value carried
     beside its fake. Under the process's platform key; nothing leaves the process."""
-    import duckdb
+    from provisa.core import engine_memory
     import pandas as pd
     import sqlglot
 
@@ -220,7 +220,7 @@ def fake_pairs(
         read="postgres",
         write="duckdb",
     )[0]
-    con = duckdb.connect()
+    con = engine_memory.connect()
     try:
         duckdb_functions.register(con)
         con.register("sample", pd.DataFrame({column: values}))

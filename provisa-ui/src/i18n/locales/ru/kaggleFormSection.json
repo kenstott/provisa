@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Токен API Kaggle",
-    "tokenDescription": "Проверяется в реальном времени через API Kaggle, прежде чем откроется выбор набора данных",
+    "tokenDescription": "Проверяется в реальном времени в Kaggle. Хранится как учётные данные источника данных и используется снова при каждом обновлении.",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "Проверить токен",
     "tokenValid": "Токен действителен",

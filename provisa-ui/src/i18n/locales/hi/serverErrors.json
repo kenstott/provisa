@@ -461,7 +461,8 @@
       "relationship_same_entity_direct": "संबंध '{{relationship}}' को एक ही इकाई के रूप में चिह्नित नहीं किया जा सकता: यह जंक्शन तालिका या फ़ंक्शन से जुड़ता है, एक पंक्ति से एक पंक्ति नहीं",
       "relationship_same_entity_cardinality": "संबंध '{{relationship}}' को एक ही इकाई के रूप में चिह्नित नहीं किया जा सकता: यह {{cardinality}} है, और एक ही इकाई एक पंक्ति से एक पंक्ति है",
       "relationship_same_entity_not_grounded": "संबंध '{{relationship}}' को एक ही इकाई के रूप में चिह्नित नहीं किया जा सकता: {{source}} और {{target}} एक ही शब्द में आधारित नहीं हैं",
-      "relationship_same_entity_not_keys": "संबंध '{{relationship}}' को एक ही इकाई के रूप में चिह्नित नहीं किया जा सकता: {{columns}} {{table}} की प्राथमिक कुंजी या अद्वितीय कुंजी नहीं है"
+      "relationship_same_entity_not_keys": "संबंध '{{relationship}}' को एक ही इकाई के रूप में चिह्नित नहीं किया जा सकता: {{columns}} {{table}} की प्राथमिक कुंजी या अद्वितीय कुंजी नहीं है",
+      "kaggle_token_missing": "Kaggle डेटासेट {{owner}}/{{ref}}: डेटा स्रोत में कोई Kaggle API टोकन नहीं है। इसे डेटा स्रोत फ़ॉर्म पर जोड़ें, जहाँ इसका टोकन दर्ज किया जाता है।"
     },
     "secrets": {
       "name_refused": "{{name}} {{service}} में इस संगठन के सीक्रेट्स के भीतर का नाम नहीं है: नाम संगठन के सापेक्ष होता है और उससे बाहर नहीं जा सकता",

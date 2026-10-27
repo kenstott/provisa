@@ -461,7 +461,8 @@
       "relationship_same_entity_direct": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: 中間テーブルまたは関数を介して結合しており、1 行対 1 行ではありません",
       "relationship_same_entity_cardinality": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{cardinality}} であり、同一エンティティは 1 行対 1 行です",
       "relationship_same_entity_not_grounded": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{source}} と {{target}} は同じ用語に紐づいていません",
-      "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません"
+      "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません",
+      "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",

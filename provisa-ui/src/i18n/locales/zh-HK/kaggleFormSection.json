@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Kaggle API 權杖",
-    "tokenDescription": "在數據集選取器解鎖前，會先對 Kaggle API 即時驗證",
+    "tokenDescription": "透過 Kaggle 即時檢查。保存為數據來源的憑證，並在每次重新整理時再次使用。",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "驗證權杖",
     "tokenValid": "權杖有效",

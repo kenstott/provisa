@@ -461,7 +461,8 @@
       "relationship_same_entity_direct": "La relación '{{relationship}}' no se puede marcar como la misma entidad: une a través de una tabla intermedia o una función, no una fila con una fila",
       "relationship_same_entity_cardinality": "La relación '{{relationship}}' no se puede marcar como la misma entidad: es {{cardinality}}, y la misma entidad es una fila con una fila",
       "relationship_same_entity_not_grounded": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{source}} y {{target}} no están fundamentadas en el mismo término",
-      "relationship_same_entity_not_keys": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{columns}} no es la clave primaria ni una clave única de {{table}}"
+      "relationship_same_entity_not_keys": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{columns}} no es la clave primaria ni una clave única de {{table}}",
+      "kaggle_token_missing": "Conjunto de datos de Kaggle {{owner}}/{{ref}}: el origen de datos no tiene ningún token de API de Kaggle. Añádelo en el formulario de Orígenes de datos, donde se introduce su token."
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",

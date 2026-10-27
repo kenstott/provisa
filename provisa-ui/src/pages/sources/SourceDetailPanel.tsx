@@ -11,7 +11,7 @@
 import { PanelActions } from "../../components/list/SplitPane";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Button, Group, Modal, PasswordInput, Stack, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { Pencil, Trash2, ArrowRight, RefreshCw, Play } from "lucide-react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import type { Source } from "../../types/admin";
@@ -39,7 +39,6 @@ export function SourceDetailPanel({
   const { t } = useTranslation();
   const { refreshKaggleSource, loading: refreshing } = useRefreshKaggleSource();
   const [refreshModalOpen, setRefreshModalOpen] = useState(false);
-  const [refreshToken, setRefreshToken] = useState("");
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
   // REQ-1934: a Data Profiler source is a schedule; it can also be run at once for all its members.
@@ -76,10 +75,9 @@ export function SourceDetailPanel({
 
   const handleRefresh = async () => {
     setRefreshError(null);
-    const result = await refreshKaggleSource(s.id, refreshToken);
+    const result = await refreshKaggleSource(s.id);
     if (result.success) {
       setRefreshModalOpen(false);
-      setRefreshToken("");
     } else {
       setRefreshError(result.message);
     }
@@ -186,14 +184,6 @@ export function SourceDetailPanel({
                 })}
               </Text>
             </FormField>
-            <FormField size="medium">
-              <PasswordInput
-                label={t("sourceDetailPanel.kaggleTokenLabel")}
-                value={refreshToken}
-                onChange={(e) => setRefreshToken(e.currentTarget.value)}
-                data-testid="source-detail-refresh-kaggle-token"
-              />
-            </FormField>
             {refreshError && (
               <FormField size="full">
                 <Alert color="red" variant="light" py={4} px="sm">
@@ -207,7 +197,6 @@ export function SourceDetailPanel({
                 <Button
                   type="button"
                   loading={refreshing}
-                  disabled={!refreshToken}
                   onClick={handleRefresh}
                   data-testid="source-detail-refresh-kaggle-submit"
                 >

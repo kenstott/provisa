@@ -1173,8 +1173,8 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
   }
 }
 
-mutation RefreshKaggleSource($sourceId: String!, $token: String!) {
-  refreshKaggleSource(sourceId: $sourceId, token: $token) {
+mutation RefreshKaggleSource($sourceId: String!) {
+  refreshKaggleSource(sourceId: $sourceId) {
     ...MutationResult
   }
 }
