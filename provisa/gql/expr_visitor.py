@@ -408,6 +408,10 @@ class ExprLowering:
                 return timed
             if op == "/" and (self._is_float(node.left) or self._is_float(node.right)):
                 return _float_division(left, right)
+            if op == "/":
+                # An integer divided by an integer is an integer, as in SQL: typed, so sqlglot does
+                # not cast the dividend to DOUBLE PRECISION.
+                return exp.Div(this=left, expression=right, typed=True)
             return _BINARY_ARITH[op](this=left, expression=right)
         left_kind = self._ctx.temporal_kind(node.left)
         right_kind = self._ctx.temporal_kind(node.right)

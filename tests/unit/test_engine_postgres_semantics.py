@@ -42,8 +42,12 @@ def test_a_zero_divisor_is_an_error(sql):
         _on_duckdb(sql)
 
 
-def test_a_nonzero_divisor_divides_as_before():
-    assert _on_duckdb("SELECT x / y, x % y FROM (VALUES (9, 2)) t(x, y)") == [(4.5, 1)]
+def test_a_nonzero_divisor_divides_as_postgres_does():
+    # An integer by an integer is an integer, truncated toward zero; a non-integer divides exactly.
+    assert _on_duckdb(
+        "SELECT x / y, x % y, -x / y, 9.0 / y, CAST(x AS DOUBLE PRECISION) / y"
+        " FROM (VALUES (9, 2)) t(x, y)"
+    ) == [(4, 1, -4, 4.5, 4.5)]
 
 
 def test_the_error_is_reported_as_division_by_zero():

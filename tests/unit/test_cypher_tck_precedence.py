@@ -52,6 +52,13 @@ def _row(query: str) -> tuple:
             (True, True, False),
         ),
         ("RETURN null XOR true AS a, false XOR false AS b", (None, False)),
+        # Precedence2 [1], [2]
+        (
+            "RETURN 4 * 2 + 3 / 2 AS a, 4 * 2 + (3 / 2) AS b, 4 * (2 + 3) / 2 AS c",
+            (9, 9, 10),
+        ),
+        ("RETURN 4 / 2 - 3 / 2 AS a, -7 / 2 AS b, 7.0 / 2 AS c", (1, -3, 3.5)),
+        ("RETURN 4 ^ 3 / 2 ^ 3 AS a, 4 ^ (3 / 2) ^ 3 AS c", (8.0, 64.0)),
     ],
 )
 def test_cypher_operators_bind_as_the_tck_states(query, row):

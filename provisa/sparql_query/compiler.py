@@ -1013,6 +1013,10 @@ class _Lowering:
         if name in ("AdditiveExpression", "MultiplicativeExpression"):
             out = self.expr(e.expr, bindings, labels)
             for op, other in zip(e.op or [], e.other or [], strict=True):
+                if op == "/":
+                    # SPARQL's integer divided by an integer is a decimal (SPARQL 1.1 17.4.1.4),
+                    # where Cypher's is an integer.
+                    out = FunctionCall("toFloat", [out])
                 out = Binary(op, out, self.expr(other, bindings, labels))
             return out
         return self._builtin(e, bindings, labels)
