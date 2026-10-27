@@ -201,6 +201,14 @@ _BINARY_CMP: dict[str, type[exp.Expression]] = {
 }
 
 
+_TEXT_TYPES = ("text", "varchar", "char", "character", "string", "citext", "nvarchar", "nchar")
+
+
+def _is_text_type(registered: str) -> bool:
+    """Whether a registered column type holds text (varchar(64), character varying, ...)."""
+    return registered.strip().lower().startswith(_TEXT_TYPES)
+
+
 def _lam(var: str, body: exp.Expression) -> exp.Lambda:
     """An engine lambda ``var -> body`` (sqlglot ``Lambda``)."""
     return exp.Lambda(this=body, expressions=[exp.to_identifier(var)])
@@ -467,6 +475,13 @@ class ExprLowering:
                 return exp.Literal.number(len(given.items))
             if isinstance(given, Literal) and given.kind == "null":
                 return exp.Null()
+            if isinstance(given, Property):
+                # A registered text column's size is its character count: counted as text on
+                # every engine, never as a list (PostgreSQL refuses CARDINALITY of text).
+                obj = self.lower(given.obj)
+                registered = self._ctx.property_type(obj, given.name)
+                if registered is not None and _is_text_type(registered):
+                    return exp.Length(this=self._ctx.resolve_property(obj, given.name))
         if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2173
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
                 return exp.Null()
