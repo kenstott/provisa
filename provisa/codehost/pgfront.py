@@ -45,7 +45,6 @@ from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
-import duckdb
 import pyarrow as pa
 import sqlglot
 from buenavista import postgres as bv
@@ -192,7 +191,7 @@ class Catalog:
         self.names = names
         self.schemas = schemas
         self._lock = threading.Lock()
-        self.db = duckdb.connect()
+        self.db = residual.bounded_database()  # capped by the host's bounds (REQ-2006)
         self.oids = pgcatalog.build(self.db, names, schemas)
 
     def answered(self, function: str, rows: int) -> None:

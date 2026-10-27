@@ -106,6 +106,8 @@ CONNECTIONS = 8
 CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
 #: How many of a call's frames its connection holds for the call's thread before it stops reading.
 _QUEUED = 4
+#: How often a reader waiting on a full queue looks whether its lane is being shut.
+_DELIVER_POLL_S = 0.1
 
 
 def duckdb_bounds() -> dict[str, int]:
@@ -337,6 +339,10 @@ class _Lane:
         self._send_lock = threading.Lock()
         self._lock = threading.Lock()
         self._call_id: int | None = None
+        #: Set once the lane's reader has left its socket (Worker._read): only then is it closed.
+        self.read_done = threading.Event()
+        #: Set once the lane is being shut: its reader takes no more of what the host sends.
+        self._shutting = threading.Event()
 
     def send(self, message: dict) -> None:
         with self._send_lock:
@@ -346,8 +352,14 @@ class _Lane:
         """A frame the host sent: to the leasing call's thread, waiting while its queue is full."""
         with self._lock:
             current = self._call_id
-        if current is not None and message.get("id") == current:
-            self.waiting.put(message)
+        if current is None or message.get("id") != current:
+            return
+        while not self._shutting.is_set():
+            try:
+                self.waiting.put(message, timeout=_DELIVER_POLL_S)
+                return
+            except queue.Full:
+                continue  # the call's thread has not taken its rows yet
 
     def force(self, item: object) -> None:
         """``item`` put on the queue whatever it holds: what a cancel or an end puts, which the
@@ -373,10 +385,16 @@ class _Lane:
                 return
 
     def shut(self) -> None:
+        """Shut the socket, which wakes the reader, and close it once the reader has left it. A
+        closed socket's number is the next one opened: a reader still in its recv would read that
+        connection's bytes (a TLS handshake fails with a bad record MAC). A reader waiting on a
+        full queue gives up its frame, the lane taking no more."""
+        self._shutting.set()
         try:
             self.conn.shutdown(socket.SHUT_RDWR)
         except OSError:
             pass  # already closed by the host's exit: nothing left to shut
+        self.read_done.wait()
         self.conn.close()
 
 
@@ -581,6 +599,8 @@ class Worker:
                 lane.deliver(message)
         except OSError:
             pass  # the socket closed under the read: the worker has ended, said below
+        finally:
+            lane.read_done.set()
         if self._process is not None:
             try:
                 self._process.wait(timeout=5)
