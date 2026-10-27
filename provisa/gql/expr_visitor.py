@@ -462,6 +462,10 @@ class ExprLowering:
                 return timed
             if op == "/" and (self._is_float(node.left) or self._is_float(node.right)):
                 return _float_division(left, right)
+            if op == "+" and (self._ctx.is_text(node.left) or self._ctx.is_text(node.right)):
+                if not (self._ctx.is_list(node.left) or self._ctx.is_list(node.right)):
+                    # A string + a value is the two as one string (SQL's + adds numbers alone).
+                    return exp.DPipe(this=left, expression=right)
             if op == "+" and self._ctx.is_list(node.left) != self._ctx.is_list(node.right):
                 # A list + an element appends it, an element + a list prepends it (SQL's + of a
                 # list and a value is no operator).
