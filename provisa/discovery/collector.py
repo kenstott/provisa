@@ -235,11 +235,29 @@ async def collect_fk_candidates(  # REQ-018, REQ-413
         )
     }
 
+    from provisa.discovery.declared_keys import declared_keys
+
     candidates: list[RelationshipCandidate] = []
     for t in tables:
         source_type = source_types.get(t["source_id"], "")
-        fks = await introspect_fk_constraints(
+        # REQ-2170: the foreign keys the source declares, from the reader that records its keys;
+        # a source read through its bundled pgwire server has its own reader.
+        declared = await declared_keys(
             source_pools, source_type, t["source_id"], t["schema_name"], t["table_name"]
+        )
+        fks = (
+            [
+                {
+                    "column_name": fk.column,
+                    "referenced_table": fk.referenced_table,
+                    "referenced_column": fk.referenced_column,
+                }
+                for fk in declared.foreign
+            ]
+            if declared is not None
+            else await introspect_fk_constraints(
+                source_pools, source_type, t["source_id"], t["schema_name"], t["table_name"]
+            )
         )
         for fk in fks:
             target = table_by_name.get(fk["referenced_table"])

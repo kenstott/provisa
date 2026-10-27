@@ -11698,7 +11698,7 @@ A registered Table carries a table-level list of UNIQUE constraints (`unique_con
 
 **Code:** `provisa/core/models.py`, `provisa/discovery/fk_introspect.py`, `provisa/pgwire/catalog_constraints.py`, `provisa/api/mcp/tools.py`, `provisa/api/admin/discovery_schema.py`, `provisa/compiler/context.py`, `provisa-ui/src/components/admin/UniquesPanel.tsx`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/tables/TableEditForm.tsx`
 
-**Tests:** `tests/unit/test_unique_introspect.py`, `tests/unit/pgwire/test_unique_constraints.py`, `tests/unit/test_unique_constraints_wiring.py`, `provisa-ui/src/components/admin/__tests__/UniquesPanel.test.tsx`
+**Tests:** `tests/unit/test_declared_keys.py`, `tests/unit/pgwire/test_unique_constraints.py`, `tests/unit/test_unique_constraints_wiring.py`, `provisa-ui/src/components/admin/__tests__/UniquesPanel.test.tsx`
 
 ## 8. Client Access & Protocols
 
@@ -18600,7 +18600,7 @@ A landed replica's shape includes its PRIMARY KEY. A SQLite file source's key co
 
 **Code:** `provisa/api/startup_seed.py`, `provisa/federation/connector_sqlite.py`, `provisa/federation/store_writer.py`
 
-**Tests:** `tests/unit/test_connector_sqlite_keys.py`, `tests/unit/test_store_writer.py`, `tests/unit/test_snowflake_store.py`
+**Tests:** `tests/unit/test_declared_keys.py`, `tests/unit/test_store_writer.py`, `tests/unit/test_snowflake_store.py`
 
 ### REQ-1652 · Materialization Store {#REQ-1652}
 
@@ -26542,9 +26542,9 @@ Provisa is extended through drivers, one kind per core contract: source drivers,
 
 Discovery records the keys a source declares: its primary key, unique (alternate) keys and foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys as relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres and DuckDB and then each other connector that can. Today keys are marked only as a side effect of registering a relationship, so a key the source declares is unknown until some relationship happens to point at it; every key-dependent feature (relationship candidates, [REQ-1385](#REQ-1385)'s introspected primary key, cardinality, row identity) reads the source's own declaration instead. A source that declares no keys records none, and nothing is guessed.
 
-**Code:** —
+**Code:** `provisa/discovery/declared_keys.py`, `provisa/api/admin/_declared_keys.py`, `provisa/core/repositories/table.py`, `provisa/api/startup_seed.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_declared_keys.py`
 
 ### REQ-2171 · Schema Registration {#REQ-2171}
 
