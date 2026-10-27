@@ -1,0 +1,18 @@
+{
+  "sparqlExportModal": {
+    "title": "SPARQL 导出",
+    "result": "结果",
+    "format": "格式",
+    "formats": {
+      "turtle": "Turtle",
+      "ntriples": "N-Triples",
+      "jsonld": "JSON-LD",
+      "json": "SPARQL 结果 (JSON)",
+      "csv": "CSV",
+      "tsv": "TSV"
+    },
+    "download": "下载",
+    "close": "关闭",
+    "empty": "运行查询后即可导出其结果。"
+  }
+}

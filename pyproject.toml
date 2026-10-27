@@ -519,6 +519,8 @@ forbidden_modules = ["provisa.cypher", "provisa.sparql_query"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+# Generated protobuf bindings (scripts/gen_flightsql_proto.py), checked in as protoc writes them.
+extend-exclude = ["provisa/proto/*_pb2.py", "provisa/proto/*_pb2.pyi"]
 
 [tool.ruff.lint]
 # Defaults (E, F, W) plus B006: mutable default arguments (0 existing violations).

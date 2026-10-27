@@ -144,10 +144,6 @@
         "label": "Thread di richiesta per worker",
         "help": "Il numero massimo di richieste eseguite contemporaneamente da un processo worker; le altre attendono un thread libero. Richiede un riavvio perché il limite è fissato all'avvio del worker."
       },
-      "workers": {
-        "label": "Processi worker",
-        "help": "Quanti processi worker esegue il server. Richiede un riavvio perché i processi vengono avviati dal launcher."
-      },
       "stream_threads": {
         "label": "Thread di streaming per worker",
         "help": "Il numero massimo di risposte in streaming e WebSocket aperti che un processo worker mantiene contemporaneamente, sottoscrizioni incluse. Ognuno attende il proprio client invece di occupare un core, perciò è contato a parte rispetto ai thread di richiesta."
@@ -211,10 +207,6 @@
       "mode": {
         "label": "Modalità di sicurezza",
         "help": "Standard oppure alta sicurezza, dove gli endpoint dei dati rifiutano qualsiasi client che non sia in grado di decifrare da sé i risultati e i listener pgwire, Bolt e MCP non vengono avviati. Richiede un riavvio perché stabilisce quali listener partono; protetta da conferma perché esclude i client ordinari."
-      },
-      "multitenancy": {
-        "label": "Multitenancy",
-        "help": "Indica se la distribuzione serve più organizzazioni, ciascuna delle quali amministra solo i propri dati. Richiede un riavvio perché le concessioni dei ruoli vengono impostate all'avvio; protetta da conferma perché cambia chi può amministrare la distribuzione."
       },
       "superuser": {
         "username": {
@@ -286,10 +278,6 @@
         "label": "Porta Airport",
         "help": "La porta su cui è in ascolto il servizio Airport Flight; 0 lo lascia disattivato. Richiede un riavvio; protetta da conferma perché apre o chiude un listener."
       },
-      "port": {
-        "label": "Porta dell'API HTTP",
-        "help": "La porta su cui è in ascolto l'API HTTP. Richiede un riavvio; protetta da conferma perché l'interfaccia e ogni client devono adeguarsi a una modifica."
-      },
       "public_url": {
         "label": "Indirizzo pubblico",
         "help": "L'indirizzo con cui è nota questa installazione, ad esempio https://data.example.com. L'IRI di ogni soggetto in SPARQL e nelle esportazioni RDF inizia con esso, quindi deve restare lo stesso finché quelle IRI sono in uso. Se non è impostato, una query che restituisce l'IRI di un soggetto viene rifiutata."
@@ -335,14 +323,6 @@
       "bolt_key": {
         "label": "Chiave privata TLS Bolt",
         "help": "La chiave privata del certificato dedicato al listener Bolt. Richiede un riavvio; protetta da conferma."
-      },
-      "http_cert": {
-        "label": "Certificato TLS dell'API HTTP",
-        "help": "Il file del certificato presentato dall'API HTTP. Richiede un riavvio; protetta da conferma."
-      },
-      "http_key": {
-        "label": "Chiave privata TLS dell'API HTTP",
-        "help": "La chiave privata del certificato dell'API HTTP. Richiede un riavvio; protetta da conferma."
       }
     },
     "cache": {
@@ -463,8 +443,6 @@
         "help": "La gravità minima dei record di log esportati con la telemetria."
       },
       "subsystem_traces": {
-        "label": "Trace dei sottosistemi",
-        "help": "Quali sottosistemi interni scrivono trace proprie.",
         "http_api": {
           "label": "Trace dei sottosistemi: API HTTP",
           "help": "Richieste servite dall'API della piattaforma. Richiede un riavvio."
@@ -529,22 +507,6 @@
       "s3_endpoint": {
         "label": "Indirizzo dell'archivio di telemetria",
         "help": "L'archivio di oggetti in cui viene scritta la telemetria archiviata."
-      },
-      "s3_bucket": {
-        "label": "Bucket dell'archivio di telemetria",
-        "help": "Il bucket in cui viene scritta la telemetria archiviata."
-      },
-      "s3_region": {
-        "label": "Regione dell'archivio di telemetria",
-        "help": "La regione dell'archivio di oggetti della telemetria."
-      },
-      "s3_access_key": {
-        "label": "Chiave di accesso dell'archivio di telemetria",
-        "help": "La chiave di accesso dell'archivio di oggetti della telemetria. Segreta."
-      },
-      "s3_secret_key": {
-        "label": "Chiave segreta dell'archivio di telemetria",
-        "help": "La chiave segreta dell'archivio di oggetti della telemetria. Segreta."
       },
       "support_endpoint": {
         "label": "Endpoint di telemetria per il supporto",
@@ -641,108 +603,6 @@
       "egress_allowlist": {
         "label": "Elenco consentiti per l'uscita delle funzioni ospitate",
         "help": "Gli host che una funzione ospitata può chiamare; tutto il resto viene rifiutato. Protetta da conferma perché ogni voce apre un percorso in uscita."
-      }
-    },
-    "cdc": {
-      "consumer_group_id": {
-        "label": "Gruppo di consumer CDC",
-        "help": "Il nome usato da questa distribuzione quando legge eventi di modifica da un message broker."
-      }
-    },
-    "graphql_remote": {
-      "max_object_depth": {
-        "label": "Profondità degli oggetti GraphQL remoto",
-        "help": "Fino a che profondità vengono seguiti gli oggetti annidati di un'origine GraphQL remota."
-      },
-      "max_list_depth": {
-        "label": "Profondità delle liste GraphQL remoto",
-        "help": "Fino a che profondità vengono seguite le liste annidate di un'origine GraphQL remota."
-      },
-      "max_list_items": {
-        "label": "Elementi delle liste GraphQL remoto",
-        "help": "Il numero massimo di elementi letti da una singola lista di un'origine GraphQL remota."
-      },
-      "max_rows": {
-        "label": "Righe per lettura GraphQL remoto",
-        "help": "Il numero massimo di righe che una lettura di una tabella paginata GraphQL remota preleva."
-      }
-    },
-    "provisioning": {
-      "engine_namespace": {
-        "label": "Namespace del motore",
-        "help": "Il namespace Kubernetes in cui vengono creati i cluster del motore."
-      },
-      "engine_cluster_mode": {
-        "label": "Modalità del cluster del motore",
-        "help": "Il tipo di cluster Kubernetes su cui viene effettuato il provisioning dei motori."
-      },
-      "engine_cpu": {
-        "label": "CPU del motore",
-        "help": "La CPU assegnata a ogni motore di cui è stato effettuato il provisioning."
-      },
-      "engine_shard": {
-        "label": "Shard del motore",
-        "help": "Lo shard del motore a cui appartiene questo nodo."
-      },
-      "engine_otlp_endpoint": {
-        "label": "Endpoint di telemetria del motore",
-        "help": "Dove i motori di cui è stato effettuato il provisioning inviano la propria telemetria."
-      },
-      "engine_control_plane_host": {
-        "label": "Host del piano di controllo del motore",
-        "help": "L'indirizzo usato dai motori per raggiungere il database del piano di controllo, quando differisce da quello usato da questo server."
-      },
-      "engine_control_plane_port": {
-        "label": "Porta del piano di controllo del motore",
-        "help": "La porta usata dai motori per raggiungere il database del piano di controllo."
-      },
-      "engine_lakehouse_metastore_host": {
-        "label": "Host del metastore lakehouse",
-        "help": "L'indirizzo del metastore lakehouse usato dai motori."
-      },
-      "engine_lakehouse_metastore_port": {
-        "label": "Porta del metastore lakehouse",
-        "help": "La porta del metastore lakehouse usato dai motori."
-      },
-      "engine_otel_s3_endpoint": {
-        "label": "Indirizzo dell'archivio di telemetria del motore",
-        "help": "L'indirizzo dell'archivio di oggetti della telemetria così come lo raggiungono i motori."
-      },
-      "isolated_engine_image": {
-        "label": "Immagine del motore dedicato",
-        "help": "L'immagine del container usata per il motore dedicato di un'organizzazione."
-      },
-      "isolated_engine_network": {
-        "label": "Rete del motore dedicato",
-        "help": "La rete del container a cui è collegato un motore dedicato."
-      },
-      "isolated_engine_memory": {
-        "label": "Memoria del motore dedicato",
-        "help": "La memoria assegnata a un motore dedicato."
-      },
-      "isolated_engine_host_template": {
-        "label": "Modello dell'host del motore dedicato",
-        "help": "Il modello da cui viene costruito il nome host di un motore dedicato."
-      },
-      "isolated_engine_port": {
-        "label": "Porta del motore dedicato",
-        "help": "La porta su cui è in ascolto un motore dedicato."
-      },
-      "isolated_engine_ready_timeout": {
-        "label": "Timeout di disponibilità del motore dedicato",
-        "help": "Per quanto tempo attendere che un motore dedicato sia pronto."
-      },
-      "isolated_engine_docker_socket": {
-        "label": "Socket Docker del motore dedicato",
-        "help": "Il socket Docker usato per avviare i motori dedicati."
-      },
-      "zaychik_cpu": {
-        "label": "CPU del gateway di query",
-        "help": "La CPU assegnata al gateway di query del motore."
-      },
-      "zaychik_memory": {
-        "label": "Memoria del gateway di query",
-        "help": "La memoria assegnata al gateway di query del motore."
       }
     },
     "readonlyReasons": {

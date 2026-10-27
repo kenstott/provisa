@@ -1,0 +1,18 @@
+{
+  "sparqlExportModal": {
+    "title": "SPARQL エクスポート",
+    "result": "結果",
+    "format": "形式",
+    "formats": {
+      "turtle": "Turtle",
+      "ntriples": "N-Triples",
+      "jsonld": "JSON-LD",
+      "json": "SPARQL 結果 (JSON)",
+      "csv": "CSV",
+      "tsv": "TSV"
+    },
+    "download": "ダウンロード",
+    "close": "閉じる",
+    "empty": "クエリを実行すると、その結果をエクスポートできます。"
+  }
+}

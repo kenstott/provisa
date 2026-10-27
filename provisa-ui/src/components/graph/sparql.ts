@@ -262,6 +262,17 @@ export function triplesGraph(triples: Triple[]): {
   return { nodes, edges };
 }
 
+/** A refused /data/sparql request's message: the error its JSON body names, else its body. */
+export async function refusalText(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    return (JSON.parse(text) as { error?: string }).error ?? text;
+  } catch {
+    // A body that is not JSON is said as it came.
+    return text;
+  }
+}
+
 /** A /data/sparql answer as a frame's statement: a refusal its error; a SELECT's or an ASK's rows a
  * table of RDF cells; a CONSTRUCT's triples drawn. */
 export async function sparqlStatement(
@@ -270,16 +281,7 @@ export async function sparqlStatement(
   prefixes: Record<string, string>,
 ): Promise<FrameStatement> {
   const empty = { nodes: new Map(), edges: new Map(), rows: [], columns: [] };
-  if (!res.ok) {
-    const text = await res.text();
-    let error = text;
-    try {
-      error = (JSON.parse(text) as { error?: string }).error ?? text;
-    } catch {
-      // A body that is not JSON is said as it came.
-    }
-    return { ...empty, query, status: "error", error };
-  }
+  if (!res.ok) return { ...empty, query, status: "error", error: await refusalText(res) };
   const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
   if (type === "application/n-triples" || type === "text/plain") {
     const triples = parseNTriples(await res.text(), prefixes);
@@ -291,6 +293,7 @@ export async function sparqlStatement(
       edges,
       rows: triples.map((t) => ({ subject: t.s, predicate: t.p, object: t.o })),
       columns: ["subject", "predicate", "object"],
+      sparqlForm: "graph",
     };
   }
   const body = (await res.json()) as {
@@ -299,12 +302,19 @@ export async function sparqlStatement(
     results?: { bindings: Record<string, JsonTerm>[] };
   };
   if (body.boolean !== undefined)
-    return { ...empty, query, status: "done", rows: [{ ask: body.boolean }], columns: ["ask"] };
+    return {
+      ...empty,
+      query,
+      status: "done",
+      rows: [{ ask: body.boolean }],
+      columns: ["ask"],
+      sparqlForm: "boolean",
+    };
   const columns = body.head?.vars ?? [];
   const rows = (body.results?.bindings ?? []).map((b) =>
     Object.fromEntries(columns.map((v) => [v, b[v] ? cellOf(b[v], prefixes) : null])),
   );
-  return { ...empty, query, status: "done", rows, columns };
+  return { ...empty, query, status: "done", rows, columns, sparqlForm: "rows" };
 }
 
 /** What /data/sparql is asked to answer in: a SELECT's or an ASK's rows as JSON, a CONSTRUCT's

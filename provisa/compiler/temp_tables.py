@@ -62,6 +62,9 @@ class TempSession:
     # Advanced each time a table of it is created or dropped: what a statement kept for the
     # session was governed against.
     generation: int = 0
+    # What a layer keeps beside its tables for the session, by the layer's name (REQ-2176: the
+    # session's ephemeral graph). It ends with the session.
+    extensions: dict[str, Any] = field(default_factory=dict)
 
 
 _SESSION: ContextVar[TempSession | None] = ContextVar("temp_session", default=None)
