@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from urllib.parse import quote, unquote
 
 from provisa.core import settings_registry
+from provisa.core.local_install import local_address
 from provisa.gql.translator_types import CypherTranslateError
 
 # Every character but RFC 3986's unreserved ones is encoded, so '/' and ';' inside a value never
@@ -36,9 +37,13 @@ class IriBaseUnset(CypherTranslateError):
     """A subject's IRI was asked for and server.public_url, its base, is unset."""
 
     def __init__(self) -> None:
+        # REQ-2135: the refusal names the field and the address it takes. A local start knows the
+        # address its server listens on; any other deployment's is the one its clients reach.
+        address = local_address() or "the address clients reach this deployment at"
         super().__init__(
             "A subject's IRI starts with the deployment's public address, and server.public_url "
-            "is not set; set it in Deployment settings"
+            f"is not set. Set it to {address}: Deployment settings > Network and TLS > "
+            "General and HTTP > Public address (server.public_url)"
         )
 
 

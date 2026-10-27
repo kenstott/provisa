@@ -3588,6 +3588,13 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         """Everything the boot writes to the control plane and the engine's shared catalogs."""
         await _load_and_build()
 
+        # REQ-2135: a local start's install step -- server.public_url, when unset, is stored as
+        # the address its server listens on, the operator setting Deployment settings shows.
+        if state.admin_db is not None:
+            from provisa.core.local_install import set_public_url
+
+            set_public_url(state.admin_db)
+
         # REQ-1267: when PROVISA_IDP names an identity provider (e.g. firebase from the
         # GCP/installer deploy) but the loaded config carries no auth section, configure it now —
         # BEFORE any request reaches the middleware — so the server enforces auth from its first
