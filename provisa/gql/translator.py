@@ -114,6 +114,11 @@ def _holds_json_maps(e: exp.Expression) -> bool:
     CASE whose every result is one or null."""
     while isinstance(e, (exp.Alias, exp.Paren)):
         e = e.this
+    if isinstance(e, exp.Coalesce):
+        # collect(): its ARRAY_AGG, nulls filtered out, else [] (translator_helpers).
+        e = e.this
+    if isinstance(e, exp.Filter):
+        e = e.this
     # The translator builds MAP, ARRAY_AGG and ARRAY(SELECT ...) as calls by name; a parse of its
     # SQL makes them their own node types.
     called = str(e.this).upper() if isinstance(e, exp.Anonymous) else None

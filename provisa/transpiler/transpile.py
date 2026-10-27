@@ -670,6 +670,20 @@ def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     return tree.transform(_lowered)
 
 
+def postgres_empty_arrays(tree: exp.Expr) -> exp.Expr:
+    """``tree`` for a PostgreSQL server, which types no empty ARRAY[]: one a COALESCE falls back to
+    (collect() of nothing) is '{}', which PostgreSQL reads as the other argument's array type."""
+
+    def _typed(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Coalesce):
+            for i, arg in enumerate(node.expressions):
+                if isinstance(arg, exp.Array) and not arg.expressions:
+                    node.expressions[i] = exp.Literal.string("{}")
+        return node
+
+    return tree.transform(_typed)
+
+
 def postgres_array_filters(tree: exp.Expr) -> exp.Expr:  # REQ-778
     """``tree`` for a PostgreSQL server, which has no FILTER: each filtered list (the semantic SQL
     keeps ``FILTER(l, y -> p)``, ``semantic_dialect``) is ``ARRAY(SELECT y FROM UNNEST(l) AS
@@ -805,6 +819,10 @@ def transpile(
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
         lowered = postgres_array_filters(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and "ARRAY[]" in pg_sql.upper():
+        lowered = postgres_empty_arrays(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():
