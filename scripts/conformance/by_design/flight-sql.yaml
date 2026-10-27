@@ -91,8 +91,7 @@
 - group: Timestamps beyond microseconds
   requirement: REQ-1961
   decision: >-
-    A timestamp column is read at the precision its source declares (REQ-1961, amended
-    2026-10-27). PostgreSQL holds at most six digits: it declares a TIMESTAMP(7) to (9) column
+    A timestamp column is read at the precision its source declares. PostgreSQL holds at most six digits: it declares a TIMESTAMP(7) to (9) column
     TIMESTAMP(6), so the column holds microseconds and is read as microseconds, where the suite
     expects nanoseconds.
   reason: "timestamp\\[ns.*timestamp\\[us"
@@ -101,8 +100,7 @@
 - group: One catalog per connection
   requirement: REQ-588
   decision: >-
-    "Every catalog a client sees is the served database" (REQ-588, amended 2026-10-27): a
-    connection is served one catalog, so there is no second catalog to set as current or to
+    Every catalog a client sees is the served database: a connection is served one catalog, so there is no second catalog to set as current or to
     read a table's schema from.
   case: "TestConnection::test_(set_current_catalog|get_table_schema_catalog)\\["
 

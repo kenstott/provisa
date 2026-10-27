@@ -7,9 +7,9 @@
 <!-- conformance-results:begin -->
 ## Not runnable by design
 
-| Group | Count | Decision | Requirement |
-| --- | --- | --- | --- |
-| Timestamps beyond microseconds | 18 | A timestamp column is read at the precision its source declares (REQ-1961, amended 2026-10-27). PostgreSQL holds at most six digits: it declares a TIMESTAMP(7) to (9) column TIMESTAMP(6), so the column holds microseconds and is read as microseconds, where the suite expects nanoseconds. | REQ-1961 |
+| Group | Count | Decision |
+| --- | --- | --- |
+| Timestamps beyond microseconds | 18 | A timestamp column is read at the precision its source declares. PostgreSQL holds at most six digits: it declares a TIMESTAMP(7) to (9) column TIMESTAMP(6), so the column holds microseconds and is read as microseconds, where the suite expects nanoseconds. |
 
 ## Not sent by the client
 

@@ -257,6 +257,10 @@ def test_a_surface_with_no_such_groups_has_no_such_sections(tmp_path):
         ("- kind: adapted\n  group: g\n  case: x\n", r"has no \['became'\]"),
         ("- kind: other\n  group: g\n  reason: x\n", "is of no kind"),
         ("- kind: adapted\n  group: g\n  became: b\n", "matches nothing"),
+        (
+            "- group: g\n  requirement: REQ-1\n  decision: as REQ-1 says\n  reason: x\n",
+            r"names a requirement in \['decision'\]",
+        ),
     ],
 )
 def test_a_group_missing_its_kinds_fields_is_refused(tmp_path, monkeypatch, entry, match):

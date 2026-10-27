@@ -97,6 +97,15 @@ def groups(surface: str) -> list[Group]:
                 f"{path.name}: the group {entry.get('group')!r} names no requirement; an "
                 "exclusion with no design decision behind it stays a failure"
             )
+        # What a group says is published on the surface's page, which names no requirement:
+        # its requirement is its own field.
+        said = [f for f in ("group", *FIELDS[kind]) if f != "requirement"]
+        named = [f for f in said if re.search(r"REQ-\d", str(entry.get(f) or ""))]
+        if named:
+            raise ValueError(
+                f"{path.name}: the group {entry.get('group')!r} names a requirement in {named}; "
+                "a published page names none, so it goes in requirement"
+            )
         missing = [f for f in FIELDS[kind] if not entry.get(f)]
         if missing:
             raise ValueError(
@@ -174,17 +183,14 @@ def adapted(outcomes: list[dict], declared: list[Group]) -> list[dict]:
 
 
 def table(excluded: list[dict]) -> list[str]:
-    """The by-design groups as a Markdown table: each with its count, decision and requirement."""
+    """The by-design groups as a Markdown table for a published page: each with its count and
+    decision. The requirement stays in the artifact: a published page names none."""
     if not excluded:
         return ["None."]
     return [
-        "| Group | Count | Decision | Requirement |",
-        "| --- | --- | --- | --- |",
-        *(
-            f"| {g['group']} | {g['count']} | {g['decision'].replace('|', '/')} | "
-            f"{g['requirement']} |"
-            for g in excluded
-        ),
+        "| Group | Count | Decision |",
+        "| --- | --- | --- |",
+        *(f"| {g['group']} | {g['count']} | {g['decision'].replace('|', '/')} |" for g in excluded),
     ]
 
 
