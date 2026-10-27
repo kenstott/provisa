@@ -75,6 +75,8 @@ DURATION_FUNCTIONS = frozenset(
 _DAYS_PER_MONTH = Fraction("30.436875")
 _SECONDS_PER_DAY = 86400
 _MICROS = 1_000_000
+#: A zone written as an offset, +hh:mm[:ss] (_named_zone's form of one).
+_OFFSET = re.compile(r"[+-]\d{2}:\d{2}(?::\d{2})?")
 
 
 # --------------------------------------------------------------------------- kinds
@@ -1438,6 +1440,11 @@ def truncated(
     if not entries:
         if kind == DATETIME:
             return zoned(cut, zone)
+        if kind == TIME and zone is not None and _OFFSET.fullmatch(zone):
+            # A time keeps its value's offset: the wall clock cut, at that offset.
+            local = exp.Cast(this=cut, to=exp.DataType.build("TIME"))
+            text = exp.DPipe(this=_text(local), expression=exp.Literal.string(zone))
+            return exp.Cast(this=text, to=exp.DataType.build(SQL_TYPES[TIME]))
         return exp.Cast(this=cut, to=exp.DataType.build(SQL_TYPES[kind]))
     return composed_value(kind, entries, {}, lower, base=cut, base_kind=LOCALDATETIME, zone=zone)
 
