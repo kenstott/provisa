@@ -23,6 +23,7 @@ engine as those three numbers (an engine's driver would hand back a timedelta, i
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Callable, Mapping
 
@@ -35,11 +36,13 @@ from provisa.gql.expr_ast import (
     ListLiteral,
     Literal,
     MapLiteral,
+    Parameter,
     Paren,
     Property,
     Unary,
     Variable,
 )
+from provisa.gql import spatial
 from provisa.gql.translator_types import CypherTranslateError
 
 if TYPE_CHECKING:
@@ -77,6 +80,12 @@ _MICROS = 1_000_000
 # --------------------------------------------------------------------------- kinds
 
 
+def parameter_key(name: str) -> str:
+    """A ``$name`` parameter's entry among the kinds and zones of variables (``$`` keeps it apart
+    from a variable of that name)."""
+    return f"${name}"
+
+
 def kind_of(
     expr: CypherExpr,
     variables: Mapping[str, str],
@@ -87,12 +96,16 @@ def kind_of(
         return kind_of(expr.inner, variables, property_kind)
     if isinstance(expr, Variable):
         return variables.get(expr.name)
+    if isinstance(expr, Parameter):
+        return variables.get(parameter_key(expr.name))
     if isinstance(expr, Property):
         return property_kind(expr)
     if isinstance(expr, FunctionCall):
         name = expr.name.lower()
         if name in SQL_TYPES:
             return name
+        if name == spatial.POINT:
+            return spatial.POINT
         if name in DURATION_FUNCTIONS:
             return DURATION
         prefix = name.split(".", 1)[0]
@@ -840,7 +853,11 @@ def cypher_text(value: "datetime.date | datetime.time | datetime.datetime") -> s
     import datetime as _dt
 
     if isinstance(value, _dt.datetime):
-        return f"{value.date().isoformat()}T{_clock(value)}{_offset(value)}"
+        text = f"{value.date().isoformat()}T{_clock(value)}{_offset(value)}"
+        from zoneinfo import ZoneInfo
+
+        # A date time in a region names the region after its offset.
+        return f"{text}[{value.tzinfo.key}]" if isinstance(value.tzinfo, ZoneInfo) else text
     if isinstance(value, _dt.time):
         return f"{_clock(value)}{_offset(value)}"
     return value.isoformat()
@@ -1550,6 +1567,8 @@ def zone_of(
         return zone_of(expr.inner, zones, kind)
     if isinstance(expr, Variable):
         return zones.get(expr.name)
+    if isinstance(expr, Parameter):
+        return zones.get(parameter_key(expr.name))
     if isinstance(expr, Binary) and expr.op in ("+", "-"):
         for side in (expr.left, expr.right):
             if kind(side) in (TIME, DATETIME):
@@ -1626,15 +1645,19 @@ def returned_in_zone(value: exp.Expression, zone: str) -> exp.Expression:
     return exp.Array(expressions=[_text(micros), exp.Literal.string(zone)])
 
 
-def zoned_text(micros: int, zone: str) -> str:
-    """openCypher's text of an instant in a zone: 2015-07-21T21:40:32.142+01:00[Europe/Stockholm]."""
+def zoned_value(micros: int, zone: str) -> "datetime.datetime":
+    """An instant in a zone: the date time in that region, or at that offset."""
     import datetime as _dt
 
     instant = _dt.datetime(1970, 1, 1, tzinfo=_dt.timezone.utc) + _dt.timedelta(microseconds=micros)
     tz = _offset_of(zone)
     assert tz is not None
-    text = cypher_text(instant.astimezone(tz))
-    return f"{text}[{zone}]" if is_region(zone) else text
+    return instant.astimezone(tz)
+
+
+def zoned_text(micros: int, zone: str) -> str:
+    """openCypher's text of an instant in a zone: 2015-07-21T21:40:32.142+01:00[Europe/Stockholm]."""
+    return cypher_text(zoned_value(micros, zone))
 
 
 def offset_seconds_of(value: exp.Expression, zone: str | None) -> exp.Expression:
@@ -1644,3 +1667,60 @@ def offset_seconds_of(value: exp.Expression, zone: str | None) -> exp.Expression
     wall = exp.Cast(this=wall_clock(value, zone), to=exp.DataType.build("TIMESTAMP"))
     utc = exp.Cast(this=value.copy(), to=exp.DataType.build("TIMESTAMP"))
     return _whole(exp.Sub(this=_field(wall, "EPOCH"), expression=_field(utc, "EPOCH")))
+
+
+# --------------------------------------------------------------------------- the value
+
+
+@dataclass(frozen=True)
+class Duration:
+    """A duration as a value (Bolt's Duration structure): months, days and microseconds, the
+    engine's interval (REQ-2173)."""
+
+    months: int
+    days: int
+    micros: int
+
+    def iso(self) -> str:
+        return iso_duration(self.months, self.days, self.micros)
+
+
+def value_kind(value: object) -> str | None:
+    """The kind a client's value has (a temporal or spatial parameter), or None for neither."""
+    import datetime as _dt
+
+    if isinstance(value, Duration):
+        return DURATION
+    if isinstance(value, spatial.Point):
+        return spatial.POINT
+    if isinstance(value, _dt.datetime):
+        return LOCALDATETIME if value.tzinfo is None else DATETIME
+    if isinstance(value, _dt.date):
+        return DATE
+    if isinstance(value, _dt.time):
+        return LOCALTIME if value.tzinfo is None else TIME
+    return None
+
+
+def value_zone(value: object) -> str | None:
+    """The zone a client's date time names: its region, or its offset; None for UTC or none."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    if not isinstance(value, _dt.datetime) or value.tzinfo is None:
+        return None
+    if isinstance(value.tzinfo, ZoneInfo):
+        return value.tzinfo.key
+    return _named_zone(_offset(value))
+
+
+def bindable(value: object) -> object:
+    """A client's value as the engine is handed it: a temporal value as the text its placeholder
+    is cast from (:func:`value_kind`), a point as its list, anything else as it is."""
+    if isinstance(value, Duration):
+        return f"{value.months} months {value.days} days {value.micros} microseconds"
+    if isinstance(value, spatial.Point):
+        return spatial.bindable(value)
+    if value_kind(value) is not None:
+        return value.isoformat()  # type: ignore[attr-defined]
+    return value

@@ -143,8 +143,10 @@ class CypherTranslation:
         """This request's values in binding order; an unsupplied parameter is refused."""
         from provisa.cypher.params import bind_params
 
+        from provisa.gql.temporal import bindable
+
         bind_params(list(self.param_names), params)
-        return [params.get(name) for name in self.ordered_params]
+        return [bindable(params.get(name)) for name in self.ordered_params]
 
 
 class TranslationRequest:

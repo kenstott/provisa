@@ -21,6 +21,7 @@ into a fresh ``_Translator`` that inherits the outer ``_var_table`` for correlat
 from __future__ import annotations
 
 import copy
+from collections import ChainMap
 from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
@@ -278,13 +279,17 @@ class TranslatorExprContext:
         """The temporal kind ``expr`` has (REQ-2173), or None."""
         from provisa.gql import temporal
 
-        return temporal.kind_of(expr, self._t._temporal_kinds, self._property_kind)
+        return temporal.kind_of(
+            expr, ChainMap(self._t._temporal_kinds, self._t._param_kinds), self._property_kind
+        )
 
     def temporal_element_kind(self, expr: CypherExpr) -> str | None:
         """The temporal kind every item of a list literal has (an UNWIND's variable), or None."""
         from provisa.gql import temporal
 
-        return temporal.element_kind(expr, self._t._temporal_kinds, self._property_kind)
+        return temporal.element_kind(
+            expr, ChainMap(self._t._temporal_kinds, self._t._param_kinds), self._property_kind
+        )
 
     def is_text(self, expr: CypherExpr) -> bool:
         """Whether ``expr`` is a string: a string literal, a string function's value, a
@@ -326,7 +331,9 @@ class TranslatorExprContext:
         """The zone a time or date time the query builds names (REQ-2173), or None."""
         from provisa.gql import temporal
 
-        return temporal.zone_of(expr, self._t._temporal_zones, self.temporal_kind)
+        return temporal.zone_of(
+            expr, ChainMap(self._t._temporal_zones, self._t._param_zones), self.temporal_kind
+        )
 
     def temporal_element_zone(self, expr: CypherExpr) -> str | None:
         """The zone every item of a list literal names (an UNWIND's variable), or None."""
@@ -347,12 +354,21 @@ class TranslatorExprContext:
         return temporal.kind_of_type(registered) if registered else None
 
     def resolve_parameter(self, name: str) -> exp.Expression:
+        from provisa.gql import spatial, temporal
+
         t = self._t
         if name not in t._param_seen:
             t._param_order.append(name)
             t._param_seen.add(name)
         idx = t._param_order.index(name) + 1
-        return exp.Parameter(this=exp.Literal.number(idx))
+        placeholder = exp.Parameter(this=exp.Literal.number(idx))
+        # REQ-2173: a temporal value is bound as its text (temporal.bindable), read as its kind;
+        # a point as its list.
+        held = t._param_kinds.get(temporal.parameter_key(name))
+        if held is None:
+            return placeholder
+        held_as = spatial.SQL_TYPE if held == spatial.POINT else temporal.SQL_TYPES[held]
+        return exp.Cast(this=placeholder, to=exp.DataType.build(held_as))
 
     def resolve_function(
         self, name: str, args: list[exp.Expression], *, distinct: bool

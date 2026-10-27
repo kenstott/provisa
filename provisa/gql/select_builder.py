@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
-from provisa.gql import temporal
+from provisa.gql import spatial, temporal
 from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Term, Variable
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
@@ -573,7 +573,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         if name is None and isinstance(expr, Variable):
             name = expr.name if self._temporal_context().temporal_kind(expr) else None
         held = self._temporal_context().temporal_kind(expr) if name else None
-        if name and held == temporal.DURATION:
+        if name and held == spatial.POINT:
+            self._graph_vars[name.lower()] = GraphVarKind.POINT
+        elif name and held == temporal.DURATION:
             # REQ-2173: a duration leaves the engine as its parts, written as ISO-8601 in the answer.
             parsed = temporal.returned(parsed)
             self._graph_vars[name.lower()] = GraphVarKind.DURATION

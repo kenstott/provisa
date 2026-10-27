@@ -218,8 +218,8 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
     xml.write_text(
         '<testsuites><testsuite name="pytest">'
         '<testcase classname="tests.integration.examples" name="test_ok"/>'
-        '<testcase classname="tests.integration.examples" name="test_detach">'
-        '<failure message="CypherSyntaxError: Cypher write patterns cannot target relationships">'
+        '<testcase classname="tests.integration.examples.test_temporal_types_example" '
+        'name="test_time"><failure message="assert Time(7, 47, 0, 4000) == Time(7, 47, 0, 4123)">'
         "t</failure></testcase>"
         '<testcase classname="tests.integration.examples" name="test_bookmark">'
         '<failure message="assert Bookmarks">t</failure></testcase>'
@@ -229,18 +229,19 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
     assert (doc["ran"], doc["passed"], doc["failed"], doc["not_runnable"]) == (2, 1, 1, 1)
     assert doc["by_design"] == [
         {
-            "group": "Writes to relationships",
-            "requirement": "REQ-665",
-            "decision": '"CREATE, SET, and DELETE cannot target relationship entities. '
-            'Attempting to write a relationship is a hard error at translation time."',
+            "group": "Digits below the microsecond",
+            "requirement": "REQ-2173",
+            "decision": '"Every temporal value, read from a column or built in a query, has '
+            "microsecond precision, what the engines and their drivers hold; its nanosecond "
+            'property is its microseconds times 1000."',
             "count": 1,
         }
     ]
     assert [f["scenario"] for f in doc["failures"]] == ["test_bookmark"]
     _, _, rate, cases = fill_docs.read(doc)
     assert rate == "50.0% (1 of 2); 1 cases not runnable by design"
-    assert "| Writes to relationships | 1 |" in cases
-    assert "| REQ-665 |" in cases
+    assert "| Digits below the microsecond | 1 |" in cases
+    assert "| REQ-2173 |" in cases
 
 
 def test_a_group_with_no_requirement_is_refused(tmp_path, monkeypatch):
