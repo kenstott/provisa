@@ -445,6 +445,9 @@ class ExprLowering:
             if node.args:
                 raise CypherTranslateError(f"{node.name}() with a time zone is not supported")
             return self._ctx.resolve_function(kind, [], distinct=False)
+        if kind in temporal.SQL_TYPES and clock == "truncate":  # REQ-2172
+            value_kind = self._ctx.temporal_kind(node.args[1]) if len(node.args) > 1 else None
+            return temporal.truncated(kind, node.args, value_kind, self.lower)
         if node.name.lower() in temporal.SQL_TYPES:  # REQ-2172: from text or a map
             built = temporal.temporal_value(
                 node.name.lower(), node.args, self.lower, self._ctx.temporal_kind

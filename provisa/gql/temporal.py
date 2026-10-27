@@ -945,16 +945,20 @@ def composed_value(
     entries: Mapping[str, CypherExpr],
     kinds: Mapping[str, str | None],
     lower: Callable[[CypherExpr], exp.Expression],
+    *,
+    base: exp.Expression | None = None,
+    base_kind: str | None = None,
 ) -> exp.Expression:
     """A value of ``kind`` from a map whose components are computed or taken from another value
     ({date: d, day: 28}, {time: t, timezone: '+05:00'}): each component the map names, else the
-    other value's, else its default."""
+    other value's, else its default. ``base`` is a value already lowered whose date and time the
+    map's components replace (a truncated value and its overrides)."""
     given = {k: v for k, v in entries.items() if k not in ("date", "time", "datetime", "timezone")}
     source_date = entries.get("date", entries.get("datetime"))
     source_time = entries.get("time", entries.get("datetime"))
-    date_sql = lower(source_date) if source_date is not None else None
-    time_sql = lower(source_time) if source_time is not None else None
-    time_kind = kinds.get("time") or kinds.get("datetime")
+    date_sql = lower(source_date) if source_date is not None else base
+    time_sql = lower(source_time) if source_time is not None else base
+    time_kind = kinds.get("time") or kinds.get("datetime") or base_kind
 
     def part(name: str, unit: str, source: exp.Expression | None, default: int) -> exp.Expression:
         if name in given:
@@ -1154,3 +1158,97 @@ def temporal_value(
         return exp.Cast(this=exp.Literal.string(value), to=exp.DataType.build(SQL_TYPES[kind]))
     sources = {k: entry_kind(v) for k, v in entries.items() if k in ("date", "time", "datetime")}
     return composed_value(kind, entries, sources, lower)
+
+
+# --------------------------------------------------------------------------- truncate
+
+_TRUNCATED_BY_ENGINE = {
+    "quarter": "quarter",
+    "month": "month",
+    "week": "week",
+    "day": "day",
+    "hour": "hour",
+    "minute": "minute",
+    "second": "second",
+    "millisecond": "milliseconds",
+    "microsecond": "microseconds",
+}
+_YEARS = {"millennium": 1000, "century": 100, "decade": 10, "year": 1}
+_TIME_UNITS = {"hour", "minute", "second", "millisecond", "microsecond"}
+
+
+def truncated(
+    kind: str,
+    written: list[CypherExpr],
+    value_kind: str | None,
+    lower: Callable[[CypherExpr], exp.Expression],
+) -> exp.Expression:
+    """<kind>.truncate(unit, value[, components]): ``value`` cut to the start of its ``unit``
+    (millennium, century, decade, year, weekYear, quarter, month, week, day, hour, minute,
+    second, millisecond, microsecond), as a ``kind``, then the components given put in."""
+    if len(written) not in (2, 3):
+        raise CypherTranslateError(f"{kind}.truncate() takes a unit, a value and a map")
+    unit_given, value_given = written[0], written[1]
+    if not (isinstance(unit_given, Literal) and unit_given.kind == "string"):
+        raise CypherTranslateError(f"{kind}.truncate() takes its unit written in the statement")
+    unit = str(unit_given.value)
+    if value_kind is None:
+        raise CypherTranslateError(f"{kind}.truncate() takes a temporal value")
+    value = lower(value_given)
+    one = exp.Literal.number(1)
+    if value_kind in (LOCALTIME, TIME):
+        if unit not in _TIME_UNITS and unit != "day":
+            raise CypherTranslateError(f"a time has no {unit} to truncate to")
+        moment: exp.Expression = exp.Anonymous(
+            this="MAKE_TIMESTAMP",
+            expressions=[
+                exp.Literal.number(1970),
+                one,
+                one.copy(),
+                exp.Cast(this=_field(value, "HOUR"), to=exp.DataType.build("BIGINT")),
+                exp.Cast(this=_field(value, "MINUTE"), to=exp.DataType.build("BIGINT")),
+                exp.Div(
+                    this=_field(value, "MICROSECOND"), expression=exp.Literal.number(float(_MICROS))
+                ),
+            ],
+        )
+    else:
+        moment = exp.Cast(this=value, to=exp.DataType.build("TIMESTAMP"))
+    if unit in _YEARS:
+        year = exp.Cast(this=_field(moment, "YEAR"), to=exp.DataType.build("BIGINT"))
+        if _YEARS[unit] > 1:
+            year = exp.Sub(
+                this=year,
+                expression=exp.Mod(this=year.copy(), expression=exp.Literal.number(_YEARS[unit])),
+            )
+        cut: exp.Expression = exp.Anonymous(
+            this="MAKE_TIMESTAMP",
+            expressions=[
+                year,
+                one,
+                one.copy(),
+                exp.Literal.number(0),
+                exp.Literal.number(0),
+                exp.Literal.number(0),
+            ],
+        )
+    elif unit == "weekYear":
+        week_year = exp.Cast(this=_field(moment, "ISOYEAR"), to=exp.DataType.build("BIGINT"))
+        fourth = exp.Anonymous(
+            this="MAKE_DATE", expressions=[week_year, one, exp.Literal.number(4)]
+        )
+        cut = exp.Anonymous(this="DATE_TRUNC", expressions=[exp.Literal.string("week"), fourth])
+    elif unit in _TRUNCATED_BY_ENGINE:
+        cut = exp.Anonymous(
+            this="DATE_TRUNC", expressions=[exp.Literal.string(_TRUNCATED_BY_ENGINE[unit]), moment]
+        )
+    else:
+        raise CypherTranslateError(f"{unit!r} is no unit to truncate to")
+    cut = exp.Cast(this=cut, to=exp.DataType.build("TIMESTAMP"))
+    components = written[2] if len(written) == 3 else None
+    if components is not None and not isinstance(components, MapLiteral):
+        raise CypherTranslateError(f"{kind}.truncate() takes its components as a map")
+    entries = dict(components.entries) if components is not None else {}
+    if not entries:
+        return exp.Cast(this=cut, to=exp.DataType.build(SQL_TYPES[kind]))
+    return composed_value(kind, entries, {}, lower, base=cut, base_kind=LOCALDATETIME)

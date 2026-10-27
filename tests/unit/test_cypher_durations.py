@@ -282,3 +282,50 @@ def test_a_temporal_value_is_answered_as_cypher_writes_it(value, text):
 )
 def test_a_temporal_value_is_built_from_text_a_map_or_another_value(query, expected):
     assert _answer(query) == [{"v": expected}]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        # Temporal9: truncated to a unit, then the components given put in
+        (
+            "RETURN date.truncate('millennium', date({year: 2017, month: 10, day: 11}), {}) AS v",
+            "2000-01-01",
+        ),
+        (
+            "RETURN date.truncate('century', date({year: 1984, month: 10, day: 11}), {day: 2}) AS v",
+            "1900-01-02",
+        ),
+        (
+            "RETURN date.truncate('decade', date({year: 1984, month: 10, day: 11}), {}) AS v",
+            "1980-01-01",
+        ),
+        (
+            "RETURN date.truncate('weekYear', date({year: 1984, month: 2, day: 1}), {day: 5}) AS v",
+            "1984-01-05",
+        ),
+        (
+            "RETURN date.truncate('quarter', date({year: 1984, month: 11, day: 11}), {}) AS v",
+            "1984-10-01",
+        ),
+        (
+            "RETURN date.truncate('week', date({year: 1984, month: 10, day: 11}), {dayOfWeek: 2}) AS v",
+            "1984-10-09",
+        ),
+        (
+            "RETURN datetime.truncate('month', date({year: 1984, month: 10, day: 11}), {day: 2}) AS v",
+            "1984-10-02T00:00Z",
+        ),
+        (
+            "RETURN localdatetime.truncate('year', date({year: 1984, month: 10, day: 11}), {}) AS v",
+            "1984-01-01T00:00",
+        ),
+        (
+            "RETURN localtime.truncate('minute', localtime({hour: 12, minute: 31, second: 14}))"
+            " AS v",
+            "12:31",
+        ),
+    ],
+)
+def test_a_temporal_value_is_truncated_to_a_unit(query, expected):
+    assert _answer(query) == [{"v": expected}]
