@@ -438,6 +438,25 @@ BVTYPE_TO_PGTYPE.update(
         # array_out writes a boolean element as t / f.
         BVType.BOOLARRAY: _array_entry(BVType.BOOL, 1000, lambda v: "t" if v else "f"),
         BVType.STRINGARRAY: _array_entry(BVType.TEXT, 1009),
+        BVType.OIDARRAY: _array_entry(BVType.OID, 1028),
+    }
+)
+
+
+def _vector_entry(element: BVType, vector_oid: int):
+    """oidvector / int2vector: written as their elements separated by spaces (oidvectorout,
+    int2vectorout), sent as a one-dimensional array of the element type (array_send)."""
+    return (
+        vector_oid,
+        lambda values: " ".join(str(v) for v in values),
+        _array_entry(element, vector_oid)[2],
+    )
+
+
+BVTYPE_TO_PGTYPE.update(
+    {
+        BVType.OIDVECTOR: _vector_entry(BVType.OID, 30),
+        BVType.INT2VECTOR: _vector_entry(BVType.SMALLINT, 22),
     }
 )
 

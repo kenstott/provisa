@@ -39,7 +39,7 @@ def _populate_empty_system_tables(db) -> None:
         proisstrict BOOLEAN, proretset BOOLEAN, provolatile VARCHAR, proparallel VARCHAR,
         pronargs SMALLINT, pronargdefaults SMALLINT, prorettype INTEGER,
         proargtypes INTEGER[], proallargtypes INTEGER[], proargmodes VARCHAR[],
-        proargnames VARCHAR[], proargdefaults VARCHAR, protrftypes VARCHAR,
+        proargnames VARCHAR[], proargdefaults VARCHAR, protrftypes INTEGER[],
         prosrc VARCHAR, probin VARCHAR, prosqlbody VARCHAR,
         proconfig VARCHAR[], proacl VARCHAR)""")
     db.execute(
@@ -58,7 +58,7 @@ def _populate_empty_system_tables(db) -> None:
     )
     db.execute("""CREATE TABLE _pg_extension (
         oid INTEGER, extname VARCHAR, extowner INTEGER, extnamespace INTEGER,
-        extrelocatable BOOLEAN, extversion VARCHAR, extconfig VARCHAR[], extcondition VARCHAR[])""")
+        extrelocatable BOOLEAN, extversion VARCHAR, extconfig INTEGER[], extcondition VARCHAR[])""")
     db.execute("""CREATE TABLE _pg_enum (
         oid INTEGER, enumtypid INTEGER, enumsortorder REAL, enumlabel VARCHAR)""")
     db.execute("""CREATE TABLE _pg_stat_activity (
@@ -88,7 +88,7 @@ def _populate_empty_system_tables(db) -> None:
         unique_constraint_name VARCHAR, match_option VARCHAR,
         update_rule VARCHAR, delete_rule VARCHAR)""")
     db.execute(
-        "CREATE TABLE _pg_trigger (oid INTEGER, tgrelid INTEGER, tgparentid INTEGER, tgname VARCHAR, tgfoid INTEGER, tgtype SMALLINT, tgenabled VARCHAR, tgisinternal BOOLEAN, tgconstrrelid INTEGER, tgconstrindid INTEGER, tgconstraint INTEGER, tgdeferrable BOOLEAN, tginitdeferred BOOLEAN, tgnargs SMALLINT, tgattr VARCHAR, tgargs BLOB, tgqual VARCHAR, tgoldtable VARCHAR, tgnewtable VARCHAR)"
+        "CREATE TABLE _pg_trigger (oid INTEGER, tgrelid INTEGER, tgparentid INTEGER, tgname VARCHAR, tgfoid INTEGER, tgtype SMALLINT, tgenabled VARCHAR, tgisinternal BOOLEAN, tgconstrrelid INTEGER, tgconstrindid INTEGER, tgconstraint INTEGER, tgdeferrable BOOLEAN, tginitdeferred BOOLEAN, tgnargs SMALLINT, tgattr SMALLINT[], tgargs BLOB, tgqual VARCHAR, tgoldtable VARCHAR, tgnewtable VARCHAR)"
     )
     db.execute(
         "CREATE TABLE _pg_inherits (inhrelid INTEGER, inhparent INTEGER, inhseqno INTEGER, inhdetachpending BOOLEAN)"
@@ -151,10 +151,10 @@ def _populate_empty_system_tables(db) -> None:
         "CREATE TABLE _pg_sequence (seqrelid INTEGER, seqtypid INTEGER, seqstart BIGINT, seqincrement BIGINT, seqmax BIGINT, seqmin BIGINT, seqcache BIGINT, seqcycle BOOLEAN)"
     )
     db.execute(
-        "CREATE TABLE _pg_policy (oid INTEGER, polname VARCHAR, polrelid INTEGER, polcmd VARCHAR, polpermissive BOOLEAN, polroles VARCHAR, polqual VARCHAR, polwithcheck VARCHAR)"
+        "CREATE TABLE _pg_policy (oid INTEGER, polname VARCHAR, polrelid INTEGER, polcmd VARCHAR, polpermissive BOOLEAN, polroles INTEGER[], polqual VARCHAR, polwithcheck VARCHAR)"
     )
     db.execute(
-        "CREATE TABLE _pg_partitioned_table (partrelid INTEGER, partstrat VARCHAR, partnatts SMALLINT, partdefid INTEGER, partattrs VARCHAR, partclass VARCHAR, partcollation VARCHAR, partexprs VARCHAR)"
+        "CREATE TABLE _pg_partitioned_table (partrelid INTEGER, partstrat VARCHAR, partnatts SMALLINT, partdefid INTEGER, partattrs SMALLINT[], partclass INTEGER[], partcollation INTEGER[], partexprs VARCHAR)"
     )
     db.execute(
         "CREATE TABLE _pg_publication (oid INTEGER, pubname VARCHAR, pubowner INTEGER, puballtables BOOLEAN, pubinsert BOOLEAN, pubupdate BOOLEAN, pubdelete BOOLEAN, pubtruncate BOOLEAN, pubviaroot BOOLEAN)"

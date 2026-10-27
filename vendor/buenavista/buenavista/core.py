@@ -53,6 +53,10 @@ class BVType(enum.Enum):
     # A function's or a type's oid, whose text form is its name (the server supplies the names).
     REGPROC = 30
     REGTYPE = 31
+    # oid[], and PostgreSQL's catalog vectors: written as space-separated text, sent as arrays.
+    OIDARRAY = 32
+    OIDVECTOR = 33
+    INT2VECTOR = 34
 
 
 class RawDataRowBytes(bytes):
