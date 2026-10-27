@@ -12,7 +12,7 @@
     "model": "+ Modelo",
     "modelTitle": "Modelar uma entidade ou fato (esquema estrela / Data Vault)",
     "reportXlsx": "Planilha",
-    "reportXlsxTitle": "Baixar o modelo como planilha para revisão — fontes, tabelas, colunas, relacionamentos, exibições, métricas, exibições materializadas, ontologia, produtos de dados e perfis de dados, uma aba para cada",
+    "reportXlsxTitle": "Baixar o modelo como planilha para revisão — fontes, tabelas, colunas, relacionamentos, exibições, métricas, exibições materializadas, ontologia, produtos de dados, qualidade de dados e perfis de dados, uma aba para cada",
     "viewErd": "Ver ERD",
     "colSource": "Fonte",
     "colDomain": "Domínio",

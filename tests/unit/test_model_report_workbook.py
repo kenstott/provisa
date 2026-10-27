@@ -95,7 +95,9 @@ def _rows(withheld: frozenset[str] = frozenset()) -> dict[str, list[list]]:
     snapshot = build_snapshot(
         config, org_id=ORG, dialect="postgres", contexts={}, data_products_only=False
     )
-    return wb.sheet_rows(snapshot, config, org_id=ORG, withheld_definitions=withheld, profiles={})
+    return wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=withheld, profiles={}, inputs={}
+    )
 
 
 def _header(**kwargs) -> wb.ReportHeader:
@@ -445,7 +447,7 @@ def test_the_ontology_sheet_carries_each_terms_kind_bindings_edges_domains_and_e
     )
     config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
     rows = wb.sheet_rows(
-        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}, inputs={}
     )
     assert wb.ONTOLOGY == "Ontology" and not hasattr(wb, "GLOSSARY")
     header = wb.HEADERS[wb.ONTOLOGY]
@@ -473,7 +475,7 @@ def test_an_edge_to_a_term_not_shown_is_absent():
     )
     config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
     rows = wb.sheet_rows(
-        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}, inputs={}
     )
     edges = wb.HEADERS[wb.ONTOLOGY].index("edges")
     assert rows[wb.ONTOLOGY][0][edges] == ""
@@ -481,14 +483,13 @@ def test_an_edge_to_a_term_not_shown_is_absent():
 
 def test_the_data_products_sheet_lists_lifecycle_output_ports_and_inputs():
     """REQ-1592 (2026-10-27): each product with its domain, owner, status and lifecycle
-    (REQ-1634), its output ports (its members) and its inputs (one lineage hop upstream)."""
+    (REQ-1634), its output ports (its members) and its nearest physical inputs (REQ-2126)."""
     from datetime import date
 
     from provisa.api.metadata_export.model import (
         AssetKind,
         AssetRef,
         DataProductAsset,
-        LineageEdge,
         MetadataSnapshot,
         OwnerRef,
     )
@@ -514,11 +515,6 @@ def test_the_data_products_sheet_lists_lifecycle_output_ports_and_inputs():
                 status="deprecated",
             )
         ],
-        lineage=[
-            LineageEdge(upstream=raw.columns[0].ref, downstream=orders.columns[0].ref),
-            # A member reading another member is not an input.
-            LineageEdge(upstream=orders.columns[0].ref, downstream=totals.columns[0].ref),
-        ],
     )
     config = ProvisaConfig(
         sources=[],
@@ -537,7 +533,12 @@ def test_the_data_products_sheet_lists_lifecycle_output_ports_and_inputs():
         ],
     )
     rows = wb.sheet_rows(
-        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}
+        snapshot,
+        config,
+        org_id=ORG,
+        withheld_definitions=frozenset(),
+        profiles={},
+        inputs={"orders_prod": ["sales.raw_orders", "crm:public.accounts"]},
     )
     header = wb.HEADERS[wb.DATA_PRODUCTS]
     [row] = [dict(zip(header, r, strict=True)) for r in rows[wb.DATA_PRODUCTS]]
@@ -551,7 +552,7 @@ def test_the_data_products_sheet_lists_lifecycle_output_ports_and_inputs():
     assert row["successor"] == ""
     assert row["version"] == "2.0"
     assert row["output ports"] == "orders, order_totals"
-    assert row["inputs"] == "raw_orders"
+    assert row["inputs"] == "sales.raw_orders, crm:public.accounts"
     assert row["description"] == "every order"
 
 
@@ -653,7 +654,12 @@ async def test_the_workbook_names_no_column_term_or_edge_its_caller_is_not_serve
         types.SimpleNamespace(state=types.SimpleNamespace()), snapshot, config
     )
     rows = wb.sheet_rows(
-        narrowed, narrowed_config, org_id=ORG, withheld_definitions=frozenset(), profiles={}
+        narrowed,
+        narrowed_config,
+        org_id=ORG,
+        withheld_definitions=frozenset(),
+        profiles={},
+        inputs={},
     )
     assert [row[1] for row in rows[wb.RELATIONSHIPS]] == ["self"]
     header = wb.HEADERS[wb.ONTOLOGY]
@@ -698,7 +704,7 @@ def test_the_data_profiling_sheet_lists_the_latest_runs_figures_per_column():
     snapshot = MetadataSnapshot(org_id=ORG, tables=[orders])
     config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
     rows = wb.sheet_rows(
-        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles=profiles
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles=profiles, inputs={}
     )
     header = wb.HEADERS[wb.DATA_PROFILING]
     assert header == (
@@ -819,3 +825,220 @@ async def test_the_profiles_are_the_latest_measured_runs_made_safe_for_the_calle
     assert by_column["id"]["min_value"] == "a" and by_column["id"]["row_count"] == 100
     # pii: its shape only, so no count or value.
     assert by_column["email"]["min_value"] is None and by_column["email"]["null_count"] is None
+
+
+async def test_a_products_inputs_are_its_nearest_physical_inputs_as_its_caller_reads_them(
+    monkeypatch,
+):
+    """REQ-2126: the inputs the product's panel lists -- product_lineage_for, the one answer, for
+    the caller's role: a registered input by its relation, one read straight from a source by
+    the source's object."""
+    import types
+
+    from provisa.api.admin import report_router
+    from provisa.api.admin.catalog_scope import CatalogScope
+    from provisa.api.metadata_export.model import (
+        AssetKind,
+        AssetRef,
+        DataProductAsset,
+        MetadataSnapshot,
+    )
+
+    scope = CatalogScope(
+        whole=False, reach=None, served={}, governance=False, role="analyst", compiled=frozenset()
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+    asked = []
+
+    async def _lineage(state, product_id, role_id):  # noqa: ARG001
+        asked.append((product_id, role_id))
+        return {
+            "inputs": [
+                {"relation": "sales.raw_orders", "kind": "source_table"},
+                {"relation": "sales.rollup", "kind": "materialized_view"},
+                {
+                    "relation": "native:sales.orders",
+                    "kind": "source",
+                    "source_id": "crm",
+                    "source_schema": "public",
+                    "source_table": "orders",
+                },
+            ]
+        }
+
+    monkeypatch.setattr("provisa.api.admin.lineage_router.product_lineage_for", _lineage)
+    product = DataProductAsset(
+        ref=AssetRef(kind=AssetKind.DATA_PRODUCT, parts=("p",)),
+        id="p",
+        name="P",
+        domain_id="sales",
+        owner=None,
+        description="",
+    )
+    inputs = await report_router._product_inputs(
+        types.SimpleNamespace(state=types.SimpleNamespace()),
+        MetadataSnapshot(org_id=ORG, data_products=[product]),
+    )
+    assert asked == [("p", "analyst")]
+    assert inputs == {"p": ["sales.raw_orders", "sales.rollup", "crm:public.orders"]}
+
+
+def _assertion(table, column: str | None, results, **outcome):
+    from provisa.api.metadata_export.model import DataQualityAssertion, DataQualityOutcome
+
+    asset = table.ref if column is None else next(c.ref for c in table.columns if c.name == column)
+    return DataQualityAssertion(
+        asset=asset,
+        checker="soda",
+        check_type="missing_count",
+        definition=f"missing_count({column}) = 0",
+        severity="fail",
+        results_table=results.ref,
+        outcome=DataQualityOutcome(**outcome),
+    )
+
+
+def test_the_data_quality_sheet_lists_each_checks_latest_result_per_table_and_column():
+    """REQ-1592 (2026-10-27): each check's latest result, on the table or column it checks; a
+    check on a table the workbook does not show, or whose outcomes land in one, is not listed."""
+    from provisa.api.metadata_export.model import MetadataSnapshot
+
+    orders = _asset_table("orders", ["id", "email"])
+    orders = dataclasses.replace(
+        orders,
+        semantic_uri=f"provisa://{ORG}/sales/tables/orders",
+        columns=[
+            dataclasses.replace(
+                c, semantic_uri=f"provisa://{ORG}/sales/tables/orders#field:{c.name}"
+            )
+            for c in orders.columns
+        ],
+    )
+    checks = _asset_table("orders_checks", ["outcome"])
+    hidden = _asset_table("hidden_checks", ["outcome"])
+    when = datetime(2026, 10, 27, 6, 0, tzinfo=UTC)
+    snapshot = MetadataSnapshot(
+        org_id=ORG,
+        tables=[orders, checks],
+        assertions=[
+            _assertion(
+                orders,
+                "email",
+                checks,
+                status="fail",
+                scan_id="s1",
+                scan_time=when,
+                metric_value=4.0,
+                failed_rows=4,
+            ),
+            _assertion(orders, None, checks, status="never_run"),
+            _assertion(orders, "id", hidden, status="pass", scan_id="s1", scan_time=when),
+        ],
+    )
+    config = ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}, inputs={}
+    )
+    header = wb.HEADERS[wb.DATA_QUALITY]
+    assert header == (
+        "id",
+        "table",
+        "column",
+        "checker",
+        "check",
+        "definition",
+        "severity",
+        "status",
+        "scan time",
+        "metric value",
+        "failed rows",
+        "results table",
+    )
+    got = [dict(zip(header, r, strict=True)) for r in rows[wb.DATA_QUALITY]]
+    assert got == [
+        {
+            "id": f"provisa://{ORG}/sales/tables/orders#field:email",
+            "table": "orders",
+            "column": "email",
+            "checker": "soda",
+            "check": "missing_count",
+            "definition": "missing_count(email) = 0",
+            "severity": "fail",
+            "status": "fail",
+            "scan time": "2026-10-27T06:00:00+00:00",
+            "metric value": 4.0,
+            "failed rows": 4,
+            "results table": "orders_checks",
+        },
+        {
+            "id": f"provisa://{ORG}/sales/tables/orders",
+            "table": "orders",
+            "column": "",
+            "checker": "soda",
+            "check": "missing_count",
+            "definition": "missing_count(None) = 0",
+            "severity": "fail",
+            "status": "never_run",
+            "scan time": "",
+            "metric value": None,
+            "failed rows": None,
+            "results table": "orders_checks",
+        },
+    ]
+
+
+def test_a_checks_metric_on_a_column_masked_to_the_caller_is_blank():
+    """REQ-1592 (2026-10-27): a masked column shows its masked form wherever a statistic would
+    reveal it -- a check's metric on a column masked to the caller's role is blank, its verdict
+    shown."""
+    from provisa.api.admin import report_router
+    from provisa.api.metadata_export.model import (
+        GovernanceSignal,
+        GovernanceTag,
+        MetadataSnapshot,
+    )
+
+    orders = _asset_table("orders", ["id", "salary"])
+    checks = _asset_table("orders_checks", ["outcome"])
+    when = datetime(2026, 10, 27, 6, 0, tzinfo=UTC)
+    snapshot = MetadataSnapshot(
+        org_id=ORG,
+        tables=[orders, checks],
+        assertions=[
+            _assertion(
+                orders,
+                "salary",
+                checks,
+                status="fail",
+                scan_id="s",
+                scan_time=when,
+                metric_value=250000.0,
+                failed_rows=2,
+            ),
+            _assertion(
+                orders,
+                "id",
+                checks,
+                status="pass",
+                scan_id="s",
+                scan_time=when,
+                metric_value=0.0,
+                failed_rows=0,
+            ),
+        ],
+        governance_tags=[
+            GovernanceTag(
+                asset=orders.columns[1].ref,
+                signal=GovernanceSignal.MASKED,
+                rule_id="mask:x:0:hash",
+                restricted_roles=("analyst",),
+                exempt_roles=("hr",),
+            )
+        ],
+    )
+    shown = report_router._masked_for(snapshot, "analyst")
+    by_column = {a.asset.parts[-1]: a.outcome for a in shown.assertions}
+    assert by_column["salary"].metric_value is None and by_column["salary"].status == "fail"
+    assert by_column["salary"].failed_rows == 2
+    assert by_column["id"].metric_value == 0.0
+    assert report_router._masked_for(snapshot, "hr") is snapshot

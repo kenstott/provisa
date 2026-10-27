@@ -55,6 +55,7 @@ SHEET_RIGHTS: dict[str, str] = {
     wb.MATERIALIZED_VIEWS: Capability.CREATE_VIEW.value,
     wb.ONTOLOGY: Capability.GLOSSARY_READ.value,
     wb.DATA_PRODUCTS: Capability.DATA_PRODUCT_READ.value,
+    wb.DATA_QUALITY: Capability.DQ_READ.value,
     wb.DATA_PROFILING: Capability.DQ_READ.value,
 }
 
@@ -202,7 +203,7 @@ async def _as_served(
         await snapshot_reader(state, lambda i: served.get(i, set())),
         lambda domain_id: caller.lists_domain(domain_id, False),
     )
-    narrowed = _naming_only_the_served(narrowed, caller.reach)
+    narrowed = _masked_for(_naming_only_the_served(narrowed, caller.reach), caller.role)
     role = caller.role
     metrics = [m for m in config.metrics if role is not None and role_sees_metric(state, role, m)]
     return narrowed, config.model_copy(update={"metrics": metrics})
@@ -243,6 +244,56 @@ def _naming_only_the_served(
             if edge.from_term_id in shown and edge.to_term_id in shown
         ],
     )
+
+
+def _masked_for(snapshot: "MetadataSnapshot", role: str | None) -> "MetadataSnapshot":
+    """The snapshot with each check's metric on a column masked to ``role`` blank (REQ-1592,
+    2026-10-27): a statistic of a masked column would reveal what its mask hides. The check's
+    verdict stays."""
+    from dataclasses import replace
+
+    from provisa.api.metadata_export.model import GovernanceSignal
+
+    masked = {
+        tag.asset
+        for tag in snapshot.governance_tags
+        if tag.signal is GovernanceSignal.MASKED and role in tag.restricted_roles
+    }
+    if not any(check.asset in masked for check in snapshot.assertions):
+        return snapshot
+    return replace(
+        snapshot,
+        assertions=[
+            replace(check, outcome=replace(check.outcome, metric_value=None))
+            if check.asset in masked
+            else check
+            for check in snapshot.assertions
+        ],
+    )
+
+
+async def _product_inputs(request: Request, snapshot: "MetadataSnapshot") -> dict[str, list[str]]:
+    """Each product's nearest physical inputs (REQ-2126) as its caller's lineage gives them --
+    product_lineage_for, the answer the product's panel reads: a registered input by its
+    relation, one a member reads straight from a source by that source's object."""
+    import types
+
+    from provisa.api.admin import lineage_router
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.app import state
+
+    caller = catalog_scope(types.SimpleNamespace(context={"request": request}))
+    inputs: dict[str, list[str]] = {}
+    for product in snapshot.data_products:
+        found = await lineage_router.product_lineage_for(state, product.id, caller.role)
+        assert found is not None  # a product the snapshot holds exists
+        inputs[product.id] = [
+            f"{i['source_id']}:{i['source_schema']}.{i['source_table']}"
+            if i["kind"] == "source"
+            else i["relation"]
+            for i in found["inputs"]
+        ]
+    return inputs
 
 
 async def _run_columns(conn: Any, table_name: str, table_id: int, run_id: str) -> list[dict]:
@@ -377,6 +428,7 @@ async def model_report(
         org_id=org_id,
         withheld_definitions=await _withheld_definitions(request, config, org_id),
         profiles=await _profiles(request, snapshot),
+        inputs=await _product_inputs(request, snapshot),
     )
     header = wb.ReportHeader(
         org_id=org_id,

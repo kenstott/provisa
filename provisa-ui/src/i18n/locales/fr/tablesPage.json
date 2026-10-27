@@ -12,7 +12,7 @@
     "model": "+ Modèle",
     "modelTitle": "Modéliser une entité ou un fait (schéma en étoile / Data Vault)",
     "reportXlsx": "Classeur",
-    "reportXlsxTitle": "Télécharger le modèle sous forme de feuille de calcul pour revue : sources, tables, colonnes, relations, vues, métriques, vues matérialisées, ontologie, produits de données et profils de données, une feuille chacun",
+    "reportXlsxTitle": "Télécharger le modèle sous forme de feuille de calcul pour revue : sources, tables, colonnes, relations, vues, métriques, vues matérialisées, ontologie, produits de données, qualité des données et profils de données, une feuille chacun",
     "viewErd": "Afficher l'ERD",
     "colSource": "Source",
     "colDomain": "Domaine",

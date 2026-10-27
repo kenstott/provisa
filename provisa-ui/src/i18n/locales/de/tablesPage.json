@@ -12,7 +12,7 @@
     "model": "+ Modell",
     "modelTitle": "Entität oder Fakt modellieren (Sternschema / Data Vault)",
     "reportXlsx": "Arbeitsmappe",
-    "reportXlsxTitle": "Das Modell zur Prüfung als Tabellenkalkulation herunterladen – Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten, Ontologie, Datenprodukte und Datenprofile, je ein Blatt",
+    "reportXlsxTitle": "Das Modell zur Prüfung als Tabellenkalkulation herunterladen – Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten, Ontologie, Datenprodukte, Datenqualität und Datenprofile, je ein Blatt",
     "viewErd": "ERD anzeigen",
     "colSource": "Quelle",
     "colDomain": "Domäne",

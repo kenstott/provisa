@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import datetime
 
-    from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot
+    from provisa.api.metadata_export.model import MetadataSnapshot
     from provisa.core.models import ProvisaConfig, Table
 
 # The sheet names, in workbook order. Named constants because the router gates on them and the
@@ -59,6 +59,7 @@ METRICS = "Metrics"
 MATERIALIZED_VIEWS = "Materialized Views"
 ONTOLOGY = "Ontology"
 DATA_PRODUCTS = "Data Products"
+DATA_QUALITY = "Data Quality"
 DATA_PROFILING = "Data Profiling"
 
 OBJECT_SHEETS = (
@@ -71,6 +72,7 @@ OBJECT_SHEETS = (
     MATERIALIZED_VIEWS,
     ONTOLOGY,
     DATA_PRODUCTS,
+    DATA_QUALITY,
     DATA_PROFILING,
 )
 
@@ -140,6 +142,22 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "output ports",
         "inputs",
         "description",
+    ),
+    # REQ-1592 (2026-10-27): each check's latest result on the table or column it checks
+    # (REQ-2132/2133); a metric on a column masked to the reader is blank.
+    DATA_QUALITY: (
+        "id",
+        "table",
+        "column",
+        "checker",
+        "check",
+        "definition",
+        "severity",
+        "status",
+        "scan time",
+        "metric value",
+        "failed rows",
+        "results table",
     ),
     # REQ-1592 (2026-10-27): the latest profiling run's figures per column, as the reader may
     # see them (governance.safe_run): a restricted column's figures are blank.
@@ -397,20 +415,9 @@ def _ontology_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
     ]
 
 
-def _inputs(snapshot: "MetadataSnapshot", members: tuple["AssetRef", ...]) -> list[str]:
-    """The tables one lineage hop upstream of a product's members, other than its members: the
-    Input Ports the product's panel lists."""
-    tables = {member.parts for member in members}
-    inputs: list[str] = []
-    for edge in snapshot.lineage:
-        upstream = edge.upstream.parts[:-1]
-        if edge.downstream.parts[:-1] in tables and upstream not in tables:
-            if upstream[-1] not in inputs:
-                inputs.append(upstream[-1])
-    return inputs
-
-
-def _products_rows(snapshot: "MetadataSnapshot", config: "ProvisaConfig") -> list[list[Any]]:
+def _products_rows(
+    snapshot: "MetadataSnapshot", config: "ProvisaConfig", inputs: "Mapping[str, list[str]]"
+) -> list[list[Any]]:
     # The lifecycle's reason, planned retirement and successor are the product's own (REQ-1634
     # STATUS); the snapshot carries its status alone.
     declared = {product.id: product for product in config.data_products}
@@ -429,8 +436,45 @@ def _products_rows(snapshot: "MetadataSnapshot", config: "ProvisaConfig") -> lis
                 own.successor or "",
                 product.version or "",
                 ", ".join(member.parts[-1] for member in product.members),
-                ", ".join(_inputs(snapshot, product.members)),
+                ", ".join(inputs.get(product.id, [])),
                 product.description,
+            ]
+        )
+    return rows
+
+
+def _quality_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+    """Each check's latest result, on the table or column it checks. A check is listed only
+    where the workbook shows both what it checks and the table its outcomes land in."""
+    tables = {table.ref.parts: table for table in snapshot.tables}
+    rows: list[list[Any]] = []
+    for check in snapshot.assertions:
+        parts = check.asset.parts
+        table = tables.get(parts) or tables.get(parts[:-1])
+        if table is None or check.results_table.parts not in tables:
+            continue
+        if table.ref.parts == parts:
+            uri, column = table.semantic_uri, ""
+        else:
+            found = next((c for c in table.columns if c.ref == check.asset), None)
+            if found is None:
+                continue
+            uri, column = found.semantic_uri, found.name
+        outcome = check.outcome
+        rows.append(
+            [
+                uri,
+                table.name,
+                column,
+                check.checker,
+                check.check_type,
+                check.definition,
+                check.severity,
+                outcome.status,
+                outcome.scan_time.isoformat() if outcome.scan_time is not None else "",
+                outcome.metric_value,
+                outcome.failed_rows,
+                tables[check.results_table.parts].name,
             ]
         )
     return rows
@@ -471,12 +515,14 @@ def sheet_rows(  # REQ-1592
     org_id: str,
     withheld_definitions: frozenset[str],
     profiles: "Mapping[tuple[str, ...], list[dict]]",
+    inputs: "Mapping[str, list[str]]",
 ) -> dict[str, list[list[Any]]]:
     """Every object sheet's rows, keyed by sheet name, from an ALREADY-NARROWED snapshot.
 
     ``withheld_definitions``: the views (by table URI) whose definition names a column its reader
     is not served, printed with a blank definition (REQ-2152). ``profiles``: each profiled
     table's latest run's columns rows, by the table's ref parts, already made safe for the reader.
+    ``inputs``: each product's nearest physical inputs as the reader's lineage gives them.
 
     Narrowing (rights, domains) is the router's job and has happened before this is called; this
     function's only filtering is the snapshot-to-config alignment described in the module docstring.
@@ -499,7 +545,8 @@ def sheet_rows(  # REQ-1592
         METRICS: _metrics_rows(org_id, config, metric_names),
         MATERIALIZED_VIEWS: _materialized_rows(org_id, tables, tags, withheld_definitions),
         ONTOLOGY: _ontology_rows(snapshot),
-        DATA_PRODUCTS: _products_rows(snapshot, config),
+        DATA_PRODUCTS: _products_rows(snapshot, config, inputs),
+        DATA_QUALITY: _quality_rows(snapshot),
         DATA_PROFILING: _profiling_rows(snapshot, profiles),
     }
 
