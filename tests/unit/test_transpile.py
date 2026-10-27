@@ -492,3 +492,12 @@ def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():
     # by its groups, temporal.duration_of_computed_text).
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
     assert transpile_to_trino(pg) == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') FROM t"
+
+
+def test_an_empty_array_a_coalesce_falls_back_to_is_typed_by_postgres():
+    # collect() of nothing is []: PostgreSQL types no bare ARRAY[], and reads '{}' as the other
+    # argument's array type.
+    pg = "SELECT COALESCE(ARRAY_AGG(x) FILTER(WHERE NOT x IS NULL), ARRAY[]) FROM t"
+    assert transpile(pg, "postgres") == (
+        "SELECT COALESCE(ARRAY_AGG(x) FILTER(WHERE NOT x IS NULL), '{}') FROM t"
+    )

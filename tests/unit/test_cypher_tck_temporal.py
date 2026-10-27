@@ -17,6 +17,8 @@ duration() of an ISO-8601 string the query computes reads a negative or fraction
 
 from __future__ import annotations
 
+import time
+
 import duckdb
 import pytest
 
@@ -88,3 +90,17 @@ def test_a_duration_read_back_from_its_text_is_itself(components, text):
     assert con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall() == [
         (text, True)
     ]
+
+
+def test_a_duration_read_back_from_its_text_is_translated_small_and_fast():
+    # Each computed value is computed once (temporal._let), not copied per use: the round trip
+    # was 287 KB of SQL and nine seconds to translate when each part was copied in.
+    query = (
+        "WITH duration({years: 12, months: 5, days: -14, hours: 16, minutes: 12, seconds: 70,"
+        " nanoseconds: 1}) AS d RETURN toString(d) AS ts, duration(toString(d)) = d AS b"
+    )
+    started = time.perf_counter()
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    sql = transpile_to_duckdb(sql_ast.sql(dialect="postgres"))
+    assert time.perf_counter() - started < 2.0
+    assert len(sql) < 20_000

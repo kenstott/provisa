@@ -346,7 +346,10 @@ def returned(value: exp.Expression) -> exp.Expression:
     A null duration leaves as null."""
     if isinstance(value, exp.Null):
         return value
-    return exp.Array(expressions=list(parts(value)))
+    if isinstance(value, (exp.Column, exp.Literal, exp.Parameter)):
+        return exp.Array(expressions=list(parts(value)))
+    # A computed duration is computed once, each part read from it.
+    return _let(value, [], exp.Array(expressions=list(parts(_c("_dv")))))
 
 
 def _trunc_div(a: int, b: int) -> int:
@@ -764,45 +767,66 @@ def _part_text(value: exp.Expression, suffix: str) -> exp.Expression:
     )
 
 
+def _let(
+    value: exp.Expression, steps: list[dict[str, exp.Expression]], result: exp.Expression
+) -> exp.Expression:
+    """``result`` over ``value`` named ``_dv`` and each step's columns named in turn, every one
+    computed once: a scalar subquery of derived tables, each step reading the one before it. A
+    value read several times is not written several times."""
+    current = exp.select(exp.alias_(value, "_dv"))
+    for n, step in enumerate(steps):
+        named = [exp.alias_(e, name) for name, e in step.items()]
+        current = exp.select(exp.Star(), *named).from_(current.subquery(f"_ds{n}"))
+    return exp.Subquery(this=exp.select(result).from_(current.subquery("_dsz")))
+
+
+def _c(name: str) -> exp.Expression:
+    return exp.column(name)
+
+
 def iso_text(value: exp.Expression) -> exp.Expression:
     """toString(d) of a duration: :func:`iso_duration`'s text, built by the engine."""
-    months, days, micros = parts(value)
-    years = _int_div(months, 12)
-    month_rest = exp.Sub(
-        this=months.copy(), expression=exp.Mul(this=years.copy(), expression=exp.Literal.number(12))
-    )
-    hours = _int_div(micros, 3600 * _MICROS)
-    rest = exp.Sub(
-        this=micros.copy(),
-        expression=exp.Mul(this=hours.copy(), expression=exp.Literal.number(3600 * _MICROS)),
-    )
-    minutes = _int_div(rest, 60 * _MICROS)
-    rest = exp.Paren(
-        this=exp.Sub(
-            this=exp.Paren(this=rest.copy()),
-            expression=exp.Mul(this=minutes.copy(), expression=exp.Literal.number(60 * _MICROS)),
-        )
-    )
-    whole = _int_div(rest, _MICROS)
-    fraction = exp.Anonymous(
-        this="ABS",
-        expressions=[
-            exp.Sub(
-                this=rest.copy(),
-                expression=exp.Mul(this=whole.copy(), expression=exp.Literal.number(_MICROS)),
+    months, days, micros = parts(_c("_dv"))
+    hour, minute, second = 3600 * _MICROS, 60 * _MICROS, _MICROS
+    steps: list[dict[str, exp.Expression]] = [
+        {"_dmo": months, "_ddd": days, "_dus": micros},
+        {"_dy": _int_div(_c("_dmo"), 12), "_dh": _int_div(_c("_dus"), hour)},
+        {
+            "_dmr": exp.Sub(
+                this=_c("_dmo"),
+                expression=exp.Mul(this=_c("_dy"), expression=exp.Literal.number(12)),
+            ),
+            "_dr1": exp.Sub(
+                this=_c("_dus"),
+                expression=exp.Mul(this=_c("_dh"), expression=exp.Literal.number(hour)),
+            ),
+        },
+        {"_dmi": _int_div(_c("_dr1"), minute)},
+        {
+            "_dr": exp.Sub(
+                this=_c("_dr1"),
+                expression=exp.Mul(this=_c("_dmi"), expression=exp.Literal.number(minute)),
             )
-        ],
-    )
+        },
+        {"_dw": _int_div(_c("_dr"), second)},
+        {
+            "_df": exp.Anonymous(
+                this="ABS",
+                expressions=[
+                    exp.Sub(
+                        this=_c("_dr"),
+                        expression=exp.Mul(this=_c("_dw"), expression=exp.Literal.number(second)),
+                    )
+                ],
+            )
+        },
+    ]
     digits = exp.Anonymous(
         this="RTRIM",
         expressions=[
             exp.Anonymous(
                 this="LPAD",
-                expressions=[
-                    _text(fraction.copy()),
-                    exp.Literal.number(6),
-                    exp.Literal.string("0"),
-                ],
+                expressions=[_text(_c("_df")), exp.Literal.number(6), exp.Literal.string("0")],
             ),
             exp.Literal.string("0"),
         ],
@@ -811,8 +835,8 @@ def iso_text(value: exp.Expression) -> exp.Expression:
         ifs=[
             exp.If(
                 this=exp.And(
-                    this=exp.LT(this=rest.copy(), expression=exp.Literal.number(0)),
-                    expression=exp.EQ(this=whole.copy(), expression=exp.Literal.number(0)),
+                    this=exp.LT(this=_c("_dr"), expression=exp.Literal.number(0)),
+                    expression=exp.EQ(this=_c("_dw"), expression=exp.Literal.number(0)),
                 ),
                 true=exp.Literal.string("-"),
             )
@@ -822,53 +846,65 @@ def iso_text(value: exp.Expression) -> exp.Expression:
     seconds = exp.Case(
         ifs=[
             exp.If(
-                this=exp.EQ(this=rest.copy(), expression=exp.Literal.number(0)),
+                this=exp.EQ(this=_c("_dr"), expression=exp.Literal.number(0)),
                 true=exp.Literal.string(""),
             ),
             exp.If(
-                this=exp.EQ(this=fraction.copy(), expression=exp.Literal.number(0)),
-                true=exp.DPipe(this=_text(whole.copy()), expression=exp.Literal.string("S")),
+                this=exp.EQ(this=_c("_df"), expression=exp.Literal.number(0)),
+                true=exp.DPipe(this=_text(_c("_dw")), expression=exp.Literal.string("S")),
             ),
         ],
         default=exp.DPipe(
             this=exp.DPipe(
-                this=exp.DPipe(this=sign, expression=_text(whole.copy())),
+                this=exp.DPipe(this=sign, expression=_text(_c("_dw"))),
                 expression=exp.DPipe(this=exp.Literal.string("."), expression=digits),
             ),
             expression=exp.Literal.string("S"),
         ),
     )
-    time = exp.DPipe(
-        this=exp.DPipe(this=_part_text(hours, "H"), expression=_part_text(minutes, "M")),
-        expression=seconds,
-    )
-    date = exp.DPipe(
-        this=exp.DPipe(
-            this=_part_text(years, "Y"), expression=_part_text(exp.Paren(this=month_rest), "M")
-        ),
-        expression=_part_text(days, "D"),
+    steps.append(
+        {
+            "_dtm": exp.DPipe(
+                this=exp.DPipe(
+                    this=_part_text(_c("_dh"), "H"), expression=_part_text(_c("_dmi"), "M")
+                ),
+                expression=seconds,
+            ),
+            "_ddt": exp.DPipe(
+                this=exp.DPipe(
+                    this=_part_text(_c("_dy"), "Y"), expression=_part_text(_c("_dmr"), "M")
+                ),
+                expression=_part_text(_c("_ddd"), "D"),
+            ),
+        }
     )
     with_time = exp.Case(
         ifs=[
             exp.If(
-                this=exp.EQ(this=time.copy(), expression=exp.Literal.string("")),
+                this=exp.EQ(this=_c("_dtm"), expression=exp.Literal.string("")),
                 true=exp.Literal.string(""),
             )
         ],
-        default=exp.DPipe(this=exp.Literal.string("T"), expression=time),
+        default=exp.DPipe(this=exp.Literal.string("T"), expression=_c("_dtm")),
     )
-    text = exp.DPipe(
-        this=exp.DPipe(this=exp.Literal.string("P"), expression=date), expression=with_time
+    steps.append(
+        {
+            "_dtx": exp.DPipe(
+                this=exp.DPipe(this=exp.Literal.string("P"), expression=_c("_ddt")),
+                expression=with_time,
+            )
+        }
     )
-    return exp.Case(
+    result = exp.Case(
         ifs=[
             exp.If(
-                this=exp.EQ(this=text.copy(), expression=exp.Literal.string("P")),
+                this=exp.EQ(this=_c("_dtx"), expression=exp.Literal.string("P")),
                 true=exp.Literal.string("PT0S"),
             )
         ],
-        default=text,
+        default=_c("_dtx"),
     )
+    return _let(value, steps, result)
 
 
 def equality(op: str, left: exp.Expression, right: exp.Expression) -> exp.Expression:
