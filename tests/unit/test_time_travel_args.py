@@ -121,6 +121,19 @@ def test_a_bound_time_is_written_in_and_the_other_values_renumbered():
     assert travel.at("e") == "@TIMESTAMP '2026-10-01 17:00:00.000000'"
 
 
+def test_a_bound_time_keeps_the_relations_name_as_written():
+    """The relation's call form is a function to the parser; its quoted name is kept as written,
+    or a lower-case view is asked for by an upper-case name no catalog has."""
+    from provisa.mv.time_travel import bind_travel_params
+
+    sql, _ = bind_travel_params(
+        'SELECT e.desk FROM "reproduce"."view_exposure"(as_of => \'2026-09-30T12:00:00\', '
+        "as_recorded => $1) AS e",
+        ["2026-10-01T17:00:00"],
+    )
+    assert '"reproduce"."view_exposure"(' in sql
+
+
 def test_a_bound_time_that_is_not_text_is_refused():
     from provisa.mv.time_travel import bind_travel_params
 
