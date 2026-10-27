@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: f162bb51-98a1-49a3-89fc-496ec8537465
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // A turning 3D stage stops turning after TURN_IDLE_MS with no pointer or keyboard input on the
 // page, draws nothing while stopped, and turns again on the next input. jsdom has no WebGL, so
 // the scene draws through a stand-in renderer that counts its frames.

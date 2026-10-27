@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: efbcdbce-ee74-41bb-8e84-84c1bab50c4f
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // A turning stage stops turning once nobody is using the page: after TURN_IDLE_MS with no pointer
 // or keyboard input anywhere on it, and turns again on the next input. A stopped stage draws
 // nothing (frameLoop.ts), so a page left open with a turning stage on it costs no CPU.
