@@ -24,9 +24,12 @@ from provisa.gql.expr_ast import (
     CypherExpr,
     FunctionCall,
     ListComprehension,
+    ListLiteral,
     Literal,
+    MapLiteral,
     Parameter,
     Property,
+    Unary,
     Variable,
     walk,
 )
@@ -454,6 +457,13 @@ def aggregate_misuse(ast: CypherAST) -> CypherMistake | None:
 
 
 def _kind_conflict(variable: str, kinds: tuple[str, str]) -> CypherMistake:
+    if "value" in kinds:
+        return CypherMistake(
+            "cypher.value_as_node",
+            f"MATCH reads {variable} as a node or relationship, and the statement binds it to a "
+            "value that is neither. Give the node its own variable.",
+            variable=variable,
+        )
     if "path" in kinds:
         return CypherMistake(
             "cypher.path_variable_reused",
@@ -495,7 +505,11 @@ def variable_misuse(ast: CypherAST) -> CypherMistake | None:
             found = _length_of_entity([i.expression for i in step.items], kinds)
             if found is not None:
                 return found
-            kinds = {}
+            kinds = {
+                item.alias: "value"
+                for item in step.items
+                if item.alias and isinstance(item.expression, (Literal, ListLiteral, MapLiteral))
+            }
             continue
         if not isinstance(step, MatchStep):
             continue
@@ -522,3 +536,113 @@ def variable_misuse(ast: CypherAST) -> CypherMistake | None:
     if ast.return_clause is None:
         return None
     return _length_of_entity([i.expression for i in ast.return_clause.items], kinds)
+
+
+def _columns(ast: CypherAST) -> list[str]:
+    items = ast.return_clause.items if ast.return_clause is not None else []
+    return [item.alias or item.name for item in items]
+
+
+def _unions(ast: CypherAST) -> tuple[list[CypherAST], list[bool]]:
+    """The statements a UNION chain joins, in order, and whether each join is UNION ALL."""
+    parts, alls = [ast], []
+    while parts[-1].union_parts:
+        following, is_all = parts[-1].union_parts[0]
+        parts.append(following)
+        alls.append(is_all)
+    return parts, alls
+
+
+def projection_misuse(ast: CypherAST) -> CypherMistake | None:
+    """The refusal of two columns of one name in a RETURN or WITH, of UNION joining statements
+    whose columns differ, or of UNION and UNION ALL mixed in one statement."""
+    parts, alls = _unions(ast)
+    for part in parts:
+        clauses = [("WITH", [i.alias or i.name for i in w.items]) for w in part.with_clauses]
+        clauses.append(("RETURN", _columns(part)))
+        for clause, columns in clauses:
+            repeated = next((c for n, c in enumerate(columns) if c in columns[:n]), None)
+            if repeated is not None:
+                return CypherMistake(
+                    "cypher.column_name_conflict",
+                    f"{clause} names two columns {repeated}: each column has its own name. Rename "
+                    "one with AS.",
+                    clause=clause,
+                    column=repeated,
+                )
+    if len(set(alls)) > 1:
+        return CypherMistake(
+            "cypher.union_mixed",
+            "UNION and UNION ALL are mixed in one statement: use one of them throughout.",
+        )
+    first = _columns(parts[0])
+    for part in parts[1:]:
+        other = _columns(part)
+        if other != first:
+            return CypherMistake(
+                "cypher.union_columns_differ",
+                f"The statements UNION joins return different columns, {', '.join(first)} and "
+                f"{', '.join(other)}: each returns the same column names.",
+                first=", ".join(first),
+                second=", ".join(other),
+            )
+    return None
+
+
+def _statement_expressions(ast: CypherAST) -> list[CypherExpr]:
+    found: list[CypherExpr] = []
+    for step in ast.pipeline:
+        if isinstance(step, WithClause):
+            found += [i.expression for i in step.items]
+        where = step.where if isinstance(step, (MatchStep, WithClause)) else None
+        if where is not None:
+            found.append(where.expression)
+    if ast.return_clause is not None:
+        found += [i.expression for i in ast.return_clause.items]
+    return found
+
+
+def _not_boolean(expr: CypherExpr) -> bool:
+    """A value written in the statement that is no boolean and no null."""
+    if isinstance(expr, Literal):
+        return expr.kind not in ("boolean", "null")
+    return isinstance(expr, (ListLiteral, MapLiteral))
+
+
+def expression_misuse(ast: CypherAST) -> CypherMistake | None:
+    """The refusal of AND, OR, XOR or NOT given a value written in the statement that is no
+    boolean, or of an aggregate of rand(), whose value changes on every call."""
+    for expr in _statement_expressions(ast):
+        for node in walk(expr):
+            if isinstance(node, Binary) and node.op in ("AND", "OR", "XOR"):
+                operands = [node.left, node.right]
+                operator = node.op
+            elif isinstance(node, Unary) and node.op.upper() == "NOT":
+                operands = [node.operand]
+                operator = "NOT"
+            else:
+                operands = []
+                operator = ""
+            if any(_not_boolean(o) for o in operands):
+                return CypherMistake(
+                    "cypher.boolean_operand",
+                    f"{operator} takes true, false or null, and is given a value of another type "
+                    "written in the statement.",
+                    operator=operator,
+                )
+            if isinstance(node, FunctionCall) and node.name.lower() in AGGREGATES:
+                random = [
+                    n
+                    for a in node.args
+                    for n in walk(a)
+                    if isinstance(n, FunctionCall) and n.name.lower() == "rand"
+                ]
+                if random:
+                    call = _call_text(node)
+                    return CypherMistake(
+                        "cypher.nondeterministic_aggregate",
+                        f"{call} aggregates rand(), which changes on every call. Compute it in a "
+                        "WITH first and aggregate the result.",
+                        aggregate=call,
+                    )
+    return None

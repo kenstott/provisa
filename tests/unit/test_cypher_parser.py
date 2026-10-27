@@ -251,7 +251,7 @@ def test_union_all_parsed():
 
 
 def test_union_sub_ast_has_match():
-    query = "MATCH (n:Person) RETURN n.name UNION MATCH (c:Company) RETURN c.name"
+    query = "MATCH (n:Person) RETURN n.name AS name UNION MATCH (c:Company) RETURN c.name AS name"
     ast = parse_cypher(query)
     sub_ast, _ = ast.union_parts[0]
     assert sub_ast.match_clauses[0].pattern.nodes[0].labels == ["Company"]

@@ -26,7 +26,13 @@ from provisa.gql.expr_ast import Variable
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
 
-from provisa.gql.mistakes import aggregate_misuse, undefined_variable, variable_misuse
+from provisa.gql.mistakes import (
+    aggregate_misuse,
+    expression_misuse,
+    projection_misuse,
+    undefined_variable,
+    variable_misuse,
+)
 from provisa.gql.translator_types import CypherMistake
 from provisa.gql.ir import (
     NodePattern,
@@ -126,6 +132,48 @@ class Token:
             self.end = self.pos + len(self.value)
 
 
+_INTEGER_MAX = 2**63 - 1
+_ESCAPE = re.compile(r"\\(u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[\\'\"bfnrt])|\\(.?)", re.S)
+
+
+def _integer(text: str) -> int | None:
+    """The integer a NUMBER token writes, or None for a float."""
+    if text[:2] in ("0x", "0X"):
+        return int(text, 16)
+    if text[:2] == "0o":
+        return int(text[2:], 8)
+    return None if any(c in text for c in ".eE") else int(text)
+
+
+def _refuse_integer_overflow(token: Token, before: Token | None) -> None:
+    """An integer literal beyond a 64-bit integer: -2^63 is one only after a minus sign."""
+    value = _integer(token.value)
+    if value is None or value <= _INTEGER_MAX:
+        return
+    if value == _INTEGER_MAX + 1 and before is not None and before.type == "MINUS":
+        return
+    written = f"-{token.value}" if before is not None and before.type == "MINUS" else token.value
+    raise CypherParseMistake(
+        "cypher.integer_overflow",
+        f"{written} is outside the range of an integer, -9223372036854775808 to "
+        "9223372036854775807.",
+        value=written,
+    )
+
+
+def _refuse_unknown_escape(token: Token) -> None:
+    """A backslash in a string that starts no escape Cypher reads (\\uH)."""
+    for m in _ESCAPE.finditer(token.value[1:-1]):
+        if m.group(1) is None:
+            escape = "\\" + m.group(2)
+            raise CypherParseMistake(
+                "cypher.invalid_unicode_escape",
+                f"The string escape {escape} is not one Cypher reads. A Unicode escape is \\u "
+                "and four hexadecimal digits, e.g. \\u00e9.",
+                escape=escape,
+            )
+
+
 def _tokenize(text: str) -> tuple[list[Token], list[str]]:
     tokens: list[Token] = []
     comments: list[str] = []
@@ -152,7 +200,12 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
                     tokens.append(Token("COLON", ":", m.start(), m.end()))
                 tokens.append(Token("IDENT", part, m.start(), m.end()))
             continue
-        tokens.append(Token(kind, m.group(), m.start()))
+        token = Token(kind, m.group(), m.start())
+        if kind == "NUMBER":
+            _refuse_integer_overflow(token, tokens[-1] if tokens else None)
+        elif kind == "STRING":
+            _refuse_unknown_escape(token)
+        tokens.append(token)
     if end != len(text):
         raise CypherParseError(f"Unexpected character {text[end]!r} at position {end}")
     return tokens, comments
@@ -1210,7 +1263,13 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
     checked as part of the whole, never on its own."""
     ast = _parse_statement(query)
     # With the role's label map, an unbound name that is a bound variable's property is offered.
-    mistakes = (undefined_variable(ast, label_map), variable_misuse(ast), aggregate_misuse(ast))
+    mistakes = (
+        undefined_variable(ast, label_map),
+        variable_misuse(ast),
+        aggregate_misuse(ast),
+        projection_misuse(ast),
+        expression_misuse(ast),
+    )
     for mistake in mistakes:
         if mistake is not None:
             raise CypherParseMistake(mistake.code, str(mistake), **mistake.params)

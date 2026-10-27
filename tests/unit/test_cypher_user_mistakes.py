@@ -299,3 +299,46 @@ def test_length_of_a_node_or_relationship_is_refused(query):
         f"length({var}) takes a path, and {var} is a node or relationship. Bind a path, "
         f"MATCH p = ..., and take length(p)."
     )
+
+
+@pytest.mark.parametrize(
+    ("query", "code"),
+    [
+        ("RETURN 1 AS a, 2 AS a", "cypher.column_name_conflict"),
+        ("RETURN 1 AS a UNION RETURN 2 AS b", "cypher.union_columns_differ"),
+        ("RETURN 1 AS a UNION ALL RETURN 2 AS b", "cypher.union_columns_differ"),
+        ("RETURN 1 AS a UNION ALL RETURN 2 AS a UNION RETURN 3 AS a", "cypher.union_mixed"),
+        ("RETURN 9223372036854775808 AS literal", "cypher.integer_overflow"),
+        ("RETURN -9223372036854775809 AS literal", "cypher.integer_overflow"),
+        ("RETURN 0x8000000000000000 AS literal", "cypher.integer_overflow"),
+        ("RETURN -0o1000000000000000000001 AS literal", "cypher.integer_overflow"),
+        ("RETURN false AND {x: []}", "cypher.boolean_operand"),
+        ("RETURN NOT 'true'", "cypher.boolean_operand"),
+        ("RETURN '\\uH'", "cypher.invalid_unicode_escape"),
+        ("RETURN count(rand())", "cypher.nondeterministic_aggregate"),
+        ("WITH 123 AS n MATCH (n) RETURN n", "cypher.value_as_node"),
+        ("WITH {x: 1} AS n MATCH (n) RETURN n", "cypher.value_as_node"),
+    ],
+)
+def test_a_statement_cypher_does_not_compile_is_refused_by_name(query, code):
+    from provisa.cypher.parser import CypherParseMistake, parse_cypher
+
+    with pytest.raises(CypherParseMistake) as refused:
+        parse_cypher(query)
+    assert refused.value.code == code
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "RETURN -9223372036854775808 AS literal",
+        "RETURN -0x8000000000000000 AS literal",
+        "RETURN 1 AS a UNION ALL RETURN 2 AS a UNION ALL RETURN 3 AS a",
+        "RETURN 'caf\\u00e9' AS s",
+        "RETURN NOT null AS n, true AND null AS m",
+    ],
+)
+def test_what_cypher_compiles_is_read(query):
+    from provisa.cypher.parser import parse_cypher
+
+    parse_cypher(query)
