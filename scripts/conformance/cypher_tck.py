@@ -44,6 +44,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import by_design
+
 # --- the feature files -------------------------------------------------------------------------
 
 
@@ -437,21 +439,47 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
                         good = False
                         break
                     rest.pop(hit)
-            return out("passed") if good else out("failed", f"rows differ: got {rows[:3]}")
+            if good:
+                return out("passed")
+            if _below_the_microsecond(header, expected_raw):
+                return out(
+                    "failed", f"expects digits below the microsecond; rows differ: got {rows[:3]}"
+                )
+            return out("failed", f"rows differ: got {rows[:3]}")
     return out("failed", "the scenario states no expectation this runner reads")
+
+
+_SUB_MICROSECOND = re.compile(r"\.\d{6}\d*[1-9]")
+
+
+def _below_the_microsecond(header: list[str], rows: list[list[str]]) -> bool:
+    """Whether an expected result writes digits below the microsecond: a fraction of a second
+    past six digits, or a nanosecond count that is not a whole number of microseconds."""
+    for row in rows:
+        for column, cell in zip(header, row, strict=True):
+            if _SUB_MICROSECOND.search(cell):
+                return True
+            if "nanosecond" in column.lower() and cell.lstrip("-").isdigit() and int(cell) % 1000:
+                return True
+    return False
 
 
 # --- the report --------------------------------------------------------------------------------
 
 
 def report(outcomes: list[Outcome], version: str) -> dict:
+    """The run as the conformance page reads it (REQ-2167, amended 2026-10-27): a scenario not
+    run, or failed, because of a designed limitation is not runnable by design in a group that
+    names its decision (by_design/cypher.yaml) and is out of the pass rate; one with no decision
+    behind it is a failure."""
     passed = sum(o.status == "passed" for o in outcomes)
-    failed = sum(o.status == "failed" for o in outcomes)
-    not_runnable = [o for o in outcomes if o.status == "not_runnable"]
-    ran = passed + failed
-    by_reason: dict[str, int] = {}
-    for o in not_runnable:
-        by_reason[o.reason] = by_reason.get(o.reason, 0) + 1
+    unmet = [
+        {"feature": o.feature, "scenario": o.scenario, "reason": o.reason}
+        for o in outcomes
+        if o.status in ("failed", "not_runnable")
+    ]
+    failures, excluded = by_design.classify(unmet, by_design.groups("cypher"))
+    ran = passed + len(failures)
     return {
         "surface": "cypher",
         "suite": "openCypher TCK",
@@ -459,15 +487,11 @@ def report(outcomes: list[Outcome], version: str) -> dict:
         "total": len(outcomes),
         "ran": ran,
         "passed": passed,
-        "failed": failed,
-        "not_runnable": len(not_runnable),
-        "not_runnable_reasons": by_reason,
+        "failed": len(failures),
+        "not_runnable": sum(g["count"] for g in excluded),
+        "by_design": excluded,
         "pass_rate": round(passed / ran, 4) if ran else None,
-        "failures": [
-            {"feature": o.feature, "scenario": o.scenario, "reason": o.reason}
-            for o in outcomes
-            if o.status == "failed"
-        ],
+        "failures": failures,
     }
 
 
@@ -479,9 +503,7 @@ def markdown(doc: dict) -> str:
         f"Passed {doc['passed']} of {doc['ran']} scenarios run ({rate}); "
         f"{doc['not_runnable']} not runnable by design.",
         "",
-        "| Not runnable because | Scenarios |",
-        "| --- | --- |",
-        *(f"| {r} | {n} |" for r, n in sorted(doc["not_runnable_reasons"].items())),
+        *by_design.table(doc["by_design"]),
         "",
         "| Feature | Scenario | Reason |",
         "| --- | --- | --- |",

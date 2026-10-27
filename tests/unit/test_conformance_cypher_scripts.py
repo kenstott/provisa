@@ -36,6 +36,7 @@ def _load(name: str):
     return module
 
 
+by_design = _load("by_design")  # the scripts import it as their sibling
 tck = _load("cypher_tck")
 fill_docs = _load("fill_docs")
 
@@ -205,4 +206,63 @@ def test_a_driver_s_junit_results_are_a_conformance_report(tmp_path):
     ]
     _, suite, rate, _ = fill_docs.read(doc)
     assert suite == "neo4j-python-driver integration tests 6.2.0 (tests/integration)"
+    # A test the suite skips never ran: counted apart, not as by design (no decision names it).
+    assert rate == "50.0% (1 of 2); 1 skipped by the suite"
+
+
+def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path):
+    """REQ-2167 (amended 2026-10-27): it is counted in its group, with its requirement, and left
+    out of the pass rate; a failure no group names stays a failure."""
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        '<testcase classname="tests.integration.examples" name="test_ok"/>'
+        '<testcase classname="tests.integration.examples" name="test_detach">'
+        "<failure message=\"CypherSyntaxError: Cypher write pattern 'DETACH' is not supported\">"
+        "t</failure></testcase>"
+        '<testcase classname="tests.integration.examples" name="test_bookmark">'
+        '<failure message="assert Bookmarks">t</failure></testcase>'
+        "</testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "bolt", "driver tests", "6.2.0", "tests/integration")
+    assert (doc["ran"], doc["passed"], doc["failed"], doc["not_runnable"]) == (2, 1, 1, 1)
+    assert doc["by_design"] == [
+        {
+            "group": "DETACH DELETE",
+            "requirement": "REQ-671",
+            "decision": "DETACH DELETE is not supported; a client deletes each table in "
+            "dependency order.",
+            "count": 1,
+        }
+    ]
+    assert [f["scenario"] for f in doc["failures"]] == ["test_bookmark"]
+    _, _, rate, cases = fill_docs.read(doc)
     assert rate == "50.0% (1 of 2); 1 cases not runnable by design"
+    assert "| DETACH DELETE | 1 | DETACH DELETE is not supported" in cases
+    assert "| REQ-671 |" in cases
+
+
+def test_a_group_with_no_requirement_is_refused(tmp_path, monkeypatch):
+    (tmp_path / "x.yaml").write_text("- group: Unexplained\n  decision: none\n  reason: x\n")
+    monkeypatch.setattr(by_design, "RULES", tmp_path)
+    with pytest.raises(ValueError, match="names no requirement"):
+        by_design.groups("x")
+
+
+def test_a_scenario_not_run_with_no_decision_behind_it_is_a_failure():
+    outcomes = [
+        tck.Outcome("F", "built", "not_runnable", "its setup builds its graph with a statement"),
+        tck.Outcome("F", "control", "not_runnable", "checks state with a control query"),
+        tck.Outcome("F", "ok", "passed"),
+    ]
+    doc = tck.report(outcomes, "2024.3")
+    assert (doc["passed"], doc["failed"], doc["not_runnable"]) == (1, 1, 1)
+    assert doc["by_design"][0]["requirement"] == "REQ-351, REQ-661"
+    assert doc["failures"][0]["scenario"] == "control"
+
+
+def test_an_expected_value_below_the_microsecond_is_named():
+    assert tck._below_the_microsecond(["t"], [["'12:31:14.645876123'"]])
+    assert tck._below_the_microsecond(["d.nanosecond"], [["645876123"]])
+    assert not tck._below_the_microsecond(["t"], [["'12:31:14.645876'"]])
+    assert not tck._below_the_microsecond(["d.nanosecond"], [["645876000"]])

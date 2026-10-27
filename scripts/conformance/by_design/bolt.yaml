@@ -1,0 +1,19 @@
+# The Neo4j Python driver's integration tests Provisa fails by design (REQ-2167, amended
+# 2026-10-27): each group names the decision that excludes it. scripts/conformance/by_design.py.
+
+- group: DETACH DELETE
+  requirement: REQ-671
+  decision: DETACH DELETE is not supported; a client deletes each table in dependency order.
+  reason: "Cypher write pattern 'DETACH'"
+
+- group: Writes to relationships
+  requirement: REQ-665
+  decision: Relationships are derived from foreign-key joins, not stored edges, and are not written.
+  reason: "cannot target relationships"
+
+- group: Writes outside the model
+  requirement: REQ-661
+  decision: >-
+    A write resolves to one registered label; a write that creates a label the model has not
+    (the example's :Greeting) is refused.
+  reason: "This write is in a form Provisa does not read"

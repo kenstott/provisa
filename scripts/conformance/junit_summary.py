@@ -27,6 +27,8 @@ import sys
 import xml.etree.ElementTree as ET  # nosec B405 -- the XML is the CI job's own pytest output
 from pathlib import Path
 
+import by_design
+
 
 def summarise(junit: str, surface: str, suite: str, version: str, tests: str) -> dict:
     root = ET.parse(junit).getroot()  # nosec B314 -- see above
@@ -46,6 +48,9 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
                     "reason": (message[0] if message else outcome.tag)[:300],
                 }
             )
+    # REQ-2167 (amended 2026-10-27): a test failed because of a designed limitation is not
+    # runnable by design, in a group naming its decision (by_design/<surface>.yaml).
+    failures, excluded = by_design.classify(failures, by_design.groups(surface))
     ran = passed + len(failures)
     return {
         "surface": surface,
@@ -57,9 +62,8 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         "passed": passed,
         "failed": len(failures),
         "skipped": skipped,
-        # A test the suite skips is one for a feature the endpoint does not claim -- creating its
-        # own tables, for one -- so it is not runnable by design (the pages count it apart).
-        "not_runnable": skipped,
+        "not_runnable": sum(g["count"] for g in excluded),
+        "by_design": excluded,
         "pass_rate": round(passed / ran, 4) if ran else None,
         "failures": failures,
     }
@@ -73,7 +77,10 @@ def markdown(doc: dict) -> str:
                 f"## {doc['surface']} conformance: {doc['suite']} {doc['version']}",
                 "",
                 f"Tests: {doc['tests']}. Passed {doc['passed']} of {doc['ran']} ({rate}); "
-                f"{doc['skipped']} skipped by the suite.",
+                f"{doc['not_runnable']} not runnable by design; {doc['skipped']} skipped by the "
+                "suite.",
+                "",
+                *by_design.table(doc["by_design"]),
                 "",
                 "| Test | Case | Reason |",
                 "| --- | --- | --- |",
