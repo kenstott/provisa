@@ -15,6 +15,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FrameLoop } from "./frameLoop";
+import { TurnPause } from "./turnPause";
 
 /** How often a stage that only turns is drawn (20 frames a second). */
 const TURN_FRAME_MS = 50;
@@ -120,6 +121,10 @@ export abstract class BaseScene<H> {
   private drawnAt = 0;
   /** Set while the loop updates the orbit: the change it reports is the loop's own. */
   private updating = false;
+  /** Whether the stage is asked to turn (setRotate); it turns while the page is in use. */
+  private turnAsked = false;
+  /** Stops the turn while nobody uses the page (turnPause.ts). */
+  private turnPause: TurnPause;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -151,6 +156,7 @@ export abstract class BaseScene<H> {
     this.controls.maxDistance = 120;
     this.controls.autoRotateSpeed = 0.6;
     this.frames = new FrameLoop(this.loop);
+    this.turnPause = new TurnPause(() => this.applyTurn());
     // The view moved by hand (a drag, the wheel): draw it. The loop's own update() (the turn, the
     // orbit settling) is a move it already draws, not a change to draw again.
     this.controls.addEventListener("change", () => {
@@ -297,8 +303,8 @@ export abstract class BaseScene<H> {
   }
 
   setRotate(on: boolean) {
-    this.controls.autoRotate = on && !this.reduced;
-    this.invalidate();
+    this.turnAsked = on;
+    this.applyTurn();
   }
 
   /** The stage's background, in the theme: what an export fills behind the frame. */
@@ -343,7 +349,6 @@ export abstract class BaseScene<H> {
   orbit(scale: number): Orbit {
     const position = this.camera.position.clone();
     const target = this.controls.target.clone();
-    const rotating = this.controls.autoRotate;
     const usual = this.renderer.getPixelRatio();
     const offset = position.clone().sub(target);
     this.held = true;
@@ -365,11 +370,10 @@ export abstract class BaseScene<H> {
         this.camera.position.copy(position);
         this.controls.target.copy(target);
         this.camera.lookAt(target);
-        this.controls.autoRotate = rotating;
         this.renderer.setPixelRatio(usual);
         this.resize();
         this.held = false;
-        this.invalidate();
+        this.applyTurn();
       },
     };
   }
@@ -473,6 +477,7 @@ export abstract class BaseScene<H> {
 
   dispose() {
     this.frames.dispose();
+    this.turnPause.dispose();
     this.seen.disconnect();
     this.resizeObserver.disconnect();
     this.disposers.forEach((d) => d());
@@ -483,6 +488,13 @@ export abstract class BaseScene<H> {
   }
 
   // ---------- internals ----------
+
+  /** Turns while asked to, motion is not reduced and the page is in use; an export holds it. */
+  private applyTurn() {
+    if (this.held) return;
+    this.controls.autoRotate = this.turnAsked && !this.reduced && !this.turnPause.paused;
+    this.invalidate();
+  }
 
   private applyBaseTheme() {
     const th = this.theme;
