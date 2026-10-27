@@ -50,11 +50,14 @@ ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
         "ai_endpoints",  # REQ-1790
         "nl",
         "metadata_export",
+        "catalogs",  # REQ-2122: the catalogs the org connects to, for export and import
         "naming",
         "redirect",
         "cache",
         "derived_roles",  # REQ-2057: the attributes that become the org's derived roles
         "redaction",  # REQ-2087: the org's own redaction rules
+        "classification",  # REQ-2147: the profiler's classification kinds the org disabled
+        "federation",  # REQ-259: the org's subgraph and the role it serves as
     }
 )
 

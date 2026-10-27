@@ -39,7 +39,13 @@ const roles = (list: readonly string[] | null | undefined) =>
   list && list.length > 0 ? list.join(", ") : null;
 
 const args = (list: readonly ActionArg[]) =>
-  list.length > 0 ? list.map((a) => `${a.name}: ${a.type}`).join(", ") : null;
+  list.length > 0
+    ? list
+        .map(
+          (a) => `${a.name}: ${a.type}` + ("default" in a ? ` = ${JSON.stringify(a.default)}` : ""),
+        )
+        .join(", ")
+    : null;
 
 /** Who sees each column of the response and how it is masked, one group per column. */
 function ResponseColumns({
@@ -142,31 +148,36 @@ export function FunctionRead({
   // REQ-2001: a statement command is its statement; its kind and written table are shown as the
   // statement declares them, and it has no identity switch or return type to show.
   const isStatement = impl === "statement";
-  const implementation: DetailField[] = isStatement
-    ? [
-        { label: t("commandFormFields.bindingSql"), value: bound("sql") },
-        ...contractFields(fn.contract, t),
-      ]
-    : bySource
+  // REQ-2168: a SQL expression function is its template, a query answering one value.
+  const isTemplate = impl === "sql_expression";
+  const declaresItsShape = isStatement || isTemplate;
+  const implementation: DetailField[] = isTemplate
+    ? [{ label: t("commandFormFields.bindingTemplate"), value: bound("sql") }]
+    : isStatement
       ? [
-          { label: t("commandFormFields.source"), value: fn.sourceId },
-          { label: t("commandFormFields.schema"), value: fn.schemaName },
-          { label: t("commandFormFields.functionName"), value: fn.functionName },
+          { label: t("commandFormFields.bindingSql"), value: bound("sql") },
+          ...contractFields(fn.contract, t),
         ]
-      : impl === "script"
-        ? [{ label: t("commandFormFields.bindingArgv"), value: bound("argv") }]
-        : impl === "http"
-          ? [
-              { label: t("commandFormFields.bindingUrl"), value: bound("url") },
-              { label: t("commandFormFields.method"), value: bound("method") },
-            ]
-          : impl === "grpc"
+      : bySource
+        ? [
+            { label: t("commandFormFields.source"), value: fn.sourceId },
+            { label: t("commandFormFields.schema"), value: fn.schemaName },
+            { label: t("commandFormFields.functionName"), value: fn.functionName },
+          ]
+        : impl === "script"
+          ? [{ label: t("commandFormFields.bindingArgv"), value: bound("argv") }]
+          : impl === "http"
             ? [
-                { label: t("commandFormFields.bindingTarget"), value: bound("target") },
-                { label: t("commandFormFields.bindingGrpcMethod"), value: bound("method") },
-                { label: t("commandFormFields.bindingTls"), value: yesNo(Boolean(binding.tls)) },
+                { label: t("commandFormFields.bindingUrl"), value: bound("url") },
+                { label: t("commandFormFields.method"), value: bound("method") },
               ]
-            : [{ label: t("commandFormFields.bindingCallable"), value: bound("callable") }];
+            : impl === "grpc"
+              ? [
+                  { label: t("commandFormFields.bindingTarget"), value: bound("target") },
+                  { label: t("commandFormFields.bindingGrpcMethod"), value: bound("method") },
+                  { label: t("commandFormFields.bindingTls"), value: yesNo(Boolean(binding.tls)) },
+                ]
+              : [{ label: t("commandFormFields.bindingCallable"), value: bound("callable") }];
   const toTable = Boolean(fn.returns);
   return (
     <div className="detail-groups" data-testid={`function-read-${fn.name}`}>
@@ -180,7 +191,7 @@ export function FunctionRead({
             value: IMPL_KINDS.find((k) => k.value === impl)?.label ?? impl,
           },
           ...implementation,
-          ...(bySource || isStatement
+          ...(bySource || declaresItsShape
             ? []
             : [
                 {
@@ -188,7 +199,7 @@ export function FunctionRead({
                   value: yesNo(Boolean(fn.materialize)),
                 },
               ]),
-          ...(isStatement
+          ...(declaresItsShape
             ? []
             : [
                 {

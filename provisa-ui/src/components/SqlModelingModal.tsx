@@ -35,6 +35,7 @@ import {
 import { runSql, nlToSql } from "../api/admin";
 import type { ResultRedirect } from "../types/resultRedirect";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
+import { useAuth } from "../context/AuthContext";
 import type { Domain } from "../types/admin";
 import type {
   Props,
@@ -63,13 +64,18 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [topTab, setTopTab] = useState<TopTab>("sql");
   const [sqlText, setSqlText] = useState("");
-  const [role, setRole] = useState("org_admin");
+  // REQ-1620: the run-as picker previews one role's view, and starts as the selected roles: under
+  // "Role: All" the whole set, offered as All.
+  const { actingRoles } = useAuth();
+  const [role, setRole] = useState(actingRoles ?? "");
   const { roles: roleObjs } = useRoles();
   const { domains } = useDomains();
   const roles = useMemo(() => {
-    const ids = roleObjs.map((r) => r.id);
-    return ids.length ? ids : ["org_admin"];
-  }, [roleObjs]);
+    const ids = roleObjs.map((r) => ({ value: r.id, label: r.id }));
+    return actingRoles?.includes(",")
+      ? [{ value: actingRoles, label: t("roleSelector.all") }, ...ids]
+      : ids;
+  }, [roleObjs, actingRoles, t]);
   const domainMap = useMemo(
     () => Object.fromEntries(domains.map((d: Domain) => [domainToSqlName(d.id), d])),
     [domains],
@@ -314,6 +320,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
 
   // The NL box's SQL, from Enter or the button. nlToSql answers a failure as its error.
   const generateSql = async () => {
+    if (!role) return;
     setNlLoading(true);
     setNlError("");
     setNlCypher("");
@@ -331,7 +338,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   };
 
   const handleRun = useCallback(async () => {
-    if (!sqlText.trim()) return;
+    if (!sqlText.trim() || !role) return;
     setRunning(true);
     setResultError("");
     const t0 = performance.now();
@@ -791,7 +798,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     value={role}
                     onChange={(v) => v && setRole(v)}
                     allowDeselect={false}
-                    data={roles.map((r) => ({ value: r, label: r }))}
+                    data={roles}
                     w={120}
                     data-testid="sql-modeling-role"
                   />

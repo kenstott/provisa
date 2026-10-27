@@ -40,7 +40,10 @@ from provisa.federation.scheduled_refresh import (
     window_open,
 )
 
-ORG = "org1"
+# PostgreSQL advisory locks are held server-wide, not per database, and every xdist worker's
+# control plane is a database on one server: each worker process names an org of its own, or a
+# replica lock another worker's test holds reads here as another build's.
+ORG = f"org1{uuid.uuid4().hex[:8]}"
 
 # PostgreSQL advisory locks are held server-wide, not per database: every xdist worker's control
 # plane shares one server, so each worker process names an engine of its own, or a slot another

@@ -106,6 +106,18 @@ run joins in a database that indexes replicas. Trino's PostgreSQL store is index
 the work Trino pushes down to it. DuckDB joins its embedded store's replicas over a per-statement
 copy, where join indexes do not help. See [Replicas](replicas.md).
 
+## Known anomalies: functions an engine cannot write
+
+The functions Provisa ships for Cypher tools (the APOC set, see [Commands](commands.md#the-apoc-set-provisa-ships)) are SQL templates written in each engine's dialect. Where an engine's dialect has no equivalent, a call is refused by name when the statement is compiled, before anything is sent to the engine. A statement that would go directly to a source whose dialect cannot write the function goes to the engine instead. This table is generated from the templates.
+
+<!-- engine-function-anomalies:begin -->
+| Engine | Function not available |
+| --- | --- |
+| `clickhouse` | `apoc.map.fromLists` |
+| `clickhouse-server` | `apoc.map.fromLists` |
+| `snowflake` | `apoc.map.fromLists` |
+<!-- engine-function-anomalies:end -->
+
 ## Engine lifecycle (hosted deployment only)
 
 On the hosted cloud deployment, engine shards scale to zero replicas when idle, and no pod means no bill. A desktop or self-hosted install runs the engine as an always-on process; none of the

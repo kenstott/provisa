@@ -1,0 +1,40 @@
+# The openCypher TCK's scenarios Provisa fails by design (REQ-2167, amended 2026-10-27): each
+# group quotes the rule of the requirement that excludes it. scripts/conformance/by_design.py.
+#
+# Not here, by the amendment "SETUP THAT CREATES OBJECTS IS ADAPTED, NOT EXCLUDED": a scenario
+# that builds its graph, names a TCK graph or declares a procedure only as its setup is adapted
+# over a fixture model, and until it is, it counts as a failure. A write to a label the fixture
+# model registers is in scope (REQ-818), so writes are not excluded either.
+
+- group: MERGE and REMOVE
+  requirement: REQ-818
+  decision: '"Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected."'
+  reason: "Cypher write pattern '(MERGE|REMOVE)'"
+
+- group: DETACH DELETE
+  requirement: REQ-671
+  decision: >-
+    "DETACH DELETE (cascading delete across derived relationships) is not supported. Attempting
+    DETACH DELETE is a hard error at parse or translation time."
+  reason: "Cypher write pattern 'DETACH'"
+
+- group: Labels the model does not have
+  requirement: REQ-778
+  decision: >-
+    A label no table the role reads has is refused by name (cypher.unknown_label), offering the
+    registered labels; it is never read as an empty match.
+  reason: "There is no label :"
+
+- group: Relationship types the model does not have
+  requirement: REQ-603
+  decision: >-
+    "SQL and Cypher queries that traverse a join not backed by a registered relationship are
+    rejected at compile time."
+  reason: "There is no relationship type :"
+
+- group: Temporal values below the microsecond
+  requirement: REQ-2173
+  decision: >-
+    "Every temporal value ... has microsecond precision ...; its nanosecond property is its
+    microseconds times 1000."
+  reason: "^expects digits below the microsecond"

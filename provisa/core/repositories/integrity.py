@@ -207,11 +207,12 @@ REFERENCES: tuple[Reference, ...] = (
     _part("synthetic_report", "dataset_id", "synthetic_dataset"),
     # REQ-1934: a decision on a table's constraint is part of the table, removed with it.
     _part("profiler_constraints", "table_id", "table"),
+    # REQ-2147: a steward's decision on a table's column classification is part of the table.
+    _part("profiler_classifications", "table_id", "table"),
     # REQ-2091: an adequacy check's result on a table's column is part of the table.
     _part("fake_adequacy_checks", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),
     _part("glossary_term_refs", "table_id", "table"),
-    _part("glossary_term_table_refs", "table_id", "table"),  # REQ-2130
     _part("table_meta_links", "source_table_id", "table"),
     _part("table_meta_links", "target_table_id", "table"),
     _part("tag_assignments", "table_id", "table"),
@@ -252,8 +253,7 @@ REFERENCES: tuple[Reference, ...] = (
     # --- to a relationship ---------------------------------------------------------------------
     _part("tag_assignments", "relationship_id", "relationship"),
     # --- to a role -----------------------------------------------------------------------------
-    _dep("roles", "parent_role_id", "role", "role", "id"),
-    _dep("roles", "defined_from", "role", "role", "id"),
+    _dep("roles", "parents", "role", "role", "id", match=Match.MEMBER),  # REQ-2155
     # Anyone who holds the role, and every grant or ownership that names it, blocks it: nothing
     # may be left naming a deleted role.
     _dep("user_role_assignments", "role_id", "role", "role_assignment", "id"),
@@ -302,12 +302,15 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("registered_tables", "product_id", "data_product", "table", "id"),
     _dep("tracked_functions", "product_id", "data_product", "command", "name"),
     _part("tag_assignments", "product_id", "data_product"),
+    # REQ-1634 STATUS: a retired product names the product its members moved to.
+    _dep("data_products", "successor_id", "data_product", "data_product", "id"),
     # --- to a glossary term --------------------------------------------------------------------
     # A term's physical refs point it at real data, so they block it: the operator retires the
     # term or moves its refs to another first. Its edges, domain links and experts go with it.
     _dep("glossary_term_refs", "term_id", "glossary_term", "table", "table_id"),
-    # REQ-2130: a class term's table groundings go with it (the schema cascades them).
-    _part("glossary_term_table_refs", "term_id", "glossary_term"),
+    # REQ-2130: a table a class term grounds is real data the term names, so it blocks the term as
+    # a column ref does.
+    _dep("registered_tables", "class_term_id", "glossary_term", "table", "id"),
     # REQ-2145: a term's tags go with it; a term holding columns is blocked above, so no column
     # loses a tag it carried through the term.
     _part("tag_assignments", "term_id", "glossary_term"),
@@ -367,7 +370,7 @@ def _matches(reference: Reference, value: Any, wanted: Any) -> bool:
         members = value[reference.path] if reference.path is not None else value
         return wanted in members
     if reference.match is Match.MASK_TO:
-        return any(wanted in entry["to"] for entry in value)
+        return any(wanted in (entry.get("to") or ()) for entry in value)
     relations, metric_names = names_in_sql(value)
     return wanted in (metric_names if reference.to == "metric" else relations)
 

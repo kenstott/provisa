@@ -255,6 +255,9 @@ def _authenticate529(shared_data: dict, control_plane, *, user: str = "alice") -
         org_id="default",
         # The simple provider keeps its users' ids on the platform plane.
         admin_db=platform_db(control_plane),
+        # the bound org's settings and config, as every org runtime carries them (REQ-2078)
+        settings_overrides={},
+        config=None,
     )
     handler = _handler529(shared_data)
     ctx = cast(Any, _Ctx529(user))
@@ -918,6 +921,7 @@ def parameterized_query_executes(shared_data, monkeypatch, bind_org):
     import copy
 
     import provisa.api.app as app_mod
+    from provisa.federation import engine_wake
     from provisa.pgwire import _pipeline, governed_plan
     from tests.unit.test_buffered_auto_threshold import _decision
     from tests.unit.test_governed_sql_engine_internals import _state
@@ -932,6 +936,9 @@ def parameterized_query_executes(shared_data, monkeypatch, bind_org):
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: False)
     monkeypatch.setattr(_pipeline, "_optimize_and_route", _decision("DIRECT"))
+    # This state has no engine: its process has issued catalogs to no coordinator, whatever
+    # coordinators earlier tests in the process connected.
+    monkeypatch.setattr(engine_wake, "_start_generations", {"": 0})
     shared_data["plan"] = asyncio.run(
         _pipeline._govern_and_route(
             shared_data["sql_template"], "analyst", params=shared_data["params"]

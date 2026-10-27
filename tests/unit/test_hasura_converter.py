@@ -173,13 +173,12 @@ class TestHasuraConverter:
         config = convert_metadata(metadata, collector)
 
         role_ids = {r.id for r in config.roles}
-        assert "analyst" in role_ids
+        # REQ-2155: Hasura's analyst is Provisa's standard analyst, which a config never declares;
+        # the grants naming it stand, and the mapping says so.
+        assert "analyst" not in role_ids
+        assert any(m.item == "analyst" for m in collector.mapped)
         assert "manager" in role_ids
         assert "admin" in role_ids
-
-        # analyst should have read capability
-        analyst = next(r for r in config.roles if r.id == "analyst")
-        assert "query_development" in analyst.capabilities  # REQ-1684
 
         # admin (has insert_permissions) should have write capability
         admin = next(r for r in config.roles if r.id == "admin")

@@ -194,3 +194,22 @@ async def test_bigquery_gcs_external_link_is_zero_copy(runtime):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+@pytest.mark.asyncio
+async def test_whether_a_table_is_landed_is_read_from_the_regions_listing(runtime):
+    """REQ-318: absent is False -- a dataset that does not exist as well as a table -- landed is
+    True, and a listing that cannot be read raises. The fixture drops the dataset after."""
+    await runtime.land_table(
+        schema=_DS, table="lte_landed", columns=[("id", "bigint")], rows=[{"id": 1}]
+    )
+    assert await runtime.landed_table_exists(schema=_DS, table="lte_landed") is True
+    assert await runtime.landed_table_exists(schema=_DS, table="lte_never") is False
+    assert await runtime.landed_table_exists(schema="provisa_no_such_ds", table="x") is False
+    # A project the credentials cannot read: its listing is refused, never read as empty.
+    broken = BigQueryFederationRuntime(url="bigquery://provisa-no-such-project-0?location=US")
+    try:
+        with pytest.raises(Exception):  # noqa: B017 -- the client's own error, whatever its class
+            await broken.landed_table_exists(schema=_DS, table="lte_landed")
+    finally:
+        broken.close()

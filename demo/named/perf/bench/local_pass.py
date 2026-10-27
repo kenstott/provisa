@@ -152,7 +152,7 @@ def mcp_roles(role: str) -> str:
             *(contract_model.chain_role(role, level) for level in range(deepest + 1)),
             *(
                 f"{contract_model.derived_attribute(i)}__{contract_model.DERIVED_VALUE}"
-                for i in range(derived)
+                for i in range(1, derived + 1)
             ),
         ]
     )
@@ -179,7 +179,7 @@ def start_server(ports: dict[str, int], tmp: Path, receiver_port: int, mcp_port:
         await_grpc=True,
         config=str(config),
         env={
-            **local_proof._source_env(ports),
+            **local_proof._server_env(ports),
             "OTEL_SDK_DISABLED": "false",
             "PROVISA_MCP_PORT": str(mcp_port),
             "PROVISA_MCP_HOST": "127.0.0.1",

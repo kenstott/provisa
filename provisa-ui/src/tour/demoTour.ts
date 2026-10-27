@@ -109,16 +109,11 @@ export interface DemoTourStepDef {
   product?: string;
   /** A role (or "all"): shown in the SQL explorer's run-as picker, picked on Next. */
   role?: string;
-  /** REQ-1163: a time, ISO 8601, set in the SQL explorer's "as of" picker: the statements after
-   *  it read bitemporal views as of it. */
-  as_of?: string;
-  /** REQ-1163: a time, ISO 8601, set in the SQL explorer's "as recorded at" picker: the
-   *  statements after it read bitemporal views as Provisa had recorded them then. */
-  as_recorded?: string;
-  /** REQ-2083: the "as recorded at" time taken from the answer of an earlier `sql` step of the
-   *  tour, row `row` (0-based) and column `column`, when this step runs: a recording time Provisa
-   *  stamped, which no tour can know in advance. The earlier step's statement is run again as it
-   *  ran then (its role and time travel). */
+  /** REQ-2083: a time taken from the answer of an earlier `sql` step of the tour, row `row`
+   *  (0-based) and column `column`, when this step runs -- a recording time Provisa stamped, which
+   *  no tour can know in advance -- and bound to the next statement's $1, which names it as a
+   *  relation's argument (`(as_recorded => $1)`, REQ-1163). The earlier step's statement is run
+   *  again as it ran then (its role). */
   as_recorded_from?: { step: string; row: number; column: string };
   /** An environment of the model (REQ-2053): shown in the header's environment switcher, picked
    *  on Next, so the steps after it read that environment. */
@@ -126,6 +121,15 @@ export interface DemoTourStepDef {
   /** REQ-2084: the demo's notebook (notebook.ipynb): its cells added to the Notebook tab's open
    *  notebook and run there, in the visitor's browser. */
   notebook?: true;
+  /** REQ-2172: a question handed to the MCP explorer: its agent answers it live, as the role the
+   *  header acts as, its tool calls shown as they run. */
+  mcp?: string;
+  /** REQ-2172: the explain of the last run_sql call the explorer's agent made: the statement it
+   *  sent and the one that ran, governed for the role. */
+  mcp_explain?: true;
+  /** REQ-2172: the explorer's Connect Claude Desktop panel, opened: the same server, for the
+   *  visitor's own agent. */
+  mcp_connect?: true;
   /** A question for Polly: the panel opens on it and its stored `answer`, as an exchange. */
   polly?: string;
   /** REQ-2012: Polly's answer to `polly`, stored when the demo's template was built. */
@@ -141,6 +145,11 @@ export interface DemoTourStepDef {
 
 /** View Profile Runs' close button: a graph step leaves the window as it found it. */
 const PROFILE_RUNS_CLOSE = '[data-testid="profile-runs-modal"] .mantine-Modal-close';
+/** View Profile Runs on a table with no run: a graph step has nothing to draw (REQ-2052). */
+const PROFILE_RUNS_NONE = '[data-testid="profile-runs-none"]';
+
+/** A Mantine modal's close button: an explain step leaves the explorer as it found it. */
+const MODAL_CLOSE = ".mantine-Modal-close";
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
 const RESULT_WAIT_MS = 60000;
@@ -172,8 +181,6 @@ export function demoTourSteps(
   for (const def of defs) {
     onPage = def.route ?? onPage;
     if (def.role !== undefined && onPage === "/sql") context.role = def.role;
-    if (def.as_of !== undefined) context.asOf = def.as_of;
-    if (def.as_recorded !== undefined) context.asRecorded = def.as_recorded;
     if (def.sql !== undefined) ran.set(def.key, { sql: def.sql, ...context });
     const step = demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran);
     steps.push(def.demo !== undefined ? { ...step, demo: def.demo } : step);
@@ -181,12 +188,10 @@ export function demoTourSteps(
   return steps;
 }
 
-/** A tour statement as the SQL explorer ran it: its text, run-as role and time travel. */
+/** A tour statement as the SQL explorer ran it: its text and run-as role. */
 export interface StatementRun {
   sql: string;
   role?: string;
-  asOf?: string;
-  asRecorded?: string;
 }
 
 function demoTourStep(
@@ -224,6 +229,7 @@ function demoTourStep(
         readySelector: stage,
         element: stage,
         waitMs: RESULT_WAIT_MS,
+        absent: PROFILE_RUNS_NONE,
         clickAfterNext: PROFILE_RUNS_CLOSE,
       };
     }
@@ -325,6 +331,34 @@ function demoTourStep(
       waitMs: NOTEBOOK_WAIT_MS,
     };
   }
+  if (def.mcp !== undefined) {
+    // Handed to the explorer, which sends it once and marks the page when the answer is in.
+    return {
+      ...page,
+      openQuery: { stateKey: "mcpQuestion", text: def.mcp },
+      readySelector: '[data-testid="mcp-explore"][data-answered]',
+      element: ".mcp-chat-wrap",
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  if (def.mcp_explain === true) {
+    // Act, then explain: the tour opens the last run_sql call's explain; Next closes it.
+    return {
+      ...page,
+      clickBefore: "[data-mcp-explain-last]",
+      readySelector: '[data-testid="mcp-explain-ran"]',
+      element: '[data-testid="mcp-explain-panel"]',
+      waitMs: RESULT_WAIT_MS,
+      clickAfterNext: MODAL_CLOSE,
+    };
+  }
+  if (def.mcp_connect === true) {
+    return {
+      ...page,
+      navState: { mcpConnect: true },
+      element: '[data-testid="mcp-connect-config"], [data-testid="mcp-connect-off"]',
+    };
+  }
   if (def.group_by !== undefined) {
     return {
       ...page,
@@ -380,21 +414,6 @@ function demoTourStep(
       chooseOnNext: { open: RUN_AS, option: `[data-sql-role-option="${def.role}"]` },
     };
   }
-  // Each handed to the SQL explorer, which sets its picker; shown on the picker.
-  if (def.as_of !== undefined) {
-    return {
-      ...page,
-      openQuery: { stateKey: "asOf", text: def.as_of },
-      element: '[data-testid="sql-as-of"]',
-    };
-  }
-  if (def.as_recorded !== undefined) {
-    return {
-      ...page,
-      openQuery: { stateKey: "asRecorded", text: def.as_recorded },
-      element: '[data-testid="sql-as-recorded"]',
-    };
-  }
   if (def.as_recorded_from !== undefined) {
     const { step, row, column } = def.as_recorded_from;
     const source = ran.get(step);
@@ -404,8 +423,9 @@ function demoTourStep(
     }
     return {
       ...page,
-      openQuery: { stateKey: "asRecorded", text: "", from: { ...source, row, column } },
-      element: '[data-testid="sql-as-recorded"]',
+      // Handed to the SQL explorer as the next statement's $1; shown where it says so.
+      openQuery: { stateKey: "params", text: "", from: { ...source, row, column } },
+      element: '[data-testid="sql-bound-params"]',
     };
   }
   if (def.env !== undefined) {
@@ -443,7 +463,7 @@ function demoTourStep(
 
 /**
  * REQ-2083: the value an `as_recorded_from` step takes, read when it runs: the earlier statement
- * run again as it ran (its role, else the role the app acts as; its time travel), and row
+ * run again as it ran (its role, else the role the app acts as), and row
  * `row`'s `column`. A refused statement, or an answer without that row or column, fails the step
  * by name: there is no time to stand in for it.
  */
@@ -453,10 +473,7 @@ export async function answerValue(
 ): Promise<string> {
   const role = from.role ?? actingRoles;
   if (role === null) throw new Error("Tour: no role to run the earlier statement as");
-  const answer = await runSql(from.sql, role, false, {
-    asOf: from.asOf ?? null,
-    asRecorded: from.asRecorded ?? null,
-  });
+  const answer = await runSql(from.sql, role, false);
   if (answer.error) throw new Error(`Tour: the earlier statement was refused: ${answer.error}`);
   const row = answer.rows[from.row];
   if (row === undefined || !(from.column in row) || row[from.column] === null) {

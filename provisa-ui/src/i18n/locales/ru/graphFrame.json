@@ -4,6 +4,10 @@
     "running": "Выполнение…",
     "metaCount": "{{nodes}} узлов · {{edges}} связей",
     "metaCountElapsed": "{{nodes}} узлов · {{edges}} связей · {{elapsed}} мс",
+    "metaRows_one": "{{count}} строка",
+    "metaRows_other": "{{count}} строк",
+    "metaRowsElapsed_one": "{{count}} строка · {{elapsed}} мс",
+    "metaRowsElapsed_other": "{{count}} строк · {{elapsed}} мс",
     "error": "Ошибка",
     "expand": "Развернуть",
     "exitFullScreen": "Выйти из полноэкранного режима",
@@ -33,6 +37,7 @@
     "showPropertiesPanel": "Показать панель свойств",
     "copyErrorTitle": "Копировать ошибку",
     "expandedDialogLabel": "Развёрнутый вид графа",
-    "firstNodesShown": "Показаны первые {{count}} узлов; есть и другие. Увеличьте лимит в боковом меню."
+    "firstNodesShown": "Показаны первые {{count}} узлов; есть и другие. Увеличьте лимит в боковом меню.",
+    "deleteFrame": "Удалить этот результат"
   }
 }

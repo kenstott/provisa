@@ -95,6 +95,8 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   // org_admin (*) got analyst's two domains and lost meta and ops entirely. Which role won was an
   // accident of list order, so the same account showed different domains as its role set changed.
   // Any active role with `*` means the whole catalog; otherwise the union of the named domains.
+  // That one wildcard role is asked deliberately: it answers every domain, the most any set of
+  // roles holding it can reach, so the set adds nothing to the answer.
   const roleIds = selectedRoles.map((r) => r.id).join(",");
   const wildcardRoleId = selectedRoles.find((r) => r.domain_access.includes("*"))?.id ?? null;
   const namedDomains = [

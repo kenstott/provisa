@@ -148,7 +148,7 @@ async def test_cache_hit_skips_optimize_and_route_recompute():
         assert m_opt.await_count == 1
         assert r2[1].route == r1[1].route
         assert r2[1].source_id == r1[1].source_id
-        assert r2[4] == r1[4]  # sources
+        assert r2[3] == r1[3]  # sources
 
 
 async def test_cache_populates_routing_cache_entry():
@@ -271,8 +271,8 @@ async def test_hot_table_query_never_cached_and_route_tracks_live_state():
         assert m_opt.await_count == 1
     # The hot inline collapses "orders" into a VALUES CTE with no live source left, so routing
     # differs from call 1's plain DIRECT-against-pgsrc route.
-    assert r2[3] is True  # optimized
-    assert r1[3] is False  # optimized
+    assert r2[2] is True  # optimized
+    assert r1[2] is False  # optimized
     # The routing cache must still hold only the one entry from call 1 — the hot call was never
     # written into it (would corrupt the no-optimization invariant the cache depends on).
     assert len(state.routing_cache) == 1

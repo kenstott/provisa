@@ -124,9 +124,13 @@ def test_a_role_not_assigned_finds_no_command():
         )
 
 
-def test_an_empty_list_assigns_the_command_to_every_role():
-    admit_command(_command(), _role("analyst", Capability.WRITE.value), "editThing")
-    admit_command(_command("query"), _role("analyst"), "readThing")
+def test_an_empty_list_assigns_the_command_to_no_role():  # REQ-2153
+    with pytest.raises(CommandNotFound):
+        admit_command(_command(), _role("analyst", Capability.WRITE.value), "editThing")
+    with pytest.raises(CommandNotFound):
+        admit_command(_command("query"), _role("analyst"), "readThing")
+    with pytest.raises(CommandNotFound):  # '*' names no role either
+        admit_command(_command("query", visible_to=["*"]), _role("analyst"), "readThing")
 
 
 def test_an_assigned_role_holding_write_is_admitted():
@@ -138,10 +142,14 @@ def test_an_assigned_role_holding_write_is_admitted():
 def test_a_role_outside_the_command_domain_finds_no_command():
     with pytest.raises(CommandNotFound):
         admit_command(
-            _command(domain="hr"), _role("analyst", Capability.WRITE.value, domains=["sales"]), "x"
+            _command(domain="hr", visible_to=["analyst"]),
+            _role("analyst", Capability.WRITE.value, domains=["sales"]),
+            "x",
         )
     admit_command(
-        _command(domain="sales"), _role("analyst", Capability.WRITE.value, domains=["sales"]), "x"
+        _command(domain="sales", visible_to=["analyst"]),
+        _role("analyst", Capability.WRITE.value, domains=["sales"]),
+        "x",
     )
 
 
@@ -195,7 +203,7 @@ def test_api_renders_the_refusals():  # REQ-1678
     with pytest.raises(ApiError) as refused:
         api_gate(_command(visible_to=["root"]), state, "root", "editThing")
     assert refused.value.status_code == 403
-    assert api_gate(_command(), state, "writer", "editThing")["id"] == "writer"
+    assert api_gate(_command(visible_to=["writer"]), state, "writer", "editThing")["id"] == "writer"
 
 
 # --- admin-only reclassification (REQ-870) -------------------------------------

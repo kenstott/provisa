@@ -129,7 +129,8 @@ def test_an_operators_own_promotion_is_kept_and_not_duplicated():
 def test_great_expectations_is_registered_the_same_way():
     """Two source types, one shape: the licence tier differs, the registration does not."""
     results = _results_table(
-        contract='{"meta": {"dataset": "provisa/sales/orders"}, "expectations": []}'
+        contract='{"meta": {"dataset": "provisa/sales/orders"}, "expectations": '
+        '[{"type": "expect_column_values_to_not_be_null", "kwargs": {"column": "customer"}}]}'
     )
     config = _config(
         results, _target_table(), source=_checker_source(SourceType.great_expectations)
@@ -147,13 +148,12 @@ def test_a_contract_on_a_non_checker_source_is_rejected():
         _validate_dq_contracts(_config(table))
 
 
-def test_a_checker_table_declaring_its_own_product_is_rejected():
-    """REQ-1443 clause 10: membership is inherited from the scanned table, so a declared one could
-    only agree with the derivation or contradict it."""
+def test_a_checker_table_keeps_the_product_it_is_assigned_to():
+    """REQ-1443 PRODUCT ASSIGNMENT: a checker table is assigned to a product as any member is."""
     table = _results_table()
     table.product_id = "orders-product"
-    with pytest.raises(ValueError, match="cannot declare product_id"):
-        _validate_dq_contracts(_config(table, _target_table()))
+    _validate_dq_contracts(_config(table, _target_table()))
+    assert table.product_id == "orders-product"
 
 
 def test_a_checker_table_without_a_contract_is_rejected():
@@ -272,3 +272,28 @@ def test_a_checker_made_in_the_sources_form_names_a_password_only_under_an_auth_
     monkeypatch.setattr(state, "auth_middleware_active", secured)
     monkeypatch.setattr(schema_mutation, "_dq_pgwire_port", lambda: "5439")
     assert schema_mutation.checker_mapping()["password"] == password
+
+
+def test_the_contracts_rules_are_parsed_once_onto_the_table():
+    """REQ-1443 clause 10: the rules a product's panel lists are the contract's own checks, parsed
+    when the table is registered and stored with it, so the meta domain serves them as rows."""
+    results = _results_table()
+    _validate_dq_contracts(_config(results, _target_table()))
+    assert results.dq_rules == [
+        {"column_name": "customer", "check_type": "missing", "definition": "", "extra": ""}
+    ]
+
+
+def test_a_contract_whose_checks_do_not_parse_is_refused_by_name():
+    results = _results_table(
+        contract="dataset: provisa/sales/orders\nchecks:\n  - {missing: null, duplicate: null}\n"
+    )
+    with pytest.raises(ValueError, match="'orders_scans': "):
+        _validate_dq_contracts(_config(results, _target_table()))
+    assert results.dq_rules is None
+
+
+def test_a_contract_with_no_checks_is_refused_by_name():
+    results = _results_table(contract="dataset: provisa/sales/orders\n")
+    with pytest.raises(ValueError, match="'orders_scans': .*no checks"):
+        _validate_dq_contracts(_config(results, _target_table()))

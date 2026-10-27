@@ -21,11 +21,22 @@ into a fresh ``_Translator`` that inherits the outer ``_var_table`` for correlat
 from __future__ import annotations
 
 import copy
+from collections import ChainMap
 from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr, Term
+from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
+from provisa.gql.expr_ast import (
+    CypherExpr,
+    MapProjection,
+    PatternComprehension,
+    Property,
+    SubqueryExpr,
+    Term,
+    Variable,
+)
+from provisa.gql.translator_types import CypherTranslateError
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
@@ -64,6 +75,34 @@ def _comprehension_hop(pattern: PathPattern) -> tuple[str, str | None, str, str 
                 (tgt.labels[0] if tgt.labels else None),
             )
     return None
+
+
+#: The Cypher functions whose value is a string.
+_STRING_FUNCTIONS = frozenset(
+    {
+        "tostring",
+        "tostringornull",
+        "toupper",
+        "tolower",
+        "upper",
+        "lower",
+        "trim",
+        "ltrim",
+        "rtrim",
+        "replace",
+        "substring",
+        "left",
+        "right",
+        "type",
+    }
+)
+
+_TEXT_TYPES = ("text", "varchar", "char", "character", "string", "citext", "nvarchar", "nchar")
+
+
+def is_text_type(registered: str) -> bool:
+    """Whether a registered column type holds text (varchar(64), character varying, ...)."""
+    return registered.strip().lower().startswith(_TEXT_TYPES)
 
 
 # Graph-aware functions resolve against traversal state (var → id column, rel type, JSON shape, …).
@@ -130,6 +169,9 @@ class TranslatorExprContext:
         # instead makes the engine read the whole-row struct (rendered client-side as [object Object]).
         if meta is None and alias != name and name in self._t._cte_sources:
             return _col(name, alias)
+        # An UNWIND variable is its UNNEST's column, not the alias's whole row (a struct).
+        if meta is None and alias in self._t._unwind_aliases:
+            return _col(name, alias)
         return exp.column(alias)
 
     def resolve_property(self, obj: exp.Expression, name: str) -> exp.Expression:
@@ -167,13 +209,28 @@ class TranslatorExprContext:
                 col_name = via_map.attributes.get(name)
                 if col_name is not None:
                     return _via_column(via_alias, col_name)
+                if via_map.type_column is not None and name == via_map.type_attribute:
+                    # The row's own type, as the junction stores it.
+                    return _via_column(via_alias, via_map.type_column)
+                # A property the relationship has not is null, as a node's is.
+                return exp.Null()
+            if var in t._rel_var_types:
+                # An FK/PK relationship has no properties.
+                return exp.Null()
             info = t._var_table.get(var)
             if info and info[1] is not None:
-                sql_alias = info[1].properties.get(name)
+                nm = info[1]
+                if name == NODE_KEY_PROPERTY:
+                    return node_key(info[0], nm)
+                sql_alias = nm.properties.get(name)
                 if sql_alias:
                     return _col(sql_alias, info[0])
-                if name in info[1].native_filter_columns:
+                if name in nm.native_filter_columns:
                     return _col(f"_nf_{name}", info[0])
+                # A property the label has not -- one it does not publish, or the role may not
+                # see -- is null, as a graph's missing property is: a column is never read by a
+                # name the label does not give it.
+                return exp.Null()
             return _col(name, info[0] if info else var)
         if isinstance(obj, exp.Column) and obj.table and obj.name in t._map_vars:
             # A map literal a WITH carries: its key is the column that WITH carries it in (#287).
@@ -198,18 +255,129 @@ class TranslatorExprContext:
         ):
             return False
         via_bound = t._rel_var_via.get(var)
-        if via_bound is not None and via_bound[1].attributes.get(name) is not None:
-            return True
+        if via_bound is not None:
+            return via_bound[1].attributes.get(name) is not None or (
+                via_bound[1].type_column is not None and name == via_bound[1].type_attribute
+            )
         info = t._var_table.get(var)
+        if info and info[1] is not None and name == NODE_KEY_PROPERTY:
+            # A single key is the table's own column; a compound one is a string built from it.
+            return len(info[1].key_columns) <= 1
         return bool(info and info[1] is not None and info[1].properties.get(name))
 
+    def property_type(self, obj: exp.Expression, name: str) -> str | None:
+        """The registered data type of ``var.name`` where ``var`` is bound to one registered table
+        (REQ-778), or the type a node drawn from several tables reads it as; None where the
+        property is no such table's column."""
+        var = obj.name if isinstance(obj, exp.Column) and not obj.table else None
+        domain = self._t._domain_nodes.get(var) if var else None
+        if domain is not None:
+            # A node drawn from several tables: the one type its UNION reads the property as.
+            from provisa.gql.translator_union import union_labels, union_type
+
+            held = union_type(name, union_labels(self._t._lm, domain), self._t._lm)
+            return held.sql(dialect="postgres") if held is not None else None
+        if not self.property_is_table_column(obj, name):
+            return None
+        info = self._t._var_table.get(obj.name)
+        if not info or info[1] is None:
+            return None
+        return dict(info[1].property_types).get(name)
+
+    def temporal_kind(self, expr: CypherExpr) -> str | None:
+        """The temporal kind ``expr`` has (REQ-2173), or None."""
+        from provisa.gql import temporal
+
+        return temporal.kind_of(
+            expr, ChainMap(self._t._temporal_kinds, self._t._param_kinds), self._property_kind
+        )
+
+    def temporal_element_kind(self, expr: CypherExpr) -> str | None:
+        """The temporal kind every item of a list literal has (an UNWIND's variable), or None."""
+        from provisa.gql import temporal
+
+        return temporal.element_kind(
+            expr, ChainMap(self._t._temporal_kinds, self._t._param_kinds), self._property_kind
+        )
+
+    def is_text(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a string: a string literal, a string function's value, a
+        concatenation with a string, a registered text column, or a variable bound to one."""
+        from provisa.gql.expr_ast import Binary, FunctionCall, Literal, Paren
+
+        if isinstance(expr, Paren):
+            return self.is_text(expr.inner)
+        if isinstance(expr, Literal):
+            return expr.kind == "string"
+        if isinstance(expr, Variable):
+            return expr.name in self._t._text_vars
+        if isinstance(expr, Property):
+            if not isinstance(expr.obj, Variable):
+                return False
+            registered = self.property_type(exp.column(expr.obj.name), expr.name)
+            return registered is not None and is_text_type(registered)
+        if isinstance(expr, FunctionCall):
+            name = expr.name.lower()
+            if name in _STRING_FUNCTIONS or name.startswith("apoc.text."):
+                return True
+            # reverse() of a string is a string, of a list a list.
+            return name == "reverse" and len(expr.args) == 1 and self.is_text(expr.args[0])
+        if isinstance(expr, Binary) and expr.op == "+":
+            return self.is_text(expr.left) or self.is_text(expr.right)
+        return False
+
+    def holds_text_items(self, expr: CypherExpr) -> bool:
+        """Whether every item of a list literal is a string (an UNWIND's variable)."""
+        from provisa.gql.expr_ast import ListLiteral
+
+        return (
+            isinstance(expr, ListLiteral)
+            and bool(expr.items)
+            and all(self.is_text(i) for i in expr.items)
+        )
+
+    def temporal_zone(self, expr: CypherExpr) -> str | None:
+        """The zone a time or date time the query builds names (REQ-2173), or None."""
+        from provisa.gql import temporal
+
+        return temporal.zone_of(
+            expr, ChainMap(self._t._temporal_zones, self._t._param_zones), self.temporal_kind
+        )
+
+    def temporal_element_zone(self, expr: CypherExpr) -> str | None:
+        """The zone every item of a list literal names (an UNWIND's variable), or None."""
+        from provisa.gql.expr_ast import ListLiteral
+
+        if not isinstance(expr, ListLiteral) or not expr.items:
+            return None
+        zones = {self.temporal_zone(item) for item in expr.items}
+        return zones.pop() if len(zones) == 1 else None
+
+    def _property_kind(self, node: Property) -> str | None:
+        """A registered column's temporal kind, by its registered type."""
+        from provisa.gql import temporal
+
+        if not isinstance(node.obj, Variable):
+            return None
+        registered = self.property_type(exp.column(node.obj.name), node.name)
+        return temporal.kind_of_type(registered) if registered else None
+
     def resolve_parameter(self, name: str) -> exp.Expression:
+        from provisa.gql import spatial, temporal
+
         t = self._t
         if name not in t._param_seen:
             t._param_order.append(name)
             t._param_seen.add(name)
         idx = t._param_order.index(name) + 1
-        return exp.Parameter(this=exp.Literal.number(idx))
+        placeholder = exp.Parameter(this=exp.Literal.number(idx))
+        # REQ-2173: a temporal value is bound as its text (temporal.bindable), read as its kind;
+        # a point as its list.
+        held = t._param_kinds.get(temporal.parameter_key(name))
+        if held is None:
+            return placeholder
+        held_as = spatial.SQL_TYPE if held == spatial.POINT else temporal.SQL_TYPES[held]
+        return exp.Cast(this=placeholder, to=exp.DataType.build(held_as))
 
     def resolve_function(
         self, name: str, args: list[exp.Expression], *, distinct: bool
@@ -221,6 +389,17 @@ class TranslatorExprContext:
             agg = self._agg_node(lname, args[0])
             if agg is not None:
                 return agg
+        if lname == "group_concat":
+            # REQ-2135: SPARQL's GROUP_CONCAT, each engine's own string aggregate over the values'
+            # text, the separator its second argument. Ordered by the text, since an engine
+            # (Trino's LISTAGG) requires an order, and so the string is the same each time.
+            if distinct:
+                raise CypherTranslateError("GROUP_CONCAT(DISTINCT ...) is not supported")
+            text = exp.Cast(this=args[0], to=exp.DataType.build("VARCHAR"))
+            return exp.GroupConcat(
+                this=exp.Order(this=text, expressions=[exp.Ordered(this=text.copy())]),
+                separator=args[1],
+            )
         # Build the raw call; Cypher→engine renames/casts are applied once, post-lowering, by the same
         # AST transform the old path uses (`_rewrite_cypher_fn_node`). DISTINCT is carried on aggregates.
         call = exp.Anonymous(this=name, expressions=args)
@@ -271,9 +450,11 @@ class TranslatorExprContext:
         t = self._t
         nm = (t._var_table.get(var) or (None, None))[1]
         if name == "length":
+            # A recursive walk counts its hops (#309); shortestPath reads the same column.
+            recursive = var in t._path_vars and t._path_vars[var][2]
             return (
                 _col("hops", "_t")
-                if t._shortestpath_hops_col is not None
+                if t._shortestpath_hops_col is not None or recursive
                 else exp.Literal.number(1)
             )
         if name == "id":
@@ -281,7 +462,10 @@ class TranslatorExprContext:
                 return _col(nm.id_column, var)
             return _col("__id", var) if var in t._domain_nodes else None
         if name == "labels":
-            return exp.Array(expressions=[exp.Literal.string(nm.label)]) if nm is not None else None
+            if nm is not None:
+                return exp.Array(expressions=[exp.Literal.string(nm.label)])
+            # A node matched with no label: the label of the table its row is from.
+            return exp.Array(expressions=[_col("__label", var)]) if var in t._domain_nodes else None
         if name == "keys":
             if nm is None:
                 # REQ-1586: keys(r) on a junction-backed edge lists its attribute names.
@@ -411,6 +595,74 @@ class TranslatorExprContext:
             return exp.Subquery(this=counted)
         return _anon("ARRAY", inner_select)  # COLLECT
 
+    def resolve_graph_element(self, name: str) -> exp.Expression | None:
+        t = self._t
+        endpoints = t._rel_var_endpoints.get(name)
+        if endpoints is not None and name in t._rel_var_types:
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
+            return t._build_edge_object(
+                t._rel_var_type_exprs.get(name) or t._rel_var_types[name],
+                src_alias,
+                src_nm,
+                tgt_alias,
+                tgt_nm,
+                is_reversed,
+                t._rel_var_via.get(name),
+            )
+        alias, nm = t._var_table.get(name, (name, None))
+        if nm is not None:
+            from provisa.gql.select_builder import node_json
+
+            return node_json(alias, nm)
+        return None
+
+    def resolve_graph_identity(
+        self, name: str
+    ) -> tuple[tuple[str, ...], list[exp.Expression]] | None:
+        t = self._t
+        endpoints = t._rel_var_endpoints.get(name)
+        if endpoints is not None and name in t._rel_var_types:
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
+            if is_reversed:
+                # Its ends as the relationship is registered: source first.
+                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+            if name in t._rel_var_type_exprs:
+                raise CypherTranslateError(
+                    f"{name} is one of several relationship types; compare it by type(...) and "
+                    "its ends"
+                )
+            kind = ("rel", t._rel_var_types[name], src_nm.table_name, tgt_nm.table_name)
+            return kind, [node_key(src_alias, src_nm), node_key(tgt_alias, tgt_nm)]
+        if name in t._rel_var_types:
+            return None
+        alias, nm = t._var_table.get(name, (name, None))
+        if nm is None:
+            return None
+        kind = ("node", nm.catalog_name, nm.schema_name, nm.table_name)
+        return kind, [node_key(alias, nm)]
+
+    def resolve_graph_absent(self, name: str) -> exp.Expression | None:
+        t = self._t
+        if name in t._rel_var_types:
+            matched = t._rel_var_matched.get(name)
+            if matched is not None:
+                # Between two held nodes (#303): absent where its condition does not hold.
+                return exp.Case(
+                    ifs=[exp.If(this=matched.copy(), true=exp.false())], default=exp.true()
+                )
+            endpoints = t._rel_var_endpoints.get(name)
+            if name in t._optional_rel_vars and endpoints is not None:
+                # As RETURN r reads it (select_builder): absent where its far end joined no row.
+                _, _, tgt_alias, tgt_nm, _ = endpoints
+                return exp.Is(this=_col(tgt_nm.id_column, tgt_alias), expression=exp.Null())
+            if name not in t._optional_rel_vars:
+                return exp.false()
+            return None
+        alias, nm = t._var_table.get(name, (name, None))
+        if nm is not None:
+            return exp.Is(this=_col(nm.id_column, alias), expression=exp.Null())
+        return None
+
     def resolve_map_projection(self, node: MapProjection) -> exp.Expression:
         # n{.a, x: e, .*} → MAP(ARRAY['a','x',...], ARRAY[n."a", (e), ...]) — dotted selectors use the
         # raw property name; literal entries lower their value expression (matching the text path).
@@ -420,16 +672,18 @@ class TranslatorExprContext:
         nm = info[1] if info else None
         keys: list[exp.Expression] = []
         vals: list[exp.Expression] = []
+        # Each selector read as var.prop is: the property's column, under the variable's alias;
+        # each value encoded to JSON, as a map literal's are, so a map of several types is one.
         for prop in node.properties:
             keys.append(exp.Literal.string(prop))
-            vals.append(_col(prop, node.var))
+            vals.append(_anon("to_json", self.resolve_property(exp.column(node.var), prop)))
         if node.all_props and nm is not None:
             for prop in sorted(nm.properties.keys()):
                 keys.append(exp.Literal.string(prop))
-                vals.append(_col(prop, node.var))
+                vals.append(_anon("to_json", self.resolve_property(exp.column(node.var), prop)))
         for key, value in node.literal_entries:
             keys.append(exp.Literal.string(key))
-            vals.append(ExprLowering(self).lower(value))
+            vals.append(_anon("to_json", ExprLowering(self).lower(value)))
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=vals))
 
     def resolve_pattern_comprehension(self, node: PatternComprehension) -> exp.Expression:
@@ -450,7 +704,8 @@ class TranslatorExprContext:
             # relationship of the source.
             from provisa.gql.translator_types import UnregisteredRelationshipType
 
-            raise UnregisteredRelationshipType([rel_type])
+            registered = set(t._lm.aliases) | {r.rel_type for r in t._lm.relationships.values()}
+            raise UnregisteredRelationshipType([rel_type], registered)
         if rel is None:
             src_nm = (t._var_table.get(src_var) or (None, None))[1]
             if src_nm is not None:

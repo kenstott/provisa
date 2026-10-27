@@ -25,35 +25,16 @@ vi.mock("../api/metadataExport", () => ({
   publishMetadataExport: vi.fn(),
 }));
 
+vi.mock("../api/catalogs", () => ({
+  fetchCatalogs: vi.fn().mockResolvedValue({ providers: [], catalogs: [] }),
+}));
+
 import { fetchMetadataExport } from "../api/metadataExport";
 
 const config: MetadataExportState["config"] = {
   enabled: true,
   reconcile_cron: "0 * * * *",
-  targets: [
-    {
-      id: "marquez",
-      provider: "openlineage",
-      endpoint: "http://marquez:5000",
-      auth_mode: "api_key",
-      username: "",
-      entra_tenant_id: "",
-      entra_client_id: "",
-      gcp_project: "",
-      gcp_location: "",
-      aws_region: "",
-      datazone_domain_id: "",
-      datazone_project_id: "",
-      delta_share: false,
-      timeout_seconds: 30,
-      api_key_set: true,
-      token_set: false,
-      entra_client_secret_set: false,
-      google_service_account_json_set: false,
-      aws_access_key_id_set: false,
-      aws_secret_access_key_set: false,
-    },
-  ],
+  targets: [{ catalog: "marquez", datazone_project_id: "", delta_share: false, role: "steward" }],
 };
 
 const STATES: Record<string, MetadataExportState> = {
@@ -61,6 +42,8 @@ const STATES: Record<string, MetadataExportState> = {
     entitled: true,
     required_tier: "premium",
     providers: ["openlineage"],
+    beta_providers: [],
+    publishable_roles: ["steward"],
     config,
     last_publish: null,
   },
@@ -68,6 +51,8 @@ const STATES: Record<string, MetadataExportState> = {
     entitled: true,
     required_tier: "premium",
     providers: ["openlineage"],
+    beta_providers: [],
+    publishable_roles: ["steward"],
     config: { ...config, enabled: false, targets: [] },
     last_publish: null,
   },
@@ -75,6 +60,8 @@ const STATES: Record<string, MetadataExportState> = {
     entitled: false,
     required_tier: "premium",
     providers: [],
+    beta_providers: [],
+    publishable_roles: ["steward"],
     config,
     last_publish: null,
   },

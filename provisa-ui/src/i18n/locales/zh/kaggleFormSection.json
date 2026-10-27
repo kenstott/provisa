@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Kaggle API 令牌",
-    "tokenDescription": "在数据集选择器解锁之前，会通过 Kaggle API 实时验证",
+    "tokenDescription": "通过 Kaggle 实时检查。保存为数据源的凭据，并在每次刷新时再次使用。",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "验证令牌",
     "tokenValid": "令牌有效",

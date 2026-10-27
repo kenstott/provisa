@@ -25,7 +25,7 @@ from provisa.api.data.action_governance import (
 )
 from provisa.api.errors import ApiError
 from provisa.compiler.rls import RLSContext
-from provisa.security.inheritance import materialize_rls, role_chains
+from provisa.security.inheritance import materialize_rls, parent_map
 from tests.role_state import RoleState
 
 
@@ -55,7 +55,7 @@ CONTRACT = [
         "type": "varchar",
         "masks": [
             {"to": ["org_admin"], "mask": None},
-            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+            {"mask": {"type": "constant", "value": "***"}},
         ],
     },
     {"name": "amount", "type": "double", "visible_to": ["org_admin"]},
@@ -65,7 +65,13 @@ ROWS = [
     {"id": 2, "region": "west", "ssn": "222", "amount": 20.0},
     {"id": 3, "region": "east", "ssn": "333", "amount": 30.0},
 ]
-FN = {"name": "customer_lookup", "domain_id": "sales", "output_columns": CONTRACT}
+# The roles the command is assigned to: a contract column that declares no grant is theirs.
+FN = {
+    "name": "customer_lookup",
+    "domain_id": "sales",
+    "output_columns": CONTRACT,
+    "visible_to": ["analyst", "org_admin"],
+}
 
 
 def _state(rls_by_role: dict[str, RLSContext] | None = None, roles: dict | None = None):
@@ -74,16 +80,19 @@ def _state(rls_by_role: dict[str, RLSContext] | None = None, roles: dict | None 
         "analyst": {
             "id": "analyst",
             "capabilities": ["full_results"],
+            "domain_access": ["sales"],
             "session_vars": {"region": "east"},
         },
         "org_admin": {
             "id": "org_admin",
             "description": "Test role.",
             "capabilities": ["admin", "full_results"],
+            "domain_access": ["*"],
         },
         "junior": {
             "id": "junior",
             "capabilities": ["full_results"],
+            "domain_access": ["sales"],
             "session_vars": {"region": "east"},
         },
     }
@@ -170,6 +179,22 @@ class TestGovern:
         rows, _ = await govern_action_rows(ROWS, FN, "analyst", st)
         assert [r["id"] for r in rows] == [3]
 
+    async def test_a_contract_column_is_served_by_the_one_column_rule(self):
+        """REQ-2152: a contract column goes through column_served in the action's domain: a
+        grant to analyst serves junior, who inherits it; a grant to org_admin alone does not."""
+        fn = {
+            **FN,
+            "output_columns": [
+                {"name": "id", "type": "integer"},
+                {"name": "bonus", "type": "double", "visible_to": ["analyst"]},
+                {"name": "audit", "type": "varchar", "visible_to": ["org_admin"]},
+            ],
+        }
+        rows = [{"id": 1, "bonus": 2.0, "audit": "x"}]
+        governed, enf = await govern_action_rows(rows, fn, "junior", _state())
+        assert governed == [{"id": 1, "bonus": 2.0}]
+        assert enf.columns_excluded == ["audit"]
+
     async def test_admin_sees_everything_unmasked(self):
         rows, enf = await govern_action_rows(ROWS, FN, "org_admin", _state())
         assert len(rows) == 3 and rows[0]["ssn"] == "111" and rows[0]["amount"] == 10.0
@@ -200,8 +225,8 @@ class TestGovern:
                 "filter_expr": "region = 'west'",
             }
         ]
-        chains = role_chains([{"id": "analyst"}, {"id": "junior", "parent_role_id": "analyst"}])
-        out = materialize_rls(rules, [], chains, [FN])
+        parents = parent_map([{"id": "analyst"}, {"id": "junior", "parents": ["analyst"]}])
+        out = materialize_rls(rules, [], parents, [FN])
         from provisa.compiler.rls import build_rls_context
 
         junior = build_rls_context(out, "junior")

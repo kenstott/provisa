@@ -23,7 +23,6 @@
     "descriptionLabel": "תיאור",
     "descriptionPlaceholder": "מופיע בתיעוד SDL",
     "dataProductLabel": "מוצר נתונים",
-    "dataProductHint": "(פרסום לקטלוג / ייצוא ל-Atlas, Atlan וכו')",
     "discoverLabel": "גילוי עמודות",
     "discoverHint": "(הסקת עמודות מהמקור החי בעת הרישום — למקורות ללא סכמה/NoSQL; אין צורך בבחירת עמודות ידנית)",
     "watermarkLabel": "עמודת Watermark",
@@ -62,7 +61,6 @@
     "dqResultsTableHint": "(נגזרת מהטבלה הנסרקת; שורה אחת לכל בדיקה בכל סריקה, כל הסריקות נשמרות)",
     "dqResultsTablePlaceholder": "בחרו למעלה את הטבלה לסריקה",
     "dqVisibleToLabel": "התוצאות גלויות ל-",
-    "dqDescription": "תוצאות סריקת איכות עבור {{table}} — שורה אחת לכל בדיקה בכל סריקה, עם תוצאה, ערך מדד וסף",
     "errorDqContract": "בחרו את הטבלה לסריקה בלוח איכות הנתונים.",
     "errorDqVisibleTo": "התוצאות חייבות להיות גלויות לתפקיד אחד לפחות.",
     "dqScanIntervalLabel": "סריקה כל (שניות)",
@@ -136,6 +134,9 @@
     "qdrantVectors": "וקטורים של {{collection}}",
     "qdrantVector": "{{name}}: {{size}} ממדים, מדורג לפי {{distance}}",
     "qdrantUnnamedVector": "(ללא שם)",
-    "continue": "המשך"
+    "continue": "המשך",
+    "checkReasonLabel": "למה הבדיקה הזו קיימת",
+    "checkReasonHint": "הבטחת האיכות במונחים עסקיים; היא מופיעה מעל הבדיקה בכל מוצר.",
+    "checkReasonPlaceholder": "ההזמנות שלמות וייחודיות כדי שההכנסות היומיות יתאמו לכספים"
   }
 }

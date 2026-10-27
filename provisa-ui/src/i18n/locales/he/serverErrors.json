@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "לא רשומה שאילתת gRPC עבור הטבלה '{{table}}'",
       "no_mutation_fields": "לא נמצאו שדות מוטציה",
       "no_proto_for_role": "לתפקיד '{{role_id}}' אין proto: לא ניתן לו משטח נתונים, מפני שאינו מגיע לאף תחום או שיש לו רק הרשאות של מישור הבקרה",
+      "role_served_nothing": "לתפקיד '{{role_id}}' לא מוגשת אף טבלה: לא הוענקה לו אף עמודה של אף טבלה",
       "no_query_field_for_proto_type": "אין שדה שאילתה עבור סוג ה-proto '{{type_name}}' תחת התפקיד '{{role_id}}'",
       "no_query_fields": "לא נמצאו שדות שאילתה",
       "no_role": "אין תפקיד '{{role_id}}'",
@@ -129,7 +130,12 @@
       "address_not_found": "אין מה לפענח: {{reason}}",
       "mixed_resolve_and_other_fields": "לא ניתן לשלב את resolve עם שדות שורש אחרים באותה פעולה",
       "source_starting": "המקור {{source}} עדיין מופעל. נסה שוב בעוד רגע.",
-      "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}."
+      "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}.",
+      "graphql_body_missing": "לבקשה אין גוף: בקשת GraphQL היא אובייקט JSON עם שאילתה.",
+      "graphql_body_not_json": "גוף הבקשה אינו JSON: {{error}}",
+      "graphql_request_not_object": "בקשת GraphQL היא אובייקט JSON עם שאילתה.",
+      "graphql_parameter_type": "הפרמטר {{parameter}} של בקשת ה-GraphQL חייב להיות {{expected}}.",
+      "graphql_mutation_over_get": "מוטציה נשלחת ב-POST, אף פעם לא ב-GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -256,10 +262,15 @@
       "database_unavailable": "מסד הנתונים אינו זמין",
       "query_engine_unavailable": "מנוע השאילתות אינו זמין",
       "role_header_required": "נדרשת כותרת X-Provisa-Role כדי לבצע פרופיל של תצוגה (View)",
-      "table_not_found": "הטבלה {{table_id}} לא נמצאה"
+      "table_not_found": "הטבלה {{table_id}} לא נמצאה",
+      "column_not_found": "העמודה {{column}} אינה עמודה של הטבלה ש-org_admin קורא",
+      "classification_kind_unknown": "סוג סיווג לא ידוע {{kind}}",
+      "classification_status_invalid": "החלטת סיווג היא התקבל או נדחה, לא {{status}}",
+      "classification_decision_not_found": "אין החלטה לגבי {{column}} כ-{{kind}}",
+      "classification_pii_refused": "לא ניתן היה לסמן את העמודה כ-PII"
     },
     "replication": {
-      "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",
+      "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: [{{content_type}}] {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",
       "no_whole_copy": "לטבלה {{schema}}.{{table}} של המקור {{source}} אין עותק שלם לבנות: היא משוכפלת שורה אחר שורה, או שיש לה עמודת פרמטר.",
       "page_limit_reached": "הרפליקה של {{table}} לא נבנתה: העימוד של נקודת הקצה נעצר ב-max_pages={{max_pages}}, ולנקודת הקצה היו נתונים נוספים אחרי עמוד {{max_pages}} ({{rows}} שורות נקראו). רפליקה היא הטבלה כולה, ולכן אינה נחתכת במגבלה. הגדילו את max_pages או את גודל העמוד של נקודת הקצה.",
       "row_limit_reached": "הרפליקה של {{table}} לא נבנתה: קריאה שלה נעצרת ב-max_rows={{max_rows}} (graphql_remote.max_rows), ולמקור המרוחק היו נתונים נוספים אחרי {{rows}} שורות. רפליקה היא הטבלה כולה, ולכן אינה נחתכת במגבלה. הגדילו את graphql_remote.max_rows.",
@@ -273,7 +284,7 @@
     "roles": {
       "cannot_delete_system": "לא ניתן למחוק תפקידי מערכת",
       "cannot_modify_administrative": "לא ניתן לשנות תפקידי ניהול",
-      "has_dependents": "{{count}} אובייקט(ים) עדיין מפנים אל התפקיד {{role}}; יש להסיר תחילה את ההפניות האלה",
+      "has_dependents": "אובייקטים אחרים עדיין מפנים אל התפקיד {{role}}; יש להסיר תחילה את ההפניות האלה",
       "not_found": "התפקיד לא נמצא",
       "org_selection_required": "נדרשת בחירת ארגון",
       "already_exists": "התפקיד '{{role}}' כבר קיים",
@@ -288,9 +299,9 @@
       "cache_purged": "נוקו {{count}} רשומות מטמון",
       "cache_purged_table": "נוקו {{count}} רשומות מטמון עבור הטבלה {{table}}",
       "calendar_deleted": "לוח השנה '{{calendar}}' נמחק",
-      "calendar_in_use": "לוח השנה '{{calendar}}' נמצא בשימוש על ידי {{count}} Materialized View — נקו את לוח הזמנים של תמונות המצב שלהם לפני המחיקה",
+      "calendar_in_use": "לוח השנה '{{calendar}}' נמצא בשימוש על ידי Materialized Views — נקו את לוח הזמנים של תמונות המצב שלהם לפני המחיקה",
       "calendar_not_found": "לוח השנה '{{calendar}}' לא נמצא",
-      "calendar_saved": "לוח השנה '{{calendar}}' v{{version}} נשמר",
+      "calendar_saved": "לוח השנה '{{calendar}}' {{version}} נשמר",
       "column_natively_nested": "לא ניתן לרשום: העמודה {{column}} היא באופן מקורי {{native_type}} במקור שלה, ולכן הסוג שלה הוא json ולא {{type}}.",
       "column_types_unresolved": "לא ניתן לרשום: לא נמצא סוג נתונים מהמקור עבור העמודות: {{columns}}. בצעו Introspection לטבלה (Discover schema) או הגדירו Data Type לכל אחת לפני הרישום.",
       "config_not_found": "קובץ התצורה לא נמצא",
@@ -336,6 +347,7 @@
       "change_signal_no_topic": "הטבלה '{{table}}' של המקור '{{source}}' משתמשת באות השינוי kafka אך אינה מציינת topic ב-live.kafka.topic, ולכן דבר לא ירענן אותה.",
       "change_signal_no_receiver": "Provisa אינה מקבלת את אות השינוי {{signal}} ממקור מסוג {{type}}, ולכן טבלה של המקור '{{source}}' לעולם לא תתעדכן באמצעותו. לכדו את המקור באמצעות Debezium והשתמשו ב-debezium.",
       "change_signal_not_honoured": "מקור מסוג {{type}} עדיין אינו ניתן לבדיקת שינויים, ולכן אות השינוי {{signal}} לעולם לא יישאל. השתמשו ב-ttl עבור המקור '{{source}}'.",
+      "row_materialize_no_key_fetch": "לא ניתן לשכפל את {{table}} שורה אחר שורה: לסכמה המרוחקת שלה אין שדה שמחזיר את השורות שלה עבור רשימה של המפתח הראשי שלה.",
       "sentinel_path_not_applicable": "למקור מסוג {{type}} לא יכול להיות נתיב זקיף: אין יצרן משלכם שיכול לסמן שינוי בנתוניו, או שהמקור אינו נבדק. הסירו את נתיב הזקיף מהמקור '{{source}}'.",
       "source_cache_ttl_required": "המקור '{{source}}' זקוק ל-TTL של המטמון: כל טבלה שלו היא רפליקה, המתרענן לפי שעון זה תחת אות השינוי {{signal}}. הגדירו אותו תחת ״ניהול עומס ועדכניות״ במקור.",
       "landing_ttl_required": "הטבלה '{{table}}' היא רפליקה המתרענן לפי TTL של המטמון, ולא לה ולא למקור שלה '{{source}}' יש כזה. הגדירו את ה-TTL של המטמון תחת ״ניהול עומס ועדכניות״ במקור, או בטבלה עצמה לאחר רישומה.",
@@ -427,6 +439,7 @@
       "relationship_unknown_source": "טבלת המקור '{{table}}' אינה רשומה",
       "relationship_unknown_target": "טבלת היעד '{{table}}' אינה רשומה",
       "relationship_unknown_junction": "טבלת הקישור '{{table}}' אינה רשומה",
+      "relationship_column_beyond_reads": "קשר יכול לחבר רק עמודות שהתפקיד שלך יכול לקרוא.",
       "source_id_taken": "המקור '{{source}}' כבר קיים",
       "domain_id_taken": "התחום '{{domain}}' כבר קיים",
       "role_id_taken": "התפקיד '{{role}}' כבר קיים",
@@ -453,7 +466,8 @@
       "relationship_same_entity_direct": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: הוא מצטרף דרך טבלת קישור או פונקציה, לא שורה לשורה",
       "relationship_same_entity_cardinality": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: הוא {{cardinality}}, ואותה ישות היא שורה לשורה",
       "relationship_same_entity_not_grounded": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{source}} ו-{{target}} אינן מעוגנות באותו מונח",
-      "relationship_same_entity_not_keys": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{columns}} אינו המפתח הראשי או מפתח ייחודי של {{table}}"
+      "relationship_same_entity_not_keys": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{columns}} אינו המפתח הראשי או מפתח ייחודי של {{table}}",
+      "kaggle_token_missing": "מערך הנתונים {{owner}}/{{ref}} של Kaggle: למקור הנתונים אין אסימון API של Kaggle. הוסיפו אותו בטופס מקורות נתונים, שבו מוזן האסימון שלו."
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",
@@ -483,7 +497,10 @@
       "unknown_encryption_provider": "ספק הצפנה לא מוכר '{{provider}}'",
       "unknown_engine": "מנוע לא מוכר '{{engine}}'; תקפים: {{valid}}",
       "use_domains_invalid": "use_domains חייב להיות true, false או null",
-      "claims_with_multitenancy": "פריסה מרובת דיירים אינה יכולה לקרוא הקצאות תפקידים מתוך claims של הכניסה: היא מעניקה תפקידים בעצמה, לכל ארגון, וה-claims היו דורסים אותם. הגדירו את מקור ההקצאות ל-Provisa."
+      "claims_with_multitenancy": "פריסה מרובת דיירים אינה יכולה לקרוא הקצאות תפקידים מתוך claims של הכניסה: היא מעניקה תפקידים בעצמה, לכל ארגון, וה-claims היו דורסים אותם. הגדירו את מקור ההקצאות ל-Provisa.",
+      "federation_unknown_field": "זו אינה הגדרת פדרציה: {{fields}}",
+      "federation_invalid": "הגדרת פדרציה לא תקינה: {{error}}",
+      "federation_role_unknown": "תפקיד הפדרציה '{{role}}' אינו תפקיד של ארגון זה"
     },
     "setup": {
       "admin_credentials_required": "admin_username ו-admin_password נדרשים",
@@ -528,7 +545,38 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "לא ניתן היה לבצע ספירה, ולכן הסכום אינו ידוע: {{statement}}: {{reason}}"
+      "count_unknown": "לא ניתן היה לבצע ספירה, ולכן הסכום אינו ידוע: {{statement}}: {{reason}}",
+      "access_violations": "תפקיד זה אינו רשאי להריץ שאילתה זו:",
+      "invalid_regex": "התבנית \"{{pattern}}\" ב-{{expression}} אינה ביטוי רגולרי תקין: {{reason}}. =~ מקבל ביטוי רגולרי, למשל \".*{{word}}.*\", או השתמשו ב-CONTAINS \"{{word}}\".",
+      "unknown_label": "אין תווית :{{label}}. תוויות רשומות: {{suggestions}}.",
+      "no_labels": "אין תווית :{{label}}: תפקיד זה אינו יכול לקרוא אף טבלה.",
+      "unknown_relationship_type": "אין סוג קשר {{types}}. הסוגים הרשומים הקרובים ביותר: {{suggestions}}.",
+      "no_relationship_types": "אין סוג קשר {{types}}: תפקיד זה אינו יכול לעבור על אף קשר.",
+      "type_mismatch": "ב-{{expression}}, לא ניתן להשוות את {{value}} ל-{{property}}, שסוגו {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE אינו יכול להשתמש בצבירה {{aggregate}}: WHERE מסנן שורות לפני שהן מקובצות. בצעו צבירה ב-WITH וסננו אחריו.",
+      "nested_aggregate": "{{outer}} צובר את הצבירה {{inner}}: אי אפשר לצבור צבירה אחרת. בצעו צבירה ב-WITH תחילה.",
+      "node_and_relationship": "{{variable}} מציין גם צומת וגם קשר: משתנה מציין דבר אחד. תנו לכל אחד משתנה משלו.",
+      "path_variable_reused": "{{variable}} מציין את הנתיב וגם צומת או קשר שבו: משתנה מציין דבר אחד. תנו לכל אחד משתנה משלו.",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] צובר בתוך הבנת רשימה, שקוראת רשימה אחת בכל פעם. בצעו צבירה ב-WITH תחילה והשתמשו בתוצאה ברשימה.",
+      "length_of_entity": "length({{variable}}) מקבל נתיב, ו-{{variable}} הוא צומת או קשר. קשרו נתיב, MATCH p = ..., והשתמשו ב-length(p).",
+      "column_name_conflict": "{{clause}} נותן לשתי עמודות את השם {{column}}: לכל עמודה שם משלה. שנו את שם אחת מהן עם AS.",
+      "union_mixed": "UNION ו-UNION ALL מעורבבים במשפט אחד: השתמשו באחד מהם לאורך כל המשפט.",
+      "union_columns_differ": "המשפטים ש-UNION מחבר מחזירים עמודות שונות, {{first}} ו-{{second}}: כל אחד מחזיר את אותם שמות עמודות.",
+      "integer_overflow": "{{value}} מחוץ לטווח של מספר שלם, ‎-9223372036854775808 עד 9223372036854775807.",
+      "invalid_unicode_escape": "רצף הבריחה {{escape}} במחרוזת אינו רצף ש-Cypher קורא. בריחת Unicode היא ‎\\u וארבע ספרות הקסדצימליות, למשל ‎\\u00e9.",
+      "boolean_operand": "{{operator}} מקבל true,‏ false או null, וניתן לו ערך מסוג אחר שנכתב במשפט.",
+      "nondeterministic_aggregate": "{{aggregate}} צובר את rand()‎, שמשתנה בכל קריאה. חשבו אותו תחילה ב-WITH וצברו את התוצאה.",
+      "value_as_node": "MATCH קורא את {{variable}} כצומת או כקשר, והמשפט קושר אותו לערך שאינו אף אחד מהם. תנו לצומת משתנה משלו.",
+      "undefined_variable": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} אינו מספר שלם של שורות: LIMIT מקבל מספר של 0 ומעלה, למשל LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} אינו מספר שלם של שורות: SKIP מקבל מספר של 0 ומעלה, למשל SKIP 10.",
+      "engine_refused": "המנוע דחה את השאילתה: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} קורא את {{variable}}, אך המשפט אינו קושר אף משתנה: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL.",
+      "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
+      "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
+      "non_finite_number": "התשובה מכילה מספר ש-JSON אינו יכול לייצג: {{column}} הוא {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה."
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם ליצור קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",
@@ -542,6 +590,7 @@
     "statement": {
       "rows_cut": "התשובה נחתכה ב-{{limit}} שורות, מגבלת השורות החלה על קריאה זו ({{kind}}): יש יותר שורות תואמות מאלה שהוחזרו.",
       "rows_cut_unchecked": "בתשובה יש {{limit}} שורות, מגבלת השורות החלה על קריאה זו ({{kind}}). לא ניתן היה לבדוק אם יש שורות תואמות נוספות: {{reason}}",
+      "list_at_ceiling": "רשימה מכילה את המקסימום של {{limit}} רשומות שמגבלת השורות מתירה לקריאה זו ({{kind}}); ייתכן שיש בה יותר.",
       "approximate_index": "השורות הדומות ביותר נמצאו באמצעות אינדקס וקטורי מקורב: ייתכן שחסרה שורה דומה מעט יותר מהשורה האחרונה שהוחזרה.",
       "path_cut": "נתיב ללא גבול עליון נקטע במגבלת עומק הגרף של {{limit}} קפיצות: נתיבים ארוכים יותר חסרים בתשובה."
     },
@@ -662,6 +711,34 @@
       "also_term_needs_column": "תיוג המונח במקום זאת דורש עמודה.",
       "inherited_from_term": "עמודה זו היא PII כי משמעותה {{term}}. הסירו את הסימון מהמשמעות הזו, או העבירו את העמודה אם משמעותה אחרת.",
       "move_loses": "העברה זו מסירה תגים מעמודות שלא יישאו אותם עוד. אשרו את אובדן כל תג, או העבירו את התגים למונח שאליו עוברות העמודות."
+    },
+    "data_product": {
+      "status": {
+        "published": "מוצר הנתונים {{data_product}} פורסם.",
+        "deprecated": "מוצר הנתונים {{data_product}} סומן כמיושן.",
+        "retired": "מוצר הנתונים {{data_product}} הוצא משימוש.",
+        "restored": "מוצר הנתונים {{data_product}} שוחזר.",
+        "reason_required": "נדרשת סיבה: ציינו מדוע מוצר הנתונים מסומן כמיושן או מוצא משימוש.",
+        "not_found": "מוצר הנתונים {{data_product}} לא נמצא.",
+        "not_draft": "אפשר לפרסם רק מוצר נתונים בטיוטה; מוצר זה במצב {{status}}.",
+        "not_live": "אפשר לסמן כמיושן רק מוצר נתונים פעיל, ולהוציא משימוש רק מוצר פעיל או מיושן; מוצר זה במצב {{status}}.",
+        "not_restorable": "אפשר לשחזר רק מוצר נתונים מיושן או שהוצא משימוש; מוצר זה במצב {{status}}.",
+        "retire_on_past": "תאריך ההוצאה משימוש המתוכנן {{retire_on}} כבר עבר. בחרו את היום או תאריך מאוחר יותר.",
+        "successor_required": "למוצר נתונים זה יש {{members}} חברים; הוצאתו משימוש מעבירה אותם למחליף. בחרו מחליף.",
+        "successor_is_self": "מוצר נתונים אינו יכול להחליף את עצמו.",
+        "successor_retired": "המחליף '{{successor}}' הוצא משימוש. בחרו מוצר נתונים שנמצא בשימוש.",
+        "successor_other_domain": "המחליף '{{successor}}' נמצא בתחום {{domain}}. חברי מוצר חולקים את התחום שלו, לכן בחרו מחליף באותו תחום."
+      },
+      "finding": {
+        "no_members": "אף טבלה, תצוגה או פקודה אינן שייכות למוצר נתונים זה.",
+        "member_deprecated": "טבלת החבר {{table}} מיושנת.",
+        "no_owner": "אף תפקיד בעלים אינו אחראי על מוצר נתונים זה.",
+        "no_support_contact": "למוצר נתונים זה אין איש קשר לתמיכה, שיעד ייצוא מוגדר מחייב.",
+        "retirement_blocked": "מוצר נתונים זה היה אמור לצאת משימוש ב-{{retire_on}}, אבל עדיין יש לו חברים. הוציאו אותו משימוש עם מחליף שיקבל אותם.",
+        "domain_steward_unset": "לתחום {{domain}} אין Steward.",
+        "no_description": "מוצר נתונים זה אינו מציין את מטרתו או את אופן השימוש בו.",
+        "successor_retired": "מוצר הנתונים שקיבל את החברים של מוצר זה, '{{successor}}', הוצא גם הוא משימוש."
+      }
     }
   }
 }

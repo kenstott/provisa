@@ -36,7 +36,7 @@ import threading
 import time
 from dataclasses import dataclass
 from dataclasses import field as _dc_field
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple, cast
 
 from provisa.federation.execution_auth import plan_authorization
 
@@ -54,6 +54,7 @@ from buenavista.postgres import (
 from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
+from provisa.transpiler.transpile import DIVISION_BY_ZERO  # REQ-2167: its SQLSTATE
 from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -117,9 +118,9 @@ _REDIRECT_SET_RE = re.compile(
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.redirect(?:_format)?))\s*;?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
-# REQ-2110: a session's time travel, read on every statement it runs as a request's
-# X-Provisa-As-Of / X-Provisa-As-Recorded are on the HTTP transports: SET provisa.as_of /
-# provisa.as_recorded, RESET either, or SET either TO DEFAULT.
+# REQ-2110: a session's time travel, the default every statement it runs reads at where a
+# reference says no time of its own (REQ-1163): SET provisa.as_of / provisa.as_recorded, RESET
+# either, or SET either TO DEFAULT.
 _TIME_TRAVEL_SET_RE = re.compile(
     r"^\s*(?:SET\s+(?:SESSION\s+)?(?P<key>provisa\.as_(?:of|recorded))\s*(?:=|\s+TO\s+)\s*"
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.as_(?:of|recorded)))\s*;?\s*$",
@@ -165,13 +166,127 @@ def _redirect_row(handle: dict | None, delivery: Any):
     )
 
 
+# An engine error's class → the SQLSTATE PostgreSQL reports for the same failure. Any other
+# exception is XX000 (internal_error), as PostgreSQL reports an error it has no class for.
+_SQLSTATE_BY_CLASS: dict[str, str] = {
+    "ParserException": "42601",  # syntax_error
+    "CatalogException": "42P01",  # undefined_table
+    "BinderException": "42703",  # undefined_column
+    "ConversionException": "22P02",  # invalid_text_representation
+    "OutOfRangeException": "22003",  # numeric_value_out_of_range
+    "PermissionError": "42501",  # insufficient_privilege
+    "NotImplementedError": "0A000",  # feature_not_supported
+    "ZeroDivisionError": "22012",  # division_by_zero
+    "TimeoutError": "57014",  # query_canceled: a CancelRequest, or the request timeout
+    "StatementSyntaxError": "42601",  # syntax_error
+    "BindParameterCountError": "08P01",  # protocol_violation
+}
+
+
+def _sqlstate_of(exception: object) -> str:
+    """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
+    PostgreSQL's code for the engine error's class -- read through the chain of errors that
+    carried it up (the pipeline re-raises a statement's failure from it) -- else XX000."""
+    chain: list[BaseException] = []
+    seen = exception if isinstance(exception, BaseException) else None
+    while seen is not None and seen not in chain:
+        chain.append(seen)
+        seen = seen.__cause__ or seen.__context__
+    for err in chain:
+        own = getattr(err, "sqlstate", None)
+        if isinstance(own, str) and len(own) == 5:
+            return own
+    for err in chain:
+        # The engine's own raise of PostgreSQL's division error (transpile.DIVISION_BY_ZERO).
+        if type(err).__name__ == "InvalidInputException" and str(err).endswith(
+            f": {DIVISION_BY_ZERO}"
+        ):
+            return "22012"  # division_by_zero
+        for cls in type(err).__mro__:
+            code = _SQLSTATE_BY_CLASS.get(cls.__name__)
+            if code is not None:
+                return code
+    return "XX000"
+
+
+_TXN_OPEN_RE = re.compile(r"^\s*(BEGIN|START\s+TRANSACTION)\b", re.IGNORECASE)
+_TXN_CLOSE_RE = re.compile(
+    r"^\s*(COMMIT|END|ABORT|ROLLBACK(?!\s+(WORK\s+|TRANSACTION\s+)?TO\b))\b", re.IGNORECASE
+)
+
+
+def _transaction_open(sql: str, open_now: bool) -> bool:
+    """Whether a transaction block is open after ``sql``. The block is a no-op by design
+    (statements are not grouped); it is tracked only for the ReadyForQuery status byte."""
+    if _TXN_OPEN_RE.match(sql):
+        return True
+    if _TXN_CLOSE_RE.match(sql):
+        return False
+    return open_now
+
+
+class StatementSyntaxError(ValueError):
+    """A statement that does not parse, refused at Parse as PostgreSQL refuses it (42601)."""
+
+
+class BindParameterCountError(ValueError):
+    """A Bind supplying a different number of values than its statement takes (08P01)."""
+
+
+def _parse_message_sql(payload: bytes) -> str:
+    stmt_end = payload.index(0)
+    return payload[stmt_end + 1 : payload.index(0, stmt_end + 1)].decode("utf-8")
+
+
+def _refuse_bad_syntax(sql: str) -> None:
+    """Refuse at Parse a statement the pipeline cannot parse. Only a statement it governs is
+    checked: the catalog emulation answers its own statements (catalog.classify). DuckDB's parser
+    (PostgreSQL's grammar, microseconds) answers first; the statement is refused only when the
+    pipeline's own parser (sqlglot) refuses it too."""
+    import sqlglot
+    from sqlglot.errors import ParseError, TokenError
+
+    from provisa.federation.duckdb_backend import parses
+    from provisa.pgwire.catalog import classify
+
+    if not sql.strip() or classify(sql) != "PASS_THROUGH" or parses(sql):
+        return
+    try:
+        sqlglot.parse(sql, read="postgres")
+    except (ParseError, TokenError) as exc:
+        raise StatementSyntaxError(f"syntax error: {str(exc).splitlines()[0]}") from exc
+
+
+def _placeholder_count(sql: str) -> int:
+    """The highest $N a statement names outside its string literals: the parameters it takes."""
+    bare = re.sub(r"'(?:[^']|'')*'", "''", sql)
+    return max((int(n) for n in re.findall(r"\$(\d+)", bare)), default=0)
+
+
+def _refuse_wrong_parameter_count(ctx: BVContext, payload: bytes) -> None:
+    portal_end = payload.index(0)
+    stmt_end = payload.index(0, portal_end + 1)
+    stmt = payload[portal_end + 1 : stmt_end].decode("utf-8")
+    sql, param_oids = ctx.stmts[stmt][0], ctx.stmts[stmt][1]
+    (num_formats,) = struct.unpack("!h", payload[stmt_end + 1 : stmt_end + 3])
+    at = stmt_end + 3 + 2 * num_formats
+    (supplied,) = struct.unpack("!h", payload[at : at + 2])
+    required = max(len(param_oids), _placeholder_count(sql))
+    if supplied != required:
+        raise BindParameterCountError(
+            f"bind message supplies {supplied} parameters, but prepared statement "
+            f'"{stmt}" requires {required}'
+        )
+
+
 class _Said:
     """An error's text, redacted (REQ-2087), as what the base handler writes with ``str()``."""
 
-    def __init__(self, text: str) -> None:
-        from provisa.security.redaction import redact
+    def __init__(self, text: str, org_id: str | None) -> None:
+        # What the client is told: redacted, in the model's names (REQ-2152).
+        from provisa.api.engine_error_names import client_text
 
-        self._text = redact(text)
+        self._text = client_text(text, org_id)
 
     def __str__(self) -> str:
         return self._text
@@ -356,6 +471,21 @@ def _write_tag(sql: str, result: Any) -> str:
     return f"{verb} {count}"
 
 
+# A session temporary table's statement (REQ-615) by its action: the tag PostgreSQL answers it with.
+_TEMP_TAGS = {"create": "CREATE TABLE", "drop": "DROP TABLE"}
+
+
+def _status_of(sql: str, result: Any, plan: Any) -> str:
+    """The command tag a statement is answered with: a data write's count (``INSERT 0 n``), a
+    temporary table's create or drop, a transaction statement's verb."""
+    if plan is not None and getattr(plan, "writes_tables", False):
+        return _write_tag(sql, result)
+    temp = getattr(plan, "temp", None) if plan is not None else None
+    if temp is not None:
+        return _TEMP_TAGS.get(temp.kind) or _write_tag(sql, result)
+    return _tag_from_sql(sql)
+
+
 def _tag_from_sql(sql: str) -> str:
     m = _TXN_TAG_RE.match(sql)
     if m:
@@ -363,9 +493,20 @@ def _tag_from_sql(sql: str) -> str:
     return ""
 
 
+# A one-dimensional array's element type → the array type it is sent as (its array OID, and
+# PostgreSQL's array text and binary forms). Any other array is sent as JSON.
+_ARRAY_OF: dict[BVType, BVType] = {
+    BVType.INTEGER: BVType.INTEGERARRAY,
+    BVType.BIGINT: BVType.BIGINTARRAY,
+    BVType.SMALLINT: BVType.SMALLINTARRAY,
+    BVType.FLOAT: BVType.FLOATARRAY,
+    BVType.REAL: BVType.REALARRAY,
+    BVType.BOOL: BVType.BOOLARRAY,
+    BVType.DECIMAL: BVType.DECIMALARRAY,
+    BVType.TEXT: BVType.STRINGARRAY,
+}
+
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
-    "INTEGER[]": BVType.INTEGERARRAY,
-    "VARCHAR[]": BVType.STRINGARRAY,
     "BOOLEAN": BVType.BOOL,
     "FLOAT": BVType.FLOAT,
     "DOUBLE": BVType.FLOAT,
@@ -440,8 +581,13 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
         return BVType.INTEGER
     if type_str in _INT_TYPES:
         return BVType.BIGINT
+    if type_str.startswith("_"):
+        # PostgreSQL's own name for an array type (_int4, _text), as a source driver reports it.
+        type_str = f"{type_str[1:]}[]"
     if type_str.endswith("[]"):
-        return BVType.JSON  # any other list type: its Python list value encodes as JSON
+        element = type_str[:-2]
+        array = None if element.endswith("[]") else _ARRAY_OF.get(_sql_type_to_bvtype(element))
+        return array or BVType.JSON  # any other list type: its Python list value encodes as JSON
     return BVType.TEXT
 
 
@@ -480,6 +626,10 @@ def _to_decimal(v: Any) -> decimal.Decimal:
     return v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
 
 
+def _to_list(v: Any) -> Any:
+    return json.loads(v) if isinstance(v, str) else v
+
+
 def _to_date(v: Any) -> Any:
     return v.date() if isinstance(v, datetime.datetime) else v
 
@@ -504,6 +654,8 @@ _SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
     BVType.DATE: _to_date,
     BVType.TIMESTAMP: _to_timestamp,
     BVType.TIMESTAMPTZ: _to_timestamp,
+    # A registered JSON column described as its array (REQ-1965) may arrive as its JSON text.
+    **{array: _to_list for array in _ARRAY_OF.values()},
 }
 
 
@@ -573,11 +725,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         self._plan_warnings: list[Any] | None = plan.warnings if plan is not None else None
         self._said: list[Any] = list(self.warnings)
         self._cols = engine_result.column_names
-        self._status = (
-            _write_tag(original_sql, engine_result)
-            if plan is not None and getattr(plan, "writes_tables", False)
-            else _tag_from_sql(original_sql)
-        )
+        self._status = _status_of(original_sql, engine_result, plan)
         self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
         if plan is not None:
             # REQ-074: the statement's audit row is written when this drain ends (audit_on_drain).
@@ -937,6 +1085,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1882: the connection thread that created this session and runs its loop.
         self._owner_thread: int | None = threading.get_ident()
         self._close_requested = False
+        # Between BEGIN and COMMIT/ROLLBACK: ReadyForQuery reports 'T' (see _transaction_open).
+        self.transaction_open = False
+        # The deadline of the statement cycle in flight, for a CancelRequest from another
+        # connection to expire (ProvisaHandler._cancel); None between cycles.
+        self.statement_deadline: request_deadline.Deadline | None = None
         # REQ-1194/REQ-1224 (amended 2026-10-04): the forced redirect this connection asked for
         # (startup parameter, ``options`` or SET); never automatic on this streaming transport.
         self.redirect: bool = False
@@ -1030,7 +1183,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             )
 
     def in_transaction(self) -> bool:
-        return False
+        return self.transaction_open
 
     def load_df_function(self, table: str):
         del table
@@ -1177,6 +1330,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             from provisa.executor.result import QueryResult
 
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
+        self.transaction_open = _transaction_open(stripped, self.transaction_open)
         disposition = classify(stripped)
         if disposition == "INTERCEPT":
             from provisa.api.app import state
@@ -1576,6 +1730,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if self._deadline is None:
             self._deadline = request_deadline.open_request("pgwire")
             request_deadline.hold(self._deadline)
+            if self._session is not None:
+                self._session.statement_deadline = self._deadline  # what a CancelRequest ends
 
     def _close_request(self) -> None:
         # Ending the cycle's deadline scope is a release section: a raise that landed between
@@ -1585,10 +1741,24 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         with shield.lock:
             shield.settle()
             deadline, self._deadline = self._deadline, None
+            if self._session is not None:
+                self._session.statement_deadline = None
             if deadline is not None:
                 request_deadline.release(deadline, shield)
             shield.quiesce()
         self._request.close()
+
+    def _cancel(self, process_id: int, secret_key: int) -> None:
+        """A CancelRequest: end the statement the named connection is running, as PostgreSQL
+        does -- it fails with 57014 and the connection stays open. The request's deadline is
+        expired (REQ-1905), which cancels the statement through its driver. A key that does not
+        match, or a connection running nothing, is ignored, as PostgreSQL ignores it."""
+        ctx = self.server.ctxts.get(process_id)  # type: ignore[attr-defined]
+        if ctx is None or ctx.secret_key != secret_key:
+            return
+        deadline = ctx.session.statement_deadline
+        if deadline is not None:
+            deadline.expire("canceling statement due to user request")
 
     def _timed_out(self, exc: BaseException) -> "TimeoutError | None":
         """The cycle's timeout, when ``exc`` is it: the deadline's own error, or the watchdog's
@@ -1609,10 +1779,14 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
         refusal = definition_refusal(exception)
         if refusal is None:
-            # REQ-2087: the base class writes str(exception); it is given the redacted text.
-            super().send_error(_Said(str(exception)), ctx)
-            return
-        self._send_pg_error("ERROR", "0A000", str(refusal))
+            # REQ-2087: the text the client is given -- model names, redacted. The session's org
+            # names its tables; an error before a session has none. Severity, code and message,
+            # as PostgreSQL sends every error.
+            org_id = cast(ProvisaSession, ctx.session).org_id if ctx is not None else None
+            said = str(_Said(str(exception), org_id))
+            self._send_pg_error("ERROR", _sqlstate_of(exception), said)
+        else:
+            self._send_pg_error("ERROR", "0A000", str(refusal))
         if ctx:
             ctx.mark_error()
 
@@ -1621,13 +1795,34 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # statement_timeout ended. The message names the transport and the setting.
         self._send_pg_error("ERROR", "57014", str(exc))
 
+    # After an error in an extended-query cycle, PostgreSQL discards every message up to the Sync
+    # (the Execute already is, by the base class). An error in Parse or Bind is answered with an
+    # ErrorResponse and the cycle goes on to its Sync; the connection stays usable.
+
     def handle_parse(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
-        super().handle_parse(ctx, payload)
+        if ctx.has_error:
+            return
+        try:
+            _refuse_bad_syntax(_parse_message_sql(payload))
+            super().handle_parse(ctx, payload)
+        except Exception as exc:  # noqa: BLE001 -- answered as the statement's ErrorResponse
+            self.send_error(exc, ctx)
 
     def handle_bind(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
-        super().handle_bind(ctx, payload)
+        if ctx.has_error:
+            return
+        try:
+            _refuse_wrong_parameter_count(ctx, payload)
+            super().handle_bind(ctx, payload)
+        except Exception as exc:  # noqa: BLE001 -- answered as the statement's ErrorResponse
+            self.send_error(exc, ctx)
+
+    def handle_close(self, ctx: BVContext, payload: bytes) -> None:
+        if ctx.has_error:
+            return
+        super().handle_close(ctx, payload)
 
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
         # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
@@ -1703,9 +1898,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.wfile = self._meter
 
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
-        from provisa.security.redaction import redact
+        from provisa.api.engine_error_names import client_text
 
-        message = redact(message)  # REQ-2087: every message a client is sent
+        # REQ-2087, REQ-2152: every message a client is sent, redacted and in the model's names.
+        message = client_text(message)
         buf = BVBuffer()
         for field, value in (
             (b"S", severity),
@@ -1717,18 +1913,26 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             buf.write_string(value)
         buf.write_bytes(b"\x00")
         out = buf.get_value()
-        self.wfile.write(struct.pack("!ci", ServerResponse.ERROR_RESPONSE, len(out) + 4))
-        self.wfile.write(out)
+        # One write: a deadline's raise lands between Python bytecodes, never inside the one
+        # call, so a message is sent whole or not at all.
+        self.wfile.write(struct.pack("!ci", ServerResponse.ERROR_RESPONSE, len(out) + 4) + out)
         self.wfile.flush()
 
-    def _send_pg_notice(self, message: str, detail: str | None = None) -> None:
+    def _send_pg_notice(
+        self,
+        message: str,
+        detail: str | None = None,
+        *,
+        severity: str = "NOTICE",
+        sqlstate: str = "01000",  # SQLSTATE warning class
+    ) -> None:
         """Send a NoticeResponse (a non-fatal, out-of-band message) — never touches result rows.
         ``detail`` goes in the Detail field."""
         buf = BVBuffer()
         fields = [
-            (b"S", "NOTICE"),
-            (b"V", "NOTICE"),
-            (b"C", "01000"),  # SQLSTATE warning class
+            (b"S", severity),
+            (b"V", severity),
+            (b"C", sqlstate),
             (b"M", message),
         ]
         if detail is not None:
@@ -1738,8 +1942,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             buf.write_string(value)
         buf.write_bytes(b"\x00")
         out = buf.get_value()
-        self.wfile.write(struct.pack("!ci", ServerResponse.NOTICE_RESPONSE, len(out) + 4))
-        self.wfile.write(out)
+        # One write: a deadline's raise lands between Python bytecodes, never inside the one
+        # call, so a message is sent whole or not at all.
+        self.wfile.write(struct.pack("!ci", ServerResponse.NOTICE_RESPONSE, len(out) + 4) + out)
         self.wfile.flush()
 
     def handle_post_auth(self, ctx):  # type: ignore[override]
@@ -1784,12 +1989,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.wfile.flush()
             return self.handle_startup(conn)
         elif code == _CANCEL_REQUEST_CODE:
-            process_id = self.r.read_uint32()
-            secret_key = self.r.read_uint32()
-            ctx = self.server.ctxts.get(process_id)  # type: ignore[attr-defined]
-            if ctx and ctx.secret_key == secret_key:
-                self.server.conn.close_session(ctx.session)  # type: ignore[attr-defined]
-                del self.server.ctxts[ctx.process_id]  # type: ignore[attr-defined]
+            self._cancel(self.r.read_uint32(), self.r.read_uint32())
             return None
         elif code == _PROTOCOL_VERSION_3:
             msg = [x.decode("utf-8") for x in self.r.read_bytes(msglen - 4).split(b"\x00")]
@@ -1846,8 +2046,24 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return False
-        acting = named[0] if len(named) == 1 else meta_role_id(named)
-        ctx.session.act_as(acting, tuple(named))  # type: ignore[attr-defined]
+        # REQ-2057: a named declared derived role is held, as on the unsecured HTTP path
+        # (auth/middleware.py, named_unsecured); it qualifies the roles it is named with.
+        from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        # REQ-1266: the declarations read are the deployment org's, the org this session serves.
+        token = set_current_org(_state.org_id)
+        try:
+            declared = declared_derived_roles(_state)
+        finally:
+            reset_current_org(token)
+        roles, held_derived, _attributes = named_unsecured(named, declared)
+        qualifiers = tuple(sorted(held_derived))
+        if qualifiers:
+            acting = meta_role_id([*roles, *qualifiers])
+        else:
+            acting = roles[0] if len(roles) == 1 else meta_role_id(roles)
+        ctx.session.act_as(acting, tuple(roles), qualifiers)  # type: ignore[attr-defined]
         ctx.session.user_id = username  # type: ignore[attr-defined]
         # REQ-1266: an unsecured deployment serves its own org, as the unsecured HTTP path does.
         ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]
@@ -2275,6 +2491,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
     def handle_describe(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
+        if ctx.has_error:
+            return
         ba = bytearray(payload)
         if ba[0] == ord("P"):
             portal = ba[1 : len(ba) - 1].decode("utf-8")
@@ -2496,20 +2714,58 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self._send_pg_error("ERROR", "58000", str(exc))
             ctx.mark_error()
 
+    def _run_do_block(self, ctx: BVContext, stmt: str) -> None:
+        """A DO block of RAISE statements (``do_block``): each RAISE below EXCEPTION sent as a
+        notice at its level (SQLSTATE 00000, as PL/pgSQL raises it), an EXCEPTION as the error
+        that ends the block (P0001)."""
+        from provisa.compiler.definitions import NotAvailableHere
+        from provisa.pgwire.do_block import raised
+
+        try:
+            for r in raised(stmt):
+                if r.level == "EXCEPTION":
+                    self._send_pg_error("ERROR", "P0001", r.message)
+                    ctx.mark_error()
+                    return
+                self._send_pg_notice(r.message, severity=r.level, sqlstate="00000")
+        except NotAvailableHere as exc:
+            self._send_pg_error("ERROR", "0A000", str(exc))
+            ctx.mark_error()
+            return
+        except ValueError as exc:
+            self._send_pg_error("ERROR", "P0001", str(exc))
+            ctx.mark_error()
+            return
+        self.send_command_complete("DO\x00")
+
     def _process_query_stmts(self, ctx: BVContext, stmts: list[str]) -> None:
         for stmt in stmts:
+            from provisa.pgwire.do_block import is_do_block
+
+            if is_do_block(stmt):
+                self._run_do_block(ctx, stmt)
+                if ctx.has_error:
+                    break
+                continue
             if _COPY_RE.match(stmt):
+                from provisa.compiler.definitions import NotAvailableHere
                 from provisa.pgwire.copy_handler import CopyHandler
 
                 try:
                     ctx.session.bind_role()  # type: ignore[attr-defined]
-                    nrows = CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
+                    # As every statement of the session: its org and its temporary tables bound.
+                    nrows = cast(ProvisaSession, ctx.session)._with_org(
+                        lambda: CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
+                    )
                     self.send_command_complete(f"COPY {nrows}\x00")
                 except PermissionError as exc:
                     self._send_pg_error("ERROR", "42501", str(exc))
                     ctx.mark_error()
-                except Exception as exc:
+                except NotAvailableHere as exc:
                     self._send_pg_error("ERROR", "0A000", str(exc))
+                    ctx.mark_error()
+                except Exception as exc:
+                    self._send_pg_error("ERROR", _sqlstate_of(exc), str(exc))
                     ctx.mark_error()
                 break
             # A statement that defines a relation (CREATE TABLE [AS], CREATE VIEW, ALTER, DROP …)

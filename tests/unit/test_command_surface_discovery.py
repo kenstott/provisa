@@ -31,7 +31,7 @@ def _state():
         "domain_id": "pet-store",
         "kind": "query",
         "returns": "pet-store.users",  # set-returning / table-valued
-        "visible_to": [],  # empty = every role
+        "visible_to": ["admin", "guest"],  # REQ-2153: a grant names its roles
         "arguments": [{"name": "since", "type": "Int"}],
     }
     mutation_scalar = {
@@ -67,7 +67,7 @@ def _state():
 
 
 def test_list_visible_commands_dedupes_and_filters():
-    out = list_visible_commands(_state(), "admin")
+    out = list_visible_commands(_state(), "admin", "sql")
     names = [c["name"] for c in out]
     assert names.count("active_users") == 1  # prefixed alias collapsed
     assert "reset_cache" in names  # visible_to contains admin
@@ -76,12 +76,12 @@ def test_list_visible_commands_dedupes_and_filters():
 
 def test_list_visible_commands_role_agnostic_view_lists_all():
     # role_id None = broadest catalog view (Flight): every command, incl. role-restricted ones
-    names = {c["name"] for c in list_visible_commands(_state(), None)}
+    names = {c["name"] for c in list_visible_commands(_state(), None, "sql")}
     assert names == {"active_users", "reset_cache", "secret_cmd"}
 
 
 def test_list_visible_commands_projects_kind_and_set_returning():
-    by_name = {c["name"]: c for c in list_visible_commands(_state(), "admin")}
+    by_name = {c["name"]: c for c in list_visible_commands(_state(), "admin", "sql")}
     assert by_name["active_users"]["kind"] == "query"
     assert by_name["active_users"]["set_returning"] is True
     assert by_name["active_users"]["arguments"] == [{"name": "since", "type": "Int"}]
@@ -89,9 +89,9 @@ def test_list_visible_commands_projects_kind_and_set_returning():
     assert by_name["reset_cache"]["set_returning"] is False
 
 
-def test_public_role_sees_only_unrestricted_commands():
-    names = {c["name"] for c in list_visible_commands(_state(), "guest")}
-    assert names == {"active_users"}  # only the empty-visible_to command
+def test_a_role_sees_only_the_commands_granted_to_it():
+    names = {c["name"] for c in list_visible_commands(_state(), "guest", "sql")}
+    assert names == {"active_users"}  # the one command whose grant names guest
 
 
 # ---------------------------------------------------------------- MCP
@@ -113,7 +113,9 @@ def test_mcp_list_commands_tool():
 def test_flight_command_flight_info_descriptor_and_schema():
     from provisa.api.flight.catalog import command_to_flight_info
 
-    cmd = next(c for c in list_visible_commands(_state(), None) if c["name"] == "active_users")
+    cmd = next(
+        c for c in list_visible_commands(_state(), None, "sql") if c["name"] == "active_users"
+    )
     info = command_to_flight_info(cmd)
     path = [p.decode() if isinstance(p, bytes) else p for p in info.descriptor.path]
     assert path == ["commands", cmd["domain"], cmd["name"]]
@@ -175,7 +177,9 @@ def test_grpc_servicer_resolves_call_rpc_to_command_name():
 def test_bolt_command_signature():
     from provisa.bolt.session import _command_signature
 
-    cmd = next(c for c in list_visible_commands(_state(), None) if c["name"] == "active_users")
+    cmd = next(
+        c for c in list_visible_commands(_state(), None, "sql") if c["name"] == "active_users"
+    )
     sig = _command_signature(cmd)
     assert sig == "active_users(since :: INT) :: (LIST OF MAP)"
 

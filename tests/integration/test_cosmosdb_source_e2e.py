@@ -37,7 +37,7 @@ import yaml
 pytestmark = [pytest.mark.integration]
 
 _ROLE = "org_admin"
-_ANALYST = "analyst"
+_ANALYST = "itest_analyst"
 _IMAGE = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview"
 # The emulator's published, well-known account key (not a secret).
 _KEY = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="
@@ -138,6 +138,7 @@ def server(emulator, tmp_path_factory):
         "roles": [
             {
                 "id": _ANALYST,
+                "parents": ["analyst"],
                 "description": "Test role.",
                 "capabilities": ["query_development"],
                 "domain_access": ["shop"],
@@ -169,7 +170,7 @@ def server(emulator, tmp_path_factory):
                         both,
                         masks=[
                             {"to": [_ROLE], "mask": None},
-                            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                            {"mask": {"type": "constant", "value": "***"}},
                         ],
                     ),
                 ],

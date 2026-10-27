@@ -60,7 +60,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from provisa.compiler.sql_literals import sql_literal
-from provisa.api.metadata_export.model import AssetKind
+from provisa.api.metadata_export.model import AssetKind, listed
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -81,10 +81,6 @@ if TYPE_CHECKING:
     )
 
 _VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-# Schema (inside the landing database) that Horizon-native TAG objects live in. A fixed, dedicated
-# schema keeps governance/model tags out of any source's own schema namespace.
-_TAGS_SCHEMA = "PROVISA_GOVERNANCE"
 
 
 def _identifier(raw: str) -> str:
@@ -191,7 +187,7 @@ def comment_statements(
     carries its description alongside its tags, not just an attachable source's real TABLE. Pure — no I/O — ``kinds`` (one ``_object_kind`` I/O lookup per
     table, done by the caller) is what lets it stay testable without a live connection. A
     table/column missing from ``kinds`` (not yet landed) is skipped, not an error here — the
-    caller already reports missing landing terminals via ``_table_exists``.
+    caller already reports missing landing terminals from that lookup.
 
     Governance facts publish here rather than as a Snowflake TAG (see :func:`tag_statements`'s
     docstring): a rule id and its restricted/exempt roles are metadata about the asset, not a
@@ -412,7 +408,7 @@ def listing_statements(
 
     ``publish=False`` (the default) keeps it DRAFT (``PUBLISH = FALSE``); organization listings,
     unlike external ones, have no ``REVIEW`` parameter -- there is no Marketplace review step, so
-    ``publish=True`` (``DataProductAsset.publish`` / ``DataProduct.publish``) takes it live
+    ``publish=True`` (a live or deprecated product, model.listed) takes it live
     immediately. ``IF NOT EXISTS`` leaves an existing listing's manifest alone; the caller converges
     it with :func:`listing_update_statement` when :func:`manifest_matches` says it drifted."""
     return [
@@ -482,12 +478,15 @@ def _organization_context(runtime: SnowflakeFederationRuntime) -> tuple[str, str
 def _object_kind(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str]) -> str | None:
     """``'TABLE'``/``'VIEW'`` for the object at ``parts``, or ``None`` if it doesn't exist yet
     (source never landed, or its database/schema doesn't exist — same "not there" outcome).
-    Needed alongside :func:`_table_exists` because COMMENT DDL (:func:`_set_comment`), unlike TAG
-    DDL, requires the caller to know which kind it actually is."""
+    COMMENT DDL (:func:`_set_comment`) needs the kind, and ``None`` is how every caller tells a
+    landing terminal that is missing."""
     database, schema, table = parts
     cur = runtime.connection.cursor()
     try:
         cur.execute(f'SHOW OBJECTS LIKE {_literal(table)} IN SCHEMA "{database}"."{schema}"')
+        # A SHOW that ran has a result shape; the 5.x connector types it as optional.
+        if cur.description is None:
+            raise RuntimeError("SHOW OBJECTS returned no result description")
         cols = [d[0] for d in cur.description]
         row = cur.fetchone()
         return str(dict(zip(cols, row))["kind"]).upper() if row is not None else None
@@ -495,10 +494,6 @@ def _object_kind(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str
         return None
     finally:
         cur.close()
-
-
-def _table_exists(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str]) -> bool:
-    return _object_kind(runtime, parts) is not None
 
 
 def _masked_columns(governance_tags: list["GovernanceTag"]) -> dict[str, tuple[str, ...]]:
@@ -542,6 +537,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
     # REQ-1912: every object this adapter addresses is in the engine's own store, where a
     # replica-served table is published through its export view.
     needs_export_views = True
+    binds_products = False  # REQ-1634 STATUS: see MetadataExport.binds_products
 
     def _runtime_or_none(self) -> SnowflakeFederationRuntime | None:
         url = configured_engine_url()
@@ -590,7 +586,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
     ) -> int:
         """Applies table/column descriptions, appended with any governance facts on that same
         asset (REQ-1071), as native Snowflake COMMENTs (REQ-1647), gated on the target already
-        existing (mirrors ``_publish_tags``'s ``_table_exists`` gate)."""
+        existing (:func:`_object_kind`); a missing one is reported, not described."""
         known_fqns = {table.ref.fqn() for table in tables} | {
             column.ref.fqn() for table in tables for column in table.columns
         }
@@ -717,7 +713,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             members=members,
             documentation=documentation,
         )
-        publish = getattr(product, "publish", False)
+        publish = listed(product)  # REQ-1634 STATUS: PUBLISH = TRUE while in service
         statements = share_statements(
             share_name,
             product.description,

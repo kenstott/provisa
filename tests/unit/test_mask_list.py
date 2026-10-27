@@ -36,7 +36,7 @@ MASKS = [
     {"to": ["contractor"], "mask": CONSTANT},
     {"to": ["analyst+region__eu"], "mask": None},
     {"to": ["analyst"], "mask": DOMAIN_ONLY},
-    {"to": ["*"], "mask": CONSTANT},
+    {"mask": CONSTANT},
 ]
 CHAINS = {
     "developer": ["developer"],
@@ -76,7 +76,7 @@ def test_a_reader_no_entry_names_reads_the_column_unmasked():
 
 
 def test_an_entry_reaches_the_children_of_the_role_it_names():
-    masks = [{"to": ["developer"], "mask": None}, {"to": ["*"], "mask": CONSTANT}]
+    masks = [{"to": ["developer"], "mask": None}, {"mask": CONSTANT}]
     assert resolve(masks, ["analyst", "developer"]) is None
 
 
@@ -133,7 +133,7 @@ def test_the_report_flags_an_entry_an_earlier_one_covers():
     masks = [
         {"to": ["developer"], "mask": None},
         {"to": ["analyst"], "mask": CONSTANT},  # analyst holds developer: entry 0 first
-        {"to": ["*"], "mask": CONSTANT},
+        {"mask": CONSTANT},
     ]
     report = masks_report(masks, chain_of)
     assert report["unreachable"] == [{"entry": 1, "covered_by": 0}]
@@ -141,7 +141,7 @@ def test_the_report_flags_an_entry_an_earlier_one_covers():
 
 
 def test_the_report_flags_entries_after_everyone_and_an_entry_for_no_one():
-    masks = [{"to": [], "mask": CONSTANT}, {"to": ["*"], "mask": CONSTANT}, {"to": ["analyst"]}]
+    masks = [{"to": [], "mask": CONSTANT}, {"mask": CONSTANT}, {"to": ["analyst"]}]
     masks[2]["mask"] = None
     report = masks_report(masks, chain_of)
     assert report["unreachable"] == [
@@ -170,17 +170,17 @@ def test_the_report_names_the_entry_chosen_roles_read_through():
 
 
 def test_a_mask_entry_is_one_of_the_three_masks_and_never_a_fake():
-    Column(name="email", visible_to=[], masks=[{"to": ["*"], "mask": CONSTANT}])
+    Column(name="email", visible_to=[], masks=[{"mask": CONSTANT}])
     with pytest.raises(ValueError, match="a fake is not a role mask"):
-        Column(name="email", visible_to=[], masks=[{"to": ["*"], "mask": {"type": "fake"}}])
+        Column(name="email", visible_to=[], masks=[{"mask": {"type": "fake"}}])
     with pytest.raises(ValueError, match="not one of regex, constant, truncate"):
-        Column(name="email", visible_to=[], masks=[{"to": ["*"], "mask": {"type": "hash"}}])
+        Column(name="email", visible_to=[], masks=[{"mask": {"type": "hash"}}])
 
 
 def test_an_embedding_column_takes_no_mask_but_may_list_unmasked_entries():
     with pytest.raises(ValueError, match="an embedding column cannot be masked"):
-        Column(name="v", visible_to=[], embedding=True, masks=[{"to": ["*"], "mask": CONSTANT}])
-    Column(name="v", visible_to=[], embedding=True, masks=[{"to": ["*"], "mask": None}])
+        Column(name="v", visible_to=[], embedding=True, masks=[{"mask": CONSTANT}])
+    Column(name="v", visible_to=[], embedding=True, masks=[{"mask": None}])
 
 
 def _state() -> SimpleNamespace:

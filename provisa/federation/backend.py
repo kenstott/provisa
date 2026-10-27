@@ -22,6 +22,7 @@ every Trino reference inside the Trino engine's own instance and out of the gene
 
 from __future__ import annotations
 
+from provisa.core.read_refusal import ReadRefused
 import asyncio
 import logging
 from contextlib import contextmanager
@@ -118,6 +119,12 @@ class EngineBackend:
         from provisa.transpiler.transpile import transpile
 
         return transpile(pg_sql, self.dialect)
+
+    def exact_reads(self, state: Any, physical_sql: str) -> str:
+        """``physical_sql`` with each read an engine would round at its source made exact there
+        (REQ-2167). An engine whose reads keep a source's values as they are changes nothing."""
+        del state
+        return physical_sql
 
     @property
     def has_otel_catalog(self) -> bool:
@@ -449,6 +456,18 @@ class EngineBackend:
                         )
                     await apply_cdc(conn, table, changes.pk_columns, changes.events)
 
+    async def landed_table_exists(self, state: Any, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed (REQ-318). Base default: the materialization
+        store's own catalog, through the store's connection -- where the base write face lands
+        (``store_writer``). Absent is False; a catalog that cannot be read raises, never read as
+        absent."""
+        del state
+        from provisa.federation import store_writer
+
+        return await store_writer.table_exists(
+            self.engine.materialize_store(), schema=schema, table=table
+        )
+
     async def analyze_landed_table(
         self, state: Any, *, catalog: str | None, schema: str, table: str
     ) -> None:  # REQ-280, REQ-1688
@@ -562,6 +581,12 @@ class EngineBackend:
         }
 
     def classify_error(self, exc: Exception) -> str | None:
+        return None
+
+    def refusal_of(self, exc: Exception) -> ReadRefused | None:
+        """What the engine cannot answer because of what it is, said by name (REQ-778): a
+        refusal its error stands for, else None and the error is answered by its kind."""
+        del exc
         return None
 
     # -- federation lifecycle (REQ-825) ----------------------------------------
@@ -982,13 +1007,18 @@ class TrinoBackend(EngineBackend):
         return frozenset(OPS_TABLES)
 
     def transpile_physical(self, pg_sql: str) -> str:
+        from provisa.federation.trino_connectors import trino_utc_wall_columns
         from provisa.transpiler.transpile import (
+            rewrite_instants_for_trino,
             rewrite_prometheus_labels_for_trino,
             transpile_to_trino,
         )
 
         sql = transpile_to_trino(pg_sql)
         from provisa.api.app import state
+
+        # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
+        sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
 
         label_columns = getattr(state, "prometheus_label_columns", None)
         if label_columns:

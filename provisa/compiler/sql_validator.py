@@ -59,6 +59,18 @@ from provisa.security.rights import reaches_all_domains
 class ValidationViolation:
     code: str
     message: str
+    #: V002: the two registered tables the statement combines outside a relationship.
+    tables: tuple[int, int] | None = None
+
+
+class GovernanceRefused(PermissionError):
+    """A statement governance refuses, with the violations it is refused for: a PermissionError
+    as before, whose violations a caller may read -- the NL retry gives the registered path between
+    the tables a V002 names back to the model (REQ-603)."""
+
+    def __init__(self, violations: list[ValidationViolation]) -> None:
+        super().__init__("; ".join(f"[{v.code}] {v.message}" for v in violations))
+        self.violations = violations
 
 
 def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
@@ -330,6 +342,19 @@ def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
     return approved
 
 
+def canvas_joins(ctx: CompilationContext) -> list[tuple[int, str, int, str]]:
+    """The joins a join canvas draws (the SQL page's): :func:`approved_joins`, each pair of
+    columns once as (table, column, table, column) with the lower (table, column) first, less a
+    column equal to itself -- a junction relationship's own end-to-end pair, which joins nothing;
+    its two foreign-key joins are its lines."""
+    out: set[tuple[int, str, int, str]] = set()
+    for a_table, b_table, a_col, b_col in approved_joins(ctx):
+        if (a_table, a_col) == (b_table, b_col):
+            continue
+        out.add(min((a_table, a_col, b_table, b_col), (b_table, b_col, a_table, a_col)))
+    return sorted(out)
+
+
 def computed_joins(
     ctx: CompilationContext,
 ) -> tuple[set[tuple[int, int, str, str]], set[tuple[int, int, str, str]]]:
@@ -444,7 +469,22 @@ def tables_outside_relationships(  # REQ-603
         primary_keys=primary_keys,
     ):
         left, right = name(pair.left_table), name(pair.right_table)
-        if pair.reason == UNREGISTERED:
+        if pair.reason == UNREGISTERED and pair.written is not None:
+            # A side read through a derived table or a CTE: the condition as the statement writes
+            # it, and what that side reads -- the base columns alone name neither side as written.
+            reads = [
+                f"{said_as} reads {table}.{column}"
+                for said_as, table, column in (
+                    (pair.left_written, left, pair.left_column),
+                    (pair.right_written, right, pair.right_column),
+                )
+                if said_as is not None
+            ]
+            said = (
+                f"Invalid JOIN: {pair.written} ({'; '.join(reads)}) — no approved relationship "
+                f"exists between {left}.{pair.left_column} and {right}.{pair.right_column}"
+            )
+        elif pair.reason == UNREGISTERED:
             said = (
                 f"Invalid JOIN: {left}.{pair.left_column} = {right}.{pair.right_column} — no "
                 f"approved relationship exists between these tables on these columns"
@@ -465,7 +505,9 @@ def tables_outside_relationships(  # REQ-603
                 f"Invalid JOIN: {left} and {right} are combined with no condition relating them "
                 f"— cross joins are not permitted"
             )
-        violations.append(ValidationViolation("V002", said))
+        violations.append(
+            ValidationViolation("V002", said, tables=(pair.left_table, pair.right_table))
+        )
     return violations
 
 

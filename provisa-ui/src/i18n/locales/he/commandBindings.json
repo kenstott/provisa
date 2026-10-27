@@ -1,0 +1,21 @@
+{
+  "commandBindings": {
+    "sectionsLabel": "מקטעי הפקודה",
+    "section_command": "פקודה",
+    "section_bindings": "קישורים",
+    "language": "שפה",
+    "name": "שם",
+    "leaveOut": "הושמטה",
+    "nameIn": "שם ב-{{language}}",
+    "leaveOutOf": "השמט מ-{{language}}",
+    "notOffered": "לא מוצעת",
+    "sqlAlways": "מוצעת תמיד",
+    "hint": "פקודה מוצעת בכל שפה בשמה שלה. שנו את שמה בשפה מסוימת או השמיטו אותה משפה. SQL מוצעת תמיד.",
+    "lang_sql": "SQL",
+    "lang_cypher": "Cypher",
+    "lang_graphql": "GraphQL",
+    "lang_rest": "REST",
+    "lang_mcp": "MCP",
+    "lang_sparql": "SPARQL"
+  }
+}

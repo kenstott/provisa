@@ -13,7 +13,12 @@
 A Fabric capacity (F-SKU) is billable compute that operators pause between uses. A SQL warehouse on
 a Paused/Suspended capacity refuses the ODBC login outright (an 18456-style rejection that reads like
 broken credentials). The Fabric engine therefore resumes its capacity through the ARM control plane
-before connecting, and waits until it is Active.
+before connecting, and waits until it is Active -- in Azure, and then until its warehouse serves a
+statement: ARM reports a resumed capacity Active before Fabric's data plane serves it, and a
+statement in between is refused "CapacityNotActive" (run 40024234397). The second wait is the
+warehouse's own answer (``await_data_plane``), through the access the engine already has: Fabric's
+capacity listing shows only the capacities a credential holds a Fabric role on, which the engine's
+need not (run 40033495801).
 
 Opt-in by configuration: ``FABRIC_CAPACITY_NAME`` + ``FABRIC_RESOURCE_GROUP`` name the capacity.
 A deployment that leaves both unset manages its capacity itself and this module does nothing; setting
@@ -30,10 +35,14 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections.abc import Callable
+from typing import TypeVar
 
 import httpx
 
 log = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 _ARM = "https://management.azure.com"
 _ARM_SCOPE = f"{_ARM}/.default"
@@ -43,6 +52,7 @@ _RESUME_TIMEOUT_S = 600.0
 _POLL_S = 10.0
 
 _ACTIVE = "Active"
+_CAPACITY_NOT_ACTIVE = "CapacityNotActive"
 _RESUMABLE_STATES = ("Paused", "Suspended")
 _TERMINAL_FAILURE_STATES = ("Failed", "Deleting")
 
@@ -64,6 +74,27 @@ def _client() -> httpx.Client:
 
     token = DefaultAzureCredential().get_token(_ARM_SCOPE).token
     return httpx.Client(headers={"Authorization": f"Bearer {token}"}, timeout=60.0)
+
+
+def await_data_plane(probe: Callable[[], T]) -> T:
+    """``probe``'s answer once the capacity's warehouse serves it: a probe refused
+    CapacityNotActive is tried again until ``_RESUME_TIMEOUT_S`` has passed; any other refusal is
+    raised at once."""
+    deadline = time.monotonic() + _RESUME_TIMEOUT_S
+    while True:
+        try:
+            return probe()
+        except Exception as exc:  # noqa: BLE001 -- only CapacityNotActive is waited out
+            if _CAPACITY_NOT_ACTIVE not in str(exc):
+                raise
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Fabric capacity {os.environ['FABRIC_CAPACITY_NAME']!r} is Active in Azure "
+                    f"but its warehouse still refuses statements (CapacityNotActive) after "
+                    f"{_RESUME_TIMEOUT_S:.0f}s"
+                ) from exc
+            log.info("Fabric capacity is Active in Azure; its warehouse is not serving yet")
+            time.sleep(_POLL_S)
 
 
 def _locate(client: httpx.Client) -> tuple[str, str]:
@@ -114,7 +145,9 @@ def _request_resume(client: httpx.Client, url: str) -> bool:
 
 
 def ensure_capacity_resumed() -> None:
-    """Resume the configured capacity if it is not Active, and block until it is (or time out).
+    """Resume the configured capacity if it is not Active, and block until Azure reports it Active
+    (or time out). Its warehouse may refuse statements for a while after; the engine's connection
+    waits that out (``await_data_plane``).
 
     The resume is sent whenever the capacity is seen in a resumable state and no resume has been
     accepted yet — also when it was first seen mid-suspend and only settles at Paused during the
@@ -143,15 +176,3 @@ def ensure_capacity_resumed() -> None:
         f"Fabric capacity did not reach {_ACTIVE} within {_RESUME_TIMEOUT_S:.0f}s "
         f"(last state {state!r})"
     )
-
-
-def suspend_capacity() -> None:
-    """Suspend the configured capacity (test/ops teardown to stop billing)."""
-    with _client() as client:
-        url, _state_now = _locate(client)
-        client.post(
-            f"{url}/suspend",
-            params={"api-version": _API_VERSION},
-            content=b"",
-            headers={"Content-Length": "0"},
-        ).raise_for_status()

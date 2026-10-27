@@ -39,7 +39,8 @@ roles:
   - query_development
   domain_access:
   - pet-store
-  id: analyst
+  id: pet_analyst
+  parents: [analyst]
   description: Queries the pet store's data.
 sources:
 - description: Great Expectations quality scans — each results table is one suite's per-check outcomes,
@@ -77,6 +78,7 @@ sources:
     correlation_max_columns: 20
     joint_max_distinct: 20
     category_max_columns: 10
+    classification_sample: 500
   type: data_profiler
 - description: Customer adoption inquiry records — prospective pet owner interest submissions tracked
     by the front-desk team, including inquiry type, message, and resolution status
@@ -100,38 +102,38 @@ tables:
     name: available
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Breed of the pet
     name: breed_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the pet record
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Name the pet is known by
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Sale price of the pet in USD
     name: price
     data_type: double
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Species of the pet (e.g. dog, cat, bird)
     name: species
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: Pet dimension — entity projection of the pet inventory (star-schema demo)
   domain_id: pet-store
   materialize: true
@@ -145,14 +147,14 @@ tables:
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet the inquiry is about
     name: pet_id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: Inquiry fact at pet grain — inquiry count per pet, linked to dim_pet (star-schema demo)
   domain_id: pet-store
   materialize: true
@@ -167,44 +169,44 @@ tables:
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Kind of inquiry - adoption, price, or availability
     name: inquiry_type
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Free-text message the customer wrote
     name: message
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet the inquiry is about
     name: pet_id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Where the inquiry stands - new, contacted, or closed
     name: status
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: When the inquiry was submitted
     name: submitted_at
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Customer who submitted the inquiry
     name: user_id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: Customer adoption inquiries — managed by the front-desk/CRM team
   domain_id: pet-store
   enable_aggregates: true
@@ -218,37 +220,37 @@ tables:
     name: available
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Breed of the pet
     name: breed_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Unique identifier for the pet record
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Name of the pet
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Sale price of the pet in USD
     name: price
     data_type: double
     visible_to:
-    - org_admin
+    - data_steward
   - description: Species of the pet (e.g. dog, cat, bird)
     name: species
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: Pet inventory — managed by the inventory department
   domain_id: pet-store
   enable_aggregates: true
@@ -263,38 +265,38 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Pet the companion link starts from
     name: pet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Pet the companion link points at
     name: companion_pet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Which kind of companionship this row records
     name: relation_type
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Date the two pets were first paired
     name: since
     data_type: date
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Care note explaining the pairing
     name: note
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   description: Pet-to-pet companion links — the junction behind the BONDED_PAIR, LITTERMATE, and SHARES_ENCLOSURE
     relationships
   domain_id: pet-store
@@ -306,26 +308,26 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Vet's name
     name: name
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Practice the vet works out of
     name: clinic
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Kind of animal the vet is licensed to treat
     name: specialty
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   description: Veterinarians the store refers pets to
   domain_id: pet-store
   product_id: pet_health
@@ -338,32 +340,32 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Pet that was seen
     name: pet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Vet who saw the pet
     name: vet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Date of the visit
     name: visit_date
     data_type: date
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Why the pet was brought in
     name: reason
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   description: Vet visits — the junction behind the TREATED_BY relationship between pets and vets
   domain_id: pet-store
   schema: pet_store
@@ -375,26 +377,26 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Name the playgroup is scheduled under
     name: name
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Yard the playgroup runs in
     name: yard
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Most pets the yard takes at once
     name: max_size
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   description: Supervised exercise groups run in the store yards
   domain_id: pet-store
   enable_aggregates: true
@@ -407,32 +409,32 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Pet enrolled in the playgroup
     name: pet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Playgroup the pet is enrolled in
     name: playgroup_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Date the pet joined the playgroup
     name: joined_on
     data_type: date
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Handling note for this pet in this group
     name: note
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   description: Playgroup enrolment — the junction behind the PLAYGROUP_MEMBERS relationship between pets
     and playgroups
   domain_id: pet-store
@@ -446,8 +448,8 @@ tables:
     name: scan_id
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   cache_ttl: 3600
   description: Quality scan results for the pet inventory — one row per check per scan, with outcome,
     metric value and threshold
@@ -457,6 +459,7 @@ tables:
     \    kwargs:\n      column: name\n  - type: expect_column_values_to_be_between\n    kwargs:\n    \
     \  column: price\n      min_value: 0\n  - type: expect_column_values_to_not_be_null\n    kwargs:\n\
     \      column: species\n"
+  product_id: pet_health
   source_id: dq-checker
   table: pets_quality
 - columns:
@@ -464,8 +467,8 @@ tables:
     name: scan_id
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   cache_ttl: 3600
   description: Quality scan results for the referral vets — one row per check per scan, with outcome,
     metric value and threshold
@@ -473,6 +476,7 @@ tables:
   dq_contract: "dataset: provisa/pet_store/vets\ncolumns:\n  - name: name\n    checks:\n      - missing:\n\
     \      - duplicate:\n  - name: clinic\n    checks:\n      - missing:\n  - name: specialty\n    checks:\n\
     \      - missing:\nchecks:\n  - row_count:\n      must_be_greater_than: 0\n"
+  product_id: pet_health
   source_id: dq-soda
   table: vets_quality
 - columns:
@@ -480,30 +484,30 @@ tables:
     name: created_at
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Customer's email address
     name: email
     data_type: varchar
     visible_to:
-    - org_admin
+    - data_steward
   - description: Identifier of the customer
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Customer's full name
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Customer's phone number
     name: phone
     data_type: varchar
     visible_to:
-    - org_admin
+    - data_steward
   description: Prospective adopters who have submitted inquiries
   domain_id: pet-store
   schema: default
@@ -628,8 +632,8 @@ metrics:
   from_fact: fact_pet_inquiries
   name: fact_pet_inquiries_id_count
   visible_to:
-  - org_admin
-  - analyst
+  - data_steward
+  - pet_analyst
 data_products:
 - purpose: Pet health records — inventory and referral vets for care history
   domain_id: pet-store

@@ -307,8 +307,15 @@ def test_a_port_a_stopped_server_left_closed_connections_on_is_free():
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        # A port no socket holds on ANY address: bound on every address without SO_REUSEADDR,
+        # the kernel hands out none another process's socket (another xdist worker's) holds on
+        # some address, which the probe's own every-address bind would meet.
+        server.bind(("0.0.0.0", 0))  # nosec B104 -- a test socket, closed below
+        # Then reusable, as the replica server's listener is (socketserver allow_reuse_address):
+        # each connection it accepts takes the option, and so does the TIME_WAIT it leaves. Linux
+        # refuses a bind beside a TIME_WAIT whose socket lacked it, SO_REUSEADDR or not; macOS
+        # does not look.
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("127.0.0.1", 0))
         server.listen()
         port = server.getsockname()[1]
         client = socket.create_connection(("127.0.0.1", port))
@@ -349,7 +356,7 @@ def test_a_test_instance_never_gives_a_server_a_port_local_dev_uses():
 def test_every_connector_is_fetched_from_the_pin():
     # engine-v0.117.0 is the first release whose catalog counts no rows; every bundle is at the pin.
     assert rd.CONNECTOR_RELEASE == {}
-    assert rd.RELEASE_TAG == "engine-v0.119.4"
+    assert rd.RELEASE_TAG == "engine-v0.122.2"
     pinned = rd.RELEASE_TAG.removeprefix("engine-v")
     for source_type, connector in rd.BUNDLE_CONNECTOR.items():
         spec = rd.bundle_spec_for(source_type)

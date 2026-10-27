@@ -425,9 +425,9 @@ _PGW_TABLES = [
         "schema_name": _PGW_SCHEMA,
         "table_name": _PGW_TABLE,
         "columns": [
-            {"column_name": "id", "visible_to": []},
-            {"column_name": "amount", "visible_to": []},
-            {"column_name": "region", "visible_to": []},
+            {"column_name": "id", "visible_to": ["admin"]},
+            {"column_name": "amount", "visible_to": ["admin"]},
+            {"column_name": "region", "visible_to": ["admin"]},
         ],
         "write_ops": ["delete", "insert", "update"],
         "write_returns_rows": True,

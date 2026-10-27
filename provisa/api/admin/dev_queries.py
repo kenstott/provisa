@@ -13,7 +13,6 @@ from __future__ import annotations
 from provisa.api.role_surface import role_surface
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,224 +33,6 @@ class EnforcementMetadata:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _merge_nodes_sql(group_by_sql: str, nodes_sql: str, nodes_columns: list) -> str | None:
-    """Join group-by rows against nodes_sql, pre-aggregated per group into json_agg(nodes).
-
-    nodes_sql already resolves relationship fields to correlated JSON subqueries
-    (aliased to their field name); inlining nodes_columns as bare columns on the
-    group-by table breaks for those fields, so nodes must be aggregated from
-    nodes_sql itself rather than reconstructed from column names.
-    """
-    node_cols = [c for c in nodes_columns if c.nested_in is None]
-    join_key_cols = [c for c in nodes_columns if c.nested_in == "__join_key__"]
-    if not node_cols or not join_key_cols:
-        return None
-    # SQL-standard json_object(KEY k VALUE v) — the same spelling sql_selection.py emits — so
-    # sqlglot transpiles it per engine. Postgres json_build_object reaches DuckDB unrewritten.
-    kv = ", ".join(f"KEY '{c.field_name}' VALUE n.\"{c.column}\"" for c in node_cols)
-    key_select = ", ".join(f'n."{c.column}"' for c in join_key_cols)
-    join_cond = " AND ".join(f'g."{c.column}" = nodes_agg."{c.column}"' for c in join_key_cols)
-    nodes_agg_sql = (
-        f"SELECT {key_select}, json_agg(json_object({kv})) AS nodes\n"
-        f"FROM (\n  {nodes_sql}\n) n\n"
-        f"GROUP BY {key_select}"
-    )
-    return (
-        f"SELECT g.*, nodes_agg.nodes\n"
-        f"FROM (\n  {group_by_sql}\n) g\n"
-        f"JOIN (\n  {nodes_agg_sql}\n) nodes_agg ON {join_cond}"
-    )
-
-
-def _split_top_level_commas(text: str) -> list[str]:
-    """Split on commas not nested inside {}, [], or () (e.g. map-literal RETURN items)."""
-    parts = []
-    depth = 0
-    current: list[str] = []
-    for ch in text:
-        if ch in "{[(":
-            depth += 1
-        elif ch in "}])":
-            depth -= 1
-        if ch == "," and depth == 0:
-            parts.append("".join(current).strip())
-            current = []
-        else:
-            current.append(ch)
-    if current:
-        parts.append("".join(current).strip())
-    return [p for p in parts if p]
-
-
-def _unwrap_collect(expr: str) -> str:
-    """Strip an outer collect(...) so the value is per-row, not an aggregate.
-
-    A relationship field compiles to `collect({...}) AS user` on its own, but here it becomes an
-    entry of an outer `collect({...}) AS nodes` — and Cypher rejects a nested aggregate. The
-    per-row map literal is what the outer collect must aggregate.
-    """
-    m = re.match(r"^collect\s*\((.*)\)$", expr.strip(), flags=re.IGNORECASE | re.DOTALL)
-    if not m:
-        return expr
-    inner = m.group(1)
-    # Guard against `collect(x) + collect(y)`, where the regex's greedy tail spans two calls.
-    if _split_top_level_commas(inner) != [inner.strip()] or inner.count("(") != inner.count(")"):
-        return expr
-    return inner.strip()
-
-
-def _return_line_to_entries(return_line: str) -> list[tuple[str, str]]:
-    """Convert 'RETURN a.x, collect({..}) AS user' into [("x", "a.x"), ("user", "{..}")].
-
-    The compiled nodes fragment aliases only the relationship items; scalar columns come back as
-    bare `a.col` property accesses, whose alias is the property name.
-
-    A column that is both a selected node field and the group-by join key is returned twice by the
-    nodes fragment (the SQL merge splits those two roles apart via nested_in="__join_key__"); the
-    repeat is the same expression, and a Cypher map literal rejects a repeated key, so identical
-    entries collapse to one. A repeated alias over a *different* expression is a compile bug and is
-    left in place to fail loud.
-    """
-    body = re.sub(r"^\s*RETURN\s+", "", return_line.strip(), flags=re.IGNORECASE)
-    entries = []
-    for item in _split_top_level_commas(body):
-        m = re.search(r"\sAS\s+(\w+)\s*$", item, flags=re.IGNORECASE)
-        if m:
-            entry = (m.group(1), _unwrap_collect(item[: m.start()].strip()))
-        else:
-            prop = re.match(r"^\w+\.(\w+)$", item.strip())
-            if not prop:
-                continue
-            entry = (prop.group(1), item.strip())
-        if entry not in entries:
-            entries.append(entry)
-    return entries
-
-
-def _optional_matches_to_splice(group_by_cypher: str, nodes_cypher: str) -> list[str]:
-    """OPTIONAL MATCH lines from nodes_cypher not already present in group_by_cypher."""
-    existing = {ln.strip() for ln in group_by_cypher.strip().splitlines()}
-    return [
-        ln
-        for ln in nodes_cypher.strip().splitlines()
-        if ln.strip().upper().startswith("OPTIONAL MATCH") and ln.strip() not in existing
-    ]
-
-
-def _merge_nodes_cypher(group_by_cypher: str, nodes_cypher: str) -> str | None:
-    """Append collect({...}) AS nodes to the RETURN clause of a group-by Cypher query.
-
-    nodes_cypher is compiled from nodes_semantic_sql via semantic_sql_to_cypher, so it
-    already resolves relationship fields to proper OPTIONAL MATCH traversals and map-literal
-    RETURN items (aliased to their field name); reconstructing entries from ColumnRefs alone
-    breaks for those fields, since a bare "{var}.{field_name}" access is invalid Cypher for a
-    relationship property.
-    """
-    lines = group_by_cypher.strip().splitlines()
-    match_idx = next(
-        (i for i, ln in enumerate(lines) if ln.strip().upper().startswith("MATCH")), None
-    )
-    if match_idx is None:
-        return None
-
-    nodes_return_line = next(
-        (ln for ln in nodes_cypher.strip().splitlines() if ln.strip().upper().startswith("RETURN")),
-        None,
-    )
-    if nodes_return_line is None:
-        return None
-    entries = _return_line_to_entries(nodes_return_line)
-    if not entries:
-        return None
-
-    insert = _optional_matches_to_splice(group_by_cypher, nodes_cypher)
-    collect_expr = f"collect({{{', '.join(f'{a}: {e}' for a, e in entries)}}}) AS nodes"
-
-    merged_lines = lines[: match_idx + 1] + insert + lines[match_idx + 1 :]
-    merged = "\n".join(
-        ln.rstrip() + ", " + collect_expr if ln.strip().upper().startswith("RETURN") else ln
-        for ln in merged_lines
-    )
-    return merged if merged != group_by_cypher else None
-
-
-def _merge_nodes_sql_denormalized(
-    group_by_sql: str, nodes_sql: str, nodes_columns: list
-) -> str | None:
-    """Return a JOIN query that denormalizes group-by rows with their matching nodes."""
-    node_cols = [c for c in nodes_columns if c.nested_in is None]
-    join_key_cols = [c for c in nodes_columns if c.nested_in == "__join_key__"]
-    if not node_cols or not join_key_cols:
-        return None
-    node_selects = ", ".join(f'n."{c.column}"' for c in node_cols)
-    join_cond = " AND ".join(f'n."{c.column}" = g."{c.column}"' for c in join_key_cols)
-    return (
-        f"SELECT g.*, {node_selects}\n"
-        f"FROM (\n  {group_by_sql}\n) g\n"
-        f"JOIN (\n  {nodes_sql}\n) n ON {join_cond}"
-    )
-
-
-def _merge_nodes_cypher_denormalized(group_by_cypher: str, nodes_cypher: str) -> str | None:
-    """Return a WITH/UNWIND Cypher that denormalizes group-by rows with their matching nodes.
-
-    See _merge_nodes_cypher: entries come from the compiled nodes_cypher fragment, not raw
-    ColumnRefs, so relationship fields resolve to their OPTIONAL MATCH-derived map literals.
-    """
-    lines = group_by_cypher.strip().splitlines()
-    match_idx = next(
-        (i for i, ln in enumerate(lines) if ln.strip().upper().startswith("MATCH")), None
-    )
-    ret_idx = next(
-        (i for i, ln in enumerate(lines) if ln.strip().upper().startswith("RETURN")), None
-    )
-    if match_idx is None or ret_idx is None:
-        return None
-
-    nodes_return_line = next(
-        (ln for ln in nodes_cypher.strip().splitlines() if ln.strip().upper().startswith("RETURN")),
-        None,
-    )
-    if nodes_return_line is None:
-        return None
-    entries = _return_line_to_entries(nodes_return_line)
-    if not entries:
-        return None
-
-    insert = _optional_matches_to_splice(group_by_cypher, nodes_cypher)
-
-    ret_body = lines[ret_idx].strip()[len("RETURN") :].strip()
-    agg_items = _split_top_level_commas(ret_body)
-
-    def _alias(expr: str) -> str:
-        if " AS " in expr.upper():
-            return expr.split(" AS ")[-1].strip()
-        if "." in expr:
-            return expr.rsplit(".", 1)[-1]
-        if "COUNT(*)" in expr.upper():
-            return "count"
-        return "agg"
-
-    collect_entries = ", ".join(f"{a}: {e}" for a, e in entries)
-    with_parts = [
-        item if " AS " in item.upper() else f"{item} AS {_alias(item)}" for item in agg_items
-    ] + [f"collect({{{collect_entries}}}) AS _nodes"]
-
-    final_ret = [_alias(item) for item in agg_items] + [f"node.{a} AS {a}" for a, _ in entries]
-
-    return "\n".join(
-        [
-            *lines[: match_idx + 1],
-            *insert,
-            *lines[match_idx + 1 : ret_idx],
-            "WITH " + ", ".join(with_parts),
-            "UNWIND _nodes AS node",
-            "RETURN " + ", ".join(final_ret),
-            *lines[ret_idx + 1 :],
-        ]
-    )
 
 
 def _build_enforcement_metadata(  # REQ-040, REQ-041, REQ-263
@@ -371,6 +152,7 @@ def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229, REQ-030
         source_types=state.source_types,
         source_dialects=state.source_dialects,
         steward_hint=steward_hint,
+        statement=compiled.sql,
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
         operator_floor=operator_floor,
@@ -427,81 +209,78 @@ def _build_optimizations_and_warnings(
     return optimizations, warnings
 
 
-def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
-    compiled,
+def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351, REQ-2135
     ctx,
     state,
     role,
     document,
     effective_variables: dict | None,
-    raw_semantic_sql: str,
-    flat_sql: bool,
     flat_cypher: bool,
     node_only_cypher: bool,
     root_index: int,
-) -> tuple[str | None, str | None, str | None]:
-    """Return (compiled_cypher, cypher_error, nodes_compiled_cypher) for the query's root field
-    at ``root_index``: each root field is its own Cypher statement, as it is its own SQL one."""
-    from provisa.compiler.params import embed_params_comment
-    from provisa.compiler.sql_gen import compile_query as _compile_query
-    from provisa.compiler.sql_rewrite import make_semantic_sql
+) -> tuple[str | None, str | None]:
+    """Return (compiled_cypher, cypher_error) for the query's root field at ``root_index``: the
+    read lowered to the graph IR and printed, each root field its own statement. The pane's
+    options are what it projects: its nodes and relationships alone (node_only), its fields under
+    the graph's names (flat), or its answer as GraphQL shapes it. A read the front end does not
+    lower says what, by name."""
+    from provisa.cypher.printer import CypherPrintRefused, print_cypher
     from provisa.gql.label_map import CypherLabelMap
-    from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
+    from provisa.graphql_front.lower import (
+        FIELDS,
+        GRAPHQL,
+        NODES,
+        GraphQLLoweringRefused,
+        lower_root,
+    )
 
     # A missing role would silently grant unrestricted domain_access — require it.
     if role is None:
         raise ValueError("role is required to compile Cypher (domain_access unknown)")
 
+    _cache = getattr(state, "schema_build_cache", {})
+    label_map = CypherLabelMap.from_schema(
+        ctx,
+        domain_access=role["domain_access"],
+        all_tables=_cache.get("tables"),
+        all_relationships=_cache.get("relationships"),
+        all_column_types=_cache.get("column_types"),
+        source_catalogs=getattr(state, "source_catalogs", None),
+    )
+    projection = NODES if node_only_cypher else FIELDS if flat_cypher else GRAPHQL
     try:
-        _cache = getattr(state, "schema_build_cache", {})
-        _label_map = CypherLabelMap.from_schema(
-            ctx,
-            domain_access=role["domain_access"],
-            all_tables=_cache.get("tables"),
-            all_relationships=_cache.get("relationships"),
-            all_column_types=_cache.get("column_types"),
-            source_catalogs=getattr(state, "source_catalogs", None),
-        )
-        # Cypher translator requires ARRAY_AGG (flat=False) SQL as input — it maps ARRAY_AGG→collect().
-        # flat_sql only controls the SQL tab display; Cypher aggregation is controlled by flat_cypher.
-        if flat_sql:
-            _cypher_compiled = _compile_query(document, ctx, effective_variables, flat=False)[
-                root_index
-            ]
-            _cypher_sql = make_semantic_sql(
-                embed_params_comment(_cypher_compiled.sql, _cypher_compiled.params), ctx
-            )
-        else:
-            _cypher_compiled = compiled
-            _cypher_sql = raw_semantic_sql
-        compiled_cypher = semantic_sql_to_cypher(
-            _cypher_sql,
-            _label_map,
-            ctx,
-            override_limit=_cypher_compiled.result_limit,
-            params=_cypher_compiled.params,
-            flat=flat_cypher,
-            node_only=node_only_cypher,
-        )
-        if compiled_cypher is None:
-            return None, "Query structure cannot be represented as a Cypher pattern", None
+        root = lower_root(document, root_index, ctx, label_map, effective_variables, projection)
+        return print_cypher(root.statement), None
+    except (GraphQLLoweringRefused, CypherPrintRefused) as e:
+        return None, f"Not expressible as Cypher yet: {e}"
 
-        nodes_compiled_cypher = None
-        if _cypher_compiled.nodes_sql is not None and not node_only_cypher:
-            _cypher_nodes_sql = make_semantic_sql(
-                embed_params_comment(_cypher_compiled.nodes_sql, _cypher_compiled.nodes_params), ctx
-            )
-            nodes_compiled_cypher = semantic_sql_to_cypher(
-                _cypher_nodes_sql,
-                _label_map,
-                ctx,
-                params=_cypher_compiled.nodes_params,
-                flat=flat_cypher,
-            )
 
-        return compiled_cypher, None, nodes_compiled_cypher
-    except Exception as e:
-        return None, str(e), None
+async def _compile_sparql_for_result(  # REQ-2136, REQ-2135
+    compiled_cypher: str | None, cypher_error: str | None, ctx, state, role_id: str
+) -> tuple[str | None, str | None]:
+    """Return (compiled_sparql, sparql_error) for a root field: its Cypher export written as
+    SPARQL over the role's vocabulary, exact or refused by name. A root with no Cypher form has
+    no SPARQL one, for the same reason. The SPARQL is one more view of the compiled read: a reason
+    it has none -- no public address for its IRIs, a construct with no SPARQL form, a vocabulary
+    that cannot be read -- is its sparql_error, never the compile's failure (the SQL and Cypher
+    are answered as before), as a Cypher export's is its cypher_error."""
+    from provisa.api.rest.cypher_exec import _build_label_map
+    from provisa.api.rest.sparql_router import vocabulary_for
+    from provisa.cypher.parser import parse_cypher
+    from provisa.sparql_query.export import SparqlExportRefused, ir_to_sparql
+
+    if compiled_cypher is None:
+        return None, cypher_error
+    from provisa.gql.iri import IriBaseUnset
+
+    try:
+        label_map = _build_label_map(ctx, role_id, state)
+        vocab = await vocabulary_for(state, role_id, ctx, label_map)
+        return ir_to_sparql(parse_cypher(compiled_cypher), vocab, label_map), None
+    except (SparqlExportRefused, IriBaseUnset) as exc:
+        return None, str(exc)
+    except Exception as exc:  # allow-ble: an export's failure is its sparql_error, as _compile_cypher_for_result's is its cypher_error; the compile still answers
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039, REQ-262, REQ-263, REQ-266
@@ -580,59 +359,24 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
         )
         semantic_sql_str = sql_comment_prefix + raw_semantic_sql
 
-        nodes_semantic_sql: str | None = None
-        if compiled.nodes_sql is not None:
-            nodes_semantic_sql = make_semantic_sql(
-                embed_params_comment(compiled.nodes_sql, compiled.nodes_params), ctx
-            )
-
-        compiled_cypher, cypher_error, nodes_compiled_cypher = _compile_cypher_for_result(
-            compiled,
+        compiled_cypher, cypher_error = _compile_cypher_for_result(
             ctx,
             state,
             role,
             document,
             effective_variables,
-            raw_semantic_sql,
-            flat_sql,
             flat_cypher,
             node_only_cypher,
             root_index,
         )
-
-        has_nodes = nodes_semantic_sql is not None and bool(compiled.nodes_columns)
-
-        if has_nodes:
-            assert nodes_semantic_sql is not None
-            assert compiled.nodes_columns is not None
-            if not flat_sql:
-                merged_sql = _merge_nodes_sql(
-                    raw_semantic_sql, nodes_semantic_sql, compiled.nodes_columns
-                )
-            else:
-                merged_sql = _merge_nodes_sql_denormalized(
-                    raw_semantic_sql, nodes_semantic_sql, compiled.nodes_columns
-                )
-            if merged_sql:
-                semantic_sql_str = sql_comment_prefix + merged_sql
-            nodes_semantic_sql = None
-
-        if has_nodes and nodes_compiled_cypher and compiled_cypher and not node_only_cypher:
-            if not flat_cypher:
-                merged_cypher = _merge_nodes_cypher(compiled_cypher, nodes_compiled_cypher)
-            else:
-                merged_cypher = _merge_nodes_cypher_denormalized(
-                    compiled_cypher, nodes_compiled_cypher
-                )
-            if merged_cypher:
-                compiled_cypher = merged_cypher
-            nodes_compiled_cypher = None
+        compiled_sparql, sparql_error = await _compile_sparql_for_result(
+            compiled_cypher, cypher_error, ctx, state, role_id
+        )
 
         results.append(
             {
                 "sql": compiled.sql,
                 "semantic_sql": semantic_sql_str,
-                "nodes_semantic_sql": nodes_semantic_sql,
                 "engine_sql": engine_sql,
                 "direct_sql": direct_sql,
                 "route": decision.route.value,
@@ -648,10 +392,12 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
                 "enforcement": enforcement,
                 "optimizations": optimizations,
                 "warnings": warnings,
-                "has_nodes": has_nodes,
+                # An aggregate or group-by's nodes are a column of its one statement.
+                "has_nodes": compiled.has_nodes,
                 "compiled_cypher": compiled_cypher,
-                "nodes_compiled_cypher": nodes_compiled_cypher,
                 "cypher_error": cypher_error,
+                "compiled_sparql": compiled_sparql,
+                "sparql_error": sparql_error,
             }
         )
 

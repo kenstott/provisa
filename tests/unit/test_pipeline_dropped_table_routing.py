@@ -215,8 +215,8 @@ def _openapi_state() -> SimpleNamespace:
         federation_engine=MagicMock(),
         tenant_db=SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn)),
         # A second, pooled RDBMS source alongside the API source — matches the real demo
-        # topology (pet-store-pg is always registered too); the API source alone would have
-        # no non-API default_source to fall back to once it's fully inlined.
+        # topology (pet-store-pg is always registered too): the inlined read is still never
+        # sent to it.
         source_types={API_SOURCE_ID: "openapi", "pgsrc": "postgresql"},
         source_dialects={API_SOURCE_ID: None, "pgsrc": "postgres"},
         source_dsns={},
@@ -234,6 +234,8 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
     single live (pooled) source — never leave it on Route.API against the unmaterialized API
     source (which _execute_plan has no branch for and would misroute to state.tenant_db,
     raising "no such table")."""
+    from provisa.api.data.materialization import statement_scratch
+
     ctx = _openapi_ctx()
     rls = RLSContext.empty()
     gov_ctx = build_governance_context(
@@ -256,19 +258,31 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
         patch("provisa.api_source.engine_cache.create_and_insert"),
         patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
     ):
-        exec_sql, decision, default_source, optimized, sources, _opts = await _optimize_and_route(
-            "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
-            "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
-            gov_ctx,
-            ctx,
-            state,
-            table_ids=(TABLE_ID,),
-            nf_args={"petId": "1"},
-        )
+        # Planned as every statement is, in its own scope (REQ-1986: a parameterized table's
+        # live read is this statement's).
+        with statement_scratch():
+            (
+                exec_sql,
+                decision,
+                optimized,
+                sources,
+                _opts,
+            ) = await _optimize_and_route(
+                "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
+                "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
+                gov_ctx,
+                ctx,
+                state,
+                table_ids=(TABLE_ID,),
+                nf_args={"petId": "1"},
+            )
 
     assert m_handle.await_args.args[1] == {"petId": "1"}
-    assert decision.route != Route.API
-    assert state.source_pools.has(decision.source_id)
+    # Its only source inlined as rows, it reads no source and is the engine's: never a direct
+    # read of the tenant's database, which it does not read (REQ-863).
+    assert sources == set()
+    assert decision.route == Route.ENGINE
+    assert decision.reason == "landed: one_source: reads no source"
 
 
 def _pg_state(*, pooled: bool) -> SimpleNamespace:
@@ -312,3 +326,34 @@ async def test_a_read_of_a_source_with_no_connection_on_this_node_is_the_engines
     _, unpooled, *_ = await _route_pets(_pg_state(pooled=False))
     assert unpooled.route == Route.ENGINE
     assert "no direct connection" in unpooled.reason
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "RETURN range(1, 3) AS r",  # Cypher: a statement with no pattern
+        None,  # pgwire: SELECT 1
+    ],
+)
+async def test_a_statement_that_reads_no_source_is_the_engines(statement):
+    """A statement that reads no source is never sent to some source's own driver: no source is
+    one source (REQ-863's one_source gate), and the engine computes it."""
+    if statement is None:
+        sql = "SELECT 1"
+    else:
+        from provisa.cypher.parser import parse_cypher
+        from provisa.gql.label_map import CypherLabelMap
+        from provisa.gql.translator import cypher_to_sql
+
+        empty = CypherLabelMap(nodes={}, relationships={})
+        sql = cypher_to_sql(parse_cypher(statement), empty, {})[0].sql(dialect="postgres")
+    ctx = _ctx()
+    gov_ctx = build_governance_context(
+        "analyst", RLSContext.empty(), {}, ctx, tables=[], role=unscoped_role("analyst")
+    )
+    _, decision, _optimized, sources, _ = await _optimize_and_route(
+        sql, sql, gov_ctx, ctx, _pg_state(pooled=True), table_ids=(), nf_args={}
+    )
+    assert sources == set()
+    assert decision.route == Route.ENGINE
+    assert decision.reason == "landed: one_source: reads no source"

@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "テーブル「{{table}}」に登録された gRPC クエリがありません",
       "no_mutation_fields": "ミューテーションフィールドが見つかりません",
       "no_proto_for_role": "ロール「{{role_id}}」には proto がありません。どのドメインにも到達しないか、コントロールプレーンの権限しか持たないため、データサーフェスが提供されません",
+      "role_served_nothing": "ロール '{{role_id}}' に提供されるテーブルはありません: どのテーブルの列も付与されていません",
       "no_query_field_for_proto_type": "ロール「{{role_id}}」配下に proto 型「{{type_name}}」のクエリフィールドがありません",
       "no_query_fields": "クエリフィールドが見つかりません",
       "no_role": "ロール「{{role_id}}」がありません",
@@ -129,7 +130,12 @@
       "address_not_found": "解決する対象がありません: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve は 1 つの操作で他のルートフィールドと組み合わせることはできません",
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
-      "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。"
+      "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
+      "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
+      "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
+      "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
+      "graphql_parameter_type": "GraphQL リクエストの {{parameter}} は {{expected}} でなければなりません。",
+      "graphql_mutation_over_get": "ミューテーションは GET ではなく、常に POST で送信します。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -256,10 +262,15 @@
       "database_unavailable": "データベースが利用できません",
       "query_engine_unavailable": "クエリエンジンが利用できません",
       "role_header_required": "ビューをプロファイルするには X-Provisa-Role ヘッダーが必要です",
-      "table_not_found": "テーブル {{table_id}} が見つかりません"
+      "table_not_found": "テーブル {{table_id}} が見つかりません",
+      "column_not_found": "列 {{column}} は org_admin が読むテーブルの列ではありません",
+      "classification_kind_unknown": "不明な分類の種類 {{kind}}",
+      "classification_status_invalid": "分類の決定は承認または却下のどちらかで、{{status}} ではありません",
+      "classification_decision_not_found": "{{column}} の {{kind}} としての決定はありません",
+      "classification_pii_refused": "列を PII としてマークできませんでした"
     },
     "replication": {
-      "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
+      "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
       "no_whole_copy": "ソース {{source}} のテーブル {{schema}}.{{table}} にはビルドする全体コピーがありません: 行単位でレプリケートされているか、パラメータ列があります。",
       "page_limit_reached": "{{table}} のレプリカはビルドされませんでした: エンドポイントのページングは max_pages={{max_pages}} で止まり、ページ {{max_pages}} の後にもデータがありました（{{rows}} 行を読み取り）。レプリカはテーブル全体であるため、上限で切り詰められることはありません。エンドポイントの max_pages またはページサイズを増やしてください。",
       "row_limit_reached": "{{table}} のレプリカはビルドされませんでした: 読み取りは max_rows={{max_rows}}（graphql_remote.max_rows）で止まり、{{rows}} 行の後にもリモートにデータがありました。レプリカはテーブル全体であるため、上限で切り詰められることはありません。graphql_remote.max_rows を増やしてください。",
@@ -273,7 +284,7 @@
     "roles": {
       "cannot_delete_system": "システムロールは削除できません",
       "cannot_modify_administrative": "管理ロールは変更できません",
-      "has_dependents": "ロール {{role}} はまだ {{count}} 個のオブジェクトから参照されています。先にそれらの参照を削除してください",
+      "has_dependents": "ロール {{role}} はまだ他のオブジェクトから参照されています。先にそれらの参照を削除してください",
       "not_found": "ロールが見つかりません",
       "org_selection_required": "組織の選択が必要です",
       "already_exists": "ロール '{{role}}' はすでに存在します",
@@ -288,9 +299,9 @@
       "cache_purged": "{{count}}件のキャッシュエントリを削除しました",
       "cache_purged_table": "テーブル {{table}} の{{count}}件のキャッシュエントリを削除しました",
       "calendar_deleted": "カレンダー「{{calendar}}」を削除しました",
-      "calendar_in_use": "カレンダー「{{calendar}}」は{{count}}件のマテリアライズドビューで使用中です。削除する前にスナップショットスケジュールを解除してください",
+      "calendar_in_use": "カレンダー「{{calendar}}」はマテリアライズドビューで使用中です。削除する前にスナップショットスケジュールを解除してください",
       "calendar_not_found": "カレンダー「{{calendar}}」が見つかりません",
-      "calendar_saved": "カレンダー「{{calendar}}」v{{version}} を保存しました",
+      "calendar_saved": "カレンダー「{{calendar}}」{{version}} を保存しました",
       "column_natively_nested": "登録できません：列 {{column}} はソースではネイティブに {{native_type}} であるため、型は {{type}} ではなく json です。",
       "column_types_unresolved": "登録できません：次の列についてソースからデータ型を解決できませんでした：{{columns}}。テーブルをイントロスペクトする（スキーマ検出）か、登録前に各列にデータ型を設定してください。",
       "config_not_found": "設定ファイルが見つかりません",
@@ -336,6 +347,7 @@
       "change_signal_no_topic": "ソース「{{source}}」のテーブル「{{table}}」は変更シグナル kafka を使用していますが、live.kafka.topic に topic を指定していないため、何も更新しません。",
       "change_signal_no_receiver": "Provisa は種類 {{type}} のソースから変更シグナル {{signal}} を受信しないため、ソース「{{source}}」のテーブルがそれによって更新されることはありません。ソースを Debezium でキャプチャし、debezium を使用してください。",
       "change_signal_not_honoured": "種類 {{type}} のソースは、まだ変更の有無を確認できないため、変更シグナル {{signal}} が問い合わせられることはありません。ソース「{{source}}」には ttl を使用してください。",
+      "row_materialize_no_key_fetch": "{{table}} は行単位でレプリケートできません: リモートスキーマに、主キーのリストに対して行を返すフィールドがありません。",
       "sentinel_path_not_applicable": "種類 {{type}} のソースにはセンチネルパスを設定できません。データの変更を知らせられるお客様側の生成元がないか、このソースはプローブされません。ソース「{{source}}」からセンチネルパスを削除してください。",
       "source_cache_ttl_required": "ソース「{{source}}」にはキャッシュTTLが必要です。このソースのテーブルはすべてレプリカであり、変更シグナル {{signal}} のもとでその時計に従って更新されます。ソースの「負荷管理と鮮度」で設定してください。",
       "landing_ttl_required": "テーブル「{{table}}」はキャッシュTTLに従って更新されるレプリカですが、テーブルにもそのソース「{{source}}」にも設定がありません。ソースの「負荷管理と鮮度」でキャッシュTTLを設定するか、登録後にテーブル自体に設定してください。",
@@ -427,6 +439,7 @@
       "relationship_unknown_source": "ソーステーブル '{{table}}' は登録されていません",
       "relationship_unknown_target": "ターゲットテーブル '{{table}}' は登録されていません",
       "relationship_unknown_junction": "結合テーブル '{{table}}' は登録されていません",
+      "relationship_column_beyond_reads": "リレーションシップは、あなたのロールが読める列でのみ結合できます。",
       "source_id_taken": "ソース '{{source}}' はすでに存在します",
       "domain_id_taken": "ドメイン「{{domain}}」はすでに存在します",
       "role_id_taken": "ロール「{{role}}」はすでに存在します",
@@ -453,7 +466,8 @@
       "relationship_same_entity_direct": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: 中間テーブルまたは関数を介して結合しており、1 行対 1 行ではありません",
       "relationship_same_entity_cardinality": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{cardinality}} であり、同一エンティティは 1 行対 1 行です",
       "relationship_same_entity_not_grounded": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{source}} と {{target}} は同じ用語に紐づいていません",
-      "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません"
+      "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません",
+      "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
@@ -483,7 +497,10 @@
       "unknown_encryption_provider": "不明な暗号化プロバイダー「{{provider}}」です",
       "unknown_engine": "不明なエンジン「{{engine}}」です。有効な値：{{valid}}",
       "use_domains_invalid": "use_domains は true、false、または null である必要があります",
-      "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。"
+      "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。",
+      "federation_unknown_field": "フェデレーションの設定ではありません: {{fields}}",
+      "federation_invalid": "フェデレーション設定が無効です: {{error}}",
+      "federation_role_unknown": "フェデレーションのロール '{{role}}' はこの組織のロールではありません"
     },
     "setup": {
       "admin_credentials_required": "admin_username と admin_password が必要です",
@@ -528,7 +545,38 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}"
+      "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}",
+      "access_violations": "このロールはこのクエリを実行できません:",
+      "invalid_regex": "{{expression}} のパターン \"{{pattern}}\" は有効な正規表現ではありません: {{reason}}。=~ には正規表現を指定します (例: \".*{{word}}.*\")。または CONTAINS \"{{word}}\" を使用してください。",
+      "unknown_label": "ラベル :{{label}} はありません。登録済みのラベル: {{suggestions}}。",
+      "no_labels": "ラベル :{{label}} はありません: このロールが読めるテーブルはありません。",
+      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。最も近い登録済みのタイプ: {{suggestions}}。",
+      "no_relationship_types": "リレーションシップタイプ {{types}} はありません: このロールがたどれるリレーションシップはありません。",
+      "type_mismatch": "{{expression}} では、{{value}} を型 {{property_type}} の {{property}} と比較できません。{{fix}}",
+      "aggregate_in_where": "WHERE では集約 {{aggregate}} を使えません: WHERE はグループ化の前に行を絞り込みます。WITH で集約してから絞り込んでください。",
+      "nested_aggregate": "{{outer}} は集約 {{inner}} を集約しています: 集約の集約はできません。先に WITH で集約してください。",
+      "node_and_relationship": "{{variable}} はノードとリレーションシップの両方を指しています: 1 つの変数が指すのは 1 つのものです。それぞれに別の変数を付けてください。",
+      "path_variable_reused": "{{variable}} はパスと、その中のノードまたはリレーションシップの両方を指しています: 1 つの変数が指すのは 1 つのものです。それぞれに別の変数を付けてください。",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] はリスト内包の中で集約しています。リスト内包は一度に 1 つのリストを読みます。先に WITH で集約し、その結果をリストで使ってください。",
+      "length_of_entity": "length({{variable}}) はパスを受け取りますが、{{variable}} はノードまたはリレーションシップです。MATCH p = ... でパスをバインドし、length(p) を使ってください。",
+      "column_name_conflict": "{{clause}} で 2 つの列に {{column}} という名前が付いています: 列にはそれぞれ固有の名前が必要です。AS でどちらかの名前を変えてください。",
+      "union_mixed": "1 つの文に UNION と UNION ALL が混在しています: どちらか一方に統一してください。",
+      "union_columns_differ": "UNION で結合する文が異なる列 {{first}} と {{second}} を返しています: どの文も同じ列名を返す必要があります。",
+      "integer_overflow": "{{value}} は整数の範囲 (-9223372036854775808 から 9223372036854775807) の外です。",
+      "invalid_unicode_escape": "文字列のエスケープ {{escape}} は Cypher が読むものではありません。Unicode エスケープは \\u と 16 進数 4 桁です (例: \\u00e9)。",
+      "boolean_operand": "{{operator}} は true、false、null を受け取りますが、文中に書かれた別の型の値が渡されています。",
+      "nondeterministic_aggregate": "{{aggregate}} は呼び出しごとに変わる rand() を集約しています。先に WITH で計算し、その結果を集約してください。",
+      "value_as_node": "MATCH は {{variable}} をノードまたはリレーションシップとして読みますが、文はそれをどちらでもない値にバインドしています。ノードには別の変数を付けてください。",
+      "undefined_variable": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。",
+      "invalid_limit": "LIMIT {{value}} は行数を表す整数ではありません: LIMIT には 0 以上の数を指定します (例: LIMIT 10)。",
+      "invalid_skip": "SKIP {{value}} は行数を表す整数ではありません: SKIP には 0 以上の数を指定します (例: SKIP 10)。",
+      "engine_refused": "エンジンがクエリを拒否しました: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} は {{variable}} を読みますが、文は変数を一つもバインドしていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。",
+      "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
+      "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
+      "non_finite_number": "回答に JSON で表せない数値が含まれています: {{column}} は {{value}} です。",
+      "try_cast_needs_postgres_16": "変換できない可能性のある値の toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。"
     },
     "requests": {
       "approver_outside_domains": "リレーションシップを作成するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",
@@ -542,6 +590,7 @@
     "statement": {
       "rows_cut": "回答は {{limit}} 行で打ち切られました。これはこの読み取りに適用される行数制限です ({{kind}})。返された行より多くの行が一致します。",
       "rows_cut_unchecked": "回答は {{limit}} 行で、この読み取りに適用される行数制限と同じです ({{kind}})。さらに一致する行があるかどうかは確認できませんでした: {{reason}}",
+      "list_at_ceiling": "リストには、この読み取り ({{kind}}) で行数上限が許す最大 {{limit}} 件のエントリが含まれています。さらにある可能性があります。",
       "approximate_index": "最も類似した行は近似ベクトルインデックスで見つけました。返された最後の行よりわずかに類似度の高い行が欠けている可能性があります。",
       "path_cut": "上限のないパスがグラフの深さ上限 {{limit}} ホップで打ち切られました。それより長いパスは結果に含まれていません。"
     },
@@ -662,6 +711,34 @@
       "also_term_needs_column": "代わりに用語へタグを付けるには列が必要です。",
       "inherited_from_term": "この列は {{term}} を意味するため PII です。その意味のマークを外すか、別の意味であれば列を移動してください。",
       "move_loses": "この移動により、列からタグが外れ、列はそのタグを持たなくなります。各タグの喪失を確認するか、列の移動先の用語にタグを引き継いでください。"
+    },
+    "data_product": {
+      "status": {
+        "published": "データプロダクト {{data_product}} を公開しました。",
+        "deprecated": "データプロダクト {{data_product}} を非推奨にしました。",
+        "retired": "データプロダクト {{data_product}} を廃止しました。",
+        "restored": "データプロダクト {{data_product}} を復元しました。",
+        "reason_required": "理由が必要です。データプロダクトを非推奨または廃止にする理由を入力してください。",
+        "not_found": "データプロダクト {{data_product}} が見つかりません。",
+        "not_draft": "公開できるのは下書きのデータプロダクトだけです。このプロダクトは {{status}} です。",
+        "not_live": "非推奨にできるのは公開中のデータプロダクトだけで、廃止できるのは公開中または非推奨のものだけです。このプロダクトは {{status}} です。",
+        "not_restorable": "復元できるのは非推奨または廃止のデータプロダクトだけです。このプロダクトは {{status}} です。",
+        "retire_on_past": "予定された廃止日 {{retire_on}} は過去の日付です。今日以降の日付を選んでください。",
+        "successor_required": "このデータプロダクトには {{members}} 件のメンバーがあります。廃止するとそれらは後継に移ります。後継を選んでください。",
+        "successor_is_self": "データプロダクトは自分自身の後継になれません。",
+        "successor_retired": "後継 '{{successor}}' は廃止されています。利用中のデータプロダクトを選んでください。",
+        "successor_other_domain": "後継 '{{successor}}' はドメイン {{domain}} にあります。プロダクトのメンバーはそのドメインを共有するため、同じドメインの後継を選んでください。"
+      },
+      "finding": {
+        "no_members": "このデータプロダクトに属するテーブル、ビュー、コマンドはありません。",
+        "member_deprecated": "メンバーテーブル {{table}} は非推奨です。",
+        "no_owner": "このデータプロダクトに責任を持つオーナーロールがありません。",
+        "no_support_contact": "このデータプロダクトにはサポート連絡先がありません。設定済みのエクスポート先がそれを必要とします。",
+        "retirement_blocked": "このデータプロダクトは {{retire_on}} に廃止される予定でしたが、まだメンバーがあります。メンバーを引き継ぐ後継を指定して廃止してください。",
+        "domain_steward_unset": "ドメイン {{domain}} にはスチュワードがいません。",
+        "no_description": "このデータプロダクトは目的も使い方も記載していません。",
+        "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
+      }
     }
   }
 }

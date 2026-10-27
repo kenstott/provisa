@@ -49,6 +49,8 @@ GET /auth/provider-type
 
 請求以其執行角色運作：已驗證使用者的角色，或在開發模式（沒有身分驗證）下取 `X-Provisa-Role` 標頭，沒有時為 `org_admin`。主體中的 `role` 欄位並不選擇角色。若存在，它必須與執行角色一致；不同的值會傳回 `400`，代碼為 `data.role_mismatch`，並指名兩個角色。同一規則適用於 `POST /data/sql`、`POST /data/query` 及 `POST /query/nl`。
 
+**基於 HTTP 的 GraphQL。** 該端點遵循 GraphQL-over-HTTP 規範。它亦回應 `GET /data/graphql`,其 `query`、`operationName`、`variables` 和 `extensions` 以 URL 編碼傳遞(`variables` 和 `extensions` 為 JSON 字串);以 `GET` 發送的變更返回 `405`。`Accept` 中 `application/graphql-response+json` 列於 `application/json` 之前的請求,以該媒體類型回應;其他所有請求以 `application/json` 回應。不是 GraphQL 請求的請求返回 `400`:沒有正文、正文不是 JSON 物件,或參數的 JSON 類型錯誤(`query` 和 `operationName` 為字串,`variables` 和 `extensions` 為物件)。無法解析或驗證、或變數無法強制轉換的文件,回應其 `errors` 且不含 `data`:在 `application/json` 下狀態為 `200`,在 `application/graphql-response+json` 下或 `Accept` 要求 CSV 等檔案格式時為 `400`。
+
 `extensions` 欄位支援自動持續化查詢（APQ）通訊協定：
 
 ```json
@@ -1568,7 +1570,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 | OpenMetadata | 透過 `/v1/glossaries` 的 Provisa 詞彙表 | 以 fqn 為索引鍵的 PUT，重新命名則以已儲存的 UUID 進行 PATCH 重新繫結 | KIND_OF → 原生父階層、SYNONYM_OF → `synonyms`、其餘 → `relatedTerms` | `entityStatus` |
 | Collibra | 詞彙表類型的網域「Provisa Glossary」 | 透過 Import API 的 Business Term 資產 | 原生 Business Term 關聯類型 | 資產狀態 |
 
-關鍵在於繫結，而不是名稱。每個已發佈術語的供應商 id 都會以該術語的 URN（`provisa://<org>/terms/<name>`）記錄在 `catalog_bindings` 中，只有當 Provisa 持有該繫結，或該條目位於 Provisa 建立的容器中時，Provisa 才會修改或刪除供應商一側的詞彙表條目。沒有 Provisa 繫結的詞彙表條目來自外部系統，永遠不會被觸碰。更新會先讀取再合併，所以數據管家在 Provisa 自有術語上加入的欄位會保留；術語離開快照時亦不會刪除任何東西。數據管家所作的術語到資產的指派仍歸外部系統所有：沒有任何配接器寫入它們（發佈在 Provisa 中編寫的指派是另一項後續工作）。具體到 Collibra，Import API 會取代收到的內容，安全性依靠範圍限定：負載只提及 Provisa 詞彙表領域內的資產，以及 Provisa 術語之間的關係，所以數據管家的詞彙表及其關係都不會被觸及。
+關鍵在於繫結，而不是名稱。每個已發佈術語的供應商 id 都會以該術語的 URN（`provisa://<org>/terms/<name>`）記錄在 `catalog_bindings` 中，只有當 Provisa 持有該繫結，或該條目位於 Provisa 建立的容器中時，Provisa 才會修改或刪除供應商一側的詞彙表條目。沒有 Provisa 繫結的詞彙表條目來自外部系統，永遠不會被觸碰。更新會先讀取再合併，所以數據管家在 Provisa 自有術語上加入的欄位會保留；術語離開快照時亦不會刪除任何東西。每個術語都把它的角色（類、屬性或概念）作為術語的屬性帶出：在 DataHub 中是自訂屬性 `provisaRole`，在 OpenMetadata 中是一個自訂屬性，在 Atlas、Purview 和 Atlan 中是術語的附加屬性，在 Collibra 中是 `Provisa Role` 屬性。在 DataHub 中，組織的 Provisa 節點為每個角色設一個子節點，分別名為 Classes、Properties 和 Concepts。OpenMetadata 除術語外沒有詞彙表節點，所以每個角色是一個分組術語，容納該角色的頂層術語；有 `KIND_OF` 父術語的術語留在該父術語之下。Provisa 亦會把每個術語指派給它所指的數據。類術語指派給它所落地的已發佈表，屬性術語指派給它的已發佈欄，概念則不指派給任何東西。每項指派都以目錄自身的自動指派寫入，並歸屬於 Provisa：在 OpenMetadata 中是 `Automated` 標籤，在 DataHub 中是歸屬於 Provisa 執行者的術語關聯，在 Atlas 和 Atlan 中是來源為 Provisa 的語義指派，在 Collibra 中是由 Provisa 用戶建立的關係。Provisa 只加入和撤回這些指派，所以數據管家所作的指派永遠不會被移除或重複。請求失敗不會令指派被撤回。在 Collibra 中，指派經關係 API 而不是 Import API 寫入，因為匯入會取代數據管家同一類型的關係。具體到 Collibra，Import API 會取代收到的內容，安全性依靠範圍限定：負載只提及 Provisa 詞彙表領域內的資產，以及 Provisa 術語之間的關係，所以數據管家的詞彙表及其關係都不會被觸及。
 
 ---
 

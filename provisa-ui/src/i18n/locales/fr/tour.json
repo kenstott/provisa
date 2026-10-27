@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Publier vers les outils de votre organisation",
-        "description": "📤 <strong>Publiez-le là où votre organisation regarde déjà.</strong> Les entrées de catalogue (tables, colonnes, domaines, responsables, relations approuvées), les produits de données et le lignage au niveau des colonnes partent, et chaque cible reçoit ce qu'elle prend en charge : <strong>DataHub, OpenMetadata, Collibra, Atlan et Apache Atlas</strong> comme catalogues, <strong>Snowflake Horizon</strong> et <strong>BigQuery Dataplex</strong> comme listes de produits de données, et le lignage via <strong>OpenLineage</strong>.<p>La publication est sortante uniquement : Provisa ne relit jamais une cible comme source de vérité.</p>"
+        "description": "📤 <strong>Publiez-le là où votre organisation regarde déjà.</strong> Les entrées de catalogue (tables, colonnes, domaines, responsables, relations approuvées), les produits de données et le lignage au niveau des colonnes partent, et chaque cible reçoit ce qu'elle prend en charge : <strong>DataHub, OpenMetadata, Collibra, {{atlan}} et Apache Atlas</strong> comme catalogues, <strong>Snowflake Horizon</strong> et <strong>BigQuery Dataplex</strong> comme listes de produits de données, et le lignage via <strong>OpenLineage</strong>.<p>La publication est sortante uniquement : Provisa ne relit jamais une cible comme source de vérité.</p>"
       },
       "stepRelsAgents": {
         "title": "Relations et agents IA",
@@ -1692,25 +1692,17 @@
         "title": "Les totaux d'une journée",
         "description": "Le 1er octobre tel qu'il est aujourd'hui. Pour chaque agence, produit et devise, vous voyez ce qui est entré, ce qui est sorti et le net. Un outil de BI connecté en pgwire exécute ce même SQL."
       },
-      "bankingAsReported": {
-        "title": "Tel que déclaré à la clôture",
-        "description": "Enregistré au est maintenant réglé sur la clôture du 1er octobre. Un outil de BI fait de même avec SET provisa.as_recorded dans sa session pgwire. Enregistré au filtre les transactions sur updated_at et les totaux quotidiens sur la clôture de chaque jour : vous voyez les chiffres que la banque a déclarés ce soir-là."
-      },
       "bankingReported": {
         "title": "Ce qui a été déclaré",
-        "description": "Les totaux entreprises des 1er et 2 octobre, tels que déclarés à la clôture du 1er octobre. Le total en GBP de Londres contient encore le paiement annulé plus tard. Le 2 octobre n'était pas encore clôturé, il n'a donc aucun chiffre."
-      },
-      "bankingAsRestated": {
-        "title": "Tel que corrigé depuis",
-        "description": "Enregistré au passe à la clôture du 12 octobre, la dernière des trente journées. À cette date, l'annulation saisie le 6 octobre et la transaction tardive saisie le 7 octobre sont toutes deux enregistrées."
+        "description": "Les totaux entreprises des 1er et 2 octobre, tels que déclarés à la clôture du 1er octobre : l'argument as_recorded de la vue les lit tels qu'ils étaient enregistrés alors, et un outil de BI via pgwire fait de même avec SET provisa.as_recorded. Le total en GBP de Londres contient encore le paiement annulé plus tard. Le 2 octobre n'était pas encore clôturé, il n'a donc aucun chiffre."
       },
       "bankingRestated": {
         "title": "Ce qu'il dit maintenant",
-        "description": "Le même SQL. Le total du 1er octobre de Londres ne contient plus le paiement annulé, et le total en USD du 2 octobre d'Édimbourg inclut désormais la transaction tardive. Les versions déclarées à chaque clôture sont conservées à côté des versions corrigées, et recorded_at indique quand chacune a été enregistrée."
+        "description": "Le même SQL avec as_recorded à la clôture du 12 octobre, le dernier des trente jours. Le total du 1er octobre de Londres ne contient plus le paiement annulé, et le total en USD du 2 octobre d'Édimbourg inclut désormais la transaction tardive. Les versions déclarées à chaque clôture sont conservées à côté des versions corrigées, et recorded_at indique quand chacune a été enregistrée."
       },
       "bankingAsOpsSql": {
         "title": "Retour aux opérations",
-        "description": "L'explorateur s'exécute maintenant en tant qu'opérations, toujours enregistré à la clôture du 12 octobre."
+        "description": "L'explorateur s'exécute maintenant en tant qu'opérations."
       },
       "bankingPostings": {
         "title": "Les écritures derrière un total",
@@ -1727,6 +1719,86 @@
       "bankingAsAdmin": {
         "title": "De retour en administrateur",
         "description": "Le tableau de bord est ce que voient les opérations. La suite de la visite se fait de nouveau en tant qu'administrateur, et chaque instruction qui suit indique le rôle sous lequel elle s'exécute."
+      },
+      "groupexposureScenario": {
+        "title": "De quoi parle cette démo",
+        "description": "Une banque pragoise prête à des entreprises et enregistre la société qui détient chacune par son Legal Entity Identifier (LEI). Les règles de l'UE plafonnent ce qu'elle peut prêter à un client, ou à un groupe d'entreprises contrôlé par un même propriétaire, à 25 % de ses fonds propres de base (Tier 1). La question : envers quels groupes la banque dépasse-t-elle ce plafond ? Ses livres nomment le propriétaire de chaque emprunteur, pas qui détient ce propriétaire. La banque, ses emprunteurs et ses prêts sont fictifs ; les groupes qui les détiennent sont réels."
+      },
+      "groupexposureJoin": {
+        "title": "Reliés par le LEI",
+        "description": "La table des propriétaires de la banque et les tables de Wikidata partagent le LEI du propriétaire, et ces relations les relient. Les données de la banque restent dans sa base, celles de Wikidata dans leur réplique ; la jointure se fait dans la requête."
+      },
+      "groupexposureAnswer": {
+        "title": "La réponse en SQL",
+        "description": "La vue group_exposure rattache chaque financement au groupe de son emprunteur, via le LEI du propriétaire et Wikidata. Les groupes Veolia et Vinci dépassent chacun 25 % des fonds propres de base, et une coentreprise de Veolia et d'EPH compte dans les deux. Ni les livres de la banque ni Wikidata ne le montrent seuls. Les emprunteurs et leurs prêts sont fictifs."
+      },
+      "groupexposureExample": {
+        "title": "La réponse en GraphQL",
+        "description": "La même vue en GraphQL : les groupes auxquels la banque prête le plus, leurs emprunteurs, le montant engagé et si chacun dépasse la limite."
+      },
+      "groupexposureRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Le portefeuille de prêts d'une banque fictive et des données liées publiques de Wikidata, reliés par LEI dans un modèle gouverné. Les chaînes de propriété de Wikidata transforment de nombreux petits prêts en quelques grandes expositions de groupe, et la réponse est servie en SQL, GraphQL et REST."
+      },
+      "groupexposureWikidata": {
+        "title": "Qui détient les propriétaires, selon Wikidata",
+        "description": "Wikidata, le graphe de connaissances public, enregistre le LEI de chaque entreprise et son organisation mère. Cette source le lit via le service de requêtes SPARQL de Wikidata. Ses tables ont été chargées une seule fois, à la construction de la démo, si bien que la démo n'appelle jamais Wikidata pendant que vous l'utilisez."
+      },
+      "groupexposureFacilities": {
+        "title": "Les financements de la banque",
+        "description": "Chaque prêt à terme, ligne de crédit renouvelable et garantie accordé par la banque, avec l'emprunteur, le montant engagé et le montant tiré. La limite compte le montant engagé."
+      },
+      "groupexposureGroups": {
+        "title": "Le groupe de chaque propriétaire",
+        "description": "Pour chaque propriétaire que la banque enregistre, l'entreprise au sommet de sa chaîne d'organisations mères sur Wikidata, trouvée avec un seul chemin de propriétés SPARQL. Wikidata sait qu'une holding tchèque appartient à Veolia ou à E.ON, même si les livres de la banque l'ignorent."
+      },
+      "groupexposureTerms": {
+        "title": "En termes simples",
+        "description": "Le glossaire explique les termes d'un responsable des risques : grand risque, fonds propres de base, Legal Entity Identifier et organisation mère. Un groupe de clients liés est un ensemble d'entreprises qui forment un seul risque parce que l'une contrôle les autres."
+      },
+      "groupexposureAlone": {
+        "title": "Les livres seuls",
+        "description": "L'exposition propre de chaque emprunteur, telle que les livres de la banque la voient. La plus grande est inférieure à 10 % des fonds propres de base : aucun emprunteur n'approche la limite de 25 %."
+      },
+      "groupexposureRest": {
+        "title": "La même réponse en REST",
+        "description": "La vue est aussi un point d'accès REST, ici groupé selon qu'un groupe dépasse la limite et totalisé sur le serveur, prêt pour un rapport de risques ou un tableur."
+      },
+      "agentdataScenario": {
+        "title": "Confiez vos données à un agent",
+        "description": "Un détaillant veut un agent d'IA sur ses données de commandes, limité à ce que peut voir la personne pour qui il agit. L'agent atteint les données par le serveur MCP de Provisa. L'explorateur MCP, juste après, montre exactement ce que voit un tel agent externe. Polly, à l'inverse, est l'assistant pour travailler dans Provisa même. Voici la base de commandes du détaillant, lue en direct."
+      },
+      "agentdataCustomers": {
+        "title": "Qui peut voir quels clients",
+        "description": "La table des clients porte les règles : un agent de support Ouest ne lit que les clients de l'Ouest et leurs commandes, adresses e-mail masquées et sans prix. L'analyste BI lit toutes les régions et le montant des commandes, mais aucune adresse e-mail."
+      },
+      "agentdataSupportRole": {
+        "title": "Agir en agent de support Ouest",
+        "description": "L'agent agit avec le rôle de l'en-tête. Suivant choisit l'agent de support Ouest : chaque appel d'outil de l'agent s'exécute avec ce rôle."
+      },
+      "agentdataSupportAsks": {
+        "title": "La question de l'agent de support",
+        "description": "L'agent trouve les tables, écrit du SQL et l'exécute avec des outils MCP, affichés pendant qu'ils tournent. Seuls les clients de l'Ouest reviennent, et leurs adresses e-mail arrivent masquées : c'est tout ce que le rôle reçoit."
+      },
+      "agentdataExplain": {
+        "title": "Ce qui s'est réellement exécuté",
+        "description": "L'appel run_sql de l'agent, ouvert : l'instruction qu'il a envoyée, puis l'instruction exécutée pour son rôle. Provisa a ajouté le filtre de lignes Ouest et le masquage de l'e-mail. L'agent n'a écrit ni l'un ni l'autre, et n'en est jamais informé."
+      },
+      "agentdataOutOfReach": {
+        "title": "Une question hors de portée",
+        "description": "Quand on lui demande le montant des commandes de chaque client, l'agent ne trouve aucun prix parmi les tables que son rôle peut lire, et le dit. Il ne peut pas contourner le rôle : les mêmes règles valent à chaque appel d'outil."
+      },
+      "agentdataAnalystRole": {
+        "title": "Maintenant en analyste BI",
+        "description": "Suivant bascule l'en-tête sur l'analyste BI. L'agent est le même ; le rôle change."
+      },
+      "agentdataAnalystAsks": {
+        "title": "La même question, un autre rôle",
+        "description": "La même question en analyste : toutes les régions reviennent, il n'y a aucune colonne e-mail, et la vue des revenus figure parmi ses tables. D'autres tables, lignes et colonnes, du même agent et du même serveur."
+      },
+      "agentdataConnect": {
+        "title": "Votre propre agent, le même serveur",
+        "description": "Voici le serveur qu'a utilisé l'agent de l'explorateur. Collez cette configuration dans Claude Desktop, ou pointez n'importe quel client MCP vers l'URL, et votre propre agent obtient les mêmes outils gouvernés, soumis aux mêmes règles."
       }
     },
     "status": {
@@ -1843,6 +1915,14 @@
       "banking": {
         "title": "Reporting de clôture sans copier le grand livre",
         "summary": "Les totaux de fin de journée d'une banque, calculés à chaque clôture directement depuis un grand livre jamais copié dans l'entrepôt, lus tels que déclarés et tels que corrigés depuis, avec la même réponse en GraphQL, en SQL et par un agent."
+      },
+      "groupexposure": {
+        "title": "Exposition par groupe via Wikidata",
+        "summary": "Envers quels groupes une banque dépasse-t-elle sa limite de grands risques ? Son portefeuille de prêts, relié par le LEI du propriétaire de chaque emprunteur aux chaînes d'organisations mères de Wikidata via SPARQL, rattache chaque emprunteur à son groupe. La banque et ses emprunteurs sont fictifs ; les groupes sont réels."
+      },
+      "agentdata": {
+        "title": "Confiez vos données à un agent",
+        "summary": "Peut-on confier à un agent d'IA les données de commandes d'un détaillant en le limitant à ce que son utilisateur peut voir ? L'explorateur MCP montre l'agent en agent de support et en analyste : d'autres lignes et colonnes, des e-mails masqués et le SQL gouverné derrière chaque réponse."
       }
     }
   }

@@ -19,7 +19,7 @@ import json
 import struct
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -152,13 +152,13 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
     source = SimpleNamespace(base_url=BASE, auth=None, headers={})
     endpoint = _endpoint(_offset(max_pages=1))
     with (
-        patch.object(router_integration, "table_exists", lambda conn, loc, t, ttl=None: False),
+        patch.object(router_integration, "table_exists", AsyncMock(return_value=False)),
         patch.object(router_integration, "cache_table_name", cache_table_name),
         patch("provisa.api_source.engine_cache._scope", lambda: "scope"),
     ):
         with collecting() as found:
             first = await router_integration.handle_api_query(
-                endpoint, {}, engine, source=source, loc=loc
+                endpoint, {}, engine, source=source, ttl=300, loc=loc
             )
         assert first.cut is not None and first.from_cache is False
         assert [w.code for w in found] == ["api.answer_cut"]
@@ -166,7 +166,7 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
         assert first.cache_table != cache_table_name("api", "pets", {})
         with collecting():
             second = await router_integration.handle_api_query(
-                endpoint, {}, engine, source=source, loc=loc
+                endpoint, {}, engine, source=source, ttl=300, loc=loc
             )
     assert second.from_cache is False and route.call_count == 2  # called again, not a hit
     # The handler fetched and wrote nothing: the statement that asked stores the rows, once.

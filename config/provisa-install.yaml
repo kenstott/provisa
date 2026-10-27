@@ -111,7 +111,7 @@ functions:
   schema_name: openapi
   source_id: petstore-api
   visible_to:
-  - org_admin
+  - data_steward
 - arguments:
   - arg_kind: result_set
     columns:
@@ -153,7 +153,7 @@ functions:
   returns: ''
   source_id: ''
   visible_to:
-  - org_admin
+  - data_steward
 - binding:
     method: /provisa.demo.RandomData/GetRandomSet
     target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
@@ -180,7 +180,7 @@ functions:
   returns: ''
   source_id: ''
   visible_to:
-  - org_admin
+  - data_steward
 graphql_remote:
   max_list_depth: 2
   max_list_items: 100
@@ -205,8 +205,8 @@ metrics:
   from_fact: fact_pet_inquiries
   name: fact_pet_inquiries_id_count
   visible_to:
-  - org_admin
-  - analyst
+  - data_steward
+  - pet_analyst
 naming:
   domain_prefix: true
   rules: []
@@ -381,7 +381,8 @@ roles:
   domain_access:
   - pet-store
   - shelter
-  id: analyst
+  id: pet_analyst
+  parents: [analyst]
   description: "Queries the pet store's and the shelter's data."
 server:
   limits:
@@ -438,6 +439,7 @@ sources:
     correlation_max_columns: 20
     joint_max_distinct: 20
     category_max_columns: 10
+    classification_sample: 500
   type: data_profiler
 - description: "Animal shelter GraphQL API \u2014 staff schedules, breed catalogue,\
     \ and animal assignment records managed by shelter operations"
@@ -482,43 +484,43 @@ tables:
     data_type: varchar
     native_filter_type: graphql_arg
     native_filter_required: true
-    visible_to: []
+    visible_to: [viewer]
   - description: Typical lifespan of the breed in years
     name: avg_lifespan_years
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: How much day-to-day care the breed needs
     name: care_level
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Notes shelter staff keep on the breed
     name: description
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Breed name, unique across the shelter's catalogue
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Species the breed belongs to
     name: species
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Environment the breed is suited to
     name: typical_habitat
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Care requirements and placement context for a single breed \u2014\
     \ use before making a staffing assignment or adoption decision"
   domain_id: shelter
@@ -531,38 +533,38 @@ tables:
     name: avg_lifespan_years
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: How much day-to-day care the breed needs
     name: care_level
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Notes shelter staff keep on the breed
     name: description
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Breed name, unique across the shelter's catalogue
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Species the breed belongs to
     name: species
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Environment the breed is suited to
     name: typical_habitat
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Full breed catalog \u2014 use to answer what care protocols apply\
     \ and which adopter profiles match each species in custody"
   domain_id: shelter
@@ -574,38 +576,38 @@ tables:
     name: breed_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee the breed is assigned to
     name: employee_id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Date the assignment ended, null while it is current
     name: end_date
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the assignment
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Role the employee holds on that breed
     name: role
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Date the assignment started
     name: start_date
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Complete accountability map of staff to breeds \u2014 use to spot\
     \ coverage gaps or single-keeper risk across all species"
   domain_id: shelter
@@ -620,43 +622,43 @@ tables:
     data_type: varchar
     native_filter_type: graphql_arg
     native_filter_required: true
-    visible_to: []
+    visible_to: [viewer]
   - description: Breed the employee is assigned to care for
     name: breed_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee the breed is assigned to
     name: employee_id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Date the assignment ended, null while it is current
     name: end_date
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the assignment
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Role the employee holds on that breed
     name: role
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Date the assignment started
     name: start_date
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "All staff responsible for a breed \u2014 use to verify minimum keeper\
     \ coverage and identify backup gaps"
   domain_id: shelter
@@ -670,43 +672,43 @@ tables:
     data_type: integer
     native_filter_type: graphql_arg
     native_filter_required: true
-    visible_to: []
+    visible_to: [viewer]
   - description: Breed the employee is assigned to care for
     name: breed_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee the breed is assigned to
     name: employee_id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Date the assignment ended, null while it is current
     name: end_date
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the assignment
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Role the employee holds on that breed
     name: role
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Date the assignment started
     name: start_date
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "All breeds a given staff member is accountable for \u2014 use to assess\
     \ workload before adding a new assignment"
   domain_id: shelter
@@ -718,38 +720,38 @@ tables:
     name: available
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Breed of the pet
     name: breed_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the pet record
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Name the pet is known by
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Sale price of the pet in USD
     name: price
     data_type: double
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Species of the pet (e.g. dog, cat, bird)
     name: species
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Pet dimension \u2014 entity projection of the pet inventory (star-schema\
     \ demo)"
   domain_id: pet-store
@@ -766,7 +768,7 @@ tables:
     data_type: integer
     native_filter_type: graphql_arg
     native_filter_required: true
-    visible_to: []
+    visible_to: [viewer]
   - data_type: jsonb
     description: Employee's contact details
     name: contact
@@ -774,50 +776,50 @@ tables:
     - name: email
       type: string
       visible_to:
-      - org_admin
-      - analyst
+      - data_steward
+      - pet_analyst
     - name: phone
       type: string
       visible_to:
-      - org_admin
-      - analyst
+      - data_steward
+      - pet_analyst
     - name: ssn
       type: string
       visible_to:
-      - org_admin
+      - data_steward
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Shelter department the employee works in
     name: department
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee's first name
     name: first_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Date the employee joined the shelter
     name: hire_date
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the shelter employee
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee's last name
     name: last_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Contact details and department for a single staff member \u2014 use\
     \ to route assignment requests or resolve scheduling conflicts"
   domain_id: shelter
@@ -832,50 +834,50 @@ tables:
     - name: email
       type: string
       visible_to:
-      - org_admin
-      - analyst
+      - data_steward
+      - pet_analyst
     - name: phone
       type: string
       visible_to:
-      - org_admin
-      - analyst
+      - data_steward
+      - pet_analyst
     - name: ssn
       type: string
       visible_to:
-      - org_admin
+      - data_steward
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Shelter department the employee works in
     name: department
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee's first name
     name: first_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Date the employee joined the shelter
     name: hire_date
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the shelter employee
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee's last name
     name: last_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
@@ -888,14 +890,14 @@ tables:
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet the inquiry is about
     name: pet_id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Inquiry fact at pet grain \u2014 inquiry count per pet, linked to\
     \ dim_pet (star-schema demo)"
   domain_id: pet-store
@@ -913,43 +915,43 @@ tables:
     data_type: varchar
     native_filter_type: query_param
     native_filter_required: false
-    visible_to: []
+    visible_to: [viewer]
   - description: Store category the pet is listed under
     name: category
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet identifier assigned by the Petstore API
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet's name as listed in the store
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Photo URLs published with the listing
     name: photoUrls
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Availability status - available, pending, or sold
     name: status
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Tags the store applies to the pet
     name: tags
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Pets available for purchase \u2014 filtered by status from Petstore\
     \ API"
   domain_id: pet-store
@@ -963,43 +965,43 @@ tables:
     data_type: json
     native_filter_type: query_param
     native_filter_required: false
-    visible_to: []
+    visible_to: [viewer]
   - description: Store category the pet is listed under
     name: category
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet identifier assigned by the Petstore API
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet's name as listed in the store
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Photo URLs published with the listing
     name: photoUrls
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Availability status - available, pending, or sold
     name: status
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Tags the store applies to the pet
     name: tags
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: Pets filtered by tag from Petstore API
   domain_id: pet-store
   schema: default
@@ -1011,14 +1013,14 @@ tables:
     name: count
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Availability status the count is grouped by
     name: status
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: Pet inventory counts by status from Petstore API
   domain_id: pet-store
   schema: default
@@ -1030,44 +1032,44 @@ tables:
     name: complete
     data_type: boolean
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Order identifier assigned by the Petstore API
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Order id to fetch - sent to the Petstore API as a path parameter
     name: _nf_orderId
     data_type: integer
     native_filter_type: path_param
     native_filter_required: true
-    visible_to: []
+    visible_to: [viewer]
   - description: Pet the order was placed for
     name: petId
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Number of animals on the order
     name: quantity
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: When the order is scheduled to ship
     name: shipDate
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Order fulfilment status - placed, approved, or delivered
     name: status
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: Individual purchase order by ID from Petstore API
   domain_id: pet-store
   schema: default
@@ -1080,43 +1082,43 @@ tables:
     data_type: integer
     native_filter_type: path_param
     native_filter_required: true
-    visible_to: []
+    visible_to: [viewer]
   - description: Store category the pet is listed under
     name: category
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet identifier assigned by the Petstore API
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet's name as listed in the store
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Photo URLs published with the listing
     name: photoUrls
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Availability status - available, pending, or sold
     name: status
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Tags the store applies to the pet
     name: tags
     data_type: json
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: Individual pet record by ID from Petstore API
   domain_id: pet-store
   schema: default
@@ -1128,46 +1130,46 @@ tables:
     name: email
     data_type: varchar
     visible_to:
-    - org_admin
+    - data_steward
   - description: Account holder's first name
     name: firstName
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: User identifier assigned by the Petstore API
     name: id
     data_type: integer
     visible_to:
-    - org_admin
+    - data_steward
   - description: Account holder's last name
     name: lastName
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Contact phone number on the account
     name: phone
     data_type: varchar
     visible_to:
-    - org_admin
+    - data_steward
   - description: Account status code returned by the Petstore API
     name: userStatus
     data_type: integer
     visible_to:
-    - org_admin
+    - data_steward
   - description: Login name the account was created under
     name: username
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Login name to fetch - sent to the Petstore API as a path parameter
     name: _nf_username
     data_type: varchar
     native_filter_type: path_param
     native_filter_required: true
-    visible_to: []
+    visible_to: [viewer]
   description: User account by username from Petstore API
   domain_id: pet-store
   schema: default
@@ -1178,44 +1180,44 @@ tables:
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Kind of inquiry - adoption, price, or availability
     name: inquiry_type
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Free-text message the customer wrote
     name: message
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Pet the inquiry is about
     name: pet_id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Where the inquiry stands - new, contacted, or closed
     name: status
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: When the inquiry was submitted
     name: submitted_at
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Customer who submitted the inquiry
     name: user_id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Customer adoption inquiries \u2014 managed by the front-desk/CRM team"
   domain_id: pet-store
   enable_aggregates: true
@@ -1229,37 +1231,37 @@ tables:
     name: available
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Breed of the pet
     name: breed_name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Unique identifier for the pet record
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Name of the pet
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Sale price of the pet in USD
     name: price
     data_type: double
     visible_to:
-    - org_admin
+    - data_steward
   - description: Species of the pet (e.g. dog, cat, bird)
     name: species
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Pet inventory \u2014 managed by the inventory department"
   domain_id: pet-store
   enable_aggregates: true
@@ -1274,38 +1276,38 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Pet the companion link starts from
     name: pet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Pet the companion link points at
     name: companion_pet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Which kind of companionship this row records
     name: relation_type
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Date the two pets were first paired
     name: since
     data_type: date
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Care note explaining the pairing
     name: note
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   # REQ-1586: the junction behind PetCompanions' three Cypher edge types. Registered like any
   # other table so the relationship rows can name it; the Cypher schema drops it from the node
   # side, so it is an edge in the graph and a table everywhere else.
@@ -1319,26 +1321,26 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Vet's name
     name: name
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Practice the vet works out of
     name: clinic
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Kind of animal the vet is licensed to treat
     name: specialty
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   description: "Veterinarians the store refers pets to"
   domain_id: pet-store
   product_id: pet_health
@@ -1351,32 +1353,32 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Pet that was seen
     name: pet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Vet who saw the pet
     name: vet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Date of the visit
     name: visit_date
     data_type: date
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Why the pet was brought in
     name: reason
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   # REQ-1586: the junction behind TREATED_BY. Two different entities, so this is the ordinary
   # many-to-many shape rather than pet_companions' recursive one, and the edge type comes from the
   # relationship's alias (via_label_source: fixed).
@@ -1391,26 +1393,26 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Name the playgroup is scheduled under
     name: name
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Yard the playgroup runs in
     name: yard
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Most pets the yard takes at once
     name: max_size
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   description: "Supervised exercise groups run in the store yards"
   domain_id: pet-store
   # REQ-653: "how many pets per playgroup / per yard" is the question this table exists to answer,
@@ -1426,32 +1428,32 @@ tables:
     name: id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Pet enrolled in the playgroup
     name: pet_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Playgroup the pet is enrolled in
     name: playgroup_id
     data_type: integer
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Date the pet joined the playgroup
     name: joined_on
     data_type: date
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   - description: Handling note for this pet in this group
     name: note
     data_type: varchar
     visible_to:
-    - analyst
-    - org_admin
+    - pet_analyst
+    - data_steward
   # REQ-1586: the junction behind PLAYGROUP_MEMBERS, and the third way a junction names its edge —
   # the junction table's own name (via_label_source: table), with no alias and no discriminator.
   description: "Playgroup enrolment — the junction behind the PLAYGROUP_MEMBERS relationship between pets and playgroups"
@@ -1473,8 +1475,8 @@ tables:
     name: scan_id
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   cache_ttl: 3600
   description: "Quality scan results for the pet inventory — one row per check\
     \ per scan, with outcome, metric value and threshold"
@@ -1497,17 +1499,18 @@ tables:
       - type: expect_column_values_to_not_be_null
         kwargs:
           column: species
+  product_id: pet_health
   source_id: dq-checker
   table: pets_quality
 # REQ-1443: the Soda counterpart — same results schema, same scan pipeline, the other contract
-# dialect. No product_id: clause 10 derives it from the scanned table (vets → pet_health).
+# dialect. Assigned to pet_health as any member is, like pets_quality.
 - columns:
   - description: Placeholder carrying visible_to; replaced by the shipped results schema at parse
     name: scan_id
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   cache_ttl: 3600
   description: "Quality scan results for the referral vets — one row per check per scan,\
     \ with outcome, metric value and threshold"
@@ -1528,6 +1531,7 @@ tables:
     checks:
       - row_count:
           must_be_greater_than: 0
+  product_id: pet_health
   source_id: dq-soda
   table: vets_quality
 - alias: schedule_by_employee
@@ -1537,44 +1541,44 @@ tables:
     data_type: integer
     native_filter_type: graphql_arg
     native_filter_required: true
-    visible_to: []
+    visible_to: [viewer]
   - description: Day of the week the shift falls on
     name: day_of_week
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee the shift belongs to
     name: employee_id
     data_type: integer
     gql_selection: "employee_id: employee { id }"
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the schedule entry
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Shelter location the shift covers
     name: location
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Time the shift ends
     name: shift_end
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Time the shift starts
     name: shift_start
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "A staff member's shift coverage for the week \u2014 use for availability\
     \ checks before scheduling a new assignment or event"
   domain_id: shelter
@@ -1586,39 +1590,39 @@ tables:
     name: day_of_week
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Employee the shift belongs to
     name: employee_id
     data_type: integer
     gql_selection: "employee_id: employee { id }"
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Identifier of the schedule entry
     name: id
     data_type: integer
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Shelter location the shift covers
     name: location
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Time the shift ends
     name: shift_end
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Time the shift starts
     name: shift_start
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
     \ and to surface days where any location is understaffed"
   domain_id: shelter
@@ -1634,30 +1638,30 @@ tables:
     name: created_at
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Customer's email address
     name: email
     data_type: varchar
     visible_to:
-    - org_admin
+    - data_steward
   - description: Identifier of the customer
     name: id
     data_type: bigint
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Customer's full name
     name: name
     data_type: varchar
     visible_to:
-    - org_admin
-    - analyst
+    - data_steward
+    - pet_analyst
   - description: Customer's phone number
     name: phone
     data_type: varchar
     visible_to:
-    - org_admin
+    - data_steward
   description: Prospective adopters who have submitted inquiries
   domain_id: pet-store
   schema: default
@@ -1718,7 +1722,7 @@ webhooks:
   timeout_ms: 5000
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
   visible_to:
-  - org_admin
+  - data_steward
 - arguments:
   - name: petId
     type: Int
@@ -1732,4 +1736,4 @@ webhooks:
   timeout_ms: 5000
   url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
   visible_to:
-  - org_admin
+  - data_steward

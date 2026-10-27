@@ -666,24 +666,21 @@ tables:
         visible_to: [admin, analyst]
         masks:                    # first entry the reader holds applies
           - to: [admin]           # admin sees raw
-          - to: ["*"]             # everyone else sees it masked
-            mask: {type: regex, pattern: "^(.{2}).*(@.*)$", replace: "$1***$2"}
+          - mask: {type: regex, pattern: "^(.{2}).*(@.*)$", replace: "$1***$2"}  # every other reader sees it masked
         alias: email_address      # optional: override GraphQL field name
         description: "Primary email address"  # optional: appears in SDL
       - name: amount
         visible_to: [admin]
         masks:
           - to: [admin]
-          - to: ["*"]
-            mask: {type: constant, value: 0}
+          - mask: {type: constant, value: 0}
       - name: created_by
         visible_to: [admin, analyst]
       - name: created_at
         visible_to: [admin, analyst]
         masks:
           - to: [admin]
-          - to: ["*"]
-            mask: {type: truncate, precision: month}
+          - mask: {type: truncate, precision: month}
     write_grants:                 # who may write this table, per role and operation
       - role: admin
         operation: insert
@@ -815,10 +812,10 @@ roles:
     description: A new analyst, with the analyst's access and nothing more.
     capabilities: []
     domain_access: [sales-analytics]
-    parent_role_id: analyst      # inherits query_development + sales-analytics
+    parents: [analyst]           # inherits query_development and the analyst's grants
 ```
 
-Roles with `parent_role_id` inherit capabilities, domain access, column and object grants, and RLS rules from the parent, with the child's own RLS rule for a table taking precedence. The chain is flattened at startup.
+Roles with `parents` inherit capabilities, column and object grants, and RLS rules from every parent, with the child's own RLS rule for a table taking precedence. A role's `domain_access` is its own and is not inherited. See [Inherited Roles](#inherited-roles).
 
 ### Capabilities
 
@@ -952,25 +949,35 @@ Read as recorded on 3 Oct, the trade shows the wrong quantity. Read as known now
 
 A version is in force from its time to the next version's. A delete takes effect when Provisa records it.
 
-**Reading.** A plain read answers the version of each key in force now. The `X-Provisa-As-Of` header reads as of a time, or over a range given as an ISO 8601 interval `start/end`:
+**Reading.** A plain read answers the version of each key in force now. To read another time, give the relation its own `as_of` argument where the statement names it, a time or a range given as an ISO 8601 interval `start/end`:
 
-```
-X-Provisa-As-Of: 2026-03-01T00:00:00
-X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-03-01T00:00:00') AS e
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-01-01T00:00:00/2026-04-01T00:00:00') AS e
 ```
 
 A point answers the version of each key in force then. A range answers every version in force at any time within it, one row per version.
 
-**As recorded.** A correction recorded later changes what a view says about the past: the version in force on 30 September is the corrected one once the correction is recorded. To read the view as Provisa had recorded it at a time, before any later correction, add `X-Provisa-As-Recorded`, one ISO 8601 time:
+**As recorded.** A correction recorded later changes what a view says about the past: the version in force on 30 September is the corrected one once the correction is recorded. To read the view as Provisa had recorded it at a time, before any later correction, add `as_recorded`, one ISO 8601 time:
 
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_recorded => '2026-10-01T00:00:00') AS e
 ```
-X-Provisa-As-Of: 2026-09-30T12:00:00
-X-Provisa-As-Recorded: 2026-10-01T00:00:00
+
+Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `as_recorded` alone, the read answers the version of each key in force as recorded then. It takes one time, not a range.
+
+**Where the arguments go.** Each reference carries its own time, so one statement can read a view at two times through two references, and a reference with no arguments reads the current state. A time may also be a bound value, `(as_recorded => $1)`, with the value sent in the request's `params`. Only a relation that keeps its versions takes the arguments: a table or view with history, and an Iceberg or Delta table, which travels by its snapshots and so takes `as_recorded` alone (the snapshot current at that time). Any other relation, a malformed time, a range given to `as_recorded`, or `as_of` on an Iceberg or Delta table is refused with HTTP 400, naming the relation.
+
+The same two names are the arguments of the relation's field in GraphQL, on root fields and on a relationship field whose target keeps its versions, so two aliases can read one view at two times:
+
+```graphql
+{
+  reported: view_eod_totals(as_recorded: "2026-10-01T17:00:00") { branch net_movement }
+  restated: view_eod_totals(as_recorded: "2026-10-12T17:00:00") { branch net_movement }
+}
 ```
 
-Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `X-Provisa-As-Recorded` alone, the read answers the version of each key in force as recorded then. It takes one time, not a range; a range or a malformed value is refused with HTTP 400 (`data.invalid_as_recorded`).
-
-Both times also reach Provisa without the headers. The as-of time is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter and the `as_of` option of an Arrow Flight ticket, and a range given to `resolve` answers the row's `versions` in place of its `row`. The as-recorded time is the `as_recorded` argument of `resolve`, the REST `as_recorded` query parameter and the `as_recorded` option of an Arrow Flight ticket. The audit record of each statement keeps both times it read with, `as_of` and `as_recorded`. Rights, masks and row rules apply as to any read. A malformed as-of value, or a range whose end isn't after its start, is refused with HTTP 400 (`data.invalid_as_of`).
+REST takes them as the table endpoint's `as_of` and `as_recorded` query parameters, and the MCP `describe_table` tool says which arguments a table takes. The `_resolve` field (GraphQL, REST and MCP) takes `as_of` and `as_recorded` too, and a range given to it answers the row's `versions` in place of its `row`; so does the gRPC `Resolve` call. An Arrow Flight ticket takes them as its `as_of` and `as_recorded` options, and a pgwire session sets a default for the statements it runs with `SET provisa.as_of` and `SET provisa.as_recorded`, which a reference's own arguments override. The SQL explorer's "As of" and "As recorded at" pickers write the arguments into the statement. The audit record of each statement keeps the time it read at, `as_of` and `as_recorded`, when it read at one time. Rights, masks and row rules apply as to any read.
 
 Every view with history answers three more columns, granted as its source-time column (else its first key column) is:
 
@@ -1101,8 +1108,9 @@ The response cache is off for every request that does not ask for it. A request 
 | GraphQL (`/data/graphql`, Arrow Flight) | `@cached` on the operation, optionally `@cached(ttl: 60)` |
 | SQL (pgwire, Flight SQL, `/data/sql`) | a `-- @provisa cache=true` or `-- @provisa cache_ttl=60` comment line in the statement |
 | Cypher (`/data/cypher`, the Neo4j Query API, Bolt, Arrow Flight) | a `// @provisa cache=true` or `// @provisa cache_ttl=60` comment line in the query |
+| SPARQL (`/data/sparql`) | a `# @provisa cache=true` or `# @provisa cache_ttl=60` comment line in the query |
 | gRPC (and the HTTP gRPC proxy) | call metadata (headers on the proxy) `x-provisa-cache: true` or `x-provisa-cache-ttl: 60` |
-| REST, JSON:API, and as an alternative to the hint in the text: GraphQL over HTTP, `/data/cypher`, the Neo4j Query API | the request header `Cache-Control: max-age=60` (or `max-stale=60`), or `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
+| REST, JSON:API, and as an alternative to the hint in the text: GraphQL over HTTP, `/data/cypher`, `/data/sparql`, the Neo4j Query API | the request header `Cache-Control: max-age=60` (or `max-stale=60`), or `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
 
 A `ttl` that is not an integer fails the request. A request that states the opt-in twice (in its text and a header, or in two headers) with different values fails with `400`; neither is picked. `Cache-Control: no-cache` or `no-store` means no cache, the same as no header.
 
@@ -1365,7 +1373,11 @@ Presets are added to the statement during compilation, before SQL generation. Th
 
 ## Inherited Roles
 
-Roles can inherit from one parent role via `parent_role_id`. The chain is flattened at startup. A child holds the union of its ancestors' capabilities and domain access; a column, metric, function or webhook granted to an ancestor is granted to the child; and an ancestor's RLS rules apply to the child per table, nearest role first, with the child's own rule for a table replacing the parent's.
+A role names the roles it inherits from in `parents`, in order. The inheritance is flattened at startup. A role holds the union of its own capabilities and every ancestor's; a column, metric, function or webhook granted to an ancestor is granted to it. Its `domain_access` is its own: reach says where the role's capabilities apply, so a child of a role that reaches every domain reaches only the domains it lists.
+
+RLS resolves per table. A role's own rule for a table stands. Without one, the rules its parents resolve are combined with OR, and a parent with no rule adds nothing, so adding a parent never lifts a row rule. A role with no rule anywhere among its ancestors reads every row its grants allow. Write grants resolve the same way per operation. A property such as `max_rows`, `rate_limit` or a session value comes from the role itself, else from the first ancestor that sets it, ancestors walked depth-first in the order `parents` lists them.
+
+Provisa ships standard roles (`viewer`, `analyst`, `developer`, `modeler`, `data_steward`, `security_admin`, `data_product_owner`, `dq_reader`, `dq_steward`, `source_admin`, `org_operator`, `org_admin`, `sandbox`, `platform_admin`). They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
 
 ```yaml
 roles:
@@ -1380,16 +1392,21 @@ roles:
   - id: junior_analyst
     description: A new analyst, with the analyst's access and nothing more.
     capabilities: []
-    domain_access: []
-    parent_role_id: analyst      # inherits query_development + sales-analytics
-  - id: intern
-    description: An intern, with the junior analyst's access.
+    domain_access: [sales-analytics]
+    parents: [analyst]           # inherits query_development and the analyst's grants
+  - id: auditor
+    description: Reads the sales analytics domain's records for audit.
     capabilities: []
-    domain_access: []
-    parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
+    domain_access: [sales-analytics]
+    parents: [viewer]
+  - id: audit_lead
+    description: Leads audits; holds both roles' capabilities and grants.
+    capabilities: []
+    domain_access: [sales-analytics]
+    parents: [junior_analyst, auditor]
 ```
 
-Multi-level inheritance is supported. The child role's explicit capabilities and domain_access are merged with the parent's. A parent must be an existing role, may not be the role itself and may not close a cycle; each is refused at save.
+Each parent must be an existing role, named once, not the role itself, and may not close a cycle; each is refused at save.
 
 ## Scheduled Triggers
 

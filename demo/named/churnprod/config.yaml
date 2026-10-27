@@ -37,13 +37,15 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: churn_analyst
+  parents: [analyst]
   description: "The churn analyst: reads every customer's score, with email addresses masked."
   capabilities:
   - query_development
   domain_access:
   - churn
 - id: analyst_eu
+  parents: [viewer]
   description: "The EU account team: reads the scores of customers billed in the EU only, email addresses masked."
   capabilities:
   - query_development
@@ -71,13 +73,13 @@ sources:
   description: The churn model, a Python package with its fitted scikit-learn model and pinned dependencies
   mapping:
     runtime: python
-    code: {kind: upload, upload: e80be40c584d433f9aa66108a9c9b9015264abfbe3ec43c992ae503ecc79d4ce, filename: churn_model.tar.gz}
+    code: {kind: upload, upload: 6db9436557cfb865b85215daaa3e3ae990d731cef65d528aa5b75eecdf5fe909, filename: churn_model.tar.gz}
 - id: churn-model-js
   type: node
   description: The churn model's Node twin, the same fitted coefficients in JavaScript
   mapping:
     runtime: node
-    code: {kind: upload, upload: ced501b634050e5ab0175cd662773e3938b7787c0133559c5b29591d649a6819, filename: churn-model-js.tar.gz}
+    code: {kind: upload, upload: e98e7054f962c555c375c973a426b437fe49de738857654df80167d1b6bb4075, filename: churn-model-js.tar.gz}
 tables:
 - source_id: churn-db
   domain_id: churn
@@ -85,25 +87,25 @@ tables:
   table: customers
   description: Every customer, their plan and region, and the date they cancelled if they have
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [org_admin, analyst, analyst_eu], masks: [{to: [analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: region, data_type: varchar, description: 'Where the customer is billed: NA, EU or APAC', visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: plan, data_type: varchar, description: 'The plan they are on: basic, pro or team', visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: cancelled_on, data_type: date, description: The day they cancelled; empty while they are a customer, visible_to: [org_admin, analyst, analyst_eu]}
+  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: region, data_type: varchar, description: 'Where the customer is billed: NA, EU or APAC', visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: plan, data_type: varchar, description: 'The plan they are on: basic, pro or team', visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: cancelled_on, data_type: date, description: The day they cancelled; empty while they are a customer, visible_to: [data_steward, churn_analyst, analyst_eu]}
 - source_id: churn-db
   domain_id: churn
   schema: public
   table: customer_features
   description: One row a current customer -- the features the churn model scores
   columns:
-  - {name: customer_id, data_type: varchar, is_primary_key: true, description: The customer's id, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [org_admin, analyst, analyst_eu], masks: [{to: [analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: logins_per_month, data_type: double, description: Their average sign-ins a month over the year, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: tickets, data_type: integer, description: The support tickets they opened in the year, visible_to: [org_admin, analyst, analyst_eu]}
+  - {name: customer_id, data_type: varchar, is_primary_key: true, description: The customer's id, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: logins_per_month, data_type: double, description: Their average sign-ins a month over the year, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: tickets, data_type: integer, description: The support tickets they opened in the year, visible_to: [data_steward, churn_analyst, analyst_eu]}
 # The model's function, a table: its columns are its RiskRow's fields, its parameters the
 # function's (_nf_ columns), required where the function gives no default.
 - source_id: churn-model
@@ -112,34 +114,34 @@ tables:
   table: churn_risk
   description: How likely a customer is to cancel, scored by the churn model, and what raises it most
   columns:
-  - {name: customer_id, data_type: text, description: The customer scored, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: score, data_type: double, description: 'How likely they are to cancel, 0 to 1', visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: reasons, data_type: json, description: 'What raises their risk most, in words', visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: computed_at, data_type: timestamp, description: When the score was computed, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: _nf_customer_id, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: The customer to score, visible_to: []}
-  - {name: _nf_plan, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: Their plan, visible_to: []}
-  - {name: _nf_region, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: Where they are billed, visible_to: []}
-  - {name: _nf_tenure_months, data_type: bigint, native_filter_type: query_arg, native_filter_required: true, description: Their months as a customer, visible_to: []}
-  - {name: _nf_logins_per_month, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: Their average sign-ins a month, visible_to: []}
-  - {name: _nf_tickets, data_type: bigint, native_filter_type: query_arg, native_filter_required: true, description: Their support tickets in the year, visible_to: []}
-  - {name: _nf_as_of, data_type: date, native_filter_type: query_arg, native_filter_required: false, description: The day the score is computed for; today when left out, visible_to: []}
+  - {name: customer_id, data_type: text, description: The customer scored, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: score, data_type: double, description: 'How likely they are to cancel, 0 to 1', visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: reasons, data_type: json, description: 'What raises their risk most, in words', visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: computed_at, data_type: timestamp, description: When the score was computed, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: _nf_customer_id, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: The customer to score, visible_to: [viewer]}
+  - {name: _nf_plan, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: Their plan, visible_to: [viewer]}
+  - {name: _nf_region, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: Where they are billed, visible_to: [viewer]}
+  - {name: _nf_tenure_months, data_type: bigint, native_filter_type: query_arg, native_filter_required: true, description: Their months as a customer, visible_to: [viewer]}
+  - {name: _nf_logins_per_month, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: Their average sign-ins a month, visible_to: [viewer]}
+  - {name: _nf_tickets, data_type: bigint, native_filter_type: query_arg, native_filter_required: true, description: Their support tickets in the year, visible_to: [viewer]}
+  - {name: _nf_as_of, data_type: date, native_filter_type: query_arg, native_filter_required: false, description: The day the score is computed for; today when left out, visible_to: [viewer]}
 - source_id: churn-model-js
   domain_id: churn
   schema: default
   table: churn_risk_js
   description: The same score from the model's Node twin
   columns:
-  - {name: customer_id, data_type: text, description: The customer scored, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: score, data_type: double, description: 'How likely they are to cancel, 0 to 1', visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: reasons, data_type: json, description: 'What raises their risk most, in words', visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: computed_at, data_type: timestamp, description: When the score was computed, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: _nf_customer_id, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: The customer to score, visible_to: []}
-  - {name: _nf_plan, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: Their plan, visible_to: []}
-  - {name: _nf_region, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: Where they are billed, visible_to: []}
-  - {name: _nf_tenure_months, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: Their months as a customer, visible_to: []}
-  - {name: _nf_logins_per_month, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: Their average sign-ins a month, visible_to: []}
-  - {name: _nf_tickets, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: Their support tickets in the year, visible_to: []}
-  - {name: _nf_as_of, data_type: timestamp, native_filter_type: query_arg, native_filter_required: false, description: The day the score is computed for; now when left out, visible_to: []}
+  - {name: customer_id, data_type: text, description: The customer scored, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: score, data_type: double, description: 'How likely they are to cancel, 0 to 1', visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: reasons, data_type: json, description: 'What raises their risk most, in words', visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: computed_at, data_type: timestamp, description: When the score was computed, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: _nf_customer_id, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: The customer to score, visible_to: [viewer]}
+  - {name: _nf_plan, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: Their plan, visible_to: [viewer]}
+  - {name: _nf_region, data_type: text, native_filter_type: query_arg, native_filter_required: true, description: Where they are billed, visible_to: [viewer]}
+  - {name: _nf_tenure_months, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: Their months as a customer, visible_to: [viewer]}
+  - {name: _nf_logins_per_month, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: Their average sign-ins a month, visible_to: [viewer]}
+  - {name: _nf_tickets, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: Their support tickets in the year, visible_to: [viewer]}
+  - {name: _nf_as_of, data_type: timestamp, native_filter_type: query_arg, native_filter_required: false, description: The day the score is computed for; now when left out, visible_to: [viewer]}
 views:
 # The at-risk list: every current customer the reader sees, joined to the model's score. The join
 # feeds each customer's features to churn_risk; the email mask and the row rule apply as they read.
@@ -151,12 +153,12 @@ views:
     FROM "churn"."customer_features" AS f
     JOIN "churn"."churn_risk" AS r ON r.customer_id = f.customer_id
   columns:
-  - {name: customer_id, data_type: varchar, description: The customer's id, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [org_admin, analyst, analyst_eu], masks: [{to: [analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: score, data_type: double, description: 'How likely they are to cancel, 0 to 1', visible_to: [org_admin, analyst, analyst_eu]}
-  - {name: reasons, data_type: json, description: 'What raises their risk most, in words', visible_to: [org_admin, analyst, analyst_eu]}
+  - {name: customer_id, data_type: varchar, description: The customer's id, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: score, data_type: double, description: 'How likely they are to cancel, 0 to 1', visible_to: [data_steward, churn_analyst, analyst_eu]}
+  - {name: reasons, data_type: json, description: 'What raises their risk most, in words', visible_to: [data_steward, churn_analyst, analyst_eu]}
 rls_rules:
 # The EU account team reads the scores of EU customers only: the rule is on the model's output.
 - {description: "Shows the EU account team only the scores of customers billed in the EU.", table_id: churn_risk, role_id: analyst_eu, filter: "customer_id IN (SELECT CAST(own_c.id AS VARCHAR) FROM \"churn\".\"customers\" AS own_c WHERE own_c.region = 'EU')"}

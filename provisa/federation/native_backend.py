@@ -205,6 +205,25 @@ class NativeEngineBackend(EngineBackend):
     # renders each value as a literal of the engine's dialect instead.
     _cache_bind_placeholder: str | None = None
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """The engine driver's errors (REQ-778): those that mean the engine is not reachable, then
+        those that mean it refused the statement (a value it cannot convert, a name it does not
+        know). The driver is imported here, the one place it is needed for this."""
+        return (), ()
+
+    def classify_error(self, exc: Exception) -> str | None:
+        """``"connection"`` (503) or ``"query"`` (400, cypher.engine_refused) by the driver's own
+        errors, a lost engine read first (a driver's connection error may share a base with its
+        statement errors); None for an error the driver did not raise."""
+        connection, query = self._driver_errors()
+        if isinstance(exc, connection):
+            return "connection"
+        if isinstance(exc, query):
+            return "query"
+        return None
+
     def __init__(self, engine: Any) -> None:
         super().__init__(engine)
         self._runtime: Any = None
@@ -791,6 +810,22 @@ class NativeEngineBackend(EngineBackend):
         return reconciled
 
     # -- store write face --------------------------------------------------
+
+    async def landed_table_exists(self, state: Any, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed, asked where it lands: an engine whose write
+        face is its own runtime (``select_write_face`` ENGINE_NATIVE) answers from its own store's
+        catalog, and must -- a runtime that lands and cannot say what it landed raises; any other
+        face is the base store's catalog."""
+        from sqlalchemy import make_url
+
+        from provisa.federation.materialization import WriteFace, select_write_face
+
+        backend_type = make_url(self.engine.materialize_store()).get_backend_name()
+        if select_write_face(self.engine, backend_type) is WriteFace.ENGINE_NATIVE:
+            runtime = self._runtime_for(state)
+            if hasattr(runtime, "land_table"):
+                return await runtime.landed_table_exists(schema=schema, table=table)
+        return await super().landed_table_exists(state, schema=schema, table=table)
 
     async def analyze_landed_table(
         self, state: Any, *, catalog: str | None, schema: str, table: str

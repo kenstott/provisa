@@ -33,8 +33,9 @@
     "createView": "+ View",
     "requestView": "View aanvragen",
     "asOfLabel": "Per",
-    "asOfHint": "Views met historie lezen zoals ze op dit moment waren",
+    "asOfHint": "Schrijft as_of op elke relatie die versies bewaart: lees haar zoals ze op dit moment was",
     "asRecordedLabel": "Vastgelegd op",
-    "asRecordedHint": "Views met historie lezen zoals Provisa ze toen had vastgelegd, vóór latere correcties"
+    "asRecordedHint": "Schrijft as_recorded op elke relatie die versies bewaart: lees haar zoals Provisa haar toen had vastgelegd, vóór latere correcties",
+    "boundParams": "Gebonden aan de volgende uitvoering: {{values}}"
   }
 }

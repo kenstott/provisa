@@ -72,6 +72,10 @@
       }
     },
     "engine": {
+      "duckdb_memory_limit": {
+        "label": "Geheugenlimiet van de DuckDB-engine",
+        "help": "Het meeste geheugen dat een DuckDB-engine van deze implementatie mag gebruiken. Daarboven wijkt een query uit naar schijf of wordt geweigerd. Niet ingesteld: de eigen limiet van DuckDB, het grootste deel van het geheugen van de host."
+      },
       "ready_timeout": {
         "label": "Gereedheids-timeout van de engine",
         "help": "Hoelang het opstarten wacht tot de federatie-engine gereed is voordat het mislukt."
@@ -140,9 +144,13 @@
         "label": "Request-threads per worker",
         "help": "Het maximale aantal requests dat één workerproces tegelijk uitvoert; overige wachten op een vrije thread. Opnieuw opstarten vereist omdat de limiet wordt vastgelegd wanneer de worker start."
       },
-      "workers": {
-        "label": "Workerprocessen",
-        "help": "Hoeveel workerprocessen de server draait. Opnieuw opstarten vereist omdat de processen door de launcher worden gestart."
+      "stream_threads": {
+        "label": "Stream-threads per worker",
+        "help": "Het maximale aantal gestreamde antwoorden en open WebSockets dat één workerproces tegelijk vasthoudt, abonnementen inbegrepen. Elk wacht op zijn client in plaats van een core te bezetten, dus dit wordt los van de request-threads geteld."
+      },
+      "control_request_threads": {
+        "label": "Beheer-threads per worker",
+        "help": "Threads die elk workerproces vrijhoudt voor health checks en de beheer- en aanmeld-API, zodat druk dataverkeer een worker niet onbereikbaar maakt voor zijn orchestrator of beheerders."
       }
     },
     "kaggle": {
@@ -181,16 +189,24 @@
       "spool_max_bytes": {
         "label": "Schijflimiet voor replica-spool",
         "help": "De maximale schijfruimte die deze node gebruikt om het antwoord van een bron in een tijdelijk bestand te bewaren terwijl de replica wordt gebouwd. Geldt voor bronnen die met één document antwoorden en niet via een cursor kunnen worden gelezen. Een build die de limiet zou overschrijden mislukt; er wordt niets afgekapt."
+      },
+      "hot_threshold": {
+        "label": "Drempel voor drukke tabellen",
+        "help": "Hoeveel gecontroleerde statements een tabel binnen het venster voor drukke tabellen moet ontvangen voordat ze wordt gerepliceerd, zodat latere leesacties uit haar replica komen."
+      },
+      "hot_interval": {
+        "label": "Venster voor drukke tabellen",
+        "help": "De periode waarover de statements van een tabel worden geteld tegen de drempel voor drukke tabellen."
+      },
+      "hot_max_rows": {
+        "label": "Groottelimiet voor drukke tabellen",
+        "help": "Een drukke tabel met meer rijen dan dit wordt niet gerepliceerd; ze blijft live gelezen."
       }
     },
     "security": {
       "mode": {
         "label": "Beveiligingsmodus",
         "help": "Standaard, of hoge beveiliging, waarbij data-endpoints elke client weigeren die resultaten niet zelf kan ontsleutelen en de pgwire-, Bolt- en MCP-listeners niet worden gestart. Opnieuw opstarten vereist omdat dit bepaalt welke listeners starten; met bevestiging omdat gewone clients worden buitengesloten."
-      },
-      "multitenancy": {
-        "label": "Multitenancy",
-        "help": "Of de deployment meerdere organisaties bedient, die elk alleen hun eigen gegevens beheren. Opnieuw opstarten vereist omdat rolmachtigingen bij het starten worden vastgelegd; met bevestiging omdat dit wijzigt wie de deployment mag beheren."
       },
       "superuser": {
         "username": {
@@ -262,10 +278,6 @@
         "label": "Airport-poort",
         "help": "De poort waarop de Airport Flight-service luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."
       },
-      "port": {
-        "label": "HTTP API-poort",
-        "help": "De poort waarop de HTTP API luistert. Opnieuw opstarten vereist; met bevestiging omdat de UI en elke client een wijziging moeten volgen."
-      },
       "public_url": {
         "label": "Openbaar adres",
         "help": "Het adres waaronder deze installatie bekend is, zoals https://data.example.com. Elke IRI van een subject in SPARQL en RDF-exports begint ermee, dus het moet gelijk blijven zolang die IRI's worden gebruikt. Zonder waarde wordt een query die de IRI van een subject teruggeeft geweigerd."
@@ -311,14 +323,6 @@
       "bolt_key": {
         "label": "TLS-privésleutel voor Bolt",
         "help": "De privésleutel voor het eigen certificaat van de Bolt-listener. Opnieuw opstarten vereist; met bevestiging."
-      },
-      "http_cert": {
-        "label": "TLS-certificaat voor HTTP API",
-        "help": "Het certificaatbestand dat de HTTP API presenteert. Opnieuw opstarten vereist; met bevestiging."
-      },
-      "http_key": {
-        "label": "TLS-privésleutel voor HTTP API",
-        "help": "De privésleutel voor het certificaat van de HTTP API. Opnieuw opstarten vereist; met bevestiging."
       }
     },
     "cache": {
@@ -439,8 +443,34 @@
         "help": "De laagste ernst van logrecords die met telemetrie wordt geëxporteerd."
       },
       "subsystem_traces": {
-        "label": "Subsysteemtraces",
-        "help": "Welke interne subsystemen hun eigen traces schrijven."
+        "http_api": {
+          "label": "Subsysteem-traces: HTTP-API",
+          "help": "Verzoeken die door de platform-API worden afgehandeld. Opnieuw opstarten vereist."
+        },
+        "outbound_http": {
+          "label": "Subsysteem-traces: Uitgaande HTTP-aanroepen",
+          "help": "Verzoeken die het platform naar REST- en GraphQL-bronnen stuurt. Opnieuw opstarten vereist."
+        },
+        "catalog_database": {
+          "label": "Subsysteem-traces: Catalogusdatabase",
+          "help": "Metadata die wordt gelezen en geschreven. Standaard uit: elke catalogusopvraging is er één, en ze bedelven de query-traces. Opnieuw opstarten vereist."
+        },
+        "result_cache": {
+          "label": "Subsysteem-traces: Resultatencache",
+          "help": "Lees- en schrijfacties in de cache. Opnieuw opstarten vereist."
+        },
+        "document_sources": {
+          "label": "Subsysteem-traces: Documentbronnen",
+          "help": "Query's op documentopslag. Opnieuw opstarten vereist."
+        },
+        "search_sources": {
+          "label": "Subsysteem-traces: Zoekbronnen",
+          "help": "Query's op zoekindexen. Opnieuw opstarten vereist."
+        },
+        "grpc_services": {
+          "label": "Subsysteem-traces: gRPC-services",
+          "help": "Het gRPC-queryoppervlak, inkomend en uitgaand. Opnieuw opstarten vereist."
+        }
       },
       "compact_cron": {
         "label": "Compactieschema",
@@ -477,22 +507,6 @@
       "s3_endpoint": {
         "label": "Adres van telemetriestore",
         "help": "De objectopslag waarnaar opgeslagen telemetrie wordt geschreven."
-      },
-      "s3_bucket": {
-        "label": "Bucket van telemetriestore",
-        "help": "De bucket waarnaar opgeslagen telemetrie wordt geschreven."
-      },
-      "s3_region": {
-        "label": "Regio van telemetriestore",
-        "help": "De regio van de objectopslag voor telemetrie."
-      },
-      "s3_access_key": {
-        "label": "Toegangssleutel van telemetriestore",
-        "help": "De toegangssleutel van de objectopslag voor telemetrie. Geheim."
-      },
-      "s3_secret_key": {
-        "label": "Geheime sleutel van telemetriestore",
-        "help": "De geheime sleutel van de objectopslag voor telemetrie. Geheim."
       },
       "support_endpoint": {
         "label": "Telemetrie-endpoint voor support",
@@ -589,108 +603,6 @@
       "egress_allowlist": {
         "label": "Egress-allowlist voor gehoste functies",
         "help": "De hosts die een gehoste functie mag aanroepen; al het andere wordt geweigerd. Met bevestiging omdat elke vermelding een uitgaand pad opent."
-      }
-    },
-    "cdc": {
-      "consumer_group_id": {
-        "label": "CDC-consumergroep",
-        "help": "De naam die deze deployment gebruikt wanneer hij wijzigingsevents leest van een message broker."
-      }
-    },
-    "graphql_remote": {
-      "max_object_depth": {
-        "label": "Objectdiepte van externe GraphQL",
-        "help": "Hoe diep geneste objecten van een externe GraphQL-bron worden gevolgd."
-      },
-      "max_list_depth": {
-        "label": "Lijstdiepte van externe GraphQL",
-        "help": "Hoe diep geneste lijsten van een externe GraphQL-bron worden gevolgd."
-      },
-      "max_list_items": {
-        "label": "Lijstitems van externe GraphQL",
-        "help": "Het maximale aantal items dat uit één lijst van een externe GraphQL-bron wordt gelezen."
-      },
-      "max_rows": {
-        "label": "Rijen per leesbewerking van externe GraphQL",
-        "help": "Het maximale aantal rijen dat één leesbewerking van een gepagineerde externe GraphQL-tabel ophaalt."
-      }
-    },
-    "provisioning": {
-      "engine_namespace": {
-        "label": "Namespace van engine",
-        "help": "De Kubernetes-namespace waarin engine-clusters worden aangemaakt."
-      },
-      "engine_cluster_mode": {
-        "label": "Clustermodus van engine",
-        "help": "Het soort Kubernetes-cluster waarop engines worden ingericht."
-      },
-      "engine_cpu": {
-        "label": "CPU van engine",
-        "help": "De CPU die aan elke ingerichte engine wordt toegewezen."
-      },
-      "engine_shard": {
-        "label": "Shard van engine",
-        "help": "De engine-shard waartoe deze node behoort."
-      },
-      "engine_otlp_endpoint": {
-        "label": "Telemetrie-endpoint van engine",
-        "help": "Waarnaar ingerichte engines hun eigen telemetrie verzenden."
-      },
-      "engine_control_plane_host": {
-        "label": "Controlplane-host van engine",
-        "help": "Het adres waarmee engines de controlplane-database bereiken, wanneer dit afwijkt van het adres dat deze server gebruikt."
-      },
-      "engine_control_plane_port": {
-        "label": "Controlplane-poort van engine",
-        "help": "De poort waarmee engines de controlplane-database bereiken."
-      },
-      "engine_lakehouse_metastore_host": {
-        "label": "Host van lakehouse-metastore",
-        "help": "Het adres van de lakehouse-metastore die engines gebruiken."
-      },
-      "engine_lakehouse_metastore_port": {
-        "label": "Poort van lakehouse-metastore",
-        "help": "De poort van de lakehouse-metastore die engines gebruiken."
-      },
-      "engine_otel_s3_endpoint": {
-        "label": "Adres van telemetriestore voor engine",
-        "help": "Het adres van de objectopslag voor telemetrie zoals engines het bereiken."
-      },
-      "isolated_engine_image": {
-        "label": "Image van dedicated engine",
-        "help": "De containerimage die voor de dedicated engine van een organisatie wordt gebruikt."
-      },
-      "isolated_engine_network": {
-        "label": "Netwerk van dedicated engine",
-        "help": "Het containernetwerk waaraan een dedicated engine wordt gekoppeld."
-      },
-      "isolated_engine_memory": {
-        "label": "Geheugen van dedicated engine",
-        "help": "Het geheugen dat aan een dedicated engine wordt toegewezen."
-      },
-      "isolated_engine_host_template": {
-        "label": "Hostpatroon van dedicated engine",
-        "help": "Het patroon waaruit de hostnaam van een dedicated engine wordt opgebouwd."
-      },
-      "isolated_engine_port": {
-        "label": "Poort van dedicated engine",
-        "help": "De poort waarop een dedicated engine luistert."
-      },
-      "isolated_engine_ready_timeout": {
-        "label": "Gereedheids-timeout van dedicated engine",
-        "help": "Hoelang wordt gewacht tot een dedicated engine gereed is."
-      },
-      "isolated_engine_docker_socket": {
-        "label": "Docker-socket van dedicated engine",
-        "help": "De Docker-socket waarmee dedicated engines worden gestart."
-      },
-      "zaychik_cpu": {
-        "label": "CPU van querygateway",
-        "help": "De CPU die aan de querygateway van de engine wordt toegewezen."
-      },
-      "zaychik_memory": {
-        "label": "Geheugen van querygateway",
-        "help": "Het geheugen dat aan de querygateway van de engine wordt toegewezen."
       }
     },
     "readonlyReasons": {
@@ -865,6 +777,10 @@
       "leak_rate_threshold": {
         "label": "Lekpercentagedrempel voor nepwaarden",
         "help": "Het aandeel van de steekproefwaarden van een gevoelige kolom dat de nepwaarde gelijk aan de echte waarde mag laten voordat de lekpercentagecontrole haar als ontoereikend markeert. 0 laat een nepwaarde falen die een waarde ongewijzigd laat."
+      },
+      "key": {
+        "label": "Sleutel voor nepwaarden",
+        "help": "Het geheim waaruit elke nepwaarde wordt afgeleid, gelijk op elke node en in elke regio. Het wordt gemaakt bij de eerste start van het platform. Wijzigen verandert elke nepwaarde; beveiligd, en opnieuw opstarten is vereist."
       }
     },
     "commands": {
@@ -881,6 +797,50 @@
       "union_limit": {
         "label": "Maximaal aantal predicaten van een variabel predicaat",
         "help": "Een SPARQL-patroon met een variabele als predicaat leest elk gekoppeld predicaat dat zou kunnen passen, met één tak per predicaat. Een query die meer takken nodig heeft, wordt geweigerd met vermelding van de grens."
+      }
+    },
+    "codesource": {
+      "duckdb_memory_mb": {
+        "label": "DuckDB-geheugen van de codebron",
+        "help": "Het geheugen waarin de DuckDB van een codebron een statement beantwoordt. Daarboven loopt het statement over naar schijf."
+      },
+      "duckdb_spill_cap_mb": {
+        "label": "DuckDB-overlooplimiet van de codebron",
+        "help": "Het meeste dat de DuckDB van een codebron naar schijf laat overlopen. Een statement dat meer nodig heeft, wordt geweigerd met de naam van deze instelling. Een gebouwde image dwingt dit alleen af als het overloopvolume met het quotum van het platform op deze limiet is ingesteld. Een codebron in ontwikkelmodus loopt zonder grens over naar de datamap."
+      },
+      "duckdb_threads": {
+        "label": "DuckDB-threads van de codebron",
+        "help": "De threads waarop de DuckDB van een codebron zijn statements beantwoordt."
+      }
+    },
+    "config": {
+      "reload_interval": {
+        "label": "Herlaadinterval van instellingen",
+        "help": "Hoe vaak elke worker controleert of het model of een instelling is gewijzigd, en die zo nodig herlaadt. Een wijziging in één worker bereikt de andere binnen deze tijd."
+      }
+    },
+    "hot_tables": {
+      "auto_threshold": {
+        "label": "Groottelimiet voor hot tables",
+        "help": "Een tabel met niet meer rijen dan dit wordt volledig in de hot cache (Redis) bewaard en daaruit gelezen. Opnieuw opstarten vereist."
+      },
+      "max_rows": {
+        "label": "Rijenplafond voor hot tables",
+        "help": "Het maximale aantal rijen dat de hot cache voor één tabel bewaart. Zonder waarde geldt de groottelimiet voor hot tables. Opnieuw opstarten vereist."
+      },
+      "max_bytes": {
+        "label": "Byteplafond voor hot tables",
+        "help": "Het maximale aantal bytes dat de hot cache voor één tabel bewaart; een grotere tabel wordt live gelezen. Opnieuw opstarten vereist."
+      },
+      "refresh_interval": {
+        "label": "Verversingsinterval voor hot tables",
+        "help": "Hoe vaak tabellen in de hot cache opnieuw uit hun bron worden geladen. Zonder waarde geldt de standaardlevensduur van gematerialiseerde views. Opnieuw opstarten vereist."
+      }
+    },
+    "materialized_views": {
+      "default_ttl": {
+        "label": "Standaardlevensduur van gematerialiseerde views",
+        "help": "Hoe lang een gematerialiseerde view wordt gebruikt voordat ze wordt ververst, als ze geen eigen levensduur instelt. Opnieuw opstarten vereist."
       }
     }
   }

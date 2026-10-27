@@ -33,6 +33,7 @@ from provisa.pgwire.catalog_data import (
     pg_type_rows,
 )
 from provisa.pgwire.ext_surfaces import extension_rows
+from provisa.core.org_forget import on_forget
 from provisa.pgwire.system_tables import _populate_empty_system_tables
 from provisa.pgwire.catalog_constraints import (
     _populate_pg_constraint,
@@ -879,7 +880,15 @@ def _populate_pg_tables_and_am(db, idx: CatalogIndex) -> None:
     )
 
 
-_row_count_cache: dict[str, tuple[float, dict[int, float]]] = {}
+_row_count_cache: dict[tuple[str, str], tuple[float, dict[int, float]]] = {}
+
+
+@on_forget(size=lambda: len(_row_count_cache))
+def _forget_row_counts(org_id: str) -> None:
+    for key in [k for k in _row_count_cache if k[0] == org_id]:
+        _row_count_cache.pop(key, None)
+
+
 _ROW_COUNT_TTL = 300.0
 # REQ-1905: reltuples is a best-effort estimate for BI tools -- one SHOW STATS FOR engine round-trip
 # per visible table. A catalog reflection (SQLAlchemy get_columns, the hstore oid lookup) runs on the
@@ -922,10 +931,25 @@ def _fetch_row_counts(ctx, idx: CatalogIndex, engine_conn) -> dict[int, float]:
     return result
 
 
-def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
-    from provisa.federation.duckdb_backend import local_catalog_connection
+def _row_counts_for(role_id: str, ctx, idx, engine_conn) -> dict[int, float]:
+    """The role's row-count estimates, kept for ``_ROW_COUNT_TTL`` by org and role: a role's id is
+    its org's (org_admin, sandbox), and one org's estimates are never another's."""
+    from provisa.core.request_context import require_current_org
 
-    db = local_catalog_connection()
+    now = time.monotonic()
+    key = (require_current_org(), role_id)
+    cached = _row_count_cache.get(key)
+    if cached and now - cached[0] < _ROW_COUNT_TTL:
+        return cached[1]
+    row_counts = _fetch_row_counts(ctx, idx, engine_conn)
+    _row_count_cache[key] = (now, row_counts)
+    return row_counts
+
+
+def role_catalog_index(state, role_id: str) -> tuple[object, CatalogIndex, list]:
+    """The role's compilation context, its catalog index and the metrics it is served: what a SQL
+    surface lists as the role's catalog (pgwire's catalog, Flight SQL's catalog commands,
+    REQ-2175)."""
     ctx = state.contexts.get(role_id)
     col_types: dict = state.schema_build_cache.get("column_types", {})
     # REQ-1319: governed metrics from the loaded config, filtered to the connected role's
@@ -933,16 +957,17 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     # _populate_pg_roles_and_database — partial/mock states carry no metrics list.
     _metrics_attr = getattr(getattr(state, "config", None), "metrics", None)
     all_metrics = _metrics_attr if isinstance(_metrics_attr, list) else []
-    metrics = [m for m in all_metrics if "*" in m.visible_to or role_id in m.visible_to]
-    idx = _build_catalog_index(ctx, col_types, metrics)
+    metrics = [m for m in all_metrics if role_id in m.visible_to]
+    return ctx, _build_catalog_index(ctx, col_types, metrics), metrics
 
-    now = time.monotonic()
-    cached = _row_count_cache.get(role_id)
-    if cached and now - cached[0] < _ROW_COUNT_TTL:
-        row_counts = cached[1]
-    else:
-        row_counts = _fetch_row_counts(ctx, idx, getattr(state, "engine_conn", None))
-        _row_count_cache[role_id] = (now, row_counts)
+
+def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
+    from provisa.federation.duckdb_backend import local_catalog_connection
+
+    db = local_catalog_connection()
+    ctx, idx, metrics = role_catalog_index(state, role_id)
+
+    row_counts = _row_counts_for(role_id, ctx, idx, getattr(state, "engine_conn", None))
 
     _populate_is_schemata(db, idx)
     _populate_is_tables(db, idx)

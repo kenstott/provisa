@@ -15,7 +15,7 @@ Provisa table type per member, each published; the form and asset types are crea
 time; a second publish adds revisions to what it finds by the members' Provisa URIs and the
 product's name."""
 
-# Requirements: REQ-2118
+# Requirements: REQ-2118, REQ-1387, REQ-1389, REQ-2141
 
 from __future__ import annotations
 
@@ -36,11 +36,20 @@ from provisa.api.metadata_export.datazone import (
     product_form,
     table_form,
 )
+from provisa.api.metadata_export.model import (
+    AssetKind,
+    AssetRef,
+    GlossaryTermAsset,
+    GlossaryTermEdge,
+    MetadataSnapshot,
+)
 from provisa.api.metadata_export.registry import metadata_export
 from provisa.core.models import (
+    CatalogsConfig,
     Column,
     DataProduct,
     Domain,
+    MetadataExportConfig,
     MetadataExportTarget,
     ProvisaConfig,
     Source,
@@ -69,7 +78,7 @@ def _target() -> MetadataExportTarget:
     )
 
 
-def _snapshot():
+def _snapshot(*, status="draft", members=True):
     config = ProvisaConfig(
         sources=[
             Source(
@@ -90,7 +99,7 @@ def _snapshot():
                 schema_name="public",
                 table_name="orders",
                 description="Orders placed",
-                product_id="sales_360",
+                product_id="sales_360" if members else None,
                 cache_ttl=3600,
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
@@ -104,6 +113,8 @@ def _snapshot():
                 purpose="Every sale",
                 usage="Join on customer_id",
                 version="1.2.0",
+                status=status,
+                status_reason="Replaced." if status in ("deprecated", "retired") else None,
             )
         ],
         roles=[],
@@ -169,9 +180,33 @@ def _listing(stub: Stubber, entity: str, kind: str, revision: str) -> None:
 
 
 def test_a_datazone_target_names_its_region_domain_and_project():
-    with pytest.raises(ValidationError, match="AWS region, the DataZone domain"):
+    with pytest.raises(ValidationError, match="the AWS region and the DataZone domain"):
         MetadataExportTarget(id="d", provider="datazone", aws_region="us-east-1")
     assert isinstance(metadata_export(_target()), DataZoneExport)
+
+
+def test_the_export_to_a_datazone_catalog_names_the_project_that_owns_its_products():  # REQ-2122
+    catalogs = CatalogsConfig(
+        catalogs=[
+            {
+                "id": "dz",
+                "provider": "datazone",
+                "aws_region": "us-east-1",
+                "datazone_domain_id": "dzd_1",
+                "domains": ["sales"],
+            }
+        ]
+    )
+    with pytest.raises(ValueError, match="needs the DataZone project"):
+        MetadataExportConfig(targets=[{"catalog": "dz"}]).export_targets(catalogs)
+    (target,) = MetadataExportConfig(
+        targets=[{"catalog": "dz", "datazone_project_id": "prj_1"}]
+    ).export_targets(catalogs)
+    assert (target.id, target.datazone_domain_id, target.datazone_project_id) == (
+        "dz",
+        "dzd_1",
+        "prj_1",
+    )
 
 
 def test_the_forms_carry_the_members_and_the_products_fields():
@@ -185,6 +220,7 @@ def test_the_forms_carry_the_members_and_the_products_fields():
         "purpose": "Every sale",
         "usage": "Join on customer_id",
         "version": "1.2.0",
+        "status": "draft",
     }
 
 
@@ -478,3 +514,250 @@ async def test_a_bound_asset_deleted_in_datazone_is_published_anew(stubbed):
     result = await exporter.publish(snapshot)
     assert result.ok, result.errors
     assert result.bindings[table.semantic_uri] == ("asset-2", table.semantic_uri)
+
+
+# --- The DataZone business glossary (REQ-1387) ------------------------------------------------
+
+GLOSSARY_ID = "gls-1"
+
+
+def _glossary_snapshot(*, deprecated: bool = False) -> MetadataSnapshot:
+    """party, and order KIND_OF party; order grounds a table, which DataZone is not told."""
+    orders = AssetRef(kind=AssetKind.TABLE, parts=("pg", "public", "orders"))
+    return MetadataSnapshot(
+        org_id="acme",
+        glossary_terms=[
+            GlossaryTermAsset(
+                term_id=1,
+                name="party",
+                definition="Anyone the business deals with.",
+                is_abstract=True,
+                deprecated=False,
+                status="live",
+                semantic_uri="provisa://acme/terms/party",
+            ),
+            GlossaryTermAsset(
+                term_id=2,
+                name="order",
+                definition="A request to buy.",
+                is_abstract=False,
+                deprecated=False,
+                status="deprecated" if deprecated else "live",
+                role="class",
+                tables=(orders,),
+                semantic_uri="provisa://acme/terms/order",
+            ),
+        ],
+        glossary_edges=[GlossaryTermEdge(from_term_id=2, to_term_id=1, rel_type="KIND_OF")],
+    )
+
+
+def _term_saved(op: str, term_id: str, name: str, params: dict, is_a: list[str] | None = None):
+    response = {
+        "id": term_id,
+        "domainId": DOMAIN,
+        "glossaryId": GLOSSARY_ID,
+        "name": name,
+        "status": "ENABLED",
+    }
+    if is_a is not None:
+        response["termRelations"] = {"isA": is_a}
+    return op, response, params
+
+
+async def test_the_glossary_and_its_terms_are_created_with_isa_and_no_assignment(stubbed):
+    """The first publish creates the Provisa glossary and its terms, then sets order isA party.
+    No asset is touched: DataZone cannot tell Provisa's assignment from a steward's."""
+    _search(stubbed, "GLOSSARY", [])
+    stubbed.add_response(
+        "create_glossary",
+        {
+            "domainId": DOMAIN,
+            "id": GLOSSARY_ID,
+            "name": "Provisa glossary (acme)",
+            "owningProjectId": PROJECT,
+        },
+        {
+            **SCOPE,
+            "name": "Provisa glossary (acme)",
+            "description": ANY,
+            "owningProjectIdentifier": PROJECT,
+            "status": "ENABLED",
+        },
+    )
+    _search(stubbed, "GLOSSARY_TERM", [])
+    for term_id, name, text in (
+        ("t-party", "party", "Anyone the business deals with."),
+        ("t-order", "order", "A request to buy."),
+    ):
+        stubbed.add_response(
+            *_term_saved(
+                "create_glossary_term",
+                term_id,
+                name,
+                {
+                    **SCOPE,
+                    "glossaryIdentifier": GLOSSARY_ID,
+                    "name": name,
+                    "longDescription": text,
+                    "status": "ENABLED",
+                },
+            )
+        )
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-order",
+            "order",
+            {
+                **SCOPE,
+                "identifier": "t-order",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "termRelations": {"isA": ["t-party"]},
+            },
+            is_a=["t-party"],
+        )
+    )
+    result = await metadata_export(_target()).publish(_glossary_snapshot())
+    assert result.ok, result.errors
+    assert result.published == {"glossary_term": 2}
+    assert result.bindings["provisa://acme/glossary"] == (GLOSSARY_ID, "Provisa glossary (acme)")
+    assert result.bindings["provisa://acme/terms/order"] == ("t-order", "order")
+
+
+async def test_a_republish_revises_bound_terms_and_a_deprecated_one_is_disabled(stubbed):
+    export = metadata_export(_target())
+    export.stored_bindings = {
+        "provisa://acme/glossary": (GLOSSARY_ID, "Provisa glossary (acme)"),
+        "provisa://acme/terms/party": ("t-party", "party"),
+        "provisa://acme/terms/order": ("t-order", "order"),
+    }
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-party",
+            "party",
+            {
+                **SCOPE,
+                "identifier": "t-party",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "name": "party",
+                "longDescription": "Anyone the business deals with.",
+                "status": "ENABLED",
+            },
+        )
+    )
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-order",
+            "order",
+            {
+                **SCOPE,
+                "identifier": "t-order",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "name": "order",
+                "longDescription": "A request to buy.",
+                "status": "DISABLED",
+            },
+            is_a=["t-party"],
+        )
+    )
+    # isA already stands, so no relation update follows.
+    result = await export.publish(_glossary_snapshot(deprecated=True))
+    assert result.ok, result.errors
+
+
+async def test_the_isa_update_keeps_a_stewards_classifies_and_foreign_parent(stubbed):
+    """REQ-1389: termRelations is replaced whole. Provisa authors the isA among the org's terms;
+    "classifies" and an isA parent outside the Provisa glossary are a steward's and are sent back
+    as they stand."""
+    export = metadata_export(_target())
+    export.stored_bindings = {
+        "provisa://acme/glossary": (GLOSSARY_ID, "Provisa glossary (acme)"),
+        "provisa://acme/terms/party": ("t-party", "party"),
+        "provisa://acme/terms/order": ("t-order", "order"),
+    }
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-party",
+            "party",
+            {
+                **SCOPE,
+                "identifier": "t-party",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "name": "party",
+                "longDescription": "Anyone the business deals with.",
+                "status": "ENABLED",
+            },
+        )
+    )
+    op, response, params = _term_saved(
+        "update_glossary_term",
+        "t-order",
+        "order",
+        {
+            **SCOPE,
+            "identifier": "t-order",
+            "glossaryIdentifier": GLOSSARY_ID,
+            "name": "order",
+            "longDescription": "A request to buy.",
+            "status": "ENABLED",
+        },
+    )
+    response["termRelations"] = {"isA": ["t-corporate-request"], "classifies": ["t-sales-doc"]}
+    stubbed.add_response(op, response, params)
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-order",
+            "order",
+            {
+                **SCOPE,
+                "identifier": "t-order",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "termRelations": {
+                    "isA": ["t-corporate-request", "t-party"],
+                    "classifies": ["t-sales-doc"],
+                },
+            },
+        )
+    )
+    result = await export.publish(_glossary_snapshot())
+    assert result.ok, result.errors
+    stubbed.assert_no_pending_responses()
+
+
+async def test_a_retired_product_is_revised_retired_with_no_assets(stubbed):
+    """REQ-1634 STATUS: retired, its members went to its successor; its revision carries the
+    retired status and no items (DataZone takes none rather than an empty list), and is
+    published so the listing says so."""
+    snapshot = _snapshot(status="retired", members=False)
+    (product,) = snapshot.data_products
+    assert product.members == ()
+    _types_exist(stubbed)
+    stubbed.add_response(
+        "create_data_product_revision",
+        _product("dp-1", "3"),
+        {
+            **SCOPE,
+            "identifier": "dp-1",
+            "name": "Sales 360",
+            "description": "Every sale",
+            "formsInput": [
+                {
+                    "formName": PRODUCT_FORM,
+                    "typeIdentifier": PRODUCT_FORM,
+                    "typeRevision": "4",
+                    "content": json.dumps(product_form(product)),
+                }
+            ],
+        },
+    )
+    _listing(stubbed, "dp-1", "DATA_PRODUCT", "3")
+    exporter = metadata_export(_target())
+    exporter.stored_bindings = {product.semantic_uri: ("dp-1", "Sales 360")}
+    result = await exporter.publish(snapshot)
+    assert result.ok, result.errors
+    assert json.loads(json.dumps(product_form(product)))["status"] == "retired"

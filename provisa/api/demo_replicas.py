@@ -46,9 +46,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 #: The seed of a published demo, beside its demo.yaml.
 SEED_DIR = "seeded"
@@ -286,6 +289,16 @@ def seed_paths(demo_directory: Path) -> tuple[Path, Path]:
     return seed / SEED_STORE, seed / SEED_RECORD
 
 
+def seed_failure_path(demo_directory: Path) -> Path:
+    """Where a bundle build's seeding run says why its template could not be seeded: beside the
+    record the build waits for -- this node's region's, on a regions node."""
+    from provisa.api import demo_region_seed
+
+    if demo_region_seed.regional():
+        return demo_region_seed.seed_dir(demo_directory, demo_region_seed.here()) / "failed"
+    return demo_directory / SEED_DIR / "failed"
+
+
 def views_seed_paths(demo_directory: Path) -> tuple[Path, Path]:
     """Where a demo's bitemporal views' append logs are: their store and their record."""
     seed = demo_directory / SEED_DIR
@@ -457,10 +470,16 @@ def store_counts(org_id: str) -> dict[str, dict[str, int]]:
     """The rows each replica and each view of ``org_id`` holds in its store file, read without
     its runtime: ``{"replicas": {table: rows}, "views": {table: rows}}``. A store not on disk
     holds none."""
+    from provisa.core import org_files
     from provisa.federation.materialize_broker import get_broker
 
-    store = _store_path(org_id)
     out: dict[str, dict[str, int]] = {"replicas": {}, "views": {}}
+    if not org_files.folder(org_id).is_dir():
+        # A node with a fresh disk under a shared control plane: the org's folder, and its store,
+        # are not here. A template's readiness check reads none, so it is prepared again here.
+        log.warning("%s's folder is not on this node: its store holds nothing here", org_id)
+        return out
+    store = _store_path(org_id)
     if not Path(store).exists():
         return out
     broker = get_broker(store)

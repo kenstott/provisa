@@ -85,6 +85,7 @@ function table(
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -98,6 +99,7 @@ function table(
     writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
+    timeTravel: null,
     dqDataset: null,
     qualityCheckers: [],
     apiEndpoint: null,
@@ -111,6 +113,7 @@ function table(
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
+    mvHoldOnFailingChecks: false,
     businessKey: [],
     validTime: null,
     recordedTime: null,
@@ -160,6 +163,8 @@ const ROLES = [
   { id: "analyst", capabilities: [], domainAccess: ["*"] },
   { id: "trader", capabilities: [], domainAccess: ["*"] },
 ];
+// REQ-2153: what another domain lists, names only.
+const LISTED = [{ domainId: "hr", tableName: "staff", columnNames: ["id", "title"] }];
 const ok = { success: true, message: "" };
 const refetchTables = vi.fn();
 const updateTable = vi.fn();
@@ -199,6 +204,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: async () => ({}) }),
   useRoles: () => ({ roles: ROLES, loading: false, refetch: async () => ({}) }),
   useDataProducts: () => ({ dataProducts: [], loading: false, refetch: async () => ({}) }),
+  useListedNames: () => LISTED,
   useAllRelationships: () => ({ relationships: [], loading: false, refetch: async () => ({}) }),
   useAvailableColumnsMetadataLazy: () => async () => [],
   useRefreshPolicyPreview: () => async () => null,
@@ -274,6 +280,21 @@ describe("HISTORY badge", () => {
     render(<TablesPage viewsOnly />);
     const list = await screen.findByTestId("tables-list");
     expect(within(list).getByTestId("tables-history-trade_log")).toBeInTheDocument();
+  });
+});
+
+describe("names listed in other domains", () => {
+  it("are shown under the list as domain.table and column names, nothing more", async () => {
+    render(<TablesPage />);
+    const listed = await screen.findByTestId("tables-listed-names");
+    expect(listed).toHaveTextContent(t("tablesPage.listedElsewhere"));
+    expect(listed).toHaveTextContent("hr.staff: id, title");
+  });
+
+  it("are not shown in the Views list", async () => {
+    render(<TablesPage viewsOnly />);
+    await screen.findByTestId("tables-list");
+    expect(screen.queryByTestId("tables-listed-names")).toBeNull();
   });
 });
 

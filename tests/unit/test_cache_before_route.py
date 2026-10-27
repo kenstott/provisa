@@ -77,6 +77,7 @@ def pipe(monkeypatch, bind_org):
     state.source_cache = {}
     state.table_cache = {}
     state.settings_overrides = {}
+    state.config = None  # as a first start reads it: no config declares a derived role (REQ-2057)
     state.org_id = "org-a"
     state.model_stamp = 1
     state.tenant_db = None

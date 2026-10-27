@@ -53,13 +53,21 @@ class Rate:
     day: date
 
 
-def rates(currency: str, day: date = date(2026, 1, 2)) -> list[Rate]:
+@dataclass
+class RateInputs:
+    currency: str
+    day: date = date(2026, 1, 2)
+
+
+def rates(inputs: RateInputs) -> list[Rate]:
     """Exchange rates against one currency.
 
     @table
     """
-    base = _TABLE[currency]
-    return [Rate(code, round(value / base, 4), day) for code, value in sorted(_TABLE.items())]
+    base = _TABLE[inputs.currency]
+    return [
+        Rate(code, round(value / base, 4), inputs.day) for code, value in sorted(_TABLE.items())
+    ]
 
 
 def currencies() -> list[dict]:
@@ -72,7 +80,7 @@ _NODE = {
     "rates/package.json": json.dumps({"name": "rates", "type": "module", "main": "index.js"}),
     "rates/index.js": """
 const TABLE = { EUR: 0.9, GBP: 0.8, USD: 1.0 };
-export async function rates(currency, day = new Date("2026-01-02T00:00:00Z")) {
+export async function rates({ currency, day = new Date("2026-01-02T00:00:00Z") }) {
   const base = TABLE[currency];
   return Object.keys(TABLE).sort().map((code) => (
     { code, rate: Math.round((TABLE[code] / base) * 10000) / 10000, day }
@@ -84,11 +92,12 @@ export function currencies() {
 """,
     "rates/index.d.ts": """
 export interface Rate { code: string; rate: number; day: Date; }
+export interface RateInputs { currency: string; day?: Date; }
 /**
  * Exchange rates against one currency.
  * @table
  */
-export declare function rates(currency: string, day?: Date): Promise<Rate[]>;
+export declare function rates(inputs: RateInputs): Promise<Rate[]>;
 /** @table */
 export declare function currencies(): { code: string }[];
 """,

@@ -143,7 +143,6 @@ def _snapshot(*, tables: list[Table] | None = None, version: str | None = "1.2.0
                         visible_to=["admin"],
                         masks=[
                             {
-                                "to": ["*"],
                                 "mask": {"type": "regex", "pattern": "(.*)", "replace": "X"},
                             }
                         ],
@@ -162,7 +161,7 @@ def _snapshot(*, tables: list[Table] | None = None, version: str | None = "1.2.0
                 purpose="One view of each customer",
                 limitations="No refunds",
                 version=version,
-                status="active",
+                status="live",
             )
         ],
         roles=[],
@@ -230,7 +229,7 @@ def test_the_schemas_tags_are_the_products_short_fields():
         "provisa_product:owner": "data_owner",
         "provisa_product:team": "analyst",
         "provisa_product:version": "1.2.0",
-        "provisa_product:status": "active",
+        "provisa_product:status": "live",
     }
 
 

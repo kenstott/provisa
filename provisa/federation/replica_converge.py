@@ -132,16 +132,23 @@ def whole_copy(source: Any, table: Any, engine: Any) -> bool:
     requested or awaited) and the build itself (it refuses). ``table`` is a registered table as
     the registry gives it, a row or a model; ``engine`` the runtime or the federation engine."""
     from provisa.core.change_signal import PUSH_SOURCE_TYPES
-    from provisa.federation.strategy import engine_attaches
 
     if _plain(source.type) in PUSH_SOURCE_TYPES:
         return False
     if any(_field(c, "native_filter_type") is not None for c in _field(table, "columns")):
         return False
-    row_level = _field(table, "row_materialize") and not engine_attaches(
+    return not row_level(source, table, engine)
+
+
+def row_level(source: Any, table: Any, engine: Any) -> bool:
+    """Whether ``table`` is replicated row by row (REQ-1865): its row_materialize flag is set and
+    ``engine`` cannot attach its source. Its rows are fetched by key into a row cache at its
+    replica address, under bookkeeping columns of its own; it has no whole-table replica."""
+    from provisa.federation.strategy import engine_attaches
+
+    return bool(_field(table, "row_materialize")) and not engine_attaches(
         engine, _plain(source.type)
     )
-    return not row_level
 
 
 def builds_here(home_region: str | None) -> bool:

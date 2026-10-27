@@ -162,12 +162,15 @@ def test_a_property_path(endpoint, placed_by):
 def test_a_governed_role_is_answered_only_what_it_may_read(endpoint):
     alice = f'?c <{CUSTOMER}#name> "Alice Johnson" . ?c ?p ?o'
     admin = {r["p"] for r in _select(endpoint, "org_admin", f"SELECT ?p ?o WHERE {{ {alice} }}")}
-    analyst = {r["p"] for r in _select(endpoint, "analyst", f"SELECT ?p ?o WHERE {{ {alice} }}")}
+    analyst = {
+        r["p"]
+        for r in _select(endpoint, "sales_analytics_analyst", f"SELECT ?p ?o WHERE {{ {alice} }}")
+    }
     assert f"{CUSTOMER}#email" in admin
     assert f"{CUSTOMER}#email" not in analyst and f"{CUSTOMER}#name" in analyst
     products = f"SELECT ?x WHERE {{ ?x a <{PRODUCT}> }} LIMIT 1"
     assert _select(endpoint, "org_admin", products)
-    assert _select(endpoint, "analyst", products) == []
+    assert _select(endpoint, "sales_analytics_analyst", products) == []
 
 
 def _curl(*args: str) -> subprocess.CompletedProcess:
@@ -222,11 +225,30 @@ def test_curl_post_a_form_as_xml_results(endpoint):
     assert "<boolean>true</boolean>" in out.stdout
 
 
-def test_an_aggregate_is_refused_by_name(endpoint):
-    resp = httpx.get(
-        f"{endpoint}/data/sparql",
-        params={"query": f"SELECT (COUNT(?c) AS ?n) WHERE {{ ?c a <{CUSTOMER}> }}"},
-        headers={"X-Provisa-Role": "org_admin"},
-        timeout=60,
+def test_an_aggregate_per_group(endpoint, placed_by):
+    rows = _select(
+        endpoint,
+        "org_admin",
+        f"SELECT ?c (COUNT(?o) AS ?n) WHERE {{ ?o <{placed_by}> ?c }} GROUP BY ?c "
+        "HAVING (COUNT(?o) > 0) ORDER BY DESC(?n)",
     )
-    assert resp.status_code == 400 and "aggregates" in resp.json()["error"]
+    counts = [int(r["n"]) for r in rows]
+    assert counts and counts == sorted(counts, reverse=True) and all(n > 0 for n in counts)
+    total = _select(
+        endpoint, "org_admin", f"SELECT (COUNT(*) AS ?n) WHERE {{ ?o <{placed_by}> ?c }}"
+    )
+    assert int(total[0]["n"]) == sum(counts)
+
+
+def test_the_vocabulary_offers_the_roles_classes_predicates_and_edges(endpoint, placed_by):
+    """GET /data/sparql/vocabulary: what a client offers as a query is written (REQ-2135)."""
+    doc = httpx.get(
+        f"{endpoint}/data/sparql/vocabulary", headers={"X-Provisa-Role": "org_admin"}, timeout=60
+    ).json()
+    assert doc["base"] == BASE
+    classes = {c["iri"]: c for c in doc["classes"]}
+    assert classes[CUSTOMER]["kind"] == "table" and classes[ORDER]["kind"] == "table"
+    assert any(e["iri"] == placed_by for e in doc["edges"])
+    assert any(
+        p["iri"].startswith(f"{CUSTOMER}#") and p["kind"] == "column" for p in doc["predicates"]
+    )

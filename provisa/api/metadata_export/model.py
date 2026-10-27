@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
+from provisa.core.models import DataContract
+
 
 class AssetKind(str, Enum):  # REQ-1070
     """The asset granularities Provisa publishes."""
@@ -108,6 +110,15 @@ class TableAsset:  # REQ-1070
     cache_ttl: int | None = None
     # REQ-2118: a view (defined by SQL over other tables) rather than a table read from a source.
     is_view: bool = False
+    # REQ-2158: the member's declared contract, its output port; None for a table in no product
+    # and for a checker table.
+    contract: DataContract | None = None
+
+
+def listed(product: "DataProductAsset") -> bool:
+    """Whether a catalog lists the product as published: while it is in service, live or
+    deprecated (REQ-1634 STATUS). A draft is not yet listed; a retired one no longer is."""
+    return product.status in ("live", "deprecated")
 
 
 @dataclass
@@ -117,7 +128,8 @@ class DataProductAsset:  # REQ-1634
     ``members`` are the exported TableAssets whose ``product_id`` names this product — the
     same domain-alignment Provisa enforces at save time (a member's domain_id always equals
     ``domain_id`` here). A product with no exported members does not build: publishing an
-    empty listing would tell the catalog about a product with nothing behind it.
+    empty listing would tell the catalog about a product with nothing behind it. A retired
+    product builds with none (REQ-1634 STATUS), so each catalog is told it is retired.
     """
 
     ref: AssetRef
@@ -129,7 +141,6 @@ class DataProductAsset:  # REQ-1634
     members: tuple[AssetRef, ...] = ()
     semantic_uri: str = ""
     support_contact: str | None = None  # REQ-1635: Horizon Catalog org-listing manifest requirement
-    publish: bool = False  # REQ-1635: PUBLISH = TRUE on the organization listing instead of DRAFT
     # REQ-1659: the product's page in the org's UI, published as the listing's documentation link.
     documentation_url: str | None = None
     # REQ-2118: the rest of the product's ODPS fields, carried to every target in its own terms.
@@ -137,8 +148,9 @@ class DataProductAsset:  # REQ-1634
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
-    sla: str | None = None  # prose: a product spans several members
+    # REQ-1634 STATUS: draft, live, deprecated or retired; a product is listed while it is in
+    # service (:func:`listed`).
+    status: str = "draft"
     support: str | None = None
     custom_properties: dict[str, str] = field(default_factory=dict)
     # REQ-2118: the owner role's holders' email addresses -- the product's owners in a catalog
@@ -156,7 +168,6 @@ class DataProductAsset:  # REQ-1634
             "usage": self.usage,
             "version": self.version,
             "status": self.status,
-            "sla": self.sla,
             "support": self.support,
             "supportContact": self.support_contact,
         }
@@ -174,7 +185,6 @@ class DataProductAsset:  # REQ-1634
             "usage": "Usage",
             "version": "Version",
             "status": "Status",
-            "sla": "SLA",
             "support": "Support",
             "supportContact": "Support contact",
         }
@@ -397,7 +407,13 @@ class GlossaryTermAsset:  # REQ-1387
 
     ``refs`` lists the published columns that mean this concept; a rooted term whose refs
     all point at withheld tables is withheld with them (the data_product filter rule), while
-    an abstract term publishes on the strength of its edges alone.
+    an abstract term publishes on the strength of its edges alone. ``tables`` lists the
+    published tables a Class term grounds (REQ-2141).
+
+    ``role`` is the term's ontology role (REQ-2141): ``class`` when it grounds tables,
+    ``property`` when it owns column refs, ``concept`` when it grounds neither. It decides
+    what the term is assigned to in a catalog: a Class to its tables, a Property to its
+    columns (REQ-1389).
     """
 
     term_id: int
@@ -412,8 +428,27 @@ class GlossaryTermAsset:  # REQ-1387
     status_reason: str | None = None
     retire_on: str | None = None  # ISO date
     refs: tuple[AssetRef, ...] = ()
+    tables: tuple[AssetRef, ...] = ()
+    role: str = "concept"  # class | property | concept
     experts: tuple[str, ...] = ()
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/terms/<term name>
+    domains: tuple[str, ...] = ()  # REQ-1591: the term's domains, sorted
+
+    @property
+    def in_deprecation(self) -> bool:
+        """REQ-2144: deprecated in the catalogs -- a curator deprecated it (in service until
+        ``retire_on``). A term whose derivation lost its last column (``deprecated``) is out of
+        service and never exported, so the status is what each catalog's deprecation reflects."""
+        return self.status == "deprecated"
+
+    def assigned_to(self) -> tuple[AssetRef, ...]:
+        """The published assets a catalog assigns this term to (REQ-1389): a Class its tables,
+        a Property its columns, a Concept nothing."""
+        if self.role == "class":
+            return self.tables
+        if self.role == "property":
+            return self.refs
+        return ()
 
 
 @dataclass
@@ -424,6 +459,18 @@ class GlossaryTermEdge:  # REQ-1387
     to_term_id: int
     rel_type: str  # KIND_OF | RELATED_TO | PART_OF | SYNONYM_OF | VALID_VALUE_OF |
     # DERIVED_FROM | REPLACES | PREFERRED_TERM_FOR | TRANSLATION_OF | ANTONYM_OF
+
+
+@dataclass
+class GlossaryAxiom:  # REQ-2163
+    """One RDFS/OWL/SKOS statement the ontology makes about a published term (ontology._axioms):
+    its object a term, an IRI or a literal -- exactly one is set."""
+
+    subject_term_id: int
+    predicate: str
+    object_term_id: int | None
+    object_iri: str | None
+    object_literal: str | None
 
 
 @dataclass
@@ -445,10 +492,37 @@ class MetadataSnapshot:  # REQ-1070
     model_tags: list[ModelTag] = field(default_factory=list)  # REQ-1377/1378
     glossary_terms: list[GlossaryTermAsset] = field(default_factory=list)  # REQ-1387
     glossary_edges: list[GlossaryTermEdge] = field(default_factory=list)  # REQ-1387
+    glossary_axioms: list[GlossaryAxiom] = field(default_factory=list)  # REQ-2163
     assertions: list[DataQualityAssertion] = field(default_factory=list)  # REQ-1443
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]
+
+    def container_sources(self) -> list[SourceAsset]:
+        """The sources, and the derived layer a view is read from (REQ-2119).
+
+        A view's source is Provisa's own derived sentinel, not a federated source, so it is not
+        among ``sources``. A catalog that seats every table in a source container (Atlas's
+        provisa_source composition, OpenMetadata's service and database) refuses a table with
+        none, so the views are seated in a container for that layer.
+        """
+        from provisa.api.metadata_export.refs import source_uri
+
+        known = {source.id for source in self.sources}
+        derived = sorted({t.ref.parts[0] for t in self.tables if t.is_view} - known)
+        return [
+            *self.sources,
+            *(
+                SourceAsset(
+                    ref=AssetRef(kind=AssetKind.SOURCE, parts=(source_id,)),
+                    id=source_id,
+                    source_type="derived",
+                    description="Views Provisa defines over its governed tables.",
+                    semantic_uri=source_uri(self.org_id, source_id),
+                )
+                for source_id in derived
+            ),
+        ]
 
     def asset_count(self) -> dict[str, int]:
         return {

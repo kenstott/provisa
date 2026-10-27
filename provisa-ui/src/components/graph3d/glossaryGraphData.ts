@@ -8,14 +8,14 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2130: the glossary's Ontology View data, read from the meta domain as the signed-in user --
-// glossary_terms_meta (its standing columns), the domains each term is in, its refs to columns
+// REQ-2130: the glossary's Ontology View data, read from the ontology schema (REQ-2163) as the
+// signed-in user -- ontology._terms (its standing columns), the domains each term is in, its refs to columns
 // with those columns' tables and the relationships declared from them, and the edges leaving it
-// (glossary_term_edges_meta, read with the term); and the data products with their datasets, the datasets' columns and
+// (ontology._term_edges, read with the term); and the data products with their datasets, the datasets' columns and
 // the terms those columns are -- turned into the graph's nodes and edges.
 
 import { termRole } from "../../api/glossary";
-import { ONTOLOGY_NEIGHBOURHOOD } from "./neighbourhood";
+import { NEIGHBOURHOOD } from "./neighbourhood";
 import {
   operation,
   rootField,
@@ -35,8 +35,10 @@ import type {
 /** REQ-1593: a term in every domain, the org's shared vocabulary. */
 export const ENTERPRISE_DOMAIN = "*";
 
-/** A relationship declared from a table: its name is its alias, else its id. */
-const RELATIONSHIP: Selection = { fields: ["id", "alias", "target_table_id"] };
+/** A relationship declared from a table: its name is the Cypher type it is served under
+ * (relationships.cypher_type), as the Relationships page shows it. Its id is configuration, never
+ * a label. */
+const RELATIONSHIP: Selection = { fields: ["id", "cypher_type", "target_table_id"] };
 
 /** The term standings ``hidden`` leaves out, as conditions on glossary_terms_meta's columns. */
 const NOT_STATUS: Record<TermStatus, Where> = {
@@ -55,16 +57,9 @@ const all = (conds: Where[]): Where | undefined =>
 const inDomains = (domains: string[], column = "domain_id"): Where | undefined =>
   domains.length === 0 ? undefined : { [column]: { in: domains } };
 
-/** A relationship named by one of ``types``: by its alias, else (declared without one) its id. */
+/** A relationship served under one of the Cypher ``types``. */
 const named = (types: string[]): Where | undefined =>
-  types.length === 0
-    ? undefined
-    : {
-        _or: [
-          { alias: { in: types } },
-          { _and: [{ alias: { is_null: true } }, { id: { in: types } }] },
-        ],
-      };
+  types.length === 0 ? undefined : { cypher_type: { in: types } };
 
 function relationships(s: QueryScope): Selection["rels"] {
   return s.layers.has("ownerTables") && s.layers.has("columns")
@@ -84,7 +79,7 @@ function termKept(s: QueryScope): Where | undefined {
     s.domains.length === 0
       ? undefined
       : {
-          // term_domains is the term's domains as |a|b| (glossary_term_domains_meta); an
+          // term_domains is the term's domains as |a|b| (ontology._domains); an
           // enterprise-wide term ("*") is in every one.
           _or: [...s.domains, ENTERPRISE_DOMAIN].map((d) => ({
             term_domains: { like: `%|${d}|%` },
@@ -97,7 +92,9 @@ function termKept(s: QueryScope): Where | undefined {
 }
 
 /** A term with a relationship drawn: an edge of a type kept to a term kept (either way, under
- * Ontology), or a column it IS in a domain kept (under Columns). With neither layer on, none. */
+ * Ontology), a domain kept it is in (under Domains: its domains are its refs' and tables', so a
+ * draft named for a column is in its table's domain whatever else is drawn), or a column it IS in
+ * a domain kept (under Columns). With none of these layers on, none. */
 function related(s: QueryScope): Where {
   const kept = termKept(s);
   const typed: Where | undefined =
@@ -111,6 +108,14 @@ function related(s: QueryScope): Where {
             { edges_out: edge("target_term") },
             { edges_in: edge("source_term") },
             { tables: inDomains(s.domains) ?? {} },
+          ]
+        : []),
+      ...(s.layers.has("domains")
+        ? [
+            {
+              domains:
+                inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]) ?? {},
+            },
           ]
         : []),
       ...(s.layers.has("columns") ? [{ refs: inDomains(s.domains) ?? {} }] : []),
@@ -146,7 +151,7 @@ const TERM_FIELDS = [
  * last level is read with its edges' ends alone, so an edge between two of them is drawn and
  * nothing past them is. With no search every term is read at level 0, its edges' ends by id. */
 function termSelection(s: QueryScope, level: number): Selection {
-  const depth = s.search.length > 0 ? ONTOLOGY_NEIGHBOURHOOD.depth : 0;
+  const depth = s.search.length > 0 ? NEIGHBOURHOOD.depth : 0;
   const last = level >= depth;
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
@@ -187,7 +192,7 @@ function termSelection(s: QueryScope, level: number): Selection {
     if (s.layers.has("ontology"))
       rels.tables = {
         alias: "tables",
-        sel: { fields: ["table_id", "table_name", "domain_id"] },
+        sel: { fields: ["id", "table_name", "domain_id"] },
         where: inDomains(s.domains),
       };
     if (s.layers.has("domains"))
@@ -235,7 +240,7 @@ function rootWhere(s: QueryScope): Where | undefined {
 }
 
 function termsField(m: MetaReader, s: QueryScope): string | null {
-  return rootField(m, "glossary_terms", termSelection(s, 0), rootWhere(s));
+  return rootField(m, "_terms", termSelection(s, 0), rootWhere(s));
 }
 
 /** REQ-2143: how many terms the view's query would read at its root -- the matches under a search,
@@ -244,7 +249,7 @@ export function ontologyCountQuery(m: MetaReader, s: QueryScope): string | null 
   // Each term's domains with it: the overview counts the terms in each.
   const field = rootField(
     m,
-    "glossary_terms",
+    "_terms",
     { fields: ["id"], rels: { domains: { alias: "domains", sel: { fields: ["domain_id"] } } } },
     rootWhere(s),
   );
@@ -355,7 +360,7 @@ export function termEdges(terms: TermRow[]): TermEdgeRow[] {
 
 /** What the Ontology View's query answers: a part not read is absent. */
 export interface OntologyRows {
-  glossary_terms: TermRow[];
+  _terms: TermRow[];
   data_products?: ProductRow[];
 }
 
@@ -378,7 +383,7 @@ export interface TermRow {
   edges_out?: (TermEdgeRow & { target_term?: TermRow | { id: number } | null })[] | null;
   edges_in?: (TermEdgeRow & { source_term?: TermRow | { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
-  tables?: { table_id: number; table_name: string; domain_id: string }[] | null;
+  tables?: { id: number; table_name: string; domain_id: string }[] | null;
   refs?:
     | {
         column_key: string;
@@ -397,7 +402,8 @@ export interface TermRow {
 
 interface RelationshipRow {
   id: string;
-  alias: string | null;
+  // Every relationship has its served type stored (relationship_names.store_effective_names).
+  cypher_type: string;
   target_table_id: number | null;
 }
 
@@ -498,9 +504,7 @@ export function glossaryGraph(
   const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
     for (const r of rows ?? [])
       if (r.target_table_id !== null)
-        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.alias ?? r.id, [
-          "ownerTables",
-        ]);
+        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.cypher_type, ["ownerTables"]);
   };
 
   const named = new Set<string>();
@@ -534,14 +538,14 @@ export function glossaryGraph(
     // with the ontology.
     for (const g of t.tables ?? []) {
       node({
-        id: `t:${g.table_id}`,
+        id: `t:${g.id}`,
         type: "table",
         label: `${g.domain_id}.${g.table_name}`,
         domains: [g.domain_id],
         stored: true,
         layers: ["ontology"],
       });
-      edge(id, `t:${g.table_id}`, "term_binding", "IS", ["ontology"]);
+      edge(id, `t:${g.id}`, "term_binding", "IS", ["ontology"]);
     }
     for (const r of t.refs ?? []) {
       const tid = `t:${r.table_id}`;

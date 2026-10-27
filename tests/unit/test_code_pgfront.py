@@ -37,9 +37,17 @@ from provisa.python.source import HOST, READER
 
 pytestmark = pytest.mark.unit
 
+BOUNDS = {
+    "memory_mb": 256,
+    "threads": 2,
+    "spill_cap_mb": 1024,
+}  # the host's DuckDB, given at pairing
+
 _CODE = textwrap.dedent(
     '''
     from dataclasses import dataclass
+
+    from provisa_services import ReadContext
 
 
     @dataclass
@@ -49,13 +57,19 @@ _CODE = textwrap.dedent(
         asked: str
 
 
-    def orders(n: int = 3, customerName: str | None = None) -> list[Order]:
+    @dataclass
+    class OrderInputs:
+        n: int = 3
+
+
+    def orders(inputs: OrderInputs, context: ReadContext) -> list[Order]:
         """Orders.
 
         @table
         """
-        asked = f"n={n};customerName={customerName}"
-        return [Order(i, "acme" if i % 2 else "zeta", asked) for i in range(n)]
+        filters = ",".join(f"{f.column} {f.op} {f.value}" for f in context.filters)
+        asked = f"n={inputs.n};filters={filters}"
+        return [Order(i, "acme" if i % 2 else "zeta", asked) for i in range(inputs.n)]
     '''
 )
 
@@ -75,7 +89,15 @@ def host(tmp_path):
     port = 0
     worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
     process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
-        [sys.executable, front.__file__, str(port), str(tmp_path / "state"), str(names), *worker],
+        [
+            sys.executable,
+            front.__file__,
+            str(port),
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *worker,
+        ],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -93,7 +115,7 @@ def host(tmp_path):
             break
     assert pairing is not None
     identity = remote.new_identity()
-    remote.pair("127.0.0.1", port, pairing, identity)
+    remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     cert, key = tmp_path / "provisa.crt", tmp_path / "provisa.key"
     cert.write_text(identity.certificate)
     key.write_text(identity.key)
@@ -127,17 +149,16 @@ def test_the_catalog_lists_each_function_with_its_declared_columns_and_parameter
             ("customerName", "text"),
             ("asked", "text"),
             ("_nf_n", "bigint"),
-            ("_nf_customerName", "text"),
         ]
 
 
-def test_a_read_calls_the_function_with_its_parameters_and_pushes_and_applies_the_rest(host):
+def test_a_read_gives_the_function_its_inputs_and_its_context_and_applies_the_rest(host):
     with psycopg.connect(_dsn(*host), autocommit=True) as conn:
         assert _rows(
             conn,
             "SELECT id, asked FROM public.orders WHERE _nf_n = 5 AND \"customerName\" = 'acme' "
             "ORDER BY id DESC",
-        ) == [(3, "n=5;customerName=acme"), (1, "n=5;customerName=acme")]
+        ) == [(3, "n=5;filters=customerName eq acme"), (1, "n=5;filters=customerName eq acme")]
 
 
 def test_the_row_estimate_is_the_count_last_answered(host):

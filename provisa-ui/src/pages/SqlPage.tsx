@@ -37,6 +37,7 @@ import type { RegisteredTable } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
+import { kept, restored, type KeptResult } from "../lib/resultWithQuery";
 import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./sql/types";
 import { useScreenEditor } from "../mcp/screenState";
 import { useResultsGrid } from "./sql/useResultsGrid";
@@ -51,8 +52,8 @@ import { joinStatements, toStatementResult, type StatementResult } from "./sql/s
 import { ViewModal } from "./sql/ViewModal";
 import type { Registration } from "./tables/draftTable";
 import { domainToSqlName } from "../naming";
+import { withTimeTravel } from "./sql/timeTravelArgs";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
-import { isInternalDomain } from "../lib/internalDomains";
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
@@ -112,11 +113,14 @@ export function SqlPage() {
     tab: tabs.find((t) => t.id === activeTabId)!.title,
   });
   const [role, setRole] = useState("org_admin");
-  // REQ-1163: the time travel statements run with over bitemporal views -- as of a time on each
-  // view's clock, as recorded at a time -- each an ISO 8601 time, or none.
+  // REQ-1163: the time pickers' last picks -- as of a time on each relation's valid time, as
+  // recorded at a time -- each an ISO 8601 time, or none. A pick is written into the statement as
+  // the arguments of each relation that travels in time (timeTravelArgs); the text is what runs.
   const [asOf, setAsOf] = useState<string | null>(null);
   const [asRecorded, setAsRecorded] = useState<string | null>(null);
-  const timeTravel = useMemo(() => ({ asOf, asRecorded }), [asOf, asRecorded]);
+  // REQ-2083: the values of the next run's $1…$n placeholders, handed by a tour step that took
+  // them from an earlier answer; sent with that run, then dropped.
+  const [boundParams, setBoundParams] = useState<string[]>([]);
   // REQ-1620: under the app-wide "Role: All" the acting set is EVERY active role, sent as one
   // comma-separated X-Provisa-Role so the union of their visibility is queryable. The picker
   // offers that set as its own entry; picking a single role previews that role alone.
@@ -213,13 +217,20 @@ export function SqlPage() {
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
   const resultsHydrated = useRef(false);
+  // Each tab's query that produced the results it holds: kept with them, so they are restored
+  // only beside it.
+  const resultQueries = useRef(new Map<string, string>());
 
   // Hydrate each tab's last-run results from IndexedDB on mount.
   useEffect(() => {
     let cancelled = false;
     Promise.all(
       initialTabs.tabs.map((t) =>
-        idbGet<SqlResults>(tabResultsKey(t.id)).then((r) => ({ id: t.id, r })),
+        idbGet<KeptResult<SqlResults>>(tabResultsKey(t.id)).then((k) => {
+          const r = restored(k, t.sqlText);
+          if (r && k) resultQueries.current.set(t.id, k.query);
+          return { id: t.id, r };
+        }),
       ),
     ).then((loaded) => {
       if (cancelled) return;
@@ -349,7 +360,7 @@ export function SqlPage() {
   const fetchExpansion = useCallback(async (): Promise<{ text: string; isError: boolean }> => {
     const inner = sqlText.trim().replace(/;+$/, "");
     try {
-      const plan = await explainSql(inner, role, false, timeTravel);
+      const plan = await explainSql(inner, role, false);
       if (plan.semantic_sql === null) {
         return { text: t("sqlPage.expansionNoMetric"), isError: true };
       }
@@ -357,7 +368,7 @@ export function SqlPage() {
     } catch (e) {
       return { text: e instanceof Error ? e.message : String(e), isError: true };
     }
-  }, [sqlText, role, timeTravel, t]);
+  }, [sqlText, role, t]);
 
   const handleShowExpansion = useCallback(async () => {
     setExpansionOpen(true);
@@ -376,9 +387,8 @@ export function SqlPage() {
   // panel while its facts, dimensions, and derived metrics keep showing in the other.
   const isDomainVisible = useCallback(
     (domainId: string) => {
-      return (
-        isInternalDomain(domainId) || checkedDomains.size === 0 || checkedDomains.has(domainId)
-      );
+      // meta and ops are listed in the Domains menu like any domain, so they filter like any domain.
+      return checkedDomains.size === 0 || checkedDomains.has(domainId);
     },
     [checkedDomains],
   );
@@ -536,17 +546,12 @@ export function SqlPage() {
     autoRun?: boolean;
     viewTable?: RegisteredTable;
     role?: string;
-    asOf?: string;
-    asRecorded?: string;
+    params?: string[];
   }>((payload) => {
     if (payload.viewTable) setViewTable(payload.viewTable);
-    // A demo tour's time-travel steps (REQ-1163) set the explorer's pickers.
-    if (payload.asOf != null) {
-      setAsOf(payload.asOf);
-      return;
-    }
-    if (payload.asRecorded != null) {
-      setAsRecorded(payload.asRecorded);
+    // REQ-2083: a demo tour's step hands the next statement its bound values.
+    if (payload.params != null) {
+      setBoundParams(payload.params);
       return;
     }
     if (payload.role != null) {
@@ -714,7 +719,7 @@ export function SqlPage() {
     setAnalyzing(true);
     setAnalyzeError("");
     try {
-      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false, timeTravel);
+      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false);
       setAnalyzePlan(plan);
     } catch (e) {
       setAnalyzePlan(null);
@@ -723,11 +728,11 @@ export function SqlPage() {
       setAnalyzing(false);
     }
     setResultTab("analyze");
-  }, [sqlText, role, timeTravel]);
+  }, [sqlText, role]);
 
   // One statement's result, of the batch's, into the result shown (grid, profile, export).
   const showStatement = useCallback(
-    (list: StatementResult[], index: number) => {
+    (list: StatementResult[], index: number, query: string) => {
       const r = list[index];
       setStatementIndex(index);
       setResultColumns(r.columns);
@@ -737,14 +742,18 @@ export function SqlPage() {
       setResultRedirect(r.redirect);
       setResultPartial(r.partial);
       resetGrid();
-      idbSet(tabResultsKey(activeTabId), {
-        columns: r.columns,
-        rows: r.rows,
-        error: r.error,
-        partial: r.partial,
-        statements: list,
-        statementIndex: index,
-      });
+      resultQueries.current.set(activeTabId, query);
+      idbSet(
+        tabResultsKey(activeTabId),
+        kept<SqlResults>(query, {
+          columns: r.columns,
+          rows: r.rows,
+          error: r.error,
+          partial: r.partial,
+          statements: list,
+          statementIndex: index,
+        }),
+      );
     },
     [activeTabId, resetGrid],
   );
@@ -762,7 +771,8 @@ export function SqlPage() {
       // Each statement is sampled on its own, so the batch is split as the server splits it; the
       // server answers one result per statement (runSqlEach answers a failure as its error).
       const sent = (await splitSql(aliased)).map((s) => wrapSampledSql(s, sampleMode, sampleSize));
-      run = await runSqlEach(joinStatements(sent), role, statsEnabled, timeTravel);
+      run = await runSqlEach(joinStatements(sent), role, statsEnabled, boundParams);
+      setBoundParams([]);
     } catch (e) {
       // The split refused: said as the run's error.
       run = { answers: [], error: e instanceof Error ? e.message : String(e) };
@@ -774,7 +784,7 @@ export function SqlPage() {
     setQueryStats(run.provisa_stats ?? null);
     const results = run.answers.map(toStatementResult);
     setStatements(results);
-    if (results.length > 0) showStatement(results, 0);
+    if (results.length > 0) showStatement(results, 0, aliased);
     else {
       // Refused as a whole, or a batch of no statements (comments alone).
       setStatementIndex(0);
@@ -784,7 +794,11 @@ export function SqlPage() {
       setResultRows([]);
       setResultPartial(false);
       resetGrid();
-      idbSet(tabResultsKey(activeTabId), { columns: [], rows: [], error: run.error ?? "" });
+      resultQueries.current.set(activeTabId, aliased);
+      idbSet(
+        tabResultsKey(activeTabId),
+        kept<SqlResults>(aliased, { columns: [], rows: [], error: run.error ?? "" }),
+      );
     }
     setResultTab("results");
     const failed = run.error ?? results.find((r) => r.error)?.error ?? "";
@@ -809,7 +823,7 @@ export function SqlPage() {
     activeTabId,
     statsEnabled,
     resetGrid,
-    timeTravel,
+    boundParams,
     showStatement,
   ]);
 
@@ -1033,9 +1047,16 @@ export function SqlPage() {
               roles={roleOptions}
               setRole={setRole}
               asOf={asOf}
-              setAsOf={setAsOf}
+              setAsOf={(v) => {
+                setAsOf(v);
+                setSqlText((text) => withTimeTravel(text, tables, { asOf: v, asRecorded }));
+              }}
               asRecorded={asRecorded}
-              setAsRecorded={setAsRecorded}
+              setAsRecorded={(v) => {
+                setAsRecorded(v);
+                setSqlText((text) => withTimeTravel(text, tables, { asOf, asRecorded: v }));
+              }}
+              boundParams={boundParams}
               viewTable={viewTable}
               viewSaving={viewSaving}
               setViewSaving={setViewSaving}
@@ -1055,7 +1076,11 @@ export function SqlPage() {
               rowsPartial={resultPartial}
               statements={statements}
               statementIndex={statementIndex}
-              onStatement={(i) => showStatement(statements, i)}
+              // A batch's statements are held only after a run or a restore, each of which keeps
+              // the tab's query.
+              onStatement={(i) =>
+                showStatement(statements, i, resultQueries.current.get(activeTabId)!)
+              }
               grid={grid}
               errors={errors}
               history={history}

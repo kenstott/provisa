@@ -126,7 +126,8 @@ class EngineRuntime:  # REQ-825, REQ-840
 
         # REQ-615: a session's temporary table is read at its address in the engine's store.
         pg_sql = address_temp_tables(pg_sql, self._state)
-        return self._backend.transpile_physical(self._search_replica_indexes(pg_sql))
+        physical = self._backend.transpile_physical(self._search_replica_indexes(pg_sql))
+        return self._backend.exact_reads(self._state, physical)
 
     def _search_replica_indexes(self, pg_sql: str) -> str:
         """``pg_sql`` at its replicas' addresses, each top-k similarity search over a replica
@@ -639,6 +640,11 @@ class EngineRuntime:  # REQ-825, REQ-840
             self._state, source_id=source_id, schema_name=schema_name, table_name=table_name
         )
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed, from the catalog of the store it lands in
+        (REQ-318) -- delegated to the backend. Absent is False; a failed read raises."""
+        return await self._backend.landed_table_exists(self._state, schema=schema, table=table)
+
     async def analyze_landed_table(self, *, catalog: str | None, schema: str, table: str) -> None:
         """Planner statistics on a landed table, collected where the table lives (REQ-1688) —
         delegated to the backend."""
@@ -770,6 +776,11 @@ class EngineRuntime:  # REQ-825, REQ-840
         ``"query"`` → 400, ``None`` → caller default) so generic request handlers select an HTTP
         status without importing engine-specific exception types."""
         return self._backend.classify_error(exc)
+
+    def refusal_of(self, exc: Exception) -> Any:
+        """What the engine cannot answer because of what it is, said by name (REQ-778), else
+        None (``EngineBackend.refusal_of``)."""
+        return self._backend.refusal_of(exc)
 
     def write_config(self, config_path: str) -> None:
         """Lifecycle: render the engine's cluster config from platform config (no-op for native)."""

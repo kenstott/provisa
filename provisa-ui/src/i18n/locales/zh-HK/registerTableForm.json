@@ -23,7 +23,6 @@
     "descriptionLabel": "描述",
     "descriptionPlaceholder": "顯示於 SDL 文件中",
     "dataProductLabel": "數據產品",
-    "dataProductHint": "（發佈至目錄／匯出至 Atlas、Atlan 等）",
     "discoverLabel": "探索欄位",
     "discoverHint": "（於註冊時從即時數據來源推斷欄位——適用於無結構描述／NoSQL 數據來源；無需手動選取欄位）",
     "watermarkLabel": "水位線欄位",
@@ -62,7 +61,6 @@
     "dqResultsTableHint": "（由被掃描的表衍生；每次掃描每項檢查一行，保留每次掃描）",
     "dqResultsTablePlaceholder": "請在上方選擇要掃描的表",
     "dqVisibleToLabel": "結果可見對象",
-    "dqDescription": "{{table}} 的質素掃描結果 — 每次掃描每項檢查一行，包含結果、指標值和閾值",
     "errorDqContract": "請在數據質素面板中選擇要掃描的表。",
     "errorDqVisibleTo": "結果必須至少對一個角色可見。",
     "dqScanIntervalLabel": "掃描間隔（秒）",
@@ -136,6 +134,9 @@
     "qdrantVectors": "{{collection}} 的向量",
     "qdrantVector": "{{name}}：{{size}} 維，按 {{distance}} 評分",
     "qdrantUnnamedVector": "（未命名）",
-    "continue": "繼續"
+    "continue": "繼續",
+    "checkReasonLabel": "為甚麼需要這項檢查",
+    "checkReasonHint": "以業務語言表述的質素承諾；它作為該檢查在每個產品中的標題。",
+    "checkReasonPlaceholder": "訂單完整且唯一，以便每日收入與財務對賬一致"
   }
 }

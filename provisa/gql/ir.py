@@ -236,6 +236,12 @@ class ReturnItem:
 class ReturnClause:
     items: list[ReturnItem]
     distinct: bool = False
+    #: The grouping keys, when the statement names them (SPARQL's GROUP BY, REQ-2135); a key need
+    #: not be returned. None groups as Cypher does, by the items that aggregate nothing; an empty
+    #: list is one group of every row.
+    group_by: list[CypherExpr] | None = None
+    #: A condition on each group, over its aggregates (SPARQL's HAVING).
+    having: CypherExpr | None = None
 
 
 @dataclass
@@ -246,12 +252,25 @@ class WithClause:
     order_by: list[OrderItem] = field(default_factory=list)
     skip: int | None = None
     limit: int | None = None
+    #: WITH DISTINCT: the rows it carries on are distinct.
+    distinct: bool = False
 
 
 @dataclass
 class UnwindClause:
     expression: CypherExpr  # a list literal, a parameter, or a property
     variable: str  # AS variable name
+
+
+@dataclass
+class ProcedureCall:  # REQ-2168
+    """``CALL ns.name(args) YIELD col [AS var], … [WHERE …]`` composed in a statement: a command
+    called by its Cypher command binding, its rows a source as an UNWIND's are."""
+
+    name: str
+    args: list[CypherExpr]
+    yields: list[tuple[str, str]]  # (column the command returns, variable it is bound to)
+    where: "WhereClause | None" = None
 
 
 @dataclass

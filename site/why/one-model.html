@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>One model — Provisa</title>
-  <meta name="description" content="Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Federation across 73 connectors reaching 85+ kinds of source, metrics defined once, the glossary as a graph, and six access-control layers compiled into every query plan." />
+  <meta name="description" content="Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Cross-source queries across 73 connectors reaching 85+ kinds of source, metrics defined once, the glossary as a graph, and six access-control layers compiled into every query plan." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -34,11 +34,11 @@
         <a href="/#interfaces">Interfaces</a>
         <a href="/#governance">Governance</a>
         <a href="/#sources">Sources</a>
-        <a href="/vs/starburst">Compare</a>
+        <a href="/compare">Compare</a>
         <a href="/#deploy">Deploy</a>
-        <a href="/demos">Live demos</a>
+        <a href="/how-it-works">How</a>
+        <a href="/demos">Demos</a>
         <a href="/docs">Docs</a>
-        <a href="/#download">Download</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
     </div>
@@ -50,14 +50,16 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>One model</span></p>
         <h1>One model.</h1>
         <p class="lead">
-          Federation, metrics, ontology and governance from a single model. Nothing to keep
-          in sync.
+          Four tools, each holding its own description of the same data. When one
+          changes, the others are wrong until someone catches it. The query engine,
+          the metrics layer, the catalog, the policy service — each drifts on its
+          own schedule. One model means one description, and nothing drifts.
         </p>
       </div>
 
       <div class="doc-body">
         <p>
-          Most estates run these as four tools. A federation engine knows where the data
+          Most estates run these as four tools. A query engine knows where the data
           is, a metrics layer knows what the numbers mean, a catalog or knowledge graph
           knows what the terms mean, and a policy service knows who may see what. Each holds
           its own description of the same data, and the descriptions drift apart. Provisa
@@ -65,12 +67,17 @@
           only one of them.
         </p>
 
-        <h2 id="federation">Federation</h2>
+        <h2 id="federation">Cross-source queries</h2>
         <p>
-          73 connectors reaching 85+ kinds of source, including Salesforce, ServiceNow, Jira and Stripe, are reached in place.
-          The SaaS systems the business runs on are tables beside the databases, with no
-          pipeline into a warehouse first. You register the tables you want; nothing a
-          source offers is registered for you.
+          The systems the business actually runs on — Salesforce, ServiceNow, Jira,
+          Stripe — never appear in the query engine. Getting to them means a pipeline
+          into a warehouse first, which means lag, another copy to secure, and another
+          thing to break.
+        </p>
+        <p>
+          73 connectors reaching 85+ kinds of source are reached in place, with no
+          pipeline. You register the tables you want; nothing a source offers is
+          registered for you.
         </p>
         <p>
           Query in SQL, GraphQL or Cypher over nine protocols: pgwire, Bolt, Arrow Flight,
@@ -81,6 +88,11 @@
 
         <h2 id="metrics">Metrics</h2>
         <p>
+          Every tool has its own metric definition, and they don't agree. The BI tool
+          computes "active customer" one way; the app uses another; the dashboard has a
+          third. Reconciling them is a recurring project that never fully closes.
+        </p>
+        <p>
           A metric is a named, governed aggregate: a name, an expression, a data type, a
           description. It is defined once and every tool and language that asks gets the
           same definition. A metric carries the same role visibility and stewardship as a
@@ -90,7 +102,12 @@
 
         <h2 id="ontology">Ontology</h2>
         <p>
-          The business glossary is a graph. Terms are derived from the field names in the
+          A glossary disconnected from the data it names is documentation. It tells you
+          what "customer" should mean; it can't tell you which column is the customer ID,
+          or how "customer" in the sales domain relates to "account" in the support domain.
+        </p>
+        <p>
+          The business glossary here is a graph. Terms are derived from the field names in the
           model, linked to the physical columns they name, and connected by the relationships
           between those tables. You can also add any concept of your own, give it a
           definition, and link it into the glossary. That is an ontology: a graph of
@@ -159,13 +176,25 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
         <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/data-mesh">Data mesh</a>
+        <a href="/why/ai">Data for AI</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
+        <a href="/register">Register (free license)</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@provisa.dev">Support</a>
       </nav>
     </div>
   </footer>

@@ -148,6 +148,9 @@ def test_evaluating_licensing_leaves_the_real_locations_untouched():
     real = [monotonic.default_highwater_path(), *anchors.default_anchor_paths()]
     assert all(Path.home() in p.parents for p in real)
     before = {p: (p.stat().st_mtime_ns if p.exists() else None) for p in real}
+    # The session's pin, as conftest set it when the session began: a session that runs past
+    # midnight began on an earlier day than this test's.
+    pinned = os.environ.get("PROVISA_LICENSING_FIRST_SEEN")
 
     today = datetime.date.today()
     evaluate(now_epoch=_epoch(today), today_iso=today.isoformat())
@@ -157,7 +160,8 @@ def test_evaluating_licensing_leaves_the_real_locations_untouched():
     assert monotonic.read_highwater(sandbox / "highwater.json") >= _epoch(today)
     # The session's trial clock is pinned (tests/conftest.py): its first-use date is the pin, read
     # from no anchor and written to none.
-    assert os.environ.get("PROVISA_LICENSING_FIRST_SEEN") == today.isoformat()
+    assert pinned is not None and pinned <= today.isoformat()
+    assert os.environ.get("PROVISA_LICENSING_FIRST_SEEN") == pinned
     assert anchors.read_anchor(sandbox / "anchor.json", stable_machine_id()) is None
 
 
@@ -206,3 +210,101 @@ def test_an_app_built_in_the_test_process_exports_to_the_sessions_receiver(monke
     request = urllib.request.Request(f"{endpoint}/v1/traces", data=b"", method="POST")
     with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310 - loopback
         assert response.status == 200
+
+
+# --- the trace folder ---------------------------------------------------------------------------
+
+
+def test_this_session_lands_traces_outside_the_real_home():
+    """A native engine lands its traces under the telemetry folder, ~/.provisa/telemetry by
+    default: local-dev's own. The session names one of its own, forced as PROVISA_HOME is."""
+    from provisa.observability.ops_schema import telemetry_dir
+
+    folder = Path(telemetry_dir()).resolve()
+    real = (Path.home() / ".provisa").resolve()
+    assert real not in (folder, *folder.parents)
+    assert Path(os.environ["PROVISA_TELEMETRY_DIR"]).resolve() == folder
+
+
+def test_every_server_a_test_starts_names_a_telemetry_folder_of_its_own():
+    """Each server compacts its trace folder every minute; servers sharing one compacted each
+    other's files (four e2e backends in ~/.provisa/telemetry multiplied a day's rows minute by
+    minute). Every harness that starts a server gives it its own folder."""
+    import inspect
+
+    from tests.integration import isolated_server, worker_boot_harness
+
+    assert '"PROVISA_TELEMETRY_DIR":' in inspect.getsource(isolated_server.IsolatedServer.start)
+    assert '"PROVISA_TELEMETRY_DIR": os.path.join(self.data_dir' in inspect.getsource(
+        worker_boot_harness.WorkerBoot.start
+    )
+    repo = Path(__file__).resolve().parents[2]
+    conftest = (repo / "tests" / "conftest.py").read_text()
+    live = conftest[conftest.index("server_env = {") :]
+    assert '"PROVISA_TELEMETRY_DIR":' in live[: live.index("}")]
+    playwright = (repo / "provisa-ui" / "playwright.config.ts").read_text()
+    servers = playwright.count("exec .venv/bin/uvicorn main:app")
+    assert servers == 2  # the core backends' entry, and the Trino backend's
+    assert playwright.count("PROVISA_TELEMETRY_DIR: path.resolve(") == servers
+
+
+# --- the e2e backends ---------------------------------------------------------------------------
+
+
+def _playwright_config() -> str:
+    repo = Path(__file__).resolve().parents[2]
+    return (repo / "provisa-ui" / "playwright.config.ts").read_text()
+
+
+def test_every_e2e_backend_names_a_home_of_its_own():
+    """The Playwright backends are the test instance too. Each gets, under its own data dir: a
+    PROVISA_HOME (the MCP TLS certificates, provisa/api/mcp/tls.py, else ~/.provisa/certs), a
+    licensing sandbox (the trial anchors and high-water mark, else ~/.provisa), and the test key
+    store (the encryption master key is read from the keyring before PROVISA_ENCRYPTION_KEY, and
+    the OS keychain is local-dev's)."""
+    playwright = _playwright_config()
+    helper = playwright[playwright.index("function homeEnvFor(dataDir: string)") :]
+    helper = helper[: helper.index("\n}\n")]
+    assert "PROVISA_HOME: dataDir," in helper
+    assert 'PROVISA_LICENSING_SANDBOX_DIR: path.resolve(dataDir, "licensing"),' in helper
+    assert 'PYTHON_KEYRING_BACKEND: "tests._memory_keyring.MemoryKeyring",' in helper
+    servers = playwright.count("exec .venv/bin/uvicorn main:app")
+    assert servers == 2  # the core backends' entry, and the Trino backend's
+    assert playwright.count("...homeEnvFor(") == servers
+    assert "...homeEnvFor(b.dataDir)," in playwright
+    assert "...homeEnvFor(E2E_TRINO_DATA_DIR)," in playwright
+
+
+def test_the_e2e_key_store_loads_in_a_backend_and_writes_its_data_dir(tmp_path):
+    """A backend runs from the repo root (``cd ..``), with uvicorn's app dir (the root) first on
+    the path: there the key store the config names loads, and a key stored lands in the backend's
+    own data dir, not the OS keychain."""
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parents[2]
+    probe = (
+        "import sys; sys.path.insert(0, '');"
+        "import keyring; keyring.set_password('provisa', 'probe', 'k');"
+        "print(type(keyring.get_keyring()).__name__, keyring.get_password('provisa', 'probe'))"
+    )
+    env = {
+        **os.environ,
+        "PROVISA_DATA_DIR": str(tmp_path),
+        "PYTHON_KEYRING_BACKEND": "tests._memory_keyring.MemoryKeyring",
+        "PYTHONPATH": "",
+    }
+    out = subprocess.run(  # noqa: S603 - the venv's interpreter, a fixed probe
+        [sys.executable, "-I", "-c", probe], cwd=repo, env=env, capture_output=True, text=True
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.split() == ["MemoryKeyring", "k"]
+    assert (tmp_path / "test-keyring.json").is_file()
+
+
+def test_this_session_keeps_mcp_certificates_outside_the_real_home():
+    from provisa.api.mcp.tls import _cert_dir
+
+    folder = _cert_dir().resolve()
+    real = (Path.home() / ".provisa").resolve()
+    assert real not in (folder, *folder.parents)

@@ -106,12 +106,12 @@ class TestCompileBasic:
 
     async def test_compile_schema_scope_reflects_role(self, client):
         """schema_scope in enforcement reflects the requested role."""
-        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="sales_analytics_analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
         scope = body["data"]["compileQuery"][0]["enforcement"]["schemaScope"]
-        assert "analyst" in scope
+        assert "sales_analytics_analyst" in scope
 
     async def test_compile_returns_route_decision(self, client):
         """Compile includes route and routeReason fields."""
@@ -132,6 +132,42 @@ class TestCompileBasic:
         sources = body["data"]["compileQuery"][0]["sources"]
         assert isinstance(sources, list)
         assert len(sources) > 0
+
+
+class TestCompileSparqlExport:
+    async def test_with_no_public_address_the_compile_answers_with_the_reason_it_has_no_sparql(
+        self, client, monkeypatch
+    ):
+        """REQ-2136: the SPARQL export is one more view of the compiled read. With no
+        server.public_url its IRIs have no base, so it has none, and says why; the SQL and the
+        Cypher are answered as before."""
+        from provisa.core import settings_registry
+
+        value = settings_registry.value
+        monkeypatch.setattr(
+            settings_registry,
+            "value",
+            lambda key, *a, **k: None if key == "server.public_url" else value(key, *a, **k),
+        )
+        query = _COMPILE_MUTATION.replace(
+            "compiledCypher", "compiledCypher compiledSparql sparqlError"
+        )
+        resp = await client.post(
+            "/admin/graphql",
+            json={
+                "query": query,
+                "variables": {
+                    "input": {"query": "{ sa__orders { id amount } }", "role": "org_admin"}
+                },
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        result = body["data"]["compileQuery"][0]
+        assert result["sql"] and result["compiledCypher"]
+        assert result["compiledSparql"] is None
+        assert "public_url" in result["sparqlError"]
 
 
 class TestCompileWithVariables:
@@ -171,7 +207,7 @@ class TestCompileMultiRoot:
 class TestCompileRLSEnforcement:
     async def test_compile_rls_filters_shown_in_enforcement(self, client):
         """When a role has RLS configured, compile lists the filters applied."""
-        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="sales_analytics_analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -180,7 +216,7 @@ class TestCompileRLSEnforcement:
 
     async def test_compile_excluded_columns_shown(self, client):
         """Columns not requested appear in columnsExcluded."""
-        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="sales_analytics_analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")

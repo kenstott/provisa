@@ -34,11 +34,11 @@
         <a href="/#interfaces">Interfaces</a>
         <a href="/#governance">Governance</a>
         <a href="/#sources">Sources</a>
-        <a href="/vs/starburst">Compare</a>
+        <a href="/compare">Compare</a>
         <a href="/#deploy">Deploy</a>
-        <a href="/demos">Live demos</a>
+        <a href="/how-it-works">How</a>
+        <a href="/demos">Demos</a>
         <a href="/docs">Docs</a>
-        <a href="/#download">Download</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
     </div>
@@ -50,9 +50,12 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Governance</span></p>
         <h1>Governance, in its complete sense.</h1>
         <p class="lead">
-          Access control is one part of governance. The whole of it answers five questions
-          about every piece of processing, and Provisa declares each answer once, in the
-          model, and applies it to every query.
+          When access control is configured per API, each new interface is another
+          integration to get right and another thing for an auditor to check. Adding a
+          column means finding every place access is enforced and updating each one. Access
+          control here is compiled into every query plan, on every language and every
+          transport. That is one part of governance; where, when, how and what the data
+          means are declared in the same model and applied the same way.
         </p>
       </div>
 
@@ -75,9 +78,11 @@
 
         <h2>Access control: six layers, compiled into the plan</h2>
         <p>
-          Access control is applied at query time, uniformly, on every language and every
-          transport. Add a source, a column or a relationship and every layer applies to it; there
-          is nothing to re-apply per API.
+          The usual failure mode: access control configured separately per API, so adding
+          a new protocol leaves a gap until someone finds it. Every layer here is applied
+          at query compile time, uniformly, on every language and every transport. Add a
+          source, a column or a relationship and every layer applies to it; there is nothing
+          to re-apply per interface.
         </p>
 
         <h3>0 — Introspection filtering</h3>
@@ -166,7 +171,7 @@
         <p>
           The guard is a single right on the role. Leave it off for analysts and agents;
           grant it to a trusted role and that role can write any JOIN across the whole
-          federated model. The query takes the same governed path, with the same
+          model across all sources. The query takes the same governed path, with the same
           row-level security and masking, without the relationship guard.
         </p>
         <p>
@@ -213,7 +218,7 @@
         <p>
           The list applies where records leave: to every span and log line, standard output
           included, to the audit log's query text before it is hashed and encrypted, and to the
-          errors a client receives on every protocol. A federated source's own logs are written by that
+          errors a client receives on every protocol. A source's own logs are written by that
           source and stay outside Provisa's reach.
         </p>
 
@@ -248,7 +253,7 @@
         <h2>Encrypted in transit, under the organization's own keys at rest</h2>
         <p>
           Every listener Provisa terminates serves TLS. Inside the deployment, encrypting the
-          federation engine's coordinator-to-worker traffic is an operator option; under the
+          engine's coordinator-to-worker traffic is an operator option; under the
           Helm chart the chart generates the certificate authority and node certificates and
           keeps them across upgrades. Spooled engine data is encrypted with a key made for each
           query and discarded when it ends, and the engine keeps source catalogs, credentials
@@ -290,12 +295,25 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
+        <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
         <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/data-mesh">Data mesh</a>
+        <a href="/why/ai">Data for AI</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
+        <a href="/register">Register (free license)</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@provisa.dev">Support</a>
       </nav>
     </div>
   </footer>

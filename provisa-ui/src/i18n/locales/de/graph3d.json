@@ -1,14 +1,16 @@
 {
   "graph3d": {
     "canvasLabel": "3D-Graph der Datenprodukte und ihrer Bestandteile",
-    "panelTitle": "Wissensgraph",
-    "expandTitle": "{{product}}: Wissensgraph",
+    "panelTitle": "Graph",
+    "expandTitle": "{{product}}: Graph",
     "productMap": "Produktkarte",
     "preset": "Vorlage",
-    "preset_knowledge": "Wissensgraph",
+    "dimension": "2D oder 3D",
+    "view2d": "2D",
+    "view3d": "3D",
+    "preset_all": "Alle",
     "preset_ontology": "Ontologie",
-    "preset_productMap": "Produktkarte",
-    "preset_lineage": "Lineage",
+    "preset_products": "Produkte",
     "layers": "Ebenen",
     "layer_products": "Produkte und Domänen",
     "layer_tables": "Mitgliedstabellen",
@@ -96,7 +98,6 @@
     "openAsQueryFocused": "Die Umgebung von Suche oder Fokus lässt sich noch nicht als eine Abfrage ausdrücken.",
     "openAsQueryCompiling": "Abfrage wird kompiliert…",
     "openAsQueryNoCypher": "Diese Abfrage hat keine Cypher-Form.",
-    "openAsQuerySparqlLater": "SPARQL ist verfügbar, sobald sein Endpunkt existiert.",
     "layersMenu": "Ebenen",
     "termsMenu": "Begriffe",
     "menuAll": "alle",
@@ -109,6 +110,8 @@
     "overBudget": "{{count}} Treffer; Suche eingrenzen oder eine Domäne wählen",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "In Tabellen verankert, die noch nicht als dieselbe Entität verknüpft sind: {{tables}}",
-    "status_draft": "Entwurf"
+    "status_draft": "Entwurf",
+    "openAsQueryNoSparql": "Diese Abfrage hat keine SPARQL-Form.",
+    "openAsQuerySparqlRoots": "Jede Wurzel dieser Abfrage ist eine eigene SPARQL-Abfrage: Öffnen Sie das GraphQL, um sie einzeln zu lesen."
   }
 }

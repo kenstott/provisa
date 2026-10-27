@@ -260,6 +260,8 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(step.element).toBe('[data-testid="strata-stage"][data-ready]');
     expect(step.readySelector).toBe(step.element);
     expect(step.clickAfterNext).toBe('[data-testid="profile-runs-modal"] .mantine-Modal-close');
+    // REQ-2052: a table with no run says so in the window, and the step stops there.
+    expect(step.absent).toBe('[data-testid="profile-runs-none"]');
   });
 
   it("hands a set of roles, a derived role among them, to the SQL explorer", () => {
@@ -270,19 +272,14 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(set.chooseOnNext).toBeUndefined();
   });
 
-  it("sets the SQL explorer's time-travel pickers, each shown on its picker", () => {
-    // REQ-1163: as of a time, and as recorded at one.
-    const [asOf, asRecorded] = demoTourSteps(
-      [
-        { key: "a", route: "/sql", capability: "query_development", as_of: "2026-09-30T12:00:00" },
-        { key: "b", as_recorded: "2026-10-01T00:00:00" },
-      ],
+  it("runs a statement whose relation says its own time, as written", () => {
+    // REQ-1163 (amended 2026-10-25): the time is the relation's argument, in the statement.
+    const sql = `SELECT * FROM "banking"."view_eod_totals"(as_recorded => '2026-10-01T17:00:00') AS e`;
+    const [step] = demoTourSteps(
+      [{ key: "a", route: "/sql", capability: "query_development", sql }],
       EXAMPLES,
     );
-    expect(asOf.openQuery).toEqual({ stateKey: "asOf", text: "2026-09-30T12:00:00" });
-    expect(asOf.element).toBe('[data-testid="sql-as-of"]');
-    expect(asRecorded.openQuery).toEqual({ stateKey: "asRecorded", text: "2026-10-01T00:00:00" });
-    expect(asRecorded.element).toBe('[data-testid="sql-as-recorded"]');
+    expect(step.openQuery).toEqual({ stateKey: "sql", text: sql });
   });
 
   it("shows the environment switcher and picks the environment on Next", () => {
@@ -321,6 +318,30 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(cypher.openQuery).toEqual({ stateKey: "query", text: "MATCH (p:S__Pages) RETURN p" });
     expect(cypher.readySelector).toBe('.graph-stream[data-handoff-status="done"]');
     for (const step of [api, jsonapi, grpc, cypher]) expect(step.waitMs).toBe(60000);
+  });
+
+  it("asks the MCP explorer's agent, opens its last run_sql call's explain, then the Connect panel", () => {
+    // REQ-2172: the question handed over and awaited until answered; the explain opened by the
+    // tour and closed on Next; the panel opened by a hand-off, on or off.
+    const [ask, explain, connect] = demoTourSteps(
+      [
+        { key: "q", route: "/explore", mcp: "Which West customers ordered?" },
+        { key: "e", mcp_explain: true },
+        { key: "c", mcp_connect: true },
+      ],
+      EXAMPLES,
+    );
+    expect(ask.openQuery).toEqual({ stateKey: "mcpQuestion", text: "Which West customers ordered?" });
+    expect(ask.readySelector).toBe('[data-testid="mcp-explore"][data-answered]');
+    expect(ask.waitMs).toBe(60000);
+    expect(explain.clickBefore).toBe("[data-mcp-explain-last]");
+    expect(explain.readySelector).toBe('[data-testid="mcp-explain-ran"]');
+    expect(explain.element).toBe('[data-testid="mcp-explain-panel"]');
+    expect(explain.clickAfterNext).toBe(".mantine-Modal-close");
+    expect(connect.navState).toEqual({ mcpConnect: true });
+    expect(connect.element).toBe(
+      '[data-testid="mcp-connect-config"], [data-testid="mcp-connect-off"]',
+    );
   });
 
   it("opens a data product on the Data Products page, its detail shown", () => {

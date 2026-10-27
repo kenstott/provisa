@@ -48,6 +48,7 @@
     "itemMetadataExport": "导出",
     "itemImport": "导入",
     "itemTags": "标签",
+    "itemClassificationKinds": "分类",
     "itemDataProducts": "产品",
     "itemReports": "报表",
     "itemGlossary": "本体",
@@ -74,6 +75,8 @@
     "sandboxExitLogOut": "仅退出登录",
     "itemPython": "Python",
     "itemNotebook": "笔记本",
-    "itemContainerRegistries": "容器注册表"
+    "itemContainerRegistries": "容器注册表",
+    "itemSparql": "SPARQL",
+    "itemCatalogs": "目录"
   }
 }

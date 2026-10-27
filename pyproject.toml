@@ -1,7 +1,7 @@
 [project]
 name = "provisa"
 version = "0.1.0"
-description = "Federation, metrics, ontology and governance from a single model."
+description = "Provisa is a data kernel: a small set of semantic primitives, compiled and run as one data control plane."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -104,16 +104,16 @@ dependencies = [
     # (REQ-979) runs the DuckDB engine, not chdb, so gate it off win32 — the WSL2
     # container tier provides full ClickHouse compute on Windows.
     "chdb; sys_platform != 'win32'",
-    "snowflake-connector-python[pandas]",  # REQ-988: Snowflake federation engine (Arrow-native)
+    "snowflake-connector-python[pandas]",  # REQ-988: Snowflake engine driver (Arrow-native)
     "adbc-driver-snowflake",  # REQ-988: Arrow-native ADBC transport for the Snowflake direct driver
     "snowflake-sqlalchemy",  # REQ-988: SQLAlchemy dialect for the Snowflake SQLAlchemy fallback path
-    "databricks-sql-connector",  # REQ-987: Databricks federation engine (Arrow-native Cloud Fetch)
-    "google-cloud-bigquery",  # BigQuery federation engine
+    "databricks-sql-connector",  # REQ-987: Databricks engine driver (Arrow-native Cloud Fetch)
+    "google-cloud-bigquery",  # BigQuery engine driver
     "google-cloud-bigquery-storage",  # BigQuery Arrow-native reads (Storage Read API)
     "google-cloud-storage",  # GCS staging for BigQuery external-table links
     "protobuf>=6.33.5,<7",  # keep OTel/gRPC compatible while the google-cloud libs are present
     "grpcio-status<1.82",  # aligns with the pinned protobuf<7
-    "pyodbc",  # Azure Synapse / Microsoft Fabric federation engine (T-SQL over TDS/ODBC)
+    "pyodbc",  # Azure Synapse / Microsoft Fabric engine driver (T-SQL over TDS/ODBC)
     "azure-identity",  # Azure AD token auth for Fabric/Synapse (uses `az login` / managed identity)
     "impyla",  # REQ-1731: HiveServer2 direct driver (Thrift TCLIService)
     "pyexasol",  # REQ-1731: Exasol direct driver (Exasol's own WebSocket client)
@@ -140,7 +140,6 @@ dependencies = [
     "opentelemetry-instrumentation-psycopg",
     "opentelemetry-instrumentation-redis",
     "opentelemetry-instrumentation-pymongo",
-    "opentelemetry-instrumentation-elasticsearch",
     "opentelemetry-instrumentation-grpc",
     # NOTE: the buenavista pgwire engine is a Provisa fork (vendor/buenavista, v0.5.0.post1 — adds
     # binary codecs for DECIMAL/JSON/array types) NOT published to PyPI. It is bundled INTO this
@@ -198,7 +197,7 @@ provisa = "provisa.cli:main"
 # REQ-1126/REQ-1129: the pip-installable embedded tier. A fully functional, self-contained
 # system — embedded PostgreSQL control plane (pgserver, REQ-2014) + embedded DuckDB engine
 # + in-memory (fakeredis) cache — ready to `provisa run` immediately. The bundled Trino JVM is
-# omitted (PyPI carries no JVM server); full multi-engine federation stays available by pointing
+# omitted (PyPI carries no JVM server); full multi-engine query stays available by pointing
 # at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb is
 # already a base dep; this extra names the tier explicitly and adds fakeredis for the embedded cache.
 # provisa-duckdb-ext (the offline DuckDB extension blobs, REQ-1142) is now published on PyPI, so it is a
@@ -262,6 +261,9 @@ dev = [
     # REQ-2135: the standard SPARQL 1.1 Protocol client the endpoint's integration test queries
     # it with (W3C Software Notice and License, permissive).
     "sparqlwrapper>=2,<3",
+    # REQ-2168: LangChain's Neo4j integration (MIT), which reads a graph's schema with
+    # apoc.meta.data; the command-bindings acceptance test connects it to Provisa over Bolt.
+    "langchain-neo4j==0.11.0",
     "pytest-bdd",
     "pytest-cov",
     # REQ-1759: tests/unit/ alone collects ~12K tests, single-process at ~1%/19s (~50min
@@ -341,6 +343,10 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.openapi" = ["_known_specs/*.json.gz", "_known_specs/*.additions.json", "_known_specs/*.exclusions.json", "_known_specs/THIRD_PARTY_NOTICES"]
 # REQ-1494: the portable fake definition's versioned word lists and templates, and their notice.
 "provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
+# REQ-2147: the profiler's classification kinds and the reference lists they test, and their notice.
+"provisa.profiler" = ["classification_kinds.yaml", "reference/*.txt.gz", "reference/THIRD_PARTY_NOTICES"]
+# REQ-2155: the standard roles' definitions, read by provisa.core.db.
+"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
@@ -356,7 +362,7 @@ testpaths = ["tests", "tests/steps"]
 # cluster are likewise their own lanes (manual/live-minikube). scripts/test-all
 # runs every lane and combines coverage. These are documented process-isolation
 # lanes, not silent skips.
-addopts = "-m 'not packaging and not cluster and not isolated and not demo_walk' --ignore=tests/e2e"
+addopts = "-m 'not packaging and not cluster and not isolated and not demo_walk and not leak and not bench' --ignore=tests/e2e"
 python_files = ["test_*.py", "*_test.py", "steps_*.py"]
 asyncio_mode = "auto"
 log_level = "DEBUG"
@@ -419,6 +425,8 @@ markers = [
     "packaging: installer/packaging flow; validated manually + by unit tests, deselected by default",
     "cluster: helm/minikube deployment test; own run lane (pytest -m cluster) against a live minikube, deselected by default",
     "demo_walk: walks a published demo's bundle as a sandbox visitor, one demo per run; its own lane (scripts/ci/run_lane.py demo_walk), run by demo-bundles.yml on the bundle it built, deselected by default",
+    "leak: one server under a long mixed request loop and an org churn, its growth measured (REQ-2149); its own lane (scripts/ci/run_lane.py leak), on demand and before a release, deselected by default",
+    "bench: every benchmark feature end to end over the bench's own four-source compose project; its own lane (scripts/ci/run_lane.py bench) (REQ-1911)",
     "isolated: needs its own pytest process (shared module-singleton state or a non-restartable JVM); own lane in scripts/test-all, deselected by default",
     "group_sources: tests/integration split — federated source connectors (auto-assigned, see tests/integration/conftest.py)",
     "group_engines: tests/integration split — federation/native query engines (auto-assigned, see tests/integration/conftest.py)",
@@ -511,6 +519,8 @@ forbidden_modules = ["provisa.cypher", "provisa.sparql_query"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+# Generated protobuf bindings (scripts/gen_flightsql_proto.py), checked in as protoc writes them.
+extend-exclude = ["provisa/proto/*_pb2.py", "provisa/proto/*_pb2.pyi"]
 
 [tool.ruff.lint]
 # Defaults (E, F, W) plus B006: mutable default arguments (0 existing violations).

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import delete, select, update
 
-from provisa.compiler.naming import SqlAddressTaken
+from provisa.compiler.naming import LabelClash, SqlAddressTaken
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import (
@@ -42,6 +42,7 @@ from provisa.api.admin._live_mappers import table_model_from_input as _table_mod
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
     carried,
+    label_clash_result,
     load_protection_refusal,
     save_row_rules,
     save_carried_after_store,
@@ -391,8 +392,22 @@ async def register_table(
                     if is_checker_source_type(_reg_state.source_types.get(input.source_id)):
                         require_scan_interval(model)  # REQ-1443: the interval it scans on
                     # REQ-1934: a profile result table's derivation, and a table's profiler membership.
-                    from provisa.profiler.registration import apply_registration
+                    from provisa.profiler.registration import (
+                        apply_registration,
+                        profile_reach_refusal,
+                    )
+                    from provisa.api.admin.catalog_scope import catalog_scope
+                    from provisa.api.admin.read_rights import serves_every_column
 
+                    _scope = catalog_scope(info)
+
+                    async def _serves_all(table_id: int) -> bool:
+                        return await serves_every_column(_conn, _scope, table_id)
+
+                    # REQ-2152 (Q6a): profiling a table takes reading all of it.
+                    _reach = await profile_reach_refusal(_conn, model, _serves_all)
+                    if _reach is not None:
+                        raise ValueError(_reach)
                     await apply_registration(_conn, model)
                 except ValueError as _dq_err:
                     raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))
@@ -478,6 +493,17 @@ async def register_table(
                 )
                 if _ttl_refusal is not None:
                     raise TableSaveRefused(_ttl_refusal)
+                from provisa.api.admin._landing_ttl import row_materialize_save_refusal
+
+                _row_refusal = await row_materialize_save_refusal(  # REQ-1865
+                    _conn,
+                    model.source_id,
+                    model.table_name,
+                    model.row_materialize,
+                    [c.name for c in model.columns if c.is_primary_key],
+                )
+                if _row_refusal is not None:
+                    raise TableSaveRefused(_row_refusal)
                 from provisa.api.admin._change_feed import table_change_feed_refusal
 
                 _feed_refusal = await table_change_feed_refusal(  # REQ-1861
@@ -566,13 +592,21 @@ async def register_table(
                     if isinstance(_paging, MutationResult):
                         raise TableSaveRefused(_paging)
                     model.pagination = _paging
-                from provisa.api.admin._hiding_guard import table_hiding_refusal
+                from provisa.api.admin._hiding_guard import stored_table, table_hiding_refusal
+                from provisa.api.admin.capabilities import acting_role_of
+                from provisa.security.default_grant import with_read_grant
 
                 _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
                     info, _conn, model, editor=True
                 )
                 if _hiding_refusal is not None:
                     raise TableSaveRefused(_hiding_refusal)
+                # REQ-2154: a new table grants read on every column to the registrant's role and to
+                # Viewer, written into each grant list where it can be seen and changed. It is the
+                # registration's own grant, not the registrant's edit, so no hiding right is asked
+                # for it; a table already stored keeps the grants it has.
+                if await stored_table(_conn, model) is None:
+                    model = with_read_grant(model, acting_role_of(info))
                 try:
                     _carried_grants = model.write_grants  # REQ-2074, REQ-2109
                     model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
@@ -580,13 +614,17 @@ async def register_table(
                         model = model.model_copy(update={"write_grants": _carried_grants})
                     table_id = await table_repo.upsert(_conn, model)
                 except glossary_repo.TermIsClass as _class:
-                    # REQ-2141: a column named for a class term is not claimed by it.
+                    # REQ-2141: a column named for a class term is not claimed by it; REQ-2152: only
+                    # the tables the caller reads are named.
+                    from provisa.api.admin.read_rights import reader_for, told_glossary_refusal
+
+                    _said, _tables = await told_glossary_refusal(_conn, reader_for(info), _class)
                     raise TableSaveRefused(
                         MutationResult(
                             success=False,
-                            message=str(_class),
+                            message=_said,
                             code="glossary.term_is_class",
-                            params={"term": _class.term, "tables": ", ".join(_class.tables)},
+                            params={"term": _class.term, "tables": _tables},
                         )
                     )
                 except table_repo.ViewLoopRefused as _loop:
@@ -614,15 +652,26 @@ async def register_table(
                         )
                     )
                 except table_repo.ColumnDropRefused as _drop:
-                    # REQ-1918: a column something still refers to is not dropped; each is named.
+                    # REQ-1918: a column something still refers to is not dropped; each is named,
+                    # with only the dependents the caller may read (REQ-2152).
+                    from provisa.api.admin.read_rights import (
+                        column_drop_text,
+                        reader_for,
+                        readable_columns_report,
+                    )
+
+                    _report = await readable_columns_report(_conn, reader_for(info), _drop.columns)
                     raise TableSaveRefused(
                         MutationResult(
                             success=False,
-                            message=str(_drop),
+                            message=column_drop_text(_drop.table_name, _report),
                             code="schema.column_has_dependents",
-                            params={"table": _drop.table_name, "columns": _drop.report()},
+                            params={"table": _drop.table_name, "columns": _report},
                         )
                     )
+                except LabelClash as _clash:
+                    # REQ-572: a label never names both a domain and a table; both are named.
+                    raise TableSaveRefused(label_clash_result(_clash))
                 except SqlAddressTaken as _taken:
                     # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                     raise TableSaveRefused(
@@ -714,6 +763,9 @@ async def register_table(
             input.change_signal,
             consistency=input.mv_consistency,  # REQ-879
             preprocess=input.mv_preprocess,  # REQ-957
+            hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
+            table_id=table_id,  # REQ-2133
+            product_id=input.product_id,  # REQ-2133
             business_key=list(input.business_key),  # REQ-2109
             valid_time=input.valid_time,  # REQ-2109
             recorded_time=input.recorded_time,  # REQ-2109

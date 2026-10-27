@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import time
 import os
 from contextvars import ContextVar
 from typing import Any
@@ -61,10 +62,47 @@ _request_role: ContextVar[str | None] = ContextVar("provisa_mcp_request_role", d
 _request_identity: ContextVar[Any | None] = ContextVar("provisa_mcp_request_identity", default=None)
 _request_org_id: ContextVar[str | None] = ContextVar("provisa_mcp_request_org_id", default=None)
 # REQ-2076: the MCP session (``Mcp-Session-Id``) a tool call belongs to, and the sessions ended
-# because a call in them named a role the caller does not hold. A request in an ended session is
-# answered 404, which tells an MCP client its session is over.
+# because a call in them named a role the caller does not hold, each with when it ended. A request
+# in an ended session is answered 404, which tells an MCP client its session is over.
 _request_session: ContextVar[str | None] = ContextVar("provisa_mcp_request_session", default=None)
-_ended_sessions: set[str] = set()
+_ended_sessions: dict[str, float] = {}
+# How long a tombstone is kept, and how many: the session manager's idle timeout and its session
+# cap, set when the server is built (build_mcp_server). A request in an ended session is answered
+# here and never reaches the manager, which reaps the session after its idle timeout; past it the
+# tombstone guards nothing, and the manager never keeps more sessions than its cap. None, as the
+# manager reads it: no idle timeout (a session is never reaped) or no cap.
+_session_bounds: tuple[float | None, int | None] | None = None
+
+
+def _end_session(session: str) -> None:
+    """End ``session`` (a security event): its requests are answered 404 from now on."""
+    assert _session_bounds is not None, "an MCP session ended before the server was built"
+    _, most = _session_bounds
+    now = time.monotonic()
+    _drop_expired(now)
+    while most is not None and len(_ended_sessions) >= most:
+        _ended_sessions.pop(next(iter(_ended_sessions)))
+    _ended_sessions.pop(session, None)
+    _ended_sessions[session] = now
+
+
+def _session_ended(session: str) -> bool:
+    """Whether ``session`` was ended, within its tombstone's lifetime."""
+    if session not in _ended_sessions:
+        return False
+    _drop_expired(time.monotonic())
+    return session in _ended_sessions
+
+
+def _drop_expired(now: float) -> None:
+    # Oldest first: a tombstone is (re)inserted when its session ends.
+    assert _session_bounds is not None
+    lasts, _ = _session_bounds
+    while lasts is not None and _ended_sessions:
+        session, ended = next(iter(_ended_sessions.items()))
+        if now - ended < lasts:
+            return
+        _ended_sessions.pop(session)
 
 
 async def _validate_mcp_token(token: str, state: Any):
@@ -195,7 +233,9 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
     and follows the same rule — the token's principal must hold it. The role the token itself
     maps to always qualifies. stdio (and a loopback HTTP call with no bearer) has no principal:
     the operator pinned the roles the process may act as (PROVISA_MCP_ROLE, a role or a set), and
-    a local client names only roles within that pin; any other is refused by name.
+    a local client names only roles within that pin; any other is refused by name. Within it the
+    set is resolved as every unsecured transport resolves one (``unsecured_principal``, REQ-1952):
+    a named derived role qualifies the set's meta-role, and its attribute is bound for the call.
     """
     from provisa.security.meta_role import refuse_named_meta_role, resolve_requested_role
 
@@ -227,7 +267,15 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
             f"(mcp.role / PROVISA_MCP_ROLE: {', '.join(sorted(pinned))})",
         )
         raise refused
-    return resolve_requested_role(state, held, named)
+    from provisa.auth.derived_roles import unsecured_principal
+    from provisa.core.request_context import set_session_vars
+
+    # REQ-1952: unsecured, a declared derived role named beside a data role is that set's
+    # qualifier and binds its attribute, as the HTTP middleware, Flight and gRPC resolve it.
+    # Bound in this tool call's own context (its request thread, a copy of the call's).
+    role, session_vars = unsecured_principal(state, named)
+    set_session_vars(session_vars)
+    return role
 
 
 def switchable_roles(state: Any) -> set[str]:  # REQ-2082
@@ -288,10 +336,11 @@ async def _within_request(make_coro: Any, label: str) -> Any:
 
 def _redacted_error(exc: BaseException) -> RuntimeError | None:
     """The error to send in place of ``exc`` when redaction changes its text (REQ-2087); None
-    when nothing in it matched, and ``exc`` goes out as it is."""
-    from provisa.security.redaction import redact
+    when nothing in it matched, and ``exc`` goes out as it is. Told in the model's names too
+    (REQ-2152)."""
+    from provisa.api.engine_error_names import client_text
 
-    said = redact(str(exc))
+    said = client_text(str(exc))
     return None if said == str(exc) else RuntimeError(said)
 
 
@@ -332,6 +381,8 @@ def build_mcp_server(state: Any):
             "the caller's role."
         ),
     )
+    global _session_bounds
+    _session_bounds = (mcp.settings.session_idle_timeout, mcp.settings.max_sessions)
 
     from provisa.security.meta_role import RoleNotHeld
 
@@ -354,7 +405,7 @@ def build_mcp_server(state: Any):
         await run_on_request_thread(lambda: role_probe.record(probe))
         session = _request_session.get()
         if session:
-            _ended_sessions.add(session)
+            _end_session(session)
         return PermissionError(role_probe.NOT_PERMITTED if identity is not None else str(refused))
 
     def _tool(fn):
@@ -434,7 +485,11 @@ def build_mcp_server(state: Any):
             identity = SimpleNamespace(
                 user_id=identity.user_id, roles=list(identity.roles), acting_roles=[resolved_role]
             )
-        return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org_id))
+        # The acting role too, as the HTTP middleware sets it: the catalog a tool reads and edits
+        # is that role's (REQ-2152, catalog_scope).
+        return SimpleNamespace(
+            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role)
+        )
 
     @_tool
     async def describe_role(role: str | None = None) -> dict:  # REQ-2082
@@ -462,15 +517,15 @@ def build_mcp_server(state: Any):
         return tools.list_commands(state, _role(role))
 
     @_tool
-    async def resolve(
+    async def _resolve(
         uri: str, as_of: str | None = None, as_recorded: str | None = None, role: str | None = None
     ) -> dict:
         """Dereference a semantic address (provisa://<org>/<domain>/tables/<table>/pk=<value>[/<column>]) to the governed value it names, optionally as of a point in time and as recorded at one. Physical addresses are refused."""
-        # REQ-1365: the one resolve function.
-        from provisa.api.data.resolve import resolve as _resolve
+        # REQ-1365: the one resolve function; the tool is named like the GraphQL field.
+        from provisa.api.data.resolve import resolve as resolve_address
         from provisa.core.request_context import require_current_org
 
-        return await _resolve(
+        return await resolve_address(
             state,
             _role(role),
             uri,
@@ -908,13 +963,12 @@ def build_mcp_server(state: Any):
         limitations: str = "",
         usage: str = "",
         version: str | None = None,
-        status: str | None = None,
-        sla: str | None = None,
         support: str | None = None,
         role: str | None = None,
     ) -> dict:
         """Create or replace a data product by id — an id that already exists is overwritten in
-        full. `domain_id` must be a real, existing domain."""
+        full. `domain_id` must be a real, existing domain. Its status is kept (a new product is
+        a draft); the publish/deprecate/retire/restore tools change it."""
         resolved = _role(role)
         return await tools.create_data_product(
             state,
@@ -929,8 +983,6 @@ def build_mcp_server(state: Any):
             limitations=limitations,
             usage=usage,
             version=version,
-            status=status,
-            sla=sla,
             support=support,
         )
 
@@ -939,6 +991,64 @@ def build_mcp_server(state: Any):
         """Delete a data product by id. Irreversible."""
         resolved = _role(role)
         return await tools.delete_data_product(state, resolved, _capability_request(resolved), id)
+
+    @_tool
+    async def publish_data_product(id: str, role: str | None = None) -> dict:
+        """Publish a draft data product: it goes live."""
+        resolved = _role(role)
+        return await tools.change_data_product_status(
+            state, resolved, _capability_request(resolved), id, "publish", {}
+        )
+
+    @_tool
+    async def deprecate_data_product(
+        id: str, reason: str, retire_on: str | None = None, role: str | None = None
+    ) -> dict:
+        """Deprecate a live data product, with a reason and an optional planned retirement date
+        (ISO). It stays in service until then, and is retired on that date."""
+        resolved = _role(role)
+        return await tools.change_data_product_status(
+            state,
+            resolved,
+            _capability_request(resolved),
+            id,
+            "deprecate",
+            {"reason": reason, "retire_on": retire_on},
+        )
+
+    @_tool
+    async def retire_data_product(
+        id: str, reason: str, successor: str | None = None, role: str | None = None
+    ) -> dict:
+        """Retire a live or deprecated data product, with a reason. Its member tables, views and
+        commands move to ``successor`` (a data product of the same domain), required when it has
+        any."""
+        resolved = _role(role)
+        return await tools.change_data_product_status(
+            state,
+            resolved,
+            _capability_request(resolved),
+            id,
+            "retire",
+            {"reason": reason, "successor": successor},
+        )
+
+    @_tool
+    async def restore_data_product(id: str, role: str | None = None) -> dict:
+        """Restore a deprecated data product (back to live) or a retired one (back to a draft;
+        the members that moved stay with its successor)."""
+        resolved = _role(role)
+        return await tools.change_data_product_status(
+            state, resolved, _capability_request(resolved), id, "restore", {}
+        )
+
+    @_tool
+    async def list_data_product_findings(role: str | None = None) -> list[dict]:
+        """What a curator should look at in the data products, each product with its findings."""
+        resolved = _role(role)
+        return await tools.list_data_product_findings(
+            state, resolved, _capability_request(resolved)
+        )
 
     @_tool
     async def upsert_metric(
@@ -1038,7 +1148,7 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             return
         headers = dict(scope.get("headers") or [])
         session = (headers.get(b"mcp-session-id") or b"").decode("latin-1") or None
-        if session is not None and session in _ended_sessions:
+        if session is not None and _session_ended(session):
             # REQ-2076: the session ended on a security event; the client must start another.
             body = _json.dumps({"error": "session ended"}).encode("utf-8")
             await send(
@@ -1066,10 +1176,15 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
                 await _send_401(send, "bearer token required")
                 return
             # Loopback stdio-style: the pinned role applies, in the deployment's own org -- the
-            # unsecured HTTP path's org (REQ-1266).
+            # unsecured HTTP path's org (REQ-1266). REQ-074/REQ-1386: no principal, but a
+            # request: its statements are recorded as the anonymous user's, as every transport
+            # records an unauthenticated request. The role each call names is the audit row's.
+            from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
+
             loopback_token = set_current_org(state.org_id)
             try:
-                await app(scope, receive, send)
+                with audit_identity_scope(ANONYMOUS_USER, "mcp"):
+                    await app(scope, receive, send)
             finally:
                 reset_current_org(loopback_token)
             return

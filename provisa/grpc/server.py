@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from provisa.api.role_surface import role_surface
 
-from types import SimpleNamespace
 import contextvars
 import functools
 import importlib.util
@@ -215,7 +214,8 @@ def _rpc_role(metadata: dict) -> str | None:
     On a secured deployment the auth interceptor has already validated the caller's credential and
     derived the role from that identity; it is published on the task and is the only value a handler
     may use, so ``x-provisa-role`` here is the client's request and has no authority. On an
-    unsecured deployment there is no identity to derive from and the metadata role stands.
+    unsecured deployment there is no identity to derive from and the metadata role stands; once
+    the RPC's org is bound, a set it names acts as its meta-role (:meth:`ProvisaServicer._acting`).
     """
     from provisa.grpc.auth import authorized_role
 
@@ -404,6 +404,29 @@ class ProvisaServicer:  # REQ-045, REQ-143
         await ensure_serving_runtime(org_id)
         return set_current_org(org_id)
 
+    async def _acting(self, role_id: str, context) -> str:
+        """The role an RPC acts as, once its org is bound (REQ-1952). Secured, the interceptor
+        resolved it from the identity. Unsecured, ``x-provisa-role`` naming a set of roles, or a
+        declared derived role, acts as its meta-role, built in the bound org -- resolved as the
+        HTTP middleware resolves the header (``unsecured_principal``), and its session variables
+        bound."""
+        from provisa.grpc.auth import authorized_role
+
+        if authorized_role() is not None:
+            return role_id
+        from provisa.auth.derived_roles import unsecured_principal
+        from provisa.core.request_context import set_session_vars
+
+        try:
+            role, session_vars = unsecured_principal(self._state, role_id)
+        except PermissionError as exc:
+            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            raise  # abort ends the RPC by raising; never proceed as an unresolved role
+        # What a row filter reads for this call, as HTTP binds it (a named derived role's
+        # attribute); bound in the RPC's own context, as a secured RPC's principal is.
+        set_session_vars(session_vars)
+        return role
+
     async def _received(self, method: str, raw: bytes, context):
         """Bind the organisation of an RPC that arrived as bytes and decode its request with THAT
         organisation's service: ``(request, reset)``. The organisation is known only from the
@@ -415,6 +438,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         role_id = _rpc_role(metadata)
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            raise RuntimeError("abort ends the RPC by raising")
         try:
             org_token = await self._bind_org(metadata)
         except ValueError as exc:
@@ -428,6 +452,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 reset_current_org(org_token)
 
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             service = self._pb2
             described = service.method(method)
             if described is None or not self._offered(role_id, method):
@@ -531,6 +556,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
                 raise
             try:
+                role_id = await self._acting(role_id, context)  # REQ-1952
                 found = role_descriptor(self._state, role_id)
             finally:
                 if token is not None:
@@ -702,14 +728,17 @@ class ProvisaServicer:  # REQ-045, REQ-143
         proto_gen names each per-command RPC ``Call`` + command_rpc_name(name); match that same
         authority back so ``CallActiveUsers`` resolves to ``active_users``. None if no command matches
         (the handler then aborts NOT_FOUND)."""
+        from provisa.core.command_bindings import binding_name
         from provisa.grpc.proto_gen import command_rpc_name
 
-        for fn_name in [
-            *getattr(self._state, "tracked_functions", {}),
-            *getattr(self._state, "tracked_webhooks", {}),
+        # REQ-2168: an RPC is named for the command's GraphQL command binding.
+        for fn in [
+            *getattr(self._state, "tracked_functions", {}).values(),
+            *getattr(self._state, "tracked_webhooks", {}).values(),
         ]:
-            if command_rpc_name(fn_name) == cmd_pascal:
-                return fn_name
+            called = binding_name(fn, "graphql")
+            if called is not None and command_rpc_name(called) == cmd_pascal:
+                return fn["name"]
         return None
 
     async def _handle_typed_command(self, request, context, cmd_name: str | None, rpc: str):
@@ -733,6 +762,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             state = self._state
             fn = (
                 getattr(state, "tracked_functions", {}).get(cmd_name)
@@ -743,10 +773,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
             if fn is None or cmd_name is None:
                 await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command: {rpc!r}")
                 return
+            # REQ-2168: an optional argument the call left out takes its default (the executor's).
             args = {
                 a_name: getattr(request, a_name)
                 for arg in (fn.get("arguments") or [])
                 if (a_name := arg.get("name"))
+                and ("default" not in arg or request.HasField(a_name))
             }
             try:
                 rows = await invoke_tracked_function(cmd_name, args, state, role_id)
@@ -788,6 +820,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             from provisa.core.request_context import require_current_org
 
             try:
@@ -825,7 +858,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
         invoke_tracked_function, identical to the GraphQL/SQL/Cypher surfaces."""
         import json
 
-        from provisa.api.data.action_exec import bind_named_args, invoke_tracked_function
+        from provisa.api.data.action_exec import (
+            bind_named_args,
+            command_named,
+            invoke_tracked_function,
+        )
 
         metadata = dict(context.invocation_metadata())
         role_id = _rpc_role(metadata)
@@ -838,6 +875,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             state = self._state
             try:
                 given = json.loads(request.args_json) if request.args_json else {}
@@ -854,8 +892,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             # Functions and webhooks alike, through the one executor: the command admitted, its
             # arguments bound in declared order (the order the call binds them), not JSON order.
             try:
-                args = bind_named_args(request.name, given, state, role_id)
-                rows = await invoke_tracked_function(request.name, args, state, role_id)
+                # REQ-2168: named by its GraphQL command binding, as the proto names it.
+                name = command_named(state, role_id, "graphql", request.name)
+                args = bind_named_args(name, given, state, role_id)
+                rows = await invoke_tracked_function(name, args, state, role_id)
             except HTTPException as exc:
                 await context.abort(_command_status(exc), str(exc.detail))
                 return
@@ -873,9 +913,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
         await context.abort(grpc.StatusCode.UNIMPLEMENTED, f"Insert{type_name} not yet implemented")
 
     async def _handle_query(self, request, context, type_name: str, field_name: str):
-        """Lower a proto query request directly to the IR (a semantic SELECT), then run the shared
-        governance → routing → physical pipeline — the same path SQL and Cypher use. gRPC never
-        round-trips through GraphQL (query language → IR → governed IR → plan → physical).
+        """Lower a proto query request to GraphQL text and compile it as every GraphQL-shaped
+        surface does (``query_ir.grpc_table_to_graphql``), then run the compiled statement through
+        the shared governance → routing → physical pipeline. gRPC composes no SQL of its own.
 
         REQ-1266: resolve+bind the RPC's org (x-provisa-org) before routing; the body runs bound so
         every state.X read resolves the org's runtime. The reset is in finally around the stream."""
@@ -890,6 +930,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             async for _m in self._handle_query_bound(request, context, type_name, role_id):
                 yield self._meter_msg(_m)
         finally:
@@ -929,6 +970,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             batch_cls = getattr(self._pb2, f"{type_name}Batch", None)
             if batch_cls is None:
                 await context.abort(
@@ -957,10 +999,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
             MaskTree,
             ParameterError,
             ReadMaskError,
-            grpc_table_to_semantic_sql,
+            grpc_table_to_graphql,
             resolve_read_mask,
             restrict_json,
         )
+        from provisa.api.generated_plan import compile_generated_graphql
         from provisa.pgwire._pipeline import (
             _execute_plan,
             _govern_and_route_compiled,
@@ -970,10 +1013,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         state = self._state
 
-        if role_id not in state.contexts:
+        surface = role_surface(state, role_id)  # one snapshot: parts of one build
+        if surface is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No schema for role {role_id!r}")
             return
-        ctx = state.contexts[role_id]
+        ctx = surface.context
 
         msg_cls = getattr(self._pb2, type_name, None)
         if msg_cls is None:
@@ -981,8 +1025,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         descriptor = msg_cls.DESCRIPTOR
 
-        # IR: lower the request straight to a semantic SELECT (shared with the HTTP gRPC proxy), then
-        # govern → route → physical exactly as the SQL/Cypher transports do.
+        # Lower the request to GraphQL (shared with the HTTP gRPC proxy), compile it as every
+        # GraphQL-shaped surface does, then govern → route → physical.
         filter_msg = request.filter if request.HasField("filter") else None
         # REQ-1986: a table with parameters has a params field; one without has none.
         has_params = "params" in request.DESCRIPTOR.fields_by_name
@@ -995,18 +1039,22 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # name before anything is governed or run.
         try:
             read_mask = resolve_read_mask(ctx, type_name, list(request.read_mask.paths))
-            semantic = grpc_table_to_semantic_sql(
-                ctx, type_name, request.limit, filter_msg, read_mask, params_msg
+            lowered = grpc_table_to_graphql(
+                ctx, surface.schema, type_name, request.limit, filter_msg, read_mask, params_msg
             )
         except (ReadMaskError, FilterError, ParameterError) as exc:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
             return
-        if semantic is None:
+        if lowered is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return
-        # REQ-1877: the statement is the request's shape; the filter values and the row limit
-        # travel bound, so a request that differs only in its values reuses the kept governed plan.
-        semantic_sql, bound_params = semantic
+        # REQ-1877: one plan is kept per request shape; the filter values and the row limit are
+        # bound into it, so a request that differs only in its values reuses the kept plans.
+        # The text is built from fields already checked, so the schema accepts it.
+        gql_text, variables = lowered
+        (compiled,) = compile_generated_graphql(
+            state, role_id, surface.schema, ctx, gql_text, variables
+        )
 
         def _norm(s: str) -> str:
             return s.replace("_", "").lower()
@@ -1020,14 +1068,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
             # REQ-1897: serve_cached — an opted-in request whose entry exists comes back as a
             # Route.CACHE plan read BEFORE routing, which this handler serves below.
             plan = await _govern_and_route_compiled(
-                semantic_sql,
+                compiled.sql,
                 role_id,
-                exec_params=bound_params or None,
+                exec_params=compiled.params or None,
                 state=state,
                 deliver=delivery,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),
                 serve_cached=True,
-                sdl_joins=False,
+                sdl_joins=True,
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
@@ -1364,6 +1412,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return None
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             return self._meter_msg(
                 await self._handle_query_aggregate_bound(request, context, type_name, role_id)
             )
@@ -1448,6 +1497,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             async for _m in self._handle_query_group_by_bound(request, context, type_name, role_id):
                 yield self._meter_msg(_m)
         finally:
@@ -1552,66 +1602,29 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
 
-        # REQ-1405: include_nodes routes compiled.nodes_sql through the identical
-        # govern → route → execute pipeline the primary query just used above — the same one
-        # pipeline every surface shares, just a second SQL string GraphQL's own
-        # groupKey/aggregate/nodes shape requires (JSON:API, REST and HTTP GraphQL take this same
-        # seam with a second plan; gRPC just has to type it instead of dropping it into JSON).
-        nodes_by_group_key: dict[tuple, list] = {}
-        row_msg_cls = getattr(self._pb2, type_name, None)
-        nodes_columns = compiled.nodes_columns
-        if (
-            include_nodes
-            and compiled.nodes_sql is not None
-            and nodes_columns is not None
-            and row_msg_cls is not None
-        ):
-            nodes_plan = await _govern_and_route_compiled(
-                compiled.nodes_sql,
-                role_id,
-                exec_params=compiled.nodes_params or None,
-                state=state,
-                cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
-                sdl_joins=True,
-            )
-            nodes_result = await _execute_plan(nodes_plan, state)
-            # REQ-1350, REQ-1949: the nodes are a second governed statement of this answer; what
-            # it says about itself (a row limit cut the nodes) is the answer's to carry too, and
-            # the trailing metadata was set before it ran.
-            self._say_late_warnings(
-                context,
-                _said,
-                SimpleNamespace(
-                    warnings=[
-                        *plan.warnings,
-                        *(w for w in nodes_plan.warnings if w not in plan.warnings),
-                    ]
-                ),
-            )
-            join_key_idx = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]
-            output_cols = [(i, c) for i, c in enumerate(nodes_columns) if c.nested_in is None]
-            for node_row in nodes_result.rows:
-                join_key = tuple(_convert_value(node_row[i]) for i in join_key_idx)
-                node_dict = {c.field_name: _convert_value(node_row[i]) for i, c in output_cols}
-                nodes_by_group_key.setdefault(join_key, []).append(
-                    self._dict_row_to_message(row_msg_cls, node_dict)
-                )
+        # REQ-1405: include_nodes reads each group's nodes off its own row -- the one statement
+        # every surface runs holds them as a column (aggregates._nodes_column) -- typed here
+        # instead of left as JSON.
+        from provisa.grpc.query_ir import nodes_index
 
+        row_msg_cls = getattr(self._pb2, type_name, None)
+        at = nodes_index(compiled.columns) if include_nodes and row_msg_cls is not None else None
         for row in result.rows:
             group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
             agg_row = [row[i] for i in agg_idx]
             top, nested = self._split_agg_columns(agg_cols, agg_row)
             agg_msg = self._build_aggregate_result_message(type_name, top, nested)
-            join_key = tuple(_convert_value(row[i]) for i in group_key_idx)
+            nodes = _convert_value(row[at]) if at is not None else []
+            assert isinstance(nodes, list), "a group's nodes column is a JSON list"
             yield row_cls(
                 group_key=json.dumps(group_key, default=str),
                 aggregate=agg_msg,
-                nodes=nodes_by_group_key.get(join_key, []),
+                nodes=[self._dict_row_to_message(row_msg_cls, node) for node in nodes],
             )
 
     def _dict_row_to_message(self, msg_cls, d: dict):
-        """Build a ``{Type}`` proto message from a serialize_group_by-style nested dict row
-        (REQ-1405) — the same nested-dict shape ``nodes_sql`` produces for every other transport,
+        """Build a ``{Type}`` proto message from a node's nested dict (REQ-1405) — the same
+        nested-dict shape a group's nodes column holds for every other transport,
         just typed instead of left as JSON. Relation columns (``_build_rel_json_expr``) surface as
         a dict (many-to-one) or list-of-dicts (one-to-many) value keyed by the relation field name;
         every other value is a scalar assigned via the shared ``_proto_value`` adapter."""

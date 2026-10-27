@@ -24,4 +24,7 @@ regions:
   headless: [ledger]
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo and the features it shows (the next after alpha.494).
-requires_provisa: 0.1.0a495
+requires_provisa: 0.1.0a496
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Ledger to Warehouse, Uncopied"

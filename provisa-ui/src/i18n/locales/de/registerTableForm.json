@@ -23,7 +23,6 @@
     "descriptionLabel": "Beschreibung",
     "descriptionPlaceholder": "Erscheint in der SDL-Dokumentation",
     "dataProductLabel": "Datenprodukt",
-    "dataProductHint": "(im Katalog veröffentlichen / nach Atlas, Atlan usw. exportieren)",
     "discoverLabel": "Spalten erkennen",
     "discoverHint": "(Spalten bei der Registrierung aus der Live-Quelle ableiten — für schemalose/NoSQL-Quellen; keine manuelle Spaltenauswahl nötig)",
     "watermarkLabel": "Wasserzeichen-Spalte",
@@ -62,7 +61,6 @@
     "dqResultsTableHint": "(aus der geprüften Tabelle abgeleitet; eine Zeile pro Prüfung und Scan, jeder Scan bleibt erhalten)",
     "dqResultsTablePlaceholder": "Wählen Sie oben die zu prüfende Tabelle",
     "dqVisibleToLabel": "Ergebnisse sichtbar für",
-    "dqDescription": "Ergebnisse des Qualitätsscans für {{table}} – eine Zeile pro Prüfung und Scan, mit Ergebnis, Messwert und Schwellenwert",
     "errorDqContract": "Wählen Sie im Bereich Datenqualität die zu prüfende Tabelle.",
     "errorDqVisibleTo": "Die Ergebnisse müssen für mindestens eine Rolle sichtbar sein.",
     "dqScanIntervalLabel": "Scannen alle (Sekunden)",
@@ -136,6 +134,9 @@
     "qdrantVectors": "Vektoren von {{collection}}",
     "qdrantVector": "{{name}}: {{size}} Dimensionen, bewertet nach {{distance}}",
     "qdrantUnnamedVector": "(ohne Namen)",
-    "continue": "Weiter"
+    "continue": "Weiter",
+    "checkReasonLabel": "Warum diese Prüfung existiert",
+    "checkReasonHint": "Die Qualitätszusage in fachlichen Begriffen; sie steht über der Prüfung in jedem Produkt.",
+    "checkReasonPlaceholder": "Bestellungen sind vollständig und eindeutig, damit der Tagesumsatz mit der Finanzabteilung abgestimmt werden kann"
   }
 }

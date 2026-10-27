@@ -21,6 +21,7 @@ import pytest
 
 from provisa.api._meta_seed import META_RELATIONSHIPS
 from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 
 # The base tables the glossary and tag views read, with exactly the columns they select.
 _BASE_DDL = """
@@ -31,8 +32,6 @@ CREATE TABLE glossary_terms (
     tenant_id TEXT);
 CREATE TABLE glossary_term_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, column_name TEXT, tenant_id TEXT);
-CREATE TABLE glossary_term_table_refs (
-    id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, tenant_id TEXT);
 CREATE TABLE relationships (
     id TEXT PRIMARY KEY, source_table_id INTEGER, target_table_id INTEGER,
     same_entity BOOLEAN NOT NULL DEFAULT 0, tenant_id TEXT);
@@ -44,7 +43,7 @@ CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
     id INTEGER PRIMARY KEY, source_id TEXT, schema_name TEXT, table_name TEXT,
-    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0);
+    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0, class_term_id TEXT);
 CREATE TABLE table_columns (
     id INTEGER PRIMARY KEY, table_id INTEGER, domain_id TEXT, column_name TEXT, data_type TEXT,
     is_primary_key BOOLEAN, alias TEXT, description TEXT, path TEXT, scope TEXT,
@@ -60,11 +59,11 @@ CREATE TABLE tag_assignments (
 
 _VIEWS = (
     # First: the other glossary views read each term's domains from it (REQ-1593).
-    "glossary_term_domains",
-    "glossary_terms",
-    "glossary_term_refs",
-    "glossary_term_edges",
-    "glossary_term_experts",
+    "_domains",
+    "_terms",
+    "_term_refs",
+    "_term_edges",
+    "_experts",
     "table_columns",
     "tag_assignments",
 )
@@ -93,11 +92,15 @@ def db() -> sqlite3.Connection:
     for name in _VIEWS:
         # SQLite has no CREATE OR REPLACE VIEW — startup_seed adapts the same way.
         conn.executescript(
-            re.sub(r"CREATE\s+OR\s+REPLACE\s+VIEW", "CREATE VIEW", _META_TABLE_VIEWS[name])
+            re.sub(
+                r"CREATE\s+OR\s+REPLACE\s+VIEW",
+                "CREATE VIEW",
+                {**_META_TABLE_VIEWS, **ONTOLOGY_TABLE_VIEWS}[name],
+            )
         )
 
     conn.execute(
-        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0)"
+        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0, NULL)"
     )
     conn.executemany(
         "INSERT INTO table_columns (id, table_id, column_name, alias, masks, domain_id,"
@@ -110,7 +113,7 @@ def db() -> sqlite3.Connection:
                 7,
                 "ssn",
                 "social security number",
-                '[{"to": ["*"], "mask": {"type": "regex"}}]',
+                '[{"mask": {"type": "regex"}}]',
                 "sales",
                 "org1",
             ),
@@ -154,7 +157,7 @@ class TestGlossaryMetaViews:
     ) -> None:
         rows = {
             r["id"]: r
-            for r in db.execute("SELECT id, ref_count, is_rooted, live FROM glossary_terms_meta")
+            for r in db.execute("SELECT id, ref_count, is_rooted, live FROM _terms_ontology")
         }
         assert (rows["t-user"]["ref_count"], rows["t-user"]["is_rooted"]) == (1, 1)
         assert rows["t-user"]["live"] == 1
@@ -167,17 +170,17 @@ class TestGlossaryMetaViews:
     ) -> None:
         """REQ-2141/REQ-2130: three tables, one class term; 7 and 8 joined as the same entity,
         9 not yet -- a gap until a same-entity relationship reaches 9 too."""
+        db.execute("UPDATE registered_tables SET class_term_id = 't-party' WHERE id = 7")
         db.executemany(
-            "INSERT INTO glossary_term_table_refs VALUES (?, 't-party', ?, 'org1')",
-            [("g7", 7), ("g8", 8), ("g9", 9)],
+            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', 0, ?)",
+            [(8, "accounts", "t-party"), (9, "contacts", "t-party"), (6, "people", "t-user")],
         )
-        db.execute("INSERT INTO glossary_term_table_refs VALUES ('g1', 't-user', 7, 'org1')")
         db.execute("INSERT INTO relationships VALUES ('r78', 7, 8, 1, 'org1')")
         # A relationship not marked same entity joins nothing as one.
         db.execute("INSERT INTO relationships VALUES ('r79', 7, 9, 0, 'org1')")
         gap = lambda: {  # noqa: E731
             r["id"]: r["identity_gap"]
-            for r in db.execute("SELECT id, identity_gap FROM glossary_terms_meta")
+            for r in db.execute("SELECT id, identity_gap FROM _terms_ontology")
         }
         assert gap() == {"t-user": 0, "t-party": 1, "t-old": 0}
         db.execute("INSERT INTO relationships VALUES ('r98', 9, 8, 1, 'org1')")
@@ -187,7 +190,7 @@ class TestGlossaryMetaViews:
         self, db: sqlite3.Connection
     ) -> None:
         row = db.execute(
-            "SELECT retired, export_excluded, live FROM glossary_terms_meta WHERE id = 't-old'"
+            "SELECT retired, export_excluded, live FROM _terms_ontology WHERE id = 't-old'"
         ).fetchone()
         assert (row["retired"], row["export_excluded"]) == (1, 1)
         # Retired means out of service, so it grounds nothing — but it is still returned.
@@ -198,7 +201,7 @@ class TestGlossaryMetaViews:
     ) -> None:
         row = db.execute(
             "SELECT r.column_key, c.alias, c.masks"
-            " FROM glossary_term_refs_meta r"
+            " FROM _term_refs_ontology r"
             " JOIN table_columns_meta c ON c.column_key = r.column_key"
         ).fetchone()
         assert row["column_key"] == "7:usr_nm"
@@ -207,9 +210,7 @@ class TestGlossaryMetaViews:
     def test_the_edge_view_names_both_endpoints_beside_their_ids(
         self, db: sqlite3.Connection
     ) -> None:
-        row = db.execute(
-            "SELECT from_term, to_term, rel_type FROM glossary_term_edges_meta"
-        ).fetchone()
+        row = db.execute("SELECT from_term, to_term, rel_type FROM _term_edges_ontology").fetchone()
         assert (row["from_term"], row["to_term"], row["rel_type"]) == (
             "user name",
             "party",
@@ -231,8 +232,8 @@ class TestTagGraphMetaJoins:
         self, db: sqlite3.Connection
     ) -> None:
         rows = db.execute(
-            "SELECT a.id, a.tag_id FROM glossary_terms_meta t"
-            " JOIN glossary_term_refs_meta r ON r.term_id = t.id"
+            "SELECT a.id, a.tag_id FROM _terms_ontology t"
+            " JOIN _term_refs_ontology r ON r.term_id = t.id"
             " JOIN tag_assignments_meta a ON a.column_key = r.column_key"
             " WHERE t.id = 't-user'"
         ).fetchall()
@@ -242,12 +243,10 @@ class TestTagGraphMetaJoins:
     @pytest.mark.parametrize(
         "rel_id,source,target",
         [
-            ("meta:table_columns:glossary_term_refs", "table_columns", "glossary_term_refs"),
-            ("meta:glossary_term_refs:table_columns", "glossary_term_refs", "table_columns"),
+            ("meta:table_columns:_term_refs", "table_columns", "_term_refs"),
+            ("ontology:_term_refs:table_columns", "_term_refs", "table_columns"),
             ("meta:table_columns:tag_assignments", "table_columns", "tag_assignments"),
             ("meta:tag_assignments:table_columns", "tag_assignments", "table_columns"),
-            ("meta:glossary_term_refs:tag_assignments", "glossary_term_refs", "tag_assignments"),
-            ("meta:tag_assignments:glossary_term_refs", "tag_assignments", "glossary_term_refs"),
         ],
     )
     def test_the_column_level_edges_are_registered_on_the_shared_key(
@@ -257,3 +256,10 @@ class TestTagGraphMetaJoins:
         assert (rel[2], rel[7]) == (source, target)
         # Both sides join on column_key, never on the surrogate table_columns.id.
         assert (rel[3], rel[4]) == ("column_key", "column_key")
+
+    def test_a_columns_tags_hang_off_the_column_not_its_glossary_ref(self) -> None:
+        """_term_refs is a junction (term -> column): nothing hangs off it, so a column's
+        tags are reached from table_columns alone."""
+        assert not [
+            r[0] for r in META_RELATIONSHIPS if {r[2], r[7]} == {"_term_refs", "tag_assignments"}
+        ]

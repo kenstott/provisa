@@ -33,8 +33,9 @@
     "createView": "+ View",
     "requestView": "Request View",
     "asOfLabel": "As of",
-    "asOfHint": "Read history-keeping views as they stood at this time",
+    "asOfHint": "Write as_of on each relation that keeps versions: read it as it stood at this time",
     "asRecordedLabel": "As recorded at",
-    "asRecordedHint": "Read history-keeping views as Provisa recorded them then, before later corrections"
+    "asRecordedHint": "Write as_recorded on each relation that keeps versions: read it as Provisa had recorded it then, before later corrections",
+    "boundParams": "Bound to the next run: {{values}}"
   }
 }

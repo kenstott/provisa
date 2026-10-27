@@ -34,6 +34,7 @@ from provisa.api.metadata_export.model import (
     DataQualityAssertion,
     DataQualityOutcome,
     DomainAsset,
+    GlossaryAxiom,
     GlossaryTermAsset,
     GlossaryTermEdge,
     JunctionRef,
@@ -153,8 +154,7 @@ def _table_assets(
                 if (table_ref(table).parts, column.name) not in technical_columns
             ],
             semantic_uri=table_uri(org_id, table),
-            # REQ-1592: model-report column, kept. REQ-1443 clause 10: a checker table's flag is
-            # the one it inherits from the table it scans.
+            # REQ-1592: model-report column, kept.
             data_product=product_ids[table_ref(table).parts] is not None,
             # REQ-1652: every declared key column, technical-tagged or not -- the physical table
             # carries it whether or not the Data Product exposes it.
@@ -164,6 +164,7 @@ def _table_assets(
                 table.cache_ttl if table.cache_ttl is not None else source_ttls.get(table.source_id)
             ),
             is_view=table.view_sql is not None,
+            contract=table.contract,  # REQ-2158
         )
         for table in tables
     ]
@@ -187,26 +188,6 @@ def _contract_target(
     return checker, by_physical[(meta.source_id, meta.schema_name, meta.table_name)]
 
 
-def _effective_product_ids(
-    config: ProvisaConfig, contexts: Mapping
-) -> dict[tuple[str, ...], str | None]:  # REQ-1443 clause 10
-    """Every registered table's data-product membership, keyed by :func:`table_ref` parts.
-
-    A checker table's membership is DERIVED: it belongs to whatever product the table its contract
-    scans belongs to, because its rows are observations about that table and publish nowhere else.
-    Registration refuses a stored ``product_id`` on a checker table
-    (:func:`provisa.dq.registration.derive_checker_table`), so this map is the only place the two
-    are joined. Every other table's membership is its own ``product_id``.
-    """
-    product_ids: dict[tuple[str, ...], str | None] = {
-        table_ref(table).parts: table.product_id for table in config.tables
-    }
-    for results, contract in _checker_tables(config):
-        _, observed = _contract_target(config, results, contract, contexts)
-        product_ids[table_ref(results).parts] = observed.product_id
-    return product_ids
-
-
 def _data_product_assets(
     config: ProvisaConfig,
     exported: list[Table],
@@ -219,7 +200,9 @@ def _data_product_assets(
     from provisa.core.mail import data_product_page_url
 
     # A product with no exported members does not build: publishing an empty listing would tell
-    # the catalog about a product with nothing behind it.
+    # the catalog about a product with nothing behind it. A retired one builds all the same
+    # (REQ-1634 STATUS): its members went to its successor, and each catalog is told it is retired
+    # rather than left listing it as it last saw it.
     members_by_product: dict[str, list[Table]] = {}
     for table in exported:
         product_id = product_ids[table_ref(table).parts]
@@ -228,7 +211,7 @@ def _data_product_assets(
     assets: list[DataProductAsset] = []
     for product in config.data_products:
         members = members_by_product.get(product.id, [])
-        if not members:
+        if not members and product.status != "retired":
             continue
         assets.append(
             DataProductAsset(
@@ -243,13 +226,11 @@ def _data_product_assets(
                 members=tuple(table_ref(t) for t in members),
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
                 support_contact=product.support_contact,
-                publish=product.publish,
                 team_role=product.team_role,
                 limitations=product.limitations,
                 usage=product.usage,
                 version=product.version,
                 status=product.status,
-                sla=product.sla,
                 support=product.support,
                 custom_properties=dict(product.custom_properties),
                 owner_emails=(owner_emails or {}).get(product.owner_role or "", ()),
@@ -582,6 +563,26 @@ def _dq_assertions(
     return assertions
 
 
+def _glossary_axioms(
+    glossary: dict | None, terms: list[GlossaryTermAsset]
+) -> list[GlossaryAxiom]:  # REQ-2163
+    """The ontology's axioms (ontology._axioms) about the published terms: one about a withheld
+    term, or naming one as its object, goes with it."""
+    published = {term.term_id for term in terms}
+    return [
+        GlossaryAxiom(
+            subject_term_id=row["subject_term_id"],
+            predicate=row["predicate"],
+            object_term_id=row["object_term_id"],
+            object_iri=row["object_iri"],
+            object_literal=row["object_literal"],
+        )
+        for row in (glossary or {}).get("axioms", [])
+        if row["subject_term_id"] in published
+        and (row["object_term_id"] is None or row["object_term_id"] in published)
+    ]
+
+
 def _glossary_assets(
     glossary: dict,
     exported: list[Table],
@@ -611,11 +612,19 @@ def _glossary_assets(
         refs_by_term.setdefault(ref["term_id"], []).append(asset_ref)
     # REQ-1387 (GROUNDED TO A TABLE): a class term is rooted by a table it grounds, when that
     # table publishes -- the same narrowing its column refs get.
-    classes = {
-        ref["term_id"]
-        for ref in glossary.get("table_refs", [])
-        if (ref["source_id"], ref["schema_name"], ref["table_name"]) in by_identity
-    }
+    tables_by_term: dict[int, list] = {}
+    for ref in glossary.get("table_refs", []):
+        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
+        if table is not None:
+            tables_by_term.setdefault(ref["term_id"], []).append(table_ref(table))
+    classes = set(tables_by_term)
+    # REQ-2141: the role follows the control plane's grounding, not what this export narrows
+    # to -- a Class whose tables are all withheld is still a Class.
+    grounds_tables = {ref["term_id"] for ref in glossary.get("table_refs", [])}
+    owns_columns = {ref["term_id"] for ref in glossary.get("refs", [])}
+    domains_by_term: dict[int, list[str]] = {}
+    for row in glossary.get("domains", []):
+        domains_by_term.setdefault(row["term_id"], []).append(row["domain_id"])
     experts_by_term: dict[int, list[str]] = {}
     for expert in glossary.get("experts", []):
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
@@ -640,8 +649,17 @@ def _glossary_assets(
                 status_reason=term["status_reason"],
                 retire_on=term["retire_on"].isoformat() if term["retire_on"] else None,
                 refs=tuple(refs),
+                tables=tuple(tables_by_term.get(term["id"], [])),
+                role=(
+                    "class"
+                    if term["id"] in grounds_tables
+                    else "property"
+                    if term["id"] in owns_columns
+                    else "concept"
+                ),
                 experts=tuple(experts_by_term.get(term["id"], [])),
                 semantic_uri=term_uri(org_id, term["name"]),
+                domains=tuple(sorted(domains_by_term.get(term["id"], []))),
             )
         )
     published_ids = {t.term_id for t in terms}
@@ -713,8 +731,9 @@ def build_snapshot(
     # REQ-1592: the model report projects the SAME governance over every registered table — it is a
     # steward's view of what is modelled, not a catalog publish — so it turns the export filter off
     # and reads the Data Product flag off each row instead.
-    # REQ-1443 clause 10: a checker table publishes with the product of the table it scans.
-    product_ids = _effective_product_ids(config, contexts)
+    # REQ-1443 PRODUCT ASSIGNMENT: every table, a checker table included, publishes with the
+    # product it is assigned to.
+    product_ids = {table_ref(table).parts: table.product_id for table in config.tables}
     exported = [
         table
         for table in config.tables
@@ -783,5 +802,6 @@ def build_snapshot(
         ],
         glossary_terms=glossary_terms,
         glossary_edges=glossary_edges,
+        glossary_axioms=_glossary_axioms(glossary, glossary_terms),
         assertions=_dq_assertions(config, keep, published_columns, dq_outcomes or {}, contexts),
     )

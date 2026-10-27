@@ -1,0 +1,11 @@
+# The corporate groups the bank lends most to, each borrower counted with the group Wikidata says
+# owns it: their committed exposure against the 25% large-exposure limit.
+query GroupsOverLimit {
+  g__viewGroupExposure(order_by: [{ committedEur: desc }], limit: 10) {
+    groupName
+    borrowers
+    committedEur
+    pctOfTier1
+    overLimit
+  }
+}

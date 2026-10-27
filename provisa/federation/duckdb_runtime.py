@@ -40,7 +40,7 @@ import duckdb
 
 from provisa.federation.duckdb_extensions import install_and_load
 from provisa.federation.file_locks import ReadersWriterGate
-from provisa.executor.drivers.duckdb_driver import fetch_rows
+from provisa.executor.drivers.duckdb_driver import READ_THROUGH_ARROW, fetch_rows
 from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
@@ -199,11 +199,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # REQ-2050: the engine's zone is UTC, so an instant (TIMESTAMPTZ) reads as UTC and a
         # literal with no zone compared to one is UTC -- never the host's zone.
         _cfg["TimeZone"] = "UTC"
-        # REQ-2006: an org's engine may be capped (a demo sandbox's, sandbox.memory_limit). DuckDB
-        # spills to disk past it and refuses, by name, what cannot spill.
-        _limit = getattr(store_engine, "memory_limit", None)
-        if _limit is not None:
-            _cfg["memory_limit"] = f"{_limit // (1024 * 1024)}MiB"
+        # REQ-2006: an org's engine may be capped (a demo sandbox's, sandbox.memory_limit), and the
+        # deployment may cap every engine (engine.duckdb_memory_limit); unset is DuckDB's own.
+        # DuckDB spills to disk past it and refuses, by name, what cannot spill.
+        from provisa.core import engine_memory
+
+        _cfg.update(engine_memory.config(getattr(store_engine, "memory_limit", None)))
         # Spilled data stays in the org's folder (engine.temp_org). A runtime built for no org --
         # one introspecting a source's catalog, which reads metadata and spills nothing -- has no
         # folder to name, and keeps DuckDB's own.
@@ -212,7 +213,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             from provisa.core import org_files
 
             _cfg["temp_directory"] = str(org_files.org_tmp(_temp_org))
-        self._con = duckdb.connect(config=_cfg)
+        self._con = engine_memory.connect(extra=_cfg)
+        engine_memory.log_limit(self._con, "federation engine")
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 
         register_fake_functions(self._con)  # REQ-1494: provisa_digest, provisa_fake_method
@@ -261,6 +263,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # #266: each attached view's columns named apart from their source fields, by its physical
         # name, as the attach walk gave them (native_backend._mongo_column_fields).
         self._column_fields: dict[str, list[tuple[str, str]]] = {}
+        # (catalog, schema, table) of an attached remote table's view -> its raw attach alias and
+        # its address there, for a read that goes to the remote itself (exact_numeric, REQ-2167).
+        self._remote_tables: dict[tuple[str, str, str], tuple[str, str, str]] = {}
         self._dbx_lock = threading.Lock()
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
         # REQ-1529: the ATTACH each raw alias was made with, so an environment reaching the same
@@ -364,6 +369,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._column_fields[phys] = fields
             renamed = "".join(f", {_quoted(field)} AS {_quoted(name)}" for field, name in fields)
             self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS SELECT *{renamed} FROM {remote}")
+            view = (self._catalog_of(source), source.schema_name, source.table_name)
+            self._remote_tables[view] = (raw_alias, remote_schema, source.table_name)
 
     def detach_source(self, source: Any) -> None:
         """Remove the live exposure of ``source``'s table from this engine: the view at its
@@ -507,6 +514,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def refresh_live_relations(self, sql: str) -> None:
         """REQ-1867: the same re-pointing for a statement this runtime does not run itself."""
         self._refresh_databricks_relations(sql)
+
+    def remote_table(self, view: tuple[str, str, str]) -> tuple[str, str, str] | None:
+        """The raw attach alias and remote address of the attached table ``view`` stands for, or
+        None when ``view`` is no attached remote table."""
+        return self._remote_tables.get(view)
 
     def _prepare_sql(self, duck_sql: str) -> str:
         """The per-statement preparation every execution path runs: in-place Databricks views
@@ -896,6 +908,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     _FILE_ATTACH_TYPES = frozenset({"sqlite", "duckdb"})  # ATTACH a file path, not a URL
     _NO_EXTENSION_TYPES = frozenset({"duckdb"})  # core store type: no INSTALL/LOAD needed
 
+    def _see_store_writes(self) -> None:
+        """Make what the server store's own connection just wrote readable here. This connection
+        reads the store through its ATTACH, which caches the store's catalog: a schema created
+        since is missing from it, and a read of a table in it fails "schema ... does not exist"
+        (a view's first build, staged into an org schema the store did not hold yet). A Postgres
+        store's cache is cleared; an attached SQLite file has none."""
+        if self._ATTACH_TYPE_BY_SCHEME[self._store_scheme()] == "postgres":
+            self._con.cursor().execute("CALL pg_clear_cache()")
+
     def mv_store_schema(self, org_id: str) -> str:
         """The schema materialized views are written to: one that holds nothing else (REQ-1912).
         Replicas have their own (``replica_address.replica_schema``)."""
@@ -1071,7 +1092,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
         # REQ-424: this engine reads a server store through its connector, so an embedding is
         # held there as its text (as the build writes it, ``PostgresStoreTarget``).
-        return await store_writer.reconcile_table(
+        written = await store_writer.reconcile_table(
             self._store_dsn(),
             schema=schema,
             table=table,
@@ -1079,6 +1100,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             pk_columns=pk_columns,
             key_after_landing=True,
         )
+        self._see_store_writes()
+        return written
 
     async def land_table(
         self,
@@ -1111,7 +1134,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                     watermark_column,
                 ),
             )
-        return await store_writer.land(
+        written = await store_writer.land(
             self._store_dsn(),
             schema=schema,
             table=table,
@@ -1123,6 +1146,19 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             match_floor=match_floor,
             shape=shape,
         )
+        self._see_store_writes()
+        return written
+
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` is landed, from the catalog of the store ``land_table`` writes:
+        an embedded DuckDB store's (through its broker, ``duckdb_tables()``), else the server
+        store's own (``store_writer``). Absent is False; a catalog that cannot be read raises."""
+        self.ensure_materialize_attached()
+        if self._store_is_duckdb():
+            return await self._land_guard.run(
+                lambda: table in self._store_broker.tables(schema),
+            )
+        return await store_writer.table_exists(self._store_dsn(), schema=schema, table=table)
 
     async def apply_change_group(self, group: list[Any]) -> None:
         """Apply a group of changes (``federation.change_group``) in one transaction: of the
@@ -1151,6 +1187,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                             table.delete().where(and_(*[table.c[k] == v for k, v in match.items()]))
                         )
                     await apply_cdc(conn, table, changes.pk_columns, changes.events)
+        self._see_store_writes()
 
     async def apply_cdc_events(
         self,
@@ -1179,7 +1216,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         async with store_connection(self._store_dsn()) as conn:
             if schema and conn.capabilities.schemas:
                 await conn.execute_core(CreateSchema(schema, if_not_exists=True))
-            return await apply_cdc(conn, tbl, pk_columns, events, report_unchanged=True)
+            applied = await apply_cdc(conn, tbl, pk_columns, events, report_unchanged=True)
+        self._see_store_writes()
+        return applied
 
     async def reconcile_mv_table(
         self,
@@ -1195,9 +1234,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self.ensure_materialize_attached()
         if self._store_is_duckdb():
             return self._store_broker.reconcile(schema, table, columns)
-        return await store_writer.reconcile_table(
+        written = await store_writer.reconcile_table(
             self._store_dsn(), schema=schema, table=table, columns=columns, pk_columns=pk_columns
         )
+        self._see_store_writes()
+        return written
 
     async def persist_mv_table(
         self,
@@ -1217,7 +1258,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self.ensure_materialize_attached()
         if self._store_is_duckdb():
             return self._store_broker.persist(schema, table, columns, rows, persist, pk_columns)
-        return await store_writer.persist_land(
+        written = await store_writer.persist_land(
             self._store_dsn(),
             schema=schema,
             table=table,
@@ -1227,6 +1268,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             pk_columns=pk_columns,
             match_floor=match_floor,
         )
+        self._see_store_writes()
+        return written
 
     def mv_store_broker(self) -> Any:
         """The broker MV refresh must write through, or ``None`` when the store is attached on this
@@ -1463,9 +1506,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
         # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
         types = [str(d[1]) for d in cur.description] if cur.description else []
-        if "INTERVAL" in types:
-            # DuckDB's own Python rows fold an interval's months into days; its Arrow batches keep
-            # them (duckdb_driver.fetch_rows).
+        if READ_THROUGH_ARROW.intersection(types):
+            # DuckDB's own Python rows fold an interval's months into days and read infinity as
+            # the last date Python holds; its Arrow batches keep both (duckdb_driver.fetch_rows).
             reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
             return stream_rows_from_arrow(
                 reader.schema, iter(reader), on_close=_close, column_types=types

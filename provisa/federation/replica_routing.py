@@ -491,7 +491,9 @@ async def landing_worklist(
 
     The tables of :func:`replica_tables` whose data columns all have a resolved type. A registered
     data column with no type is a registration gap and the table is skipped (logged), never
-    guessed. Shared by every backend's ``reconcile_landed_tables`` so the engines agree on exactly
+    guessed. A table kept row by row (``replica_converge.row_level``) is not here: its row cache,
+    at the same address, holds bookkeeping columns of its own, and reconciled to the data columns
+    it was re-created, dropping the rows a read had just fetched. Shared by every backend's ``reconcile_landed_tables`` so the engines agree on exactly
     which tables are reconciled — they differ only in what they do with each entry."""
     return _worklist(engine, await replica_tables(engine, state))
 
@@ -508,9 +510,12 @@ def _worklist(
     engine: Any, tables: list[tuple[Any, dict]]
 ) -> list[tuple[Any, str, str, list[tuple[str, str]], list[str], str | None]]:
     from provisa.core.ir_types import to_ir
+    from provisa.federation.replica_converge import row_level
 
     work: list[tuple[Any, str, str, list[tuple[str, str]], list[str], str | None]] = []
     for src, reg in tables:
+        if row_level(src, reg, engine):
+            continue
         data_cols = _data_columns(reg)
         if any(c["data_type"] is None for c in data_cols):
             _log.warning(

@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:testdata/1-orders-by-customer.graphql",
+  "root_field": "s__orders"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:testdata/2-sales-by-region.graphql",
+  "root_field": "s__viewSalesByRegion"
+ }
+]

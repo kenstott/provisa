@@ -14,11 +14,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from provisa.auth.models import AuthIdentity
 from provisa.security.rights import (
     acting_claims,
+    role_ids_from_claims,
     capabilities_for_claims,
     domain_access_for_capability,
     domain_access_for_claims,
@@ -42,6 +43,29 @@ def _identity_from_info(info: "strawberry.types.Info") -> object | None:
     if request is None:
         return None
     return getattr(request.state, "identity", None)
+
+
+def acting_role_of(info: "strawberry.types.Info") -> str:  # REQ-2154
+    """The role this admin request acts as: what the auth middleware bound on the request
+    (``request.state.role``), which a registration's default grant names."""
+    request = (
+        info.context.get("request")
+        if isinstance(info.context, dict)
+        else getattr(info.context, "request", None)
+    )
+    return acting_role_of_request(request)
+
+
+def acting_role_of_request(request: Any) -> str:  # REQ-2154
+    """The role an admin HTTP request acts as (``request.state.role``, bound by the auth
+    middleware): what a registration's default grant names."""
+    role = getattr(getattr(request, "state", None), "role", None)
+    if not role:
+        raise RuntimeError(
+            "this admin request carries no acting role; the auth middleware binds one on every "
+            "request (request.state.role)"
+        )
+    return str(role)
 
 
 def _resolved_capabilities(identity, state) -> set[str]:
@@ -123,7 +147,11 @@ def require_capability(  # REQ-042, REQ-060
         raise PermissionError(f"Missing capability: {capability!r}")
 
     if domain_id is not None:
-        require_domain(info, domain_id)
+        # The domain the RIGHT reaches, read per role (REQ-1944): a role carrying the right in
+        # one domain and another role reaching a second domain do not make the right reach both.
+        refusal = right_domain_refusal(identity, state, capability, (domain_id,))
+        if refusal is not None:
+            raise PermissionError(refusal)
 
 
 def require_residency_change(  # REQ-1921
@@ -283,6 +311,15 @@ def require_capability_request(request, capability: str) -> None:  # REQ-1531
     caps = _resolved_capabilities(identity, state)
     if capability not in caps:
         raise ApiError(403, "auth.missing_capability", f"Missing capability: {capability!r}")
+
+
+def require_dq_read_request(request) -> None:  # REQ-2155
+    """Reading data quality -- profile runs, check definitions and results -- needs dq_read, which
+    dq_rw implies: whoever manages checks reads what they are managed from. Refused naming
+    dq_read."""
+    if has_capability_request(request, "dq_rw"):
+        return
+    require_capability_request(request, "dq_read")
 
 
 def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
@@ -458,6 +495,31 @@ def right_domain_refusal(  # REQ-1944
         if domain_id not in allowed:
             return f"No access to domain {domain_id!r} for {label}"
     return None
+
+
+def data_product_edit_refusal(  # REQ-2155
+    identity, state, stored: dict | None, domains: "Iterable[str]"
+) -> str | None:
+    """Why ``identity`` may not save a data product into ``domains``, or None when it may.
+
+    ``data_product_rw`` edits any product its reach covers, and is the only right that creates or
+    deletes one. ``data_product_owned_rw`` edits an existing product (``stored``) whose owner_role
+    the caller holds -- itself or through an ancestor -- within its reach. ``domains`` are those
+    of what the edit changes: the product's domain, and the one it moves out of."""
+    refusal = right_domain_refusal(identity, state, "data_product_rw", domains)
+    if refusal is None or stored is None or not stored.get("owner_role"):
+        return refusal
+    chains = getattr(state, "role_chains", {}) or {}
+    held = {
+        anc
+        for rid in role_ids_from_claims(acting_claims(identity))
+        for anc in chains.get(rid, [rid])
+    }
+    if stored["owner_role"] not in held:
+        return refusal
+    if right_domain_refusal(identity, state, "data_product_owned_rw", domains) is None:
+        return None
+    return refusal
 
 
 def require_right_in_domains(  # REQ-1944

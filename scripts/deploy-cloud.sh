@@ -234,7 +234,7 @@ push_api() {
 # The set is the SAME explicit list the Dockerfile bakes (Dockerfile:31-34) — never the whole
 # config/ dir, which also holds the divergent dev-local config/provisa.yaml.
 CONFIG_FILES="capabilities.yaml pg_extension_catalog.yaml custom_connectors.yaml \
-provisa-install.yaml provisa-install-base.yaml"
+provisa-install.yaml provisa-install-base.yaml provisa-sandbox-regions.yaml"
 
 # The sample data provisa-install.yaml's SQLite sources resolve to, via ${env:PROVISA_DEMO_DIR},
 # which the demo overlay sets to /app/config/demo/files (Dockerfile:41-45). It ships WITH the config
@@ -452,6 +452,16 @@ services:
       PROVISA_SANDBOX_AI_BASE_URL: "https://openrouter.ai/api/v1"
       PROVISA_SANDBOX_AI_API_KEY: "\$\${env:OPENROUTER_API_KEY}"
       OPENROUTER_API_KEY: "\${OPENROUTER_API_KEY:-}"
+  # REQ-2068: the regions sandbox tier runs the same app under its own deployment config
+  # (provisa-sandbox-regions.yaml, shipped in CONFIG_FILES); without the tree it ran the image's
+  # code and the image's config directory.
+  provisa-sandbox-regions:
+    volumes:
+      - ${OVERLAY_DIR}/static:/app/static
+      - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/config:/app/config
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
 YAML
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"
@@ -946,10 +956,10 @@ SANDBOX_NODE="${SANDBOX_NODE:-provisa-saas-sandbox}"
 # server reaches it by service name (first-launch.sh's default); deploy_sandbox_vm sets the VM's.
 SANDBOX_PUBLISH="127.0.0.1:18000"
 
-# The sandbox tier's containers on its VM: the tier and, where it runs, the regions tier.
+# The sandbox tier's containers on its VM: the tier and, where they run, the regions tier's nodes.
 sandbox_containers() {
   ssh_node "sudo docker ps -a --format '{{.Names}}'" | tr -d '\r' \
-    | grep -xE 'compose-provisa-sandbox-1|compose-provisa-sandbox-regions-1' | tr '\n' ' '
+    | grep -xE 'compose-provisa-sandbox-1|compose-provisa-sandbox-regions(-warehouse)?-1' | tr '\n' ' '
 }
 
 # The sandbox tier back to no orgs of its own: every demo template and sandbox (ids sbx*, REQ-2006)
@@ -982,21 +992,26 @@ SELECT count(*) AS sandbox_orgs_left FROM public.orgs WHERE id LIKE 'sbx%';
 SQL
   run_sql "$STAGE/reset_sandbox.sql" reset-sandbox
   # The regions tier's stores (first-launch.sh: region-pg-eu, region-pg-us) hold each region's
-  # schemas of its orgs.
+  # schemas of its orgs, a database per region: eu and ledger in region-pg-eu, us and warehouse in
+  # region-pg-us.
   cat > "$STAGE/reset_sandbox_store.sql" <<'SQL'
 SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
   FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
 SQL
   local b64 store
   b64="$(base64 < "$STAGE/reset_sandbox_store.sql" | tr -d '\n')"
+  local db database
   for store in $(ssh_node "sudo docker ps --format '{{.Names}}'" | tr -d '\r' | grep -E 'region-pg-(eu|us)'); do
-    ssh_node "set -e; echo $b64 | base64 -d | sudo docker exec -i $store psql -U provisa -d provisa -v ON_ERROR_STOP=1 -q -f -"
-    echo "   $store: sandbox schemas dropped"
+    case "$store" in *region-pg-eu*) db=ledger ;; *) db=warehouse ;; esac
+    for database in provisa "$db"; do
+      ssh_node "set -e; echo $b64 | base64 -d | sudo docker exec -i $store psql -U provisa -d $database -v ON_ERROR_STOP=1 -q -f -"
+      echo "   $store/$database: sandbox schemas dropped"
+    done
   done
   # Their folders (provisa.core.org_files: <data dir>/orgs/<org>; first-launch.sh mounts the
   # tiers' data dirs from these). Only orgs/sbx*: demo-bundles/ beside it is the demo stores sync's.
   # Expanded as root: the login user cannot list /root, where its own shell would expand nothing.
-  ssh_node "sudo sh -c 'rm -rf /root/.provisa/sandbox-data/orgs/sbx* /root/.provisa/sandbox-regions-data/orgs/sbx*'"
+  ssh_node "sudo sh -c 'rm -rf /root/.provisa/sandbox-data/orgs/sbx* /root/.provisa/sandbox-regions-data/orgs/sbx* /root/.provisa/sandbox-regions-warehouse-data/orgs/sbx*'"
   trap 'rm -rf "$STAGE"' EXIT
   CONTAINERS="$containers"
 }

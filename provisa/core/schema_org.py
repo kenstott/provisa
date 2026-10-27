@@ -186,7 +186,7 @@ domains = Table(
     Column("tenant_id", Uuid),
 )
 
-data_products = Table(  # REQ-1634, REQ-1660
+data_products = Table(  # REQ-1634
     "data_products",
     metadata,
     Column("id", Text, primary_key=True),
@@ -198,13 +198,17 @@ data_products = Table(  # REQ-1634, REQ-1660
     Column("limitations", Text, nullable=False, server_default=""),
     Column("usage", Text, nullable=False, server_default=""),
     Column("version", Text),
-    Column("status", Text),
-    Column("sla", Text),
+    # REQ-1634 STATUS: draft, live, deprecated or retired, each asserted by an action; why, the
+    # planned retirement of a deprecated product, who changed it when, and the product a retired
+    # one's members moved to.
+    Column("status", Text, nullable=False, server_default="draft"),
+    Column("status_reason", Text),
+    Column("retire_on", Date),
+    Column("status_by", Text),
+    Column("status_at", DateTime(timezone=True)),
+    Column("successor_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),
     Column("support", Text),
     Column("support_contact", Text),  # REQ-1635: Horizon Catalog listing manifest requirement
-    Column(
-        "publish", Boolean, nullable=False, server_default=false()
-    ),  # REQ-1635: PUBLISH = TRUE vs DRAFT
     Column("custom_properties", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
@@ -255,12 +259,22 @@ registered_tables = Table(
     Column("view_sql", Text),
     # REQ-1443: the data-quality contract a checker table's rows are the scan results of.
     Column("dq_contract", Text),
+    # REQ-1443 clause 10: the contract's checks, parsed at registration; none_as_null: a table
+    # with no contract stores SQL NULL, which the dq_rules view skips.
+    Column("dq_rules", JSON(none_as_null=True)),
     # REQ-1934: the Data Profiler source this table is a member of; NULL for none.
     Column("profiler_source_id", Text),
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
+    # REQ-2158: a data product member's ODCS contract, its output port, declared and versioned on
+    # its own (provisa.core.models.DataContract); NULL for a table in no product.
+    Column("contract", JSON(none_as_null=True)),
+    # REQ-2130: the glossary term this table's rows are instances of; one per table (schema.sql).
+    Column("class_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
+    # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
+    Column("class_term_derived", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("row_materialize", Boolean, nullable=False, server_default=false()),  # REQ-1865
     Column(
@@ -291,6 +305,8 @@ registered_tables = Table(
     Column("mv_consistency", Text, nullable=False, server_default="shared"),
     # REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity.
     Column("mv_preprocess", Text),
+    # REQ-2133: the view's Hold on failing checks option, a built-in preflight beside mv_preprocess.
+    Column("mv_hold_on_failing_checks", Boolean, nullable=False, server_default=false()),
     # REQ-2109: the bitemporal declaration of a table or view, all three or none: the business-key
     # column list, the valid-time column and the recorded-time column.
     Column("business_key", JSON(none_as_null=True)),
@@ -425,6 +441,9 @@ relationships = Table(
     Column("owner", Text),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("needs_review", Boolean, nullable=False, server_default=false()),
+    # REQ-351: the effective names, derived and stored once (core.relationship_names).
+    Column("cypher_type", Text),
+    Column("graphql_field", Text),
     Column("tenant_id", Uuid),
     UniqueConstraint("source_table_id", "alias", name="relationships_source_alias_unique"),
     CheckConstraint(
@@ -444,7 +463,7 @@ metrics = Table(
     Column("datatype", Text),
     Column("description", Text),
     Column("ai_context", Text),  # REQ-1319: definition text for AI consumers
-    Column("visible_to", JSON, nullable=False, default=lambda: ["*"], server_default='["*"]'),
+    Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("from_fact", Text),
 )
 
@@ -453,7 +472,7 @@ roles = Table(
     metadata,
     Column("id", Text, primary_key=True),
     # REQ-2080: what the role is for, as an access review reads it. Required on every write
-    # (models.Role); the seeded roles' are written by schema.sql (SEEDED_ROLE_DESCRIPTIONS).
+    # (models.Role); a standard role's is written by db.assert_standard_roles (REQ-2155).
     Column("description", Text, nullable=False, server_default=""),
     Column("capabilities", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
@@ -469,13 +488,9 @@ roles = Table(
     # REQ-1174: per-role rate + query limits {requests_per_second, max_query_complexity,
     # max_query_time_ms, ...}. None/absent = unlimited.
     Column("rate_limit", JSON(none_as_null=True)),
-    Column("parent_role_id", Text, ForeignKey("roles.id")),
-    # REQ-1597/REQ-1624: this role's capabilities are DERIVED from the named role's, in this schema
-    # only -- the sandbox visitor's `org_admin` is `sandbox` (env_copy.adopt_role_definition). Held
-    # as a column rather than applied once at creation because the tenancy seam
-    # (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
-    # every runtime build, which silently handed the subtracted rights back.
-    Column("defined_from", Text),
+    # REQ-2155: the roles this one inherits from, in declared order; its capabilities are the
+    # union of its own and every ancestor's (security.inheritance).
+    Column("parents", JSON, nullable=False, default=list, server_default="[]"),
     Column("max_rows", Integer),  # REQ-005: the role's result-size ceiling; NULL = none of its own
     # A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
     Column("inactivity_days", Integer),
@@ -602,7 +617,7 @@ tag_assignments = Table(
     Column("column_name", Text),
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
     Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
-    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1660
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1634
     # REQ-2145: the glossary term a tag is on (pii on a Property term).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
     Column("object_key", Text, nullable=False),
@@ -683,22 +698,6 @@ glossary_term_refs = Table(
     Column("column_name", Text, nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
-)
-
-# REQ-2130: a class term grounds a whole table or view. At most one class term per table; a term
-# may ground many. See schema.sql.
-glossary_term_table_refs = Table(
-    "glossary_term_table_refs",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
-    Column(
-        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
-    ),
-    # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
-    Column("derived", Boolean, nullable=False, server_default=false()),
-    Column("tenant_id", Uuid),
-    UniqueConstraint("table_id"),
 )
 
 # Closed, enum-typed relationship set — free-form edge types are not permitted (REQ-1387).
@@ -919,6 +918,19 @@ checker_targets = Table(
     Column("checked_table_id", Integer, nullable=False),
 )
 
+# REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
+# check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
+# A table with no row has never run. The dry run writes none.
+checker_latest_runs = Table(
+    "checker_latest_runs",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("scan_id", Text, nullable=False),
+    Column("scan_time", DateTime(timezone=True), nullable=False),
+    Column("outcome", Text, nullable=False),
+    CheckConstraint("outcome IN ('pass', 'fail')", name="checker_latest_runs_outcome_check"),
+)
+
 relationship_candidates = Table(
     "relationship_candidates",
     metadata,
@@ -1095,6 +1107,8 @@ tracked_functions = Table(
     Column("requires_approval", Boolean, nullable=False, server_default=false()),
     # REQ-1924, REQ-871: "schema.table" of the registered table the command writes, when known.
     Column("writes_table", Text),
+    # REQ-2168: the command's name per language {language: {name?, exclude?}}.
+    Column("language_bindings", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
 tracked_webhooks = Table(
@@ -1316,6 +1330,25 @@ profiler_constraints = Table(
     Column("run_id", Text, nullable=False),  # the run that proposed it
     Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     UniqueConstraint("table_id", "signature"),
+)
+
+# REQ-2147: a steward's decision on a classification a profile suggested for a column -- accepted
+# (the column linked to the kind's Property term; for a sensitive kind marked pii), or rejected so
+# it is not suggested again for that column and kind.
+profiler_classifications = Table(
+    "profiler_classifications",
+    metadata,
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("physical_column", Text, nullable=False),  # the column's registered name
+    Column("kind", Text, nullable=False),  # a kind of provisa/profiler/classification_kinds.yaml
+    Column("status", Text, nullable=False),  # accepted | rejected
+    Column("evidence", Text, nullable=False),  # the suggestion's evidence when it was decided
+    Column("run_id", Text, nullable=False),  # the run that suggested it
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("table_id", "physical_column", "kind"),
 )
 
 # REQ-1939: how close a generated dataset came to the profiles it was drawn from.

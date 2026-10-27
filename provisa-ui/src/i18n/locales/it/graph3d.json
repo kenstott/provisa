@@ -1,14 +1,16 @@
 {
   "graph3d": {
     "canvasLabel": "Grafo 3D dei prodotti dati e di ciò che li compone",
-    "panelTitle": "Knowledge graph",
-    "expandTitle": "{{product}}: knowledge graph",
+    "panelTitle": "Grafo",
+    "expandTitle": "{{product}}: grafo",
     "productMap": "Mappa dei prodotti",
     "preset": "Preimpostazione",
-    "preset_knowledge": "Knowledge graph",
+    "dimension": "2D o 3D",
+    "view2d": "2D",
+    "view3d": "3D",
+    "preset_all": "Tutto",
     "preset_ontology": "Ontologia",
-    "preset_productMap": "Mappa dei prodotti",
-    "preset_lineage": "Derivazione",
+    "preset_products": "Prodotti",
     "layers": "Livelli",
     "layer_products": "Prodotti e domini",
     "layer_tables": "Tabelle membro",
@@ -96,7 +98,6 @@
     "openAsQueryFocused": "L’intorno della ricerca o del focus non è ancora esprimibile come una sola query.",
     "openAsQueryCompiling": "Compilazione della query…",
     "openAsQueryNoCypher": "Questa query non ha forma Cypher.",
-    "openAsQuerySparqlLater": "SPARQL si aprirà quando il suo endpoint sarà disponibile.",
     "layersMenu": "Livelli",
     "termsMenu": "Termini",
     "menuAll": "tutti",
@@ -109,6 +110,8 @@
     "overBudget": "{{count}} corrispondenze; restringi la ricerca o scegli un dominio",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Ancorato a tabelle non ancora collegate come la stessa entità: {{tables}}",
-    "status_draft": "Bozza"
+    "status_draft": "Bozza",
+    "openAsQueryNoSparql": "Questa query non ha una forma SPARQL.",
+    "openAsQuerySparqlRoots": "Ogni radice di questa query è una query SPARQL a sé: apri il GraphQL per leggerle una per una."
   }
 }

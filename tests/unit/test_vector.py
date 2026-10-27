@@ -479,7 +479,7 @@ class TestEmbeddingIsNeverMasked:
             Column(
                 name="v",
                 visible_to=["admin"],
-                masks=[{"to": ["admin"]}, {"to": ["*"], "mask": {"type": "constant"}}],
+                masks=[{"to": ["admin"]}, {"mask": {"type": "constant"}}],
                 embedding=True,
                 embedding_model="m",
             )
@@ -487,7 +487,7 @@ class TestEmbeddingIsNeverMasked:
     async def test_a_mask_on_another_column_is_kept(self):
         from provisa.core.models import Column
 
-        masks = [{"to": ["*"], "mask": {"type": "constant"}}]
+        masks = [{"mask": {"type": "constant"}}]
         assert Column(name="email", visible_to=["admin"], masks=masks).masks
 
 

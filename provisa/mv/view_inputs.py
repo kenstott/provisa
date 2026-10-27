@@ -22,8 +22,8 @@ context exposes), to exactly one of:
 A reference that names nothing, or that two different tables or views answer to, is not resolved:
 a view that reads it is refused when it is declared (save, config load —
 ``readable_inputs.require_readable_inputs``), naming the view and the reference, so it never gets
-as far as being wired. Anything that later meets an unresolved reference (the event graph's
-wiring) has met a defect, and raises.
+as far as being wired. A view that meets one later -- left reading a table since deleted -- is
+refused alone by the event graph's wiring, named with the reference, and the others are wired.
 
 The one resolution for every consumer: the view-input check at declaration, and the event graph's
 edges (``provisa.events.nodes``).
@@ -142,13 +142,14 @@ class ModelIndex:
             )
             for parts in row_spellings(row, catalogs.get(row["source_id"])):
                 self._add(parts, ("table", table_id))
-        for ctx in state.contexts.values():
-            for meta in ctx.tables.values():
-                target = ("table", meta.table_id)
-                semantic = semantic_table_name(meta)
-                self._add((semantic,), target)
-                self._add((domain_to_sql_name(meta.domain_id), semantic), target)
-                self._add((meta.catalog_name, meta.schema_name, meta.table_name), target)
+        # The model-wide context names every table, with no role's surface built to read it.
+        model = state.view_context
+        for meta in model.tables.values() if model is not None else []:
+            target = ("table", meta.table_id)
+            semantic = semantic_table_name(meta)
+            self._add((semantic,), target)
+            self._add((domain_to_sql_name(meta.domain_id), semantic), target)
+            self._add((meta.catalog_name, meta.schema_name, meta.table_name), target)
         for mv in state.mv_registry.get_enabled():
             target = ("view", mv.id)
             self._add((mv.target_catalog, mv.target_schema, mv.target_table), target)

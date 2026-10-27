@@ -1,0 +1,14 @@
+# The Neo4j Python driver's integration tests Provisa fails by design (REQ-2167, amended
+# 2026-10-27): each group quotes the rule of the requirement that excludes it.
+# scripts/conformance/by_design.py. An example that creates its nodes only as setup is adapted
+# over the fixture model, not excluded; until it is, it counts as a failure. The examples' DETACH
+# DELETE is their cleanup, not their subject, so it is adapted too.
+
+- group: Digits below the microsecond
+  requirement: REQ-2173
+  decision: >-
+    "Every temporal value, read from a column or built in a query, has microsecond precision,
+    what the engines and their drivers hold; its nanosecond property is its microseconds times
+    1000."
+  # Each example sends a value with nanoseconds (4123 ns, 4 ns) and asserts it comes back whole.
+  case: "test_temporal_types_example::test_(datetime|time|local_datetime|local_time|duration_example)$"

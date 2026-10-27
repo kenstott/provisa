@@ -18,14 +18,15 @@ import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import { edgesOf, type GraphData, type NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
 import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
+import { GLYPH_OUTLINE, glyphClip, glyphPoints } from "./glyph";
 
 export interface StageState {
   graph: GraphData;
   at: Map<string, [number, number, number]>;
   /** Changes when the graph is laid out afresh (a preset), so the camera is reset to fit it. */
   frame: number;
-  /** A flat layout (tree, lanes) is seen from the front. */
-  frontal: boolean;
+  /** REQ-2174: drawn in 2D -- laid out flat, through a face-on orthographic camera. */
+  flat: boolean;
   selected: string | null;
   setSelected: (id: string) => void;
   hover: GraphHover | null;
@@ -55,12 +56,15 @@ export function GraphStage({
   command,
   exportName,
   testId,
+  bare = false,
 }: {
   s: StageState;
   command: CameraCommand | null;
   /** What the view's exports are named after (the graph and its view). */
   exportName: string;
   testId: string;
+  /** A glance only (a card): no export or hint (Stage3D). */
+  bare?: boolean;
 }) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: GraphHover; x: number; y: number } | null>(null);
@@ -86,7 +90,7 @@ export function GraphStage({
           },
           theme,
         );
-        sc.setFrontal(latest.current.frontal);
+        sc.setFlat(latest.current.flat);
         sc.setGrid(latest.current.grid);
         sc.setData(latest.current.graph, latest.current.at, true);
         return sc;
@@ -96,16 +100,18 @@ export function GraphStage({
     graph: GraphData;
     at: Map<string, [number, number, number]>;
     frame: number;
+    flat: boolean;
   } | null>(null);
   useEffect(() => {
     if (!scene) return;
     const was = drawn.current;
-    drawn.current = { graph: s.graph, at: s.at, frame: s.frame };
+    drawn.current = { graph: s.graph, at: s.at, frame: s.frame, flat: s.flat };
     // A new graph, or the same graph laid out anew (the attraction moved), is drawn again.
     if (was === null || (was.graph === s.graph && was.at === s.at)) return;
-    scene.setFrontal(s.frontal);
-    scene.setData(s.graph, s.at, was.frame !== s.frame);
-  }, [scene, s.graph, s.at, s.frame, s.frontal]);
+    // Into or out of 2D the layout changes too, and the camera is reset to the new one.
+    scene.setFlat(s.flat);
+    scene.setData(s.graph, s.at, was.frame !== s.frame || was.flat !== s.flat);
+  }, [scene, s.graph, s.at, s.frame, s.flat]);
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
@@ -158,6 +164,8 @@ export function GraphStage({
       exportable={scene}
       exportName={exportName}
       testId={testId}
+      bare={bare}
+      flat={s.flat}
       legend={<GraphLegend graph={s.graph} />}
     />
   );
@@ -179,20 +187,28 @@ function GraphLegend({ graph }: { graph: GraphData }) {
   const statuses = graph.nodes.some((n) => n.status !== undefined);
   return (
     <>
-      {[...looks.entries()].map(([key, l]) => (
-        <span key={key} data-testid={`legend-${key}`}>
-          <i
-            className={`g3d-shape g3d-shape-${l.shape}`}
-            // A ring's colour is its border; every other shape is filled.
-            style={
-              l.shape === "torus"
-                ? { borderColor: `var(--p3d-${l.colour})` }
-                : { background: `var(--p3d-${l.colour})` }
-            }
-          />
-          {t(l.name)}
-        </span>
-      ))}
+      {[...looks.entries()].map(([key, l]) => {
+        // A solid seen as a polygon is clipped to its outline, which an export paints too.
+        const outline = GLYPH_OUTLINE[l.shape];
+        return (
+          <span key={key} data-testid={`legend-${key}`}>
+            <i
+              className={`g3d-shape g3d-shape-${l.shape}`}
+              data-glyph={outline ? glyphPoints(outline) : undefined}
+              // A ring's colour is its border; every other shape is filled.
+              style={
+                l.shape === "torus"
+                  ? { borderColor: `var(--p3d-${l.colour})` }
+                  : {
+                      background: `var(--p3d-${l.colour})`,
+                      ...(outline ? { clipPath: glyphClip(outline) } : {}),
+                    }
+              }
+            />
+            {t(l.name)}
+          </span>
+        );
+      })}
       {statuses &&
         (["live", "draft", "deprecated", "retired"] as const).map((st) => (
           <span

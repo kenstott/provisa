@@ -32,11 +32,21 @@ _TYPED: dict[type, str] = {
     exp.Reduce: "reduce",
 }
 _NAMED = frozenset(
-    {"element_at", "any_match", "all_match", "none_match", "slice", "filter", "transform", "reduce"}
+    {
+        "element_at",
+        "any_match",
+        "all_match",
+        "none_match",
+        "slice",
+        "filter",
+        "transform",
+        "reduce",
+        "sequence",  # Cypher's range(start, end[, step])
+    }
 )
 #: A statement naming none of them is not parsed: the check is on every direct route.
 _MENTIONED = re.compile(
-    r"\b(map|element_at|filter|transform|any_match|all_match|none_match|reduce|slice)\s*\(",
+    r"\b(map|element_at|filter|transform|any_match|all_match|none_match|reduce|slice|sequence)\s*\(",
     re.IGNORECASE,
 )
 

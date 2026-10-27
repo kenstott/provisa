@@ -148,8 +148,8 @@ class TestHandleQuery:
 
         from provisa.transpiler.router import Route
 
-        # New pipeline seam: _handle_query lowers the request to a semantic SELECT, then
-        # governs/routes/executes via provisa.pgwire._pipeline. Mock at that boundary.
+        # Pipeline seams: _handle_query lowers the request to GraphQL text and compiles it, then
+        # governs/routes/executes via provisa.pgwire._pipeline. Mock at those boundaries.
         # cache_hit=None: routed to the API cache, not answered from the response cache.
         fake_plan = SimpleNamespace(
             route=Route.CACHE, source_id=None, cache_hit=None, warnings=[], materialize=None
@@ -158,8 +158,12 @@ class TestHandleQuery:
 
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT id, amount FROM orders", []),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ orders { id amount } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -217,8 +221,12 @@ class TestHandleQuery:
 
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT id, amount FROM orders", []),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ orders { id amount } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -271,8 +279,12 @@ class TestHandleQuery:
 
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT id, amount FROM orders", []),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ orders { id amount } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -342,8 +354,12 @@ class TestHandleQuery:
 
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT id, amount FROM orders", []),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ orders { id amount } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -441,8 +457,12 @@ class TestHandleQuery:
 
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT id, amount FROM orders", []),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ orders { id amount } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -643,7 +663,7 @@ def _make_fake_msg_cls(name, scalar_fields=(), message_fields=None):
 
 
 class TestDictRowToMessage:
-    """REQ-1405: server.py's recursive dict -> proto message builder for nodes_sql rows."""
+    """REQ-1405: server.py's recursive dict -> proto message builder for a node's dict."""
 
     def test_scalar_fields_assigned(self):
         User = _make_fake_msg_cls("User", scalar_fields=["name", "email"])

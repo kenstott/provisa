@@ -208,9 +208,11 @@ class TestFlightSqlDispatchHopCount:
             embedded=None,  # as _Plan: no embed() (REQ-2002)
             columns=None,  # as _Plan: no column transform (REQ-2131)
             two_step=None,  # as _Plan: written whole (REQ-2001)
+            code_write=None,  # as _Plan: no code table written (REQ-2100)
             result_shape=None,  # as _Plan: built from no governed statement (REQ-1961)
             scratch=(),  # as _Plan: no scratch tables (REQ-1986)
             row_limit=None,  # as _Plan: no row limit bounds this read
+            list_limit=None,  # nor any list it nests (REQ-005)
             route=Route.DIRECT,
             source_id="src1",
             sql="SELECT 1",
@@ -259,6 +261,7 @@ class TestFlightSqlDispatchHopCount:
             embedded=None,  # as _Plan: no embed() (REQ-2002)
             columns=None,  # as _Plan: no column transform (REQ-2131)
             two_step=None,  # as _Plan: written whole (REQ-2001)
+            code_write=None,  # as _Plan: no code table written (REQ-2100)
             result_shape=None,  # as _Plan: built from no governed statement (REQ-1961)
             scratch=(),  # as _Plan: no scratch tables (REQ-1986)
             route=Route.ENGINE,
@@ -269,6 +272,7 @@ class TestFlightSqlDispatchHopCount:
             stamp="governed",
             audit_deferred=None,  # as _Plan: no audit record held back for the drain
             row_limit=None,  # as _Plan: no row limit bounds this read
+            list_limit=None,  # nor any list it nests (REQ-005)
             live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
             live_caps_org=None,
             tier_caps=None,

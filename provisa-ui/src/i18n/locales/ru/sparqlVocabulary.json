@@ -1,0 +1,17 @@
+{
+  "sparqlVocabulary": {
+    "domains": "Домены",
+    "classes": "Классы",
+    "properties": "Свойства",
+    "relationships": "Связи",
+    "concepts": "Понятия",
+    "prefixes": "Префиксы",
+    "none": "Для вашей роли здесь ничего нет.",
+    "domainTip": "Объявляет префикс этого домена и сужает списки до его словаря ({{namespace}}).",
+    "domainPicked": "Списки показывают только {{namespace}}. Нажмите ещё раз, чтобы видеть все домены.",
+    "classTerm": "Термин-класс {{term}}",
+    "tableClass": "Собственный класс таблицы",
+    "propertyTerm": "Термин-свойство {{term}}",
+    "columnPredicate": "Столбец {{column}}"
+  }
+}

@@ -12,26 +12,16 @@
 // among the output ports it scans.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within, fireEvent, waitFor } from "../../../test-utils/render";
+import { render, screen, within, fireEvent } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
-import type { DataProduct, Source } from "../../../types/admin";
+import type { DataProduct } from "../../../types/admin";
 import type { CoreTable } from "../productCore";
+import type { ProductDq, ProductDqEntry } from "../../../api/lineage";
 import i18n from "../../../i18n";
+import { lifecycleProps } from "./lifecycleProps";
 
-const parseContract = vi.fn().mockResolvedValue({
-  dataset: "provisa/pet_store/vets",
-  checker: "soda",
-  checks: [
-    { columnName: "", checkType: "row_count", definition: "row_count > 0", extra: "" },
-    {
-      columnName: "email",
-      checkType: "missing_count",
-      definition: "missing_count(email) = 0",
-      extra: "",
-    },
-  ],
-  error: null,
-});
+// The panel parses nothing: a checker table's rules come with it, as meta's dq_rules rows.
+const parseContract = vi.fn();
 
 vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../hooks/useAdminQueries")>()),
@@ -39,16 +29,11 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 }));
 
 // The panel's 3D graph is its own component, held by its own tests.
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
 }));
 
 const t = i18n.getFixedT("en");
-
-const SOURCES = [
-  { id: "wh", type: "postgres" },
-  { id: "dq-soda", type: "soda" },
-] as unknown as Source[];
 
 const PRODUCT = {
   id: "pet_health",
@@ -64,6 +49,7 @@ function makeTable(overrides: Partial<CoreTable>): CoreTable {
     domain_id: "pet-store",
     schema_name: "pet_store",
     table_name: "vets",
+    alias: null,
     description: null,
     dq_contract: null,
     ...overrides,
@@ -78,10 +64,35 @@ const VETS_SCAN = makeTable({
   table_name: "vets_scan",
   dq_contract: "dataset: provisa/pet_store/vets\nchecks: []\n",
   description: "Soda contract over vets",
-  checks: { id: 1, domain_id: "pet-store", table_name: "vets" },
+  checks: { id: 1, domain_id: "pet-store", table_name: "vets", alias: null },
+  dq_rules: [
+    { position: 1, column_name: "", check_type: "row_count", definition: "row_count > 0" },
+    {
+      position: 2,
+      column_name: "email",
+      check_type: "missing_count",
+      definition: "missing_count(email) = 0",
+    },
+  ],
 });
 
-function renderPanel(tables: CoreTable[], sources: Source[] = SOURCES) {
+// The product lineage endpoint's data quality (REQ-2157): vets_scan, the product's own check on its
+// member vets, is a promise.
+const VETS_PROMISE: ProductDqEntry = {
+  checker_table_id: 2,
+  domain_id: "pet-store",
+  table_name: "vets_scan",
+  alias: null,
+  description: "Soda contract over vets",
+  owner_product_id: "pet_health",
+  checked_table_id: 1,
+  checked_table: { id: 1, domain_id: "pet-store", table_name: "vets", alias: null },
+  latest_outcome: "pass",
+  latest_run_at: "2026-10-20T10:00:00Z",
+};
+const NO_DQ: ProductDq = { expectations: [], promises: [], related: [], unattached: [] };
+
+function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: [VETS_PROMISE] }) {
   render(
     <DataProductDetailPanel
       p={PRODUCT}
@@ -92,13 +103,23 @@ function renderPanel(tables: CoreTable[], sources: Source[] = SOURCES) {
       }}
       coreError={null}
       reader={null}
-      sources={sources}
-      internalRelationships={[]}
       canEdit={false}
-      canSeeLineage={false}
-      inputPorts={[]}
+      canDelete={false}
+      owner
+      lineageLoading={false}
+      lineageError=""
+      lineageGraph={{
+        nodes: [],
+        edges: [],
+        outputs: [],
+        members: [],
+        consumers: [],
+        inputs: [],
+        dq,
+      }}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }
@@ -134,12 +155,12 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
   });
 
   it("shows the empty state when no checker scans the product", () => {
-    renderPanel([VETS]);
+    renderPanel([VETS], NO_DQ);
     expect(screen.queryByTestId("data-product-detail-dq-tables-pet_health")).toBeNull();
     expect(screen.getByText(t("dataProductsTab.detail.dataQualityEmpty"))).toBeTruthy();
   });
 
-  it("opens the scan's rules in a modal from the icon beside SQL, parsed with the source's checker", async () => {
+  it("opens the scan's rules in a modal from the icon beside SQL, as the core read them", async () => {
     renderPanel([VETS, VETS_SCAN]);
     const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
     const sql = within(dq).getByTestId("data-product-detail-dq-sql-query-2");
@@ -149,19 +170,12 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
 
     fireEvent.click(rules);
     const dialog = await screen.findByRole("dialog");
-    await waitFor(() =>
-      expect(parseContract).toHaveBeenCalledWith({
-        checker: "soda",
-        contractText: VETS_SCAN.dq_contract,
-      }),
-    );
     const rows = await within(dialog).findByTestId("dq-rules-rows");
     expect(within(rows).getByText("row_count > 0")).toBeTruthy();
     expect(within(rows).getByText("email")).toBeTruthy();
     expect(within(rows).getByText(t("dataQualityPanel.datasetScope"))).toBeTruthy();
-    expect(within(dialog).getByTestId("dq-rules-dataset").textContent).toContain(
-      "provisa/pet_store/vets",
-    );
+    expect(within(dialog).getByTestId("dq-rules-dataset").textContent).toContain("pet-store.vets");
+    expect(parseContract).not.toHaveBeenCalled();
   });
 
   it("names the table each checker scans (REQ-2125's checks)", () => {
@@ -171,9 +185,24 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
     );
   });
 
-  it("disables the rules icon until the scan's source is known", () => {
-    renderPanel([VETS_SCAN], []);
-    expect(screen.getByTestId("data-product-detail-dq-rules-2")).toBeDisabled();
+  it("names a checker by its alias, as the model does", () => {
+    renderPanel(
+      [VETS, { ...VETS_SCAN, table_name: "vets_quality_dq_soda_dq", alias: "vets_quality" }],
+      {
+        ...NO_DQ,
+        promises: [
+          { ...VETS_PROMISE, table_name: "vets_quality_dq_soda_dq", alias: "vets_quality" },
+        ],
+      },
+    );
+    const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
+    expect(dq).toHaveTextContent("pet-store.vets_quality");
+    expect(dq).not.toHaveTextContent("vets_quality_dq_soda_dq");
+  });
+
+  it("offers the rules at once, with no read of the scan's source", () => {
+    renderPanel([VETS_SCAN]);
+    expect(screen.getByTestId("data-product-detail-dq-rules-2")).toBeEnabled();
   });
 
   it("shows no output ports when the only member is a checker table", () => {

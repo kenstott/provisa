@@ -36,8 +36,7 @@ def _walk() -> walk_module.Walk:
     walk.sql_role = None
     walk.page = None
     walk.env = None
-    walk.as_of = None
-    walk.as_recorded = None
+    walk.bound = []
     walk.answers = {}
     return walk
 
@@ -79,25 +78,25 @@ def test_an_environment_reaches_every_request_after_it():
     assert walk.headers(sql=False)["x-provisa-env"] == "dev"
 
 
-def test_time_travel_reaches_only_statements():
+def test_a_recorded_time_taken_from_an_answer_is_bound_and_no_request_carries_a_time_header():
+    """REQ-2083: an as_recorded_from step binds an earlier answer's value to the next statement's
+    $1 (its relation's argument, REQ-1163); no request sends a time header."""
     walk = _walk()
-    walk.choose({"key": "a", "as_of": "2026-01-01T00:00:00Z"})
     walk.answers["earlier"] = [{"recorded_at": "2026-02-01T00:00:00Z"}]
     walk.choose(
         {"key": "b", "as_recorded_from": {"step": "earlier", "row": 0, "column": "recorded_at"}}
     )
-    sql = walk.headers(sql=True)
-    assert sql["X-Provisa-As-Of"] == "2026-01-01T00:00:00Z"
-    assert sql["X-Provisa-As-Recorded"] == "2026-02-01T00:00:00Z"
-    other = walk.headers(sql=False)
-    assert "X-Provisa-As-Of" not in other and "X-Provisa-As-Recorded" not in other
+    assert walk.bound == ["2026-02-01T00:00:00Z"]
+    for sql in (True, False):
+        assert not [h for h in walk.headers(sql=sql) if h.lower().startswith("x-provisa-as")]
 
 
 def test_every_published_demo_is_a_parameter():
     names = walk_module.published_demos()
     assert "testdata" in names and "weblogs" in names
     assert "retail" in names  # a regions-tier demo is walked like any other published one
-    assert "banking" not in names  # published: false
+    assert "banking" not in names and "perf" not in names  # published: false
+    assert "groupexposure" in names  # published once its card was taken from its real answer
 
 
 _CLOSE = 'SELECT c.category FROM "provisioning"."view_close_by_category" AS c'

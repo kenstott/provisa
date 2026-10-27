@@ -133,13 +133,12 @@
     "mvPrimaryKeyDerived": "Chiave di identità della riga (dalle caselle Chiave primaria nelle colonne sottostanti):",
     "mvPrimaryKeyMissing": "Upsert e manutenzione incrementale richiedono una chiave di identità della riga. Contrassegnare la/e colonna/e chiave come Chiave primaria nell'elenco delle colonne sottostante.",
     "preprocessLabel": "Controllo di preflight (Python)",
-    "preprocessHelp": "Controllo di preflight opzionale eseguito dopo l'SQL della vista e prima del salvataggio: definire preflight(streams, ctx) e restituire un VERDETTO — ctx.ok() per continuare, ctx.abort(reason) per rifiutare (errore + poisoning a valle) o ctx.quarantine(reason) per trattenere senza salvare. streams è un dict indicizzato per nodo di input: streams[\"schema.table\"] produce le righe di quell'input in modo lazy, così un input può essere ispezionato senza materializzarlo. Un controllo ispeziona; NON trasforma le righe (le trasformazioni vanno nell'SQL o in un processore esterno). Un controllo esprimibile in SQL — if any(...)/all(...) sulle righe di un solo input — viene delegato al motore come probe di conteggio su quell'input, quindi scala fino a un miliardo di righe; qualsiasi altro caso trasmette ogni input come batch Arrow con cortocircuito. Chiamare ctx.warn(reason) per un avviso non fatale. DEVE essere deterministico — niente orologio, casualità, import o IO — e viene verificato per purezza al salvataggio; un controllo non deterministico o non sicuro viene rifiutato.",
+    "preprocessHelp": "Controllo di preflight opzionale eseguito dopo l'SQL della vista e prima del salvataggio: definire preflight(streams, ctx) e restituire un VERDETTO — ctx.ok() per continuare, ctx.abort(reason) per rifiutare (errore + poisoning a valle) o ctx.quarantine(reason) per trattenere senza salvare. streams è un dict indicizzato per nodo di input: streams[\"schema.table\"] produce le righe di quell'input in modo lazy, così un input può essere ispezionato senza materializzarlo. Un controllo ispeziona; NON trasforma le righe (le trasformazioni vanno nell'SQL o in un processore esterno). Un controllo esprimibile in SQL — if any(...)/all(...) sulle righe di un solo input — viene delegato al motore come probe di conteggio su quell'input, quindi scala fino a un miliardo di righe; qualsiasi altro caso trasmette ogni input come batch Arrow con cortocircuito. Chiamare ctx.warn(reason) per un avviso non fatale. Può importare un solo modulo, provisa_services, per chiamare i servizi di Provisa (tra cui dq); un controllo del genere viene sempre eseguito in streaming e il suo verdetto è lo stato al momento dell'aggiornamento. Altrimenti DEVE essere deterministico — niente orologio, casualità, altri import o IO — e viene verificato per purezza al salvataggio; un controllo non deterministico o non sicuro viene rifiutato.",
     "preprocessAria": "Sorgente Python del controllo di preflight della MV",
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "Prodotto dati",
     "dataProductNone": "Nessuno",
-    "dataProductDesc": "Pubblicato nel catalogo ed esportato in Atlas, Atlan e altri.",
-    "dataProductInherited": "Ereditato dalla tabella analizzata da questo contratto",
+    "dataProductDesc": "Pubblicato nel catalogo ed esportato in Atlas, {{atlan}} e altri.",
     "enableAggregatesLabel": "Abilita aggregati",
     "enableAggregatesDesc": "(espone il campo radice _aggregate in GraphQL)",
     "enableGroupByLabel": "Abilita Group By",
@@ -280,6 +279,11 @@
     "timeTravelSectionHelp": "Bitemporale conserva entrambe le cose: quando è accaduto e quando è stato registrato. Così i dati si leggono a una data, o come erano registrati a una data. Associa la chiave di business, il tempo di validità e il tempo di registrazione a colonne; Provisa decide come conservare le versioni.",
     "timeTravelLabel": "Conserva cronologia",
     "timeTravelOff": "Disattivato",
-    "timeTravelBitemporal": "Bitemporale"
+    "timeTravelBitemporal": "Bitemporale",
+    "holdOnFailingChecksLabel": "Sospendi se i controlli falliscono",
+    "holdOnFailingChecksHelp": "Annulla un aggiornamento, mantenendo la copia precedente, quando l'ultima esecuzione di una tabella di controllo che analizza uno degli input di questa vista è fallita. Viene eseguito prima del controllo preliminare qui sopra; entrambi devono proseguire.",
+    "holdOnFailingChecksShowCode": "Mostra il codice",
+    "holdOnFailingChecksHideCode": "Nascondi il codice",
+    "holdOnFailingChecksCodeHelp": "Il controllo applicato da questa opzione. Copialo nel controllo preliminare qui sopra per modificarlo."
   }
 }

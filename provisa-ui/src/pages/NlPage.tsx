@@ -9,7 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation, Trans } from "react-i18next";
 import {
@@ -29,9 +29,11 @@ import {
 } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import { HelpBubble } from "../components/HelpBubble";
+import { Tip } from "../components/Tip";
 import { useAuth } from "../context/AuthContext";
-import { submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
+import { fetchNlMode, submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
 import { getStored, setStored } from "../lib/browserStorage";
+import { kept, restored } from "../lib/resultWithQuery";
 
 const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
   sql: { path: "/sql", stateKey: "sql" },
@@ -114,7 +116,8 @@ const LABELS: Record<Target, string> = {
 
 export function NlPage() {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  // REQ-1620: the selected roles, the "Role: All" set included, as the question is asked.
+  const { actingRoles } = useAuth();
   const navigate = useNavigate();
   const NL_QUESTION_KEY = "nl-question";
   const NL_BRANCHES_KEY = "nl-branches";
@@ -125,10 +128,33 @@ export function NlPage() {
   const [strict, setStrict] = useState(() => getStored(NL_STRICT_KEY) !== "0");
   const [submitting, setSubmitting] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  // REQ-603: non-strict is a role's that may bypass the relationship guard; any other role uses
+  // strict only, so the switch is held on. The server's answer is kept with the role it was asked
+  // for: until the acting role has one, the switch is held on.
+  const [nlMode, setNlMode] = useState<{ role: string; nonStrict: boolean } | null>(null);
+  const actingRoleId = actingRoles;
+  useEffect(() => {
+    if (actingRoleId === null) return;
+    let live = true;
+    fetchNlMode(actingRoleId).then(
+      (mode) => live && setNlMode({ role: actingRoleId, nonStrict: mode.non_strict }),
+      (e) => live && setGlobalError(e instanceof Error ? e.message : String(e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [actingRoleId]);
+  const strictLocked = !(nlMode?.role === actingRoleId && nlMode.nonStrict);
+  const effectiveStrict = strict || strictLocked;
+  // The answers are kept with the question that produced them, and shown only beside it.
   const [branches, setBranches] = useState<Record<Target, BranchState>>(() => {
     try {
       const saved = getStored(NL_BRANCHES_KEY);
-      const parsed = saved ? JSON.parse(saved) : {};
+      const parsed =
+        restored<Partial<Record<Target, BranchState>>>(
+          saved ? JSON.parse(saved) : null,
+          getStored(NL_QUESTION_KEY) ?? "",
+        ) ?? {};
       return {
         sql: parsed.sql ?? EMPTY_BRANCH,
         graphql: parsed.graphql ?? EMPTY_BRANCH,
@@ -148,18 +174,20 @@ export function NlPage() {
       };
     }
   });
-  const [hasResults, setHasResults] = useState(() => getStored(NL_BRANCHES_KEY) !== null);
+  const [hasResults, setHasResults] = useState(() =>
+    TARGETS.some((t) => branches[t] !== EMPTY_BRANCH),
+  );
   const cancelRef = useRef<(() => void) | null>(null);
 
-  const saveBranches = useCallback((next: Record<Target, BranchState>) => {
-    setStored(NL_BRANCHES_KEY, JSON.stringify(next));
+  const saveBranches = useCallback((asked: string, next: Record<Target, BranchState>) => {
+    setStored(NL_BRANCHES_KEY, JSON.stringify(kept(asked, next)));
     setBranches(next);
   }, []);
 
   const handleSubmit = useCallback(async () => {
     const q = question.trim();
     if (!q || submitting) return;
-    if (!role) {
+    if (!actingRoles) {
       setGlobalError("No role selected — wait for roles to load before submitting.");
       return;
     }
@@ -167,11 +195,11 @@ export function NlPage() {
     cancelRef.current?.();
     cancelRef.current = null;
 
-    const roleId = role.id;
+    const roleId = actingRoles;
     setGlobalError(null);
     setHasResults(true);
     setSubmitting(true);
-    saveBranches({
+    saveBranches(q, {
       sql: { ...EMPTY_BRANCH, loading: true },
       graphql: { ...EMPTY_BRANCH, loading: true },
       cypher: { ...EMPTY_BRANCH, loading: true },
@@ -182,12 +210,12 @@ export function NlPage() {
 
     let jobId: string;
     try {
-      const res = await submitNlQuery(q, roleId, strict);
+      const res = await submitNlQuery(q, roleId, effectiveStrict);
       jobId = res.job_id;
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : String(e));
       setSubmitting(false);
-      saveBranches({
+      saveBranches(q, {
         sql: EMPTY_BRANCH,
         graphql: EMPTY_BRANCH,
         cypher: EMPTY_BRANCH,
@@ -207,7 +235,7 @@ export function NlPage() {
             ...prev,
             [t]: { query: event.query, result: event.result, error: event.error, loading: false },
           };
-          setStored(NL_BRANCHES_KEY, JSON.stringify(next));
+          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
           return next;
         });
       },
@@ -218,7 +246,7 @@ export function NlPage() {
           for (const t of TARGETS) {
             if (next[t].loading) next[t] = { ...EMPTY_BRANCH };
           }
-          setStored(NL_BRANCHES_KEY, JSON.stringify(next));
+          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
           return next;
         });
       },
@@ -230,13 +258,13 @@ export function NlPage() {
           for (const t of TARGETS) {
             if (next[t].loading) next[t] = { ...EMPTY_BRANCH, error: msg };
           }
-          setStored(NL_BRANCHES_KEY, JSON.stringify(next));
+          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
           return next;
         });
       },
     );
     cancelRef.current = stop;
-  }, [question, submitting, role, strict, saveBranches]);
+  }, [question, submitting, actingRoles, effectiveStrict, saveBranches]);
 
   const openInExplorer = useCallback(
     (target: Target, _query: string) => {
@@ -290,16 +318,21 @@ export function NlPage() {
           ariaLabel={t("nlPage.strictMode")}
           testId="nl-strict-help"
           target={
-            <Switch
-              label={t("nlPage.strictMode")}
-              checked={strict}
-              onChange={(e) => {
-                const next = e.currentTarget.checked;
-                setStrict(next);
-                setStored(NL_STRICT_KEY, next ? "1" : "0");
-              }}
-              data-testid="nl-strict-toggle"
-            />
+            <Tip text={strictLocked && t("nlPage.strictLocked")}>
+              <span>
+                <Switch
+                  label={t("nlPage.strictMode")}
+                  checked={effectiveStrict}
+                  disabled={strictLocked}
+                  onChange={(e) => {
+                    const next = e.currentTarget.checked;
+                    setStrict(next);
+                    setStored(NL_STRICT_KEY, next ? "1" : "0");
+                  }}
+                  data-testid="nl-strict-toggle"
+                />
+              </span>
+            </Tip>
           }
         />
         <HelpBubble

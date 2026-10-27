@@ -40,6 +40,7 @@ SUMMARY_KINDS: tuple[str, ...] = (
     "plausible_type",
     "constraints",
     "constraint_checks",
+    "classifications",
     "drift",
 )
 
@@ -244,8 +245,11 @@ async def decide_profile_constraint(
     and sample as the run recorded them; ``definition`` replaces the proposed one (accept as
     edited)."""
     require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
     from provisa.api.admin.profiler_checks_router import DecisionInput, decide_constraint
 
+    # REQ-2155: deciding a constraint is managing data quality; asked before the run is read.
+    require_capability_request(request, "dq_rw")
     if status not in ("accepted", "dismissed"):
         raise ValueError(f"status must be 'accepted' or 'dismissed', not {status!r}")
     run_id = await _latest_succeeded_run(request, table_id)

@@ -26,8 +26,6 @@ from provisa.api.admin.types import (
     SourceInput,
     SourceType,
 )
-from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
-from provisa.gql.label_map import _to_rel_type as _to_cypher_rel_type
 
 
 def _parse_mapping_json(mapping_json: str | None) -> dict:
@@ -163,8 +161,11 @@ def _domain_from_row(row, effective_steward: str | None) -> DomainType:
     )
 
 
-def _role_from_row(row, *, detail: bool = True) -> RoleType:
-    """``detail`` False returns the id alone: no capabilities, domain access, limits or parent."""
+def _role_from_row(row, *, detail: bool, effective: list[str]) -> RoleType:
+    """``detail`` False returns the id alone: no capabilities, domain access, limits or parent.
+    ``effective`` is what the role holds with its ancestors folded in (REQ-2155)."""
+    from provisa.core.db import STANDARD_ROLES
+
     if not detail:
         return RoleType(
             id=row["id"],
@@ -188,11 +189,13 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
         id=row["id"],
         description=row["description"],  # REQ-2080
         capabilities=list(row["capabilities"]),
+        effective_capabilities=effective,  # REQ-2155
         domain_access=list(row["domain_access"]),
         # REQ-1602: the rights this role is shown but does not hold.
         demonstrated=list(row["demonstrated"]),
         rate_limit=rate_limit,
-        parent_role_id=row.get("parent_role_id"),  # REQ-1677
+        parents=list(row["parents"]),  # REQ-2155
+        standard=row["id"] in STANDARD_ROLES,  # REQ-2155
         residency_values=list(row["residency_values"]),  # REQ-1921
         session_vars=[  # REQ-1682
             SessionVarType(name=name, value=value)
@@ -202,34 +205,15 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
     )
 
 
-def _derive_graphql_alias(  # pyright: ignore[reportUnusedParameter]
-    target_table_name: str, cardinality: str, _alias: str | None, convention: str = "apollo_graphql"
-) -> str | None:
-    return _derive_graphql_alias_fn(target_table_name, cardinality, convention)
-
-
-def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
+def _rel_from_row(row) -> RelationshipType:
     cardinality = row["cardinality"]
     target_table_name = row.get("target_table_name") or ""
     source_column = row.get("source_column") or ""
     alias = row.get("alias")
-    persisted_graphql_alias = row.get("graphql_alias") or None
-    graphql_alias = persisted_graphql_alias or _derive_graphql_alias_fn(
-        target_table_name,
-        cardinality,
-        convention,
-        # REQ-1586: several junction-backed edges share one target table, so only the nomination
-        # tells their field names apart.
-        via_label_source=row.get("via_label_source"),
-        via_type_value=row.get("via_type_value"),
-        via_table_name=row.get("via_table_name"),
-        cypher_alias=alias,
-    )
-    computed_cypher_alias = (
-        None
-        if alias
-        else _to_cypher_rel_type(graphql_alias or target_table_name or "", cardinality)
-    )
+    # REQ-351: the effective names as stored on the row (core.relationship_names): the GraphQL
+    # field and Cypher type every other reader -- the schema build, the meta domain -- reads too.
+    graphql_alias = row.get("graphql_alias") or row["graphql_field"]
+    computed_cypher_alias = None if alias else row["cypher_type"]
     return RelationshipType(
         id=row["id"],
         source_table_id=row["source_table_id"],
@@ -247,6 +231,7 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
         alias=alias,
         graphql_alias=graphql_alias,
         computed_cypher_alias=computed_cypher_alias,
+        cypher_type=row["cypher_type"],
         disable_cypher=row.get("disable_cypher", False),
         same_entity=row["same_entity"],  # REQ-2141
         # REQ-1586: the junction declaration is part of the edge the UI reads back.

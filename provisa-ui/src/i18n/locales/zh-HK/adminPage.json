@@ -208,6 +208,13 @@
     "colParentDomain": "父域",
     "parentDomainHint": "獲授予父域的角色亦能存取此域。",
     "noParentDomain": "無父域",
-    "stewardInherited": "繼承"
+    "stewardInherited": "繼承",
+    "apolloSubgraph": "Apollo Federation 子圖",
+    "apolloSubgraphEnabled": "作為子圖提供服務",
+    "apolloSubgraphEnabledHint": "為下方的角色在 /data/graphql 中加入 _service 和 _entities，讓 Apollo Router 能將此組織組合為超圖。",
+    "apolloSubgraphName": "子圖名稱",
+    "apolloSubgraphNameHint": "超圖識別此子圖所用的名稱。",
+    "apolloSubgraphRole": "服務角色",
+    "apolloSubgraphRoleHint": "超圖無法傳遞其呼叫者的身份，因此路由器以此角色登入，其擷取的每個實體都按此角色進行治理：包括其列規則、遮罩和可見性。"
   }
 }

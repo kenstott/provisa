@@ -48,7 +48,7 @@ from provisa.api._query_helpers import (
 from provisa.api.generated_plan import compile_generated_graphql
 from provisa.compiler.naming import apply_gql_name
 from provisa.compiler.parser import GraphQLValidationError
-from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
@@ -462,11 +462,12 @@ def _variables_or_400(
     field_name: str,
     where: dict[str, dict[str, Any]],
     params: dict[str, Any],
+    travel: dict[str, str] | None = None,
 ) -> RequestVariables:
-    """The request's filter and parameters as variables of ``field_name`` (REQ-1986); a filter or
-    parameter the field does not take is answered with a 400."""
+    """The request's filter, parameters and time travel as variables of ``field_name`` (REQ-1986,
+    REQ-1163); one the field does not take is answered with a 400."""
     try:
-        return request_variables(schema, field_name, where, params)
+        return request_variables(schema, field_name, where, params, travel)
     except RequestRefused as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -510,32 +511,29 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         return HTMLResponse(content=swagger_ui_html(theme))
 
-    @rest_router.get("/resolve")
+    @rest_router.get("/_resolve")
     async def rest_resolve_endpoint(  # pyright: ignore[reportUnusedFunction]  # REQ-1365
         request: Request,
         uri: str = Query(...),
         as_of: str | None = Query(None),
         as_recorded: str | None = Query(None),
     ):
-        """Dereference a semantic address: the REST form of the GraphQL ``resolve`` field
-        (REQ-1929). ``as_of`` and ``as_recorded`` may also arrive as the ``X-Provisa-As-Of`` and
-        ``X-Provisa-As-Recorded`` headers."""
+        """Dereference a semantic address: the REST form of the GraphQL ``_resolve`` field
+        (REQ-1929), under the same name and with the same arguments."""
         from provisa.api.data.resolve import AddressError, AddressNotFound, resolve
         from provisa.core.request_context import require_current_org
 
         role_id = getattr(request.state, "role", None)
         if not role_id:
             raise HTTPException(status_code=401, detail="authenticated role required")
-        point = as_of or request.headers.get("x-provisa-as-of")
-        recorded = as_recorded or request.headers.get("x-provisa-as-recorded")
         try:
             result = await resolve(
                 state,
                 role_id,
                 uri,
                 org_id=require_current_org(),
-                as_of=point,
-                as_recorded=recorded,
+                as_of=as_of,
+                as_recorded=as_recorded,
             )
         except AddressNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -553,6 +551,9 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         limit: int | None = Query(None, ge=1),
         offset: int | None = Query(None, ge=0),
         fields: str | None = Query(None),
+        # REQ-1163: the field's time-travel arguments, under the same names.
+        as_of: str | None = Query(None),
+        as_recorded: str | None = Query(None),
     ):
         auth_role = getattr(request.state, "role", None)
         if not auth_role:
@@ -657,7 +658,10 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                     detail=f"No selectable fields for table {table!r}",
                 )
 
-            variables = _variables_or_400(schema, table, where, params)
+            travel = {
+                k: v for k, v in (("as_of", as_of), ("as_recorded", as_recorded)) if v is not None
+            }
+            variables = _variables_or_400(schema, table, where, params, travel)
             gql_query = _build_graphql_query(
                 table,
                 selected_fields,
@@ -711,18 +715,6 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             )
             result = await _execute_plan(plan, state)
 
-            nodes_result = None
-            if compiled.nodes_sql is not None:
-                nodes_plan = await _govern_and_route_compiled(
-                    compiled.nodes_sql,
-                    role_id,
-                    exec_params=compiled.nodes_params or None,
-                    state=state,
-                    cache_hint=cache_hint,
-                    serve_cached=True,
-                    sdl_joins=True,
-                )
-                nodes_result = await _execute_plan(nodes_plan, state)
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:
@@ -757,34 +749,21 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         # REQ-1359: aggregate/group-by results aren't resource rows — reuse the same
         # serializers the GraphQL/data pipeline uses for _aggregate/_group_by fields, but
-        # flatten to REST's existing flat {"data": ...} shape. REQ-1401: nodes included
-        # when ?includeNodes=true triggered a nodes_sql query above.
+        # flatten to REST's existing flat {"data": ...} shape. REQ-1401: a group's nodes, when
+        # ?includeNodes=true selected them, are a column of its own row.
         if is_group_by:
-            gb_response = serialize_group_by(
-                result.rows,
-                compiled.columns,
-                nodes_result.rows if nodes_result is not None else None,
-                compiled.nodes_columns if nodes_result is not None else None,
-                compiled.root_field,
-            )
+            gb_response = serialize_rows(result.rows, compiled.columns, compiled.root_field)
             return OrjsonResponse(
                 content={"data": gb_response["data"][compiled.root_field]}, headers=cache_headers
             )
         if is_aggregate:
             agg_response = serialize_aggregate(
-                result.rows,
-                compiled.columns,
-                None,
-                None,
-                compiled.root_field,
-                agg_alias=compiled.agg_alias,
+                result.rows, compiled.columns, compiled.root_field, agg_alias=compiled.agg_alias
             )
             agg_obj = agg_response["data"][compiled.root_field][compiled.agg_alias]
             return OrjsonResponse(content={"data": agg_obj}, headers=cache_headers)
 
         # Serialize
-        from provisa.executor.serialize import serialize_rows
-
         response_data = serialize_rows(result.rows, compiled.columns, table)
         rows = response_data.get("data", {}).get(table, [])
         col_names = list(compiled.columns or [])
@@ -885,14 +864,15 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             bind_named_args,
             invoke_tracked_function,
             unknown_command,
+            usable_commands,
         )
 
-        fns = getattr(state, "tracked_functions", {}) or {}
-        whs = getattr(state, "tracked_webhooks", {}) or {}
-        fn = fns.get(command_name) or whs.get(command_name)
+        # REQ-2168: the path names the command's REST command binding.
+        fn = usable_commands(state, role_id, language="rest").get(command_name)
         if fn is None or fn.get("domain_id") != domain_id:
             # The executor's own answer, the same as for a command the role may not use.
             raise unknown_command(command_name)
+        command_name = fn["name"]
 
         raw = await request.body()
         try:

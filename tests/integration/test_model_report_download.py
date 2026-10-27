@@ -53,6 +53,8 @@ _ALL_RIGHTS = [
     "create_relationship",
     "create_view",
     "glossary_read",
+    "data_product_read",
+    "dq_read",
 ]
 _ROLES = {
     "steward": {"capabilities": _ALL_RIGHTS, "domain_access": ["*"]},
@@ -84,6 +86,10 @@ async def _clean(tenant_db, _init_schema):
     domain_policy.reset()
 
 
+# Every role the test acts as reads the model's columns: a grant names its roles (REQ-2153).
+_READERS = list(_ROLES)
+
+
 def _config() -> dict:
     """Two domains, a base table in each, a view and a materialized view, and one metric.
 
@@ -111,8 +117,8 @@ def _config() -> dict:
                 "table": "orders",
                 "product_id": "prod-sales",
                 "columns": [
-                    {"name": "id", "data_type": "integer", "visible_to": ["*"]},
-                    {"name": "amount", "data_type": "numeric", "visible_to": ["*"]},
+                    {"name": "id", "data_type": "integer", "visible_to": _READERS},
+                    {"name": "amount", "data_type": "numeric", "visible_to": _READERS},
                 ],
             },
             {
@@ -121,14 +127,14 @@ def _config() -> dict:
                 "schema": "public",
                 "table": "pets",
                 "product_id": "prod-petstore",
-                "columns": [{"name": "order_id", "data_type": "integer", "visible_to": ["*"]}],
+                "columns": [{"name": "order_id", "data_type": "integer", "visible_to": _READERS}],
             },
             {
                 "source_id": "pg1",
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "staging",
-                "columns": [{"name": "id", "data_type": "integer", "visible_to": ["*"]}],
+                "columns": [{"name": "id", "data_type": "integer", "visible_to": _READERS}],
             },
             {
                 "source_id": "pg1",
@@ -137,7 +143,7 @@ def _config() -> dict:
                 "table": "order_totals",
                 "product_id": "prod-sales",
                 "view_sql": "SELECT id FROM orders",
-                "columns": [{"name": "id", "data_type": "integer", "visible_to": ["*"]}],
+                "columns": [{"name": "id", "data_type": "integer", "visible_to": _READERS}],
             },
             {
                 "source_id": "pg1",
@@ -150,12 +156,13 @@ def _config() -> dict:
                 "mv_refresh_interval": 900,
                 # REQ-1907: a table that lands on a TTL signal names its refresh clock.
                 "cache_ttl": 900,
-                "columns": [{"name": "order_id", "data_type": "integer", "visible_to": ["*"]}],
+                "columns": [{"name": "order_id", "data_type": "integer", "visible_to": _READERS}],
             },
         ],
         "metrics": [
-            {"name": "revenue", "expression": "SUM(orders.amount)"},
-            {"name": "held", "expression": "SUM(staging.id)"},
+            # A metric is read by the roles it names (REQ-2153), as a column is.
+            {"name": "revenue", "expression": "SUM(orders.amount)", "visible_to": _READERS},
+            {"name": "held", "expression": "SUM(staging.id)", "visible_to": _READERS},
         ],
         "roles": [
             {
@@ -174,7 +181,10 @@ def _request(role_id: str) -> Request:
     identity = SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
     return cast(
         Request,
-        SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=ORG_ID)),
+        # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
+        SimpleNamespace(
+            state=SimpleNamespace(identity=identity, active_org_id=ORG_ID, role=role_id)
+        ),
     )
 
 
@@ -221,6 +231,8 @@ async def served(
     acme.tenant_db = tenant_db
     acme.model_db = tenant_db
     acme.roles = {rid: {"id": rid, **spec} for rid, spec in _ROLES.items()}
+    # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
+    acme.role_build_inputs = {"draft_tables": []}
     registry = OrgRegistry()
     for key in app_module.state.org_registry.all_org_ids():
         rt = app_module.state.org_registry.get(key)
@@ -292,7 +304,17 @@ async def test_a_sheet_the_caller_cannot_read_is_omitted_not_refused(served):
     assert book.sheetnames == [wb.REPORT, wb.TABLES, wb.COLUMNS]
     stated = {row[0]: row[1] for row in book[wb.REPORT].iter_rows(min_row=2, values_only=True)}
     # A partial workbook says on its face what is missing from it.
-    for name in (wb.SOURCES, wb.RELATIONSHIPS, wb.VIEWS, wb.METRICS, wb.GLOSSARY):
+    for name in (
+        wb.SOURCES,
+        wb.RELATIONSHIPS,
+        wb.VIEWS,
+        wb.METRICS,
+        wb.ONTOLOGY,
+        wb.DATA_PRODUCTS,
+        wb.DATA_CONTRACTS,
+        wb.DATA_QUALITY,
+        wb.DATA_PROFILING,
+    ):
         assert name in stated["Sheets omitted"]
 
 
@@ -320,7 +342,7 @@ async def test_the_domains_parameter_narrows_but_never_widens(served):
 async def test_narrowing_carries_the_glossary_and_the_source_list_with_it(served):
     """Every sheet follows the tables it addresses — a narrowed workbook leaks no wider shape."""
     _, book = await _book("steward", domains=["petstore"])
-    refs = _values(book[wb.GLOSSARY], wb.HEADERS[wb.GLOSSARY].index("refs"))
+    refs = _values(book[wb.ONTOLOGY], wb.HEADERS[wb.ONTOLOGY].index("columns"))
     assert refs, "the derivation produced no terms; the narrowing assertion would be vacuous"
     assert not [ref for ref in refs if "orders" in (ref or "")]
     assert set(_values(book[wb.SOURCES], 1)) == {"pg1"}

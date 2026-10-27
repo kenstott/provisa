@@ -278,6 +278,15 @@ def _build_junction_meta(  # REQ-1586
         type_column=type_column,
         type_value=rel.get("via_type_value") or None,
         attributes=attributes,
+        # A type column the table does not expose is no property of the relationship.
+        type_attribute=next(
+            (
+                col.get("alias") or apply_gql_name(col["column_name"], convention)
+                for col in via_info.visible_columns
+                if col["column_name"] == type_column
+            ),
+            None,
+        ),
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",
     )
@@ -655,17 +664,15 @@ def _register_draft_names(  # REQ-1921
         stored_relation_names,
     )
     from provisa.compiler.schema_gen import SchemaInput
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.visibility import visible_tables
 
     assert isinstance(si, SchemaInput)
     role = si.role
-    reach = set(role["domain_access"])
-    every = reaches_all_domains(role["domain_access"])
     for row in si.draft_tables:
         domain = row["domain_id"]
-        if not every and domain not in reach:
-            continue
-        if not any(not c["visible_to"] or role["id"] in c["visible_to"] for c in row["columns"]):
+        # REQ-2152: a draft is listed to a role served one of its columns, by the one rule
+        # (its domain reach included).
+        if not visible_tables([row], role):
             continue
         name, alias = row["table_name"], row["alias"]
         dp = f"{domain_to_sql_name(domain)}__"

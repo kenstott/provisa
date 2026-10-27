@@ -394,7 +394,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             if fn == "version":
                 return exp.Literal.string("PostgreSQL 14.0 on Provisa")
             if "set_config" in fn:
-                return exp.null()
+                # set_config answers the value it set.
+                args = node.args.get("expressions", [])
+                return args[1].transform(_transform) if len(args) > 1 else exp.null()
             if "current_setting" in fn:
                 args = node.args.get("expressions", [])
                 key = args[0].name.lower() if args and isinstance(args[0], exp.Literal) else ""

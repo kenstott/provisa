@@ -18,6 +18,13 @@ from types import SimpleNamespace
 import pytest
 
 from tests.unit.gate_identity import grant
+from tests.unit.gate_identity import serve_every_column
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every table is read here: which tables a caller reads is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 class _Conn:
@@ -108,6 +115,9 @@ async def test_hot_tables_stamps_each_row_with_its_tables_region(monkeypatch):
         return ({1: "eu"}, {("src2", "public", "r"): "us"})
 
     monkeypatch.setattr(app_module.state, "hot_manager", _Hot(), raising=False)
+    # The request's build inputs: the observability lists name drafts too (REQ-2152), and this
+    # role has none.
+    monkeypatch.setattr(app_module.state, "role_build_inputs", {"draft_tables": []}, raising=False)
     monkeypatch.setattr("provisa.federation.replica_hot.busy_replicas", _busy)
     monkeypatch.setattr(sq, "_table_region_maps", _maps)
     info, _ = grant(monkeypatch, "observability")

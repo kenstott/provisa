@@ -66,7 +66,7 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
     return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=nullable)
 
 
-def _build_lake_ctx(source_type: str):
+def _build_lake_ctx(source_type: str, time_travel: dict[int, str] | None = None):
     """Build schema + compilation context for a single lake source table."""
     tables = [
         {
@@ -109,6 +109,7 @@ def _build_lake_ctx(source_type: str):
         role=role,
         domains=domains,
         source_types={"lake-src": source_type},
+        time_travel=time_travel or {},
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -120,55 +121,57 @@ def _build_lake_ctx(source_type: str):
 # ---------------------------------------------------------------------------
 
 
-@given("an Iceberg source with an as_of argument supplied at query time")
-def given_iceberg_source_with_as_of(shared_data):
-    assert "iceberg" in TIME_TRAVEL_SOURCES
-
-    schema, ctx = _build_lake_ctx("iceberg")
-    shared_data["iceberg_ctx"] = ctx
-
-    assert "postgresql" not in TIME_TRAVEL_SOURCES
-    _, pg_ctx = _build_lake_ctx("postgresql")
-    shared_data["pg_ctx"] = pg_ctx
-
-    shared_data["timestamp_query"] = parse('{ events(as_of: "2024-01-15T12:00:00") { id ts } }')
-    shared_data["version_query"] = parse("{ events(as_of: 42) { id } }")
-    shared_data["bad_query"] = parse('{ events(as_of: "2024-01-15T12:00:00") { id } }')
+@given("an Iceberg table read with as_recorded at query time")
+def given_iceberg_table_read_with_as_recorded(shared_data):
+    assert "iceberg" in TIME_TRAVEL_SOURCES and "postgresql" not in TIME_TRAVEL_SOURCES
+    shared_data["read"] = '{ events(as_recorded: "2024-01-15T12:00:00") { id ts } }'
 
 
-@when("the compiler processes the query")
-def when_compiler_processes_query(shared_data):
-    iceberg_ctx = shared_data["iceberg_ctx"]
+def _engine_statement(source_type: str, query: str) -> str:
+    """The statement routed for ``query``: compiled with the field's time travel (REQ-1163), its
+    arguments lifted per reference, each snapshot table read at its reference's recorded time."""
+    from types import SimpleNamespace
 
-    ts_results = compile_query(shared_data["timestamp_query"], iceberg_ctx)
-    shared_data["timestamp_sql"] = ts_results[0].sql
+    from graphql import validate
 
-    ver_results = compile_query(shared_data["version_query"], iceberg_ctx)
-    shared_data["version_sql"] = ver_results[0].sql
+    from provisa.mv.time_travel import lift, read_snapshots, relation_kinds
 
-    pg_ctx = shared_data["pg_ctx"]
-    shared_data["rejected"] = False
-    try:
-        compile_query(shared_data["bad_query"], pg_ctx)
-    except Exception as exc:  # noqa: BLE001
-        shared_data["rejected"] = True
-        shared_data["rejection_error"] = str(exc)
+    state = SimpleNamespace(tables=[], source_types={"lake-src": source_type})
+    row = {"id": 10, "source_id": "lake-src", "table_name": "events", "view_sql": None}
+    schema, ctx = _build_lake_ctx(source_type, relation_kinds(state, [row]))
+    document = parse(query)
+    errors = validate(schema, document)
+    if errors:
+        raise ValueError(errors[0].message)
+    [compiled] = compile_query(document, ctx, use_catalog=True)
+    sql, travel = lift(compiled.sql, lambda _t: "snapshot")
+    return read_snapshots(sql, ctx, travel)
+
+
+@when("the statement is routed to the engine")
+def when_statement_routed_to_engine(shared_data):
+    shared_data["snapshot_sql"] = _engine_statement("iceberg", shared_data["read"])
+    refusals = []
+    for source_type, query in (
+        ("iceberg", '{ events(as_of: "2024-01-15T12:00:00") { id } }'),
+        ("postgresql", shared_data["read"]),
+    ):
+        try:
+            _engine_statement(source_type, query)
+        except ValueError as exc:
+            refusals.append(str(exc))
+    shared_data["refusals"] = refusals
 
 
 @then(
-    "FOR TIMESTAMP AS OF / FOR VERSION AS OF syntax is emitted; non-capable sources with as_of are rejected"
+    "the snapshot current at that time is read (FOR TIMESTAMP AS OF), as_of is refused by name, "
+    "and a table that keeps no versions refuses both"
 )
-def then_time_travel_emitted_and_rejected(shared_data):
-    ts_sql = shared_data["timestamp_sql"]
-    assert "FOR TIMESTAMP AS OF TIMESTAMP '2024-01-15T12:00:00'" in ts_sql
-    assert "FOR VERSION AS OF" not in ts_sql
-
-    ver_sql = shared_data["version_sql"]
-    assert "FOR VERSION AS OF 42" in ver_sql
-    assert "FOR TIMESTAMP AS OF" not in ver_sql
-
-    assert shared_data["rejected"] is True
-    assert shared_data.get("rejection_error")
+def then_snapshot_read_and_refusals(shared_data):
+    assert "FOR TIMESTAMP AS OF CAST('2024-01-15 12:00:00" in shared_data["snapshot_sql"]
+    assert "FOR VERSION AS OF" not in shared_data["snapshot_sql"]
+    [no_valid_time, keeps_none] = shared_data["refusals"]
+    assert "as_of" in no_valid_time and "as_recorded" in keeps_none
 
 
 # ---------------------------------------------------------------------------

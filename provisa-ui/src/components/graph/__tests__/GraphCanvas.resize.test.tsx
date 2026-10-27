@@ -22,6 +22,11 @@ const { cy, cytoscape } = vi.hoisted(() => {
     on: vi.fn(),
     forEach: vi.fn(),
     length: 0,
+    // An Overview pill's highlight is applied on mount (canvas/highlight.ts).
+    removeClass: () => collection,
+    addClass: () => collection,
+    filter: () => collection,
+    map: () => [],
   });
   const cy = {
     on: vi.fn(),
@@ -38,7 +43,13 @@ const { cy, cytoscape } = vi.hoisted(() => {
     layout: () => ({ run: vi.fn(), on: vi.fn(), one: vi.fn(), stop: vi.fn() }),
     userZoomingEnabled: vi.fn(),
   };
-  return { cy, cytoscape: Object.assign(() => cy, { use: vi.fn() }) };
+  return {
+    cy,
+    cytoscape: Object.assign(
+      vi.fn((_options: unknown) => cy),
+      { use: vi.fn() },
+    ),
+  };
 });
 vi.mock("cytoscape", () => ({ default: cytoscape }));
 
@@ -108,5 +119,21 @@ describe("GraphCanvas tracks its container's size", () => {
     observe!();
     // The container (and its cytoscape instance) is gone; a stale callback must not throw.
     expect(cy.resize).not.toHaveBeenCalled();
+  });
+});
+
+describe("the mouse wheel over a graph zooms it, never scrolls", () => {
+  it("lets the user zoom, whatever the frame around it", () => {
+    render(<GraphCanvas {...BASE_PROPS} />);
+    expect(cytoscape.mock.calls.at(-1)?.[0]).toMatchObject({ userZoomingEnabled: true });
+    expect(cy.userZoomingEnabled).not.toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the wheel from scrolling the page or the results under the canvas", () => {
+    const { container } = render(<GraphCanvas {...BASE_PROPS} />);
+    const canvas = container.querySelector(".gf-canvas") as HTMLElement;
+    const wheel = new WheelEvent("wheel", { deltaY: 120, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(true);
   });
 });

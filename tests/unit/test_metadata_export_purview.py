@@ -15,11 +15,13 @@ data product then becomes a Unified Catalog data product in the governance domai
 domain's name, owned by its owner role's holders as Entra users, with its members' Data Map
 entities as its data assets."""
 
-# Requirements: REQ-2118
+# Requirements: REQ-2118, REQ-1387, REQ-1389, REQ-2141
 
 from __future__ import annotations
 
+import base64
 import json
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -29,11 +31,11 @@ from pydantic import ValidationError
 from provisa.api.metadata_export import purview
 from provisa.api.metadata_export.atlas import AtlasExport
 from provisa.api.metadata_export.builder import build_snapshot
+from provisa.api.metadata_export.publishing import _snapshot_uris
 from provisa.api.metadata_export.provider import PublishResult
 from provisa.api.metadata_export.purview import (
     PurviewExport,
     catalog_status,
-    product_id,
     update_frequency,
 )
 from provisa.api.metadata_export.registry import metadata_export
@@ -52,7 +54,33 @@ pytestmark = pytest.mark.unit
 
 TENANT = "tenant-1"
 CATALOG = f"https://{TENANT}-api.purview-service.microsoft.com/datagovernance/catalog"
+# The id the fake service gives the snapshot's product.
+PRODUCT_ID = "svc-Sales-360"
+# CatalogModelDataProductTypeEnum, 2026-03-20-preview.
+PRODUCT_TYPES = {
+    "Master",
+    "Reference",
+    "Analytical",
+    "AI",
+    "MasterDataAndReferenceData",
+    "BusinessSystemOrApplication",
+    "ModelTypes",
+    "DashboardsOrReports",
+    "Operational",
+    "MLAITrainingDataSet",
+    "MLAITestingDataSet",
+    "TransactionalDataset",
+    "AnalyticsModel",
+    "SemanticModel",
+}
 DOMAIN_ID = "11111111-1111-1111-1111-111111111111"
+PROVISA_OID = "oid-provisa"
+
+
+def _token(scope: str) -> str:
+    """An Entra access token as the catalog reads it: its claims name Provisa's principal."""
+    claims = base64.urlsafe_b64encode(json.dumps({"oid": PROVISA_OID}).encode()).decode()
+    return f"header.{claims.rstrip('=')}.{scope}"
 
 
 def _target() -> MetadataExportTarget:
@@ -68,7 +96,9 @@ def _target() -> MetadataExportTarget:
     )
 
 
-def _snapshot(*, owners=("owner@example.com",), domain="sales", status="active"):
+def _snapshot(
+    *, owners=("owner@example.com",), domain="sales", status="live", members=True, glossary=None
+):
     config = ProvisaConfig(
         sources=[
             Source(
@@ -88,7 +118,7 @@ def _snapshot(*, owners=("owner@example.com",), domain="sales", status="active")
                 domain_id=domain,
                 schema_name="public",
                 table_name=name,
-                product_id="sales_360",
+                product_id="sales_360" if members else None,
                 cache_ttl=ttl,
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
@@ -104,12 +134,18 @@ def _snapshot(*, owners=("owner@example.com",), domain="sales", status="active")
                 usage="Join on customer_id",
                 limitations="No refunds",
                 status=status,
+                status_reason="Replaced." if status in ("deprecated", "retired") else None,
             )
         ],
         roles=[],
     )
     return build_snapshot(
-        config, org_id="acme", dialect="postgres", contexts={}, owner_emails={"data_owner": owners}
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        owner_emails={"data_owner": owners},
+        glossary=glossary,
     )
 
 
@@ -123,13 +159,20 @@ class _Purview:
         self.assets: dict[str, str] = {}  # data map guid -> data asset id
         self.related: dict[str, set[str]] = {}
         self.calls: list[tuple[str, str]] = []
+        self.terms: dict[str, dict] = {}
+        # The bindings the publish path keeps for this target between publishes (REQ-1389).
+        self.bindings: dict[str, tuple[str, str]] = {}
+        # term id -> its relationships, as the catalog lists them
+        self.term_relations: dict[str, list[dict]] = {}
+        # governance domain ids whose terms cannot be listed (503)
+        self.unreadable: set[str] = set()
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         url, method = request.url, request.method
         self.calls.append((method, url.path))
         if url.host == "login.microsoftonline.com":
             scope = dict(httpx.QueryParams(request.content.decode()))["scope"]
-            return httpx.Response(200, json={"access_token": f"token:{scope}"})
+            return httpx.Response(200, json={"access_token": _token(scope)})
         if url.host == "graph.microsoft.com":
             assert request.headers["Authorization"].endswith("graph.microsoft.com/.default")
             email = url.path.rsplit("/", 1)[-1]
@@ -151,19 +194,99 @@ class _Purview:
             ]
             return httpx.Response(200, json={"value": found})
         if path == "/dataAssets":
+            # As the live service does, whatever the published schema says (run 40102236534).
+            missing = [k for k in ("name", "type") if k not in body]
+            if missing:
+                errors = {k: [f"Required property '{k}' not found in JSON."] for k in missing}
+                return httpx.Response(400, json={"errors": errors})
+            assert body["type"] == "General"
+            if (body.get("source") or {}).get("type") != "DataMap":
+                return httpx.Response(400, json={"error": {"code": "DataCatalogInvalidEntity"}})
             asset_id = f"asset-{body['source']['assetId']}"
             self.assets[body["source"]["assetId"]] = asset_id
             return httpx.Response(201, json={"id": asset_id})
+        if (
+            path.startswith("/dataProducts")
+            and method in ("POST", "PUT")
+            and "relationships" not in path
+        ):
+            # The service requires a data product's type (run 40105170193).
+            if body.get("type") not in PRODUCT_TYPES:
+                message = 'Property "type" is required.'
+                return httpx.Response(
+                    400, json={"error": {"code": "DataCatalogInvalidEntity", "message": message}}
+                )
+        if path == "/dataProducts" and method == "GET":
+            listed = [p for p in self.products.values() if p["domain"] == url.params["domainId"]]
+            return httpx.Response(200, json={"value": listed})
         if path == "/dataProducts" and method == "POST":
-            self.products[body["id"]] = body
-            return httpx.Response(201, json=body)
+            # As with a term, the service gives a product its own id.
+            assigned = f"svc-{body['name'].replace(' ', '-')}"
+            self.products[assigned] = {
+                **body,
+                "id": assigned,
+                "systemData": {"createdBy": PROVISA_OID},
+            }
+            return httpx.Response(201, json=self.products[assigned])
+        if path == "/terms" and method == "GET":
+            if url.params["domainId"] in self.unreadable:
+                return httpx.Response(503, json={"error": {"code": "ServiceUnavailable"}})
+            listed = [t for t in self.terms.values() if t["domain"] == url.params["domainId"]]
+            return httpx.Response(200, json={"value": listed})
+        if path == "/terms" and method == "POST":
+            # The service gives a term its own id, whatever the create sends (run 40107606920).
+            assigned = f"svc-{body['name'].replace(' ', '-')}"
+            self.terms[assigned] = {
+                **body,
+                "id": assigned,
+                "systemData": {"createdBy": PROVISA_OID},
+            }
+            return httpx.Response(201, json=self.terms[assigned])
+        if path.startswith("/terms/") and path.endswith("/relationships"):
+            tid = path.split("/")[2]
+            if tid not in self.terms:
+                message = f"Term with id {tid} does not exist."
+                return httpx.Response(
+                    404, json={"error": {"code": "DataCatalogNotFoundError", "message": message}}
+                )
+            relations = self.term_relations.setdefault(tid, [])
+            category = url.params["entityType"]
+            if method == "GET":
+                # As the service lists a term's relationships: the entity and the type, no author.
+                listed = [
+                    {"entityId": r["entityId"], "relationshipType": r["relationshipType"]}
+                    for r in relations
+                    if r["category"] == category
+                ]
+                return httpx.Response(200, json={"value": listed})
+            if method == "POST":
+                relations.append({**body, "category": category})
+                return httpx.Response(200, json=body)
+            relations[:] = [
+                r
+                for r in relations
+                if not (
+                    r["category"] == category
+                    and r["entityId"] == url.params["entityId"]
+                    and r["relationshipType"] == url.params["relationshipType"]
+                )
+            ]
+            return httpx.Response(204)
+        if path.startswith("/terms/"):
+            tid = path.split("/")[2]
+            if method == "GET":
+                if tid not in self.terms:
+                    return httpx.Response(404, json={"error": {"code": "NotFound"}})
+                return httpx.Response(200, json=self.terms[tid])
+            self.terms[tid] = body
+            return httpx.Response(200, json=body)
         if path.endswith("/relationships"):
             pid = path.split("/")[2]
             related = self.related.setdefault(pid, set())
             if method == "GET":
                 return httpx.Response(200, json={"value": [{"entityId": e} for e in related]})
             if method == "POST":
-                related.update(v["entityId"] for v in body.values())
+                related.add(body["entityId"])
                 return httpx.Response(200, json={})
             related.discard(url.params["entityId"])
             return httpx.Response(204)
@@ -173,7 +296,7 @@ class _Purview:
                 return httpx.Response(404, json={"error": {"code": "NotFound"}})
             return httpx.Response(200, json=self.products[pid])
         if method == "PUT":
-            self.products[pid] = body
+            self.products[pid] = {**body, "systemData": self.products[pid]["systemData"]}
             return httpx.Response(200, json=body)
         raise AssertionError(f"unexpected {method} {url}")
 
@@ -187,16 +310,33 @@ def api(monkeypatch):
         "AsyncClient",
         lambda **kw: real(transport=httpx.MockTransport(fake.handle), **kw),
     )
+    # Each publish is handed the bindings the earlier ones captured, and what it captures is
+    # kept after it, pruned to what it published, as the publish path does (publish_snapshot).
+    published = PurviewExport.publish
+
+    async def _publish(self, snapshot):
+        self.stored_bindings = dict(fake.bindings)
+        result = await published(self, snapshot)
+        keep = _snapshot_uris(snapshot) | set(result.bindings)
+        fake.bindings = {
+            uri: bound for uri, bound in {**fake.bindings, **result.bindings}.items() if uri in keep
+        }
+        return result
+
+    monkeypatch.setattr(PurviewExport, "publish", _publish)
     return fake
 
 
 @pytest.fixture
 def data_map(monkeypatch):
-    """The Data Map publish: each table's guid, as the Atlas adapter returns it."""
+    """The Data Map publish: each table's guid, and a count of the glossary terms it wrote, as
+    the Atlas adapter returns them."""
     guids: dict[str, str] = {}
 
     async def _published(self, snapshot):
         result = PublishResult(provider_name=self.provider_name)
+        if snapshot.glossary_terms:
+            result.published["glossary_term"] = len(snapshot.glossary_terms)
         for table in snapshot.tables:
             name = table.ref.parts[-1]
             if name in guids:
@@ -220,18 +360,16 @@ def test_a_purview_target_signs_in_with_entra():
 
 
 @pytest.mark.parametrize(
-    ("status", "publish", "expected"),
+    ("status", "expected"),
     [
-        ("active", False, "PUBLISHED"),
-        ("deprecated", False, "EXPIRED"),
-        ("retired", True, "EXPIRED"),
-        ("proposed", True, "DRAFT"),
-        (None, True, "PUBLISHED"),
-        (None, False, "DRAFT"),
+        ("draft", "DRAFT"),
+        ("live", "PUBLISHED"),
+        ("deprecated", "PUBLISHED"),  # REQ-1634 STATUS: still in service
+        ("retired", "EXPIRED"),
     ],
 )
-def test_the_status_is_the_catalogs(status: Any, publish: bool, expected: str):
-    product = type("P", (), {"status": status, "publish": publish})()
+def test_the_status_is_the_catalogs(status: Any, expected: str):
+    product = type("P", (), {"status": status})()
     assert catalog_status(product) == expected  # type: ignore[arg-type]
 
 
@@ -247,14 +385,14 @@ async def test_a_product_is_created_in_its_domain_with_owners_and_assets(api, da
     assert result.ok, result.errors
     assert result.published["data_products"] == 1 and result.published["data_assets"] == 2
     (product,) = snapshot.data_products
-    body = api.products[product_id(product)]
+    body = api.products[PRODUCT_ID]
     assert body["name"] == "Sales 360" and body["domain"] == DOMAIN_ID
     assert body["contacts"]["owner"] == [{"id": "oid-owner", "description": "owner@example.com"}]
     assert body["status"] == "PUBLISHED" and body["updateFrequency"] == "Hourly"
     assert body["businessUse"] == "Join on customer_id"
     assert "Every sale" in body["description"] and "Limitations: No refunds" in body["description"]
     assert set(api.assets) == {"guid-orders", "guid-customers"}
-    assert api.related[product_id(product)] == {"asset-guid-orders", "asset-guid-customers"}
+    assert api.related[PRODUCT_ID] == {"asset-guid-orders", "asset-guid-customers"}
 
 
 async def test_a_second_publish_updates_in_place_and_drops_a_former_member(api, data_map):
@@ -262,8 +400,8 @@ async def test_a_second_publish_updates_in_place_and_drops_a_former_member(api, 
     del data_map["customers"]  # no longer in the Data Map's result: no longer an asset
     result = await _export().publish(_snapshot())
     (product,) = _snapshot().data_products
-    assert ("PUT", f"/datagovernance/catalog/dataProducts/{product_id(product)}") in api.calls
-    assert api.related[product_id(product)] == {"asset-guid-orders"}
+    assert ("PUT", f"/datagovernance/catalog/dataProducts/{PRODUCT_ID}") in api.calls
+    assert api.related[PRODUCT_ID] == {"asset-guid-orders"}
     assert [e.message for e in result.errors] == [
         "pg.public.customers is not in the Purview Data Map, so it cannot be an asset of sales_360"
     ]
@@ -283,3 +421,203 @@ async def test_an_owner_entra_does_not_know_is_reported(api, data_map):
     ]
     (body,) = api.products.values()
     assert [o["id"] for o in body["contacts"]["owner"]] == ["oid-owner"]
+
+
+# --- The Unified Catalog business glossary (REQ-1387, REQ-1389) -----------------------------
+
+
+def _term(term_id: int, name: str, **extra: Any) -> dict:
+    return {
+        "id": term_id,
+        "name": name,
+        "definition": f"what {name} means",
+        "is_abstract": False,
+        "deprecated": False,
+        "deprecation_asserted": False,
+        "status_reason": None,
+        "retire_on": None,
+        **extra,
+    }
+
+
+def _glossary(*, edges=None, domains=None) -> dict:
+    """order: a Class grounded in orders; party: a Concept above it; client: a synonym of it."""
+    return {
+        "terms": [
+            _term(1, "order"),
+            _term(2, "party", is_abstract=True),
+            _term(3, "client", is_abstract=True),
+        ],
+        "refs": [],
+        "table_refs": [
+            {"term_id": 1, "source_id": "pg", "schema_name": "public", "table_name": "orders"}
+        ],
+        "edges": edges
+        if edges is not None
+        else [
+            {"from_term_id": 1, "to_term_id": 2, "rel_type": "KIND_OF"},
+            {"from_term_id": 3, "to_term_id": 1, "rel_type": "SYNONYM_OF"},
+        ],
+        "experts": [],
+        "domains": domains
+        if domains is not None
+        else [{"term_id": t, "domain_id": "sales"} for t in (1, 2, 3)],
+    }
+
+
+def _ids(api) -> dict[str, str]:
+    """Each term's Unified Catalog id, by name, as the service assigned it."""
+    return {t["name"]: t["id"] for t in api.terms.values()}
+
+
+def _relations(api, tid: str, category: str) -> set[tuple[str, str]]:
+    return {
+        (r["entityId"], r["relationshipType"])
+        for r in api.term_relations.get(tid, [])
+        if r["category"] == category
+    }
+
+
+async def test_terms_land_in_their_domain_with_parent_status_and_relationships(api, data_map):
+    snapshot = _snapshot(glossary=_glossary())
+    # REQ-2144: a curator deprecated client; it is still in service, and EXPIRED in Purview.
+    snapshot.glossary_terms = [
+        replace(t, status="deprecated") if t.name == "client" else t
+        for t in snapshot.glossary_terms
+    ]
+    result = await _export().publish(snapshot)
+    assert result.ok, result.errors
+    ids = _ids(api)
+    order, party, client = (api.terms[ids[n]] for n in ("order", "party", "client"))
+    assert {t["domain"] for t in (order, party, client)} == {DOMAIN_ID}
+    # KIND_OF is the hierarchy; the parent is created first.
+    assert order["parentId"] == ids["party"] and "parentId" not in party
+    assert (party["status"], client["status"]) == ("PUBLISHED", "EXPIRED")
+    assert _relations(api, ids["client"], "TERM") == {(ids["order"], "Synonym")}
+    # REQ-1389: the Class term is related to the data asset of the table it grounds.
+    assert _relations(api, ids["order"], "DATAASSET") == {("asset-guid-orders", "Related")}
+    assert _relations(api, ids["party"], "DATAASSET") == set()
+    # The Data Map's terms and the Unified Catalog's are counted apart: each term is written to
+    # both, and the publish's glossary_term is the Data Map's, as on Atlas.
+    assert result.published["glossary_term"] == 3
+    assert result.published["unified_catalog_term"] == 3
+    assert result.published["unified_catalog_term_assignment"] == 1
+    assert result.published["unified_catalog_term_relationship"] == 1
+
+
+async def test_a_republish_keeps_a_stewards_curation_and_adds_nothing(api, data_map):
+    await _export().publish(_snapshot(glossary=_glossary()))
+    ids = _ids(api)
+    api.terms[ids["order"]]["acronyms"] = ["ORD"]
+    before = {tid: list(r) for tid, r in api.term_relations.items()}
+    result = await _export().publish(_snapshot(glossary=_glossary()))
+    assert result.ok, result.errors
+    assert api.terms[ids["order"]]["acronyms"] == ["ORD"]
+    assert api.term_relations == before
+
+
+async def test_a_republish_finds_its_terms_by_name_under_the_ids_the_service_gave(api, data_map):
+    """The service gives a term an id of its own, whatever the create proposes; a republish
+    finds Provisa's terms by name in their domain and updates them there, adding none."""
+    snapshot = _snapshot(glossary=_glossary())
+    await _export().publish(snapshot)
+    first = dict(_ids(api))
+    assert all(tid.startswith("svc-") for tid in first.values())
+    result = await _export().publish(_snapshot(glossary=_glossary()))
+    assert result.ok, result.errors
+    assert _ids(api) == first
+    assert api.terms[first["order"]]["parentId"] == first["party"]
+
+
+async def test_a_term_of_provisas_name_a_person_made_is_never_modified(api, data_map):
+    api.terms["their-party"] = {
+        "id": "their-party",
+        "name": "party",
+        "domain": DOMAIN_ID,
+        "systemData": {"createdBy": "oid-steward"},
+    }
+    result = await _export().publish(_snapshot(glossary=_glossary()))
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.message.split(":")[0] for e in refused] == ["term 'party'"]
+    assert api.terms["their-party"] == {
+        "id": "their-party",
+        "name": "party",
+        "domain": DOMAIN_ID,
+        "systemData": {"createdBy": "oid-steward"},
+    }
+
+
+async def test_a_domain_whose_terms_cannot_be_listed_has_none_written(api, data_map):
+    """REQ-1389: without the domain's live terms Provisa cannot tell its own from a person's, so
+    that domain's terms are refused, reported; the read failure is named."""
+    await _export().publish(_snapshot(glossary=_glossary()))
+    before = {tid: dict(t) for tid, t in api.terms.items()}
+    api.unreadable.add(DOMAIN_ID)
+    api.calls.clear()
+    result = await _export().publish(_snapshot(glossary=_glossary()))
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert len(refused) == 1 and "HTTP 503" in refused[0].message
+    assert not [p for m, p in api.calls if m in ("PUT", "POST") and p.endswith("/terms")]
+    assert api.terms == before
+
+
+async def test_a_stewards_relationships_stand_and_provisas_stale_ones_leave(api, data_map):
+    """The service lists a relationship with no author, so Provisa's are the ones its publishes
+    recorded writing: a relationship it has no record of is a person's and stands. Provisa's
+    own that the snapshot no longer carries is removed, and a term that left the snapshot loses
+    Provisa's relationships but keeps its entry."""
+    await _export().publish(_snapshot(glossary=_glossary()))
+    ids = _ids(api)
+    api.term_relations[ids["order"]].append(
+        {"entityId": "asset-x", "relationshipType": "Related", "category": "DATAASSET"}
+    )
+    gone = {**_glossary(), "terms": _glossary()["terms"][:2], "edges": []}
+    gone["domains"] = [d for d in gone["domains"] if d["term_id"] != 3]
+    result = await _export().publish(_snapshot(glossary=gone))
+    assert result.ok, result.errors
+    assert ("asset-x", "Related") in _relations(api, ids["order"], "DATAASSET")
+    assert _relations(api, ids["client"], "TERM") == set()
+    assert ids["client"] in api.terms  # never deleted
+    assert "parentId" not in api.terms[ids["order"]]  # the KIND_OF edge left
+
+
+async def test_a_term_whose_domains_purview_lacks_is_reported(api, data_map):
+    glossary = _glossary(
+        domains=[
+            {"term_id": 1, "domain_id": "sales"},
+            {"term_id": 2, "domain_id": "ops"},
+            {"term_id": 3, "domain_id": "sales"},
+        ]
+    )
+    result = await _export().publish(_snapshot(glossary=glossary))
+    assert [e.message for e in result.errors] == [
+        "term 'party': Purview has no governance domain named 'ops'"
+    ]
+    assert "parentId" not in api.terms[_ids(api)["order"]]
+
+
+async def test_a_product_of_its_name_a_person_made_is_never_modified(api, data_map):
+    theirs = {
+        "id": "their-product",
+        "name": "Sales 360",
+        "domain": DOMAIN_ID,
+        "systemData": {"createdBy": "oid-steward"},
+    }
+    api.products["their-product"] = dict(theirs)
+    result = await _export().publish(_snapshot())
+    assert [e.message for e in result.errors] == [
+        "not written: its domain holds a data product of that name Provisa did not make"
+    ]
+    assert api.products == {"their-product": theirs}
+
+
+async def test_a_retired_product_is_expired_with_no_assets(api, data_map):
+    """REQ-1634 STATUS: retired, its members went to its successor; the catalog is told so rather
+    than left listing it as published."""
+    await _export().publish(_snapshot())
+    result = await _export().publish(_snapshot(status="retired", members=False))
+    assert result.ok, result.errors
+    # The service gives a product an id of its own: it is found by its name.
+    (body,) = [p for p in api.products.values() if p["name"] == "Sales 360"]
+    assert body["status"] == "EXPIRED"
+    assert api.related[body["id"]] == set()

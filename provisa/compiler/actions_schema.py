@@ -31,6 +31,7 @@ from graphql import (
 
 from provisa.compiler.naming import apply_gql_name, domain_to_sql_name, mutation_style
 from provisa.compiler.type_map import JSONScalar
+from provisa.security.mutation_authz import command_assigned
 from provisa.compiler.schema_types import SchemaInput, _TableInfo  # noqa: F401  (annotations)
 
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
@@ -156,7 +157,11 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
         """Each declared argument under its own name: a field's arguments and its return type's
         fields are separate namespaces, so nothing needs renaming."""
         return {
-            a["name"]: GraphQLArgument(_gql_scalar(a.get("type", "String")))
+            a["name"]: GraphQLArgument(
+                _gql_scalar(a.get("type", "String")),
+                # REQ-2168: left out, the argument takes its default.
+                **({"default_value": a["default"]} if "default" in a else {}),
+            )
             for a in arguments
             if a.get("name")
         }
@@ -176,9 +181,14 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             resolve_return_and_args: Callable(item) → (gql_return, args) that computes
                 the GraphQL return type and argument dict for one item.
         """
+        from provisa.core.command_bindings import binding_name
+
         for item in items:
-            visible_to = item.get("visible_to") or []
-            if visible_to and role_id not in visible_to:
+            # REQ-2168: the field is the command's GraphQL command binding; none when excluded.
+            called = binding_name(item, "graphql")
+            if called is None:
+                continue
+            if not command_assigned(item, role_id):  # REQ-2153: an empty list names no role
                 continue
             domain_id = item.get("domain_id", "")
             # REQ-1531: a command sits in a domain, and a role is shown the commands of the
@@ -205,7 +215,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             # Apply the active GraphQL naming convention to the command name, exactly like table
             # fields (apollo_graphql -> camelCase). The reverse lookup in app_loaders applies the
             # SAME transform, so the emitted field name still routes back to the command (REQ-1156).
-            field_key = apply_gql_name(item["name"])
+            field_key = apply_gql_name(called)
             if si.domain_prefix and domain_id:
                 alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
                 field_key = f"{alias}__{field_key}"

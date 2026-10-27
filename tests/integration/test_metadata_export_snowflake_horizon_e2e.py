@@ -40,6 +40,7 @@ from tests.integration.metadata_export_server import (
     SOURCE,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -110,8 +111,9 @@ async def published(engine_database):
         f"{quote(creds['SNOWFLAKE_PASSWORD'], safe='')}@{creds['SNOWFLAKE_ACCOUNT']}/"
         f"{database}?warehouse={quote(creds['SNOWFLAKE_WAREHOUSE'], safe='')}"
     )
+    # A draft (REQ-1634 STATUS): the organization listing stays unpublished in the shared account.
     async with published_server(
-        ORG, engine="snowflake", env={"PROVISA_ENGINE_URL": dsn}, with_view=False
+        ORG, engine="snowflake", env={"PROVISA_ENGINE_URL": dsn}, with_view=False, status="draft"
     ) as client:
         # A member is replicated into Snowflake on its first read; its export view is what the
         # listing shares.
@@ -127,7 +129,7 @@ async def published(engine_database):
 
 async def test_the_publish_reports_the_data_product(published):
     result = published[2]
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     assert result["published"]["data_products"] == 1
 
 

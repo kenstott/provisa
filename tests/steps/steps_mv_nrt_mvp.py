@@ -114,6 +114,8 @@ def _register(ctx, monkeypatch):
         tables=[{"id": 1, "source_id": "pg", "schema_name": "public", "table_name": "orders"}],
         source_catalogs={},
         contexts={},
+        # The model-wide context the view's inputs also resolve against: none beyond ``tables``.
+        view_context=None,
     )
     mod = types.ModuleType("provisa.api.app")
     mod.state = state  # type: ignore[attr-defined]

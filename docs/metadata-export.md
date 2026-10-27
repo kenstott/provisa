@@ -3,9 +3,10 @@
 Provisa publishes the metadata it governs — tables, columns, domains, stewards, approved
 relationships and column-level lineage — to an external data catalog.
 
-Publication is **outbound only**. There is no path that reads an external catalog back into
-Provisa, and none is planned: Provisa is the upstream of this relationship. A description edited
-in the target catalog is overwritten by the next publish.
+Export writes to a catalog. A catalog's descriptions, owners, tags and glossary links can also
+be read back into Provisa, table by table, when a steward asks for it (see the Catalogs panel).
+Governance (grants, row rules and masks) is never read from a catalog. A description edited in
+the target catalog is overwritten by the next publish, unless the table is locked to that catalog.
 
 ## Supported targets
 
@@ -17,7 +18,7 @@ matches each one's ingestion API.
 | `openlineage` | Marquez, or any OpenLineage consumer | OpenLineage events posted to `/api/v1/lineage` |
 | `openmetadata` | OpenMetadata | Entity upsert by fully-qualified name, then lineage edges by the server-assigned UUID |
 | `atlas` | Apache Atlas, and Microsoft Purview | Atlas RDBMS entities posted to `/api/atlas/v2/entity/bulk` |
-| `atlan` | Atlan | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
+| `atlan` | Atlan (beta) | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
 | `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
@@ -25,6 +26,15 @@ matches each one's ingestion API.
 | `unity_catalog` | Databricks Unity Catalog: a schema of views per data product, optionally a Delta Share | Engine-native: SQL on the Databricks engine's own warehouse connection |
 | `datazone` | Amazon DataZone (SageMaker Catalog) data products | The DataZone API of the target's `aws_region`, signed with its AWS keys |
 | `dataplex` | Google Dataplex data products | REST calls to `{endpoint}/v1/projects/{gcp_project}/locations/{gcp_location}/dataProducts...` |
+
+### Atlan (beta)
+
+The Atlan adapter has not yet run against a live Atlan tenant. It is built on Atlan's Atlas-shaped
+API as Atlan documents it, and its updates follow Atlas's rules: an update starts from the live
+asset's attributes, only Provisa's `provisa_*` tags are added or removed, and an asset whose live
+read fails is not written. Unit tests cover all of this; no end-to-end run against Atlan does yet.
+Until one does, the Admin tab and every page that names Atlan as a target show it as
+**Atlan (beta)**.
 
 Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
@@ -160,60 +170,85 @@ table at three columns and an approved relationship carries far more than that.
 
 ## Configuration
 
-Metadata export is a **per-organization** setting: the catalogs an org publishes to, and the
-credentials it publishes with, belong to that org rather than to the deployment. An org may publish
-to several catalogs at once, two of one provider among them; one publish reaches every target.
-Configure it in **Admin → Metadata Export**, or under `metadata_export` in the config YAML.
+Metadata export is a **per-organization** setting. An org may publish to several catalogs at once,
+two of one provider among them, and one publish reaches every target. Each catalog is connected
+once in **Admin → Catalogs**, under `catalogs` in the config YAML, with its address, its
+credentials and the domains that work with it. A target names one of those catalogs and holds only
+the export's own settings for it. Configure the export in **Admin → Metadata Export**, or under
+`metadata_export` in the config YAML.
 
 ```yaml
+catalogs:
+  - id: marquez
+    provider: openlineage    # openlineage | openmetadata | atlas | purview | atlan | datahub | collibra | snowflake_horizon | unity_catalog | dataplex | datazone
+    endpoint: http://marquez:5000
+    auth_mode: api_key       # api_key | bearer | basic | entra | google_service_account
+    api_key: ${MARQUEZ_API_KEY}
+    timeout_seconds: 30
+    domains: [sales, finance]
+  - id: openmetadata-prod
+    provider: openmetadata
+    endpoint: https://openmetadata.example.com
+    auth_mode: bearer
+    token: ${OPENMETADATA_TOKEN}
+    domains: [sales]
+  - id: datazone
+    provider: datazone
+    aws_region: us-east-1
+    datazone_domain_id: dzd_abc123
+    aws_access_key_id: ${DATAZONE_ACCESS_KEY_ID}
+    aws_secret_access_key: ${DATAZONE_SECRET_ACCESS_KEY}
+    domains: [finance]
+
 metadata_export:
   enabled: true
   reconcile_cron: "0 * * * *"
   targets:
-    - id: marquez
-      provider: openlineage    # openlineage | openmetadata | atlas | purview | atlan | datahub | collibra | snowflake_horizon | unity_catalog | dataplex | datazone
-      endpoint: http://marquez:5000
-      auth_mode: api_key       # api_key | bearer | basic | entra | google_service_account
-      api_key: ${MARQUEZ_API_KEY}
-      timeout_seconds: 30
-    - id: openmetadata-prod
-      provider: openmetadata
-      endpoint: https://openmetadata.example.com
-      auth_mode: bearer
-      token: ${OPENMETADATA_TOKEN}
-    - id: dataplex
-      provider: dataplex
-      endpoint: https://dataplex.googleapis.com
-      auth_mode: google_service_account
-      google_service_account_json: ${DATAPLEX_SERVICE_ACCOUNT_JSON}
-      gcp_project: acme-data
-      gcp_location: us
+    - catalog: marquez
+      role: catalog_reader
+    - catalog: openmetadata-prod
+      role: catalog_reader
+    - catalog: datazone
+      role: finance_reader
+      datazone_project_id: prj_def456
 ```
+
+Catalog settings:
+
+| Setting | Meaning |
+| --- | --- |
+| `id` | The catalog's name within the org, unique there. What Provisa records of each published asset's id in that catalog is kept under it, so two catalogs of one provider never share it. |
+| `provider` | Which adapter backs the catalog. An unrecognized name is refused when the adapter is constructed. |
+| `endpoint` | Base URL of the catalog. A catalog with no endpoint is refused when it is saved. Not required for `snowflake_horizon` or `unity_catalog`, which work through the engine's own connection, or for `datazone`, which signs requests to its region's own address. |
+| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`, and `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
+| `username` | The account name for `basic`. Unused by the other modes. |
+| `gcp_project`, `gcp_location` | Where a `dataplex` catalog keeps the org's data products. A `dataplex` catalog without both is refused when it is saved. |
+| `aws_region`, `datazone_domain_id` | The DataZone domain a `datazone` catalog is. A `datazone` catalog without both is refused when it is saved. |
+| `aws_access_key_id`, `aws_secret_access_key` | The AWS keys a `datazone` catalog signs its requests with. |
+| `timeout_seconds` | Per-request timeout against the catalog. |
+| `domains` | The domains that work with this catalog: their tables and data products publish to it, and their tables offer it when a description is taken from a catalog. A catalog serves at least one domain. The glossary publishes to every catalog. |
+
+Export settings:
 
 | Setting | Meaning |
 | --- | --- |
 | `enabled` | Whether this org publishes at all. An enabled export with no target is refused when it is saved, not at the next publish. |
 | `targets` | The catalogs the org publishes to. A target left out of the list when the settings are saved is removed. |
-| `id` | The target's name within the org, unique there. What Provisa records of each published asset's id in that catalog is kept under it, so two targets of one provider never share it. |
-| `provider` | Which adapter backs the target. An unrecognized name is refused when the adapter is constructed. |
-| `endpoint` | Base URL of the target catalog. A target with no endpoint is refused when it is saved. Not required for `snowflake_horizon`, which connects off the engine's own configured DSN instead. |
-| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`, and `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
-| `username` | The account name for `basic`. Unused by the other modes. |
-| `gcp_project`, `gcp_location` | Where a `dataplex` target keeps the org's data products. A `dataplex` target without both is refused when it is saved. |
-| `aws_region`, `datazone_domain_id`, `datazone_project_id` | The DataZone domain a `datazone` target publishes to and the project that owns its data products. A `datazone` target without all three is refused when it is saved; it has no `endpoint`. |
-| `aws_access_key_id`, `aws_secret_access_key` | The AWS keys a `datazone` target signs its requests with. |
-| `delta_share` | Whether a `unity_catalog` target also publishes each product as a Delta Share. A `unity_catalog` target has no `endpoint`: it publishes through the Databricks engine. |
+| `catalog` | The catalog a target publishes to, by its `id`. A target naming no catalog of the org is refused when it is saved. |
+| `role` | The role a target publishes as. The catalog is sent exactly what that role reads: the columns it is served, the tables holding one, the data products with such a table, and the relationships, lineage, tags and glossary links among them. A target naming no role is sent nothing, and its publish reports the missing role. |
+| `datazone_project_id` | The project that owns the data products published to a `datazone` catalog. The export to a `datazone` catalog without it is refused when it is saved. |
+| `delta_share` | Whether a `unity_catalog` catalog also gets each product as a Delta Share. |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
-| `timeout_seconds` | Per-request timeout against the target. |
 
-Credentials are **write-only through the UI**. The admin surface reports each target's credentials as
-set or not set and never returns a stored value, so leaving a credential field blank keeps the one
-stored for that target and clearing it removes it.
+Credentials are **write-only through the UI**. The Catalogs panel reports each catalog's
+credentials as set or not set and never returns a stored value, so leaving a credential field blank
+keeps the one stored for that catalog and clearing it removes it.
 
 ### Operating it from the Admin tab
 
 - **Test connection** calls each target and reports the text it refused with, which is what
-  separates a wrong URL from a rejected credential.
+  separates a wrong URL from a rejected credential. **Admin → Catalogs** has the same test for
+  each catalog.
 - **Publish now** pushes a full snapshot to every target and shows each one's outcome, including
   the per-asset reasons behind a partial publish. A catalog that rejects one table does not cost the publish the rest:
   each rejection is reported against the asset it belongs to.
@@ -268,7 +303,19 @@ A daily export at 06:00:
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Ontology** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Ontology](ontology.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `dataplex`; glossary terms are silently omitted from their publishes.
+- **Ontology** — live terms with their definitions and typed relationships, each term's role (class, property or concept), and Provisa's assignment of each term to the data it means: a class term to the tables it grounds, a property term to its columns. A term must be in service, defined, and grounded to export; a relationship publishes only when both its terms do. See [Ontology](ontology.md) for the admission rule and the exclude-from-export control. Each target publishes the terms into one glossary Provisa owns, as the table below shows. Provisa writes and removes only its own assignments, recognized by the catalog's own record of who made them, so a steward's assignment is never removed or duplicated. `openlineage`, `snowflake_horizon` and `unity_catalog` publish no terms.
+
+| Target | Terms | Relationships | Role | Assignment to data |
+| --- | --- | --- | --- | --- |
+| `openmetadata` | The `provisa_<org>` glossary, beneath a Classes, Properties or Concepts group term | `KIND_OF` as the term hierarchy, `SYNONYM_OF` as synonyms, the rest as related terms | The `provisaRole` custom property | `Automated` glossary labels on tables and columns |
+| `datahub` | The org's Provisa node, in its Classes, Properties or Concepts child node | Inherits, contains and related terms | `provisaRole` in the term's custom properties | Term associations attributed to Provisa's actor |
+| `atlas`, Purview's Data Map | The Provisa glossary | Atlas's own term relations | `provisaRole` in the term's additional attributes | Semantic assignments whose source is Provisa |
+| `atlan` | The Provisa glossary | Atlas's own term relations | `provisaRole` in the term's additional attributes | Semantic assignments whose source is Provisa |
+| `collibra` | The Provisa Glossary domain | Collibra's term relation types | The `Provisa Role` attribute, which the target must have | Relations created by Provisa's own user |
+| `purview`, Unified Catalog | The governance domain named after the term's domain; for a term in several, the first of them alphabetically that Purview has | `KIND_OF` as the parent, synonym and related relationships | Not exported: the Unified Catalog term has no free property | A class term's relationship to its tables' data assets; a property term's columns reach Purview through the Data Map only |
+| `dataplex` | The `provisa-<org>` glossary, in a Classes, Properties or Concepts category | Synonym and related entry links | The `provisa-role` label | Definition entry links from BigQuery tables and columns, whose ids Provisa gives the `provisa-` prefix; a table whose entry Dataplex has not catalogued within a minute is reported by name |
+| `datazone` | The `Provisa glossary (<org>)` glossary | `KIND_OF` as `isA`; DataZone has no synonym or related relation | Not exported: the glossary term has no free property | None: DataZone records no author for an assignment, so Provisa's could not be told from a steward's |
+
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,

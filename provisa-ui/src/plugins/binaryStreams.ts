@@ -26,11 +26,17 @@ export function inlineBinaryStreams(html: string, renderer: string): string {
   return html.replace(BINARY_STREAMS_MARKER, () => `<script>\n${renderer}</script>`);
 }
 
+// Only the app's index.html shows the splash; the other HTML entries (source-sign-in.html,
+// auth-relay.html) are built through the same hook and pass through unchanged.
+export function binaryStreamsFor(html: string, page: string, renderer: () => string): string {
+  return path.basename(page) === "index.html" ? inlineBinaryStreams(html, renderer()) : html;
+}
+
 export const binaryStreams = (): Plugin => ({
   name: "provisa-binary-streams",
   transformIndexHtml: {
     order: "pre",
-    handler: (html: string) =>
-      inlineBinaryStreams(html, fs.readFileSync(BINARY_STREAMS_PATH, "utf-8")),
+    handler: (html: string, ctx: { path: string }) =>
+      binaryStreamsFor(html, ctx.path, () => fs.readFileSync(BINARY_STREAMS_PATH, "utf-8")),
   },
 });

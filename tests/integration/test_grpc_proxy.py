@@ -13,6 +13,8 @@ boundary is about translation logic, not DB execution.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -118,16 +120,30 @@ class TestUnknownType:
 
 
 class TestTranslation:
-    """The proxy lowers the request to a semantic SELECT, governs+routes it, executes the plan, and
-    keys each row by its proto field name. These patch the real pipeline seams (semantic-SQL → govern
-    → execute), not the retired GraphQL round-trip."""
+    """The proxy lowers the request to GraphQL text, compiles it, governs+routes the statement,
+    executes the plan, and keys each row by its proto field name. These patch the real pipeline
+    seams (lowering and compiling → govern → execute)."""
+
+    @staticmethod
+    @contextmanager
+    def _lowered():
+        """The request lowered to GraphQL and compiled to the statement the pipeline governs."""
+        compiled = SimpleNamespace(sql="SELECT id, name FROM pets", params=[])
+        with (
+            patch(
+                "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_graphql",
+                return_value=("{ pets(limit: 10) { id name } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[compiled],
+            ),
+        ):
+            yield
 
     @staticmethod
     def _patches(*, result=None, govern_side_effect=None):
-        semantic = patch(
-            "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_semantic_sql",
-            return_value=("SELECT id, name FROM pets", []),
-        )
+        semantic = TestTranslation._lowered()
         govern_kwargs = (
             {"side_effect": govern_side_effect}
             if govern_side_effect is not None
@@ -213,20 +229,26 @@ class TestGroupByIncludeNodes:
         app = _make_app(state, monkeypatch)
         c = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
+        from provisa.compiler.sql_types import ColumnRef
+
         compiled = MagicMock()
         compiled.sql = "SELECT 1"
         compiled.params = None
-        compiled.columns = ["status", "count"]
-        compiled.nodes_sql = "SELECT 2"
-        compiled.nodes_params = None
-        compiled.nodes_columns = [
-            self._column(nested_in="__join_key__", field_name="status"),
-            self._column(nested_in=None, field_name="id"),
-            self._column(nested_in=None, field_name="user"),
+        # Each group's nodes are a column of its own row (aggregates._nodes_column).
+        compiled.columns = [
+            ColumnRef(alias=None, column="status", field_name="status", nested_in="groupKey"),
+            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
+            ColumnRef(
+                alias=None,
+                column="nodes",
+                field_name="nodes",
+                nested_in=None,
+                cardinality="one-to-many",
+                is_agg=True,
+            ),
         ]
 
-        agg_result = MagicMock(rows=[["open", 2]])
-        nodes_result = MagicMock(rows=[["open", 7, {"email": "a@b.c"}]])
+        agg_result = MagicMock(rows=[["open", 2, '[{"id": 7, "user": {"email": "a@b.c"}}]']])
 
         gql_text = patch(
             "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_group_by_graphql_text",
@@ -250,7 +272,7 @@ class TestGroupByIncludeNodes:
         execute = patch(
             "provisa.api.data.endpoint_grpc_proxy._execute_plan",
             new_callable=AsyncMock,
-            side_effect=[agg_result, nodes_result],
+            side_effect=[agg_result],
         )
         with gql_text as gql_mock, parse, compile_, split_gb, split_agg, govern, execute:
             async with c:
@@ -272,7 +294,7 @@ class TestGroupByIncludeNodes:
         assert gql_mock.call_args.kwargs["include_nodes"] is True
         assert gql_mock.call_args.kwargs["include"] == ["user.email"]
 
-    async def test_nodes_are_joined_onto_their_group(self, state, monkeypatch):
+    async def test_nodes_come_with_their_group(self, state, monkeypatch):
         resp, _ = await self._post(
             state,
             monkeypatch,

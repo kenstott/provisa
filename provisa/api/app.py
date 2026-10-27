@@ -35,7 +35,7 @@ from provisa.federation.colocation import colocation_key
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
-from provisa.api.role_surface import RoleSurface
+from provisa.api.role_surface import LazySurface, RoleSurface
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_file import router as redirect_file_router
 from provisa.api.data.signal import router as signal_router
@@ -43,6 +43,7 @@ from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
 from provisa.api.data.endpoint_dev import router as dev_router
 from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
+from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
 from provisa.api.app_loaders import (
     _META_TABLE_ALIAS,
     _apply_server_and_engine_config,
@@ -773,9 +774,9 @@ class AppState:
 
     @property
     def bitemporal_view_reads(self) -> dict:
-        """REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a
-        request-level as-of (X-Provisa-As-Of) can overlay an as-of reconstruction over each one's
-        append log."""
+        """REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a reference
+        read at a time (its own as_of / as_recorded, or the session's) is read as of that time
+        from its append log."""
         return self._active_runtime().bitemporal_view_reads
 
     @bitemporal_view_reads.setter
@@ -881,7 +882,7 @@ class AppState:
         self._active_runtime().user_attributes = value
 
     @property
-    def surfaces(self) -> dict[str, RoleSurface]:
+    def surfaces(self) -> dict[str, RoleSurface | LazySurface]:
         """role id -> the role's whole data surface, from one build (api/role_surface.py)."""
         return self._active_runtime().surfaces
 
@@ -1063,6 +1064,15 @@ class AppState:
     @view_context.setter
     def view_context(self, value: CompilationContext | None) -> None:
         self._active_runtime().view_context = value
+
+    @property
+    def view_path_map(self) -> dict | None:
+        """The model-wide path map (OrgRuntime.view_path_map)."""
+        return self._active_runtime().view_path_map
+
+    @view_path_map.setter
+    def view_path_map(self, value: dict | None) -> None:
+        self._active_runtime().view_path_map = value
 
     @property
     def rls_contexts(self) -> MutableMapping[str, RLSContext]:
@@ -2654,9 +2664,9 @@ async def _build_org_runtime(
                     async with bound_to_request_org():
                         await rebuild_from_config(seed, conn, state.federation_engine)
                     if is_template_org(org_id):
-                        from provisa.api.demo_templates import write_declared_vector_models
+                        from provisa.api.demo_templates import write_declared_settings
 
-                        await write_declared_vector_models(state.model_db, seed)
+                        await write_declared_settings(state.model_db, seed)
                 async with bound_to_request_org():
                     org_config = await store_config(state.raw_config, conn)
                 unbound: set[str] = set()
@@ -2838,6 +2848,14 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # lands while the build reads leaves the runtime at the older stamp, so the config watcher
     # rebuilds once more; reading it afterwards would record a stamp newer than the model built.
     from provisa.core import config_stamp as _config_stamp
+    from provisa.core.relationship_names import store_effective_names
+
+    # REQ-351: every relationship's effective names, in the naming convention now in force: a build
+    # follows each save, configuration load and change of convention. Stored before the stamp is
+    # read, as each row it changes advances the stamp: read first, the runtime would be loaded at
+    # a stamp the model has already left, and no audit row could name its commit (REQ-1524).
+    async with state.model_db.acquire() as _names_conn:
+        await store_effective_names(cast("Connection", _names_conn))
 
     _stamped_runtime = state._active_runtime()
     _model_stamp = (await _config_stamp.read(state.model_db))[_config_stamp.MODEL]
@@ -3102,7 +3120,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                         _roles_t.c.capabilities,
                         _roles_t.c.domain_access,
                         _roles_t.c.rate_limit,
-                        _roles_t.c.parent_role_id,  # REQ-1677
+                        _roles_t.c.parents,  # REQ-2155
                         # REQ-1921: the data_residency grant's covered values. state.roles feeds
                         # residency_values_for_claims (the region-edit gate); without this column a
                         # role holding data_residency resolves to a dict with no residency_values
@@ -3125,16 +3143,19 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             expand_column_grants,
             expand_write_grants,
             flatten_role_dicts,
+            parent_map,
             role_chains,
         )
 
         role_chains_by_id = role_chains(roles)
+        # REQ-2155: each role's parents, which the row-rule and write-grant folds resolve over.
+        role_parents_by_id = parent_map(roles)
         # REQ-1363: then down the domain tree -- a role that lists a domain reaches every domain
         # under it. state.roles carries the flattened list, so every reader of a role's
         # domain_access (the data surfaces and the admin's domain gate) sees the subtree.
         roles = _domain_tree.flatten_role_domains(flatten_role_dicts(roles), _domain_parents)
         expand_column_grants(tables, role_chains_by_id)
-        expand_write_grants(tables, role_chains_by_id)  # REQ-2074
+        expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
 
         # Merge PG-stored allowed_domains into state; inject source naming into table dicts.
@@ -3189,7 +3210,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         # Introspect the engine metadata
         col_types_converted: dict[int, list[ColumnMetadata]] = introspect_tables(
-            state.engine_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})}
+            state.engine_conn,
+            tables,
+            sources,
+            {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **(kafka_physical or {})},
         )
 
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
@@ -3230,12 +3254,12 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
             conn, raw_config, tables
         )
-        # REQ-1677: child-precedence RLS — the nearest role in the chain with a rule for a table
-        # (REQ-1679: or an action) supplies that predicate for the child.
+        # REQ-1677, REQ-2155: child-precedence RLS -- a role's own rule for a table (REQ-1679: or
+        # an action) stands, else its parents' rules ORed.
         from provisa.security.inheritance import expand_grants, materialize_rls
 
         rls_rules = materialize_rls(
-            rls_rules, tables, role_chains_by_id, [*tracked_functions, *tracked_webhooks]
+            rls_rules, tables, role_parents_by_id, [*tracked_functions, *tracked_webhooks]
         )
         # REQ-1384: one predicate per (role, table) — the table's own or its domain's rule,
         # AND-ed with every rule on a tag the table carries and (REQ-1363) with the rule on every
@@ -3275,6 +3299,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         _metric_dicts = [m.model_dump() for m in _metric_models]
         expand_grants(_metric_dicts, role_chains_by_id)  # REQ-1677
         expand_grants(tracked_functions, role_chains_by_id)
+        # REQ-2131: a column transform is admitted like any command (action_exec.admit_command).
+        expand_grants(list(state.column_transforms.values()), role_chains_by_id)
         expand_grants(tracked_webhooks, role_chains_by_id)
 
         # REQ-1903: stable gRPC proto field numbers across schema regenerations — loaded from this
@@ -3314,24 +3340,28 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                 )
             )
 
-        _checked = _build_and_register_schemas(
-            roles=roles,
-            tables=tables,
-            relationships=relationships,
-            col_types_converted=col_types_converted,
-            naming_rules=naming_rules,
-            domains=domains,
-            domain_prefix=domain_prefix,
-            kafka_physical=kafka_physical,
-            tracked_functions=tracked_functions,
-            tracked_webhooks=tracked_webhooks,
-            gql_object_cols=_gql_object_cols,
-            rls_rules=rls_rules,
-            metrics=_metric_dicts,  # REQ-1319
-            field_numbers=_field_numbers,
-            draft_tables=draft_tables,  # REQ-1921
-        )
+    # REQ-1882, REQ-1900: the per-role compile needs no database, and is the rebuild's longest
+    # phase: it runs with this rebuild's connection given back, so concurrent requests and the
+    # health probe are not kept waiting at the connection gate for all of it.
+    _checked = _build_and_register_schemas(
+        roles=roles,
+        tables=tables,
+        relationships=relationships,
+        col_types_converted=col_types_converted,
+        naming_rules=naming_rules,
+        domains=domains,
+        domain_prefix=domain_prefix,
+        kafka_physical=kafka_physical,
+        tracked_functions=tracked_functions,
+        tracked_webhooks=tracked_webhooks,
+        gql_object_cols=_gql_object_cols,
+        rls_rules=rls_rules,
+        metrics=_metric_dicts,  # REQ-1319
+        field_numbers=_field_numbers,
+        draft_tables=draft_tables,  # REQ-1921
+    )
 
+    async with state.model_db.acquire() as conn:
         await persist_field_numbers(conn, _field_numbers)
 
         # REQ-2129: this build's column lineage edges, read by the meta domain's lineage views.
@@ -3380,7 +3410,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
-        "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
+        "physical_table_map": {
+            **_META_TABLE_ALIAS,
+            **ONTOLOGY_TABLE_ALIAS,
+            **(kafka_physical or {}),
+        },
         "metrics": _metric_dicts,  # REQ-1319
     }
     state.schema_version += 1
@@ -3553,6 +3587,13 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     async def _once_per_launch() -> None:
         """Everything the boot writes to the control plane and the engine's shared catalogs."""
         await _load_and_build()
+
+        # REQ-2135: a local start's install step -- server.public_url, when unset, is stored as
+        # the address its server listens on, the operator setting Deployment settings shows.
+        if state.admin_db is not None:
+            from provisa.core.local_install import set_public_url
+
+            set_public_url(state.admin_db)
 
         # REQ-1267: when PROVISA_IDP names an identity provider (e.g. firebase from the
         # GCP/installer deploy) but the loaded config carries no auth section, configure it now —
@@ -4248,7 +4289,10 @@ def create_app() -> FastAPI:
         content: dict = {"detail": str(exc)}
         if isinstance(code, str):
             reason = getattr(exc, "reason", None)
-            content.update(code=code, params={} if reason is None else {"reason": reason})
+            params = getattr(exc, "params", None)
+            if params is None:
+                params = {} if reason is None else {"reason": reason}
+            content.update(code=code, params=params)
         return _JSONResponse(status_code=403, content=content)
 
     from provisa.compiler.context import ModelNotServable as _ModelNotServable
@@ -4666,6 +4710,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(metadata_export_router)
+    from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
+
+    app.include_router(catalogs_router)
     from provisa.api.admin.data_product_documents_router import (  # REQ-2118
         router as data_product_documents_router,
     )
@@ -4691,6 +4738,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_checks_router)
+    from provisa.api.admin.profiler_classifications_router import (  # REQ-2147
+        router as profiler_classifications_router,
+    )
+
+    app.include_router(profiler_classifications_router)
     from provisa.api.admin.synthetic_router import router as synthetic_router  # REQ-1939
 
     app.include_router(synthetic_router)
@@ -4775,6 +4827,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.roles_router import router as roles_router
 
     app.include_router(roles_router)
+    from provisa.api.admin.table_access_router import router as table_access_router  # REQ-2162
+
+    app.include_router(table_access_router)
     from provisa.api.admin.derived_roles_router import router as derived_roles_router
 
     app.include_router(derived_roles_router)  # REQ-2057
@@ -4866,6 +4921,11 @@ def create_app() -> FastAPI:
             response.status_code = 503
             return {"status": "warming"}
         return {"status": "ready"}
+
+    # REQ-2149: the leak test's view of this process, mounted only with PROVISA_LEAK_PROBE=1.
+    from provisa.api.leak_probe import mount as _mount_leak_probe
+
+    _mount_leak_probe(app)
 
     @app.api_route("/debug/logs", methods=["GET"])
     async def debug_logs(pattern: str | None = None, limit: int = 100):  # noqa: F841  # pyright: ignore[reportUnusedFunction]

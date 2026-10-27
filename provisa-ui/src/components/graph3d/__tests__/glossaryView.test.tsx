@@ -33,7 +33,7 @@ vi.mock("../graphScene", () => ({
         "setData",
         "setSelected",
         "focus",
-        "setFrontal",
+        "setFlat",
       ])
         calls[m] = vi.fn();
       Object.assign(this, calls);
@@ -149,8 +149,8 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
           ? edges.filter((e) => e.from_term_id === t.id)
           : undefined,
       }));
-    if (s.count) return { glossary_terms: terms.map((t) => ({ id: t.id, domains: t.domains })) };
-    return { glossary_terms: terms };
+    if (s.count) return { _terms: terms.map((t) => ({ id: t.id, domains: t.domains })) };
+    return { _terms: terms };
   },
 }));
 
@@ -361,7 +361,6 @@ describe("the Glossary page's Ontology View", () => {
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         focus="term:1"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -375,7 +374,6 @@ describe("the Glossary page's Ontology View", () => {
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         focus="term:2"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"

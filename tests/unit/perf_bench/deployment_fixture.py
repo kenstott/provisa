@@ -30,6 +30,10 @@ DOMAIN = "perf-bench"
 INT, STR = "Int", "String"
 
 
+#: The deployment's public address: where its SPARQL IRIs start.
+PUBLIC_URL = "https://bench.provisa.example"
+
+
 def _col(
     name: str,
     gql: str,
@@ -225,7 +229,7 @@ def build(
     relationships: list[tuple] | None = None,
 ) -> lookup.RawLookup:
     """The deployment's raw lookup answers. ``drop`` maps a table name to the languages that do not
-    expose it (graphql, cypher, grpc, rest, jsonapi)."""
+    expose it (graphql, cypher, sparql, grpc, rest, jsonapi)."""
     drop = drop or {}
     tables = copy.deepcopy(tables if tables is not None else TABLES)
     rels = RELATIONSHIPS if relationships is None else relationships
@@ -360,6 +364,46 @@ def build(
         proto += [f"  optional int32 {c['grpc']} = {i};" for i, c in enumerate(t["columns"], 1)]
         proto.append("}")
 
+    # GET /data/sparql/vocabulary, as the server builds it over the graph's labels: a table's class
+    # and its columns' predicates by its label, an edge type's predicate between two labels.
+    def in_sparql(t: dict[str, Any]) -> bool:
+        return not {"cypher", "sparql"} & set(drop.get(t["table"], ()))
+
+    vocab_tables = [t for t in tables if in_sparql(t)]
+    sparql_vocabulary = {
+        "base": PUBLIC_URL,
+        "classes": [
+            {
+                "iri": f"{PUBLIC_URL}/vocab/{DOMAIN}/{t['table']}",
+                "kind": "table",
+                "labels": [t["label"]],
+            }
+            for t in vocab_tables
+        ],
+        "predicates": [
+            {
+                "iri": f"{PUBLIC_URL}/vocab/{DOMAIN}/{t['table']}#{c['name']}",
+                "kind": "column",
+                "label": t["label"],
+                "property": c["cypher"],
+                "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+            }
+            for t in vocab_tables
+            for c in t["columns"]
+        ],
+        "edges": [
+            {
+                "iri": f"{PUBLIC_URL}/vocab/rel/{cy}",
+                "type": cy,
+                "source": by_id[s]["label"],
+                "target": by_id[tg]["label"],
+            }
+            for s, tg, _sc, _tc, _card, cy, _nested in rels
+            if in_sparql(by_id[s]) and in_sparql(by_id[tg])
+        ],
+        "concepts": [],
+    }
+
     return lookup.RawLookup(
         admin={"data": {"sources": SOURCES, "tables": admin_tables, "relationships": admin_rels}},
         introspection=introspection,
@@ -367,4 +411,5 @@ def build(
         rest_spec=rest_spec("rest"),
         jsonapi_spec=rest_spec("jsonapi"),
         proto="\n".join(proto) + "\n",
+        sparql_vocabulary=sparql_vocabulary,
     )

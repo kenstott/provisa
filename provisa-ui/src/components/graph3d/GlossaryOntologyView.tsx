@@ -32,7 +32,7 @@ import {
   type OntologyRows,
 } from "./glossaryGraphData";
 import { NODE_BUDGET } from "./neighbourhood";
-import { GraphModal } from "./KnowledgeGraphPanel";
+import { GraphModal } from "./GraphPanel";
 import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
 import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
@@ -65,12 +65,11 @@ async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | n
   const query = ontologyQuery(m, scope);
   const count = ontologyCountQuery(m, scope);
   if (query === null || count === null) return null;
-  const counted = (await dataGraphql<{ glossary_terms: CountRow[] }>(count, {}, role))
-    .glossary_terms;
+  const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
   if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
   const rows = await dataGraphql<OntologyRows>(query, {}, role);
   // A search's neighbourhood is read nested, a level to each hop: each term once, flat.
-  const terms = flatTerms(rows.glossary_terms);
+  const terms = flatTerms(rows._terms);
   return { data: glossaryGraph(terms, termEdges(terms), rows.data_products), query };
 }
 
@@ -220,7 +219,6 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         query={asQuery(read.all)}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         search={search}
         onExpand={() => setOpen(true)}
         settingsKey={ONTOLOGY_SETTINGS}
@@ -236,7 +234,6 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         focus={null}
-        zero={[]}
         search={search}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"

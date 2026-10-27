@@ -37,6 +37,9 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-1934: the operator's accepted and dismissed constraints are decisions about the
         # model's tables, so they travel with them.
         "profiler_constraints",
+        # REQ-2147: a steward's classification decisions are about the model's columns, as the
+        # constraints are, so they travel with them.
+        "profiler_classifications",
         "metrics",
         # ``roles`` and ``user_role_assignments`` are additionally SEEDED_AT_CREATION: CARRIED,
         # but only by a creation. See that class for why no later copy touches them.
@@ -59,7 +62,6 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_terms",
         "judgment_bases",  # REQ-2094: the named bases judgments cite, as the glossary travels
         "glossary_term_refs",
-        "glossary_term_table_refs",  # REQ-2130: a table's class term travels with it
         "glossary_term_edges",
         "glossary_term_experts",
         "glossary_term_domains",
@@ -176,6 +178,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "lineage_edges",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
+        # REQ-2132: its own checkers' latest scans.
+        "checker_latest_runs",
     }
 )
 
@@ -187,7 +191,8 @@ PARTIAL: frozenset[str] = frozenset({"org_settings"})
 #: belonging to one environment. Prefixes rather than exact keys because these are namespaces
 #: (``metadata_export.endpoint``, ``cache.redis_url``), and an exact list would miss the next key
 #: added inside one.
-NEVER_SETTING_PREFIXES: tuple[str, ...] = ("metadata_export", "redirect", "cache")
+#: REQ-2122: ``catalogs`` names the external catalogs and how to sign in to them.
+NEVER_SETTING_PREFIXES: tuple[str, ...] = ("metadata_export", "catalogs", "redirect", "cache")
 
 #: Every table name this module classifies. The test asserts it equals ``schema_org``'s metadata.
 CLASSIFIED: frozenset[str] = CARRIED | IDENTITY_ONLY | NEVER_SENSITIVE | NEVER_RUNTIME | PARTIAL

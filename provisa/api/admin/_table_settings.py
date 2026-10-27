@@ -30,6 +30,7 @@ from provisa.core.schema_org import registered_tables, roles, sources
 
 if TYPE_CHECKING:
     from provisa.api.admin.types import RLSRuleInput, RoleTtlInput, TableInput, WriteGrantInput
+    from provisa.compiler.naming import LabelClash
     from provisa.core.database import Connection
     from provisa.core.models import Table, WriteGrant
 
@@ -101,6 +102,18 @@ async def role_ttl_refusal(
                 params={"role": entry.role},
             )
     return None
+
+
+def write_grant_names(grant: Any) -> set[str]:
+    """Every column a write grant names: its columns, its presets' and its rows' and check's."""
+    import sqlglot
+    from sqlglot import exp
+
+    names = set(grant.columns) | {p.column for p in grant.presets}
+    for predicate in (grant.rows, grant.check):
+        if predicate:
+            names |= {c.name for c in sqlglot.parse_one(predicate).find_all(exp.Column)}
+    return names
 
 
 def write_grant_invalid(reason: str) -> MutationResult:  # REQ-2074
@@ -197,6 +210,16 @@ def naming_refusal(convention: str | None) -> MutationResult | None:
     )
 
 
+def label_clash_result(clash: "LabelClash") -> MutationResult:  # REQ-572
+    """The refusal of a table or domain whose Cypher label the other already has, naming both."""
+    return MutationResult(
+        success=False,
+        message=str(clash),
+        code="schema.label_is_a_domain",
+        params={"label": clash.label, "domain": clash.domain_id, "table": clash.table},
+    )
+
+
 def _null_refused(name: str) -> MutationResult:
     return MutationResult(
         success=False,
@@ -259,7 +282,13 @@ async def with_carried_settings(
             ) from refused
     if carried(inp.cache_ttl):
         updates["cache_ttl"] = cache_ttl_checked(model, inp.cache_ttl)
+    if carried(inp.row_materialize):
+        if inp.row_materialize is None:
+            raise TableSaveRefused(_null_refused("rowMaterialize"))
+        updates["row_materialize"] = inp.row_materialize
     staged = model.model_copy(update=updates)
+    if "row_materialize" in updates and (problem := staged.row_materialize_problem()) is not None:
+        raise TableSaveRefused(MutationResult(success=False, message=problem))
     if (refusal := await landing_time_refusal(conn, staged)) is not None:
         raise TableSaveRefused(refusal)
     if "write_grants" in updates:

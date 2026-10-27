@@ -37,7 +37,7 @@ const METRICS: Metric[] = [
     datatype: "numeric",
     description: null,
     aiContext: null,
-    visibleTo: ["*"],
+    visibleTo: ["admin"],
     fromFact: null,
   },
 ];
@@ -90,6 +90,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -113,6 +114,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
+    mvHoldOnFailingChecks: false,
     businessKey: [],
     validTime: null,
     recordedTime: null,
@@ -133,6 +135,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
+    timeTravel: null,
     dqDataset: null,
     qualityCheckers: [],
     modelingRole: null,
@@ -171,6 +174,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     viaTypeColumn: null,
     viaTypeValue: null,
     viaLabelSource: null,
+    cypherType: null,
     parameters: [],
     ...overrides,
   };
@@ -295,8 +299,8 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
     expect(input.viewSql).toBeUndefined();
     // View output columns = dimensions + one column per metric.
     expect(input.columns).toEqual([
-      { name: "region", visibleTo: ["*"] },
-      { name: "revenue", visibleTo: ["*"] },
+      { name: "region", visibleTo: [] },
+      { name: "revenue", visibleTo: [] },
     ]);
     expect(updateTable).not.toHaveBeenCalled();
   });

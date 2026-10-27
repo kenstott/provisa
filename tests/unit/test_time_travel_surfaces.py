@@ -103,8 +103,10 @@ class _Routed(Exception):
 _SQL = "SELECT payment_id, SUM(amount) AS total FROM fin.payments GROUP BY payment_id"
 
 
-async def _governed(monkeypatch, as_of: str | None, hidden: frozenset[str] = frozenset()) -> str:
-    """The statement the one pipeline routes for the analyst's read, under ``as_of``."""
+async def _governed(
+    monkeypatch, as_of: str | None, hidden: frozenset[str] = frozenset(), sql: str | None = None
+) -> str:
+    """The statement the one pipeline routes for the analyst's read ``sql``, under ``as_of``."""
     import provisa.api.app as app_mod
     from provisa.pgwire import _pipeline
 
@@ -113,17 +115,23 @@ async def _governed(monkeypatch, as_of: str | None, hidden: frozenset[str] = fro
     async def _routing(_physical, governed_semantic, *_args, **_kwargs):
         raise _Routed(governed_semantic)
 
-    sql = _SQL
+    sql = sql or _SQL
     with patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_routing)):
         with pytest.raises(_Routed) as routed:
             await _pipeline._govern_and_route(sql, "analyst", as_of=as_of)
     return routed.value.governed_semantic
 
 
-def _http(as_of, as_recorded):
-    from provisa.api.data.endpoint_helpers import request_time_travel
+def _canonical(as_of, as_recorded):
+    from provisa.mv.bitemporal import request_as_of
 
-    return request_time_travel(as_of, as_recorded)
+    return request_as_of(as_of, as_recorded)
+
+
+def _sql(as_of, as_recorded):
+    """The statement's own reference carries the time (REQ-1163, amended 2026-10-25)."""
+    said = [f"{k} => '{v}'" for k, v in (("as_of", as_of), ("as_recorded", as_recorded)) if v]
+    return _SQL.replace("fin.payments", f"fin.payments({', '.join(said)})") if said else _SQL
 
 
 def _flight(as_of, as_recorded):
@@ -151,7 +159,8 @@ def _pgwire(as_of, as_recorded):
     return session.time_travel()
 
 
-_SURFACES = {"http": _http, "flight": _flight, "resolve": _resolve, "pgwire": _pgwire}
+# Each surface's time travel, as the request default it sets (the SQL arguments are the statement's).
+_SURFACES = {"flight": _flight, "resolve": _resolve, "pgwire": _pgwire}
 
 # A payment of 100 for 3 Oct, corrected to 120 on 5 Oct; one of 50 for 4 Oct, recorded on 4 Oct.
 _ROWS = [
@@ -183,13 +192,16 @@ def ledger():
         (None, "2026-10-04T23:00:00", {"p1": 100, "p2": 50}),
     ],
 )
-@pytest.mark.parametrize("surface", sorted(_SURFACES))
-async def test_every_surface_reads_a_versioned_table_with_the_same_meaning(
+@pytest.mark.parametrize("surface", [*sorted(_SURFACES), "sql"])
+async def test_every_surface_reads_a_bitemporal_table_with_the_same_meaning(
     monkeypatch, ledger, surface, as_of, as_recorded, answer
 ):
-    travel = _SURFACES[surface](as_of, as_recorded)
-    assert travel == _http(as_of, as_recorded)  # one canonical value, whichever surface
-    governed = await _governed(monkeypatch, travel)
+    if surface == "sql":
+        governed = await _governed(monkeypatch, None, sql=_sql(as_of, as_recorded))
+    else:
+        travel = _SURFACES[surface](as_of, as_recorded)
+        assert travel == _canonical(as_of, as_recorded)  # one canonical value, every surface
+        governed = await _governed(monkeypatch, travel)
     assert dict(ledger.execute(governed).fetchall()) == answer
 
 
@@ -202,7 +214,7 @@ async def test_the_compiled_stage_reads_a_versioned_table_as_the_raw_stage_does(
 
     state = _state()
     monkeypatch.setattr(app_mod, "state", state, raising=False)
-    travel = _http("2026-10-03", "2026-10-04T23:00:00")
+    travel = _canonical("2026-10-03", "2026-10-04T23:00:00")
     governed = await _pipeline._govern_compiled(
         _SQL, "analyst", state, {}, sdl_joins=False, as_of=travel
     )
@@ -216,3 +228,34 @@ async def test_a_role_that_does_not_see_the_recorded_time_still_reads_the_latest
     does not see; the role is answered only the columns it sees."""
     governed = await _governed(monkeypatch, None, hidden=frozenset({"updated_at"}))
     assert dict(ledger.execute(governed).fetchall()) == {"p1": 120, "p2": 50}
+
+
+async def test_the_compiled_stage_reads_the_versions_for_a_role_that_does_not_see_the_recorded_time(
+    monkeypatch, ledger
+):
+    """GraphQL, gRPC, REST and Cypher read the versions as the raw stage does: the recorded time
+    is read inside, not judged against the caller's grants."""
+    import provisa.api.app as app_mod
+    from provisa.pgwire import _pipeline
+
+    state = _state(frozenset({"updated_at"}))
+    monkeypatch.setattr(app_mod, "state", state, raising=False)
+    travel = _canonical("2026-10-03", "2026-10-04T23:00:00")
+    governed = await _pipeline._govern_compiled(
+        _SQL, "analyst", state, {}, sdl_joins=False, as_of=travel
+    )
+    assert dict(ledger.execute(governed.governed_sql).fetchall()) == {"p1": 100}
+
+
+async def test_a_role_that_does_not_see_the_recorded_time_cannot_select_it(monkeypatch):
+    """The versions read reads the recorded time for itself; the caller's own statement is still
+    governed: naming the column it is not granted is refused (V003)."""
+    import provisa.api.app as app_mod
+    from provisa.compiler.sql_validator import GovernanceRefused
+    from provisa.pgwire import _pipeline
+
+    monkeypatch.setattr(app_mod, "state", _state(frozenset({"updated_at"})), raising=False)
+    with pytest.raises(GovernanceRefused, match="updated_at"):
+        await _pipeline._govern_and_route(
+            "SELECT payment_id, updated_at FROM fin.payments", "analyst", as_of=None
+        )

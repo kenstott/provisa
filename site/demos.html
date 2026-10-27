@@ -34,11 +34,11 @@
         <a href="/#interfaces">Interfaces</a>
         <a href="/#governance">Governance</a>
         <a href="/#sources">Sources</a>
-        <a href="/vs/starburst">Compare</a>
+        <a href="/compare">Compare</a>
         <a href="/#deploy">Deploy</a>
-        <a href="/demos" aria-current="page">Live demos</a>
+        <a href="/how-it-works">How</a>
+        <a href="/demos" aria-current="page">Demos</a>
         <a href="/docs">Docs</a>
-        <a href="/#download">Download</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
     </div>
@@ -56,7 +56,16 @@
       </div>
 
       <!-- demos:start -->
-<div class="demo-grid" data-count="26">
+<div data-count="28">
+<nav class="demo-filters" aria-label="Filter by problem">
+  <a class="demo-chip" href="#backend">App backends</a>
+  <a class="demo-chip" href="#bi">BI across sources</a>
+  <a class="demo-chip" href="#data-science">Data science access</a>
+  <a class="demo-chip" href="#agents">Give an agent your data</a>
+  <a class="demo-chip" href="#provision">Data provisioning</a>
+  <a class="demo-chip" href="#public-data">New or changing sources</a>
+  <a class="demo-chip" href="#compliance">Compliance and audit</a>
+</nav>
 <article class="demo-card" data-demo="starthere">
   <img class="demo-shot" src="/assets/demo-starthere.b05e297ae9.png" alt="Start here: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
@@ -65,14 +74,83 @@
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/starthere" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="agriculture">
-  <img class="demo-shot" src="/assets/demo-agriculture.b81d397c13.png" alt="Weather and crop insurance losses: the demo in Provisa" loading="lazy" />
+<section class="demo-group" id="backend">
+<h2 class="demo-group-head">App backends</h2>
+<div class="demo-grid">
+<article class="demo-card" data-demo="hasuramigration">
+  <img class="demo-shot" src="/assets/demo-hasuramigration.17c725b317.png" alt="Moving a Hasura app: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
-    <h2>Weather and crop insurance losses</h2>
-    <p>A crop insurer's portfolio of Corn Belt farms, in its own database, joined by county and crop year to the USDA's crop insurance losses by cause, NOAA's daily weather and NASS's county yields from government data: does weather explain the losses in our portfolio?</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/agriculture" target="_blank" rel="noopener">Open live demo</a>
+    <h2>Moving a Hasura app</h2>
+    <p>An outfitter's storefront app, served by Hasura v2 from PostgreSQL, imported into Provisa in one step: its tables, names, relationships, roles, row rules and write permissions working at once, its queries reshaped once. Then what Hasura could not do: the sales team's Salesforce accounts joined to the orders, under the same rules.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/hasuramigration" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
+<article class="demo-card" data-demo="reviews">
+  <img class="demo-shot" src="/assets/demo-reviews.954ac998d1.png" alt="Product reviews: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Product reviews</h2>
+    <p>An electronics shop's catalog in MongoDB, its customers' reviews in Elasticsearch and who bought what in Neo4j, joined on the product: which products do reviews say the battery dies on, and what else did their buyers buy?</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/reviews" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+<article class="demo-card" data-demo="storefront">
+  <img class="demo-shot" src="/assets/demo-storefront.9c0d146aa0.png" alt="One model, app and BI: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>One model, app and BI</h2>
+    <p>A retailer's order-history screen and its BI dashboard read one model of PostgreSQL, MongoDB and an internal REST service. The app asks one nested GraphQL query as the signed-in customer; Apache Superset charts revenue and late shipments over the PostgreSQL wire protocol as the analyst.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/storefront" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+</div>
+</section>
+<section class="demo-group" id="bi">
+<h2 class="demo-group-head">BI across sources</h2>
+<div class="demo-grid">
+<article class="demo-card" data-demo="cloudpolicy">
+  <img class="demo-shot" src="/assets/demo-cloudpolicy.20225d7a17.png" alt="Cloud policy review: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Cloud policy review</h2>
+    <p>Is every disk attached to a virtual machine encrypted with a customer-managed key? The cloud inventory across Azure, AWS and Google Cloud, the ServiceNow incidents filed against it and the security policy itself, read from its web page by code, reviewed daily by a scheduled trigger.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/cloudpolicy" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+<article class="demo-card" data-demo="files">
+  <img class="demo-shot" src="/assets/demo-files.90cbf16819.png" alt="Instant data lake: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Instant data lake</h2>
+    <p>A city's open-data drop (311 complaints in monthly CSV files, building permits in Parquet, the budget in Excel and inspections in JSON) read in place as one governed catalog, with no load step: which neighborhoods have the most complaints near active construction?</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/files" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+<article class="demo-card" data-demo="profiling">
+  <img class="demo-shot" src="/assets/demo-profiling.95463b2141.png" alt="What is actually in this data?: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>What is actually in this data?</h2>
+    <p>The customer and order tables an outdoor retailer received when it bought a smaller one, profiled by Provisa's built-in Data Profiler: nulls, distinct values, ranges, formats, plausible types and duplicates, landed as governed tables.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/profiling" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+<article class="demo-card" data-demo="streaming">
+  <img class="demo-shot" src="/assets/demo-streaming.ebaccad410.png" alt="Live order stream: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Live order stream</h2>
+    <p>A coffee shop's orders arrive live on a Kafka topic and are joined to its catalog in Postgres. Which regions placed the most orders in the last five minutes? A view refreshed by every batch of orders that lands answers it in SQL, GraphQL and REST, and a subscription watches it move.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/streaming" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+<article class="demo-card" data-demo="weblogs">
+  <img class="demo-shot" src="/assets/demo-weblogs.d5722d13ba.png" alt="Web shop logs: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Web shop logs</h2>
+    <p>A web shop's nginx access log and its database's statement log, read as tables and joined to the shop's own data: the slowest pages and the SQL behind them, the requests that failed in the database, the customers who were served an error, and the products viewed but never bought.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/weblogs" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+</div>
+</section>
+<section class="demo-group" id="data-science">
+<h2 class="demo-group-head">Data science access</h2>
+<div class="demo-grid">
 <article class="demo-card" data-demo="churn">
   <img class="demo-shot" src="/assets/demo-churn.7d90e80756.png" alt="Predict customer churn: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
@@ -89,14 +167,40 @@
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/churnprod" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="cloudpolicy">
-  <img class="demo-shot" src="/assets/demo-cloudpolicy.20225d7a17.png" alt="Cloud policy review: the demo in Provisa" loading="lazy" />
+<article class="demo-card" data-demo="sonnets">
+  <img class="demo-shot" src="/assets/demo-sonnets.f632b34cb8.png" alt="Shakespeare's sonnets: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
-    <h2>Cloud policy review</h2>
-    <p>Is every disk attached to a virtual machine encrypted with a customer-managed key? The cloud inventory across Azure, AWS and Google Cloud, the ServiceNow incidents filed against it and the security policy itself, read from its web page by code, reviewed daily by a scheduled trigger.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/cloudpolicy" target="_blank" rel="noopener">Open live demo</a>
+    <h2>Shakespeare's sonnets</h2>
+    <p>Shakespeare's 154 sonnets in Postgres, embedded into Qdrant, searched by meaning and grown into a graph: the themes that run through them, and the lines where Shakespeare echoes himself.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/sonnets" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
+<article class="demo-card" data-demo="worldcup">
+  <img class="demo-shot" src="/assets/demo-worldcup.aba439ebf5.png" alt="World Cup, one graph: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>World Cup, one graph</h2>
+    <p>Wikipedia's finals and confederation tables and Kaggle's match and goal datasets disagree on country names. A short Python function matches every name with an LLM, and the four public sources become one governed graph, with West Germany's titles counted as Germany's.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/worldcup" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+</div>
+</section>
+<section class="demo-group" id="agents">
+<h2 class="demo-group-head">Give an agent your data</h2>
+<div class="demo-grid">
+<article class="demo-card" data-demo="agentdata">
+  <img class="demo-shot" src="/assets/demo-agentdata.eb36c0c15c.png" alt="Give an agent your data: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Give an agent your data</h2>
+    <p>Can an AI agent be given a retailer's order data and held to what its user may see? In the MCP explorer, the agent an outside client would get, a West support agent's assistant reads only the West's customers with emails masked, the analyst's reads every region and no email, and each answer opens to the governed SQL that ran.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/agentdata" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+</div>
+</section>
+<section class="demo-group" id="provision">
+<h2 class="demo-group-head">Data provisioning</h2>
+<div class="demo-grid">
 <article class="demo-card" data-demo="dataroom">
   <img class="demo-shot" src="/assets/demo-dataroom.415a181862.png" alt="Data room for a sale: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
@@ -113,28 +217,41 @@
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/datavault" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="files">
-  <img class="demo-shot" src="/assets/demo-files.90cbf16819.png" alt="Instant data lake: the demo in Provisa" loading="lazy" />
+<article class="demo-card" data-demo="provisioning">
+  <img class="demo-shot" src="/assets/demo-provisioning.4d2e579d30.png" alt="Provisioning datasets to downstream teams: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
-    <h2>Instant data lake</h2>
-    <p>A city's open-data drop (311 complaints in monthly CSV files, building permits in Parquet, the budget in Excel and inspections in JSON) read in place as one governed catalog, with no load step: which neighborhoods have the most complaints near active construction?</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/files" target="_blank" rel="noopener">Open live demo</a>
+    <h2>Provisioning datasets to downstream teams</h2>
+    <p>A coffee roaster's warehouse builds a dataset from its order, price and stock feeds as they land, and provisions it to finance and data science: each team is told on Kafka when it is ready and pulls it over Arrow Flight as of that moment, each seeing its own governed view, with no copies.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/provisioning" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="hasuramigration">
-  <img class="demo-shot" src="/assets/demo-hasuramigration.17c725b317.png" alt="Moving a Hasura app: the demo in Provisa" loading="lazy" />
+<article class="demo-card" data-demo="quality">
+  <img class="demo-shot" src="/assets/demo-quality.c6cbe7b2dd.png" alt="Data you can trust: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
-    <h2>Moving a Hasura app</h2>
-    <p>An outfitter's storefront app, served by Hasura v2 from PostgreSQL, imported into Provisa in one step: its tables, names, relationships, roles, row rules and write permissions working at once, its queries reshaped once. Then what Hasura could not do: the sales team's Salesforce accounts joined to the orders, under the same rules.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/hasuramigration" target="_blank" rel="noopener">Open live demo</a>
+    <h2>Data you can trust</h2>
+    <p>A chain of shops' daily sales feed, landed into bronze and refined into silver and gold by materialized views that check every batch: landing a batch is all it takes, a clean batch reaches gold, and a bad one is shown failed and never reaches silver.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/quality" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="insider">
-  <img class="demo-shot" src="/assets/demo-insider.98dc21dbca.png" alt="Insider review: the demo in Provisa" loading="lazy" />
+</div>
+</section>
+<section class="demo-group" id="public-data">
+<h2 class="demo-group-head">New or changing sources</h2>
+<div class="demo-grid">
+<article class="demo-card" data-demo="agriculture">
+  <img class="demo-shot" src="/assets/demo-agriculture.b81d397c13.png" alt="Weather and crop insurance losses: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
-    <h2>Insider review</h2>
-    <p>A bank's outbound mail matched against its control room's watch list of deals in discussion, by name, ticker and code name and, through a local embedding model, by meaning, and checked for customer data: one ranked review queue, with the watch list itself never shown to the reviewer.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/insider" target="_blank" rel="noopener">Open live demo</a>
+    <h2>Weather and crop insurance losses</h2>
+    <p>A crop insurer's portfolio of Corn Belt farms, in its own database, joined by county and crop year to the USDA's crop insurance losses by cause, NOAA's daily weather and NASS's county yields from government data: does weather explain the losses in our portfolio?</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/agriculture" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
+<article class="demo-card" data-demo="groupexposure">
+  <img class="demo-shot" src="/assets/demo-groupexposure.2bdabd6da4.png" alt="Group exposure through Wikidata: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Group exposure through Wikidata</h2>
+    <p>A Prague bank's corporate loan book, in its own database, joined by each borrower's owner's Legal Entity Identifier to Wikidata's chains of parent organizations over SPARQL: which corporate groups is the bank over its 25% large-exposure limit to? The bank, its borrowers and its loans are fictional; the groups that own them are real.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/groupexposure" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
 <article class="demo-card" data-demo="insurance">
@@ -161,28 +278,25 @@
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/pharma" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="profiling">
-  <img class="demo-shot" src="/assets/demo-profiling.55aff9eb02.png" alt="What is actually in this data?: the demo in Provisa" loading="lazy" />
+<article class="demo-card" data-demo="vulnerabilities">
+  <img class="demo-shot" src="/assets/demo-vulnerabilities.8ab2dcc836.png" alt="Exploited vulnerabilities in our code: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
-    <h2>What is actually in this data?</h2>
-    <p>The customer and order tables an outdoor retailer received when it bought a smaller one, profiled by Provisa's built-in Data Profiler: nulls, distinct values, ranges, formats, plausible types and duplicates, landed as governed tables.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/profiling" target="_blank" rel="noopener">Open live demo</a>
+    <h2>Exploited vulnerabilities in our code</h2>
+    <p>A software company's repositories and the Dependabot alerts on their packages, in its own database, joined by CVE to the NVD and CISA's catalog of Known Exploited Vulnerabilities from government data: which vulnerabilities attackers exploit sit in our code, and how far past CISA's due date are they?</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/vulnerabilities" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="provisioning">
-  <img class="demo-shot" src="/assets/demo-provisioning.4d2e579d30.png" alt="Provisioning datasets to downstream teams: the demo in Provisa" loading="lazy" />
+</div>
+</section>
+<section class="demo-group" id="compliance">
+<h2 class="demo-group-head">Compliance and audit</h2>
+<div class="demo-grid">
+<article class="demo-card" data-demo="insider">
+  <img class="demo-shot" src="/assets/demo-insider.98dc21dbca.png" alt="Insider review: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
-    <h2>Provisioning datasets to downstream teams</h2>
-    <p>A coffee roaster's warehouse builds a dataset from its order, price and stock feeds as they land, and provisions it to finance and data science: each team is told on Kafka when it is ready and pulls it over Arrow Flight as of that moment, each seeing its own governed view, with no copies.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/provisioning" target="_blank" rel="noopener">Open live demo</a>
-  </div>
-</article>
-<article class="demo-card" data-demo="quality">
-  <img class="demo-shot" src="/assets/demo-quality.c6cbe7b2dd.png" alt="Data you can trust: the demo in Provisa" loading="lazy" />
-  <div class="demo-body">
-    <h2>Data you can trust</h2>
-    <p>A chain of shops' daily sales feed, landed into bronze and refined into silver and gold by materialized views that check every batch: landing a batch is all it takes, a clean batch reaches gold, and a bad one is shown failed and never reaches silver.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/quality" target="_blank" rel="noopener">Open live demo</a>
+    <h2>Insider review</h2>
+    <p>A bank's outbound mail matched against its control room's watch list of deals in discussion, by name, ticker and code name and, through a local embedding model, by meaning, and checked for customer data: one ranked review queue, with the watch list itself never shown to the reviewer.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/insider" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
 <article class="demo-card" data-demo="reproduce">
@@ -201,38 +315,6 @@
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/retail" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="reviews">
-  <img class="demo-shot" src="/assets/demo-reviews.954ac998d1.png" alt="Product reviews: the demo in Provisa" loading="lazy" />
-  <div class="demo-body">
-    <h2>Product reviews</h2>
-    <p>An electronics shop's catalog in MongoDB, its customers' reviews in Elasticsearch and who bought what in Neo4j, joined on the product: which products do reviews say the battery dies on, and what else did their buyers buy?</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/reviews" target="_blank" rel="noopener">Open live demo</a>
-  </div>
-</article>
-<article class="demo-card" data-demo="sonnets">
-  <img class="demo-shot" src="/assets/demo-sonnets.f632b34cb8.png" alt="Shakespeare's sonnets: the demo in Provisa" loading="lazy" />
-  <div class="demo-body">
-    <h2>Shakespeare's sonnets</h2>
-    <p>Shakespeare's 154 sonnets in Postgres, embedded into Qdrant, searched by meaning and grown into a graph: the themes that run through them, and the lines where Shakespeare echoes himself.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/sonnets" target="_blank" rel="noopener">Open live demo</a>
-  </div>
-</article>
-<article class="demo-card" data-demo="storefront">
-  <img class="demo-shot" src="/assets/demo-storefront.9c0d146aa0.png" alt="One model, app and BI: the demo in Provisa" loading="lazy" />
-  <div class="demo-body">
-    <h2>One model, app and BI</h2>
-    <p>A retailer's order-history screen and its BI dashboard read one model of PostgreSQL, MongoDB and an internal REST service. The app asks one nested GraphQL query as the signed-in customer; Apache Superset charts revenue and late shipments over the PostgreSQL wire protocol as the analyst.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/storefront" target="_blank" rel="noopener">Open live demo</a>
-  </div>
-</article>
-<article class="demo-card" data-demo="streaming">
-  <img class="demo-shot" src="/assets/demo-streaming.ebaccad410.png" alt="Live order stream: the demo in Provisa" loading="lazy" />
-  <div class="demo-body">
-    <h2>Live order stream</h2>
-    <p>A coffee shop's orders arrive live on a Kafka topic and are joined to its catalog in Postgres. Which regions placed the most orders in the last five minutes? A view refreshed by every batch of orders that lands answers it in SQL, GraphQL and REST, and a subscription watches it move.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/streaming" target="_blank" rel="noopener">Open live demo</a>
-  </div>
-</article>
 <article class="demo-card" data-demo="testdata">
   <img class="demo-shot" src="/assets/demo-testdata.bab0d906a0.png" alt="Test data: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
@@ -241,30 +323,8 @@
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/testdata" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
-<article class="demo-card" data-demo="vulnerabilities">
-  <img class="demo-shot" src="/assets/demo-vulnerabilities.8ab2dcc836.png" alt="Exploited vulnerabilities in our code: the demo in Provisa" loading="lazy" />
-  <div class="demo-body">
-    <h2>Exploited vulnerabilities in our code</h2>
-    <p>A software company's repositories and the Dependabot alerts on their packages, in its own database, joined by CVE to the NVD and CISA's catalog of Known Exploited Vulnerabilities from government data: which vulnerabilities attackers exploit sit in our code, and how far past CISA's due date are they?</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/vulnerabilities" target="_blank" rel="noopener">Open live demo</a>
-  </div>
-</article>
-<article class="demo-card" data-demo="weblogs">
-  <img class="demo-shot" src="/assets/demo-weblogs.d5722d13ba.png" alt="Web shop logs: the demo in Provisa" loading="lazy" />
-  <div class="demo-body">
-    <h2>Web shop logs</h2>
-    <p>A web shop's nginx access log and its database's statement log, read as tables and joined to the shop's own data: the slowest pages and the SQL behind them, the requests that failed in the database, the customers who were served an error, and the products viewed but never bought.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/weblogs" target="_blank" rel="noopener">Open live demo</a>
-  </div>
-</article>
-<article class="demo-card" data-demo="worldcup">
-  <img class="demo-shot" src="/assets/demo-worldcup.aba439ebf5.png" alt="World Cup, one graph: the demo in Provisa" loading="lazy" />
-  <div class="demo-body">
-    <h2>World Cup, one graph</h2>
-    <p>Wikipedia's finals and confederation tables and Kaggle's match and goal datasets disagree on country names. A short Python function matches every name with an LLM, and the four public sources become one governed graph, with West Germany's titles counted as Germany's.</p>
-    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/worldcup" target="_blank" rel="noopener">Open live demo</a>
-  </div>
-</article>
+</div>
+</section>
 </div>
 <!-- demos:end -->
     </div>
@@ -292,12 +352,25 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
+        <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
         <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/data-mesh">Data mesh</a>
+        <a href="/why/ai">Data for AI</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
+        <a href="/register">Register (free license)</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@provisa.dev">Support</a>
       </nav>
     </div>
   </footer>

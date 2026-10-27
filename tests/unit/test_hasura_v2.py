@@ -532,12 +532,13 @@ class TestMapper:
         assert "manager" in role_ids
 
     def test_role_inheriting_several_holds_their_union(self):
-        """A Provisa role has one parent: manager, inheriting user and admin, is written out
-        with the union of their grants instead."""
+        """Manager, inheriting user and admin, is written out with the union of their grants:
+        Hasura's union reads every row one member reads, which several Provisa parents never do
+        (REQ-2155). It builds on viewer."""
         metadata = self._build_metadata()
         config = convert_metadata(metadata)
         manager = next(r for r in config.roles if r.id == "manager")
-        assert manager.parent_role_id is None
+        assert manager.parents == ["viewer"]
         users = next(t for t in config.tables if t.table_name == "users")
         for column in users.columns:
             if {"user", "admin"} & set(column.visible_to):
@@ -548,7 +549,7 @@ class TestMapper:
         metadata.inherited_roles = [HasuraInheritedRole(role_name="manager", role_set=["user"])]
         config = convert_metadata(metadata)
         manager = next(r for r in config.roles if r.id == "manager")
-        assert manager.parent_role_id == "user"
+        assert manager.parents == ["user"]
 
     def test_write_capabilities_upgraded(self):
         metadata = self._build_metadata()

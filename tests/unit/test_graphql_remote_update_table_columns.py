@@ -31,11 +31,18 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from tests.unit.gate_identity import serve_every_column
 
 
 # ---------------------------------------------------------------------------
 # Bug 1: update_table silently discards _build_columns_for_input error
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 @pytest.mark.asyncio

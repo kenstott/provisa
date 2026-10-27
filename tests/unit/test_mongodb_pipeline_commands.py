@@ -137,7 +137,7 @@ def test_graphql_returns_a_pipeline_commands_documents_as_json():
         naming_rules=[],
         role={"id": "dev", "capabilities": [], "domain_access": ["*"]},
         domains=[],
-        functions=[_command().model_dump()],
+        functions=[_command(visible_to=["dev"]).model_dump()],
     )
     query_fields, _ = _build_action_fields(si, {}, [])
     (field,) = query_fields.values()

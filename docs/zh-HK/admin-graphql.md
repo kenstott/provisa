@@ -738,6 +738,7 @@ mutation {
 | `mvRefreshInterval` | 重新整理間隔（秒） |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量維護 |
+| `mvHoldOnFailingChecks` | 檢查失敗時暫停：只要掃描其某個輸入的檢查表最近一次執行失敗，重新整理就會中止，視圖保留上一份副本 |
 | `businessKey` | 喺各個版本之間標識同一事物嘅欄；同 `validTime`、`recordedTime` 一齊宣告，三者全有或全無 |
 | `validTime` | 儲存業務賦予該記錄嘅日期嘅欄 |
 | `recordedTime` | 儲存該版本幾時輸入或修改嘅欄 |

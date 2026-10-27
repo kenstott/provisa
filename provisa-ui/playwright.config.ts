@@ -13,6 +13,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { LIVE_MODEL_YAML } from "./e2e/liveModel";
 
 // Load root .env so live-backend tests receive AWS credentials
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -290,6 +291,7 @@ if (IS_RUNNER) {
   for (const b of CORE_BACKENDS) {
     fs.mkdirSync(path.dirname(b.configPath), { recursive: true });
     fs.copyFileSync(path.resolve(__dirname, "../config/provisa-install.yaml"), b.configPath);
+    fs.appendFileSync(b.configPath, LIVE_MODEL_YAML);
   }
 }
 // Trino backend uses a minimal config (domains only, no pre-registered sources) so the
@@ -405,6 +407,24 @@ function wipeStaleMaterializeStore(dataDir: string): void {
   for (const f of fs.readdirSync(dataDir)) {
     if (/\.duckdb(\.wal|\.tmp)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
   }
+}
+
+// A backend's own home, not local-dev's ~/.provisa (three-instance isolation; the same values
+// tests/conftest.py forces for pytest): the MCP TLS certificates and the ops store follow
+// PROVISA_HOME; licensing writes its trial anchors and high-water mark only under its sandbox
+// (provisa/licensing/home.py), still reading the real trial clock; and the encryption master key
+// is read from the keyring BEFORE PROVISA_ENCRYPTION_KEY (REQ-684, REQ-1802), so the OS keychain
+// is swapped for the test key store, a file under PROVISA_DATA_DIR (tests/_memory_keyring.py).
+// REQ-2135: each backend's public address (server.public_url), where its SPARQL vocabulary's and its
+// subjects' IRIs start. Unset, the SPARQL tab's vocabulary is refused.
+const E2E_PUBLIC_URL = "https://e2e.provisa.example";
+
+function homeEnvFor(dataDir: string): Record<string, string> {
+  return {
+    PROVISA_HOME: dataDir,
+    PROVISA_LICENSING_SANDBOX_DIR: path.resolve(dataDir, "licensing"),
+    PYTHON_KEYRING_BACKEND: "tests._memory_keyring.MemoryKeyring",
+  };
 }
 
 const embeddedControlPlaneDir = (dataDir: string) => path.join(dataDir, "control-pg");
@@ -531,11 +551,20 @@ export default defineConfig({
             PROVISA_MCP_PORT: String(b.port + 4),
             PROVISA_PGWIRE_PORT: String(b.port + 5),
             PROVISA_DATA_DIR: b.dataDir,
+            // Its own trace folder, not ~/.provisa/telemetry (local-dev's): every backend compacts
+            // its folder each minute, and four sharing one compacted each other's files.
+            PROVISA_TELEMETRY_DIR: path.resolve(b.dataDir, "telemetry"),
             PROVISA_CONFIG: b.configPath,
             ORG_ID: b.orgId,
             GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
             PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
             PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+            PROVISA_PUBLIC_URL: E2E_PUBLIC_URL,
+            ...homeEnvFor(b.dataDir),
+            // Each backend's DuckDB engines: their own default is most of the host's memory, and on
+            // the 16 GB runner they share it with the demo sources, the browser and the other
+            // backends (run 40115205350's provisioning job ran out with this server at 2.1 GB).
+            PROVISA_ENGINE_DUCKDB_MEMORY_LIMIT: String(2 * 1024 ** 3),
             ...controlPlaneEnvFor(b.dataDir),
           },
           reuseExistingServer: !process.env.CI,
@@ -568,11 +597,14 @@ export default defineConfig({
                   PROVISA_MCP_PORT: String(E2E_TRINO_MCP_PORT),
                   PROVISA_PGWIRE_PORT: String(E2E_TRINO_PGWIRE_PORT),
                   PROVISA_DATA_DIR: E2E_TRINO_DATA_DIR,
+                  PROVISA_TELEMETRY_DIR: path.resolve(E2E_TRINO_DATA_DIR, "telemetry"),
                   PROVISA_CONFIG: E2E_TRINO_CONFIG_PATH,
                   ORG_ID: E2E_TRINO_ORG_ID,
                   GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
                   PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
                   PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+                  PROVISA_PUBLIC_URL: E2E_PUBLIC_URL,
+                  ...homeEnvFor(E2E_TRINO_DATA_DIR),
                   PROVISA_ENGINE: "trino",
                   // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
                   // Trino container itself, not the host. These vars make engine_visible_address()
@@ -631,12 +663,17 @@ export default defineConfig({
               ...PROVISIONING_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
+            // Reduced motion: no 3D stage turns while a spec reads its page, and a camera jumps
+            // where it would fly (profile3d/baseScene.ts). CI draws WebGL in software, and a stage
+            // turning for a whole test held SwiftShader's GPU process at most of a core.
+            use: { reducedMotion: "reduce" },
           },
           {
             // Run with --workers=1, after "core" (see PROVISIONING_SPECS).
             name: "core-provisioning",
             testMatch: PROVISIONING_SPECS,
             testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
+            use: { reducedMotion: "reduce" },
           },
         ]
       : []),

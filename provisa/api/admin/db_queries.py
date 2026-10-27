@@ -11,102 +11,13 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from inflect import Word as InflectWord
-    from inflect import engine as _Engine
-
     from provisa.core.database import Connection
 
+
 # inflect (~0.8s import) lazy-loaded — paid once on first singularization, never at cold start.
-_inflect: "_Engine | None" = None
-
-
-def _engine() -> "_Engine":
-    global _inflect
-    if _inflect is None:
-        import inflect
-
-        _inflect = inflect.engine()
-    return _inflect
-
-
-def _to_singular(camel: str) -> str:
-    """Singularize camelCase word using inflect with round-trip validation."""
-    eng = _engine()
-    candidate = eng.singular_noun(cast("InflectWord", camel))
-    if candidate is False:
-        return camel  # already singular
-    # Validate: if round-trip doesn't reconstruct original, inflect got it wrong
-    if eng.plural(cast("InflectWord", candidate)) == camel:
-        return candidate
-    return camel
-
-
-def derive_graphql_alias(  # REQ-155, REQ-194, REQ-351, REQ-1586
-    target_table_name: str,
-    cardinality: str,
-    convention: str = "apollo_graphql",
-    *,
-    via_label_source: str | None = None,
-    via_type_value: str | None = None,
-    via_table_name: str | None = None,
-    cypher_alias: str | None = None,
-) -> str | None:
-    """Derive GraphQL field name from target table name + cardinality.
-
-    Always strips verb prefixes (find/get/list/…) via rel_field_name.
-    snake / hasura_graphql → snake_case output; apollo_graphql → camelCase.
-
-    REQ-1586: a junction-backed edge is named for its nominated label instead. Several such edges
-    share one junction table and one target table, so the target's name does not tell them apart —
-    it hands every one of them the same field name.
-    """
-    from provisa.compiler.naming import apply_convention, junction_field_name, rel_field_name
-
-    if via_label_source:
-        return apply_convention(
-            junction_field_name(
-                via_label_source,
-                cardinality,
-                type_value=via_type_value,
-                via_table_name=via_table_name,
-                cypher_alias=cypher_alias,
-            ),
-            convention,
-        )
-    if not target_table_name:
-        return None
-    name = rel_field_name(target_table_name, cardinality)
-    return apply_convention(name, convention)
-
-
-def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
-    """Derive Cypher relationship type from FK column + cardinality.
-
-    Rules:
-    - Strip _id/_fk/_pk suffix from source_column
-    - Singularize with inflect (same helper as derive_graphql_alias)
-    - Prepend direction verb based on cardinality:
-      one-to-many  → HAS_<ENTITY>
-      many-to-one  → BELONGS_TO_<ENTITY>
-      other        → <ENTITY>
-    """
-    col = (source_column or "").strip().lower()
-    for suffix in ("_id", "_fk", "_pk"):
-        if col.endswith(suffix) and len(col) > len(suffix):
-            col = col[: -len(suffix)]
-            break
-    singular = _to_singular(col) if col else col
-    entity = (singular or col).upper()
-    if cardinality == "one-to-many":
-        return f"HAS_{entity}"
-    if cardinality == "many-to-one":
-        return f"BELONGS_TO_{entity}"
-    return entity
-
-
 def _as_list(v: Any) -> list:
     """A JSON list column. On PostgreSQL the jsonb codec deserializes it to a list; on a SQLite
     control plane (no codec) a raw-SQL read returns the JSON as TEXT, so decode a string here —
@@ -152,21 +63,27 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
     from provisa.core.repositories import write_grant as write_grant_repo
 
     grants = write_grant_repo.grouped(await conn.fetch(write_grant_repo.BY_TABLE_SQL))
+    # Every table's columns in one read, each table's in registration order: a rebuild reads
+    # every table, and a query per table was one for each (REQ-1882).
+    columns_of: dict[int, list] = {}
+    for r in await conn.fetch(
+        "SELECT table_id, column_name, data_type, visible_to, masks, "
+        "alias, description, path, is_primary_key, object_fields, native_filter_type, "
+        "native_filter_required, required_by_steward, "  # REQ-1986
+        "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
+        "fake_why, "  # REQ-2094
+        "array_depth, element_type, native_type, native_platform, "  # REQ-1965
+        "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
+        "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
+        "FROM table_columns WHERE table_id IN "
+        "(SELECT id FROM registered_tables WHERE draft = $1) ORDER BY table_id, id",
+        draft,
+    ):
+        columns_of.setdefault(r["table_id"], []).append(r)
     tables = []
     for row in rows:
         table = dict(row)
-        col_rows = await conn.fetch(
-            "SELECT column_name, data_type, visible_to, masks, "
-            "alias, description, path, is_primary_key, object_fields, native_filter_type, "
-            "native_filter_required, required_by_steward, "  # REQ-1986
-            "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
-            "fake_why, "  # REQ-2094
-            "array_depth, element_type, native_type, native_platform, "  # REQ-1965
-            "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
-            "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
-            "FROM table_columns WHERE table_id = $1 ORDER BY id",
-            row["id"],
-        )
+        col_rows = columns_of.get(row["id"], [])
         table["write_grants"] = grants.get(row["id"], [])  # REQ-2074
         table["unique_constraints"] = _as_list(row.get("unique_constraints"))  # REQ-1093
         table["live"] = _as_dict(row.get("live"))  # REQ-1733
@@ -216,7 +133,9 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
 async def fetch_relationships(
     conn: "Connection",
 ) -> list[dict]:  # REQ-155, REQ-194, REQ-351, REQ-399
-    """Fetch relationships, computing graphql_alias when not persisted."""
+    """Fetch relationships, each with its effective names as stored on its row
+    (core.relationship_names): ``graphql_alias`` the pinned one or the stored GraphQL field,
+    ``computed_cypher_alias`` the stored Cypher type where no alias is pinned."""
     rows = await conn.fetch(
         "SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, "
         "r.target_column, r.cardinality, r.materialize, r.refresh_interval, "
@@ -228,6 +147,8 @@ async def fetch_relationships(
         "r.via_type_value, r.via_label_source, "
         # REQ-2099: the target's parameters the edge feeds, read by the materialize stage.
         "r.parameters, "
+        # REQ-351: the effective names, derived and stored once (core.relationship_names).
+        "r.cypher_type, r.graphql_field, "
         "t.table_name AS target_table_name, "
         "v.table_name AS via_table_name "
         "FROM relationships r "
@@ -238,20 +159,7 @@ async def fetch_relationships(
     result = []
     for r in rows:
         d = dict(r)
-        if not d.get("graphql_alias"):
-            d["graphql_alias"] = derive_graphql_alias(
-                d.get("target_table_name") or "",
-                d.get("cardinality") or "",
-                via_label_source=d.get("via_label_source"),
-                via_type_value=d.get("via_type_value"),
-                via_table_name=d.get("via_table_name"),
-                cypher_alias=d.get("alias"),
-            )
-        if not d.get("alias"):
-            d["computed_cypher_alias"] = derive_cypher_alias(
-                d.get("source_column") or "", d.get("cardinality") or ""
-            )
-        else:
-            d["computed_cypher_alias"] = None
+        d["graphql_alias"] = d["graphql_alias"] or d["graphql_field"]
+        d["computed_cypher_alias"] = None if d["alias"] else d["cypher_type"]
         result.append(d)
     return result

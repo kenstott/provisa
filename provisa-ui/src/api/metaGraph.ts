@@ -119,9 +119,11 @@ export class RoleSchema {
       .map((f) => f.name);
   }
 
-  /** The one field of ``type`` reaching ``target``: a relationship declared without an alias. */
+  /** The one field of ``type`` reaching ``target``: a relationship declared without an alias. A
+   * system field (``_meta``, the row's own catalog entry) reaches a type too, and is none. */
   reaching(type: string, target: string): { name: string; type: string | null } | null {
-    const found = this.types.get(type)?.filter((f) => f.type === target) ?? [];
+    const found =
+      this.types.get(type)?.filter((f) => f.type === target && !f.name.startsWith("_")) ?? [];
     return found.length === 1 ? found[0] : null;
   }
 }
@@ -131,6 +133,11 @@ export class RoleSchema {
 export type RootFields = Map<string, string>;
 
 export const rootKey = (domain: string, table: string) => `${domain}.${table}`;
+
+/** The system schema a view is the table of: the glossary's definition views (``_terms``,
+ * ``_term_refs``, ...) are the ontology schema's, named with a leading underscore so they never
+ * meet a generated Class table; every other view is meta's. */
+export const viewDomain = (view: string) => (view.startsWith("_") ? "ontology" : "meta");
 
 export async function rootFields(role: string): Promise<RootFields> {
   const resp = await fetch("/data/graph-schema", { headers: { "X-Provisa-Role": role } });
@@ -177,7 +184,7 @@ export interface MetaReader {
 }
 
 function viewType(m: MetaReader, view: string): string | null {
-  const field = m.roots.get(rootKey("meta", view));
+  const field = m.roots.get(rootKey(viewDomain(view), view));
   if (!field) return null;
   return m.schema.exact(m.schema.query, field)?.type ?? null;
 }
@@ -243,15 +250,15 @@ function whereArg(m: MetaReader, type: string, where: Where): string | null {
   return text === null ? null : `(where: ${text})`;
 }
 
-/** One root field over the meta view ``view``, answered under ``view``, with an optional
- * ``where``; null when the role cannot read the view or a column the where names. */
+/** One root field over the meta or ontology view ``view``, answered under ``view``, with an
+ * optional ``where``; null when the role cannot read the view or a column the where names. */
 export function rootField(
   m: MetaReader,
   view: string,
   sel: Selection,
   where?: Where,
 ): string | null {
-  const field = m.roots.get(rootKey("meta", view));
+  const field = m.roots.get(rootKey(viewDomain(view), view));
   const type = viewType(m, view);
   if (!field || !type) return null;
   const body = selectionSet(m, type, sel, 2);

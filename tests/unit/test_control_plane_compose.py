@@ -47,8 +47,9 @@ def test_every_service_is_the_control_planes_or_the_sandbox_tiers(tmp_path):
     assert profiles == {
         "provisa": ["control"],
         "provisa-sandbox": ["sandbox"],
-        # REQ-2068: the regions sandbox tier and each region's own PostgreSQL.
+        # REQ-2068: the regions sandbox tier's nodes and the region PostgreSQLs.
         "provisa-sandbox-regions": ["sandbox"],
+        "provisa-sandbox-regions-warehouse": ["sandbox"],
         "region-pg-eu": ["sandbox"],
         "region-pg-us": ["sandbox"],
         "provisa-ui": ["control"],
@@ -127,5 +128,50 @@ def test_the_regions_tier_runs_as_its_visitor_region_with_a_store_per_region(tmp
     assert eu["volumes"] != us["volumes"]
     assert "ports" not in eu and "ports" not in us
     ui = services["provisa-ui"]["environment"]
-    assert ui["PROVISA_SANDBOX_REGIONS_DEMOS"] == "retail"
-    assert "provisa-sandbox-regions:8100" in ui["PROVISA_SANDBOX_REGIONS_API_URL"]
+    assert ui["PROVISA_SANDBOX_REGIONS_DEMOS"] == "retail=us,banking=warehouse"
+    assert "us=https://provisa-sandbox-regions:8100" in ui["PROVISA_SANDBOX_REGIONS_NODES"]
+    assert (
+        "warehouse=https://provisa-sandbox-regions-warehouse:8100"
+        in ui["PROVISA_SANDBOX_REGIONS_NODES"]
+    )
+
+
+def test_the_regions_node_is_given_every_region_the_tier_declares(tmp_path):
+    """REQ-2068: the tier's config declares every regions demo's regions, so its node is given each
+    region's store and address; ledger and warehouse keep theirs in databases of their own in the eu
+    and us PostgreSQLs."""
+    services = _compose(tmp_path)["services"]
+    node_env = services["provisa-sandbox-regions"]["environment"]
+    assert node_env["PROVISA_DEMO_LEDGER_PG_URL"].endswith("@region-pg-eu:5432/ledger")
+    assert node_env["PROVISA_DEMO_WAREHOUSE_PG_URL"].endswith("@region-pg-us:5432/warehouse")
+    assert ".invalid" in node_env["PROVISA_DEMO_LEDGER_ADDRESS"]
+    assert services["region-pg-eu"]["environment"]["REGION_PG_ALSO"] == "ledger"
+    assert services["region-pg-us"]["environment"]["REGION_PG_ALSO"] == "warehouse"
+    for store in ("region-pg-eu", "region-pg-us"):
+        check = " ".join(services[store]["healthcheck"]["test"])
+        assert "createdb" in check and "$REGION_PG_ALSO" in check
+
+
+def test_banking_is_served_by_a_node_running_as_its_visitor_region(tmp_path):
+    """REQ-2068: a node serves a demo only in the region it runs as, so banking (visitor region
+    warehouse) has a node of its own: the regions node's image, config, stores and addresses, run
+    as warehouse, with its own boot org, data folder and published port, serving banking's bundle
+    (ci/bankingwalk7: banking's template refused on a node running as us)."""
+    services = _compose(tmp_path)["services"]
+    us, warehouse = (
+        services["provisa-sandbox-regions"],
+        services["provisa-sandbox-regions-warehouse"],
+    )
+    env, us_env = warehouse["environment"], us["environment"]
+    assert env["PROVISA_REGION"] == "warehouse"
+    assert env["PROVISA_DEMO_BUNDLES"] == "banking"
+    assert env["ORG_ID"] not in (us_env["ORG_ID"], "sbxrtier")
+    for shared in ("PROVISA_CONFIG", "PROVISA_DEMO_WAREHOUSE_PG_URL", "PROVISA_DEMO_LEDGER_PG_URL"):
+        assert env[shared] == us_env[shared], shared
+    assert env["PROVISA_DEMO_WAREHOUSE_ADDRESS"] == "https://provisa-sandbox-regions-warehouse:8100"
+    assert warehouse["image"] == us["image"] and warehouse["command"] == us["command"]
+    assert warehouse["ports"] == [
+        "${PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH:-127.0.0.1:18101}:8100"
+    ]
+    assert f"{tmp_path}/sandbox-regions-warehouse-data:/var/lib/provisa" in warehouse["volumes"]
+    assert f"{tmp_path}/sandbox-regions-data:/var/lib/provisa" not in warehouse["volumes"]

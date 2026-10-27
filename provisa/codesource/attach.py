@@ -81,6 +81,12 @@ def attached(state: Any, table: dict) -> bool:
     )
     if export is None or export.preview:
         return False
+    return answered_live(state, table)
+
+
+def answered_live(state: Any, table: dict) -> bool:
+    """Whether a code table's reads are answered from its function, not its landed rows: the
+    operator puts it on no replica and it declares no landing TTL above 0."""
     routes = state.replica_routes
     key = (table["source_id"], table["schema_name"], table["table_name"])
     # The operator's settings put the table on its replica (load_protected, replicate, a source

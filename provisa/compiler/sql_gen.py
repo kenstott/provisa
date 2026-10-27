@@ -39,7 +39,6 @@ from graphql import (
 )
 
 from provisa.compiler.params import ParamCollector
-from provisa.core.source_registry import TIME_TRAVEL_SOURCES
 
 from provisa.compiler.sql_types import (
     ColumnRef,
@@ -53,6 +52,7 @@ from provisa.compiler.sql_rewrite import (
     _q,
     _sql_str_literal,
     _table_ref,
+    travel_ref,
 )
 from provisa.compiler.sql_where import (
     RelationshipConditions,
@@ -185,6 +185,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         RelationshipConditions(
                             ctx, join_meta.target.type_name, use_catalog, sources
                         ),
+                        ctx.aggregate_columns,
                     )
                 )
                 if sel.selection_set:
@@ -210,7 +211,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
                 _agg_limit = _explicit_limit(sel, variables) or join_meta.default_limit
-                _from_clause = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
+                _target_ref = travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)
+                _from_clause = f"{_target_ref} {_q(join_alias)}"
                 _where_expr = f"{tgt_expr} = {src_expr}"
                 _rel_key = sel.alias.value if sel.alias else sel_name
                 _pv = (
@@ -248,7 +250,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             else:
                 _join_on = f"{src_expr} = {tgt_expr}"
                 join_clauses.append(
-                    f"LEFT JOIN {_table_ref(join_meta.target, use_catalog)}"
+                    f"LEFT JOIN {travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
                     f" {_q(join_alias)}"
                     f" ON {_join_on}"
                 )
@@ -382,39 +384,19 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                 )
             )
 
-    # FROM clause
-    ref = _table_ref(table, use_catalog)
+    # FROM clause. REQ-1163: a relation that has versions is read at the time its field's
+    # as_of / as_recorded say, written as the SQL call form the pipeline lifts per reference.
+    ref = travel_ref(_table_ref(table, use_catalog), field_node, variables)
     if use_aliases:
         assert root_alias is not None
         from_clause = f"{ref} {_q(root_alias)}"
     else:
         from_clause = ref
 
-    # Process arguments before building SQL so as_of can modify the FROM clause
     args = {}
     if field_node.arguments:
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
-
-    # Time-travel: append FOR TIMESTAMP/VERSION AS OF to table ref in FROM clause (REQ-372)
-    if "as_of" in args:
-        if table.source_type not in TIME_TRAVEL_SOURCES:
-            raise ValueError(
-                f"as_of is not supported for source type {table.source_type!r}; "
-                f"only iceberg and delta_lake sources support time-travel"
-            )
-        as_of_val = args["as_of"]
-        # Numeric → version; string → timestamp
-        try:
-            version = int(as_of_val)
-            time_travel_clause = f" FOR VERSION AS OF {version}"
-        except (TypeError, ValueError):
-            time_travel_clause = f" FOR TIMESTAMP AS OF TIMESTAMP '{as_of_val}'"
-        if use_aliases:
-            assert root_alias is not None
-            from_clause = f"{ref}{time_travel_clause} {_q(root_alias)}"
-        else:
-            from_clause = f"{ref}{time_travel_clause}"
 
     result_limit: int | None = None
 
@@ -422,7 +404,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     # PG places TABLESAMPLE after the (optional) alias; SQLGlot transpiles per dialect.
     # Not compatible with time-travel or lateral op-join wrapping.
     if "sample" in args:
-        if "as_of" in args or has_lateral_ops_joins:
+        if "as_of" in args or "as_recorded" in args or has_lateral_ops_joins:
             raise ValueError("sample cannot be combined with as_of or op-relationship joins")
         _pct = float(args["sample"])
         if not 0 < _pct <= 100:
@@ -447,6 +429,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                 table.table_id,
                 ctx.exposed_to_physical,
                 RelationshipConditions(ctx, table.type_name, use_catalog, sources),
+                ctx.aggregate_columns,
             )
         )
     where_parts += native_arg_conditions(api_args)
@@ -655,7 +638,13 @@ def _compile_connection_field(  # REQ-218
         _conn_vvals = ctx.virtual_columns.get(table.table_id)
         where_parts.append(
             _compile_where(
-                args["where"], collector, None, _conn_vvals, table.table_id, ctx.exposed_to_physical
+                args["where"],
+                collector,
+                None,
+                _conn_vvals,
+                table.table_id,
+                ctx.exposed_to_physical,
+                column_types=ctx.aggregate_columns,
             )
         )
 
@@ -721,7 +710,17 @@ class UnknownRootField(ValueError):
 
 #: A root field's arguments that are not a table's parameters (REQ-1986).
 _STANDARD_ARGS = frozenset(
-    {"where", "order_by", "limit", "offset", "distinct_on", "as_of", "sample", "similar"}
+    {
+        "where",
+        "order_by",
+        "limit",
+        "offset",
+        "distinct_on",
+        "as_of",
+        "as_recorded",
+        "sample",
+        "similar",
+    }
 )
 
 

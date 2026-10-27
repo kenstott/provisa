@@ -51,7 +51,7 @@ def _match_return(draw):
             expected_names.append(alias)
         else:
             items.append(f"n.{p}")
-            expected_names.append(p)
+            expected_names.append(f"n.{p}")  # an unaliased item is named as written
     query = "MATCH (n:Person)"
     threshold = draw(st.one_of(st.none(), st.integers(min_value=0, max_value=100)))
     if threshold is not None:

@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import {
   Alert,
   Button,
@@ -51,7 +52,10 @@ export function KaggleFormSection({ sourceIdHint, onSourcesRegistered }: KaggleF
 
   const [query, setQuery] = useState("");
   const [datasets, setDatasets] = useState<{ ref: string; title: string; subtitle: string }[]>([]);
-  const [selectedRef, setSelectedRef] = useState<string | null>(null);
+  // A dataset the link that opened this form names (?kaggle=<owner>/<ref>), chosen once the
+  // token is checked.
+  const [searchParams] = useSearchParams();
+  const [selectedRef, setSelectedRef] = useState<string | null>(() => searchParams.get("kaggle"));
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
 
@@ -139,6 +143,9 @@ export function KaggleFormSection({ sourceIdHint, onSourcesRegistered }: KaggleF
         // re-search it. stage_dataset's own docstring: re-running it is the (v1) refresh
         // mechanism, each file overwritten in place at this exact path.
         federationHintsJson: JSON.stringify({ kaggle_owner: owner, kaggle_ref: ref }),
+        // The token as the user entered it -- a value, or a ${secret:...} reference they typed:
+        // the source's credential, resolved by the server at its creation and each refresh.
+        password: token,
       });
       if (!createResult.success) {
         throw new Error(`${staged.suggestedSourceId}: ${createResult.message}`);

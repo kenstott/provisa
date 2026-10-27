@@ -29,6 +29,10 @@ _DEFAULTS: dict[str, dict] = {
 }
 
 
+class LLMEmptyResponseError(RuntimeError):
+    """The provider answered 200 but the message carried no text content."""
+
+
 class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
     """Vendor-agnostic LLM client backed by aisuite.
 
@@ -155,7 +159,16 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             messages=messages,
             max_tokens=max_tokens,
         )
-        return response.choices[0].message.content.strip()
+        choice = response.choices[0]
+        content = choice.message.content
+        if content is None:
+            raise LLMEmptyResponseError(
+                f"{model_id} returned no message content "
+                f"(finish_reason={getattr(choice, 'finish_reason', None)!r}, "
+                f"max_tokens={max_tokens}); a reasoning model can spend the whole token budget "
+                "before emitting text"
+            )
+        return content.strip()
 
     def complete_sync(
         self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024

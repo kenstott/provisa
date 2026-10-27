@@ -148,7 +148,7 @@ Las consultas GraphQL con varios campos raíz (p. ej., `{ orders { id } customer
 
 ## Canal de consulta {: #query-pipeline }
 
-Toda lectura pasa por seis etapas, sea cual sea el lenguaje en que la escriba. Cada etapa entrega a la siguiente una sentencia SQL. El lenguaje solo decide por dónde entra la lectura.
+Toda lectura pasa por cinco etapas. GraphQL, Cypher, SPARQL, gRPC y SQL son puntos de entrada, no etapas — cada uno compila o traduce a SQL semántico antes de que comience la canalización.
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ El SQL semántico lee el modelo. Sus tablas están calificadas por dominio (`sal
 
 Una lectura anidada se compila a un único pipeline canónico de CTE, el mismo para todos los motores y construido solo a partir de las relaciones declaradas. Una CTE raíz lee la tabla raíz con su filtro, su orden, su límite y su desplazamiento. Cada nivel a-muchos es una CTE propia. Une su tabla a la CTE del padre por las claves de la relación, toma las primeras filas de cada padre con `ROW_NUMBER() OVER (PARTITION BY ...)` y las agrega en una lista JSON por padre. El `SELECT` final lee la CTE raíz y une cada nivel con un left join por la clave del padre. Las lecturas GraphQL, Cypher y SPARQL que hacen la misma pregunta se compilan a la misma sentencia.
 
-Los compiladores actuales aún no han llegado a esa forma. El compilador GraphQL lee un campo anidado con argumentos mediante un `LEFT JOIN LATERAL` por padre, y el traductor de Cypher escribe una CTE por cada etapa `WITH`. El ejemplo de abajo muestra ambas formas.
+El traductor de Cypher escribe una CTE por cada etapa `WITH`; alinear esas formas con la canalización canónica es trabajo pendiente. Hasta que concluya, lecturas equivalentes en Cypher y GraphQL no siempre compilan al mismo SQL semántico. El compilador GraphQL escribe campos anidados con argumentos como `LEFT JOIN LATERAL` por padre. Ambas formas actuales aparecen en el ejemplo siguiente.
 
 ### SQL gobernado {: #governed-sql }
 
@@ -188,7 +188,18 @@ La etapa optimizada reescribe la sentencia gobernada de formas que valen en cual
 
 ### Planificar y enrutar {: #plan-and-route }
 
-El enrutamiento lee los orígenes de la sentencia optimizada, nunca los de la gobernada. Por eso una lectura que la optimización redujo a un origen todavía puede ejecutarse en directo. Una sentencia va en directo cuando lee un origen y ese origen tiene un controlador directo. Si no, la ejecuta el motor de federación. La regla tiene una tercera condición: que el origen admita cada construcción de la sentencia. El enrutador aún no la comprueba y decide por el número de orígenes y el controlador. Los casos de caché, réplica y steward están en [Decisiones de enrutamiento](#request-pipeline).
+Aterrizar en el motor de federación es la opción predeterminada; el enrutamiento lee los orígenes optimizados, nunca los gobernados. Una sentencia solo se ejecuta directamente en su origen cuando supera las seis puertas en orden. La primera que falla nombra el motivo.
+
+| Puerta | Qué verifica |
+|---|---|
+| `one_source` | Lee un origen tras la optimización, o lee orígenes que comparten una base de datos física |
+| `dialect_supports` | El dialecto de ese origen admite cada construcción de la sentencia |
+| `access_path` | Existe un controlador directo, un llamador de API o una función de código para el origen |
+| `colocated_login` | Los orígenes contados como una sola base de datos comparten la misma credencial de acceso |
+| `not_forced` | No se aplica ningún límite de operador, columna falsa o condición que requiera el motor |
+| `trusted_to_answer` | Un origen no SQL puede responder el conjunto de datos completo sin más filtrado en proceso |
+
+Los casos de caché, réplica y steward están en [Pipeline de solicitudes](#request-pipeline).
 
 ### SQL nativo {: #native-sql }
 
@@ -559,7 +570,7 @@ El bucle de actualización se ejecuta cada 30 segundos, verifica `get_due_for_re
 | `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
 | `compiler/enum_detect.py` | Enum type auto-detection — PostgreSQL native enum types (`pg_enum`) exposed as GraphQL enum types rather than string scalars |
-| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`/* @provisa route=federated */`) that override automatic routing |
+| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`-- @provisa route=federated`) that override automatic routing |
 | `compiler/mutation_gen.py` | Mutation compiler; column presets — server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
 | `auth/approval_hook.py` | ABAC approval hook — pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
 | `subscriptions/` | SSE subscription state and delivery |
@@ -746,7 +757,7 @@ Un rol nombra como máximo un padre mediante `parent_role_id`. En la construcci�
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

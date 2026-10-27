@@ -218,6 +218,24 @@ class TestStructures:
         assert [n.variable for n in match.pattern.nodes] == ["n", "m"]
         assert match.pattern.rels[0].types == ["R"]
 
+    def test_deeply_nested_subqueries_parse(self):
+        # A subquery's body is parsed after the expression around it: parsed inside it, each level
+        # stacked its grammar frames on the level's around it, and six levels of COLLECT in maps
+        # under CASE (a GraphQL read six relationships deep) exceeded Python's recursion limit.
+        text = "n5.id"
+        for depth in range(5, 0, -1):
+            text = (
+                f"COLLECT {{ MATCH (n{depth - 1})-[:R]->(n{depth}:L) RETURN {{x: CASE WHEN "
+                f"n{depth}.id IS NULL THEN NULL ELSE {{id: n{depth}.id, next: {text}}} END}} AS row }}"
+            )
+        node = P(text)
+        for _ in range(5):
+            assert isinstance(node, SubqueryExpr) and node.kind == "COLLECT"
+            [item] = node.body.return_clause.items
+            case = item.expression.entries[0][1]
+            node = case.default.entries[1][1]
+        assert node == Property(Variable("n5"), "id")
+
     def test_subquery_keywords_are_not_reserved(self):
         # Cypher does not reserve EXISTS/COUNT/COLLECT; only a following "{" makes them a subquery
         # expression. `COUNT(*) AS count` binds a variable named count, and every later reference to

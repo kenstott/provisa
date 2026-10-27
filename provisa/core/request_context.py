@@ -34,6 +34,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 
 from provisa.core.environments import PROD
@@ -56,8 +59,37 @@ current_env: ContextVar[str | None] = ContextVar("current_env", default=None)
 
 
 def set_current_org(org_id: str) -> Token[str | None]:
-    """Bind the active org for the current context; returns a reset token."""
+    """Bind the active org for the current context; returns a reset token. Recorded too for the
+    transport answering on this thread (:func:`answering_org`)."""
+    held: _Answering | None = getattr(_answering, "held", None)
+    if held is not None:
+        held.org_id = org_id
     return current_org.set(org_id)
+
+
+class _Answering:
+    """The org a request bound, kept for the transport answering it."""
+
+    org_id: str | None = None
+
+
+_answering = threading.local()
+
+
+@contextmanager
+def answering_org() -> Iterator[_Answering]:
+    """The org the request a transport is answering on this thread binds, held past the binding's
+    own end: an RPC binds its org inside its handler and resets it there, before the transport
+    turns an error the handler raised into what the client is told -- in the model's names of the
+    request's org (REQ-2152). The RPC's work runs on the handler thread (its connection loop is
+    driven there), whatever context it runs in."""
+    held = _Answering()
+    before = getattr(_answering, "held", None)
+    _answering.held = held
+    try:
+        yield held
+    finally:
+        _answering.held = before
 
 
 def reset_current_org(token: Token[str | None]) -> None:

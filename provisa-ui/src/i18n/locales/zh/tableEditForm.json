@@ -133,13 +133,12 @@
     "mvPrimaryKeyDerived": "行标识键（来自下方列表中的主键复选框）：",
     "mvPrimaryKeyMissing": "upsert 和增量维护需要行标识键。请在下方列表中将键列标记为主键。",
     "preprocessLabel": "预检检查（Python）",
-    "preprocessHelp": "可选的预检检查，在视图 SQL 之后、落地之前运行：定义 preflight(streams, ctx) 并返回一个判定——ctx.ok() 继续，ctx.abort(reason) 拒绝（报错并向下游传播毒化标记），或 ctx.quarantine(reason) 挂起不落地。streams 是以输入节点为键的字典：streams[\"schema.table\"] 惰性产出该输入的行，因此可以在不物化的情况下检视输入。检查只做检视；它不转换行（转换请放在 SQL 或外部处理器中）。可用 SQL 表达的检查——对单个输入的行做 any(...)/all(...)——会作为对该输入的计数探测下推到引擎，因此可扩展到十亿行；其他检查则以 Arrow 批次流式处理每个输入并支持短路。调用 ctx.warn(reason) 发出非致命的提醒。它必须是确定性的——不得使用时钟、随机数、import 或 IO——保存时会进行纯度检查；非确定性或不安全的检查会被拒绝。",
+    "preprocessHelp": "可选的预检检查，在视图 SQL 之后、落地之前运行：定义 preflight(streams, ctx) 并返回一个判定——ctx.ok() 继续，ctx.abort(reason) 拒绝（报错并向下游传播毒化标记），或 ctx.quarantine(reason) 挂起不落地。streams 是以输入节点为键的字典：streams[\"schema.table\"] 惰性产出该输入的行，因此可以在不物化的情况下检视输入。检查只做检视；它不转换行（转换请放在 SQL 或外部处理器中）。可用 SQL 表达的检查——对单个输入的行做 any(...)/all(...)——会作为对该输入的计数探测下推到引擎，因此可扩展到十亿行；其他检查则以 Arrow 批次流式处理每个输入并支持短路。调用 ctx.warn(reason) 发出非致命的提醒。它可以导入唯一一个模块 provisa_services，以调用 Provisa 的服务（包括 dq）；这样的检查总是以流式处理，其结论是刷新时的状态。否则它必须是确定性的——不得使用时钟、随机数、其他 import 或 IO——保存时会进行纯度检查；非确定性或不安全的检查会被拒绝。",
     "preprocessAria": "MV 预检检查 Python 源码",
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "数据产品",
     "dataProductNone": "无",
-    "dataProductDesc": "发布到目录并导出到 Atlas、Atlan 等。",
-    "dataProductInherited": "继承自此契约所扫描的表",
+    "dataProductDesc": "发布到目录并导出到 Atlas、{{atlan}} 等。",
     "enableAggregatesLabel": "启用聚合",
     "enableAggregatesDesc": "（在 GraphQL 中公开 _aggregate 根字段）",
     "enableGroupByLabel": "启用分组",
@@ -280,6 +279,11 @@
     "timeTravelSectionHelp": "双时态同时保留两者：何时发生，以及何时记录。这样可以按某个日期读取数据，或按某个日期记录时的样子读取。将业务键、有效时间和记录时间映射到列；版本如何保存由 Provisa 决定。",
     "timeTravelLabel": "保留历史",
     "timeTravelOff": "关",
-    "timeTravelBitemporal": "双时态"
+    "timeTravelBitemporal": "双时态",
+    "holdOnFailingChecksLabel": "检查失败时暂停",
+    "holdOnFailingChecksHelp": "当扫描此视图某个输入的检查表最近一次运行失败时，中止刷新并保留上一份副本。在上方的预检之前运行；两者都必须通过才会继续。",
+    "holdOnFailingChecksShowCode": "显示代码",
+    "holdOnFailingChecksHideCode": "隐藏代码",
+    "holdOnFailingChecksCodeHelp": "此选项应用的检查。要修改它，请将其复制到上方的预检中。"
   }
 }

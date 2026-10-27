@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect your data, deliver it to every team — Provisa</title>
+  <meta name="description" content="Serve governed data to every team from one model: Arrow over Flight, typed gRPC, multi-GB results as a presigned URL, and Kafka change notifications, in five minutes." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/start/data-provisioning" />
+</head>
+<body>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+        <span class="brand-tag">Preview</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/compare">Compare</a>
+        <a href="/#deploy">Deploy</a>
+        <a href="/how-it-works">How</a>
+        <a href="/demos">Demos</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Data provisioning</span></p>
+        <h1>Now three other teams need it, and each one wants its own pipeline.</h1>
+        <p class="lead">The consuming team writes SQL and gets it back fast: Arrow over Flight, typed gRPC, and, past a row threshold, a presigned URL for a multi-GB result instead of a timed-out HTTP response. Kafka carries the change notifications, so they pull the delta rather than the snapshot.</p>
+      </div>
+
+      <div class="doc-body">
+        <h2>Connect your data, deliver it to every team, in five minutes</h2>
+        <h3>1. Install and start Provisa</h3>
+        <p>Download the installer for your machine from the <a href="/#download">download section</a> and run it. The first launch finishes a one-time setup with no internet needed. Then start the services and open the UI.</p>
+        <div class="hero-terminal"><div class="term-bar"><span></span><span></span><span></span></div><pre><code>provisa start   # every service, on your machine
+provisa open    # the UI, in your browser</code></pre></div>
+        <h3>2. Connect the sources</h3>
+        <p>In the UI, open <strong>Sources</strong> and add the systems the teams read. Provisa reads each source's catalog; pick the tables to register. Nothing is copied: queries go to the data where it lives.</p>
+        <h3>3. Give each team a role</h3>
+        <p>One role per consuming team, granted the domains and columns its contract covers. Each team's view is enforced by Provisa, not by a pipeline built for it.</p>
+        <h3>4. Deliver a large result as a file</h3>
+        <p>Ask for the result to be delivered: Provisa writes it to the results store and answers with where it is.</p>
+        <div class="hero-terminal"><div class="term-bar"><span></span><span></span><span></span></div><pre><code>curl -X POST http://localhost:8001/data/sql \
+  -H &quot;Content-Type: application/json&quot; \
+  -H &quot;X-Provisa-Role: finance&quot; \
+  -H &quot;X-Provisa-Redirect: true&quot; \
+  -d &#x27;{&quot;sql&quot;: &quot;SELECT * FROM transactions&quot;}&#x27;</code></pre></div>
+        <h3>5. Stream the changes</h3>
+        <p>Subscribe to a table and send its changes to a Kafka topic, so a team reads what changed since its last pull.</p>
+
+        <h2>What stays true</h2>
+        <ul>
+          <li>Every team's access is the same governed model, not a copy per team.</li>
+          <li>The operator's limits protect each source from a team's load.</li>
+          <li>Each delivery is in the request record, with the role it ran as.</li>
+        </ul>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/governance">How governance follows the data</a>
+        <a class="more" href="/docs/subscriptions/">Subscriptions</a>
+        <a class="more" href="/docs">Docs</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/one-model">One model</a>
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/data-mesh">Data mesh</a>
+        <a href="/why/ai">Data for AI</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/docs">Docs</a>
+        <a href="/register">Register (free license)</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@provisa.dev">Support</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

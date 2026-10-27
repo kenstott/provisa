@@ -518,6 +518,14 @@ class AuditWriter:
             )
 
     async def _run(self) -> None:
+        from opentelemetry.instrumentation.utils import suppress_instrumentation
+
+        # REQ-1910: what the writer does follows requests already answered. Traced, its inserts
+        # and Hot counts were each a root of its own, inside whichever request's window it ran.
+        with suppress_instrumentation():
+            await self._serve()
+
+    async def _serve(self) -> None:
         try:
             while not self._stopping.is_set():
                 batch = self._take()

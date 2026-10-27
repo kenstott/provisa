@@ -55,11 +55,10 @@ from provisa.core.models import (
 from provisa.core.schema_org import (
     glossary_term_domains,
     glossary_term_edges,
-    glossary_term_table_refs,
     glossary_terms,
     naming_rules,
+    registered_tables,
 )
-from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -86,8 +85,6 @@ MODEL_SECTIONS: tuple[str, ...] = (
     "scheduled_triggers",
     "kafka_sources",
 )
-
-_RESERVED_ROLES = frozenset({ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
 
 
 def _written(model: BaseModel) -> dict[str, Any]:
@@ -139,9 +136,12 @@ async def _domains(conn: "Connection") -> list[dict[str, Any]]:
 async def _roles(conn: "Connection") -> list[dict[str, Any]]:
     from provisa.core.repositories import role as role_repo
 
+    from provisa.core.db import STANDARD_ROLES
+
     out = []
     for row in await role_repo.list_all(conn):
-        if row["id"] in _RESERVED_ROLES:
+        # REQ-2155: a standard role is Provisa's, never a config file's (role_repo refuses one).
+        if row["id"] in STANDARD_ROLES:
             continue
         written = _written(Role.model_validate(_fields(Role, row)))
         # A role always states its domains (ProvisaConfig refuses one that does not).
@@ -158,7 +158,7 @@ def _internal_table(row: dict[str, Any]) -> bool:
     from provisa.core.models import DERIVED_SOURCE_ID
 
     seeded = SEEDED_SOURCE_IDS - {DERIVED_SOURCE_ID}
-    return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops")
+    return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops", "ontology")
 
 
 def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
@@ -260,14 +260,14 @@ async def _class_terms(conn: "Connection") -> dict[int, str]:
     rows = (
         await conn.execute_core(
             select(
-                glossary_term_table_refs.c.table_id,
-                glossary_term_table_refs.c.term_id,
-                glossary_term_table_refs.c.derived,
+                registered_tables.c.id,
+                registered_tables.c.class_term_id,
+                registered_tables.c.class_term_derived,
                 glossary_terms.c.name,
-            ).join(glossary_terms, glossary_terms.c.id == glossary_term_table_refs.c.term_id)
+            ).join(glossary_terms, glossary_terms.c.id == registered_tables.c.class_term_id)
         )
     ).fetchall()
-    return {r.table_id: r.name for r in rows if not (r.derived and r.term_id in derived)}
+    return {r.id: r.name for r in rows if not (r.class_term_derived and r.class_term_id in derived)}
 
 
 async def _naming_rules(conn: "Connection") -> list[dict[str, str]]:
@@ -318,7 +318,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
 
     rls_rules = []
     for row in await rls_repo.list_all(conn):
-        if _refs_internal(row) or row.get("domain_id") in ("meta", "ops"):
+        if _refs_internal(row) or row.get("domain_id") in ("meta", "ops", "ontology"):
             continue
         rule = {
             "role_id": row["role_id"],
@@ -349,9 +349,14 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         "domains": await _domains(conn),
         "roles": await _roles(conn),
         "data_products": [
-            _written(DataProduct.model_validate(_fields(DataProduct, row)))
+            # REQ-1634 STATUS: the stored successor_id is the config's ``successor``.
+            _written(
+                DataProduct.model_validate(
+                    _fields(DataProduct, {**row, "successor": row["successor_id"]})
+                )
+            )
             for row in await data_product_repo.list_all(conn)
-            if row["domain_id"] not in ("meta", "ops")
+            if row["domain_id"] not in ("meta", "ops", "ontology")
         ],
         "glossary_terms": await _glossary_terms(conn),
         "tables": [
@@ -410,7 +415,7 @@ def _key(item: dict[str, Any]) -> str:
 
 
 def _roles_parents_first(roles: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Roles by id, each after the role it inherits from, so an apply finds the parent stored."""
+    """Roles by id, each after the roles it inherits from, so an apply finds its parents stored."""
     by_id = {r["id"]: r for r in roles}
     out: list[dict[str, Any]] = []
     placed: set[str] = set()
@@ -418,9 +423,9 @@ def _roles_parents_first(roles: list[dict[str, Any]]) -> list[dict[str, Any]]:
     def _place(role: dict[str, Any]) -> None:
         if role["id"] in placed:
             return
-        parent = role.get("parent_role_id")
-        if parent in by_id:
-            _place(by_id[parent])
+        for parent in role.get("parents") or []:
+            if parent in by_id:
+                _place(by_id[parent])
         placed.add(role["id"])
         out.append(role)
 

@@ -1,0 +1,126 @@
+name: Conformance (Cypher)
+
+# REQ-2167: Provisa's Cypher over HTTP against the openCypher TCK (github.com/opencypher/openCypher,
+# tck/features, Apache-2.0), fetched at a pinned tag by git, never vendored, and run by
+# scripts/conformance/cypher_tck.py against POST /data/cypher as org_admin.
+#
+# A failing scenario is data, written to the job summary and to the artifact conformance-cypher.json
+# (read by scripts/conformance/fill_docs.py into docs/conformance/cypher.md), never a job failure. A
+# scenario whose setup builds its own graph is counted apart as not runnable by design: a Provisa
+# graph's vocabulary is its model's. The job fails only when the Provisa instance did not start or
+# the suite did not run.
+#
+# The instance is every conformance job's (.github/actions/conformance-instance): the embedded
+# PostgreSQL control plane and `uvicorn main:app` on the DuckDB engine, natively on the runner,
+# with password auth. The runner presents the job user's token and names org_admin in the
+# x-provisa-role header.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-cypher-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cypher:
+    name: Cypher conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      TCK_REPO: https://github.com/opencypher/openCypher.git
+      TCK_VERSION: "2024.3"
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - name: Fetch the openCypher TCK
+        run: |
+          git clone --quiet --depth 1 --branch "$TCK_VERSION" "$TCK_REPO" "$RUNNER_TEMP/opencypher"
+          head -n 3 "$RUNNER_TEMP/opencypher/LICENSE"
+          grep -q "Apache License" "$RUNNER_TEMP/opencypher/LICENSE"
+          find "$RUNNER_TEMP/opencypher/tck/features" -name '*.feature' | wc -l
+
+      # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
+      # its token in CONFORMANCE_AUTHORIZATION.
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+
+
+      - name: Run the TCK
+        timeout-minutes: 40
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          .venv/bin/python scripts/conformance/cypher_tck.py \
+            "$RUNNER_TEMP/opencypher/tck/features" "$TCK_VERSION" \
+            "http://127.0.0.1:$PROVISA_API_PORT" org_admin "$CONFORMANCE_AUTHORIZATION" \
+            "$RUNNER_TEMP/report/conformance-cypher.json" "$RUNNER_TEMP/report/conformance-cypher.md"
+          cat "$RUNNER_TEMP/report/conformance-cypher.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        run: cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/" || true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-cypher
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi

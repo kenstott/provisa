@@ -52,6 +52,31 @@ def _subprocess_coverage_env() -> dict:
     return {"COVERAGE_PROCESS_START": str(_REPO_ROOT / "pyproject.toml")}
 
 
+def audited_route_reason(server: "IsolatedServer", noted: str) -> str | None:
+    """The newest route reason in the server's audit log that starts with ``noted``, waiting for
+    the writer (it inserts in batches)."""
+    import sqlalchemy as sa
+
+    from provisa.core.database import create_engine_from_url
+
+    url = server.plane.url if server.plane is not None else os.environ["TENANT_DATABASE_URL"]
+    engine = create_engine_from_url(url)
+    query = sa.text(
+        f"SELECT route_reason FROM org_{server.org_id}.query_audit_log "
+        "WHERE route_reason LIKE :noted ORDER BY id DESC LIMIT 1"
+    )
+    deadline = time.monotonic() + 60
+    try:
+        while True:
+            with engine.connect() as conn:
+                reason = conn.execute(query, {"noted": f"{noted}%"}).scalar()
+            if reason is not None or time.monotonic() > deadline:
+                return reason
+            time.sleep(0.5)
+    finally:
+        engine.dispose()
+
+
 def free_port() -> int:
     """A port this process never issues again. Pinned, not transient: the server binds its ports
     long after they are leased (five are leased before the process even starts), and a transient
@@ -134,6 +159,16 @@ def _first_start(org_id: str, tenant_url: str, config_text: str) -> None:
         pool.submit(asyncio.run, first_start.empty_org_model(org_id, tenant_url)).result()
     # An in-process boot of the same org that follows seeds again: the store is no longer its.
     first_start._SEEDED_FROM.pop(org_id, None)  # noqa: SLF001
+
+
+def _keep_log(path: Path, org_id: str) -> None:
+    """Copy a launch's stderr where the run keeps its results, when it names such a place
+    (``PROVISA_TEST_SERVER_LOG_DIR``; the CI lanes do, and upload it), before it is removed: a
+    lane's failure otherwise carries only the tail its assertion quoted (as WorkerBoot keeps its)."""
+    kept = os.environ.get("PROVISA_TEST_SERVER_LOG_DIR")
+    if kept and path.exists():
+        Path(kept).mkdir(parents=True, exist_ok=True)
+        shutil.copy(path, Path(kept) / f"isolated-{org_id}-{path.name}")
 
 
 class IsolatedServer:
@@ -278,6 +313,9 @@ class IsolatedServer:
             "PROVISA_PGWIRE_PORT": str(self.pgwire_port),
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
+            # Its own trace folder: every server compacts its folder every minute, and servers
+            # sharing one compacted each other's files.
+            "PROVISA_TELEMETRY_DIR": tempfile.mkdtemp(prefix="isolated-server-telemetry-"),
             # REQ-2075: the roles this server's MCP agent may act as (tests/integration/mcp_pin).
             "PROVISA_MCP_ROLE": pinned_roles_of(self._cfg_path),
             **self._extra_env,
@@ -379,6 +417,7 @@ class IsolatedServer:
         _sf = getattr(self, "_stderr_file", None)
         if _sf is not None:
             _sf.close()
+            _keep_log(Path(_sf.name), self.org_id)
             Path(_sf.name).unlink(missing_ok=True)
             self._stderr_file = None
         self.start(timeout=timeout)
@@ -400,5 +439,6 @@ class IsolatedServer:
         _sf = getattr(self, "_stderr_file", None)
         if _sf is not None:
             _sf.close()
+            _keep_log(Path(_sf.name), self.org_id)
             Path(_sf.name).unlink(missing_ok=True)
             self._stderr_file = None

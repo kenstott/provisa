@@ -8,12 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2128: the Knowledge Graph panel, the full graph it expands into and the Product map entry
+// REQ-2128: the Graph panel, the full graph it expands into and the Product map entry
 // point. jsdom has no WebGL, so the three.js scene is replaced by a recorder.
 
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 import type { GraphData } from "../graphModel";
 import { DATA } from "./fixture";
 
@@ -42,7 +42,7 @@ vi.mock("../graphScene", () => ({
         "setData",
         "setSelected",
         "focus",
-        "setFrontal",
+        "setFlat",
       ])
         calls[m] = vi.fn();
       Object.assign(this, calls);
@@ -92,9 +92,16 @@ vi.mock("../useProductGraph", () => ({
   },
 }));
 
-import { KnowledgeGraphPanel, ProductMapButton } from "../KnowledgeGraphPanel";
+import { GraphPanel, ProductMapButton } from "../GraphPanel";
+import { setStored } from "../../../lib/browserStorage";
 
 const last = () => made.scenes[made.scenes.length - 1];
+/** Turns a layer on or off in the expanded graph's Layers menu. */
+const toggleLayer = (layer: string) => {
+  const id = `graph3d-layers-menu-option-${layer}`;
+  if (!screen.queryByTestId(id)) fireEvent.click(screen.getByTestId("graph3d-layers-menu"));
+  fireEvent.click(screen.getByTestId(id));
+};
 const drawn = (call: unknown[]) => call[0] as GraphData;
 const nodeIds = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 const kinds = (g: GraphData) => [...new Set(g.edges.map((e) => e.kind))].sort();
@@ -108,29 +115,84 @@ beforeEach(() => {
 });
 
 function panel() {
-  render(<KnowledgeGraphPanel productId="c360" productName="customer_360" />);
+  render(<GraphPanel productId="c360" productName="customer_360" graph={DATA} />);
   // Scrolled into view: the product is read and three.js loads.
   act(() => observed.fire.forEach((f) => f()));
 }
 
-describe("the Knowledge Graph panel", () => {
+describe("the Graph panel", () => {
   it("loads three.js only once it scrolls into view, and draws the product's core", async () => {
-    render(<KnowledgeGraphPanel productId="c360" productName="customer_360" />);
+    render(<GraphPanel productId="c360" productName="customer_360" graph={DATA} />);
     expect(made.scenes).toHaveLength(0);
-    expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
     act(() => observed.fire.forEach((f) => f()));
-    expect(reads.calls.at(-1)).toEqual(["c360", true]);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const g = drawn(last().setData.mock.calls[0]);
     expect(nodeIds(g)).toEqual(["f:refresh", "p:c360", "t:customers", "t:orders", "term:customer"]);
-    // No layer controls in the panel.
-    expect(screen.queryByTestId("graph3d-layers")).not.toBeInTheDocument();
+  });
+
+  it("draws the card from the panel's meta read, and reads only once it is expanded", async () => {
+    panel();
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    // The card is the product's core as the panel read it: no read of its own.
+    expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
+    // Expanded, the full graph reads its own query (its filters and presets need the whole model).
+    fireEvent.click(screen.getByTestId("graph-panel-expand"));
+    await waitFor(() => expect(reads.calls.at(-1)).toEqual(["c360", true]));
+  });
+
+  it("is the compact view: its canvas at the panel's fixed height, no explorer in it", async () => {
+    panel();
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    // The stage sits in the fixed-height view (graph3d.css: .g3d-panel-view, 320px).
+    expect(screen.getByTestId("graph-panel-stage").closest(".g3d-panel-view")).not.toBeNull();
+    // No layer controls, filters, presets or Open as query in place: those are the expanded
+    // explorer's.
+    for (const id of [
+      "graph-panel-layers-menu",
+      "graph-panel-layers",
+      "graph-panel-open-as-query",
+      "graph3d-layers",
+    ])
+      expect(screen.queryByTestId(id)).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "All" })).not.toBeInTheDocument();
+    // Expanded, the full graph offers every preset.
+    fireEvent.click(screen.getByTestId("graph-panel-expand"));
+    const full = await screen.findByTestId("graph3d");
+    for (const name of ["All", "Ontology", "Products"])
+      expect(within(full).getByRole("radio", { name })).toBeInTheDocument();
+    // Lineage is drawn by the panel's lineage DAG, not as a preset of its own.
+    expect(within(full).queryByRole("radio", { name: "Lineage" })).not.toBeInTheDocument();
+  });
+
+  it("is a glance: it turns and draws no grid, with no controls, hint or export of its own", async () => {
+    // A viewer's saved defaults for the product's graph say the opposite; the card does not read them.
+    setStored("graph3d.product-panel.c360", JSON.stringify({ rotate: false, grid: true }));
+    panel();
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    expect(last().setRotate).toHaveBeenLastCalledWith(true);
+    expect(last().setGrid).toHaveBeenLastCalledWith(false);
+    for (const id of [
+      "graph-panel-rotate",
+      "graph-panel-grid",
+      "graph-panel-reset",
+      "graph-panel-reset-settings",
+      "graph-panel-stage-export",
+    ])
+      expect(screen.queryByTestId(id)).not.toBeInTheDocument();
+    expect(screen.getByTestId("graph-panel").querySelector(".p3d-hint")).toBeNull();
+    // The expand button stays, and the expanded view keeps its controls.
+    fireEvent.click(screen.getByTestId("graph-panel-expand"));
+    const full = await screen.findByTestId("graph3d");
+    expect(within(full).getByText("Rotate")).toBeInTheDocument();
+    expect(full.querySelector(".p3d-hint")).not.toBeNull();
   });
 
   it("lists in its legend only what it draws", async () => {
     panel();
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    const legend = screen.getByTestId("kg-panel-stage").querySelector(".p3d-legend") as HTMLElement;
+    const legend = screen
+      .getByTestId("graph-panel-stage")
+      .querySelector(".p3d-legend") as HTMLElement;
     expect([...legend.querySelectorAll("span")].map((e) => e.textContent)).toEqual([
       "data product",
       "member table",
@@ -142,11 +204,15 @@ describe("the Knowledge Graph panel", () => {
     expect(legend.querySelector('[data-testid="legend-table:plain"] i')).toHaveClass(
       "g3d-shape-cylinder",
     );
+    // A data product is drawn an icosahedron, seen as a hexagon: its glyph is clipped to one.
+    const product = legend.querySelector('[data-testid="legend-product:plain"] i') as HTMLElement;
+    expect(product).toHaveClass("g3d-shape-icosahedron");
+    expect(product.dataset.glyph?.split(" ")).toHaveLength(6);
   });
 
   it("drops a layer's entry from the full graph's legend as the layer goes", async () => {
     panel();
-    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
     await waitFor(() => expect(made.scenes).toHaveLength(2));
     const legend = () =>
       [
@@ -155,17 +221,17 @@ describe("the Knowledge Graph panel", () => {
         ).querySelectorAll("span"),
       ].map((e) => e.textContent);
     expect(legend()).toContain("tag");
-    fireEvent.click(screen.getByTestId("graph3d-layer-tags"));
+    toggleLayer("tags");
     await waitFor(() => expect(legend()).not.toContain("tag"));
   });
 
-  it("expands to the full graph on Knowledge graph, focused on the product", async () => {
+  it("expands to the full graph on All, focused on the product", async () => {
     panel();
-    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
     expect(await screen.findByTestId("graph3d")).toBeInTheDocument();
     // The panel's scene, then the expanded graph's.
     await waitFor(() => expect(made.scenes).toHaveLength(2));
-    expect(screen.getByRole("radio", { name: "Knowledge graph" })).toBeChecked();
+    expect(within(screen.getByTestId("graph3d")).getByRole("radio", { name: "All" })).toBeChecked();
     const g = drawn(last().setData.mock.calls[0]);
     expect(kinds(g)).not.toContain("relationship_outside");
     expect(nodeIds(g)).toContain("g:gold");
@@ -177,7 +243,7 @@ describe("the Knowledge Graph panel", () => {
 
   it("links the detail's title and each connection to its own page", async () => {
     panel();
-    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
     await waitFor(() => expect(made.scenes).toHaveLength(2));
     expect(screen.getByTestId("graph3d-title-link")).toHaveAttribute(
       "href",
@@ -196,7 +262,7 @@ describe("the Knowledge Graph panel", () => {
 
   it("opens as its query under its own product's focus, and not under one the reader picks", async () => {
     panel();
-    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
     await waitFor(() => expect(made.scenes).toHaveLength(2));
     // Its filters are its query's: the scope it reports, every filter open at first.
     expect(scopes.asked.at(-1)).toMatchObject({ domains: [], tags: [], sensitivities: [] });
@@ -212,38 +278,41 @@ describe("the Knowledge Graph panel", () => {
     await waitFor(() => expect(screen.getByTestId("graph3d-open-as-graphql")).toBeDisabled());
   });
 
-  it("removes only the tags when the tags layer goes, and the Lineage preset draws lineage alone", async () => {
+  it("removes only the tags when the tags layer goes, and a preset change redraws from the front", async () => {
     panel();
-    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
     // The panel's scene, then the expanded graph's.
     await waitFor(() => expect(made.scenes).toHaveLength(2));
     const before = drawn(last().setData.mock.calls[0]);
-    fireEvent.click(screen.getByTestId("graph3d-layer-tags"));
+    // All draws the product's lineage among its other layers.
+    expect(kinds(before)).toContain("lineage");
+    toggleLayer("tags");
     await waitFor(() => expect(last().setData).toHaveBeenCalledTimes(2));
     const after = drawn(last().setData.mock.calls[1]);
     expect(nodeIds(before).filter((id) => !nodeIds(after).includes(id))).toEqual(["g:gold"]);
     // A layer change keeps the camera where it is.
     expect(last().setData.mock.calls[1][2]).toBe(false);
 
-    fireEvent.click(screen.getByRole("radio", { name: "Lineage" }));
+    fireEvent.click(within(screen.getByTestId("graph3d")).getByRole("radio", { name: "Products" }));
     await waitFor(() => expect(last().setData).toHaveBeenCalledTimes(3));
-    const [lineage, at, reset] = last().setData.mock.calls[2];
-    expect(kinds(lineage)).toEqual(["lineage"]);
-    expect(at.get("x:raw_orders")[0]).toBeLessThan(at.get("t:orders")[0]);
+    const [products, , reset] = last().setData.mock.calls[2];
+    expect(kinds(products)).not.toContain("lineage");
+    expect(kinds(products)).not.toContain("member");
     expect(reset).toBe(true);
   });
 
   it("offers no layer the data has nothing in", async () => {
     reads.data = { ...DATA, edges: DATA.edges.filter((e) => e.kind !== "lineage") };
     panel();
-    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
-    expect(await screen.findByTestId("graph3d-layer-tags")).toBeInTheDocument();
-    expect(screen.queryByTestId("graph3d-layer-lineage")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
+    fireEvent.click(await screen.findByTestId("graph3d-layers-menu"));
+    expect(await screen.findByTestId("graph3d-layers-menu-option-tags")).toBeInTheDocument();
+    expect(screen.queryByTestId("graph3d-layers-menu-option-lineage")).not.toBeInTheDocument();
   });
 
   it("shows a selected table's columns on asking", async () => {
     panel();
-    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
     // The panel's scene, then the expanded graph's.
     await waitFor(() => expect(made.scenes).toHaveLength(2));
     // The table picked on the canvas (a connection row is a link to the table's page).
@@ -255,13 +324,13 @@ describe("the Knowledge Graph panel", () => {
 });
 
 describe("the Product map entry point", () => {
-  it("opens the full graph on the Product map preset, every product shown", async () => {
+  it("opens the full graph on the Products preset, every product shown", async () => {
     render(<ProductMapButton />);
     expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
     fireEvent.click(screen.getByTestId("product-map-open"));
     expect(reads.calls.at(-1)).toEqual([null, true]);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    expect(screen.getByRole("radio", { name: "Product map" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Products" })).toBeChecked();
     expect(nodeIds(drawn(last().setData.mock.calls[0]))).toEqual([
       "d:finance",
       "d:sales",

@@ -1,14 +1,16 @@
 {
   "graph3d": {
     "canvasLabel": "3D-граф продуктов данных и их состава",
-    "panelTitle": "Граф знаний",
-    "expandTitle": "{{product}}: граф знаний",
+    "panelTitle": "Граф",
+    "expandTitle": "{{product}}: граф",
     "productMap": "Карта продуктов",
     "preset": "Пресет",
-    "preset_knowledge": "Граф знаний",
+    "dimension": "2D или 3D",
+    "view2d": "2D",
+    "view3d": "3D",
+    "preset_all": "Все",
     "preset_ontology": "Онтология",
-    "preset_productMap": "Карта продуктов",
-    "preset_lineage": "Происхождение",
+    "preset_products": "Продукты",
     "layers": "Слои",
     "layer_products": "Продукты и домены",
     "layer_tables": "Таблицы-участники",
@@ -96,7 +98,6 @@
     "openAsQueryFocused": "Окрестность поиска или фокуса пока нельзя выразить одним запросом.",
     "openAsQueryCompiling": "Компиляция запроса…",
     "openAsQueryNoCypher": "У этого запроса нет формы Cypher.",
-    "openAsQuerySparqlLater": "SPARQL откроется, когда появится его endpoint.",
     "layersMenu": "Слои",
     "termsMenu": "Термины",
     "menuAll": "все",
@@ -109,6 +110,8 @@
     "overBudget": "Совпадений: {{count}}; уточните поиск или выберите домен",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Привязан к таблицам, ещё не связанным как одна сущность: {{tables}}",
-    "status_draft": "Черновик"
+    "status_draft": "Черновик",
+    "openAsQueryNoSparql": "У этого запроса нет формы SPARQL.",
+    "openAsQuerySparqlRoots": "Каждый корень этого запроса — отдельный запрос SPARQL: откройте GraphQL, чтобы прочитать их по одному."
   }
 }

@@ -36,7 +36,7 @@ vi.mock("../../../../components/graph3d/graphScene", () => ({
         "setData",
         "setSelected",
         "focus",
-        "setFrontal",
+        "setFlat",
       ])
         calls[m] = vi.fn();
       Object.assign(this, calls);
@@ -87,7 +87,6 @@ describe("the graph's Attraction slider", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -115,7 +114,6 @@ describe("the graph's Attraction slider", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -133,7 +131,6 @@ describe("the graph's Attraction slider", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -153,7 +150,6 @@ describe("the graph's Attraction slider", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="taxonomy"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -168,7 +164,6 @@ describe("the graph's Attraction slider", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"

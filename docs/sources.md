@@ -1001,7 +1001,7 @@ environment supplied it.
 
 ### Data Profiler
 
-A data profiler is a source that holds a name, a schedule and run defaults, and nothing else. It is never introspected. Tables of other sources are added to it, and each run measures them and writes its rows into the org's control plane, where they are read like any other source's tables. See [Test data](test-data.md) for creating a profiler and adding tables to it.
+A data profiler is a source that holds a name, a schedule and run defaults, and nothing else. It is never introspected. Tables of other sources are added to it, and each run measures them and writes its rows into the org's model store, where they are read like any other source's tables. See [Test data](test-data.md) for creating a profiler and adding tables to it.
 
 ### Data Quality Checkers
 
@@ -1073,6 +1073,8 @@ The registration derives four things from that text:
 Timing needs no new fields. `change_signal` plus `cache_ttl` set how often it polls, `mv_debounce_quiet` and `mv_debounce_max_delay` fold a burst of upstream changes into one scan, a calendar grain makes it periodic, and `expected_events` holds the scan until its inputs are fresh through the window. The poll loop is the scan scheduler.
 
 `outcome` is one of `pass`, `fail`, `warn`, `error` or `skipped`. None of them enforces anything by itself. If you want enforcement, declare it separately: a preflight, or an MV over the landed results. A landed observation doesn't have to be deterministic, so checks that could never gate a preflight are fine here, such as an anomaly score, a change over a trailing window, or freshness measured against now.
+
+A materialized view can enforce its inputs' checks with **Hold on failing checks**, on its edit page beside its preflight check. A refresh is then aborted, and the view keeps its previous copy, when the latest run of any checker table scanning one of the view's nearest physical inputs failed. Every checker table on an input counts, whichever data product it is assigned to. The abort names each failing checker table and the input it scans, and it propagates downstream like any preflight abort. The option is ordinary preflight code that calls `provisa_services.dq`; **Show its code** displays it, and you can copy it into the view's own preflight to change it. When the view also has a preflight of its own, the refresh lands only if both continue.
 
 You write the contract in the UI, in the data-quality panel of the table's edit page, and the raw contract text there is always the source of truth. A dry run executes the contract against the live table and shows the outcomes without landing them. Use it to catch a contract whose dataset name resolved somewhere unexpected, which would otherwise land nothing but passing rows.
 

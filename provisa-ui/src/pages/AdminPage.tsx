@@ -57,16 +57,22 @@ import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
 import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
+import { CatalogsTab } from "../components/admin/CatalogsTab";
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
+import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 import { EmailTab } from "../components/admin/EmailTab";
 import { SettingsCatalogPanel } from "../components/admin/SettingField";
-import { DomainModeCard, NamingConventionsCard } from "../components/admin/settingsCards";
+import {
+  ApolloSubgraphCard,
+  DomainModeCard,
+  NamingConventionsCard,
+} from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
@@ -97,9 +103,11 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
+  "/admin/catalogs": "Catalogs", // REQ-2122: each catalog connected once
   "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
+  "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
   "/admin/ontology": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
@@ -370,6 +378,7 @@ export function AdminPage() {
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
                   <DomainModeCard onApplied={() => refetchDomains()} />
                   <NamingConventionsCard />
+                  <ApolloSubgraphCard />
                 </SimpleGrid>
               </CollapsibleItem>
             </Collapsibles>
@@ -564,9 +573,11 @@ export function AdminPage() {
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
+        {activeTab === "Catalogs" && <CatalogsTab />}
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
+        {activeTab === "Classification" && <ClassificationKindsTab />}
         {activeTab === "Reports" && <ReportsTab />}
         {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>

@@ -1,14 +1,16 @@
 {
   "graph3d": {
     "canvasLabel": "גרף תלת־ממדי של מוצרי הנתונים וממה שהם בנויים",
-    "panelTitle": "גרף ידע",
-    "expandTitle": "{{product}}: גרף ידע",
+    "panelTitle": "גרף",
+    "expandTitle": "{{product}}: גרף",
     "productMap": "מפת מוצרים",
     "preset": "תבנית",
-    "preset_knowledge": "גרף ידע",
+    "dimension": "2D או 3D",
+    "view2d": "2D",
+    "view3d": "3D",
+    "preset_all": "הכול",
     "preset_ontology": "אונטולוגיה",
-    "preset_productMap": "מפת מוצרים",
-    "preset_lineage": "Data Lineage",
+    "preset_products": "מוצרים",
     "layers": "שכבות",
     "layer_products": "מוצרים ותחומים",
     "layer_tables": "טבלאות חברות",
@@ -96,7 +98,6 @@
     "openAsQueryFocused": "עדיין אי אפשר לבטא את סביבת החיפוש או המיקוד כשאילתה אחת.",
     "openAsQueryCompiling": "מהדר את השאילתה…",
     "openAsQueryNoCypher": "לשאילתה זו אין צורת Cypher.",
-    "openAsQuerySparqlLater": "SPARQL ייפתח כאשר נקודת הקצה שלו תהיה זמינה.",
     "layersMenu": "שכבות",
     "termsMenu": "מונחים",
     "menuAll": "הכול",
@@ -109,6 +110,8 @@
     "overBudget": "{{count}} התאמות; צמצמו את החיפוש או בחרו תחום",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "מעוגן בטבלאות שעדיין לא קושרו כאותה ישות: {{tables}}",
-    "status_draft": "טיוטה"
+    "status_draft": "טיוטה",
+    "openAsQueryNoSparql": "לשאילתה הזו אין צורת SPARQL.",
+    "openAsQuerySparqlRoots": "כל שורש של השאילתה הזו הוא שאילתת SPARQL משלו: פתחו את ה-GraphQL כדי לקרוא אותן אחת אחת."
   }
 }

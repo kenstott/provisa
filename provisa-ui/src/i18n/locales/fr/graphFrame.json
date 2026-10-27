@@ -4,6 +4,10 @@
     "running": "Exécution…",
     "metaCount": "{{nodes}} nœuds · {{edges}} rel.",
     "metaCountElapsed": "{{nodes}} nœuds · {{edges}} rel. · {{elapsed}}ms",
+    "metaRows_one": "{{count}} ligne",
+    "metaRows_other": "{{count}} lignes",
+    "metaRowsElapsed_one": "{{count}} ligne · {{elapsed}}ms",
+    "metaRowsElapsed_other": "{{count}} lignes · {{elapsed}}ms",
     "error": "Erreur",
     "expand": "Agrandir",
     "exitFullScreen": "Quitter le plein écran",
@@ -33,6 +37,7 @@
     "showPropertiesPanel": "Afficher le panneau des propriétés",
     "copyErrorTitle": "Erreur de copie",
     "expandedDialogLabel": "Vue agrandie du graphe",
-    "firstNodesShown": "Affichage des {{count}} premiers nœuds ; il y en a d'autres. Augmentez la limite dans le menu latéral."
+    "firstNodesShown": "Affichage des {{count}} premiers nœuds ; il y en a d'autres. Augmentez la limite dans le menu latéral.",
+    "deleteFrame": "Supprimer ce résultat"
   }
 }

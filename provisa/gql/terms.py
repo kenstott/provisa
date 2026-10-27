@@ -16,6 +16,7 @@ An RDF term of the answer is one JSON value:
   its key values, as typed as the table holds them; the answer's writer builds the IRI from them
   (:mod:`provisa.gql.iri`), so no IRI is built, or encoded, in SQL;
 - an IRI, ``{"iri": "http://..."}``;
+- a glossary term, ``{"term": name}`` -- the writer builds its vocabulary IRI (REQ-2163);
 - a literal, ``{"literal": v}``, with ``"datatype"`` or ``"lang"`` when known.
 
 A variable predicate (``?s ?p ?o``) is a union, made at compile time, of one branch per mapped
@@ -34,7 +35,15 @@ from typing import TYPE_CHECKING, cast
 import sqlglot.expressions as exp
 
 from provisa.core import settings_registry
-from provisa.gql.expr_ast import CypherExpr, IriConst, Term, Variable
+from provisa.gql.expr_ast import (
+    AxiomObject,
+    CypherExpr,
+    IriConst,
+    Property,
+    Term,
+    TermIri,
+    Variable,
+)
 from provisa.gql.iri import iri_base
 from provisa.gql.ir import MatchClause, Predicate, TriplePattern, TripleTemplate
 from provisa.gql.label_map import CypherLabelMap, NodeMapping
@@ -68,6 +77,14 @@ def _json(**pairs: exp.Expression) -> exp.JSONObject:  # pyright: ignore[reportP
         expressions=[
             exp.JSONKeyValue(this=exp.Literal.string(k), expression=v) for k, v in pairs.items()
         ]
+    )
+
+
+def _present(value: exp.Expression, term) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``term(value)``, NULL where ``value`` is (an OPTIONAL that matched nothing)."""
+    return exp.Case(
+        ifs=[exp.If(this=exp.Is(this=value.copy(), expression=exp.null()), true=exp.null())],
+        default=term(value),
     )
 
 
@@ -132,6 +149,27 @@ class TermsMixin:  # REQ-2135
         value = node.value
         if isinstance(value, IriConst):
             return iri_term(value.iri)
+        if isinstance(value, TermIri):
+            return _present(self._lower_expr(value.value), lambda name: _json(term=name))
+        if isinstance(value, AxiomObject):
+            # REQ-2163: an ontology._axioms row's object, whichever kind it holds.
+            def col(name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                return self._lower_expr(Property(Variable(value.node), name))
+
+            term, iri = col("object"), col("object_iri")
+            return exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.Not(this=exp.Is(this=term.copy(), expression=exp.null())),
+                        true=_json(term=term),
+                    ),
+                    exp.If(
+                        this=exp.Not(this=exp.Is(this=iri.copy(), expression=exp.null())),
+                        true=_json(iri=iri),
+                    ),
+                ],
+                default=literal_term(col("object_literal")),
+            )
         if isinstance(value, Variable):
             if value.name in self._term_vars:
                 return self._term_vars[value.name].copy()

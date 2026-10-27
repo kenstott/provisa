@@ -37,6 +37,8 @@ from provisa.compiler.stage2 import apply_governance, build_governance_context
 from provisa.security.masking import MaskingRule, MaskType
 
 ROLE = {"id": "customer", "capabilities": ["query_development"], "domain_access": ["*"]}
+# REQ-2154: a column is read by the roles it names; these are granted to both of the model's.
+EVERY = ["customer", "admin"]
 
 
 def _col(name: str, visible_to: list[str], **extra) -> dict:
@@ -65,13 +67,13 @@ def _model(*, email_to: list[str]):
             1,
             "customers",
             [
-                _col("id", []),
-                _col("first_name", [], alias="givenName"),
+                _col("id", EVERY),
+                _col("first_name", EVERY, alias="givenName"),
                 _col("email", email_to, alias="mail"),
-                _col("ssn", [], alias="taxId"),
+                _col("ssn", EVERY, alias="taxId"),
             ],
         ),
-        _table(2, "orders", [_col("id", []), _col("customer_id", ["admin"])]),
+        _table(2, "orders", [_col("id", EVERY), _col("customer_id", ["admin"])]),
     ]
     relationships = [
         {
@@ -165,7 +167,7 @@ def test_a_hidden_aliased_column_is_refused_by_either_name():
 def test_a_masked_aliased_column_is_masked_when_every_column_is_visible():
     """With every column visible the table has no visibility filter; the mask is found by the
     column's physical name whichever name the statement reads it by."""
-    model = _model(email_to=[])
+    model = _model(email_to=EVERY)
     assert model[2].visible_columns[1] is None
     sql = _graphql(model, "{ customers { id taxId } }")
     assert _violations(model, sql) == []
@@ -177,7 +179,7 @@ def test_a_masked_aliased_column_is_masked_when_every_column_is_visible():
 
 
 def test_a_masked_aliased_column_may_not_filter():
-    model = _model(email_to=[])
+    model = _model(email_to=EVERY)
     for name in ("taxId", "ssn"):
         sql = f'SELECT "id" FROM "shop"."customers" WHERE "{name}" = \'x\''
         assert any(v.startswith("V005") for v in _violations(model, sql)), name
@@ -196,7 +198,7 @@ def test_a_star_reads_the_published_names_masked_and_filtered():
 
 
 def test_a_relationship_is_offered_when_the_role_sees_both_tables():
-    schema, _ctx, gov, _tables = _model(email_to=[])
+    schema, _ctx, gov, _tables = _model(email_to=EVERY)
     assert "customer_id" not in (gov.visible_columns[2] or ())
     assert schema.query_type is not None
     customers = schema.query_type.fields["customers"].type.of_type.of_type  # pyright: ignore[reportAttributeAccessIssue]
@@ -207,7 +209,7 @@ def test_a_relationship_is_offered_when_the_role_sees_both_tables():
 
 
 def test_a_relationship_compiles_and_keeps_its_join_key_under_governance():
-    model = _model(email_to=[])
+    model = _model(email_to=EVERY)
     for query in ("{ customers { id orders { id } } }", "{ orders { id customer { id } } }"):
         sql = _graphql(model, query)
         assert "customer_id" in sql, sql
@@ -219,7 +221,7 @@ def test_a_relationship_compiles_and_keeps_its_join_key_under_governance():
 
 
 def test_the_join_column_itself_is_still_not_selectable():
-    model = _model(email_to=[])
+    model = _model(email_to=EVERY)
     sql = 'SELECT "o"."customer_id" FROM "shop"."orders" "o"'
     assert any(v.startswith("V003") for v in _violations(model, sql))
     # Outside an approved join condition, a reference to it reads nothing.

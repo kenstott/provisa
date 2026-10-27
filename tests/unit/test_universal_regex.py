@@ -271,7 +271,7 @@ def test_the_editors_check_reports_each_entry_and_warns_without_refusing() -> No
         {"to": ["b"], "mask": {"type": "regex", "pattern": r"(ab|a)", "replace": "y"}},
         {"to": ["c"], "mask": {"type": "regex", "pattern": r"(\d)", "replace": "$2"}},
         {"to": ["d"], "mask": {"type": "constant", "value": None}},
-        {"to": ["*"], "mask": None},
+        {"mask": None},
     ]
     report = pattern_report(masks)
     assert [(p["entry"], p["field"], p["construct"], p["ok"]) for p in report["patterns"]] == [

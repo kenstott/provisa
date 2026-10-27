@@ -15,6 +15,8 @@ each other; two builds of it in one region still do. The one implicit region kee
 # Requirements: REQ-1915, REQ-1922
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from provisa.core import process_region
@@ -22,7 +24,10 @@ from provisa.federation.replica_locks import BuildLocks, replica_lock_name
 
 pytestmark = pytest.mark.unit
 
-ORG = "org1"
+# PostgreSQL advisory locks are held server-wide, not per database, and every xdist worker's
+# control plane is a database on one server: each worker process names an org of its own, or a
+# replica lock another worker's test holds reads here as another build's.
+ORG = f"org1{uuid.uuid4().hex[:8]}"
 KEY = ("src", "public", "orders")
 _PLATFORM = {
     "regions": [
@@ -41,7 +46,7 @@ def region():
 
 def test_the_implicit_region_keeps_its_lock_name(region):
     region.bind_launch(None, requested=None)
-    assert replica_lock_name(ORG, KEY) == "org1|src|public|orders"
+    assert replica_lock_name(ORG, KEY) == f"{ORG}|src|public|orders"
 
 
 async def test_two_regions_build_one_table_at_once_and_one_region_builds_it_once(

@@ -148,7 +148,7 @@ flowchart TD
 
 ## 查询管道 {: #query-pipeline }
 
-每次读取都要经过六个阶段，无论你用哪种语言编写。每个阶段都把一条 SQL 语句交给下一个阶段。语言只决定读取从哪里进入。
+每次读取都要经过五个阶段。GraphQL、Cypher、SPARQL、gRPC 和 SQL 是入口，而非阶段——每种语言都会在流水线开始前编译或转换为语义 SQL。
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ flowchart TD
 
 嵌套读取会编译为一条规范的 CTE 管道，对每个引擎都相同，并且只依据已声明的关系构建。根 CTE 带着筛选、排序、限制和偏移读取根表。每个一对多层级都是一个独立的 CTE。它按关系的键把自己的表与父级 CTE 连接，用 `ROW_NUMBER() OVER (PARTITION BY ...)` 取每个父级的前几行，并按父级聚合成一个 JSON 列表。最后的 `SELECT` 读取根 CTE，并按父键对每个层级做左连接。提出相同问题的 GraphQL、Cypher 和 SPARQL 读取会编译为同一条语句。
 
-目前的编译器还没有达到这种形式。GraphQL 编译器通过每个父级一次的 `LEFT JOIN LATERAL` 读取带参数的嵌套字段，Cypher 转换器则为每个 `WITH` 阶段写一个 CTE。下面的示例展示了这两种形式。
+Cypher 转换器为每个 `WITH` 阶段写一个 CTE；将这些形式与规范流水线对齐是后续工作。在完成之前，等效的 Cypher 和 GraphQL 读取并不总能编译为相同的语义 SQL。GraphQL 编译器将带参数的嵌套字段写成每父级一次的 `LEFT JOIN LATERAL` 联接。两种当前形式均出现在下面的示例中。
 
 ### 受治理的 SQL {: #governed-sql }
 
@@ -188,7 +188,18 @@ flowchart TD
 
 ### 规划与路由 {: #plan-and-route }
 
-路由读取的是优化后语句的数据源，而从不读取受治理语句的数据源。因此，被优化缩小到一个数据源的读取仍然可以直连运行。当语句只读取一个数据源且该数据源有直连驱动时，语句直连运行。否则由联邦引擎执行。这条规则还有第三个条件，即数据源支持语句中的每一种结构。路由器目前还不检查这一条，只根据数据源数量和驱动作出决定。缓存、副本和管理员（steward）的情况见[路由决策](#request-pipeline)。
+联邦引擎是默认选项；路由读取优化后的数据源，而非治理后的数据源。只有当语句按顺序通过全部六个关卡时，才会直接在其数据源上执行。第一个未通过的关卡说明原因。
+
+| 关卡 | 检查内容 |
+|---|---|
+| `one_source` | 优化后读取单个数据源，或读取共享同一物理数据库的数据源 |
+| `dialect_supports` | 该数据源的方言支持语句中的每一种结构 |
+| `access_path` | 数据源存在直连驱动、API 调用方或代码函数 |
+| `colocated_login` | 被计为同一数据库的数据源共享相同的登录凭证 |
+| `not_forced` | 未应用任何算子下限、虚构列或要求引擎运行的条件 |
+| `trusted_to_answer` | 非 SQL 数据源能够在不进行进程内额外过滤的情况下返回完整数据集 |
+
+缓存、副本和管理员（steward）的情况见[请求流水线](#request-pipeline)。
 
 ### 原生 SQL {: #native-sql }
 
@@ -559,7 +570,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `compiler/cursor.py` | Relay 风格的游标分页——所有列表查询上的 `first`/`after`/`last`/`before` 参数与 `pageInfo` 生成 |
 | `compiler/aggregate_gen.py` | 自动生成 `{table}_aggregate` 查询类型，含 `count`、`sum`、`avg`、`min`、`max` 子字段与经过滤的 `nodes` 访问 |
 | `compiler/enum_detect.py` | 枚举类型自动检测——PostgreSQL 原生枚举类型 (`pg_enum`) 暴露为 GraphQL 枚举类型，而非字符串标量 |
-| `compiler/hints.py` | 联邦性能提示——以 SQL 注释形式嵌入的查询级路由指令（`/* @provisa route=federated */`），可覆盖自动路由 |
+| `compiler/hints.py` | 联邦性能提示——以 SQL 注释形式嵌入的查询级路由指令（`-- @provisa route=federated`），可覆盖自动路由 |
 | `compiler/mutation_gen.py` | 变更编译器；列预设——在插入/更新时应用的服务端静态值或会话变量值，不会暴露在变更输入类型中 |
 | `auth/approval_hook.py` | ABAC 审批钩子——在查询执行前调用的可插拔外部授权；支持 webhook、gRPC 与 unix_socket 传输；按表/数据源/全局作用域；可配置的回退策略 |
 | `subscriptions/` | SSE 订阅状态与投递 |
@@ -746,7 +757,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

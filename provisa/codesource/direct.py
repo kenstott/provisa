@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 30355d20-cdfb-4f50-9a07-e48987c9a81b
+# Canary: 7b7bb271-b629-4348-b31a-4235f48f672d
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -8,67 +8,77 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A single-source read of a code table, DIRECT to its code (REQ-2100).
+"""A single-source read of a code source's tables, DIRECT to its code (REQ-2100).
 
-The router sends a read of one code source's table -- only that table, its filters and its
-parameters -- to the source's own driver, as it sends any single-source read to its source's
-(``transpiler.router.decide_route``). No engine runs it and nothing is landed: the table's
-function is called in its worker with the read's arguments (its ``_nf_`` conditions, and the
-values its pushed predicates give, provisa/codehost/residual.py ``pushed``), and the rest of the
-statement is applied to the rows by DuckDB (``residual.answer``).
+The router sends a statement that reads one code source's tables, and nothing else, to the
+source's own driver, as it sends any single-source read to its source's (its proxy plans the read
+as its complete dataset, codesource.proxy). No engine runs it and nothing is landed: each table's
+function is called with its read's arguments, and DuckDB applies the governed statement to the
+rows (provisa/codehost/residual.py). A built source's image answers a read of one of its tables
+itself; a dev-mode source's rows, and those of a statement joining several tables, are answered in
+Provisa's process.
 
-The read's ``_nf_`` conditions are taken out of the statement before it is routed
-(``nf_extractor.extract_nf_args``); the statement's arguments are kept here for the driver
-(:func:`defer`) when the read is a candidate for this route, and its rows are not landed. A
-statement routed to the engine after all lands them then (``materialization.land_deferred``).
+The read's arguments are the statement's own: a code table read DIRECT keeps its parameters'
+``_nf_{name} = value`` conditions in the statement (:func:`parameters`, as a table an engine
+attaches keeps them), which give the function its arguments (``residual.nf_given``) and hold of its
+rows. A statement routed to the engine after all -- it failed a gate -- has its tables landed then,
+under those arguments (``materialization.land_direct_reads``).
 """
 
 # Requirements: REQ-2100
 from __future__ import annotations
 
 import asyncio
-from contextvars import ContextVar
+from collections import Counter
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.result import QueryResult
 
-#: The arguments of the code tables the statement being planned reads DIRECT, by table name,
-#: as :func:`defer` kept them; each with the table (a ``state.tables`` row).
-_DEFERRED: ContextVar[dict[str, tuple[dict, dict | None]] | None] = ContextVar(
-    "code_direct_reads", default=None
-)
-
 #: The dialect the router gives a code source: its statement is DuckDB's, run over the rows.
 DIALECT = "duckdb"
 
 
-def begin() -> None:
-    """A statement is being planned: no code table of an earlier one is held for it."""
-    _DEFERRED.set({})
+def direct_tables(state: Any, table_ids: Any, sql: str) -> list[dict]:
+    """The tables (``state.tables`` rows) of the statement ``sql`` reads DIRECT from their code:
+    every table it reads is one code source's, each read once and answered live (not floored,
+    kept for good or given a landing TTL, ``attach.answered_live``). Empty for any other statement."""
+    import sqlglot
+    from sqlglot import exp
+
+    from provisa.codesource.attach import answered_live
+    from provisa.codesource.source import CODE_SOURCE_TYPES
+
+    ids = set(table_ids)
+    tables = [t for t in getattr(state, "tables", None) or [] if t.get("id") in ids]
+    if len(tables) != len(ids):
+        return []  # a table the statement reads that is no registered row: not the code's alone
+    types = getattr(state, "source_types", None) or {}
+    sources = {t["source_id"] for t in tables}
+    if len(sources) != 1 or types.get(next(iter(sources))) not in CODE_SOURCE_TYPES:
+        return []
+    if not all(answered_live(state, t) for t in tables):
+        return []
+    reads = Counter(t.name for t in sqlglot.parse_one(sql, read="postgres").find_all(exp.Table))
+    # Every relation it reads is one of these tables, and each is read once: a table read twice
+    # may be read under two argument sets, which one row set cannot hold.
+    if set(reads) != {t["table_name"] for t in tables} or any(v != 1 for v in reads.values()):
+        return []
+    return tables
 
 
-def defer(table_name: str, table: dict, arguments: dict | None) -> None:
-    """Keep ``table``'s read under ``arguments`` for its driver, under the name the statement
-    gives it."""
-    held = _DEFERRED.get()
-    if held is None:
-        held = {}
-        _DEFERRED.set(held)
-    held[table_name] = (table, arguments)
+def parameters(state: Any, table_ids: Any, sql: str) -> set[str]:
+    """The parameter columns (``_nf_{name}``) of the tables ``sql`` reads DIRECT: their conditions
+    stay in the statement, whose arguments they are."""
+    from provisa.core.parameters import NF_PREFIX, is_parameter
 
-
-def deferred() -> dict[str, tuple[dict, dict | None]]:
-    """The code table reads the statement holds for the driver. Kept while the statement is
-    answered: its terminal may run it again (the row after its limit, a retry)."""
-    return dict(_DEFERRED.get() or {})
-
-
-def take() -> dict[str, tuple[dict, dict | None]]:
-    """The code table reads the statement holds, no longer held: the engine reads them landed."""
-    held = deferred()
-    _DEFERRED.set({})
-    return held
+    return {
+        c["column_name"]
+        for t in direct_tables(state, table_ids, sql)
+        for c in t["columns"]
+        if is_parameter(c) and c["column_name"].startswith(NF_PREFIX)
+    }
 
 
 def _bound(sql: str, params: list | None) -> str:
@@ -86,7 +96,8 @@ def _bound(sql: str, params: list | None) -> str:
 
 
 class CodeDriver(DirectDriver):  # REQ-2100
-    """A code source's DIRECT driver: its function called, the statement applied to its rows."""
+    """A code source's DIRECT driver: its tables' functions called, the statement applied to
+    their rows."""
 
     def __init__(self) -> None:
         self._source_id: str | None = None
@@ -116,99 +127,179 @@ class CodeDriver(DirectDriver):  # REQ-2100
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:
         from provisa.api.app import state
 
-        held = deferred()
-        sql = _bound(sql, params)
-        reads = [(name, table, args) for name, (table, args) in held.items()]
-        if len(reads) != 1 or reads[0][1]["source_id"] != self._source_id:
-            raise RuntimeError(
-                f"source {self._source_id!r}: a direct read names one code table, held for it "
-                f"when the statement was planned; it holds {sorted(held)}"
-            )
-        name, table, arguments = reads[0]
-        answer = await read(state, table, name, sql, arguments)
+        assert self._source_id is not None  # bound when the pool was built (SourcePool.add)
+        answer = await read(state, self._source_id, _bound(sql, params))
         columns = [c.to_pylist() for c in answer.columns]
         return QueryResult(rows=list(zip(*columns)), column_names=answer.column_names)
 
 
-async def read(state: Any, table: dict, name: str, sql: str, arguments: dict | None) -> Any:
-    """``sql`` -- a statement over the code table ``table``, named ``name`` in it -- answered
-    from its function's rows: called with ``arguments`` and the values the statement pushes to
-    it, the rest applied by DuckDB. An Arrow table."""
-    import pyarrow as pa
+async def read(state: Any, source_id: str, sql: str) -> Any:
+    """``sql`` -- a statement in DuckDB's dialect over tables of the code source ``source_id`` --
+    answered from their functions' rows, each called with the arguments the statement gives it,
+    the rest applied by DuckDB. An Arrow table."""
+    import sqlglot
+    from sqlglot import exp
 
     from provisa.codehost import residual
-    from provisa.codesource.arrow_rows import field_of, row_schema, schema_text
     from provisa.codesource.source import context_for, prepare
-    from provisa.codesource.table import CodeTableRefused, call_arguments, export_of
+    from provisa.codesource.worker import duckdb_bounds
+    from provisa.core.org_files import data_dir
     from provisa.federation.registry_view import registered_sources
 
-    found = [s for s in await registered_sources(state) if s.id == table["source_id"]]
+    found = [s for s in await registered_sources(state) if s.id == source_id]
     if not found:
-        raise ValueError(f"Table {name!r}: its source {table['source_id']!r} is not registered")
+        raise ValueError(f"source {source_id!r} is not registered")
     source = found[0]
+    named = {t.name for t in sqlglot.parse_one(sql, read=DIALECT).find_all(exp.Table)}
+    tables = [
+        t
+        for t in getattr(state, "tables", None) or []
+        if t["source_id"] == source_id and t["table_name"] in named
+    ]
+    if not tables:
+        raise ValueError(f"source {source_id!r}: the statement reads none of its tables")
     prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
-    function = export_of(table)
-    export = next(
-        (e for e in prepared.manifest.exports if e.name == function and e.kind == "table"), None
-    )
-    if export is None:
-        raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
-    pushdown = {
-        p.name: {"column": p.pushes.column, "op": p.pushes.op}
-        for p in export.parameters
-        if p.pushes is not None
-    }
-    # An argument the statement names itself is the one the function is given: taken out of the
-    # statement before it was routed, or (a table the engine attaches, REQ-2100) left in it.
-    given = {
-        **residual.pushed(sql, DIALECT, name, pushdown),
-        **residual.nf_given(sql, DIALECT, name),
-        **(arguments or {}),
-    }
-    args, names = call_arguments(table, export, given)
-    schema = row_schema(prepared.manifest, export)
-    worker = prepared.worker()
-
-    from provisa.codesource.worker import ABSENT
-
-    values = {n: (None if a is ABSENT else a) for n, a in zip(names, args, strict=True)}
-    fields = [field_of(p.name, p.shape, prepared.manifest) for p in export.parameters]
-    argument_row = pa.Table.from_pylist(
-        [{f.name: _argument(values.get(f.name), f) for f in fields}], schema=pa.schema(fields)
-    )
-
-    from provisa.codesource.arrow_rows import WHOLE_ROW
-
-    # A row type typed by a preview: each row comes whole, and the table's registered columns
-    # are what the statement names, read out of it as a landed read reads them.
-    loose = schema.names == [WHOLE_ROW]
+    reads = [_Read.of(prepared, table, sql) for table in tables]
 
     def _run() -> Any:
-        if worker.where_kind == "remote" and not loose:
-            # The host's front end applies the statement to the rows itself.
-            answered = [
-                pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
-                for ipc in worker.batches(
-                    function,
-                    "table",
-                    args,
-                    names,
-                    schema=schema_text(schema),
-                    residual={
-                        "sql": sql,
-                        "dialect": DIALECT,
-                        "table": name,
-                        "schema": schema_text(schema),
-                        "arguments": _ipc_text(argument_row),
-                    },
-                )
-            ]
-            return pa.concat_tables(answered)
-        ipcs = list(worker.batches(function, "table", args, names, schema=schema_text(schema)))
-        rows = _registered(table, name, ipcs) if loose else _as_returned(ipcs, schema)
-        return residual.answer(sql, DIALECT, name, residual.with_arguments(rows, argument_row))
+        if len(reads) == 1 and reads[0].answered_by_image(prepared):
+            return reads[0].answer_in_image(prepared, sql)
+        # A dev-mode source's statement runs on this process's DuckDB, under the operator's
+        # bounds, spilling into the node's data directory (REQ-2100).
+        residual.configure(**duckdb_bounds(), spill_dir=str(data_dir() / "code-spill"))
+        rows = {r.name: r.rows(prepared) for r in reads}
+        # The answer's batches as DuckDB makes them, held together without a copy: the driver's
+        # result is the statement's rows.
+        return residual.answer_reads(sql, DIALECT, rows).read_all()
 
     return await asyncio.to_thread(_run)
+
+
+class _Read:
+    """One table of a direct statement: its function, the arguments the statement gives it, and
+    the schema of its rows."""
+
+    def __init__(
+        self, table: dict, export: Any, args: list, names: list, arguments: Any, context: dict
+    ) -> None:
+        self.table = table
+        self.name = table["table_name"]
+        self.export = export
+        self.args = args
+        self.names = names
+        self.arguments = arguments  # one-row Arrow table: each parameter's value
+        self.context = context  # REQ-2100: what the statement asks of the table's rows
+
+    @classmethod
+    def of(cls, prepared: Any, table: dict, sql: str) -> _Read:
+        import pyarrow as pa
+
+        from provisa.codehost import residual
+        from provisa.codesource.arrow_rows import field_of
+        from provisa.codesource.table import (
+            CodeTableRefused,
+            call_arguments,
+            export_of,
+            landed_context,
+        )
+        from provisa.codesource.worker import ABSENT
+
+        name = table["table_name"]
+        function = export_of(table)
+        export = next(
+            (e for e in prepared.manifest.exports if e.name == function and e.kind == "table"),
+            None,
+        )
+        if export is None:
+            raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
+        # Its inputs are the statement's own conditions on its parameters' columns; what it asks
+        # of the rows is the function's read context (REQ-2100).
+        given = residual.nf_given(sql, DIALECT, name)
+        args, names = call_arguments(table, export, given)
+        context = residual.read_context(
+            sql, DIALECT, name, landed_context(prepared.manifest, export)["columns"]
+        )
+        values = {n: (None if a is ABSENT else a) for n, a in zip(names, args, strict=True)}
+        fields = [field_of(p.name, p.shape, prepared.manifest) for p in export.parameters]
+        arguments = pa.Table.from_pylist(
+            [{f.name: _argument(values.get(f.name), f) for f in fields}], schema=pa.schema(fields)
+        )
+        return cls(table, export, args, names, arguments, context)
+
+    def _schema(self, prepared: Any) -> Any:
+        from provisa.codesource.arrow_rows import row_schema
+
+        return row_schema(prepared.manifest, self.export)
+
+    def _loose(self, prepared: Any) -> bool:
+        from provisa.codesource.arrow_rows import WHOLE_ROW
+
+        # A row type typed by a preview: each row comes whole, and the table's registered columns
+        # are what the statement names, read out of it as a landed read reads them.
+        return self._schema(prepared).names == [WHOLE_ROW]
+
+    def answered_by_image(self, prepared: Any) -> bool:
+        return prepared.worker().where_kind == "remote" and not self._loose(prepared)
+
+    def answer_in_image(self, prepared: Any, sql: str) -> Any:
+        """The statement answered by the host's front end over its function's rows."""
+        import pyarrow as pa
+
+        from provisa.codesource.arrow_rows import schema_text
+
+        from provisa.codehost import residual
+
+        schema = schema_text(self._schema(prepared))
+        answered = residual.batches(
+            prepared.worker().batches(
+                self.export.name,
+                "table",
+                self.args,
+                self.names,
+                schema=schema,
+                takes=self.export.takes,
+                context=self.context,
+                residual={
+                    "sql": sql,
+                    "dialect": DIALECT,
+                    "table": self.name,
+                    "schema": schema,
+                    "arguments": _ipc_text(self.arguments),
+                },
+            )
+        )
+        # The front end sends at least one batch, empty when the answer is: it names the columns.
+        return pa.Table.from_batches(list(answered))
+
+    def rows(self, prepared: Any) -> Any:
+        """The function's rows as its host sends them, batch by batch, each parameter's value
+        beside them."""
+        import pyarrow as pa
+
+        from provisa.codehost import residual
+        from provisa.codesource.arrow_rows import schema_text
+
+        schema = self._schema(prepared)
+        from provisa.codesource.worker import pulled
+
+        # Pulled on one thread of its own: DuckDB scans the rows on its threads (REQ-2100).
+        ipcs = pulled(
+            prepared.worker().batches(
+                self.export.name,
+                "table",
+                self.args,
+                self.names,
+                schema=schema_text(schema),
+                takes=self.export.takes,
+                context=self.context,
+            )
+        )
+        rows = (
+            _registered(self.table, self.name, ipcs)
+            if self._loose(prepared)
+            else pa.RecordBatchReader.from_batches(schema, residual.batches(ipcs))
+        )
+        return residual.with_arguments(rows, self.arguments)
 
 
 def _argument(value: Any, field: Any) -> Any:  # a converted argument; a pyarrow Field
@@ -240,19 +331,9 @@ def _ipc_text(table: Any) -> str:  # a pyarrow Table
     return base64.b64encode(sink.getvalue().to_pybytes()).decode()
 
 
-def _as_returned(ipcs: list[bytes], schema: Any) -> Any:  # a pyarrow Schema
-    """The function's rows as its host sent them, typed by its row type."""
-    import pyarrow as pa
-
-    batches = [
-        b for ipc in ipcs for b in pa.ipc.open_stream(pa.py_buffer(ipc)).read_all().to_batches()
-    ]
-    return pa.Table.from_batches(batches) if batches else schema.empty_table()
-
-
-#: A registered column's Arrow form, by its IR type; a numeric's digits and a json value's text,
-#: as every host sends them (provisa/codesource/arrow_rows.py).
 def _arrow_field(name: str, data_type: str) -> Any:
+    """A registered column's Arrow form, by its IR type; a numeric's digits and a json value's
+    text, as every host sends them (provisa/codesource/arrow_rows.py)."""
     import pyarrow as pa
 
     from provisa.codesource.arrow_rows import IR_KEY
@@ -274,8 +355,9 @@ def _arrow_field(name: str, data_type: str) -> Any:
     raise TypeError(f"column {name!r}: the IR type {data_type!r} has no Arrow form")
 
 
-def _registered(table: dict, name: str, ipcs: list[bytes]) -> Any:
-    """Whole rows read out into ``table``'s registered columns (``pipeline_rows.project``)."""
+def _registered(table: dict, name: str, ipcs: Iterable[bytes]) -> Any:
+    """Whole rows read out into ``table``'s registered columns (``pipeline_rows.project``), batch
+    by batch."""
     import json
 
     import pyarrow as pa
@@ -300,10 +382,15 @@ def _registered(table: dict, name: str, ipcs: list[bytes]) -> Any:
             return json.dumps(encode(value), separators=(",", ":"))
         return value
 
-    rows = [
-        {c.name: _cell(row[c.name], c.data_type) for c in outputs}
-        for ipc in ipcs
-        for whole in rows_of(ipc)
-        for row in [project(name, whole, outputs)]
-    ]
-    return pa.Table.from_pylist(rows, schema=pa.schema(fields))
+    schema = pa.schema(fields)
+
+    def each() -> Iterator[pa.RecordBatch]:
+        for ipc in ipcs:
+            rows = [
+                {c.name: _cell(row[c.name], c.data_type) for c in outputs}
+                for whole in rows_of(ipc)
+                for row in [project(name, whole, outputs)]
+            ]
+            yield pa.RecordBatch.from_pylist(rows, schema=schema)
+
+    return pa.RecordBatchReader.from_batches(schema, each())

@@ -116,6 +116,18 @@ export const cache = {
   },
 };
 
+export const dq = {
+  /** A dataset's checker tables (description, contract, latest run, assigned product) and its
+   *  profiles, as the meta domain shows them to the caller (REQ-2133). `name`: `domain.table` or a table id. */
+  async dataset(name) {
+    return json("dq", "GET", `dq/dataset/${q(String(name))}`);
+  },
+  /** A data product's promises, expectations, partner DQ and orphans (REQ-1443). */
+  async product(productId) {
+    return json("dq", "GET", `dq/product/${q(productId)}`);
+  },
+};
+
 export const vectors = {
   async embed(texts, model) {
     return (await json("vectors", "POST", "vectors/embed", { texts, model })).vectors;

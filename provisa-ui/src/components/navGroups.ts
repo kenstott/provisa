@@ -106,6 +106,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       { to: "/query", labelKey: "navBar.itemGraphql", capability: "query_development" },
       { to: "/graph", labelKey: "navBar.itemCypher", capability: "query_development" },
+      { to: "/sparql", labelKey: "navBar.itemSparql", capability: "query_development" },
       { to: "/sql", labelKey: "navBar.itemSql", capability: "query_development" },
       { to: "/grpc", labelKey: "navBar.itemGrpc", capability: "query_development" },
       { to: "/jsonapi", labelKey: "navBar.itemJsonApi", capability: "query_development" },
@@ -133,11 +134,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/overview", labelKey: "navBar.itemDashboard", capability: "observability" },
       { to: "/admin/domains", labelKey: "navBar.itemDomains", capability: "org_settings" },
       {
-        // REQ-1573: environments have their own right rather than riding on org_settings — a
-        // developer manages them and holds no org settings, and an analyst holds neither.
+        // REQ-1573: environments have their own right rather than riding on org_settings. REQ-2155:
+        // org_admin manages any; a developer manages the ones it owns; an analyst neither.
         to: "/admin/environments",
         labelKey: "navBar.itemEnvironments",
         capability: "environment_management",
+        orCapability: "environment_owned_management",
       },
       // REQ-1337: cache storage, the federation engine and the encryption/auth providers are
       // DEPLOYMENT-WIDE settings, so each is gated on the `platform_settings` RIGHT rather than on a
@@ -225,6 +227,8 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemContainerRegistries",
         capability: "org_settings",
       },
+      // REQ-2122: the catalogs this org connects to once, for export and import.
+      { to: "/admin/catalogs", labelKey: "navBar.itemCatalogs", capability: "org_settings" },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {
         to: "/admin/metadata-export",
@@ -235,6 +239,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/import", labelKey: "navBar.itemImport", capability: "org_settings" },
       // REQ-1374: the tag registry is the acting org's own metadata, so org_settings.
       { to: "/admin/tags", labelKey: "navBar.itemTags", capability: "org_settings" },
+      // REQ-2147: which of the profiler's classification kinds the org tests for is the org's own.
+      {
+        to: "/admin/classification-kinds",
+        labelKey: "navBar.itemClassificationKinds",
+        capability: "org_settings",
+      },
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
       // REQ-1387: the ontology route is /admin/ontology (glossary_read), and its nav entry is
       // the top-level Ontology link in NavBar.tsx, not an item of this group.

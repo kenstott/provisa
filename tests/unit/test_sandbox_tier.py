@@ -86,34 +86,78 @@ def test_the_ui_server_sends_a_sandbox_and_a_demo_opening_to_the_sandbox_tier(mo
     assert route("auth/me", {"host": "cloud.provisa.dev"}) == main
 
 
-def test_a_regions_demo_and_its_sandboxes_reach_the_regions_tier(monkeypatch):
-    """REQ-2068: a demo whose model selects regions is opened by, and its sandboxes (an ``sbxr``
-    id) served by, the regions sandbox tier; every other demo and sandbox as before."""
+def test_a_regions_demo_and_its_sandboxes_reach_the_node_of_its_region(monkeypatch):
+    """REQ-2068: a demo whose model selects regions is opened by the regions tier's node of its
+    visitor region, and a sandbox (``sbxr`` + region + hex) is served by the node its id names;
+    every other demo and sandbox as before."""
     import provisa.ui_server as ui_server
 
+    us, warehouse = (
+        "http://provisa-sandbox-regions:8100",
+        "http://provisa-sandbox-regions-warehouse:8100",
+    )
     monkeypatch.setattr(ui_server, "API_BASE_URL", "http://provisa:8000")
     monkeypatch.setattr(ui_server, "SANDBOX_API_URL", "http://provisa-sandbox:8000")
-    monkeypatch.setattr(ui_server, "SANDBOX_REGIONS_API_URL", "http://provisa-sandbox-regions:8100")
-    monkeypatch.setattr(ui_server, "SANDBOX_REGIONS_DEMOS", frozenset({"retail"}))
-    tier, regions = "http://provisa-sandbox:8000", "http://provisa-sandbox-regions:8100"
+    monkeypatch.setattr(ui_server, "SANDBOX_REGIONS_NODES", {"us": us, "warehouse": warehouse})
+    monkeypatch.setattr(
+        ui_server, "SANDBOX_REGIONS_DEMOS", {"retail": "us", "banking": "warehouse"}
+    )
+    tier = "http://provisa-sandbox:8000"
     route = ui_server.api_base_for
-    assert route("public/demos/retail", {"host": "cloud.provisa.dev"}) == regions
-    assert route("sandboxes/retail", {"host": "cloud.provisa.dev"}) == regions
-    assert route("data/sql", {"host": "sbxr0123456789ab.provisa.dev"}) == regions
+    assert route("public/demos/retail", {"host": "cloud.provisa.dev"}) == us
+    assert route("sandboxes/retail", {"host": "cloud.provisa.dev"}) == us
+    assert route("public/demos/banking", {"host": "cloud.provisa.dev"}) == warehouse
+    assert route("data/sql", {"host": "sbxrus0123456789ab.provisa.dev"}) == us
+    assert route("data/sql", {"host": "sbxrwarehouse0123456789ab.provisa.dev"}) == warehouse
     assert route("public/demos/weblogs", {"host": "cloud.provisa.dev"}) == tier
     assert route("public/demos/retailer", {"host": "cloud.provisa.dev"}) == tier
     assert route("data/sql", {"host": "sbx0123456789ab.provisa.dev"}) == tier
 
 
-def test_a_regions_tier_mints_its_own_sandbox_ids(monkeypatch):
+def test_a_regions_route_with_no_node_is_refused_by_name(monkeypatch):
+    """REQ-2068: a regions sandbox whose region has no node, or a regions demo whose region has
+    none, is refused naming the region -- never served by the ordinary sandbox tier, which holds
+    neither."""
+    import provisa.ui_server as ui_server
+
+    monkeypatch.setattr(ui_server, "API_BASE_URL", "http://provisa:8000")
+    monkeypatch.setattr(ui_server, "SANDBOX_API_URL", "http://provisa-sandbox:8000")
+    monkeypatch.setattr(
+        ui_server, "SANDBOX_REGIONS_NODES", {"us": "http://provisa-sandbox-regions:8100"}
+    )
+    monkeypatch.setattr(
+        ui_server, "SANDBOX_REGIONS_DEMOS", {"retail": "us", "banking": "warehouse"}
+    )
+    route = ui_server.api_base_for
+    with pytest.raises(ui_server.RegionUnrouted, match="'warehouse'"):
+        route("data/sql", {"host": "sbxrwarehouse0123456789ab.provisa.dev"})
+    with pytest.raises(ui_server.RegionUnrouted, match="'warehouse'"):
+        route("public/demos/banking", {"host": "cloud.provisa.dev"})
+
+
+def test_a_regions_node_mints_sandbox_ids_naming_its_region_and_reaps_only_its_own(monkeypatch):
     from provisa.api import demo_region_seed
-    from provisa.core.org_ids import is_regions_sandbox, is_sandbox_tier_org, is_template_org
+    from provisa.api.sandbox_tier import is_this_nodes_sandbox
+    from provisa.core.org_ids import (
+        is_regions_sandbox,
+        is_sandbox_tier_org,
+        is_template_org,
+        regions_sandbox_region,
+    )
 
     monkeypatch.setattr(demo_region_seed, "regional", lambda: True)
+    monkeypatch.setattr(demo_region_seed, "here", lambda: "warehouse")
     org = new_sandbox_org_id()
     assert is_regions_sandbox(org) and is_sandbox_tier_org(org) and not is_template_org(org)
+    assert regions_sandbox_region(org) == "warehouse"
+    assert is_this_nodes_sandbox(org)
+    assert not is_this_nodes_sandbox("sbxrus0123456789ab")
+    monkeypatch.setattr(demo_region_seed, "here", lambda: "us")
+    assert is_this_nodes_sandbox("sbxrus0123456789ab") and not is_this_nodes_sandbox(org)
     monkeypatch.setattr(demo_region_seed, "regional", lambda: False)
-    assert not is_regions_sandbox(new_sandbox_org_id())
+    plain = new_sandbox_org_id()
+    assert not is_regions_sandbox(plain) and is_this_nodes_sandbox(plain)
+    assert not is_this_nodes_sandbox(org)
 
 
 def test_with_no_sandbox_tier_everything_reaches_the_deployments_api(monkeypatch):
@@ -206,15 +250,21 @@ def test_the_sandbox_tier_never_provisions_an_engine(monkeypatch):
     assert k8s_provisioner.provisioning_available() is False
 
 
-async def test_a_demos_own_embedding_models_reach_its_sandboxes(monkeypatch):
-    """The sonnets demo declares a local embedding model; its template org's settings carry it,
-    and a sandbox is cloned with them, so lines_like is not refused by the model allowlist."""
+def _carried_settings() -> frozenset[str]:
+    from provisa.core.env_classes import carries_setting
+    from provisa.core.org_settings import ORG_OVERRIDABLE_KEYS
+
+    return frozenset(k for k in ORG_OVERRIDABLE_KEYS if carries_setting(k))
+
+
+async def _declared_settings(monkeypatch, demo: str) -> dict:
+    """What one template build of demo ``demo`` writes to its template org's settings."""
     from pathlib import Path
 
-    from provisa.api.demo_templates import write_declared_vector_models
+    from provisa.api.demo_templates import write_declared_settings
     from provisa.core import org_settings
     from provisa.core.config_loader import parse_config_dict, read_config_with_includes
-    from provisa.core.env_classes import carries_setting
+    from provisa.core.demo_bundles import store_namespaces
 
     written = []
 
@@ -224,50 +274,63 @@ async def test_a_demos_own_embedding_models_reach_its_sandboxes(monkeypatch):
 
     monkeypatch.setattr(org_settings, "write_org_overrides", write)
     root = Path(__file__).resolve().parents[2]
-    from provisa.core.demo_bundles import store_namespaces
-
-    for name, value in store_namespaces(root / "demo/named/sonnets").items():
+    for name, value in store_namespaces(root / "demo/named" / demo).items():
         monkeypatch.setenv(name, value)
-    seed = parse_config_dict(read_config_with_includes(root / "demo/named/sonnets/config.yaml"))
-    db = object()
-    await write_declared_vector_models(db, seed)
-    assert written == [
-        (
-            db,
-            {
-                "vector_models": [
-                    {
-                        "id": "sentence-transformers/all-MiniLM-L6-v2",
-                        "provider": "huggingface",
-                        "dimensions": 384,
-                        "api_key_env": None,
-                        "base_url": None,
-                        "enabled": True,
-                        "version": None,
-                    }
-                ]
-            },
-            "platform",
+    # A regions demo's model names the regions tier's stores and addresses (REQ-2068), as every
+    # node of that tier is given them (first-launch.sh).
+    for region in ("EU", "US"):
+        monkeypatch.setenv(
+            f"PROVISA_DEMO_{region}_ADDRESS", f"https://{region.lower()}.invalid:8100"
         )
+        monkeypatch.setenv(
+            f"PROVISA_DEMO_{region}_PG_URL", f"postgresql://{region.lower()}/provisa"
+        )
+    directory = root / "demo/named" / demo
+    # The demo's directory written in, as its template's build does (template_seed).
+    monkeypatch.setenv("PROVISA_NAMED_DEMO_DIR", str(directory))
+    seed = parse_config_dict(read_config_with_includes(directory / "config.yaml"))
+    db = object()
+    await write_declared_settings(db, seed)
+    assert [(w[0], w[2]) for w in written] == [(db, "platform")]  # one write, every key
+    return written[0][1]
+
+
+async def test_a_demos_own_embedding_models_reach_its_sandboxes(monkeypatch):
+    """The sonnets demo declares a local embedding model; its template org's settings carry it,
+    and a sandbox is cloned with them, so lines_like is not refused by the model allowlist."""
+    updates = await _declared_settings(monkeypatch, "sonnets")
+    assert updates["vector_models"] == [
+        {
+            "id": "sentence-transformers/all-MiniLM-L6-v2",
+            "provider": "huggingface",
+            "dimensions": 384,
+            "api_key_env": None,
+            "base_url": None,
+            "enabled": True,
+            "version": None,
+        }
     ]
-    assert carries_setting("vector_models")  # the template's settings travel to each sandbox
+    assert "vector_models" in _carried_settings()  # the template's settings travel to each sandbox
 
 
-async def test_a_demo_that_declares_no_embedding_model_leaves_its_template_none(monkeypatch):
-    from types import SimpleNamespace
+async def test_a_demos_own_derived_roles_reach_its_sandboxes(monkeypatch):
+    """REQ-2057, REQ-2151: retail declares the region attribute a derived role. Its template org's
+    settings carry it, so a sandbox cloned from them declares it, and a visitor carrying region eu
+    holds region__eu. Without it the tour's EU reviewer step was refused (demo-bundles run
+    40191455211, security.role_probe requested='region__eu')."""
+    updates = await _declared_settings(monkeypatch, "retail")
+    assert [r["attribute"] for r in updates["derived_roles"]] == ["region"]
+    assert "derived_roles" in _carried_settings()
 
-    from provisa.api.demo_templates import write_declared_vector_models
-    from provisa.core import org_settings
 
-    written = []
-
-    async def write(model_db, updates, *, updated_by):
-        written.append(updates)
-        return list(updates)
-
-    monkeypatch.setattr(org_settings, "write_org_overrides", write)
-    await write_declared_vector_models(object(), SimpleNamespace(vector_models=[]))
-    assert written == [{"vector_models": None}]  # an earlier build's models are cleared
+async def test_every_carried_setting_is_written_and_an_undeclared_one_cleared(monkeypatch):
+    """One step writes every org setting a sandbox is cloned with, so none the demo declares is
+    dropped; one the configuration does not declare is cleared, as an earlier build's would be
+    stale (the rest of the template's model is rebuilt from its configuration)."""
+    updates = await _declared_settings(monkeypatch, "retail")
+    assert set(updates) == _carried_settings()
+    assert updates["vector_models"] is None
+    assert updates["naming"] is None  # retail declares no naming key an org owns
 
 
 def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch, tmp_path):
@@ -283,7 +346,7 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
     monkeypatch.setenv("PROVISA_RUNTIME_DEPS_CACHE", str(tmp_path))
     # A regions demo's model names the regions tier's stores and addresses (REQ-2068), as every
     # node of that tier is given them (first-launch.sh).
-    for region in ("EU", "US"):
+    for region in ("EU", "US", "LEDGER", "WAREHOUSE"):
         monkeypatch.setenv(
             f"PROVISA_DEMO_{region}_ADDRESS", f"https://{region.lower()}.invalid:8100"
         )
@@ -375,6 +438,28 @@ def test_the_sandbox_tier_finds_the_deployments_demo_data():
     overlay = overlay[overlay.index("  provisa-sandbox:\n") :]
     assert 'PROVISA_DEMO_DIR: "/app/config/demo/files"' in overlay[: overlay.index("\nYAML\n")]
     assert (root / "demo" / "files" / "pet_store.sqlite").is_file()  # what the Dockerfile bakes
+
+
+def test_a_deploy_gives_the_regions_tier_the_deployed_tree_and_its_config():
+    """REQ-2068: the regions tier runs the deployed code under provisa-sandbox-regions.yaml. A
+    patch that left it out of the overlay left it on the image's code and the image's config
+    directory, which an image built before that file has no copy of: the tier then started with no
+    platform regions and refused its --region us at every boot."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    deploy = (root / "scripts" / "deploy-cloud.sh").read_text()
+    overlay = deploy[deploy.index("push_overlay() {") :]
+    overlay = overlay[: overlay.index("\nYAML\n")]
+    regions = overlay[overlay.index("  provisa-sandbox-regions:\n") :]
+    for mount in ("/app/static", "/app/provisa", "/app/config"):
+        assert f"${{OVERLAY_DIR}}/{mount.rsplit('/', 1)[1]}:{mount}" in regions
+    listed = re.search(r'CONFIG_FILES="([^"]*)"', deploy)
+    assert listed is not None
+    shipped = listed.group(1).split()
+    assert "provisa-sandbox-regions.yaml" in shipped
+    assert (root / "config" / "provisa-sandbox-regions.yaml").is_file()
 
 
 def test_every_cloud_deploy_refreshes_the_demo_stores_sync():

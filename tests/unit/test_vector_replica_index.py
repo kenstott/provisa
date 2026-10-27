@@ -328,6 +328,10 @@ class _Backend:
     def transpile_physical(self, pg_sql: str) -> str:
         return pg_sql
 
+    def exact_reads(self, state, physical_sql: str) -> str:
+        del state
+        return physical_sql  # an engine whose reads keep a source's values as they are
+
 
 def _runtime(indexes: bool):
     from provisa.federation.runtime import EngineRuntime

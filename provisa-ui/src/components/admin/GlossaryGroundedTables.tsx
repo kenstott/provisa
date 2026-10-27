@@ -30,11 +30,14 @@ export function GlossaryGroundedTables({
   termId,
   canEdit,
   onChanged,
+  onRead,
 }: {
   termId: number;
   canEdit: boolean;
   /** After a table is grounded or ungrounded: the term's standing and role may have changed. */
   onChanged: () => void;
+  /** The tables as read, for a view that draws them too (the term graph, REQ-2150). */
+  onRead?: (tables: GlossaryTermTable[]) => void;
 }) {
   const { t } = useTranslation();
   const { tables } = useTables();
@@ -56,6 +59,9 @@ export function GlossaryGroundedTables({
   }, [termId, seq]);
 
   const grounded = read?.termId === termId ? read.tables : null;
+  useEffect(() => {
+    if (grounded) onRead?.(grounded);
+  }, [grounded, onRead]);
   const options = useMemo(() => {
     const byId = new Map<string, string>();
     for (const tb of tables)

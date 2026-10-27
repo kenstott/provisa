@@ -75,28 +75,28 @@ tables:
   table: sonnet
   description: One row a sonnet
   columns:
-  - {name: number, data_type: integer, is_primary_key: true, description: 'The sonnet''s number, 1 to 154', visible_to: [org_admin]}
-  - {name: first_line, data_type: varchar, description: "The sonnet's first line, by which it is known", visible_to: [org_admin]}
-  - {name: sequence, data_type: varchar, description: 'Fair Youth for sonnets 1 to 126, Dark Lady for 127 to 154', visible_to: [org_admin]}
+  - {name: number, data_type: integer, is_primary_key: true, description: 'The sonnet''s number, 1 to 154', visible_to: [data_steward]}
+  - {name: first_line, data_type: varchar, description: "The sonnet's first line, by which it is known", visible_to: [data_steward]}
+  - {name: sequence, data_type: varchar, description: 'Fair Youth for sonnets 1 to 126, Dark Lady for 127 to 154', visible_to: [data_steward]}
 - source_id: sonnets
   domain_id: sonnets
   schema: sonnets
   table: line
   description: One row a line of a sonnet
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: 'The line''s id: its sonnet''s number times 100 plus its line number, so 3613 is sonnet 36, line 13', visible_to: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [org_admin]}
-  - {name: text, data_type: varchar, description: The line's words, visible_to: [org_admin]}
+  - {name: id, data_type: integer, is_primary_key: true, description: 'The line''s id: its sonnet''s number times 100 plus its line number, so 3613 is sonnet 36, line 13', visible_to: [data_steward]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [data_steward]}
+  - {name: text, data_type: varchar, description: The line's words, visible_to: [data_steward]}
 - source_id: sonnets
   domain_id: sonnets
   schema: sonnets
   table: theme
   description: A theme the lines are searched for, by a phrase of its own
   columns:
-  - {name: id, data_type: varchar, is_primary_key: true, description: The theme's id, visible_to: [org_admin]}
-  - {name: name, data_type: varchar, description: The theme's name, visible_to: [org_admin]}
-  - {name: phrase, data_type: varchar, description: The phrase the lines nearest the theme are found by, visible_to: [org_admin]}
+  - {name: id, data_type: varchar, is_primary_key: true, description: The theme's id, visible_to: [data_steward]}
+  - {name: name, data_type: varchar, description: The theme's name, visible_to: [data_steward]}
+  - {name: phrase, data_type: varchar, description: The phrase the lines nearest the theme are found by, visible_to: [data_steward]}
 - source_id: sonnets
   domain_id: sonnets
   schema: sonnets
@@ -104,9 +104,9 @@ tables:
   description: Each line's three nearest lines in other sonnets, by meaning, with their similarity;
     written by link_echoes
   columns:
-  - {name: line_id, data_type: integer, is_primary_key: true, description: The line, visible_to: [org_admin]}
-  - {name: echo_line_id, data_type: integer, is_primary_key: true, description: A line of another sonnet near it in meaning, visible_to: [org_admin]}
-  - {name: score, data_type: double, description: 'How near in meaning, by cosine similarity: 1 the same', visible_to: [org_admin]}
+  - {name: line_id, data_type: integer, is_primary_key: true, description: The line, visible_to: [data_steward]}
+  - {name: echo_line_id, data_type: integer, is_primary_key: true, description: A line of another sonnet near it in meaning, visible_to: [data_steward]}
+  - {name: score, data_type: double, description: 'How near in meaning, by cosine similarity: 1 the same', visible_to: [data_steward]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [line_id, echo_line_id, score]}
   - {role: org_admin, operation: update, columns: [line_id, echo_line_id, score]}
@@ -119,9 +119,9 @@ tables:
   alias: sonnet_lines
   description: One point a line, its vector the embedding of the line's words; written by embed_lines
   columns:
-  - {name: id, data_type: bigint, path: '@id', is_primary_key: true, description: The line's id, visible_to: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: text_vec, data_type: json, path: '@vector.text', embedding: true, embedding_model: sentence-transformers/all-MiniLM-L6-v2, description: The embedding of the line's words, visible_to: [org_admin]}
+  - {name: id, data_type: bigint, path: '@id', is_primary_key: true, description: The line's id, visible_to: [data_steward]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: text_vec, data_type: json, path: '@vector.text', embedding: true, embedding_model: sentence-transformers/all-MiniLM-L6-v2, description: The embedding of the line's words, visible_to: [data_steward]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [id, sonnet_number, text_vec]}
   - {role: org_admin, operation: update, columns: [id, sonnet_number, text_vec]}
@@ -134,12 +134,12 @@ tables:
     arguments
   query_template: '{"collection": "sonnet_lines${env:SONNETS_QDRANT_NS}", "query": "@query", "using": "text", "model": "sentence-transformers/all-MiniLM-L6-v2", "filter": {"must_not": [{"key": "sonnet_number", "match": {"value": "@sonnet"}}]}, "limit": "@k"}'
   columns:
-  - {name: id, data_type: bigint, path: '@id', description: The line's id, visible_to: [org_admin]}
-  - {name: score, data_type: double, path: '@score', description: 'How near the line is to the phrase, by cosine similarity: 1 the same', visible_to: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: _nf_query, data_type: array(double), native_filter_type: query_arg, native_filter_required: true, description: The phrase to search for, visible_to: []}
-  - {name: _nf_k, data_type: integer, native_filter_type: query_arg, native_filter_required: false, description: How many lines to find, visible_to: []}
-  - {name: _nf_sonnet, data_type: integer, native_filter_type: query_arg, native_filter_required: false, description: A sonnet whose lines are left out, visible_to: []}
+  - {name: id, data_type: bigint, path: '@id', description: The line's id, visible_to: [data_steward]}
+  - {name: score, data_type: double, path: '@score', description: 'How near the line is to the phrase, by cosine similarity: 1 the same', visible_to: [data_steward]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: _nf_query, data_type: array(double), native_filter_type: query_arg, native_filter_required: true, description: The phrase to search for, visible_to: [viewer]}
+  - {name: _nf_k, data_type: integer, native_filter_type: query_arg, native_filter_required: false, description: How many lines to find, visible_to: [viewer]}
+  - {name: _nf_sonnet, data_type: integer, native_filter_type: query_arg, native_filter_required: false, description: A sonnet whose lines are left out, visible_to: [viewer]}
 functions:
 # Every line's embedding, written to Qdrant: embed() embeds each line's words with the model, and
 # the rows are written to the collection through its write route.
@@ -150,7 +150,7 @@ functions:
   description: Embed every line of the sonnets and write each embedding to the sonnet_lines collection
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "sonnets"."sonnet_lines" (id, sonnet_number, text_vec)
@@ -166,7 +166,7 @@ functions:
   description: Find each line's three nearest lines in other sonnets in the vector store, and write them with their similarity to the echo table
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "sonnets"."echo" (line_id, echo_line_id, score)
@@ -186,12 +186,12 @@ views:
     JOIN "sonnets"."line" AS l ON l.id = s.id
     WHERE s._nf_query = 'the ravages of time' AND s._nf_k = 20
   columns:
-  - {name: line_id, data_type: integer, description: The line, visible_to: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [org_admin]}
-  - {name: text, data_type: varchar, description: The line's words, visible_to: [org_admin]}
-  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [org_admin]}
-  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [org_admin]}
+  - {name: line_id, data_type: integer, description: The line, visible_to: [data_steward]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [data_steward]}
+  - {name: text, data_type: varchar, description: The line's words, visible_to: [data_steward]}
+  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [data_steward]}
+  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [data_steward]}
 # The lines nearest "beauty": one fixed search, stored, joined back to its lines.
 - id: theme_beauty
   domain_id: sonnets
@@ -203,12 +203,12 @@ views:
     JOIN "sonnets"."line" AS l ON l.id = s.id
     WHERE s._nf_query = 'beauty' AND s._nf_k = 20
   columns:
-  - {name: line_id, data_type: integer, description: The line, visible_to: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [org_admin]}
-  - {name: text, data_type: varchar, description: The line's words, visible_to: [org_admin]}
-  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [org_admin]}
-  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [org_admin]}
+  - {name: line_id, data_type: integer, description: The line, visible_to: [data_steward]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [data_steward]}
+  - {name: text, data_type: varchar, description: The line's words, visible_to: [data_steward]}
+  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [data_steward]}
+  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [data_steward]}
 # The lines nearest "mortality and death": one fixed search, stored, joined back to its lines.
 - id: theme_mortality
   domain_id: sonnets
@@ -220,12 +220,12 @@ views:
     JOIN "sonnets"."line" AS l ON l.id = s.id
     WHERE s._nf_query = 'mortality and death' AND s._nf_k = 20
   columns:
-  - {name: line_id, data_type: integer, description: The line, visible_to: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [org_admin]}
-  - {name: text, data_type: varchar, description: The line's words, visible_to: [org_admin]}
-  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [org_admin]}
-  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [org_admin]}
+  - {name: line_id, data_type: integer, description: The line, visible_to: [data_steward]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [data_steward]}
+  - {name: text, data_type: varchar, description: The line's words, visible_to: [data_steward]}
+  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [data_steward]}
+  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [data_steward]}
 # The lines nearest "jealousy": one fixed search, stored, joined back to its lines.
 - id: theme_jealousy
   domain_id: sonnets
@@ -237,12 +237,12 @@ views:
     JOIN "sonnets"."line" AS l ON l.id = s.id
     WHERE s._nf_query = 'jealousy' AND s._nf_k = 20
   columns:
-  - {name: line_id, data_type: integer, description: The line, visible_to: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [org_admin]}
-  - {name: text, data_type: varchar, description: The line's words, visible_to: [org_admin]}
-  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [org_admin]}
-  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [org_admin]}
+  - {name: line_id, data_type: integer, description: The line, visible_to: [data_steward]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [data_steward]}
+  - {name: text, data_type: varchar, description: The line's words, visible_to: [data_steward]}
+  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [data_steward]}
+  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [data_steward]}
 # The lines nearest "my verse shall live": one fixed search, stored, joined back to its lines.
 - id: theme_verse
   domain_id: sonnets
@@ -254,12 +254,12 @@ views:
     JOIN "sonnets"."line" AS l ON l.id = s.id
     WHERE s._nf_query = 'my verse shall live' AND s._nf_k = 20
   columns:
-  - {name: line_id, data_type: integer, description: The line, visible_to: [org_admin]}
-  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [org_admin]}
-  - {name: text, data_type: varchar, description: The line's words, visible_to: [org_admin]}
-  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [org_admin]}
-  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [org_admin]}
+  - {name: line_id, data_type: integer, description: The line, visible_to: [data_steward]}
+  - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet, from 1', visible_to: [data_steward]}
+  - {name: text, data_type: varchar, description: The line's words, visible_to: [data_steward]}
+  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [data_steward]}
+  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [data_steward]}
 # Every theme's lines together: what the EVOKES relationship walks.
 - id: evokes
   domain_id: sonnets
@@ -275,9 +275,9 @@ views:
     UNION ALL
     SELECT line_id, theme_id, score FROM "sonnets"."view_theme_verse"
   columns:
-  - {name: line_id, data_type: integer, description: The line, visible_to: [org_admin]}
-  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [org_admin]}
-  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [org_admin]}
+  - {name: line_id, data_type: integer, description: The line, visible_to: [data_steward]}
+  - {name: theme_id, data_type: varchar, description: The theme, visible_to: [data_steward]}
+  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [data_steward]}
 # Each echo with the words of both lines and the sonnets they are in.
 - id: echo_lines
   domain_id: sonnets
@@ -291,13 +291,13 @@ views:
     JOIN "sonnets"."line" AS a ON a.id = e.line_id
     JOIN "sonnets"."line" AS b ON b.id = e.echo_line_id
   columns:
-  - {name: score, data_type: double, description: 'How near in meaning the two lines are: 1 the same', visible_to: [org_admin]}
-  - {name: sonnet, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet', visible_to: [org_admin]}
-  - {name: text, data_type: varchar, description: The line's words, visible_to: [org_admin]}
-  - {name: echo_sonnet, data_type: integer, description: "The other sonnet, which echoes it", visible_to: [org_admin]}
-  - {name: echo_line_no, data_type: integer, description: 'The echoing line''s place in its sonnet', visible_to: [org_admin]}
-  - {name: echo_text, data_type: varchar, description: The echoing line's words, visible_to: [org_admin]}
+  - {name: score, data_type: double, description: 'How near in meaning the two lines are: 1 the same', visible_to: [data_steward]}
+  - {name: sonnet, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet', visible_to: [data_steward]}
+  - {name: text, data_type: varchar, description: The line's words, visible_to: [data_steward]}
+  - {name: echo_sonnet, data_type: integer, description: "The other sonnet, which echoes it", visible_to: [data_steward]}
+  - {name: echo_line_no, data_type: integer, description: 'The echoing line''s place in its sonnet', visible_to: [data_steward]}
+  - {name: echo_text, data_type: varchar, description: The echoing line's words, visible_to: [data_steward]}
 # Each line a theme's search found, with the theme's name and the sequence of the sonnet it is in.
 - id: theme_lines
   domain_id: sonnets
@@ -311,12 +311,12 @@ views:
     JOIN "sonnets"."line" AS l ON l.id = e.line_id
     JOIN "sonnets"."sonnet" AS s ON s.number = l.sonnet_number
   columns:
-  - {name: theme, data_type: varchar, description: The theme, visible_to: [org_admin]}
-  - {name: sequence, data_type: varchar, description: 'Fair Youth or Dark Lady: the sequence of the sonnet the line is in', visible_to: [org_admin]}
-  - {name: sonnet, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
-  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet', visible_to: [org_admin]}
-  - {name: text, data_type: varchar, description: The line's words, visible_to: [org_admin]}
-  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [org_admin]}
+  - {name: theme, data_type: varchar, description: The theme, visible_to: [data_steward]}
+  - {name: sequence, data_type: varchar, description: 'Fair Youth or Dark Lady: the sequence of the sonnet the line is in', visible_to: [data_steward]}
+  - {name: sonnet, data_type: integer, description: The sonnet the line is in, visible_to: [data_steward]}
+  - {name: line_no, data_type: integer, description: 'The line''s place in its sonnet', visible_to: [data_steward]}
+  - {name: text, data_type: varchar, description: The line's words, visible_to: [data_steward]}
+  - {name: score, data_type: double, description: 'How near the line is to the theme''s phrase: 1 the same', visible_to: [data_steward]}
 relationships:
 - {id: line-in-sonnet, alias: IN, cardinality: many-to-one, source_table_id: line, source_column: sonnet_number, target_table_id: sonnet, target_column: number}
 - {id: line-echoes-line, alias: ECHOES, cardinality: one-to-many, source_table_id: line, source_column: id, target_table_id: line, target_column: id, via_table: echo, via_source_column: line_id, via_target_column: echo_line_id, via_label_source: fixed}

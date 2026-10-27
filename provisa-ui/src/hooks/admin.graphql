@@ -69,9 +69,11 @@ query RolesQuery {
     id
     description
     capabilities
+    effectiveCapabilities
     demonstrated
     domainAccess
-    parentRoleId
+    parents
+    standard
     residencyValues
     inactivityDays
     sessionVars {
@@ -114,6 +116,7 @@ query SourcesQuery {
     federationHintsJson
     passwordRef
     changeSignal
+    rowFetchByKeys
     cdc {
       bootstrapServers
       topicPrefix
@@ -161,6 +164,15 @@ query ResolveOwners($refs: [String!]!) {
   }
 }
 
+# REQ-2153: listed columns' names in domains the caller does not reach -- names only.
+query ListedNamesQuery {
+  listedNames {
+    domainId
+    tableName
+    columnNames
+  }
+}
+
 query DataProductsQuery {
   dataProducts {
     id
@@ -173,8 +185,8 @@ query DataProductsQuery {
     usage
     version
     status
-    sla
     support
+    supportContact
     customProperties
   }
 }
@@ -241,6 +253,7 @@ query TablesQuery {
     replicate
     region
     draft
+    rowMaterialize
     loadProtected
     offPeakWindow
     offPeakTz
@@ -251,6 +264,7 @@ query TablesQuery {
     }
     gqlNamingConvention
     graphqlFieldName
+    timeTravel
     dqDataset
     qualityCheckers {
       tableId
@@ -285,6 +299,7 @@ query TablesQuery {
     pushDebounceMaxDelay
     mvConsistency
     mvPreprocess
+    mvHoldOnFailingChecks
     businessKey
     validTime
     recordedTime
@@ -590,6 +605,7 @@ query RelationshipsQuery {
     graphqlAlias
     physicalName
     computedCypherAlias
+    cypherType
     autoSuggested
     disableCypher
     sameEntity
@@ -626,6 +642,7 @@ query AllRelationshipsQuery {
     graphqlAlias
     physicalName
     computedCypherAlias
+    cypherType
     autoSuggested
     disableCypher
     sameEntity
@@ -754,6 +771,8 @@ mutation CompileQuery($input: CompileQueryInput!) {
     canonicalField
     compiledCypher
     cypherError
+    compiledSparql
+    sparqlError
     optimizations
     warnings
     columnAliases {
@@ -955,9 +974,53 @@ mutation UpdateDataProduct($input: DataProductInput!) {
   }
 }
 
+mutation SaveDataContract($tableId: Int!, $contract: DataContractInput!) {
+  saveDataContract(tableId: $tableId, contract: $contract) {
+    ...MutationResult
+  }
+}
+
 mutation DeleteDataProduct($id: String!) {
   deleteDataProduct(id: $id) {
     ...MutationResult
+  }
+}
+
+# REQ-1634 STATUS: a data product's lifecycle, one mutation per action.
+mutation PublishDataProduct($id: String!) {
+  publishDataProduct(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation DeprecateDataProduct($id: String!, $reason: String!, $retireOn: Date) {
+  deprecateDataProduct(id: $id, reason: $reason, retireOn: $retireOn) {
+    ...MutationResult
+  }
+}
+
+mutation RetireDataProduct($id: String!, $reason: String!, $successor: String) {
+  retireDataProduct(id: $id, reason: $reason, successor: $successor) {
+    ...MutationResult
+  }
+}
+
+mutation RestoreDataProduct($id: String!) {
+  restoreDataProduct(id: $id) {
+    ...MutationResult
+  }
+}
+
+# REQ-2146: what a curator should look at in the data products, by product.
+query DataProductFindingsQuery {
+  dataProductFindings {
+    productId
+    findings {
+      kind
+      code
+      message
+      params
+    }
   }
 }
 
@@ -1034,6 +1097,11 @@ mutation DeleteTable($id: Int!) {
 }
 
 # REQ-962: snapshot-boundary calendars — the picker source + create form for the MV snapshot schedule.
+# REQ-2133: the built-in preflight a view's Hold on failing checks option applies.
+query HoldOnFailingChecksSource {
+  holdOnFailingChecksSource
+}
+
 query Calendars {
   calendars {
     name
@@ -1120,8 +1188,8 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
   }
 }
 
-mutation RefreshKaggleSource($sourceId: String!, $token: String!) {
-  refreshKaggleSource(sourceId: $sourceId, token: $token) {
+mutation RefreshKaggleSource($sourceId: String!) {
+  refreshKaggleSource(sourceId: $sourceId) {
     ...MutationResult
   }
 }

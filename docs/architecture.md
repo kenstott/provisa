@@ -148,7 +148,7 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 
 ## Query Pipeline
 
-Every read passes through six stages, whatever language you write it in. Each stage hands the next one a SQL statement. The language you write only decides where the read enters.
+Every read passes through five stages. GraphQL, Cypher, SPARQL, gRPC and SQL are entry points, not stages — each compiles or lowers to semantic SQL before the pipeline begins.
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ Semantic SQL reads the model. Its tables are domain-qualified (`sales.orders`), 
 
 A nested read compiles to one canonical CTE pipeline, the same for every engine and built from the declared relationships alone. A root CTE reads the root table with its filter, order, limit and offset. Each to-many level is a CTE of its own. It joins its table to the parent CTE on the relationship's keys, takes each parent's first rows with `ROW_NUMBER() OVER (PARTITION BY ...)`, and aggregates them into a JSON list per parent. The final `SELECT` reads the root CTE and left-joins each level on the parent key. GraphQL, Cypher and SPARQL reads that ask the same question compile to the same statement.
 
-Today's compilers have not reached that form yet. The GraphQL compiler reads a nested field with arguments through a per-parent `LEFT JOIN LATERAL`, and the Cypher translator writes one CTE per `WITH` stage. The example below shows both forms.
+The Cypher translator writes one CTE per `WITH` stage; aligning those shapes to the canonical pipeline is follow-on work. Until it is complete, equivalent Cypher and GraphQL reads do not always compile to the same semantic SQL. The GraphQL compiler writes nested fields with arguments as per-parent `LEFT JOIN LATERAL` joins. Both current forms appear in the example below.
 
 ### Governed SQL
 
@@ -188,7 +188,18 @@ The optimized stage rewrites the governed statement in ways that hold on every e
 
 ### Plan and route
 
-Routing reads the optimized statement's sources, never the governed one's, so a read that optimization narrowed to one source can still run direct. A statement goes direct when it reads one source and that source has a direct driver. Otherwise the federation engine runs it. The rule has a third condition, that the source supports every construct in the statement. The router doesn't check that one yet, and decides on the source count and the driver. See [Route decisions](#request-pipeline) for the cache, replica and steward cases.
+Landing on the federation engine is the default; routing reads the optimized sources, never the governed ones. A statement runs directly on its source only when it passes all six gates in order. The first gate it fails names the reason.
+
+| Gate | What it checks |
+|---|---|
+| `one_source` | Reads one source after optimization, or reads sources that share a physical database |
+| `dialect_supports` | That source's dialect supports every construct in the statement |
+| `access_path` | A direct driver, an API caller, or a code function exists for the source |
+| `colocated_login` | Sources counted as one database share the same login credential |
+| `not_forced` | No operator floor, faked column, or engine-required condition applies |
+| `trusted_to_answer` | A non-SQL source can answer the complete dataset without further in-process filtering |
+
+See [Request Pipeline](#request-pipeline) for the cache, replica and steward cases.
 
 ### Native SQL
 
@@ -559,7 +570,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
 | `compiler/enum_detect.py` | Enum type auto-detection — PostgreSQL native enum types (`pg_enum`) exposed as GraphQL enum types rather than string scalars |
-| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`/* @provisa route=federated */`) that override automatic routing |
+| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`-- @provisa route=federated`) that override automatic routing |
 | `compiler/mutation_gen.py` | Mutation compiler; column presets — server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
 | `auth/approval_hook.py` | ABAC approval hook — pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
 | `subscriptions/` | SSE subscription state and delivery |
@@ -568,7 +579,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `api_source/` | REST/GraphQL/gRPC API sources with PG cache |
 | `kafka/` | Kafka topic sources, sink, Schema Registry |
 | `auth/` | Pluggable auth providers, middleware, role mapping |
-| `core/` | Config, models, DB, repositories, secrets; role model supports `parent_role_id` and `flatten_roles()` for recursive role inheritance |
+| `core/` | Config, models, DB, repositories, secrets; role model supports `parents` and `flatten_roles()` for role inheritance; `standard_roles.yaml` defines the standard roles |
 | `hasura_v2/` | Hasura v2 metadata → Provisa config converter |
 | `ddn/` | Hasura DDN supergraph → Provisa config converter |
 | `mongodb/` | MongoDB source connector |
@@ -716,7 +727,9 @@ Every registered table gets an auto-generated `{table}_aggregate` root field (`c
 
 ## Inherited Roles
 
-A role names at most one parent through `parent_role_id`. At runtime build, `security/inheritance.py` walks each role's chain from the child up and folds it into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. Capabilities and domain access are the union of the chain. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. A table's write grants resolve per operation the same way: a role without a grant for an operation takes the nearest ancestor's, its own first. RLS resolves per table with the child taking precedence: the nearest role in the chain that has a rule for the table, its own table rule before its domain rule, supplies the one predicate that runs; an ancestor's rule is never combined with it. A role inherits its parent's rate limit when it sets none. A parent must exist, may not be the role itself and may not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
+A role names the roles it inherits from in `parents`, in order. At runtime build, `security/inheritance.py` walks each role's ancestors depth-first in that order, each once, and folds them into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. Capabilities are the union over the ancestors; `domain_access` is the role's own and is not inherited. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table: the role's own rule (its table rule before its domain rule) stands; otherwise the rules its parents resolve are combined with OR into one predicate, and a parent that resolves none adds nothing. With one parent this is the nearest rule in the chain. Write grants resolve per operation the same way: their columns are unioned and their row and check conditions combined with OR. A property (rate limit, `max_rows`, a session value) comes from the role, else the first ancestor that sets it. A parent must exist, be named once, not be the role itself and not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
+
+The standard roles are defined in `core/standard_roles.yaml`, written into every model schema on each `init_schema` (`db.assert_standard_roles`) and refused by the admin surfaces and the config loader. The sandbox role a "Try it Out" visitor holds is a union of standard roles; the visitor reads a copied demo's columns through the grants that name `viewer` or `data_steward`, which the sandbox inherits.
 
 ## ABAC Approval Hook
 
@@ -746,7 +759,7 @@ A role names at most one parent through `parent_role_id`. At runtime build, `sec
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

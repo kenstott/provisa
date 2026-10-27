@@ -1,0 +1,1986 @@
+[
+ {
+  "columns": [
+   "id",
+   "status",
+   "total_cents",
+   "placed_at",
+   "items"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:hasuramigration/1-my-orders.graphql",
+  "root_field": "s__orders",
+  "rows": [
+   [
+    1,
+    "shipped",
+    32900,
+    "2026-07-12T19:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    10,
+    "shipped",
+    45200,
+    "2026-09-14T18:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 6900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     }
+    ]
+   ],
+   [
+    11,
+    "packed",
+    6900,
+    "2026-08-06T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    12,
+    "delivered",
+    15600,
+    "2026-08-07T10:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    13,
+    "delivered",
+    34700,
+    "2026-08-20T13:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 1,
+      "unitPriceCents": 21900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    14,
+    "packed",
+    12900,
+    "2026-05-17T11:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 1,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    15,
+    "shipped",
+    99600,
+    "2026-06-08T13:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 4,
+      "unitPriceCents": 24900
+     }
+    ]
+   ],
+   [
+    16,
+    "delivered",
+    178800,
+    "2026-05-04T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 4,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 4,
+      "unitPriceCents": 21900
+     }
+    ]
+   ],
+   [
+    17,
+    "delivered",
+    51600,
+    "2026-04-17T12:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 4,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    18,
+    "placed",
+    63700,
+    "2026-04-28T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 1,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 5900
+     }
+    ]
+   ],
+   [
+    19,
+    "shipped",
+    20700,
+    "2026-09-06T15:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    2,
+    "placed",
+    32900,
+    "2026-08-09T12:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    20,
+    "packed",
+    17600,
+    "2026-05-01T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 5900
+     }
+    ]
+   ],
+   [
+    21,
+    "delivered",
+    145400,
+    "2026-06-08T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 3,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 2,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    22,
+    "packed",
+    76500,
+    "2026-06-07T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 2,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 8900
+     }
+    ]
+   ],
+   [
+    23,
+    "shipped",
+    76200,
+    "2026-06-02T15:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 4,
+      "unitPriceCents": 12900
+     },
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 5900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    24,
+    "shipped",
+    20600,
+    "2026-05-21T18:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     }
+    ]
+   ],
+   [
+    25,
+    "cancelled",
+    3900,
+    "2026-05-22T14:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    26,
+    "packed",
+    16800,
+    "2026-09-18T10:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 1,
+      "unitPriceCents": 12900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    27,
+    "delivered",
+    54800,
+    "2026-04-24T15:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 1,
+      "unitPriceCents": 21900
+     },
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    28,
+    "shipped",
+    35700,
+    "2026-04-09T11:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 1,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    29,
+    "delivered",
+    47700,
+    "2026-05-11T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 1,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    3,
+    "shipped",
+    70700,
+    "2026-04-25T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 2,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    30,
+    "shipped",
+    56700,
+    "2026-07-22T12:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 3,
+      "unitPriceCents": 18900
+     }
+    ]
+   ],
+   [
+    31,
+    "shipped",
+    33700,
+    "2026-08-30T14:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 2,
+      "unitPriceCents": 5900
+     },
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 1,
+      "unitPriceCents": 21900
+     }
+    ]
+   ],
+   [
+    32,
+    "delivered",
+    159300,
+    "2026-08-08T11:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 4,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 2,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 1,
+      "unitPriceCents": 21900
+     }
+    ]
+   ],
+   [
+    33,
+    "cancelled",
+    31700,
+    "2026-09-07T10:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    34,
+    "cancelled",
+    25800,
+    "2026-04-29T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 2,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    35,
+    "cancelled",
+    11700,
+    "2026-08-23T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    36,
+    "shipped",
+    37300,
+    "2026-06-11T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 2,
+      "unitPriceCents": 5900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 2,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    37,
+    "packed",
+    144500,
+    "2026-07-11T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 4,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 1,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    38,
+    "shipped",
+    77400,
+    "2026-09-13T19:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 2,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    39,
+    "cancelled",
+    99600,
+    "2026-05-13T19:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 4,
+      "unitPriceCents": 24900
+     }
+    ]
+   ],
+   [
+    4,
+    "placed",
+    95400,
+    "2026-05-28T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 2,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 6900
+     },
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 3,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    40,
+    "delivered",
+    41800,
+    "2026-05-22T14:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     }
+    ]
+   ],
+   [
+    5,
+    "shipped",
+    169000,
+    "2026-07-06T10:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 2,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 4,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    6,
+    "cancelled",
+    49800,
+    "2026-07-03T13:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 2,
+      "unitPriceCents": 24900
+     }
+    ]
+   ],
+   [
+    7,
+    "cancelled",
+    143400,
+    "2026-06-28T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 4,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 2,
+      "unitPriceCents": 5900
+     }
+    ]
+   ],
+   [
+    8,
+    "cancelled",
+    66700,
+    "2026-07-18T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     },
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 1,
+      "unitPriceCents": 24900
+     }
+    ]
+   ],
+   [
+    9,
+    "cancelled",
+    98700,
+    "2026-08-28T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 3,
+      "unitPriceCents": 32900
+     }
+    ]
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "id",
+   "status",
+   "total_cents",
+   "placed_at",
+   "items"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:hasuramigration/1-my-orders.graphql",
+  "root_field": "s__orders",
+  "rows": [
+   [
+    1,
+    "shipped",
+    32900,
+    "2026-07-12T19:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    10,
+    "shipped",
+    45200,
+    "2026-09-14T18:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 6900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     }
+    ]
+   ],
+   [
+    11,
+    "packed",
+    6900,
+    "2026-08-06T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    12,
+    "delivered",
+    15600,
+    "2026-08-07T10:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    13,
+    "delivered",
+    34700,
+    "2026-08-20T13:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 1,
+      "unitPriceCents": 21900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    14,
+    "packed",
+    12900,
+    "2026-05-17T11:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 1,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    15,
+    "shipped",
+    99600,
+    "2026-06-08T13:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 4,
+      "unitPriceCents": 24900
+     }
+    ]
+   ],
+   [
+    16,
+    "delivered",
+    178800,
+    "2026-05-04T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 4,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 4,
+      "unitPriceCents": 21900
+     }
+    ]
+   ],
+   [
+    17,
+    "delivered",
+    51600,
+    "2026-04-17T12:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 4,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    18,
+    "placed",
+    63700,
+    "2026-04-28T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 1,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 5900
+     }
+    ]
+   ],
+   [
+    19,
+    "shipped",
+    20700,
+    "2026-09-06T15:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    2,
+    "placed",
+    32900,
+    "2026-08-09T12:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    20,
+    "packed",
+    17600,
+    "2026-05-01T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 5900
+     }
+    ]
+   ],
+   [
+    21,
+    "delivered",
+    145400,
+    "2026-06-08T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 3,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 2,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    22,
+    "packed",
+    76500,
+    "2026-06-07T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 2,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 8900
+     }
+    ]
+   ],
+   [
+    23,
+    "shipped",
+    76200,
+    "2026-06-02T15:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 4,
+      "unitPriceCents": 12900
+     },
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 5900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    24,
+    "shipped",
+    20600,
+    "2026-05-21T18:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     }
+    ]
+   ],
+   [
+    25,
+    "cancelled",
+    3900,
+    "2026-05-22T14:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    26,
+    "packed",
+    16800,
+    "2026-09-18T10:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 1,
+      "unitPriceCents": 12900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    27,
+    "delivered",
+    54800,
+    "2026-04-24T15:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 1,
+      "unitPriceCents": 21900
+     },
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    28,
+    "shipped",
+    35700,
+    "2026-04-09T11:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 1,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    29,
+    "delivered",
+    47700,
+    "2026-05-11T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 1,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    3,
+    "shipped",
+    70700,
+    "2026-04-25T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 2,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     }
+    ]
+   ],
+   [
+    30,
+    "shipped",
+    56700,
+    "2026-07-22T12:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 3,
+      "unitPriceCents": 18900
+     }
+    ]
+   ],
+   [
+    31,
+    "shipped",
+    33700,
+    "2026-08-30T14:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 2,
+      "unitPriceCents": 5900
+     },
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 1,
+      "unitPriceCents": 21900
+     }
+    ]
+   ],
+   [
+    32,
+    "delivered",
+    159300,
+    "2026-08-08T11:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 4,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 2,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "55 L backpack",
+       "sku": "PCK-55"
+      },
+      "quantity": 1,
+      "unitPriceCents": 21900
+     }
+    ]
+   ],
+   [
+    33,
+    "cancelled",
+    31700,
+    "2026-09-07T10:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    34,
+    "cancelled",
+    25800,
+    "2026-04-29T17:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 2,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    35,
+    "cancelled",
+    11700,
+    "2026-08-23T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 3900
+     }
+    ]
+   ],
+   [
+    36,
+    "shipped",
+    37300,
+    "2026-06-11T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 2,
+      "unitPriceCents": 5900
+     },
+     {
+      "product": {
+       "name": "Headlamp",
+       "sku": "LMP-01"
+      },
+      "quantity": 3,
+      "unitPriceCents": 3900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 2,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    37,
+    "packed",
+    144500,
+    "2026-07-11T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 4,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 1,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    38,
+    "shipped",
+    77400,
+    "2026-09-13T19:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 2,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    39,
+    "cancelled",
+    99600,
+    "2026-05-13T19:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 4,
+      "unitPriceCents": 24900
+     }
+    ]
+   ],
+   [
+    4,
+    "placed",
+    95400,
+    "2026-05-28T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 2,
+      "unitPriceCents": 24900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 6900
+     },
+     {
+      "product": {
+       "name": "Synthetic sleeping bag",
+       "sku": "BAG-40"
+      },
+      "quantity": 3,
+      "unitPriceCents": 12900
+     }
+    ]
+   ],
+   [
+    40,
+    "delivered",
+    41800,
+    "2026-05-22T14:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     }
+    ]
+   ],
+   [
+    5,
+    "shipped",
+    169000,
+    "2026-07-06T10:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 2,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Two-person tent",
+       "sku": "TNT-2P"
+      },
+      "quantity": 4,
+      "unitPriceCents": 18900
+     },
+     {
+      "product": {
+       "name": "Camp stove",
+       "sku": "STV-01"
+      },
+      "quantity": 4,
+      "unitPriceCents": 6900
+     }
+    ]
+   ],
+   [
+    6,
+    "cancelled",
+    49800,
+    "2026-07-03T13:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 2,
+      "unitPriceCents": 24900
+     }
+    ]
+   ],
+   [
+    7,
+    "cancelled",
+    143400,
+    "2026-06-28T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 4,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Camp chair",
+       "sku": "CHR-01"
+      },
+      "quantity": 2,
+      "unitPriceCents": 5900
+     }
+    ]
+   ],
+   [
+    8,
+    "cancelled",
+    66700,
+    "2026-07-18T09:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 1,
+      "unitPriceCents": 32900
+     },
+     {
+      "product": {
+       "name": "Sleeping pad",
+       "sku": "PAD-01"
+      },
+      "quantity": 1,
+      "unitPriceCents": 8900
+     },
+     {
+      "product": {
+       "name": "Down sleeping bag",
+       "sku": "BAG-20"
+      },
+      "quantity": 1,
+      "unitPriceCents": 24900
+     }
+    ]
+   ],
+   [
+    9,
+    "cancelled",
+    98700,
+    "2026-08-28T16:00:00+00:00",
+    [
+     {
+      "product": {
+       "name": "Four-person tent",
+       "sku": "TNT-4P"
+      },
+      "quantity": 3,
+      "unitPriceCents": 32900
+     }
+    ]
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "id",
+   "givenName",
+   "familyName",
+   "email"
+  ],
+  "engine": "duckdb",
+  "ordered": false,
+  "origin": "demo:hasuramigration/2-my-profile.graphql",
+  "root_field": "s__customers",
+  "rows": [
+   [
+    1,
+    "Ana",
+    "Ruiz",
+    "ana.ruiz@grandhotels.example"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "id",
+   "givenName",
+   "familyName",
+   "email"
+  ],
+  "engine": "postgres",
+  "ordered": false,
+  "origin": "demo:hasuramigration/2-my-profile.graphql",
+  "root_field": "s__customers",
+  "rows": [
+   [
+    1,
+    "Ana",
+    "Ruiz",
+    "ana.ruiz@grandhotels.example"
+   ]
+  ]
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:hasuramigration/3-order-with-account.graphql",
+  "reads": [
+   "crm",
+   "outfitters"
+  ],
+  "root_field": "s__orders"
+ }
+]

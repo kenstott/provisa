@@ -244,6 +244,9 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
 fi
 
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
+# REQ-2135: a local install's public address. The boot stores this as server.public_url, the
+# operator setting in Deployment settings, when nothing sets it, so SPARQL works on a fresh start.
+export PROVISA_LOCAL_ADDRESS="http://localhost:$PROVISA_API_PORT"
 # REQ-1494: the platform fake key directory, written by this uvicorn and mounted into Trino.
 export PROVISA_FAKE_KEY_DIR="${PROVISA_FAKE_KEY_DIR:-$SCRIPT_DIR/.provisa/fake-key}"
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
@@ -1099,6 +1102,7 @@ if [ "$DEMO" = true ]; then
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
   print_mcp_info
   echo ""
   echo "Demo sources:"
@@ -1113,6 +1117,7 @@ else
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
   print_mcp_info
   echo ""
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."

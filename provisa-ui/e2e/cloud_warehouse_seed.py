@@ -16,7 +16,7 @@ tests/integration/test_snowflake_source_e2e.py, test_databricks_source_e2e.py,
 test_bigquery_federation_engine_e2e.py, test_fabric_federation_engine_e2e.py) so this is not a new,
 unverified way of reaching them.
 
-Usage: python cloud_warehouse_seed.py <snowflake|databricks|bigquery|fabric> <up|down>
+Usage: python cloud_warehouse_seed.py <snowflake|databricks|bigquery|fabric> <up|down> <schema>
 """
 
 from __future__ import annotations
@@ -31,7 +31,9 @@ if str(_ROOT) not in sys.path:
     # `provisa` package and the `tests.integration` helpers this reuses — isn't on sys.path yet.
     sys.path.insert(0, str(_ROOT))
 
-_SCHEMA = "provisa_ui_e2e"
+# The run's own schema (e2e/cloud-warehouse.ts WAREHOUSE_SCHEMA), set from argv in main(): the
+# warehouses are shared by concurrent CI runs, which must not seed or drop each other's.
+_SCHEMA = ""
 _TABLE = "widgets"
 
 
@@ -67,7 +69,7 @@ def _snowflake(action: str) -> None:
     # silently lands with no current database at all (CURRENT_DATABASE() reads NULL) rather than
     # erroring. Reproduced live; filed as a bug (see spec header). A plain uppercase-safe database
     # name sidesteps it for this e2e without masking the finding.
-    db = _SCHEMA.upper()  # "PROVISA_UI_E2E" — also used as the schema name's database here
+    db = _SCHEMA.upper()  # the run's schema, upper-cased — also used as its database here
     table = _TABLE.upper()
     cur = conn.cursor()
     try:
@@ -136,10 +138,12 @@ def _bigquery(action: str) -> None:
         table = bigquery.Table(table_ref, schema=schema)
         client.delete_table(table_ref, not_found_ok=True)
         client.create_table(table)
-        client.insert_rows_json(
-            table_ref,
-            [{"id": 1, "name": "sprocket"}, {"id": 2, "name": "cog"}, {"id": 3, "name": "gear"}],
-        )
+        # A DML insert, not a streaming one: insertAll into a table just dropped and recreated
+        # under the same name answers 404 "Table ... not found" until BigQuery's streaming
+        # backend sees the new table, which can take minutes.
+        client.query(
+            f"INSERT INTO `{table_ref}` (id, name) VALUES (1, 'sprocket'), (2, 'cog'), (3, 'gear')"
+        ).result()
     else:
         client.delete_dataset(dataset_ref, delete_contents=True, not_found_ok=True)
 
@@ -192,7 +196,12 @@ _ENGINES = {
 
 def main() -> None:
     _load_root_env()
-    engine, action = sys.argv[1], sys.argv[2]
+    global _SCHEMA
+    if len(sys.argv) != 4:
+        raise SystemExit(
+            f"usage: python cloud_warehouse_seed.py <{'|'.join(_ENGINES)}> <up|down> <schema>"
+        )
+    engine, action, _SCHEMA = sys.argv[1], sys.argv[2], sys.argv[3]
     if engine not in _ENGINES or action not in ("up", "down"):
         raise SystemExit(f"usage: python cloud_warehouse_seed.py <{'|'.join(_ENGINES)}> <up|down>")
     _ENGINES[engine](action)

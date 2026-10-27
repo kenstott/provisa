@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "資料表「{{table}}」沒有已註冊的 gRPC 查詢",
       "no_mutation_fields": "找不到變更欄位",
       "no_proto_for_role": "角色「{{role_id}}」沒有 proto：它沒有資料介面，因為它未涵蓋任何網域，或只擁有控制平面權限",
+      "role_served_nothing": "角色 '{{role_id}}' 未獲提供任何表：未授予其任何表的任何欄",
       "no_query_field_for_proto_type": "角色「{{role_id}}」下的 proto 類型「{{type_name}}」沒有查詢欄位",
       "no_query_fields": "找不到查詢欄位",
       "no_role": "沒有角色「{{role_id}}」",
@@ -129,7 +130,12 @@
       "address_not_found": "沒有可解析的內容：{{reason}}",
       "mixed_resolve_and_other_fields": "resolve 不能在同一操作中與其他根欄位組合使用",
       "source_starting": "來源 {{source}} 仍在啟動。請稍後再試。",
-      "view_outside_load_window": "視圖 {{view}} 只能在其讀取時段內讀取。下次開放時間為 {{opens_at}}。"
+      "view_outside_load_window": "視圖 {{view}} 只能在其讀取時段內讀取。下次開放時間為 {{opens_at}}。",
+      "graphql_body_missing": "請求沒有正文:GraphQL 請求是包含查詢的 JSON 物件。",
+      "graphql_body_not_json": "請求正文不是 JSON:{{error}}",
+      "graphql_request_not_object": "GraphQL 請求是包含查詢的 JSON 物件。",
+      "graphql_parameter_type": "GraphQL 請求的 {{parameter}} 必須是 {{expected}}。",
+      "graphql_mutation_over_get": "變更操作以 POST 發送,絕不用 GET。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -256,10 +262,15 @@
       "database_unavailable": "數據庫不可用",
       "query_engine_unavailable": "查詢引擎不可用",
       "role_header_required": "剖析檢視需要 X-Provisa-Role 標頭",
-      "table_not_found": "找不到資料表 {{table_id}}"
+      "table_not_found": "找不到資料表 {{table_id}}",
+      "column_not_found": "欄位 {{column}} 不是 org_admin 讀取的表中的欄位",
+      "classification_kind_unknown": "未知的分類類型 {{kind}}",
+      "classification_status_invalid": "分類決定只可以是已接受或已拒絕，而不是 {{status}}",
+      "classification_decision_not_found": "沒有關於 {{column}} 作為 {{kind}} 的決定",
+      "classification_pii_refused": "無法將該欄位標記為 PII"
     },
     "replication": {
-      "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：{{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
+      "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
       "no_whole_copy": "來源 {{source}} 的資料表 {{schema}}.{{table}} 沒有可建置的完整複本：它按列複製，或者帶有參數欄。",
       "page_limit_reached": "未建置 {{table}} 的複本：其端點的分頁在 max_pages={{max_pages}} 處停止，而端點在第 {{max_pages}} 頁之後仍有資料（已讀取 {{rows}} 列）。複本是整張資料表，因此不會在上限處截斷。請提高端點的 max_pages 或頁面大小。",
       "row_limit_reached": "未建置 {{table}} 的複本：其讀取在 max_rows={{max_rows}}（graphql_remote.max_rows）處停止，而遠端在 {{rows}} 列之後仍有資料。複本是整張資料表，因此不會在上限處截斷。請提高 graphql_remote.max_rows。",
@@ -273,7 +284,7 @@
     "roles": {
       "cannot_delete_system": "無法刪除系統角色",
       "cannot_modify_administrative": "無法修改管理角色",
-      "has_dependents": "仍有 {{count}} 個物件引用角色 {{role}}；請先移除這些引用",
+      "has_dependents": "仍有其他物件引用角色 {{role}}；請先移除這些引用",
       "not_found": "找不到角色",
       "org_selection_required": "需要選取組織",
       "already_exists": "角色 '{{role}}' 已存在",
@@ -288,9 +299,9 @@
       "cache_purged": "已清除 {{count}} 個快取項目",
       "cache_purged_table": "已清除資料表 {{table}} 的 {{count}} 個快取項目",
       "calendar_deleted": "行事曆「{{calendar}}」已刪除",
-      "calendar_in_use": "行事曆「{{calendar}}」正被 {{count}} 個具體化檢視使用——請先清除其快照排程再刪除",
+      "calendar_in_use": "行事曆「{{calendar}}」正被具體化檢視使用——請先清除其快照排程再刪除",
       "calendar_not_found": "找不到行事曆「{{calendar}}」",
-      "calendar_saved": "行事曆「{{calendar}}」v{{version}} 已儲存",
+      "calendar_saved": "行事曆「{{calendar}}」{{version}} 已儲存",
       "column_natively_nested": "無法註冊：欄位 {{column}} 在其數據來源中的原生類型為 {{native_type}}，因此其類型為 json，而不是 {{type}}。",
       "column_types_unresolved": "無法註冊：以下欄位無法從數據來源解析出數據類型：{{columns}}。請先內省資料表（探索結構描述）或為每個欄位設定數據類型，然後再註冊。",
       "config_not_found": "找不到設定檔",
@@ -336,6 +347,7 @@
       "change_signal_no_topic": "資料來源 '{{source}}' 的表 '{{table}}' 使用 kafka 變更訊號，但未在 live.kafka.topic 中指定 topic，因此不會有任何東西重新整理它。",
       "change_signal_no_receiver": "Provisa 不會從 {{type}} 類型的資料來源接收變更訊號 {{signal}}，因此資料來源 '{{source}}' 的資料表永遠不會因此重新整理。請使用 Debezium 擷取該資料來源，並使用 debezium。",
       "change_signal_not_honoured": "類型為 {{type}} 的數據來源尚不能檢查是否有變更，因此變更訊號 {{signal}} 永遠不會被詢問。請為數據來源「{{source}}」使用 ttl。",
+      "row_materialize_no_key_fetch": "{{table}} 無法按列複製：其遠端結構描述中沒有可按主索引鍵清單傳回其資料列的欄位。",
       "sentinel_path_not_applicable": "類型為 {{type}} 的數據來源不能有哨兵路徑：沒有您自己的生產方可以標記其數據的變更，或者該數據來源不被探測。請從數據來源「{{source}}」中移除哨兵路徑。",
       "source_cache_ttl_required": "數據來源「{{source}}」需要快取 TTL：它的每個表格都是複本，在 {{signal}} 變更訊號下按該時鐘重新整理。請在數據來源的「負載管理與時效性」中設定。",
       "landing_ttl_required": "表格「{{table}}」是按快取 TTL 重新整理的複本，但它和它的數據來源「{{source}}」都沒有設定。請在數據來源的「負載管理與時效性」中設定快取 TTL，或在表格註冊後在表格本身設定。",
@@ -427,6 +439,7 @@
       "relationship_unknown_source": "來源表 '{{table}}' 未註冊",
       "relationship_unknown_target": "目標表 '{{table}}' 未註冊",
       "relationship_unknown_junction": "連接表 '{{table}}' 未註冊",
+      "relationship_column_beyond_reads": "關係只能連接你的角色可讀取的欄。",
       "source_id_taken": "資料來源 '{{source}}' 已存在",
       "domain_id_taken": "領域「{{domain}}」已存在",
       "role_id_taken": "角色「{{role}}」已存在",
@@ -453,7 +466,8 @@
       "relationship_same_entity_direct": "關係 '{{relationship}}' 不能標記為同一實體：它透過聯結表或函數連接，而不是一行對一行",
       "relationship_same_entity_cardinality": "關係 '{{relationship}}' 不能標記為同一實體：它是 {{cardinality}}，而同一實體是一行對一行",
       "relationship_same_entity_not_grounded": "關係 '{{relationship}}' 不能標記為同一實體：{{source}} 和 {{target}} 未關聯到同一術語",
-      "relationship_same_entity_not_keys": "關係 '{{relationship}}' 不能標記為同一實體：{{columns}} 不是 {{table}} 的主鍵或唯一鍵"
+      "relationship_same_entity_not_keys": "關係 '{{relationship}}' 不能標記為同一實體：{{columns}} 不是 {{table}} 的主鍵或唯一鍵",
+      "kaggle_token_missing": "Kaggle 數據集 {{owner}}/{{ref}}：數據來源沒有 Kaggle API 權杖。請在數據來源表單中加入，權杖在那裡輸入。"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
@@ -483,7 +497,10 @@
       "unknown_encryption_provider": "未知的加密提供者「{{provider}}」",
       "unknown_engine": "未知引擎「{{engine}}」；有效值：{{valid}}",
       "use_domains_invalid": "use_domains 必須為 true、false 或 null",
-      "claims_with_multitenancy": "多租戶部署不能從登入聲明中讀取角色指派：它按組織自行授予角色，而聲明會覆蓋這些授予。請將指派來源設定為 Provisa。"
+      "claims_with_multitenancy": "多租戶部署不能從登入聲明中讀取角色指派：它按組織自行授予角色，而聲明會覆蓋這些授予。請將指派來源設定為 Provisa。",
+      "federation_unknown_field": "不是聯邦設定：{{fields}}",
+      "federation_invalid": "聯邦設定無效：{{error}}",
+      "federation_role_unknown": "聯邦角色「{{role}}」不是此組織的角色"
     },
     "setup": {
       "admin_credentials_required": "必須提供 admin_username 及 admin_password",
@@ -528,7 +545,38 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}"
+      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}",
+      "access_violations": "此角色無權執行此查詢：",
+      "invalid_regex": "{{expression}} 中的模式 \"{{pattern}}\" 不是有效的正則表達式：{{reason}}。=~ 需要正則表達式，例如 \".*{{word}}.*\"，或使用 CONTAINS \"{{word}}\"。",
+      "unknown_label": "沒有標籤 :{{label}}。已登記的標籤：{{suggestions}}。",
+      "no_labels": "沒有標籤 :{{label}}：此角色無法讀取任何表。",
+      "unknown_relationship_type": "沒有關係類型 {{types}}。最接近的已登記類型：{{suggestions}}。",
+      "no_relationship_types": "沒有關係類型 {{types}}：此角色無法遍歷任何關係。",
+      "type_mismatch": "在 {{expression}} 中，{{value}} 無法與類型為 {{property_type}} 的 {{property}} 比較。{{fix}}",
+      "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分組之前篩選行。請在 WITH 中聚合，之後再篩選。",
+      "nested_aggregate": "{{outer}} 對聚合 {{inner}} 再次聚合：不能對另一個聚合取聚合。請先在 WITH 中聚合。",
+      "node_and_relationship": "{{variable}} 同時指代一個節點和一個關係：一個變數只指代一樣東西。請為每個分別使用自己的變數。",
+      "path_variable_reused": "{{variable}} 同時指代路徑和路徑中的節點或關係：一個變數只指代一樣東西。請為每個分別使用自己的變數。",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] 在列表推導中聚合，而列表推導一次讀取一個列表。請先在 WITH 中聚合，再在列表中使用其結果。",
+      "length_of_entity": "length({{variable}}) 接受路徑，而 {{variable}} 是節點或關係。請用 MATCH p = ... 綁定路徑，並使用 length(p)。",
+      "column_name_conflict": "{{clause}} 中有兩欄都命名為 {{column}}：每欄都有自己的名稱。請用 AS 重新命名其中一欄。",
+      "union_mixed": "同一語句中混用了 UNION 和 UNION ALL：請全程只使用其中一種。",
+      "union_columns_differ": "UNION 連接的語句傳回不同的欄 {{first}} 和 {{second}}：每個語句都必須傳回相同的欄名。",
+      "integer_overflow": "{{value}} 超出整數範圍 -9223372036854775808 至 9223372036854775807。",
+      "invalid_unicode_escape": "字串中的跳脫序列 {{escape}} 不是 Cypher 能讀取的。Unicode 跳脫序列為 \\u 加四位十六進位數字，例如 \\u00e9。",
+      "boolean_operand": "{{operator}} 接受 true、false 或 null，但被傳入了語句中寫出的其他類型的值。",
+      "nondeterministic_aggregate": "{{aggregate}} 對 rand() 進行聚合，而 rand() 每次呼叫都會變化。請先在 WITH 中計算它，再對結果聚合。",
+      "value_as_node": "MATCH 將 {{variable}} 讀取為節點或關係，但語句將其綁定到既非節點也非關係的值。請為節點使用自己的變數。",
+      "undefined_variable": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。",
+      "invalid_limit": "LIMIT {{value}} 不是整數行數：LIMIT 需要 0 或以上的計數，例如 LIMIT 10。",
+      "invalid_skip": "SKIP {{value}} 不是整數行數：SKIP 需要 0 或以上的計數，例如 SKIP 10。",
+      "engine_refused": "引擎拒絕了查詢：{{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。",
+      "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
+      "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。",
+      "non_finite_number": "答案包含 JSON 無法表示的數字：{{column}} 為 {{value}}。",
+      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 及 toBoolean，需要此引擎上的 PostgreSQL 16 或更新版本。"
     },
     "requests": {
       "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",
@@ -542,6 +590,7 @@
     "statement": {
       "rows_cut": "結果在 {{limit}} 行處被截斷，這是適用於此次讀取的行數限制（{{kind}}）：符合的行多於傳回的行。",
       "rows_cut_unchecked": "結果有 {{limit}} 行，即適用於此次讀取的行數限制（{{kind}}）。無法檢查是否還有更多符合的行：{{reason}}",
+      "list_at_ceiling": "清單包含列數上限允許此次讀取（{{kind}}）的最多 {{limit}} 個項目；可能還有更多。",
       "approximate_index": "最相似的行是透過近似向量索引找到的：可能缺少一行比最後傳回的行稍微更相似的行。",
       "path_cut": "一條沒有上限的路徑在圖深度上限 {{limit}} 跳處被截斷：更長的路徑未包含在結果中。"
     },
@@ -662,6 +711,34 @@
       "also_term_needs_column": "改為給詞彙加標籤需要指定一個欄位。",
       "inherited_from_term": "此欄位是 PII，因為它表示 {{term}}。請取消該含義的標記，或者如果此欄位表示其他含義，請移動它。",
       "move_loses": "此次移動會使欄位失去標籤，之後這些欄位將不再帶有它們。請確認失去每個標籤，或將標籤帶到欄位移入的詞彙上。"
+    },
+    "data_product": {
+      "status": {
+        "published": "數據產品 {{data_product}} 已發佈。",
+        "deprecated": "數據產品 {{data_product}} 已標記為棄用。",
+        "retired": "數據產品 {{data_product}} 已停用。",
+        "restored": "數據產品 {{data_product}} 已還原。",
+        "reason_required": "需要填寫原因：說明為何棄用或停用此數據產品。",
+        "not_found": "找不到數據產品 {{data_product}}。",
+        "not_draft": "只有草稿狀態的數據產品可以發佈；此產品為 {{status}}。",
+        "not_live": "只有已上線的數據產品可以棄用，只有已上線或已棄用的可以停用；此產品為 {{status}}。",
+        "not_restorable": "只有已棄用或已停用的數據產品可以還原；此產品為 {{status}}。",
+        "retire_on_past": "計劃停用日期 {{retire_on}} 已過。請選擇今天或之後的日期。",
+        "successor_required": "此數據產品有 {{members}} 個成員；停用後它們會轉給繼任者。請選擇一個。",
+        "successor_is_self": "數據產品不能是自己的繼任者。",
+        "successor_retired": "繼任者「{{successor}}」已停用。請選擇一個正在使用的數據產品。",
+        "successor_other_domain": "繼任者「{{successor}}」屬於網域 {{domain}}。產品的成員與其共用同一網域，因此請選擇同一網域中的繼任者。"
+      },
+      "finding": {
+        "no_members": "沒有任何表格、檢視或指令屬於此數據產品。",
+        "member_deprecated": "成員表格 {{table}} 已棄用。",
+        "no_owner": "沒有擁有者角色對此數據產品負責。",
+        "no_support_contact": "此數據產品沒有支援聯絡人，而已設定的匯出目標要求提供。",
+        "retirement_blocked": "此數據產品原定於 {{retire_on}} 停用，但仍有成員。請指定一個繼任者接收這些成員後再停用。",
+        "domain_steward_unset": "網域 {{domain}} 沒有數據管家。",
+        "no_description": "此數據產品既未說明用途，也未說明使用方式。",
+        "successor_retired": "接收此產品成員的數據產品「{{successor}}」亦已停用。"
+      }
     }
   }
 }

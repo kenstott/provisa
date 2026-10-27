@@ -34,11 +34,14 @@ import { useDeleteTable, useRegisterTable, useTables } from "../../hooks/useAdmi
 import { DERIVED_SOURCE_ID } from "../../types/admin";
 import type { RegisteredTable } from "../../types/admin";
 import { GovernedTableViewer } from "../GovernedTableViewer";
+import { useAuth } from "../../context/AuthContext";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 
 export function ReportsTab() {
   const { t } = useTranslation();
+  // REQ-1620: a report is read as the selected roles, the "Role: All" set included.
+  const { actingRoles } = useAuth();
   const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
   const { registerTable } = useRegisterTable();
   const { deleteTable } = useDeleteTable();
@@ -223,7 +226,7 @@ export function ReportsTab() {
       </div>
 
       {selected ? (
-        <GovernedTableViewer key={selected.id} table={selected} showTitle />
+        <GovernedTableViewer key={selected.id} table={selected} role={actingRoles} showTitle />
       ) : (
         <div style={{ flex: 1 }} />
       )}

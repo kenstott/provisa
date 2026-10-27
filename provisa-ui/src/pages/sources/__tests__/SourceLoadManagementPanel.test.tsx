@@ -378,9 +378,7 @@ describe("the source's Cache TTL editor (REQ-2031)", () => {
     expect(screen.getByText("-1: never expires")).toBeTruthy();
     fireEvent.change(input, { target: { value: "-1" } });
     expect(seen.at(-1)?.cacheTtl).toBe("-1");
-    expect(
-      screen.getByText("Never expires: lands once."),
-    ).toBeTruthy();
+    expect(screen.getByText("Never expires: lands once.")).toBeTruthy();
   });
 
   it("goes no lower than -1", () => {

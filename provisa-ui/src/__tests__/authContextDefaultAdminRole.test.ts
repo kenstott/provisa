@@ -11,51 +11,70 @@
 /**
  * REQ-1352: `DEFAULT_ADMIN_ROLE` is a second copy of org_admin's definition.
  *
- * The role's capabilities belong to `provisa/core/schema.sql` alone (REQ-1352), but a dev/no-auth
+ * The role's capabilities belong to `provisa/core/standard_roles.yaml` alone (REQ-1352, REQ-2155:
+ * its own and every ancestor's), but a dev/no-auth
  * deployment answers `/auth/me` before any org schema is reachable, so the client needs a literal
  * to mirror what the server grants an unsecured caller. A literal copy drifts: it had gained
  * `read_restricted`, which the seed does not grant, and never gained the
  * REQ-1349 pair `org_settings`/`observability` — so a dev-mode org administrator's capability set
  * admitted no admin route and the Admin navigation group was not rendered at all.
  *
- * Parsing the seed rather than restating it here is the point: a second hand-written list would
- * drift the same way.
+ * Resolving the definition rather than restating it here is the point: a second hand-written list
+ * would drift the same way.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_ADMIN_ROLE } from "../context/AuthContext";
 
+type StandardRole = { parents: string[]; capabilities: string[]; description: string };
+
+function standardRoles(): Record<string, StandardRole> {
+  const text = readFileSync(join(__dirname, "../../../provisa/core/standard_roles.yaml"), "utf8");
+  return load(text) as Record<string, StandardRole>;
+}
+
+/** org_admin's own capabilities and every ancestor's (REQ-2155). */
 function seededOrgAdminCapabilities(): string[] {
-  const sql = readFileSync(join(__dirname, "../../../provisa/core/schema.sql"), "utf8");
-  const start = sql.indexOf("    'org_admin',");
-  expect(start, "schema.sql must seed org_admin").toBeGreaterThan(-1);
-  const block = sql.slice(start, sql.indexOf("ON CONFLICT", start));
-  const list = block.slice(block.indexOf("'["), block.indexOf("]'") + 1);
-  return (JSON.parse(list.slice(1)) as string[]).map(String);
+  const roles = standardRoles();
+  const held = new Set<string>();
+  const walk = (id: string) => {
+    roles[id].capabilities.forEach((c) => held.add(c));
+    roles[id].parents.forEach(walk);
+  };
+  walk("org_admin");
+  return [...held];
 }
 
 describe("DEFAULT_ADMIN_ROLE", () => {
-  it("is org_admin's schema.sql seed verbatim", () => {
-    expect([...DEFAULT_ADMIN_ROLE.capabilities].sort()).toEqual(
+  it("is org_admin's standard definition, ancestors included", () => {
+    const org_admin = standardRoles().org_admin;
+    expect([...DEFAULT_ADMIN_ROLE.capabilities].sort()).toEqual([...org_admin.capabilities].sort());
+    expect(DEFAULT_ADMIN_ROLE.parents).toEqual(org_admin.parents);
+    expect([...DEFAULT_ADMIN_ROLE.effectiveCapabilities].sort()).toEqual(
       [...seededOrgAdminCapabilities()].sort(),
     );
   });
 
   it("carries the REQ-1349 org-scoped rights the Admin group needs", () => {
-    expect(DEFAULT_ADMIN_ROLE.capabilities).toContain("org_settings");
-    expect(DEFAULT_ADMIN_ROLE.capabilities).toContain("observability");
+    expect(DEFAULT_ADMIN_ROLE.effectiveCapabilities).toContain("org_settings");
+    expect(DEFAULT_ADMIN_ROLE.effectiveCapabilities).toContain("observability");
   });
 
   it("carries no platform-bypass or cross-org right", () => {
     // REQ-1297/REQ-1337: those belong to platform_admin. `cross_org` is what marks a role
     // control-plane, and isControlPlaneOnly() would sort this role off the data plane entirely.
     for (const right of ["admin", "superadmin", "platform_settings", "cross_org"]) {
-      expect(DEFAULT_ADMIN_ROLE.capabilities).not.toContain(right);
+      expect(DEFAULT_ADMIN_ROLE.effectiveCapabilities).not.toContain(right);
     }
+  });
+
+  it("describes itself as the standard role does", () => {
+    expect(DEFAULT_ADMIN_ROLE.description).toEqual(standardRoles().org_admin.description);
   });
 
   it("grants every domain", () => {

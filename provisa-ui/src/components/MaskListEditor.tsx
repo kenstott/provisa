@@ -33,6 +33,8 @@ import { RegexMaskFields } from "./RegexMaskFields";
 import { checkMasks, maskPresets, type MaskPreset, type MasksReport } from "../api/admin";
 import {
   EVERYONE,
+  pickedReaders,
+  readersOf,
   maskValueOf,
   moved,
   newMaskList,
@@ -156,8 +158,8 @@ export function MaskListEditor({
             <GrantPicker
               grow
               options={options}
-              value={entry.to}
-              onChange={(to) => set(i, { ...entry, to })}
+              value={pickedReaders(entry.to)}
+              onChange={(picked) => set(i, { ...entry, to: readersOf(picked) })}
               ariaLabel={t("maskList.toAria", { n: i + 1 })}
               disabled={disabled}
             />

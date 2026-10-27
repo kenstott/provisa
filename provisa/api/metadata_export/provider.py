@@ -93,6 +93,10 @@ class MetadataExport(ABC):  # REQ-1068
     # concrete provider and matched against ``metadata_export.provider`` in config; a
     # provider that leaves it unset is a wiring fault, caught by the registry.
     provider_name: str
+    # A provider that works but is not yet proven against a live instance of its catalog. The
+    # UI names it "<name> (beta)" wherever a user picks or sees it; set it back to False once
+    # an end-to-end run against a real instance passes.
+    beta = False
 
     def __init__(self, config: MetadataExportTarget) -> None:
         self._config = config
@@ -124,6 +128,12 @@ class MetadataExport(ABC):  # REQ-1068
     #: for a provider that shares or annotates objects inside the engine's own store (Snowflake
     #: Horizon), where a replica-served table is published through its export view.
     needs_export_views = False
+
+    #: Whether this provider records each data product it publishes in its bindings, under the
+    #: product's URI (REQ-1389). The publish path records a product a provider that does not
+    #: (``False``) has published, so a retired product is withdrawn only where it was published
+    #: (REQ-1634 STATUS). A provider that reads its bindings back as vendor ids records its own.
+    binds_products = True
 
     @property
     def export_views(self) -> dict[tuple[str, str, str], tuple[str, str]]:

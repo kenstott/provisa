@@ -48,6 +48,7 @@
     "itemMetadataExport": "Exportar",
     "itemImport": "Importar",
     "itemTags": "Tags",
+    "itemClassificationKinds": "Classificação",
     "itemDataProducts": "Produtos",
     "itemReports": "Relatórios",
     "itemGlossary": "Ontologia",
@@ -74,6 +75,8 @@
     "sandboxExitLogOut": "Apenas sair",
     "itemPython": "Python",
     "itemNotebook": "Notebook",
-    "itemContainerRegistries": "Registros de contêineres"
+    "itemContainerRegistries": "Registros de contêineres",
+    "itemSparql": "SPARQL",
+    "itemCatalogs": "Catálogos"
   }
 }

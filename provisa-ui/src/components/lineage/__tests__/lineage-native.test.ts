@@ -38,6 +38,9 @@ const GRAPH: LineageGraphData = {
       relation: "native:sales.customers",
       kind: "native",
       materialized: false,
+      source_id: "crm",
+      source_schema: "public",
+      source_table: "Customers",
     },
     {
       id: "sales.customers.postal_code",
@@ -130,5 +133,48 @@ describe("each element links to where it is defined", () => {
     const none = lineageLinks(GRAPH, TABLES, () => false);
     expect(none.node("sales.customers.postal_code")).toBeNull();
     expect(none.command("score_it")).toBeNull();
+  });
+});
+
+describe("a native box without its source's metadata (a user without source registration)", () => {
+  const bare: LineageGraphData = { ...GRAPH, natives: undefined };
+
+  it("is named by its source and the names the source gives it, never by its internal key", () => {
+    const model = buildLineageModel(bare, undefined);
+    const labels = model.boxes.map((b) => b.label);
+    expect(labels.some((l) => l.includes("native:"))).toBe(false);
+    const box = model.boxes.find((b) => b.relation === "native:sales.customers")!;
+    expect(box.label).toBe("crm · public.Customers");
+    expect(box.native).toBeNull();
+  });
+
+  it("reads the rename across its edge: the source's field, then the registered column", () => {
+    const model = buildLineageModel(bare, undefined);
+    const rows = (relation: string) =>
+      model.boxes.find((b) => b.relation === relation)!.rows.map((r) => [r.label, r.role]);
+    expect(rows("native:sales.customers")).toEqual([["postalCode", "native"]]);
+    expect(rows("sales.customers")).toContainEqual(["postal_code", "source"]);
+    const rename = model.edges.find((e) => e.source === "native:sales.customers.postalCode")!;
+    expect(rename.target).toBe("sales.customers.postal_code");
+    expect(rename.label).toBe("naming");
+  });
+
+  it("names an object with no schema or table (an API, a topic) by its source alone", () => {
+    const api: LineageGraphData = {
+      ...bare,
+      nodes: bare.nodes.map((n) =>
+        n.kind === "native" ? { ...n, source_schema: null, source_table: null } : n,
+      ),
+    };
+    const model = buildLineageModel(api, undefined);
+    expect(model.boxes.find((b) => b.relation === "native:sales.customers")?.label).toBe("crm");
+  });
+
+  it("keeps the catalog's name for registered tables beside it", () => {
+    const catalog = (relation: string) => relation.replace("sales.", "Sales.");
+    const model = buildLineageModel(bare, undefined, { relationLabel: catalog });
+    const label = (relation: string) => model.boxes.find((b) => b.relation === relation)?.label;
+    expect(label("native:sales.customers")).toBe("crm · public.Customers");
+    expect(label("sales.report")).toBe("Sales.report");
   });
 });

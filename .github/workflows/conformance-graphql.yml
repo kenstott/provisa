@@ -1,0 +1,127 @@
+name: Conformance (GraphQL over HTTP)
+
+# REQ-2167: Provisa's GraphQL over HTTP (POST /data/graphql) against the graphql-http server audit,
+# the GraphQL over HTTP specification's own audit suite (npm graphql-http, MIT), installed at a
+# pinned version, never vendored, and run by scripts/conformance/graphql_http_audit.mjs as
+# org_admin.
+#
+# A failing audit is data, written to the job summary and to the artifact conformance-graphql.json
+# (read by scripts/conformance/fill_docs.py into docs/conformance/graphql.md), never a job
+# failure. The job fails only when the Provisa instance did not start or no audit ran.
+#
+# The instance is the pgwire conformance job's (see conformance-pgwire.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-graphql-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  graphql:
+    name: GraphQL over HTTP conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GRAPHQL_HTTP_VERSION: "1.22.4"
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch graphql-http
+        run: |
+          mkdir -p "$RUNNER_TEMP/graphql-http"
+          cd "$RUNNER_TEMP/graphql-http"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "graphql-http@$GRAPHQL_HTTP_VERSION" graphql@16
+          head -n 3 node_modules/graphql-http/LICENSE.md
+          grep -q "MIT License" node_modules/graphql-http/LICENSE.md
+
+      # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
+      # its token in CONFORMANCE_AUTHORIZATION.
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+
+
+      - name: Run the audit
+        timeout-minutes: 20
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          node scripts/conformance/graphql_http_audit.mjs \
+            "$RUNNER_TEMP/graphql-http" "$GRAPHQL_HTTP_VERSION" \
+            "http://127.0.0.1:$PROVISA_API_PORT/data/graphql" org_admin "$CONFORMANCE_AUTHORIZATION" \
+            "$RUNNER_TEMP/report/conformance-graphql.json" "$RUNNER_TEMP/report/conformance-graphql.md"
+          cat "$RUNNER_TEMP/report/conformance-graphql.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        run: cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/" || true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-graphql
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi

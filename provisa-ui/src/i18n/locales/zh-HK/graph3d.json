@@ -1,14 +1,16 @@
 {
   "graph3d": {
     "canvasLabel": "數據產品及其組成部分的 3D 圖",
-    "panelTitle": "知識圖譜",
-    "expandTitle": "{{product}}：知識圖譜",
+    "panelTitle": "圖",
+    "expandTitle": "{{product}}：圖",
     "productMap": "產品地圖",
     "preset": "預設",
-    "preset_knowledge": "知識圖譜",
+    "dimension": "2D 或 3D",
+    "view2d": "2D",
+    "view3d": "3D",
+    "preset_all": "全部",
     "preset_ontology": "本體",
-    "preset_productMap": "產品地圖",
-    "preset_lineage": "血緣",
+    "preset_products": "產品",
     "layers": "圖層",
     "layer_products": "產品和網域",
     "layer_tables": "成員表",
@@ -96,7 +98,6 @@
     "openAsQueryFocused": "搜尋或聚焦的鄰域目前仍無法以一個查詢表達。",
     "openAsQueryCompiling": "正在編譯查詢…",
     "openAsQueryNoCypher": "此查詢沒有 Cypher 形式。",
-    "openAsQuerySparqlLater": "SPARQL 將在其端點可用後開放。",
     "layersMenu": "圖層",
     "termsMenu": "術語",
     "menuAll": "全部",
@@ -109,6 +110,8 @@
     "overBudget": "{{count}} 個相符；請收窄搜尋或選擇一個域",
     "domainCount": "{{domain}}（{{count}}）",
     "unlinkedTables": "錨定在尚未關聯為同一實體的資料表上：{{tables}}",
-    "status_draft": "草稿"
+    "status_draft": "草稿",
+    "openAsQueryNoSparql": "此查詢沒有 SPARQL 形式。",
+    "openAsQuerySparqlRoots": "此查詢的每個根都是一個獨立的 SPARQL 查詢：請開啟 GraphQL 逐個讀取。"
   }
 }

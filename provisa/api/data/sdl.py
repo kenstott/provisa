@@ -57,7 +57,7 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
     return reachable
 
 
-_ALWAYS_VISIBLE_DOMAINS = {"meta", "ops"}
+_ALWAYS_VISIBLE_DOMAINS = {"meta", "ops", "ontology"}
 
 
 def require_reached_domains(role_id: str, role: dict, domain_ids: list[str]) -> None:  # REQ-039
@@ -96,6 +96,8 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     root_ids = seed_ids
     # The role is passed as it is: its own domain_access decides which of these tables it is
     # shown (_build_visible_tables). The requested domains only chose the roots above.
+    from provisa.mv.time_travel import relation_kinds
+
     si = SchemaInput(
         tables=filtered_tables,
         root_table_ids=root_ids,
@@ -105,6 +107,7 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
         role=role,
         domains=cache["domains"],
         source_types=state.source_types,
+        time_travel=relation_kinds(state, filtered_tables),  # REQ-1163
         domain_prefix=cache["domain_prefix"],
         physical_table_map=cache["physical_table_map"],
         functions=cache["functions"],

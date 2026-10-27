@@ -66,6 +66,9 @@ OWNERS: dict[str, set[str]] = {
         # by the faked projection, beside its real values, for the leak-rate check -- no engine,
         # no store, nothing leaves the process.
         "provisa/fakes/adequacy.py",
+        # REQ-2006: the one door every DuckDB database is opened through -- capped by the
+        # deployment's engine.duckdb_memory_limit, and kept while open for the leak probe's reading.
+        "provisa/core/engine_memory.py",
     },
     "trino": {
         "provisa/federation/trino_types.py",  # REQ-1678: the connection/exception alias leaf
@@ -96,6 +99,9 @@ OWNERS: dict[str, set[str]] = {
         # Unity Catalog publishing maps the connector's own error class to report a refused
         # statement against its product, as Horizon does for Snowflake's (REQ-2117).
         "provisa/api/metadata_export/unity_catalog.py",
+        # The engine runtime maps the connector's errors to a refused statement or a lost
+        # warehouse (REQ-778), as clickhouse_runtime and snowflake_runtime do for theirs.
+        "provisa/federation/databricks_runtime.py",
     },
     "google.cloud.bigquery": set(),
     "asyncpg": {

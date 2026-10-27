@@ -49,7 +49,7 @@ _ORG = "transport_contract"
 # with amount visible_to [admin] only, and role `analyst` restricted to the
 # sales-analytics domain.
 _ADMIN = "org_admin"
-_RESTRICTED = "analyst"
+_RESTRICTED = "sales_analytics_analyst"
 
 
 # --------------------------------------------------------------------------- #

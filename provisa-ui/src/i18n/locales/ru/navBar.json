@@ -48,6 +48,7 @@
     "itemMetadataExport": "Экспорт",
     "itemImport": "Импорт",
     "itemTags": "Теги",
+    "itemClassificationKinds": "Классификация",
     "itemDataProducts": "Продукты",
     "itemReports": "Отчёты",
     "itemGlossary": "Онтология",
@@ -74,6 +75,8 @@
     "sandboxExitLogOut": "Просто выйти",
     "itemPython": "Python",
     "itemNotebook": "Блокнот",
-    "itemContainerRegistries": "Реестры контейнеров"
+    "itemContainerRegistries": "Реестры контейнеров",
+    "itemSparql": "SPARQL",
+    "itemCatalogs": "Каталоги"
   }
 }

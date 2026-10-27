@@ -24,6 +24,7 @@ control-plane engines are driven only inside the TestClient's event loop.
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 from types import SimpleNamespace
 
@@ -33,6 +34,7 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, delete, insert, select, text
 
+from provisa.api.admin import orgs_router as orgs_module
 from provisa.api.admin.local_users_router import router as users_router
 from provisa.api.admin.orgs_router import router as orgs_router
 from provisa.api.org_runtime import ActiveOrgPool
@@ -53,6 +55,7 @@ from provisa.core.schema_org import (
     admin_audit_log,
     data_products,
     domains,
+    glossary_terms,
     query_audit_log,
     registered_tables,
     sources,
@@ -95,8 +98,16 @@ _TENANT_TABLES = [
 
 # REQ-1301: the root org additionally carries the dataset catalog, because creating or deleting an
 # org rebuilds root's org-registry view and re-registers it as a meta-domain table. data_products
-# rides along because registered_tables.product_id references it (REQ-1634).
-_ROOT_EXTRA_TABLES = [sources, domains, data_products, registered_tables, table_columns]
+# and glossary_terms ride along because registered_tables.product_id (REQ-1634) and
+# registered_tables.class_term_id (REQ-2130) reference them.
+_ROOT_EXTRA_TABLES = [
+    sources,
+    domains,
+    data_products,
+    glossary_terms,
+    registered_tables,
+    table_columns,
+]
 
 # REQ-1337: every gate on these routers reads a RIGHT, so a role row with an empty capability list
 # authorizes nothing however it is named. These are the capabilities schema.sql seeds, trimmed to
@@ -571,6 +582,8 @@ def test_only_a_failed_org_can_be_retried(planes):  # REQ-1315
         retried = client.post("/admin/orgs/acme/retry", headers=_alice_in_acme())
         assert retried.status_code == 200, retried.text
         assert retried.json()["provisioning_state"] == "provisioning"
+        # The build runs detached, on a background worker (spawn_background): wait for it.
+        concurrent.futures.wait(list(orgs_module._provisioning_tasks), timeout=30)
 
     assert [p[0] for p in planes.provisioned] == ["acme"]
     # The partial schema the failure left behind is dropped before the rebuild starts.

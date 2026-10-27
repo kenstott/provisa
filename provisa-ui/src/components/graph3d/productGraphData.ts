@@ -21,6 +21,8 @@ import {
   type Where,
 } from "../../api/metaGraph";
 import type { GraphData, GraphEdge, GraphNode, QueryScope } from "./graphModel";
+import type { ProductInput, ProductLineage } from "../../api/lineage";
+import { catalogTableName, relationName } from "../../naming";
 
 /** What the product graph's query keeps (REQ-2136): its domain, tag, sensitivity and term edge
  * type filters, in its where. None of one is every one. A row the filters drop takes what hangs off
@@ -70,10 +72,7 @@ const sensitiveTo = (xs: string[]): Where => ({
 const sensitiveColumn = (f: ProductFilters): Where | undefined =>
   f.sensitivities.length === 0 ? undefined : { sensitivity: sensitiveTo(f.sensitivities) };
 
-const TERM_EDGE_FIELDS = ["id", "from_term_id", "to_term_id", "rel_type"];
-
 function columnSel(f: ProductFilters): Selection {
-  const typed = f.edgeTypes.length === 0 ? undefined : { rel_type: { in: f.edgeTypes } };
   return {
     fields: ["column_name", "column_key"],
     rels: {
@@ -85,31 +84,9 @@ function columnSel(f: ProductFilters): Selection {
             term: {
               alias: "term",
               sel: {
+                // The bound term alone: a product's neighbourhood ends at the terms its columns
+                // are bound to (neighbourhood.ts), so their edges to other terms are not read.
                 fields: ["id", "name"],
-                // The term's edges either way, with the term at the other end (REQ-2136: one
-                // query, where the graph read them by bound term in two more).
-                rels: {
-                  edges_out: {
-                    alias: "edgesOut",
-                    sel: {
-                      fields: TERM_EDGE_FIELDS,
-                      rels: {
-                        target_term: { alias: "targetTerm", sel: { fields: ["id", "name"] } },
-                      },
-                    },
-                    where: typed,
-                  },
-                  edges_in: {
-                    alias: "edgesIn",
-                    sel: {
-                      fields: TERM_EDGE_FIELDS,
-                      rels: {
-                        source_term: { alias: "sourceTerm", sel: { fields: ["id", "name"] } },
-                      },
-                    },
-                    where: typed,
-                  },
-                },
               },
             },
           },
@@ -117,11 +94,6 @@ function columnSel(f: ProductFilters): Selection {
       },
       ...tagRel(f),
       sensitivity: { alias: "sensitivity", sel: { fields: ["tags"] } },
-      // REQ-2129: the column-level edges deriving this column (view_governance only).
-      upstream: {
-        alias: "upstream",
-        sel: { fields: ["source_column_key", "source_relation", "source_column", "via"] },
-      },
     },
   };
 }
@@ -139,14 +111,6 @@ function tableSel(f: ProductFilters): Selection {
       ...tagRel(f),
       profile_results: { alias: "profileResults", sel: { fields: ["id", "table_name"] } },
       checks: { alias: "checks", sel: { fields: ["id"] } },
-      checked_by: {
-        alias: "checkedBy",
-        sel: {
-          fields: ["id", "domain_id", "table_name", "dq_contract"],
-          rels: { checks: { alias: "checks", sel: { fields: ["id"] } } },
-        },
-        where: dom,
-      },
       source_relationships: {
         alias: "sourceRelationships",
         sel: {
@@ -189,24 +153,19 @@ function productSel(f: ProductFilters): Selection {
       edges: {
         alias: "edges",
         sel: {
-          fields: [
-            "kind",
-            "direction",
-            "target_product_id",
-            "target_table_id",
-            "target_relation",
-            "hops",
-            "path_count",
-            "aliases",
-          ],
+          fields: ["kind", "target_product_id", "target_table_id", "hops", "path_count", "aliases"],
           rels: {
             target_product: {
               alias: "targetProduct",
               sel: { fields: ["id", "name", "domain_id"] },
             },
+            target_table: {
+              alias: "targetTable",
+              sel: { fields: ["domain_id", "table_name"] },
+            },
           },
         },
-        where: dom && { _or: [{ kind: { eq: "lineage" } }, { target_product: dom }] },
+        where: dom && { target_product: dom },
       },
     },
   };
@@ -219,39 +178,17 @@ interface Tagged {
 interface ColumnRow extends Tagged {
   column_name: string;
   column_key: string;
-  upstream?:
-    | {
-        source_column_key: string;
-        source_relation: string;
-        source_column: string;
-        via: string;
-      }[]
-    | null;
   glossary_ref?:
     | {
         term_id: number;
         term?: {
           id: number;
           name: string;
-          edges_out?: (TermEdgeEnd & { target_term?: TermName | null })[] | null;
-          edges_in?: (TermEdgeEnd & { source_term?: TermName | null })[] | null;
         } | null;
       }[]
     | null;
   // Its row in sensitive_coverage when it is sensitive; undefined when the role cannot read it.
   sensitivity?: { tags: string }[] | null;
-}
-
-interface TermName {
-  id: number;
-  name: string;
-}
-
-interface TermEdgeEnd {
-  id: number;
-  from_term_id: number;
-  to_term_id: number;
-  rel_type: string;
 }
 
 interface TableRow extends Tagged {
@@ -263,10 +200,9 @@ interface TableRow extends Tagged {
   table_columns?: ColumnRow[] | null;
   profile_results?: { id: number; table_name: string }[] | null;
   checks?: { id: number } | null;
-  checked_by?: TableRow[] | null;
   source_relationships?:
     | {
-        id: number;
+        id: string; // the relationships table's TEXT key
         target_table?: {
           id: number;
           domain_id: string;
@@ -278,15 +214,16 @@ interface TableRow extends Tagged {
 }
 
 export interface EdgeRow {
-  kind: "relationship" | "lineage";
-  direction: "upstream" | "downstream" | null;
+  // data_product_edges' kinds (REQ-2126); the graph draws the relationship rows. A product's
+  // lineage is the product lineage endpoint's, cut to its reader's rights (REQ-2156).
+  kind: "relationship" | "related";
   target_product_id: string | null;
   target_table_id: number | null;
-  target_relation: string | null;
   hops: number;
   path_count: number;
   aliases: string | null;
   target_product?: { id: string; name: string; domain_id: string } | null;
+  target_table?: { domain_id: string; table_name: string } | null;
 }
 
 export interface ProductRow extends Tagged {
@@ -337,8 +274,9 @@ export function productGraphQuery(
 }
 
 /**
- * The graph of the product graph's one query: its term edges and its columns' sensitivity read off
- * the columns, null when the role cannot read them (as toGraphData takes them).
+ * The graph of the product graph's one query: its columns' sensitivity read off the columns, null
+ * when the role cannot read it (as toGraphData takes it). The bound terms are read without their
+ * edges to other terms, so the graph holds none.
  */
 export function productGraph(products: ProductRow[]): GraphData {
   const columns = products.flatMap((p) =>
@@ -348,20 +286,6 @@ export function productGraph(products: ProductRow[]): GraphData {
   );
   const readable = (pick: (c: ColumnRow) => unknown) =>
     columns.length === 0 || columns.every(({ c }) => pick(c) !== undefined);
-  const terms = columns.flatMap(({ c }) => (c.glossary_ref ?? []).flatMap((r) => r.term ?? []));
-  const termEdges: TermEdgeRow[] | null =
-    terms.length > 0 && terms.every((t) => t.edges_out !== undefined && t.edges_in !== undefined)
-      ? terms.flatMap((t) => [
-          ...(t.edges_out ?? []).flatMap((e) =>
-            e.target_term ? [{ ...e, from_term: t.name, to_term: e.target_term.name }] : [],
-          ),
-          ...(t.edges_in ?? []).flatMap((e) =>
-            e.source_term ? [{ ...e, from_term: e.source_term.name, to_term: t.name }] : [],
-          ),
-        ])
-      : terms.length === 0
-        ? []
-        : null;
   const sensitive: SensitiveRow[] | null = readable((c) => c.sensitivity)
     ? columns.flatMap(({ table, c }) =>
         (c.sensitivity ?? []).map((x) => ({
@@ -371,24 +295,97 @@ export function productGraph(products: ProductRow[]): GraphData {
         })),
       )
     : null;
-  return toGraphData(products, termEdges, sensitive);
+  // No term edges: the read stops at the bound terms.
+  return toGraphData(products, [], sensitive);
 }
 
 export const productNode = (id: string) => `p:${id}`;
-export const tableNode = (id: number) => `t:${id}`;
 
-/**
- * ``members`` and the checker tables scanning them, each once. REQ-1443 clause 10: a checker
- * belongs to the product of the table it scans, so it is reached through that member's checkedBy;
- * one also assigned to the product directly is a member already.
- */
-export function withCheckers<T extends { id: number; checked_by?: T[] | null }>(members: T[]): T[] {
-  const seen = new Set(members.map((t) => t.id));
-  const checkers = members
-    .flatMap((t) => t.checked_by ?? [])
-    .filter((k) => !seen.has(k.id) && seen.add(k.id));
-  return [...members, ...checkers];
+/** REQ-2156: an input as its reader knows it -- a registered table or view by its catalog name, a
+ *  member read straight from its source by the source and the names it gives the object. */
+function inputLabel(i: ProductInput): string {
+  if (i.kind !== "source")
+    return catalogTableName({ domainId: i.domain_id, tableName: i.table_name });
+  return sourceObject(i);
 }
+
+/** REQ-2156: ``product``'s graph with its lineage, from the product lineage endpoint (cut to what
+ *  the reader can read): each input feeds the product; an input that is another product's member
+ *  stands for that product, which the product is built from. Its column lineage (REQ-2129) joins
+ *  the columns it names: a member's or an input's column by its table, any other by its relation.
+ *  ``tables`` gives the relation each of the product's member tables is served under. */
+export function withProductLineage(
+  g: GraphData,
+  product: string,
+  lineage: ProductLineage,
+  tables: { id: number; domain_id: string; table_name: string }[],
+): GraphData {
+  const pid = productNode(product);
+  const nodes = new Map(g.nodes.map((n) => [n.id, n]));
+  const edges = new Map(g.edges.map((e) => [e.id, e]));
+  for (const i of lineage.inputs) {
+    const from =
+      i.product_id && i.product_id !== product ? productNode(i.product_id) : `l:${i.relation}`;
+    if (!nodes.has(from))
+      nodes.set(
+        from,
+        from === `l:${i.relation}`
+          ? { id: from, type: "relation", label: inputLabel(i), domains: [i.domain_id] }
+          : { id: from, type: "product", label: i.product_id as string, domains: [i.domain_id] },
+      );
+    const id = `lineage:${from}>${pid}`;
+    if (!edges.has(id)) edges.set(id, { id, a: from, b: pid, kind: "lineage" });
+  }
+  const tableOf = new Map<string, number>([
+    ...tables.map(
+      (t) =>
+        [relationName({ domainId: t.domain_id, tableName: t.table_name }), t.id] as [
+          string,
+          number,
+        ],
+    ),
+    ...lineage.inputs.map((i) => [i.relation, i.table_id] as [string, number]),
+  ]);
+  const columnOf = new Map<string, string>();
+  for (const n of lineage.nodes) {
+    const tid = n.relation === null ? undefined : tableOf.get(n.relation);
+    const id = tid === undefined ? `lc:${n.id}` : `c:${tid}:${n.column}`;
+    columnOf.set(n.id, id);
+    // A column the meta read did not draw stands alone, named by where it is read from.
+    if (!nodes.has(id))
+      nodes.set(id, {
+        id,
+        type: "column",
+        label:
+          n.kind === "native"
+            ? `${sourceObject(n)}.${n.column}`
+            : `${n.relation === null ? "" : `${n.relation}.`}${n.column}`,
+        inProduct: false,
+      });
+  }
+  for (const e of lineage.edges) {
+    const a = columnOf.get(e.source);
+    const b = columnOf.get(e.target);
+    // The endpoint sends every node its edges name.
+    if (a === undefined || b === undefined)
+      throw new Error(`lineage edge ${e.source} -> ${e.target} names a node the response lacks`);
+    const id = `column_lineage:${a}>${b}`;
+    if (!edges.has(id)) edges.set(id, { id, a, b, kind: "column_lineage" });
+  }
+  return { nodes: [...nodes.values()], edges: [...edges.values()] };
+}
+
+/** An object read straight from its source, by the names the source gives it: the source, then
+ *  its schema and table where it has them. */
+function sourceObject(n: {
+  source_id?: string | null;
+  source_schema?: string | null;
+  source_table?: string | null;
+}): string {
+  const object = [n.source_schema, n.source_table].filter(Boolean).join(".");
+  return object ? `${n.source_id} · ${object}` : (n.source_id as string);
+}
+export const tableNode = (id: number) => `t:${id}`;
 
 /** The table ids of ``products``' member tables. */
 export function memberTableIds(products: ProductRow[]): number[] {
@@ -443,7 +440,6 @@ export function toGraphData(
       label: p.name,
       domains: [p.domain_id],
       tags: tagIds(p),
-      lane: 0,
     });
     node({ id: `d:${p.domain_id}`, type: "domain", label: p.domain_id });
     edge(pid, `d:${p.domain_id}`, "in_domain");
@@ -462,23 +458,16 @@ export function toGraphData(
             paths: e.path_count,
             ...(e.aliases ? { label: e.aliases } : {}),
           });
-      } else if (e.kind === "lineage" && e.target_relation) {
-        // Upstream ancestry stands in lanes by its distance; a consumer one lane downstream.
-        const xid = `l:${e.target_relation}`;
-        const lane = e.direction === "upstream" ? -e.hops : 1;
-        node({ id: xid, type: "relation", label: e.target_relation, lane });
-        if (e.direction === "upstream") edge(xid, pid, "lineage");
-        else edge(pid, xid, "lineage");
       }
     }
     for (const c of p.commands ?? []) {
       node({ id: `f:${c.name}`, type: "command", label: c.name, domains: [c.domain_id] });
       edge(pid, `f:${c.name}`, "command");
     }
-    for (const t of withCheckers(p.member_tables ?? [])) {
+    for (const t of p.member_tables ?? []) {
       const label = `${t.domain_id}.${t.table_name}`;
       if (t.dq_contract != null) {
-        // A checker belongs because the table it scans does; its rows are quality evidence.
+        // A checker assigned to the product (REQ-1443): its rows are quality evidence.
         const kid = `k:${t.id}`;
         node({ id: kid, type: "checker", label, domains: [t.domain_id] });
         edge(pid, kid, "member");
@@ -513,19 +502,6 @@ export function toGraphData(
         });
         edge(tid, cid, "has_column");
         tag(c, cid);
-        for (const u of c.upstream ?? []) {
-          const sid = `c:${u.source_column_key}`;
-          // A column outside the product stands alone, named by its relation.
-          node({
-            id: sid,
-            type: "column",
-            label: `${u.source_relation}.${u.source_column}`,
-            inProduct: false,
-          });
-          const id = `column_lineage:${sid}>${cid}`;
-          if (!edges.has(id))
-            edges.set(id, { id, a: sid, b: cid, kind: "column_lineage", label: u.via });
-        }
         for (const r of c.glossary_ref ?? []) {
           if (!r.term) continue;
           term(r.term.id, r.term.name);

@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "Quitar {{tableName}} del lienzo",
     "toggleColumn": "Alternar selección de la columna {{columnName}}",
-    "connectColumn": "Iniciar relación desde {{columnName}}"
+    "connectColumn": "Iniciar relación desde {{columnName}}",
+    "allColumns": "Todas las columnas ({{selected}} de {{total}})",
+    "unjoined": "{{tables}} no está unida a las demás tablas",
+    "joinsUnavailable": "No se pudieron leer las uniones que este rol puede escribir: {{reason}}"
   }
 }

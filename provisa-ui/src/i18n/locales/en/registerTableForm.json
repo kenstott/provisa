@@ -23,7 +23,6 @@
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "Appears in SDL docs",
     "dataProductLabel": "Data Product",
-    "dataProductHint": "(publish to catalog / export to Atlas, Atlan, etc.)",
     "discoverLabel": "Discover columns",
     "discoverHint": "(infer columns from the live source at registration — for schemaless/NoSQL sources; no manual column selection needed)",
     "watermarkLabel": "Watermark Column",
@@ -62,7 +61,6 @@
     "dqResultsTableHint": "(derived from the scanned table; one row per check per scan, every scan kept)",
     "dqResultsTablePlaceholder": "Pick the table to scan above",
     "dqVisibleToLabel": "Results visible to",
-    "dqDescription": "Quality scan results for {{table}} — one row per check per scan, with outcome, metric value and threshold",
     "errorDqContract": "Pick the table to scan in the Data Quality panel.",
     "errorDqVisibleTo": "Results must be visible to at least one role.",
     "dqScanIntervalLabel": "Scan every (seconds)",
@@ -136,6 +134,9 @@
     "qdrantVectors": "Vectors of {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensions, scored by {{distance}}",
     "qdrantUnnamedVector": "(unnamed)",
-    "continue": "Continue"
+    "continue": "Continue",
+    "checkReasonLabel": "Why this check exists",
+    "checkReasonHint": "The quality claim in business terms; it headlines the check on each product.",
+    "checkReasonPlaceholder": "Orders are complete and unique so daily revenue reconciles with finance"
   }
 }

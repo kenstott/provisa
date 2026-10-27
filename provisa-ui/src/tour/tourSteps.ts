@@ -75,25 +75,24 @@ export interface TourStep {
    * opens its own statement.
    */
   openQuery?: {
-    // "role": a set of roles the SQL explorer runs as (REQ-2057). "asOf"/"asRecorded": the SQL
-    // explorer's time-travel pickers (REQ-1163).
+    // "role": a set of roles the SQL explorer runs as (REQ-2057). "params": the value bound to the
+    // SQL explorer's next statement's $1 (REQ-2083). "mcpQuestion": a question for the MCP
+    // explorer's agent (REQ-2172).
     stateKey:
       | "sql"
+      | "mcpQuestion"
       | "query"
       | "openApiUrl"
       | "jsonapiUrl"
       | "grpcMethod"
       | "role"
-      | "asOf"
-      | "asRecorded";
+      | "params";
     text: string;
     /** REQ-2083: the text is a value of an earlier tour statement's answer, read when the step
-     *  runs: `sql` run again as it ran (role, time travel), row `row`'s `column`. */
+     *  runs: `sql` run again as it ran (its role), row `row`'s `column`. */
     from?: {
       sql: string;
       role?: string;
-      asOf?: string;
-      asRecorded?: string;
       row: number;
       column: string;
     };
@@ -102,10 +101,12 @@ export interface TourStep {
    * The state handed to `route`'s page once per visit to the step, with no statement: the Graph
    * page's `view` (REQ-2010: `groupBy`, its newest frame grouped by that property, its query kept)
    * or the Notebook tab's `cells` (REQ-2084: added to the open notebook, and run with `autoRun`), or
-   * the Python tab's `code` (REQ-2071: into its editor, and run with `autoRun`).
+   * the Python tab's `code` (REQ-2071: into its editor, and run with `autoRun`), or the MCP
+   * explorer's Connect Claude Desktop panel opened (REQ-2172: `mcpConnect`).
    */
   navState?:
     | { view: { groupBy: string } }
+    | { mcpConnect: true }
     | { cells: string[]; autoRun: boolean }
     | { code: string; autoRun: boolean };
   /**
@@ -182,6 +183,12 @@ export interface TourStep {
    * aborts the tour, this only sets how long "never" takes to establish.
    */
   waitMs?: number;
+  /**
+   * REQ-2052: what the page shows when the step's object does not exist (a table never profiled).
+   * Once it appears the step stops at once, stuck, its text naming why, instead of waiting out
+   * `element`.
+   */
+  absent?: string;
 }
 
 const SOURCES_ADD = '[data-tour="sources-add"]';

@@ -40,7 +40,7 @@ import yaml
 pytestmark = [pytest.mark.requires_trino, pytest.mark.integration]
 
 _ROLE = "org_admin"
-_ANALYST = "analyst"
+_ANALYST = "itest_analyst"
 _IMAGE = "mongodb/mongodb-atlas-local:8.0"
 # The code a search index command fails with while mongot is not yet answering.
 _SEARCH_NOT_READY = 125
@@ -293,6 +293,7 @@ def _config(atlas: _Atlas, engine: str) -> dict:
         "roles": [
             {
                 "id": _ANALYST,
+                "parents": ["analyst"],
                 "description": "Test role.",
                 "capabilities": ["query_development"],
                 "domain_access": ["films"],

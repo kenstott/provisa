@@ -52,6 +52,22 @@ def _request(*held: str, user_id: str | None = "u1", body: dict | None = None) -
 
 
 @pytest.fixture(autouse=True)
+def _own_session_vars():
+    """MCP's named_role binds the session variables in the tool call's context, a copy the call
+    runs in; called here directly, it binds them in the test's own. Each test leaves them as it
+    found them."""
+    from provisa.core.request_context import (
+        current_session_vars,
+        reset_session_vars,
+        set_session_vars,
+    )
+
+    token = set_session_vars(dict(current_session_vars.get()))
+    yield
+    reset_session_vars(token)
+
+
+@pytest.fixture(autouse=True)
 def _two_roles(monkeypatch):
     for name, value in (
         ("proto_files", {A: 'syntax = "proto3"; // a', B: 'syntax = "proto3"; // b'}),
@@ -60,7 +76,14 @@ def _two_roles(monkeypatch):
         ("contexts", {}),
         (
             "tracked_functions",
-            {"do_it": {"name": "do_it", "kind": "query", "domain_id": "sales"}},
+            {
+                "do_it": {
+                    "name": "do_it",
+                    "kind": "query",
+                    "domain_id": "sales",
+                    "visible_to": [A, B],
+                }
+            },
         ),
         ("schema_build_cache", {}),
     ):
@@ -178,7 +201,7 @@ async def test_the_explorers_routes_answer_for_the_named_set(built, monkeypatch)
 
     seen: list[str] = []
 
-    def _listed(state, role_id):
+    def _listed(state, role_id, language):
         seen.append(role_id)
         return []
 

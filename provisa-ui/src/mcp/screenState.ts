@@ -18,7 +18,7 @@ import { accessibleName, hidden } from "./uiActions";
  * the editor of the route on screen is reported. Each mounted result grid publishes its columns
  * and row count, never its rows.
  */
-export type EditorLanguage = "sql" | "graphql" | "cypher" | "python";
+export type EditorLanguage = "sql" | "graphql" | "cypher" | "sparql" | "python";
 
 export interface ScreenEditor {
   language: EditorLanguage;
@@ -42,7 +42,13 @@ const awaited = new Map<string, Set<() => void>>();
 /** The routes whose page shows a query editor; each publishes it with useScreenEditor. A route
  * here whose editor has not published yet is still loading (the Python tab is loaded on first
  * open), never a page without one. */
-export const EDITOR_ROUTES: ReadonlySet<string> = new Set(["/sql", "/query", "/graph", "/python"]);
+export const EDITOR_ROUTES: ReadonlySet<string> = new Set([
+  "/sql",
+  "/query",
+  "/graph",
+  "/sparql",
+  "/python",
+]);
 
 /** Publish the editor `route` shows, while the calling component is mounted. */
 export function useScreenEditor(route: string, editor: ScreenEditor): void {

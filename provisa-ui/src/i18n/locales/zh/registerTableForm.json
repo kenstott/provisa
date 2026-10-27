@@ -23,7 +23,6 @@
     "descriptionLabel": "描述",
     "descriptionPlaceholder": "显示在 SDL 文档中",
     "dataProductLabel": "数据产品",
-    "dataProductHint": "（发布到数据目录 / 导出到 Atlas、Atlan 等）",
     "discoverLabel": "发现列",
     "discoverHint": "（注册时从实时数据源推断列——适用于无架构/NoSQL 数据源；无需手动选择列）",
     "watermarkLabel": "水位线列",
@@ -62,7 +61,6 @@
     "dqResultsTableHint": "（由被扫描的表派生；每次扫描每项检查一行，保留每次扫描）",
     "dqResultsTablePlaceholder": "请在上方选择要扫描的表",
     "dqVisibleToLabel": "结果可见于",
-    "dqDescription": "{{table}} 的质量扫描结果——每次扫描每项检查一行，包含结果、指标值和阈值",
     "errorDqContract": "请在“数据质量”面板中选择要扫描的表。",
     "errorDqVisibleTo": "结果必须至少对一个角色可见。",
     "dqScanIntervalLabel": "扫描间隔（秒）",
@@ -136,6 +134,9 @@
     "qdrantVectors": "{{collection}} 的向量",
     "qdrantVector": "{{name}}：{{size}} 维，按 {{distance}} 评分",
     "qdrantUnnamedVector": "（未命名）",
-    "continue": "继续"
+    "continue": "继续",
+    "checkReasonLabel": "为什么需要这项检查",
+    "checkReasonHint": "以业务语言表述的质量承诺；它作为该检查在每个产品中的标题。",
+    "checkReasonPlaceholder": "订单完整且唯一，以便每日收入与财务对账一致"
   }
 }

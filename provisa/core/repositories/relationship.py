@@ -20,6 +20,7 @@ from sqlalchemy import delete as _delete, func, or_, select, update
 from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
 from provisa.core.repositories import table as table_repo
+from provisa.core.relationship_names import store_effective_names
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import relationships, table_columns
 
@@ -133,6 +134,9 @@ async def upsert(
                 f"Alias {rel.alias!r} already exists for source table {rel.source_table_id!r}"
             ) from e
         raise
+
+    # REQ-351: its effective names, derived once and stored, for the meta domain and every reader.
+    await store_effective_names(conn, [rel.id])
 
     # REQ-1586: the junction's two keys are foreign keys on the junction table.
     if via_tbl_id:
@@ -273,6 +277,9 @@ class RelationshipDeleteRefused(Exception):
     def __init__(self, rel_id: str, dependents: list[Dependent]) -> None:
         self.rel_id = rel_id
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Relationship {rel_id!r} is still relied on by"
         named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
         super().__init__(f"Relationship {rel_id!r} is still relied on by: {named}")
 

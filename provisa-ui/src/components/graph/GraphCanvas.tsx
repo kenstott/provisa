@@ -37,6 +37,7 @@ import type {
 import cytoscape from "cytoscape";
 import "./canvas/cytoscape-extensions";
 import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
+import { applyHighlight } from "./canvas/highlight";
 import { computeLabelSizeRanges, applyNodeSize, resolveNodeLabel } from "./canvas/canvas-helpers";
 import { HullSvgOverlay } from "./canvas/HullSvgOverlay";
 import { CanvasControls } from "./canvas/CanvasControls";
@@ -70,14 +71,17 @@ export function GraphCanvas({
   clusterLevel,
   requestedView,
   hullSvgRef,
-  isExpanded,
   note,
+  highlight = null,
+  onClearHighlight,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   // Latest-value ref mirrors: cytoscape's imperative style/layout callbacks read
   // these refs (not closures) so they always see current prop values without
   // rebuilding the graph. Writing them during render is the standard mirror pattern.
+  const clearHighlightRef = useRef(onClearHighlight);
+  clearHighlightRef.current = onClearHighlight;
   const colorOverridesRef = useRef(colorOverrides);
   colorOverridesRef.current = colorOverrides;
   const sizeOverridesRef = useRef(sizeOverrides);
@@ -445,7 +449,8 @@ export function GraphCanvas({
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
-      userZoomingEnabled: false,
+      // The wheel over a graph zooms it, centred at the pointer, in a frame collapsed or expanded.
+      userZoomingEnabled: true,
       /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
          cytoscape() returns the library's own Core type; we cast through any to our local CyInstance shim which models only the subset of the API this component uses */
     }) as any as CyInstance;
@@ -496,6 +501,7 @@ export function GraphCanvas({
     });
     cy.on("tap", (evt) => {
       if (evt.target === cy) {
+        clearHighlightRef.current?.();
         onSelect(null);
         setNodeCtxMenu(null);
         setNodeRingMenu(null);
@@ -579,6 +585,16 @@ export function GraphCanvas({
   // whatever pixel size it was born with, clipping or floating in dead space as the window resizes
   // or the panel it sits in reflows. Watches the container directly rather than re-subscribing per
   // cy instance: containerRef's DOM node outlives every rebuild the effect above performs.
+  // The wheel over the canvas is the graph's (cytoscape zooms on it): it never also scrolls the
+  // page or the results under it. Non-passive, so the default can be cancelled.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const keep = (e: WheelEvent) => e.preventDefault();
+    el.addEventListener("wheel", keep, { passive: false });
+    return () => el.removeEventListener("wheel", keep);
+  }, []);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -782,10 +798,13 @@ export function GraphCanvas({
     });
   }, [relLineOverrides]);
 
+  // An Overview pill's highlight (CanvasProps.highlight): its label's nodes, or its type's edges and
+  // their ends, stand out; everything else dims. Re-applied as the drawing changes.
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- userZoomingEnabled is a runtime cytoscape method not present on the typed Core surface
-    (cyRef.current as any)?.userZoomingEnabled(!!isExpanded);
-  }, [isExpanded]);
+    const cy = cyRef.current;
+    if (!cy) return;
+    applyHighlight(cy, highlight);
+  }, [highlight, nodes, edges, overlayNodes, overlayEdges]);
 
   return (
     <div

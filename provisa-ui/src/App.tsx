@@ -426,7 +426,20 @@ function App() {
                                               capability="query_development"
                                               fallback={<NotAuthorized />}
                                             >
-                                              <GraphPage />
+                                              <GraphPage key="cypher" />
+                                            </CapabilityGate>
+                                          }
+                                        />
+                                        {/* REQ-2135: the same visualizer, SPARQL's vocabulary in
+                                            its sidebar; keyed apart so each keeps its own state. */}
+                                        <Route
+                                          path="/sparql"
+                                          element={
+                                            <CapabilityGate
+                                              capability="query_development"
+                                              fallback={<NotAuthorized />}
+                                            >
+                                              <GraphPage key="sparql" language="sparql" />
                                             </CapabilityGate>
                                           }
                                         />
@@ -613,9 +626,6 @@ function App() {
                                           [
                                             ["/admin/overview", "observability"],
                                             ["/admin/domains", "org_settings"],
-                                            // REQ-1573: environments have their own right — a developer
-                                            // manages them while holding no org settings at all.
-                                            ["/admin/environments", "environment_management"],
                                             ["/admin/secrets", "org_settings"], // REQ-1560: the org vault
                                             // REQ-1560: a person's own vault is not a grant — `usage` is the
                                             // right every seeded role carries, so every member reaches it.
@@ -637,9 +647,11 @@ function App() {
                                             ["/admin/ai-models", "org_settings"],
                                             ["/admin/package-registries", "org_settings"], // REQ-1984
                                             ["/admin/container-registries", "org_settings"], // REQ-2098
+                                            ["/admin/catalogs", "org_settings"], // REQ-2122
                                             ["/admin/metadata-export", "org_settings"],
                                             ["/admin/import", "org_settings"], // REQ-1483
                                             ["/admin/tags", "org_settings"],
+                                            ["/admin/classification-kinds", "org_settings"], // REQ-2147
                                             ["/admin/reports", "observability"], // REQ-1386
                                             // REQ-1590: the glossary has its own read right. Reading a term
                                             // is not administering the org, so an analyst opens it; the
@@ -664,6 +676,21 @@ function App() {
                                             }
                                           />
                                         ))}
+                                        {/* REQ-1573, REQ-2155: environments have their own rights --
+                                    managing any (org_admin) or the ones the caller owns (a
+                                    developer); either opens the page. */}
+                                        <Route
+                                          path="/admin/environments"
+                                          element={
+                                            <CapabilityGate
+                                              capability="environment_management"
+                                              orCapability="environment_owned_management"
+                                              fallback={<NotAuthorized />}
+                                            >
+                                              <AdminPage />
+                                            </CapabilityGate>
+                                          }
+                                        />
                                         {/* REQ-1576, REQ-1923: the mail Provisa sends is the platform's
                                     (platform_settings); the mail platforms sources sign in to are
                                     the organisation's (org_settings). Either opens the page; each

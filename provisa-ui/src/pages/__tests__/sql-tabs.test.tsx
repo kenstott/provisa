@@ -62,6 +62,18 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   runSql: (...a: unknown[]) => runSql(...a),
   nlToSql: (...a: unknown[]) => nlToSql(...a),
+  runSqlEach: async () => ({
+    answers: [
+      {
+        statement: "select ran",
+        columns: ["id"],
+        column_types: null,
+        rows: [{ id: 4242 }],
+        warnings: [],
+      },
+    ],
+  }),
+  splitSql: async (sql: string) => [sql],
 }));
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
@@ -190,5 +202,36 @@ describe("SQL explore query tabs", () => {
 
     await waitFor(() => expect(screen.getByText("My Report")).toBeInTheDocument());
     expect(screen.queryByText("Query 1")).not.toBeInTheDocument();
+  });
+
+  it("restores a tab's result only beside the query that produced it", async () => {
+    const user = userEvent.setup();
+    const first = renderPage();
+    await waitFor(() => screen.getByText("Query 1"));
+    await user.type(editor(), "select ran");
+    await user.click(screen.getByTestId("sql-run"));
+    await waitFor(() => expect(screen.getByText("4242")).toBeInTheDocument());
+    // Edited after the run: the result kept belongs to "select ran", not to the editor's text.
+    await user.type(editor(), " edited");
+    first.unmount();
+
+    renderPage();
+    await waitFor(() => expect(editor()).toHaveValue("select ran edited"));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText("4242")).not.toBeInTheDocument();
+  });
+
+  it("restores a tab's result beside its query when the query was not edited", async () => {
+    const user = userEvent.setup();
+    const first = renderPage();
+    await waitFor(() => screen.getByText("Query 1"));
+    await user.type(editor(), "select ran");
+    await user.click(screen.getByTestId("sql-run"));
+    await waitFor(() => expect(screen.getByText("4242")).toBeInTheDocument());
+    first.unmount();
+
+    renderPage();
+    await waitFor(() => expect(editor()).toHaveValue("select ran"));
+    expect(await screen.findByText("4242")).toBeInTheDocument();
   });
 });

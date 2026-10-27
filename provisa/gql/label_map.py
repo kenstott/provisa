@@ -38,6 +38,9 @@ if TYPE_CHECKING:
 # Catalog domain id — local constant (kept in sync with provisa.security.rights.META_DOMAIN_ID) to
 # avoid importing a higher layer into the cypher package.
 _META_DOMAIN_ID = "meta"
+# The domains every role may traverse but only a role granted them may root a MATCH in: meta and
+# the ontology schema (provisa.compiler.schema_gen._IMPLICIT_TRAVERSAL_DOMAINS).
+_IMPLICIT_DOMAINS = frozenset({_META_DOMAIN_ID, "ontology"})
 
 # REQ-1320: star-schema modeling role → the additional node label Neo4j clients see.
 _ROLE_LABELS = {"fact": "Fact", "dimension": "Dimension"}
@@ -72,9 +75,16 @@ class NodeMapping:
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None (star-schema role)
     # REQ-1991: the cypher prop names whose columns are declared objects: map properties
     map_properties: frozenset[str] = frozenset()
+    # REQ-778: each cypher prop name's registered data type, (name, type) pairs, so a comparison of
+    # it to a literal of another kind is refused in the user's terms before an engine is asked.
+    # A tuple, so a mapping pickled before the field existed reads the empty default.
+    property_types: tuple[tuple[str, str], ...] = ()
     # The table's name as a statement queries it -- its _name_ (compiler.context); "" for a
     # traversal-only node built without its table's compilation.
     query_name: str = ""
+    #: A compound key's columns as statements name them, in key order (REQ-2136): its identity
+    #: and its _id hold every one. Empty for a key of one column (``id_column``).
+    key_columns: tuple[str, ...] = ()
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its
@@ -120,6 +130,9 @@ class JunctionMapping:  # REQ-1586
     type_column: str | None = None
     type_value: str | None = None
     attributes: dict[str, str] = field(default_factory=dict)
+    #: The type column's property name: a row's own type, read where a hop reads every row of the
+    #: junction (an untyped hop), whatever its type.
+    type_attribute: str | None = None
     # REQ-1586: which nomination names the exposed type — see junction_rel_type.
     label_source: str = ""
     label_fixed: str = ""
@@ -175,8 +188,21 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         domains: dict[str, list[str]] | None = None,
         nodes_by_table: dict[str, list[str]] | None = None,
         aliases: dict[str, list[RelationshipMapping]] | None = None,
+        sql_only_nodes: dict[str, NodeMapping] | None = None,
+        sql_only_tables: dict[tuple[str, str], str] | None = None,
+        sql_only_relationships: dict[str, RelationshipMapping] | None = None,
+        sql_only_aliases: dict[str, list[RelationshipMapping]] | None = None,
     ) -> None:
         self.nodes = nodes
+        # REQ-2163: the relationships touching a SQL-only node, which no graph surface has either:
+        # kept for with_sql_only, as the nodes are.
+        self.sql_only_relationships: dict[str, RelationshipMapping] = sql_only_relationships or {}
+        self.sql_only_aliases: dict[str, list[RelationshipMapping]] = sql_only_aliases or {}
+        # REQ-2163: the nodes of tables SQL alone serves (security.rights.SQL_ONLY_TABLES): no
+        # Cypher label, kept for a language that lowers to them (with_sql_only), each found by
+        # its (domain id, registered table name).
+        self.sql_only_nodes: dict[str, NodeMapping] = sql_only_nodes or {}
+        self.sql_only_tables: dict[tuple[str, str], str] = sql_only_tables or {}
         # keyed by rel_type (can map multiple if different source/target pairs)
         self.relationships = relationships
         # domain_label (PascalCase) → [type_name, ...]
@@ -189,6 +215,27 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         self._nodes_ci: dict[str, str] = {k.lower(): k for k in self.nodes}
         self._domains_ci: dict[str, str] = {k.lower(): k for k in self.domains}
         self._nodes_by_table_ci: dict[str, str] = {k.lower(): k for k in self.nodes_by_table}
+
+    def with_sql_only(self) -> "CypherLabelMap":
+        """This map with the SQL-only tables' nodes in it, for SPARQL's lowering of its
+        RDFS/OWL/SKOS patterns to ontology._axioms (REQ-2163); the Cypher surface never has them."""
+        nodes_by_table = {k: list(v) for k, v in self.nodes_by_table.items()}
+        domains = {k: list(v) for k, v in self.domains.items()}
+        for type_name, nm in self.sql_only_nodes.items():
+            nodes_by_table.setdefault(nm.table_label, []).append(type_name)
+            if nm.domain_label:
+                domains.setdefault(nm.domain_label, []).append(type_name)
+        aliases = {k: list(v) for k, v in self.aliases.items()}
+        for rel_type, held in self.sql_only_aliases.items():
+            aliases.setdefault(rel_type, []).extend(held)
+        return CypherLabelMap(
+            nodes={**self.nodes, **self.sql_only_nodes},
+            relationships={**self.relationships, **self.sql_only_relationships},
+            domains=domains,
+            nodes_by_table=nodes_by_table,
+            aliases=aliases,
+            sql_only_tables=self.sql_only_tables,
+        )
 
     def display_label(self, nm: "NodeMapping") -> str:  # REQ-572
         """Return the shortest unambiguous label for a node.
@@ -384,10 +431,45 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         # — it may not be a bare MATCH (n) root (which would emit a direct meta FROM and be V001-blocked,
         # the same rule SQL enforces). Mark meta nodes traversal_only so MATCH (mine)-[]->(meta) still
         # works while MATCH (n) roots on the role's own domains only. A meta grant / "*" keeps it direct.
-        if not _all_access and _META_DOMAIN_ID not in domain_access:
+        # REQ-2163: the ontology schema (the glossary's definitions moved from meta) likewise.
+        if not _all_access:
             for nm in nodes.values():
-                if nm.domain_id == _META_DOMAIN_ID:
+                if nm.domain_id in _IMPLICIT_DOMAINS and nm.domain_id not in domain_access:
                     nm.traversal_only = True
+
+        # REQ-2163: a table SQL alone serves is no label of the graph (security.rights).
+        from provisa.security.rights import SQL_ONLY_TABLES
+
+        sql_only_domains = {domain for domain, _table in SQL_ONLY_TABLES}
+        sql_only_tables = {
+            (tm.domain_id, tm.original_table_name or tm.table_name): tm.type_name
+            for tm in ctx_typed.tables.values()
+            if tm.domain_id in sql_only_domains
+            and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_ONLY_TABLES
+        }
+        sql_only_types = set(sql_only_tables.values())
+        sql_only = {t: nodes.pop(t) for t in list(nodes) if t in sql_only_types}
+        for listed in (*domains.values(), *nodes_by_table.values()):
+            listed[:] = [t for t in listed if t not in sql_only]
+        for key in [k for k, v in nodes_by_table.items() if not v]:
+            del nodes_by_table[key]
+
+        # A relationship touching one is no relationship of the graph either: the graph schema
+        # names each relationship's ends by their labels.
+        def _touches(rm: RelationshipMapping) -> bool:
+            return rm.source_label in sql_only or rm.target_label in sql_only
+
+        sql_only_rels = {k: rm for k, rm in relationships.items() if _touches(rm)}
+        for key in sql_only_rels:
+            del relationships[key]
+        sql_only_aliases: dict[str, list[RelationshipMapping]] = {}
+        for rel_type, held in list(aliases.items()):
+            touching = [rm for rm in held if _touches(rm)]
+            if touching:
+                sql_only_aliases[rel_type] = touching
+                held[:] = [rm for rm in held if not _touches(rm)]
+                if not held:
+                    del aliases[rel_type]
 
         return cls(
             nodes=nodes,
@@ -395,6 +477,10 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             domains=domains,
             nodes_by_table=nodes_by_table,
             aliases=aliases,
+            sql_only_nodes=sql_only,
+            sql_only_tables={k: t for k, t in sql_only_tables.items() if t in sql_only},
+            sql_only_relationships=sql_only_rels,
+            sql_only_aliases=sql_only_aliases,
         )
 
 
@@ -556,6 +642,16 @@ def _build_node_mappings(
             native_filter_columns=nf_cols,
             physical_table_name=physical_table_name,
             map_properties=map_props,
+            property_types=tuple(
+                (_published_property(ctx_typed, table_meta.table_id, c), data_type)
+                for c, data_type in col_list
+                if (table_meta.table_id, c) not in _gov_obj
+            ),
+            key_columns=tuple(
+                ctx_typed.physical_to_sql.get((table_meta.table_id, c), c) for c in user_pks
+            )
+            if len(user_pks) > 1
+            else (),
         )
 
         if domain_label:
@@ -603,6 +699,7 @@ def _junction_mapping(via: "JunctionMeta | None") -> JunctionMapping | None:  # 
         type_column=via.type_column,
         type_value=via.type_value,
         attributes=dict(via.attributes),
+        type_attribute=via.type_attribute,
         label_source=via.label_source,
         label_fixed=via.label_fixed,
     )
@@ -696,6 +793,7 @@ def _junction_from_rel_dict(  # REQ-1586
             for c in all_column_types.get(via_id, [])
             if c.column_name not in keys
         },
+        type_attribute=_apply_cql_property(type_column) if type_column else None,
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",
     )

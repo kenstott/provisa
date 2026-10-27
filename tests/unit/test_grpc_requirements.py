@@ -398,8 +398,12 @@ class TestREQ617RoleSelectionViaMetadata:
 
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT id, amount FROM orders", []),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ orders { id amount } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",

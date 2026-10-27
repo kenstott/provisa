@@ -26,7 +26,7 @@ RULES = [
         _ALL,
         (
             {"to": ["auditor", "org_admin"], "mask": None},
-            {"to": ["*"], "mask": {"type": "constant", "value": None}},
+            {"mask": {"type": "constant", "value": None}},
         ),
         pii=False,
     ),
@@ -115,7 +115,7 @@ def test_the_columns_tables_value_fields_are_masked_to_readers_with_a_restricted
     defaults = prefill("columns", list(field_names("columns")), RULES)
     by = {c["name"]: c for c in defaults["columns"]}
     # Every reader sees a pii column, so the value fields are masked (to NULL) for all of them.
-    assert by["min_value"]["masks"] == [{"to": ["*"], "mask": {"type": "constant", "value": None}}]
+    assert by["min_value"]["masks"] == [{"to": None, "mask": {"type": "constant", "value": None}}]
     assert by["null_share"]["masks"] == []
     rules = {r["roleId"]: r["filter"] for r in defaults["rowRules"]}
     # The analyst does not see salary, so its description is withheld from the analyst.
@@ -230,3 +230,35 @@ def test_dependence_rows_follow_every_column_they_speak_of_parents_included():
     assert defaults["columns"][0]["visibleTo"] == sorted(_ALL)
     by_role = {r["roleId"]: r["filter"] for r in defaults["rowRules"]}
     assert "POSITION('\"customer.tier\"' IN involved_columns) = 0" in by_role["auditor"]
+
+
+# --- who a profiled column is served to: column_served, the one rule (REQ-2152) ----------------
+
+
+def test_a_profiled_column_is_seen_by_the_roles_column_served_serves_it():
+    """A profile's column is seen by exactly the roles the schema serves it to: a named grant its
+    roles in the domain's reach, an empty grant no role (REQ-2153), and a role out of reach a
+    column only where it is published."""
+    from provisa.security.rights import served_roles
+
+    roles = {
+        "seller": {"domain_access": ["sales"]},
+        "hr": {"domain_access": ["hr"]},
+        "everywhere": {"domain_access": ["*"]},
+    }
+    open_column = {"column_name": "id", "visible_to": [], "scope": "domain"}
+    assert served_roles(roles, {}, "sales", open_column) == set()
+    every = {"column_name": "id", "visible_to": ["seller", "hr", "everywhere"], "scope": "domain"}
+    assert served_roles(roles, {}, "sales", every) == {"seller", "everywhere"}
+    named = {"column_name": "margin", "visible_to": ["seller", "hr"], "scope": "domain"}
+    assert served_roles(roles, {}, "sales", named) == {"seller"}
+    published = {
+        "column_name": "region",
+        "visible_to": ["seller", "hr", "everywhere"],
+        "scope": "public",
+    }
+    assert served_roles(roles, {}, "sales", published) == {"seller", "hr", "everywhere"}
+    # A grant to a parent serves the roles inheriting it, as the schema build expands it.
+    chains = {"junior": ["junior", "seller"]}
+    roles["junior"] = {"domain_access": ["sales"]}
+    assert "junior" in served_roles(roles, chains, "sales", named)

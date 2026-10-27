@@ -73,7 +73,6 @@ def _request(state, **over) -> PlanRequest:
         schema=_SCHEMA,
         query="{ orders { orderId } }",
         variables=None,
-        as_of=None,
         eligible=True,
     )
     kwargs.update(over)
@@ -90,12 +89,11 @@ def _no_rebuild(monkeypatch):
     [
         {"query": "{ b }"},
         {"variables": {"x": 2}},
-        {"as_of": "TIMESTAMP '2026-01-01'"},
     ],
 )
 def test_the_plan_is_partitioned_on_the_requests_own_inputs(change):
     state = _state()
-    base = dict(query="{ a }", variables={"x": 1}, as_of=None)
+    base = dict(query="{ a }", variables={"x": 1})
     _request(state, **base).record(_DIRECTIVES, [_cq()])
     assert _request(state, **base).cached() is not None
     assert _request(state, **{**base, **change}).cached() is None, change
@@ -276,6 +274,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         kafka_table_configs={},
         source_types={"sales-pg": "postgresql"},
         settings_overrides={},
+        config=None,  # no config file: no subgraph declared (REQ-259)
         model_stamp=1,
     )
     monkeypatch.setattr(app_module, "state", state)
@@ -306,8 +305,6 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
             x_provisa_redirect_format=None,
             x_provisa_stats=None,
             x_provisa_normalized=None,
-            x_provisa_as_of=None,
-            x_provisa_as_recorded=None,
             x_provisa_trace=None,
         )
         defaults.update(headers)

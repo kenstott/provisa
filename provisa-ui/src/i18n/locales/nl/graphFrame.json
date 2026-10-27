@@ -4,6 +4,10 @@
     "running": "Uitvoeren…",
     "metaCount": "{{nodes}} knopen · {{edges}} relaties",
     "metaCountElapsed": "{{nodes}} knopen · {{edges}} relaties · {{elapsed}}ms",
+    "metaRows_one": "{{count}} rij",
+    "metaRows_other": "{{count}} rijen",
+    "metaRowsElapsed_one": "{{count}} rij · {{elapsed}}ms",
+    "metaRowsElapsed_other": "{{count}} rijen · {{elapsed}}ms",
     "error": "Fout",
     "expand": "Uitvouwen",
     "exitFullScreen": "Volledig scherm sluiten",
@@ -33,6 +37,7 @@
     "showPropertiesPanel": "Eigenschappenpaneel tonen",
     "copyErrorTitle": "Fout kopiëren",
     "expandedDialogLabel": "Uitgevouwen graafweergave",
-    "firstNodesShown": "De eerste {{count}} knooppunten worden getoond; er zijn er meer. Verhoog de limiet in het zijmenu."
+    "firstNodesShown": "De eerste {{count}} knooppunten worden getoond; er zijn er meer. Verhoog de limiet in het zijmenu.",
+    "deleteFrame": "Dit resultaat verwijderen"
   }
 }

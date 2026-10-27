@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "Nessuna query gRPC registrata per la tabella '{{table}}'",
       "no_mutation_fields": "Nessun campo mutation trovato",
       "no_proto_for_role": "Il ruolo '{{role_id}}' non ha un proto: non gli viene fornita alcuna superficie dati, perché non raggiunge alcun dominio o possiede solo diritti del piano di controllo",
+      "role_served_nothing": "Al ruolo '{{role_id}}' non viene servita alcuna tabella: non gli è concessa alcuna colonna di alcuna tabella",
       "no_query_field_for_proto_type": "Nessun campo query per il tipo proto '{{type_name}}' nel ruolo '{{role_id}}'",
       "no_query_fields": "Nessun campo query trovato",
       "no_role": "Nessun ruolo '{{role_id}}'",
@@ -129,7 +130,12 @@
       "address_not_found": "Niente da risolvere: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve non può essere combinato con altri campi radice nella stessa operazione",
       "source_starting": "L'origine {{source}} è ancora in fase di avvio. Riprova tra un momento.",
-      "view_outside_load_window": "La vista {{view}} può essere letta solo nella sua finestra di lettura. Si riapre alle {{opens_at}}."
+      "view_outside_load_window": "La vista {{view}} può essere letta solo nella sua finestra di lettura. Si riapre alle {{opens_at}}.",
+      "graphql_body_missing": "La richiesta non ha corpo: una richiesta GraphQL è un oggetto JSON con una query.",
+      "graphql_body_not_json": "Il corpo della richiesta non è JSON: {{error}}",
+      "graphql_request_not_object": "Una richiesta GraphQL è un oggetto JSON con una query.",
+      "graphql_parameter_type": "Il parametro {{parameter}} della richiesta GraphQL deve essere {{expected}}.",
+      "graphql_mutation_over_get": "Una mutazione si invia con POST, mai con GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",
@@ -256,10 +262,15 @@
       "database_unavailable": "Database non disponibile",
       "query_engine_unavailable": "Motore di query non disponibile",
       "role_header_required": "Intestazione X-Provisa-Role richiesta per profilare una vista",
-      "table_not_found": "Tabella {{table_id}} non trovata"
+      "table_not_found": "Tabella {{table_id}} non trovata",
+      "column_not_found": "La colonna {{column}} non è una colonna della tabella che org_admin legge",
+      "classification_kind_unknown": "Tipo di classificazione sconosciuto {{kind}}",
+      "classification_status_invalid": "Una decisione di classificazione è accettata o rifiutata, non {{status}}",
+      "classification_decision_not_found": "Nessuna decisione su {{column}} come {{kind}}",
+      "classification_pii_refused": "Non è stato possibile contrassegnare la colonna come PII"
     },
     "replication": {
-      "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
+      "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: [{{content_type}}] {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
       "no_whole_copy": "La tabella {{schema}}.{{table}} della sorgente {{source}} non ha una copia completa da creare: è replicata riga per riga oppure ha una colonna parametro.",
       "page_limit_reached": "La replica di {{table}} non è stata creata: la paginazione del suo endpoint si ferma a max_pages={{max_pages}} e l'endpoint aveva altri dati dopo la pagina {{max_pages}} ({{rows}} righe lette). Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta max_pages o la dimensione di pagina dell'endpoint.",
       "row_limit_reached": "La replica di {{table}} non è stata creata: una lettura si ferma a max_rows={{max_rows}} (graphql_remote.max_rows) e il remoto aveva altri dati dopo {{rows}} righe. Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta graphql_remote.max_rows.",
@@ -273,7 +284,7 @@
     "roles": {
       "cannot_delete_system": "Impossibile eliminare i ruoli di sistema",
       "cannot_modify_administrative": "Impossibile modificare i ruoli amministrativi",
-      "has_dependents": "Il ruolo {{role}} è ancora referenziato da {{count}} oggetto/i; rimuovere prima tali riferimenti",
+      "has_dependents": "Il ruolo {{role}} è ancora referenziato da altri oggetti; rimuovere prima tali riferimenti",
       "not_found": "Ruolo non trovato",
       "org_selection_required": "Selezione dell'organizzazione richiesta",
       "already_exists": "Il ruolo '{{role}}' esiste già",
@@ -288,9 +299,9 @@
       "cache_purged": "Eliminate {{count}} voci della cache",
       "cache_purged_table": "Eliminate {{count}} voci della cache per la tabella {{table}}",
       "calendar_deleted": "calendario '{{calendar}}' eliminato",
-      "calendar_in_use": "il calendario '{{calendar}}' è in uso da {{count}} vista/e materializzata/e — rimuovere la loro pianificazione di snapshot prima di eliminarlo",
+      "calendar_in_use": "il calendario '{{calendar}}' è in uso da viste materializzate — rimuovere la loro pianificazione di snapshot prima di eliminarlo",
       "calendar_not_found": "calendario '{{calendar}}' non trovato",
-      "calendar_saved": "calendario '{{calendar}}' v{{version}} salvato",
+      "calendar_saved": "calendario '{{calendar}}' {{version}} salvato",
       "column_natively_nested": "Impossibile registrare: la colonna {{column}} è nativamente {{native_type}} nella sua origine, quindi il suo tipo è json, non {{type}}.",
       "column_types_unresolved": "Impossibile registrare: nessun tipo di dati risolvibile dall'origine per le colonne: {{columns}}. Eseguire l'introspezione della tabella (Individua schema) o impostare un tipo di dati per ciascuna prima di registrare.",
       "config_not_found": "File di configurazione non trovato",
@@ -336,6 +347,7 @@
       "change_signal_no_topic": "La tabella '{{table}}' dell'origine '{{source}}' usa il segnale di modifica kafka ma non indica alcun topic in live.kafka.topic, quindi nulla la aggiornerebbe.",
       "change_signal_no_receiver": "Provisa non riceve il segnale di modifica {{signal}} da un'origine di tipo {{type}}, quindi una tabella dell'origine '{{source}}' non verrebbe mai aggiornata da esso. Acquisisci l'origine con Debezium e usa debezium.",
       "change_signal_not_honoured": "Un'origine di tipo {{type}} non può ancora essere controllata per rilevare modifiche, quindi il segnale di modifica {{signal}} non verrebbe mai interrogato. Usa ttl per l'origine '{{source}}'.",
+      "row_materialize_no_key_fetch": "{{table}} non può essere replicata riga per riga: il suo schema remoto non ha alcun campo che restituisca le sue righe per un elenco della sua chiave primaria.",
       "sentinel_path_not_applicable": "Un'origine di tipo {{type}} non può avere un percorso sentinella: nessun tuo produttore può segnalare una modifica dei suoi dati, oppure l'origine non viene sondata. Rimuovi il percorso sentinella dall'origine '{{source}}'.",
       "source_cache_ttl_required": "L'origine '{{source}}' richiede un TTL cache: ogni sua tabella è una replica, aggiornata secondo quell'orologio con il segnale di modifica {{signal}}. Impostalo in «Gestione del carico e tempestività» dell'origine.",
       "landing_ttl_required": "La tabella '{{table}}' è una replica aggiornata secondo un TTL cache, e né essa né la sua origine '{{source}}' ne hanno uno. Imposta il TTL cache in «Gestione del carico e tempestività» dell'origine, oppure sulla tabella stessa una volta registrata.",
@@ -427,6 +439,7 @@
       "relationship_unknown_source": "La tabella sorgente '{{table}}' non è registrata",
       "relationship_unknown_target": "La tabella di destinazione '{{table}}' non è registrata",
       "relationship_unknown_junction": "La tabella di giunzione '{{table}}' non è registrata",
+      "relationship_column_beyond_reads": "Una relazione può unire solo colonne che il tuo ruolo può leggere.",
       "source_id_taken": "La sorgente '{{source}}' esiste già",
       "domain_id_taken": "Il dominio '{{domain}}' esiste già",
       "role_id_taken": "Il ruolo '{{role}}' esiste già",
@@ -453,7 +466,8 @@
       "relationship_same_entity_direct": "La relazione '{{relationship}}' non può essere marcata come stessa entità: unisce tramite una tabella di giunzione o una funzione, non una riga a una riga",
       "relationship_same_entity_cardinality": "La relazione '{{relationship}}' non può essere marcata come stessa entità: è {{cardinality}}, e la stessa entità è una riga a una riga",
       "relationship_same_entity_not_grounded": "La relazione '{{relationship}}' non può essere marcata come stessa entità: {{source}} e {{target}} non sono ancorate allo stesso termine",
-      "relationship_same_entity_not_keys": "La relazione '{{relationship}}' non può essere marcata come stessa entità: {{columns}} non è la chiave primaria né una chiave univoca di {{table}}"
+      "relationship_same_entity_not_keys": "La relazione '{{relationship}}' non può essere marcata come stessa entità: {{columns}} non è la chiave primaria né una chiave univoca di {{table}}",
+      "kaggle_token_missing": "Dataset Kaggle {{owner}}/{{ref}}: l'origine dati non contiene alcun token API Kaggle. Aggiungilo nel modulo Origini dati, dove si inserisce il suo token."
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",
@@ -483,7 +497,10 @@
       "unknown_encryption_provider": "provider di crittografia '{{provider}}' sconosciuto",
       "unknown_engine": "motore '{{engine}}' sconosciuto; validi: {{valid}}",
       "use_domains_invalid": "use_domains deve essere true, false o null",
-      "claims_with_multitenancy": "Una distribuzione multi-tenant non può leggere le assegnazioni dei ruoli dai claim di accesso: assegna i ruoli da sé, per organizzazione, e i claim li sovrascriverebbero. Imposta l'origine delle assegnazioni su Provisa."
+      "claims_with_multitenancy": "Una distribuzione multi-tenant non può leggere le assegnazioni dei ruoli dai claim di accesso: assegna i ruoli da sé, per organizzazione, e i claim li sovrascriverebbero. Imposta l'origine delle assegnazioni su Provisa.",
+      "federation_unknown_field": "Non è un'impostazione di federazione: {{fields}}",
+      "federation_invalid": "Impostazione di federazione non valida: {{error}}",
+      "federation_role_unknown": "Il ruolo di federazione '{{role}}' non è un ruolo di questa organizzazione"
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password richiesti",
@@ -528,7 +545,38 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Non è stato possibile effettuare un conteggio, quindi il totale è sconosciuto: {{statement}}: {{reason}}"
+      "count_unknown": "Non è stato possibile effettuare un conteggio, quindi il totale è sconosciuto: {{statement}}: {{reason}}",
+      "access_violations": "Questo ruolo non può eseguire questa query:",
+      "invalid_regex": "Il pattern \"{{pattern}}\" in {{expression}} non è un'espressione regolare valida: {{reason}}. =~ accetta un'espressione regolare, ad es. \".*{{word}}.*\", oppure usa CONTAINS \"{{word}}\".",
+      "unknown_label": "Non esiste l'etichetta :{{label}}. Etichette registrate: {{suggestions}}.",
+      "no_labels": "Non esiste l'etichetta :{{label}}: questo ruolo non può leggere alcuna tabella.",
+      "unknown_relationship_type": "Non esiste il tipo di relazione {{types}}. Tipi registrati più vicini: {{suggestions}}.",
+      "no_relationship_types": "Non esiste il tipo di relazione {{types}}: questo ruolo non può attraversare alcuna relazione.",
+      "type_mismatch": "In {{expression}}, {{value}} non può essere confrontato con {{property}}, di tipo {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE non può usare l'aggregato {{aggregate}}: WHERE filtra le righe prima che siano raggruppate. Aggrega in un WITH e filtra dopo.",
+      "nested_aggregate": "{{outer}} aggrega l'aggregato {{inner}}: non si può aggregare un altro aggregato. Aggrega prima in un WITH.",
+      "node_and_relationship": "{{variable}} indica sia un nodo sia una relazione: una variabile indica una sola cosa. Dai a ciascuno la propria variabile.",
+      "path_variable_reused": "{{variable}} indica il percorso e un nodo o una relazione al suo interno: una variabile indica una sola cosa. Dai a ciascuno la propria variabile.",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] aggrega dentro una list comprehension, che legge una lista alla volta. Aggrega prima in un WITH e usa il risultato nella lista.",
+      "length_of_entity": "length({{variable}}) accetta un percorso, e {{variable}} è un nodo o una relazione. Vincola un percorso, MATCH p = ..., e usa length(p).",
+      "column_name_conflict": "{{clause}} chiama due colonne {{column}}: ogni colonna ha il proprio nome. Rinominane una con AS.",
+      "union_mixed": "UNION e UNION ALL sono mescolati in un'istruzione: usane uno solo in tutta l'istruzione.",
+      "union_columns_differ": "Le istruzioni unite da UNION restituiscono colonne diverse, {{first}} e {{second}}: ciascuna deve restituire gli stessi nomi di colonna.",
+      "integer_overflow": "{{value}} è fuori dall'intervallo di un intero, da -9223372036854775808 a 9223372036854775807.",
+      "invalid_unicode_escape": "La sequenza di escape {{escape}} nella stringa non è una che Cypher legge. Un escape Unicode è \\u seguito da quattro cifre esadecimali, ad es. \\u00e9.",
+      "boolean_operand": "{{operator}} accetta true, false o null, e riceve un valore di un altro tipo scritto nell'istruzione.",
+      "nondeterministic_aggregate": "{{aggregate}} aggrega rand(), che cambia a ogni chiamata. Calcolalo prima in un WITH e aggrega il risultato.",
+      "value_as_node": "MATCH legge {{variable}} come nodo o relazione, e l'istruzione la vincola a un valore che non è né l'uno né l'altra. Dai al nodo una propria variabile.",
+      "undefined_variable": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} non è un numero intero di righe: LIMIT accetta un conteggio da 0 in su, ad es. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} non è un numero intero di righe: SKIP accetta un conteggio da 0 in su, ad es. SKIP 10.",
+      "engine_refused": "Il motore ha rifiutato la query: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} legge {{variable}}, ma l'istruzione non vincola alcuna variabile: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL.",
+      "undefined_variable_property": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestion}}? {{owner}} è vincolata a :{{label}}, che ha una proprietà {{variable}}.",
+      "undefined_variable_properties": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestions}}? Ciascuna è vincolata a un'etichetta con una proprietà {{variable}}.",
+      "non_finite_number": "La risposta contiene un numero che JSON non può rappresentare: {{column}} vale {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean di un valore che potrebbe non convertirsi richiedono PostgreSQL 16 o successivo su questo motore."
     },
     "requests": {
       "approver_outside_domains": "Il tuo diritto di creare relazioni non raggiunge alcun dominio toccato da questa richiesta ({{domains}})",
@@ -542,6 +590,7 @@
     "statement": {
       "rows_cut": "La risposta è stata troncata a {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}): corrispondono più righe di quelle restituite.",
       "rows_cut_unchecked": "La risposta ha {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}). Non è stato possibile verificare se corrispondono altre righe: {{reason}}",
+      "list_at_ceiling": "Un elenco contiene il massimo di {{limit}} voci consentito dal limite di righe per questa lettura ({{kind}}); potrebbe averne di più.",
       "approximate_index": "Le righe più simili sono state trovate tramite un indice vettoriale approssimato: potrebbe mancare una riga leggermente più simile dell'ultima restituita.",
       "path_cut": "Un percorso senza limite superiore è stato troncato al limite di profondità del grafo di {{limit}} salti: i percorsi più lunghi mancano dalla risposta."
     },
@@ -662,6 +711,34 @@
       "also_term_needs_column": "Applicare il tag al termine richiede una colonna.",
       "inherited_from_term": "Questa colonna è PII perché significa {{term}}. Togli il contrassegno da quel significato, oppure sposta la colonna se significa altro.",
       "move_loses": "Questo spostamento toglie tag a colonne che non li avrebbero più. Conferma la perdita di ogni tag, oppure porta i tag sul termine verso cui si spostano le colonne."
+    },
+    "data_product": {
+      "status": {
+        "published": "Prodotto dati {{data_product}} pubblicato.",
+        "deprecated": "Prodotto dati {{data_product}} contrassegnato come deprecato.",
+        "retired": "Prodotto dati {{data_product}} ritirato.",
+        "restored": "Prodotto dati {{data_product}} ripristinato.",
+        "reason_required": "È richiesto un motivo: indica perché il prodotto dati viene deprecato o ritirato.",
+        "not_found": "Prodotto dati {{data_product}} non trovato.",
+        "not_draft": "Solo un prodotto dati in bozza può essere pubblicato; questo è {{status}}.",
+        "not_live": "Solo un prodotto dati attivo può essere deprecato, e solo uno attivo o deprecato può essere ritirato; questo è {{status}}.",
+        "not_restorable": "Solo un prodotto dati deprecato o ritirato può essere ripristinato; questo è {{status}}.",
+        "retire_on_past": "La data di ritiro prevista {{retire_on}} è già passata. Scegli oggi o una data successiva.",
+        "successor_required": "Questo prodotto dati ha {{members}} membro/i; ritirarlo li sposta a un successore. Scegline uno.",
+        "successor_is_self": "Un prodotto dati non può succedere a sé stesso.",
+        "successor_retired": "Il successore '{{successor}}' è ritirato. Scegli un prodotto dati in servizio.",
+        "successor_other_domain": "Il successore '{{successor}}' è nel dominio {{domain}}. I membri di un prodotto ne condividono il dominio, quindi scegli un successore dello stesso dominio."
+      },
+      "finding": {
+        "no_members": "Nessuna tabella, vista o comando appartiene a questo prodotto dati.",
+        "member_deprecated": "La tabella membro {{table}} è deprecata.",
+        "no_owner": "Nessun ruolo proprietario è responsabile di questo prodotto dati.",
+        "no_support_contact": "Questo prodotto dati non ha un contatto di supporto, richiesto da una destinazione di esportazione configurata.",
+        "retirement_blocked": "Questo prodotto dati doveva essere ritirato il {{retire_on}}, ma ha ancora membri. Ritiralo con un successore che li prenda.",
+        "domain_steward_unset": "Il dominio {{domain}} non ha uno steward.",
+        "no_description": "Questo prodotto dati non indica né il suo scopo né il suo utilizzo.",
+        "successor_retired": "Anche il prodotto dati che ha preso i membri di questo, '{{successor}}', è stato ritirato."
+      }
     }
   }
 }

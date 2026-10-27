@@ -4,6 +4,10 @@
     "running": "Wird ausgeführt…",
     "metaCount": "{{nodes}} Knoten · {{edges}} Beziehungen",
     "metaCountElapsed": "{{nodes}} Knoten · {{edges}} Beziehungen · {{elapsed}}ms",
+    "metaRows_one": "{{count}} Zeile",
+    "metaRows_other": "{{count}} Zeilen",
+    "metaRowsElapsed_one": "{{count}} Zeile · {{elapsed}}ms",
+    "metaRowsElapsed_other": "{{count}} Zeilen · {{elapsed}}ms",
     "error": "Fehler",
     "expand": "Erweitern",
     "exitFullScreen": "Vollbild beenden",
@@ -33,6 +37,7 @@
     "showPropertiesPanel": "Eigenschaftenbereich anzeigen",
     "copyErrorTitle": "Fehler kopieren",
     "expandedDialogLabel": "Erweiterte Graphansicht",
-    "firstNodesShown": "Die ersten {{count}} Knoten werden angezeigt; es gibt weitere. Erhöhen Sie das Limit im Seitenmenü."
+    "firstNodesShown": "Die ersten {{count}} Knoten werden angezeigt; es gibt weitere. Erhöhen Sie das Limit im Seitenmenü.",
+    "deleteFrame": "Dieses Ergebnis löschen"
   }
 }

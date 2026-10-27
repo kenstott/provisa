@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Publish to the tools your org uses",
-        "description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, Atlan and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>"
+        "description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>"
       },
       "stepRelsAgents": {
         "title": "Relationships and AI agents",
@@ -1692,25 +1692,17 @@
         "title": "One day's totals",
         "description": "1 October as it stands now. For each branch, product and currency you see what came in, what went out and the net. A BI tool connected over pgwire runs this same SQL."
       },
-      "bankingAsReported": {
-        "title": "As reported at the close",
-        "description": "As recorded is now set to 1 October's close. A BI tool does the same with SET provisa.as_recorded on its pgwire session. As recorded filters the transactions on updated_at and the daily totals on each day's close, so you see the figures the bank reported that evening."
-      },
       "bankingReported": {
         "title": "What was reported",
-        "description": "The corporate totals for 1 and 2 October, as reported at 1 October's close. London's GBP total still carries the payment that was later reversed. 2 October had not closed yet, so it has no figures."
-      },
-      "bankingAsRestated": {
-        "title": "As restated since",
-        "description": "As recorded moves to 12 October's close, the last of the thirty days. By then the reversal entered on 6 October and the late trade entered on 7 October have both been recorded."
+        "description": "The corporate totals for 1 and 2 October, as reported at 1 October's close: the view's as_recorded argument reads it as it had been recorded then, and a BI tool on pgwire does the same with SET provisa.as_recorded. London's GBP total still carries the payment that was later reversed. 2 October had not closed yet, so it has no figures."
       },
       "bankingRestated": {
         "title": "What it says now",
-        "description": "The same SQL. London's 1 October total no longer carries the reversed payment, and Edinburgh's 2 October USD total now includes the late trade. The versions reported at each close are kept beside the restated ones, and recorded_at shows when each was recorded."
+        "description": "The same SQL with as_recorded at 12 October's close, the last of the thirty days. London's 1 October total no longer carries the reversed payment, and Edinburgh's 2 October USD total now includes the late trade. The versions reported at each close are kept beside the restated ones, and recorded_at shows when each was recorded."
       },
       "bankingAsOpsSql": {
         "title": "Back to operations",
-        "description": "The explorer now runs as operations, still as recorded at 12 October's close."
+        "description": "The explorer now runs as operations."
       },
       "bankingPostings": {
         "title": "The postings behind a total",
@@ -1727,6 +1719,86 @@
       "bankingAsAdmin": {
         "title": "Back as the administrator",
         "description": "The dashboard is what operations sees. The rest of the tour is back as the administrator, and each statement that follows names the role it runs as."
+      },
+      "groupexposureScenario": {
+        "title": "What this demo is",
+        "description": "A Prague bank lends to companies and records the company that owns each one by its Legal Entity Identifier (LEI). EU rules cap what it may lend to one client, or to a group of companies one owner controls, at 25% of its Tier 1 capital. The question: which groups is the bank over that limit to? Its books name each borrower's owner, not who owns the owner. The bank, its borrowers and its loans are fictional; the groups that own them are real."
+      },
+      "groupexposureWikidata": {
+        "title": "Who owns the owners, from Wikidata",
+        "description": "Wikidata, the public knowledge graph, records each company's LEI and its parent organization. This source reads it through Wikidata's SPARQL query service. Its tables were landed once, when the demo was built, so the demo never calls Wikidata while you use it."
+      },
+      "groupexposureFacilities": {
+        "title": "The bank's facilities",
+        "description": "Every term loan, revolving credit facility and guarantee the bank has lent, with the borrower, what is committed and what is drawn. The limit counts what is committed."
+      },
+      "groupexposureGroups": {
+        "title": "Each owner's group",
+        "description": "For each owner the bank records, the company at the top of its chain of parent organizations on Wikidata, found with one SPARQL property path. Wikidata knows a Czech holding company belongs to Veolia, or to E.ON, even though the bank's books do not."
+      },
+      "groupexposureJoin": {
+        "title": "Joined by LEI",
+        "description": "The bank's owners table and Wikidata's tables share the owner's LEI, and these relationships join them. The bank's data stays in its database and Wikidata's in its replica; the join happens in the query."
+      },
+      "groupexposureTerms": {
+        "title": "In plain words",
+        "description": "The glossary explains the terms a risk officer works with: large exposure, Tier 1 capital, Legal Entity Identifier and parent organization. A group of connected clients is companies that are one risk because one controls the others."
+      },
+      "groupexposureAlone": {
+        "title": "The books alone",
+        "description": "Each borrower's own exposure, as the bank's books see it. The largest is under 10% of Tier 1, so no borrower is anywhere near the 25% limit."
+      },
+      "groupexposureAnswer": {
+        "title": "The answer in SQL",
+        "description": "The view group_exposure rolls every facility up to its borrower's group, through the owner's LEI and Wikidata. The Veolia and Vinci groups each pass 25% of Tier 1, and a joint venture owned by Veolia and EPH counts in both. Neither the bank's books nor Wikidata shows that alone. The borrowers and their loans are fictional."
+      },
+      "groupexposureExample": {
+        "title": "The answer in GraphQL",
+        "description": "The same view in GraphQL: the groups the bank lends most to, their borrowers, what is committed, and whether each is over the limit."
+      },
+      "groupexposureRest": {
+        "title": "The same answer over REST",
+        "description": "The view is a REST endpoint too, here grouped by whether a group is over the limit and summed on the server, ready for a risk report or a spreadsheet."
+      },
+      "groupexposureRecap": {
+        "title": "What you saw",
+        "description": "A fictional bank's loan book and public linked data from Wikidata, joined by LEI in one governed model. Wikidata's ownership chains turn many small loans into a few large group exposures, and the answer is served in SQL, GraphQL and REST."
+      },
+      "agentdataScenario": {
+        "title": "Give an agent your data",
+        "description": "A retailer wants an AI agent on its order data, held to what the person it acts for may see. The agent reaches the data over Provisa's MCP server. The MCP explorer, coming up, shows exactly what such an outside agent sees. Polly, by contrast, is the assistant for working in Provisa itself. This is the retailer's order database, read live."
+      },
+      "agentdataCustomers": {
+        "title": "Who may see which customers",
+        "description": "The customers table carries the rules: a West support agent reads only the West's customers and their orders, with email addresses masked and no prices. The BI analyst reads every region and what the orders came to, but no email address at all."
+      },
+      "agentdataSupportRole": {
+        "title": "Act as a West support agent",
+        "description": "The agent acts as the role in the header. Next picks the West support agent, so every tool call the agent makes runs as that role."
+      },
+      "agentdataSupportAsks": {
+        "title": "The support agent's question",
+        "description": "The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked: that is all the role is served."
+      },
+      "agentdataExplain": {
+        "title": "What actually ran",
+        "description": "The agent's run_sql call, opened: the statement it sent, then the statement that ran for its role. Provisa added the West row filter and the email mask. The agent wrote neither, and is never told about them."
+      },
+      "agentdataOutOfReach": {
+        "title": "A question out of reach",
+        "description": "Asked what each customer's orders came to, the agent finds no prices among the tables its role can read, and says so. It cannot reach around the role: the same rules hold on every tool call."
+      },
+      "agentdataAnalystRole": {
+        "title": "Now as the BI analyst",
+        "description": "Next switches the header to the BI analyst. The agent is the same; the role is different."
+      },
+      "agentdataAnalystAsks": {
+        "title": "The same question, another role",
+        "description": "The same question as the analyst: every region comes back, there is no email column at all, and the revenue view is among its tables. Different tables, rows and columns, from the same agent and the same server."
+      },
+      "agentdataConnect": {
+        "title": "Your own agent, the same server",
+        "description": "This is the server the explorer's agent used. Paste this config into Claude Desktop, or point any MCP client at the URL, and your own agent gets the same governed tools, held to the same rules."
       }
     },
     "status": {
@@ -1843,6 +1915,14 @@
       "banking": {
         "title": "EOD reporting without copying the ledger",
         "summary": "A bank's end-of-day totals, built at each close straight from a ledger that is never copied to the warehouse, read as reported and as restated, with the same answer over GraphQL, SQL and an agent."
+      },
+      "groupexposure": {
+        "title": "Group exposure through Wikidata",
+        "summary": "Which corporate groups is a bank over its large-exposure limit to? Its loan book, joined by each borrower's owner's LEI to Wikidata's chains of parent organizations over SPARQL, rolls each borrower up to its group. The bank and its borrowers are fictional; the groups are real."
+      },
+      "agentdata": {
+        "title": "Give an agent your data",
+        "summary": "Can an AI agent be given a retailer's order data and held to what its user may see? The MCP explorer shows the agent as a support agent and as an analyst: different rows and columns, emails masked, and the governed SQL behind each answer."
       }
     }
   }

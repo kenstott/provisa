@@ -119,10 +119,12 @@ def test_a_column_is_landed_as_its_own_type_or_refused_by_name():
     assert landed_type("name", "VARCHAR(40)") == "text"
     assert landed_type("price", "DECIMAL(12, 4)") == "numeric(12,4)"
     assert landed_type("price", "numeric(12,4)") == "numeric(12,4)"
-    with pytest.raises(ValueError, match="'price': give DECIMAL its precision and scale"):
-        landed_type("price", "DECIMAL")
-    with pytest.raises(ValueError, match="column 'doc': type JSONB is not supported"):
-        landed_type("doc", "JSONB")
+    # An unsized numeric is sized from its values when it lands (_landed_decimal).
+    assert landed_type("price", "DECIMAL") == "numeric"
+    assert landed_type("doc", "JSONB") == "json"
+    assert landed_type("id", "UUID") == "uuid"
+    with pytest.raises(ValueError, match="column 'spot': type POINT is not supported"):
+        landed_type("spot", "POINT")
     sized = to_sqlalchemy("numeric(12,4)")
     assert (sized.precision, sized.scale) == (12, 4)
 
@@ -161,3 +163,45 @@ def test_a_statement_is_kept_for_its_session_alone_as_its_tables_stand():
         assert temp_tables.slot_key() != mine
     finally:
         temp_tables.unbind(token)
+
+
+def test_serial_and_bytea_columns_are_taken():
+    from provisa.compiler.temp_tables import TempTable
+    from provisa.pgwire.temp_exec import _batch, _next_serial, landed_type
+
+    assert landed_type("id", "SERIAL") == "bigint"
+    assert landed_type("id", "BIGSERIAL") == "bigint"
+    assert landed_type("b", "BYTEA") == "bytea"
+    table = TempTable("t", [("id", "bigint"), ("val", "text")], {"id": 0})
+    assert [_next_serial(table, "id") for _ in range(3)] == [1, 2, 3]
+    assert _next_serial(table, "val") is None
+    batch = _batch([("b", "bytea")], [("\\xdeadbeef",), ("a\\\\b\\001",), (b"raw",), (None,)])
+    assert batch.column(0).to_pylist() == [b"\xde\xad\xbe\xef", b"a\\b\x01", b"raw", None]
+
+
+def test_uuid_json_and_unsized_numeric_columns_land_as_their_values():
+    from decimal import Decimal
+
+    from provisa.pgwire.temp_exec import _batch
+
+    batch = _batch(
+        [("u", "uuid"), ("j", "json"), ("n", "numeric")],
+        [
+            ("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", '{"key":"value"}', "12345.6789"),
+            (None, {"a": 1}, Decimal("1.5")),
+        ],
+    )
+    assert batch.column(0).to_pylist() == ["a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", None]
+    assert batch.column(1).to_pylist() == ['{"key":"value"}', '{"a": 1}']
+    assert batch.schema.field("n").type.scale == 4
+    assert batch.column(2).to_pylist() == [Decimal("12345.6789"), Decimal("1.5000")]
+
+
+def test_a_number_is_cast_to_its_columns_type_as_postgresql_assigns_it():
+    from decimal import Decimal
+
+    from provisa.pgwire.temp_exec import _batch
+
+    batch = _batch([("f", "double"), ("i", "bigint")], [(Decimal("3.14"), Decimal("2.5"))])
+    assert batch.column(0).to_pylist() == [3.14]
+    assert batch.column(1).to_pylist() == [3]

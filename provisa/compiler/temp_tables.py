@@ -46,6 +46,9 @@ from provisa.compiler.definitions import (
 class TempTable:
     name: str
     columns: list[tuple[str, str]]  # (name, type as declared or inferred)
+    # A SERIAL column's last value given (0 before the first): an INSERT that omits the column
+    # takes the next, as PostgreSQL's sequence gives it. Never reused within the session.
+    serials: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

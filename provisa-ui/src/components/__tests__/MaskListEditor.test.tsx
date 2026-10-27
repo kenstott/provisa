@@ -122,7 +122,7 @@ beforeEach(() => {
 
 describe("the list's helpers", () => {
   it("starts a list with one entry for everyone, masked to NULL", () => {
-    expect(newMaskList()).toEqual([{ to: ["*"], mask: { type: "constant", value: null } }]);
+    expect(newMaskList()).toEqual([{ to: null, mask: { type: "constant", value: null } }]);
   });
 
   it("adds an entry before the final entry for everyone", () => {
@@ -139,7 +139,7 @@ describe("the list's helpers", () => {
       { to: ["a"], mask: null },
       { to: ["b"], mask: null },
     ];
-    expect(moved(list, 0, 1).map((e) => e.to[0])).toEqual(["b", "a"]);
+    expect(moved(list, 0, 1).map((e) => e.to?.[0])).toEqual(["b", "a"]);
     expect(moved(list, 0, -1)).toBe(list);
   });
 
@@ -215,13 +215,13 @@ describe("MaskListEditor", () => {
     fireEvent.change(value, { target: { value: "0" } });
     expect(seen).toHaveBeenLastCalledWith([
       { to: ["analyst"], mask: null },
-      { to: ["*"], mask: { type: "constant", value: 0 } },
+      { to: null, mask: { type: "constant", value: 0 } },
     ]);
   });
 });
 
 describe("a regex entry's common masks and the universal dialect", () => {
-  const REGEX: MaskEntry[] = [{ to: ["*"], mask: { type: "regex", pattern: "", replace: "" } }];
+  const REGEX: MaskEntry[] = [{ to: null, mask: { type: "regex", pattern: "", replace: "" } }];
   const field = (name: "pattern" | "replace") =>
     screen.getByTestId(`mask-list-regex-0-${name}`).querySelector("input") ??
     (screen.getByTestId(`mask-list-regex-0-${name}`) as HTMLInputElement);
@@ -275,7 +275,7 @@ describe("a regex entry's common masks and the universal dialect", () => {
     );
     render(
       <Editor
-        initial={[{ to: ["*"], mask: { type: "regex", pattern: "^.*(?=.{4})", replace: "*" } }]}
+        initial={[{ to: null, mask: { type: "regex", pattern: "^.*(?=.{4})", replace: "*" } }]}
       />,
     );
     expect(
@@ -286,7 +286,7 @@ describe("a regex entry's common masks and the universal dialect", () => {
 
   it("says quietly that a pattern the server passes works on every engine", async () => {
     render(
-      <Editor initial={[{ to: ["*"], mask: { type: "regex", pattern: "[0-9]", replace: "*" } }]} />,
+      <Editor initial={[{ to: null, mask: { type: "regex", pattern: "[0-9]", replace: "*" } }]} />,
     );
     expect(await screen.findByTestId("mask-list-regex-0-universal")).toHaveTextContent(
       "Works on every engine",
@@ -309,7 +309,7 @@ describe("a regex entry's common masks and the universal dialect", () => {
       }),
     );
     render(
-      <Editor initial={[{ to: ["*"], mask: { type: "regex", pattern: "a|ab", replace: "*" } }]} />,
+      <Editor initial={[{ to: null, mask: { type: "regex", pattern: "a|ab", replace: "*" } }]} />,
     );
     expect(await screen.findByTestId("mask-list-regex-0-warning")).toHaveTextContent(
       "alternatives that can match the same text",

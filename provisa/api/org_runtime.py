@@ -33,12 +33,14 @@ once at the entrypoint (never silently here).
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 
 from dataclasses import dataclass, field
+from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from provisa.api.role_surface import RoleSurface, SurfacePart, set_part
+from provisa.api.role_surface import LazySurface, RoleSurface, SurfacePart, set_part
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.core.connection_loop import CrossLoopLock
 from provisa.core.environments import PROD
@@ -222,11 +224,17 @@ class OrgRuntime:
     # role's surface whole, with one assignment; a request takes it once. Replaced, never
     # changed in place (role_surface.install_surface). `schemas`, `contexts`, `rls_contexts`,
     # `table_path_maps` and `proto_files` below are views of it.
-    surfaces: dict[str, RoleSurface] = field(default_factory=dict)
-    # The whole model — every registered table and column, no role's grants applied — used ONLY
-    # to lower view SQL to physical (api/app_rebuild.py). It belongs to no role and never answers
-    # a request: who may read a view's rows is decided when the view is read.
+    # Each role's surface, built when first read (api/role_surface.LazySurface).
+    surfaces: "dict[str, RoleSurface | LazySurface]" = field(default_factory=dict)
+    # The whole model — every registered table and column, no role's grants applied — used to
+    # lower view SQL to physical (api/app_rebuild.py) and to name a table model-wide (a contract's
+    # dataset, a semantic name, an approval hook's table): never every role's surface, which would
+    # build them all. It belongs to no role and never answers a request: who may read a view's
+    # rows is decided when the view is read.
     view_context: "CompilationContext | None" = None
+    # The model-wide REST/GraphQL path map, from the same input as view_context: a table's field
+    # name without building any role's surface.
+    view_path_map: dict | None = None
     # REQ-1677: role id → [role, parent, grandparent, …], the chain folded into the build.
     role_chains: dict[str, list[str]] = field(default_factory=dict)
 
@@ -377,7 +385,7 @@ class OrgRuntime:
         return SurfacePart(self, "schema")
 
     @schemas.setter
-    def schemas(self, value: dict) -> None:
+    def schemas(self, value: Mapping) -> None:
         set_part(self, "schema", value)
 
     @property
@@ -385,7 +393,7 @@ class OrgRuntime:
         return SurfacePart(self, "context")
 
     @contexts.setter
-    def contexts(self, value: dict) -> None:
+    def contexts(self, value: Mapping) -> None:
         set_part(self, "context", value)
 
     @property
@@ -393,7 +401,7 @@ class OrgRuntime:
         return SurfacePart(self, "rls")
 
     @rls_contexts.setter
-    def rls_contexts(self, value: dict) -> None:
+    def rls_contexts(self, value: Mapping) -> None:
         set_part(self, "rls", value)
 
     @property
@@ -401,7 +409,7 @@ class OrgRuntime:
         return SurfacePart(self, "table_path_map")
 
     @table_path_maps.setter
-    def table_path_maps(self, value: dict) -> None:
+    def table_path_maps(self, value: Mapping) -> None:
         set_part(self, "table_path_map", value)
 
     @property
@@ -409,7 +417,7 @@ class OrgRuntime:
         return SurfacePart(self, "proto")
 
     @proto_files.setter
-    def proto_files(self, value: dict) -> None:
+    def proto_files(self, value: Mapping) -> None:
         set_part(self, "proto", value)
 
 
@@ -425,6 +433,32 @@ class _Build:
 #: The runtimes the current work is building, by key. Only the build itself (and what it starts)
 #: resolves a key to its runtime while it is built; everyone else is served the registered one.
 _builds: ContextVar[dict[str, _Build]] = ContextVar("org_runtime_builds", default={})
+
+
+@contextmanager
+def serving(runtime: OrgRuntime) -> Iterator[None]:
+    """Resolve ``runtime``'s org and environment to ``runtime`` for this work alone, whatever
+    is registered under its key: work done for a runtime (a role surface it registered, built
+    when first read) reads the model it was built from. The org and environment are bound
+    for the work as well."""
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
+
+    org = set_current_org(runtime.org_id)
+    # Prod is bound as a request to it binds it: no environment named.
+    env = set_current_env(None if runtime.env == PROD else runtime.env)
+    build = _Build(runtime_key(runtime.org_id, runtime.env), runtime)
+    token = _builds.set({**_builds.get(), build.key: build})
+    try:
+        yield
+    finally:
+        _builds.reset(token)
+        reset_current_env(env)
+        reset_current_org(org)
 
 
 class OrgRegistry:

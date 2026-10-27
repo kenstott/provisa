@@ -17,6 +17,7 @@ from __future__ import annotations
 import types
 from unittest.mock import patch
 
+from provisa.api import app as appmod
 from provisa.api.admin import roles_router
 from provisa.api.admin.schema_query import Query
 from provisa.api.mcp import status as mcp_status_module
@@ -75,10 +76,12 @@ _SOURCE = {
 }
 
 
-async def _read_sources(info):
+async def _read_sources(monkeypatch, info):
     """The source as ``info``'s caller reads it. The caller is answered a table from it, which is
     what names a source to someone who does not register sources (REQ-1958; who is answered which
     table is tests/unit/test_admin_catalog_scope.py)."""
+    # A request is served after a role build, which leaves its inputs (drafts among them).
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
 
     async def _named(conn, scope):  # noqa: ARG001
         return {"pg"}
@@ -92,7 +95,7 @@ async def _read_sources(info):
 
 async def test_connection_details_go_to_a_source_registration_holder(monkeypatch):
     info, _ = grant(monkeypatch, "source_registration")
-    listed, single = await _read_sources(info)
+    listed, single = await _read_sources(monkeypatch, info)
     for src in (listed, single):
         assert (src.host, src.port, src.database, src.username) == (
             "db.internal",
@@ -106,7 +109,7 @@ async def test_connection_details_go_to_a_source_registration_holder(monkeypatch
 
 async def test_everyone_else_reads_the_source_without_them(monkeypatch):
     info, _ = grant(monkeypatch, "query_development")
-    listed, single = await _read_sources(info)
+    listed, single = await _read_sources(monkeypatch, info)
     for src in (listed, single):
         assert (src.id, src.type, src.dialect, src.description) == (
             "pg",
@@ -132,7 +135,7 @@ _ROLE_ROWS = [
         "session_vars": {},  # REQ-1682: a stored role always carries its session values
         "inactivity_days": None,  # REQ-2077: likewise its grants' inactivity limit
         "org_id": None,
-        "parent_role_id": None,
+        "parents": [],
     },
     {
         "description": "Test role.",
@@ -144,7 +147,7 @@ _ROLE_ROWS = [
         "session_vars": {},  # REQ-1682: a stored role always carries its session values
         "inactivity_days": None,  # REQ-2077: likewise its grants' inactivity limit
         "org_id": None,
-        "parent_role_id": None,
+        "parents": [],
     },
 ]
 
@@ -171,7 +174,7 @@ async def test_graphql_roles_full_for_user_management_else_own_role_only(monkeyp
     assert seen["analyst"].capabilities == ["usage"]  # the caller's own role: the client needs it
     assert seen["org_admin"].capabilities is None
     assert seen["org_admin"].domain_access is None
-    assert seen["org_admin"].parent_role_id is None
+    assert seen["org_admin"].parents == []
 
 
 async def test_rest_roles_full_for_user_management_else_own_role_only(monkeypatch):
@@ -185,7 +188,7 @@ async def test_rest_roles_full_for_user_management_else_own_role_only(monkeypatc
         seen = {r["id"]: r for r in await roles_router.list_roles(request)}
     assert seen["analyst"]["capabilities"] == ["usage"]
     # REQ-2080: what a role is for is shown with it even where its definition is withheld.
-    assert seen["org_admin"] == {"id": "org_admin", "description": "Test role."}
+    assert seen["org_admin"] == {"id": "org_admin", "description": "Test role.", "standard": True}
 
 
 _STATUS = {

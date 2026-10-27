@@ -47,9 +47,11 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/system-health": "observability",
   "/admin/observability": "observability",
   "/admin/ai-models": "org_settings",
+  "/admin/catalogs": "org_settings", // REQ-2122: the org's own catalog connections
   "/admin/metadata-export": "org_settings",
   "/admin/import": "org_settings", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "org_settings",
+  "/admin/classification-kinds": "org_settings", // REQ-2147: the kinds the org's profiler tests for
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
   // REQ-1590: the org's own business glossary, on its own read right. Looking a term up to
   // understand a column is not administering the org, so every seeded role reaches the surface;
@@ -98,8 +100,9 @@ describe("admin surface capabilities", () => {
   it("gates every org-scoped surface on the org-scoped right", () => {
     const routes = routeCapabilities();
     for (const [path, capability] of Object.entries(ORG_SCOPED)) {
-      // /admin/requests carries its own <Route> rather than a table row, so it is checked below.
-      if (path === "/admin/requests") continue;
+      // /admin/requests and /admin/environments carry their own <Route> rather than a table row,
+      // so each is checked below.
+      if (path === "/admin/requests" || path === "/admin/environments") continue;
       expect(routes[path], path).toBe(capability);
     }
   });
@@ -108,6 +111,14 @@ describe("admin surface capabilities", () => {
     const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
     const requests = source.slice(source.indexOf('path="/admin/requests"'));
     expect(requests.slice(0, 400)).toContain('capability="org_settings"');
+  });
+
+  it("gates the environments route on managing any environment or the ones the caller owns", () => {
+    // REQ-1573, REQ-2155: org_admin manages any; a developer manages the environments it owns.
+    const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    const route = source.slice(source.indexOf('path="/admin/environments"'));
+    expect(route.slice(0, 400)).toContain('capability="environment_management"');
+    expect(route.slice(0, 400)).toContain('orCapability="environment_owned_management"');
   });
 
   it("keeps every deployment-wide surface on platform_settings", () => {

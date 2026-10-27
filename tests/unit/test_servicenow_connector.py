@@ -352,13 +352,16 @@ def test_binding_or_unbinding_a_table_is_a_change(served):
 
 
 async def test_the_transform_maps_into_a_table_are_read_for_it_alone(adapter_reads):
+    """Only a map whose import set the integration user can read is offered: a live instance
+    keeps maps of plugins it does not have (oidc_adfs_import), and binding to one is refused."""
     sent, answers = adapter_reads
     answers["_servicenow_transform_maps"] = [("User Import", "imp_user")]
     maps = await pr.servicenow_transform_maps(_source(), "snow_ops", "sys_user")
     assert maps == [("User Import", "imp_user")]
     assert sent == [
         'SELECT name, source_table FROM "snow_ops"."_servicenow_transform_maps" '
-        "WHERE target_table = 'sys_user' AND active ORDER BY name"
+        "WHERE target_table = 'sys_user' AND active "
+        'AND source_table IN (SELECT name FROM "snow_ops"."_servicenow_tables") ORDER BY name'
     ]
 
 

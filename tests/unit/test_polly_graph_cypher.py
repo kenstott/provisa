@@ -182,7 +182,7 @@ async def test_a_bound_path_returned_whole_draws_its_relationships(state):
         # Comma-separated patterns do not parse here: a path, or one MATCH per path.
         "MATCH (i:{items})-[:ON_ORDER]->(o:{orders}), (i)-[:OF_PRODUCT]->(p:{products}) "
         "RETURN o, i, p",
-        # A bare `--` does not parse here.
+        # A bare `--` binds no relationship, so the page has none to draw.
         "MATCH (o:{orders})--(c:{customers}) RETURN o, c",
     ],
     ids=["comma_patterns", "bare_dashes"],

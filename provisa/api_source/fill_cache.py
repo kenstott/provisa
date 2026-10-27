@@ -33,6 +33,9 @@ import logging
 import math
 import threading
 import time
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -55,6 +58,7 @@ from provisa.api_source.engine_cache import (
 )
 from provisa.api_source.models import ApiEndpoint
 from provisa.core.statement_warnings import warn
+from provisa.core.org_forget import on_forget, schema_of_org
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +75,17 @@ _mem_fresh_lock = threading.Lock()
 #: The column shape each fill table was last made with in this process: (catalog, schema,
 #: table) -> digest. A table made for another shape is dropped and made again.
 _shapes: dict[tuple[str, str, str], str] = {}
+
+
+@on_forget(size=lambda: len(_shapes) + len(_mem_fresh))
+def _forget_fills(org_id: str) -> None:
+    """A deleted org's cache store schemas: their freshness and the shapes they were made as."""
+    for key in [k for k in _shapes if schema_of_org(org_id, k[1])]:
+        _shapes.pop(key, None)
+    for key in [k for k in _mem_fresh if schema_of_org(org_id, k[0])]:
+        _mem_fresh.pop(key, None)
+
+
 _shapes_lock = threading.Lock()
 
 
@@ -197,6 +212,50 @@ def fill_table(state: Any, endpoint: ApiEndpoint, api_source: Any) -> FillTable:
 
 
 # -- freshness -------------------------------------------------------------------------------------
+
+
+# REQ-1986: the argument sets each fill table was fetched for in the statement being planned. A
+# table with a TTL of 0 keeps nothing across statements, so its read takes only the fills this
+# statement fetched -- the batched fetch of a join's parent keys is kept, and no other statement's
+# fills are ever read.
+_STATEMENT_FILLS: ContextVar[dict[tuple[str, str, str], set[str]] | None] = ContextVar(
+    "statement_fills", default=None
+)
+
+
+@contextmanager
+def statement_fills() -> Iterator[None]:
+    """Record the fills the statement being planned fetches (:data:`_STATEMENT_FILLS`). A nested
+    statement's go to the one that holds it."""
+    if _STATEMENT_FILLS.get() is not None:
+        yield
+        return
+    token = _STATEMENT_FILLS.set({})
+    try:
+        yield
+    finally:
+        _STATEMENT_FILLS.reset(token)
+
+
+def _key(table: FillTable) -> tuple[str, str, str]:
+    return (table.loc.catalog, table.loc.schema, table.name)
+
+
+def _record_fetched(table: FillTable, hashes: Iterable[str]) -> None:
+    held = _STATEMENT_FILLS.get()
+    if held is not None:
+        held.setdefault(_key(table), set()).update(hashes)
+
+
+def fetched_this_statement(table: FillTable) -> frozenset[str]:
+    """The argument sets of ``table`` the statement being planned fetched. Asked only while a
+    statement is planned (``statement_fills``): outside one there is no statement to ask of."""
+    held = _STATEMENT_FILLS.get()
+    if held is None:
+        raise RuntimeError(
+            f"{table.name!r}: a statement's fills are asked only while it is planned"
+        )
+    return frozenset(held.get(_key(table), ()))
 
 
 def _mark_fresh(table: FillTable, phash: str, ttl: int) -> None:
@@ -353,16 +412,32 @@ def store(
     return len(rows)
 
 
-def read_rows(conn: Any, table: FillTable, args: dict | None = None) -> list[dict]:
+def read_rows(
+    conn: Any,
+    table: FillTable,
+    args: dict | None = None,
+    *,
+    hashes: frozenset[str] | None = None,
+) -> list[dict]:
     """The rows the table holds, as the endpoint's response columns — every argument set's, or
     only the answer to ``args`` when one is given; ``[]`` when no fill has made the table yet.
-    A read that fails raises: it is never a cue to call the remote."""
+    ``hashes`` limits them to those argument sets (REQ-1986: a TTL-0 read takes only the fills
+    its statement fetched, ``fetched_this_statement``). A read that fails raises: it is never a
+    cue to call the remote."""
+    if hashes is not None:
+        if args is not None:
+            hashes = hashes & {params_hash(args)}
+        if not hashes:
+            return []
     if not _exists(conn, table):
         return []
     names = table.data_columns
     select = ", ".join(_quoted(n, conn.dialect) for n in names)
     sql = f"SELECT {select} FROM {_ref(conn, table)}"
-    if args is not None:
+    if hashes is not None:
+        listed = ", ".join(_string_literal(h, conn.dialect) for h in sorted(hashes))
+        sql += f" WHERE {_quoted(PARAMS_HASH, conn.dialect)} IN ({listed})"
+    elif args is not None:
         group = _string_literal(params_hash(args), conn.dialect)
         sql += f" WHERE {_quoted(PARAMS_HASH, conn.dialect)} = {group}"
     conn.execute(sql)
@@ -449,4 +524,6 @@ async def fill(
             # The statement answered from it says so (REQ-1350).
             warn(answer_cut_warning(endpoint.table_name, short))
     with engine.isolated_sync() as conn:
-        return store(conn, table, fetched, ttl, frozenset(cut))
+        written = store(conn, table, fetched, ttl, frozenset(cut))
+    _record_fetched(table, fetched)
+    return written

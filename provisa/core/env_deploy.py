@@ -564,13 +564,10 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                         "term_id": resolve_term(ref["term"], path),
                     }
                 )
-            for ref in nested["class_term"]:  # REQ-2130
-                rows["glossary_term_table_refs"].append(
-                    {
-                        "table_id": tid,
-                        "term_id": resolve_term(ref["term"], path),
-                        "derived": bool(ref.get("derived", False)),
-                    }
+            for ref in nested["class_term"]:  # REQ-2130: the table's own class_term_id
+                rows["registered_tables"][-1].update(
+                    class_term_id=resolve_term(ref["term"], path),
+                    class_term_derived=bool(ref.get("derived", False)),
                 )
             for link in nested["meta_links"]:
                 rows["table_meta_links"].append(
@@ -670,7 +667,8 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             key = "name" if table == "metrics" else "id"
             entry = {**body, key: _name_of(path)[0]}
             if table == "roles":
-                named(path, "parent role", entry.get("parent_role_id"), roles)
+                for parent in entry.get("parents") or []:  # REQ-2155
+                    named(path, "parent role", parent, roles)
             rows[table].append(entry)
 
     # REQ-1363: the domain files state a tree. A parent that is no domain of this tree, or a

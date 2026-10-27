@@ -14,6 +14,10 @@
 // form although the field was filled in. These submit the form through the page, against a
 // stand-in that applies the server's rule to the input it is given.
 //
+// A save is one updateSource carrying every setting: the settings with mutations of their own
+// (cache, Replicate, load protection, naming, allowed domains) used to follow in calls of their
+// own, each rebuilding the schema.
+//
 // These drive the EDIT path. Create and edit build one payload, so the Cache TTL is covered for
 // both, but nothing here clicks through creating a source.
 //
@@ -75,6 +79,10 @@ let SOURCES: Source[] = [];
 let formKnows = true;
 const updateSource = vi.fn(async (input: never) => serverSave(input));
 const updateSourceCache = vi.fn().mockResolvedValue(ok);
+const updateSourceReplicate = vi.fn().mockResolvedValue(ok);
+const updateSourceLoadProtection = vi.fn().mockResolvedValue(ok);
+const updateSourceNaming = vi.fn().mockResolvedValue(ok);
+const updateSourceAllowedDomains = vi.fn().mockResolvedValue(ok);
 
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
@@ -83,13 +91,13 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useUpdateSource: () => ({ updateSource }),
   useRenameSource: () => ({ renameSource: vi.fn().mockResolvedValue(ok) }),
   useUpdateSourceCache: () => ({ updateSourceCache }),
-  useUpdateSourceReplicate: () => ({ updateSourceReplicate: vi.fn().mockResolvedValue(ok) }),
+  useUpdateSourceReplicate: () => ({ updateSourceReplicate }),
   useUpdateSourceLoadProtection: () => ({
-    updateSourceLoadProtection: vi.fn().mockResolvedValue(ok),
+    updateSourceLoadProtection,
   }),
-  useUpdateSourceNaming: () => ({ updateSourceNaming: vi.fn().mockResolvedValue(ok) }),
+  useUpdateSourceNaming: () => ({ updateSourceNaming }),
   useUpdateSourceAllowedDomains: () => ({
-    updateSourceAllowedDomains: vi.fn().mockResolvedValue(ok),
+    updateSourceAllowedDomains,
   }),
 }));
 
@@ -119,7 +127,11 @@ async function openForEdit(id: string): Promise<void> {
   await userEvent.click(await screen.findByTestId("source-detail-edit"));
 }
 
-async function save(): Promise<{ type: string; cacheTtl: number | null }> {
+async function save(): Promise<{
+  type: string;
+  cacheTtl: number | null;
+  cacheEnabled: boolean;
+}> {
   await userEvent.click(screen.getByRole("button", { name: /save/i }));
   await waitFor(() => expect(updateSource).toHaveBeenCalled());
   return updateSource.mock.calls.at(-1)![0] as never;
@@ -129,6 +141,14 @@ describe("saving a source sends its Cache TTL with the source", () => {
   beforeEach(() => {
     updateSource.mockClear();
     updateSourceCache.mockClear();
+    for (const followUp of [
+      updateSourceReplicate,
+      updateSourceLoadProtection,
+      updateSourceNaming,
+      updateSourceAllowedDomains,
+    ]) {
+      followUp.mockClear();
+    }
     formKnows = true;
     forgetSourceKinds();
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
@@ -150,8 +170,9 @@ describe("saving a source sends its Cache TTL with the source", () => {
     const sent = await save();
     expect(sent.type).toBe("microsoft_365");
     expect(sent.cacheTtl).toBe(300); // judged by the server in this input, so it rides here
-    await waitFor(() => expect(updateSourceCache).toHaveBeenCalledWith("mail", true, 300));
+    expect(sent.cacheEnabled).toBe(true);
     expect(screen.queryByText(/needs a Cache TTL/)).toBeNull(); // the save went through
+    expect(updateSourceCache).not.toHaveBeenCalled(); // it rode in the one save
   });
 
   it("stops a mail source with no Cache TTL in the form, before anything is sent", async () => {
@@ -222,6 +243,45 @@ describe("saving a source sends its Cache TTL with the source", () => {
     const sent = await save();
     expect(sent.type).toBe("postgresql");
     expect(sent.cacheTtl).toBeNull();
-    await waitFor(() => expect(updateSourceCache).toHaveBeenCalledWith("sales-pg", true, null));
+    expect(sent.cacheEnabled).toBe(true);
+    expect(updateSourceCache).not.toHaveBeenCalled();
+  });
+
+  it("saves every setting in the one updateSource, so a save rebuilds the schema once", async () => {
+    SOURCES = [
+      source({
+        id: "sales-pg",
+        type: "postgresql",
+        host: "db",
+        port: 5432,
+        database: "sales",
+        username: "u",
+        cacheTtl: 60,
+        replicate: 0,
+        gqlNamingConvention: "graphql-default",
+        allowedDomains: ["sales", "finance"],
+        mappingJson: null,
+      } as Partial<Source>),
+    ];
+    await openForEdit("sales-pg");
+    const sent = await save();
+    expect(sent).toMatchObject({
+      cacheEnabled: true,
+      cacheTtl: 60,
+      replicate: 0,
+      gqlNamingConvention: "graphql-default",
+      allowedDomains: ["sales", "finance"],
+      loadProtected: false,
+    });
+    expect(updateSource).toHaveBeenCalledTimes(1);
+    for (const followUp of [
+      updateSourceCache,
+      updateSourceReplicate,
+      updateSourceLoadProtection,
+      updateSourceNaming,
+      updateSourceAllowedDomains,
+    ]) {
+      expect(followUp).not.toHaveBeenCalled();
+    }
   });
 });

@@ -12,10 +12,11 @@
 //   node scripts/gen-site-demos.mjs --check    exit 1 when the page or a screenshot is out of step
 //
 // Source of truth: demo/named/<name>/demo.yaml -- title, description, screenshot (a file beside
-// it), published (true or false), and optionally order (a positive integer). A demo with
-// published: false has no card; a published one needs the first four. Cards with an order come
-// first, lowest first; the rest follow by name. Its "Open live demo" button opens LIVE_DEMO_URL + <name>: the no-signup sandbox
-// of that demo on cloud.provisa.dev, which the cloud deployment serves.
+// it), published (true or false), and optionally order (a positive integer) and group (a string
+// matching one of GROUPS). A demo with published: false has no card. A demo with an order comes
+// first (lowest first); the rest follow by name within their group. The "Start here" demo (order: 1,
+// no group) renders outside all groups. Its "Open live demo" button opens LIVE_DEMO_URL + <name>:
+// the no-signup sandbox of that demo on cloud.provisa.dev, which the cloud deployment serves.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,6 +34,17 @@ const START = "<!-- demos:start -->";
 const END = "<!-- demos:end -->";
 /** Where a demo's sandbox is opened: its name follows. */
 export const LIVE_DEMO_URL = "https://cloud.provisa.dev/demos/";
+
+/** Ordered groups with their anchor ids and display labels. */
+export const GROUPS = [
+  { id: "backend",      label: "App backends" },
+  { id: "bi",           label: "BI across sources" },
+  { id: "data-science", label: "Data science access" },
+  { id: "agents",       label: "Give an agent your data" },
+  { id: "provision",    label: "Data provisioning" },
+  { id: "public-data",  label: "New or changing sources" },
+  { id: "compliance",   label: "Compliance and audit" },
+];
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -59,8 +71,13 @@ export function readDemos() {
     if (spec.order !== undefined && !(Number.isInteger(spec.order) && spec.order > 0)) {
       throw new Error(`${path.relative(ROOT, file)}: order must be a positive integer`);
     }
+    // group is optional; a demo without a group renders outside all groups (e.g. starthere)
+    const group = typeof spec.group === "string" ? spec.group.trim() : null;
+    if (group !== null && !GROUPS.some((g) => g.id === group)) {
+      throw new Error(`${path.relative(ROOT, file)}: unknown group ${JSON.stringify(group)}`);
+    }
     const order = spec.order ?? Infinity;
-    demos.push({ name, title: spec.title.trim(), description: spec.description.trim(), shot, order });
+    demos.push({ name, title: spec.title.trim(), description: spec.description.trim(), shot, order, group });
   }
   // Sorted by name already: a stable sort keeps that order among demos with no order.
   return demos.sort((a, b) => a.order - b.order);
@@ -73,22 +90,74 @@ function assetFor(demo) {
   return { bytes, name: `demo-${demo.name}.${hash}${path.extname(demo.shot).toLowerCase()}` };
 }
 
+function cardHtml(d, assetName) {
+  return [
+    `<article class="demo-card" data-demo="${esc(d.name)}">`,
+    `  <img class="demo-shot" src="/assets/${assetName}" alt="${esc(d.title)}: the demo in Provisa" loading="lazy" />`,
+    `  <div class="demo-body">`,
+    `    <h2>${esc(d.title)}</h2>`,
+    `    <p>${esc(d.description)}</p>`,
+    `    <a class="btn btn-primary" href="${LIVE_DEMO_URL}${encodeURIComponent(d.name)}" target="_blank" rel="noopener">Open live demo</a>`,
+    `  </div>`,
+    `</article>`,
+  ].join("\n");
+}
+
 export function render() {
   const demos = readDemos();
   const assets = demos.map(assetFor);
-  const cards = demos.map((d, i) =>
-    [
-      `<article class="demo-card" data-demo="${esc(d.name)}">`,
-      `  <img class="demo-shot" src="/assets/${assets[i].name}" alt="${esc(d.title)}: the demo in Provisa" loading="lazy" />`,
-      `  <div class="demo-body">`,
-      `    <h2>${esc(d.title)}</h2>`,
-      `    <p>${esc(d.description)}</p>`,
-      `    <a class="btn btn-primary" href="${LIVE_DEMO_URL}${encodeURIComponent(d.name)}" target="_blank" rel="noopener">Open live demo</a>`,
-      `  </div>`,
-      `</article>`,
-    ].join("\n"),
-  );
-  const html = `<div class="demo-grid" data-count="${demos.length}">\n${cards.join("\n")}\n</div>`;
+  const byName = new Map(demos.map((d, i) => [d.name, { d, assetName: assets[i].name }]));
+
+  // Ungrouped demos (order-sorted, no group field): rendered first, before the filter row
+  const ungrouped = demos.filter((d) => d.group === null);
+
+  // Filter chips row (only for groups that have at least one demo)
+  const activeGroupIds = new Set(demos.filter((d) => d.group !== null).map((d) => d.group));
+  const activeGroups = GROUPS.filter((g) => activeGroupIds.has(g.id));
+
+  const filterRow =
+    activeGroups.length > 0
+      ? [
+          `<nav class="demo-filters" aria-label="Filter by problem">`,
+          ...activeGroups.map((g) => `  <a class="demo-chip" href="#${g.id}">${esc(g.label)}</a>`),
+          `</nav>`,
+        ].join("\n")
+      : "";
+
+  // Ungrouped cards (starthere etc.)
+  const ungroupedCards = ungrouped
+    .map(({ name }) => {
+      const { d, assetName } = byName.get(name);
+      return cardHtml(d, assetName);
+    })
+    .join("\n");
+
+  // Grouped sections
+  const groupSections = activeGroups
+    .map((g) => {
+      const groupDemos = demos.filter((d) => d.group === g.id);
+      const cards = groupDemos.map(({ name }) => {
+        const { d, assetName } = byName.get(name);
+        return cardHtml(d, assetName);
+      });
+      return [
+        `<section class="demo-group" id="${g.id}">`,
+        `<h2 class="demo-group-head">${esc(g.label)}</h2>`,
+        `<div class="demo-grid">`,
+        ...cards,
+        `</div>`,
+        `</section>`,
+      ].join("\n");
+    })
+    .join("\n");
+
+  const parts = [
+    filterRow,
+    ungroupedCards,
+    groupSections,
+  ].filter(Boolean);
+
+  const html = `<div data-count="${demos.length}">\n${parts.join("\n")}\n</div>`;
   return { html, assets, count: demos.length };
 }
 

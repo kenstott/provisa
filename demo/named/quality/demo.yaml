@@ -15,6 +15,7 @@ description: >-
   reaches gold, and a bad one is shown failed and never reaches silver.
 screenshot: card.png
 published: true
+group: provision
 # The oldest Provisa this demo's bundle runs on (REQ-2049): the first release with a live table
 # watched for its views (REQ-2055) and their refresh read as fresh (#268).
 requires_provisa: 0.1.0a489

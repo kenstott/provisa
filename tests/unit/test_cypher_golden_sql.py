@@ -76,14 +76,35 @@ _MODELS = {
 }
 
 
+# REQ-2163: the label map's SQL-only tables (sql_only_nodes, sql_only_tables) and the relationships
+# touching them (sql_only_relationships, sql_only_aliases) came after it too.
+_ADDED_AFTER_THE_SPLIT = frozenset(
+    {
+        "property_types",
+        "key_columns",
+        "sql_only_nodes",
+        "sql_only_tables",
+        "sql_only_relationships",
+        "sql_only_aliases",
+    }
+)
+
+
 def _structure(value):
     """A label map as plain data, compared field by field: it defines no equality of its own."""
     import dataclasses
 
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        # A field added after the split carries what the split never built (REQ-778: each
+        # property's registered type; REQ-2136: a compound key's columns); the comparison is of
+        # what the split moved.
         return (
             type(value).__name__,
-            {f.name: _structure(getattr(value, f.name)) for f in dataclasses.fields(value)},
+            {
+                f.name: _structure(getattr(value, f.name))
+                for f in dataclasses.fields(value)
+                if f.name not in _ADDED_AFTER_THE_SPLIT
+            },
         )
     if isinstance(value, dict):
         return {k: _structure(v) for k, v in value.items()}
@@ -92,7 +113,10 @@ def _structure(value):
     if isinstance(value, (set, frozenset)):
         return sorted(map(repr, value))
     if hasattr(value, "__dict__") and type(value).__module__.startswith("provisa"):
-        return (type(value).__name__, _structure(vars(value)))
+        return (
+            type(value).__name__,
+            {k: _structure(v) for k, v in vars(value).items() if k not in _ADDED_AFTER_THE_SPLIT},
+        )
     return value
 
 

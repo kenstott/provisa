@@ -72,6 +72,10 @@
       }
     },
     "engine": {
+      "duckdb_memory_limit": {
+        "label": "Límite de memoria del motor DuckDB",
+        "help": "La memoria máxima que puede usar cualquier motor DuckDB de esta implementación. Por encima de ella, una consulta se vuelca a disco o se rechaza. Sin definir: el límite propio de DuckDB, la mayor parte de la memoria del host."
+      },
       "ready_timeout": {
         "label": "Tiempo de espera de disponibilidad del motor",
         "help": "Cuánto espera el arranque a que el motor de federación esté listo antes de fallar."
@@ -140,9 +144,13 @@
         "label": "Hilos de solicitud por worker",
         "help": "El máximo de solicitudes que ejecuta un proceso worker a la vez; las demás esperan un hilo libre. Requiere reinicio porque el límite se fija cuando arranca el worker."
       },
-      "workers": {
-        "label": "Procesos worker",
-        "help": "Cuántos procesos worker ejecuta el servidor. Requiere reinicio porque el lanzador inicia los procesos."
+      "stream_threads": {
+        "label": "Hilos de streaming por worker",
+        "help": "El máximo de respuestas en streaming y WebSockets abiertos que mantiene a la vez un proceso worker, suscripciones incluidas. Cada uno espera a su cliente en lugar de ocupar un núcleo, por eso se cuenta aparte de los hilos de solicitud."
+      },
+      "control_request_threads": {
+        "label": "Hilos de control por worker",
+        "help": "Hilos que cada proceso worker reserva para las comprobaciones de estado y la API de administración e inicio de sesión, para que el tráfico de datos intenso no deje un worker inaccesible para su orquestador o sus administradores."
       }
     },
     "kaggle": {
@@ -181,16 +189,24 @@
       "spool_max_bytes": {
         "label": "Límite de disco para el almacenamiento temporal de réplicas",
         "help": "El máximo espacio en disco que este nodo usa para guardar la respuesta de un origen en un archivo temporal mientras se compila su réplica. Se aplica a los orígenes que responden con un único documento y no pueden leerse mediante un cursor. Una compilación que superaría el límite falla; no se trunca nada."
+      },
+      "hot_threshold": {
+        "label": "Umbral de tabla activa",
+        "help": "Cuántas sentencias gobernadas debe recibir una tabla dentro de la ventana de tabla activa antes de replicarse, para que las lecturas posteriores vengan de su réplica."
+      },
+      "hot_interval": {
+        "label": "Ventana de tabla activa",
+        "help": "El período durante el cual las sentencias de una tabla se cuentan frente al umbral de tabla activa."
+      },
+      "hot_max_rows": {
+        "label": "Límite de tamaño de tabla activa",
+        "help": "Una tabla activa con más filas que este valor no se replica; se sigue leyendo en vivo."
       }
     },
     "security": {
       "mode": {
         "label": "Modo de seguridad",
         "help": "Estándar, o alta seguridad, donde los endpoints de datos rechazan a cualquier cliente que no pueda descifrar los resultados por sí mismo y no se inician los listeners de pgwire, Bolt y MCP. Requiere reinicio porque decide qué listeners se inician; requiere confirmación al guardar porque desconecta a los clientes habituales."
-      },
-      "multitenancy": {
-        "label": "Multiinquilino",
-        "help": "Si la implementación atiende a varias organizaciones, cada una administrando solo sus propios datos. Requiere reinicio porque los permisos de los roles se fijan al arrancar; requiere confirmación al guardar porque cambia quién puede administrar la implementación."
       },
       "superuser": {
         "username": {
@@ -262,10 +278,6 @@
         "label": "Puerto de Airport",
         "help": "El puerto en el que escucha el servicio Airport Flight; 0 lo deja desactivado. Requiere reinicio; requiere confirmación al guardar porque abre o cierra un listener."
       },
-      "port": {
-        "label": "Puerto de la API HTTP",
-        "help": "El puerto en el que escucha la API HTTP. Requiere reinicio; requiere confirmación al guardar porque la interfaz y todos los clientes deben seguir el cambio."
-      },
       "public_url": {
         "label": "Dirección pública",
         "help": "La dirección por la que se conoce este despliegue, como https://data.example.com. La IRI de cada sujeto en SPARQL y en las exportaciones RDF empieza por ella, así que debe mantenerse igual mientras se usen esas IRI. Si no se define, se rechaza una consulta que devuelve la IRI de un sujeto."
@@ -311,14 +323,6 @@
       "bolt_key": {
         "label": "Clave privada TLS de Bolt",
         "help": "La clave privada del certificado propio del listener Bolt. Requiere reinicio; requiere confirmación al guardar."
-      },
-      "http_cert": {
-        "label": "Certificado TLS de la API HTTP",
-        "help": "El archivo de certificado que presenta la API HTTP. Requiere reinicio; requiere confirmación al guardar."
-      },
-      "http_key": {
-        "label": "Clave privada TLS de la API HTTP",
-        "help": "La clave privada del certificado de la API HTTP. Requiere reinicio; requiere confirmación al guardar."
       }
     },
     "cache": {
@@ -439,8 +443,34 @@
         "help": "La menor gravedad de los registros que se exportan con la telemetría."
       },
       "subsystem_traces": {
-        "label": "Trazas de subsistemas",
-        "help": "Qué subsistemas internos escriben sus propias trazas."
+        "http_api": {
+          "label": "Trazas de subsistemas: API HTTP",
+          "help": "Solicitudes atendidas por la API de la plataforma. Requiere reinicio."
+        },
+        "outbound_http": {
+          "label": "Trazas de subsistemas: Llamadas HTTP salientes",
+          "help": "Solicitudes que la plataforma hace a fuentes REST y GraphQL. Requiere reinicio."
+        },
+        "catalog_database": {
+          "label": "Trazas de subsistemas: Base de datos del catálogo",
+          "help": "Lecturas y escrituras de metadatos. Desactivado de forma predeterminada: cada consulta al catálogo es una, y sepultan las trazas de consulta. Requiere reinicio."
+        },
+        "result_cache": {
+          "label": "Trazas de subsistemas: Caché de resultados",
+          "help": "Lecturas y escrituras en la caché. Requiere reinicio."
+        },
+        "document_sources": {
+          "label": "Trazas de subsistemas: Fuentes documentales",
+          "help": "Consultas contra almacenes de documentos. Requiere reinicio."
+        },
+        "search_sources": {
+          "label": "Trazas de subsistemas: Fuentes de búsqueda",
+          "help": "Consultas contra índices de búsqueda. Requiere reinicio."
+        },
+        "grpc_services": {
+          "label": "Trazas de subsistemas: Servicios gRPC",
+          "help": "La superficie de consulta gRPC, entrante y saliente. Requiere reinicio."
+        }
       },
       "compact_cron": {
         "label": "Programación de compactación",
@@ -477,22 +507,6 @@
       "s3_endpoint": {
         "label": "Dirección del almacén de telemetría",
         "help": "El almacén de objetos donde se escribe la telemetría almacenada."
-      },
-      "s3_bucket": {
-        "label": "Bucket del almacén de telemetría",
-        "help": "El bucket donde se escribe la telemetría almacenada."
-      },
-      "s3_region": {
-        "label": "Región del almacén de telemetría",
-        "help": "La región del almacén de objetos de telemetría."
-      },
-      "s3_access_key": {
-        "label": "Clave de acceso del almacén de telemetría",
-        "help": "La clave de acceso del almacén de objetos de telemetría. Secreto."
-      },
-      "s3_secret_key": {
-        "label": "Clave secreta del almacén de telemetría",
-        "help": "La clave secreta del almacén de objetos de telemetría. Secreto."
       },
       "support_endpoint": {
         "label": "Endpoint de telemetría de soporte",
@@ -589,108 +603,6 @@
       "egress_allowlist": {
         "label": "Lista de permitidos de salida de funciones alojadas",
         "help": "Los hosts a los que puede llamar una función alojada; todo lo demás se rechaza. Requiere confirmación al guardar porque cada entrada abre una vía de salida."
-      }
-    },
-    "cdc": {
-      "consumer_group_id": {
-        "label": "Grupo de consumidores CDC",
-        "help": "El nombre que usa esta implementación al leer eventos de cambio de un agente de mensajes."
-      }
-    },
-    "graphql_remote": {
-      "max_object_depth": {
-        "label": "Profundidad de objetos de GraphQL remoto",
-        "help": "Hasta qué profundidad se siguen los objetos anidados de un origen GraphQL remoto."
-      },
-      "max_list_depth": {
-        "label": "Profundidad de listas de GraphQL remoto",
-        "help": "Hasta qué profundidad se siguen las listas anidadas de un origen GraphQL remoto."
-      },
-      "max_list_items": {
-        "label": "Elementos de lista de GraphQL remoto",
-        "help": "El máximo de elementos que se leen de una lista de un origen GraphQL remoto."
-      },
-      "max_rows": {
-        "label": "Filas por lectura de GraphQL remoto",
-        "help": "El máximo de filas que toma una lectura de una tabla paginada de GraphQL remoto."
-      }
-    },
-    "provisioning": {
-      "engine_namespace": {
-        "label": "Espacio de nombres del motor",
-        "help": "El espacio de nombres de Kubernetes donde se crean los clústeres de motores."
-      },
-      "engine_cluster_mode": {
-        "label": "Modo de clúster del motor",
-        "help": "El tipo de clúster de Kubernetes en el que se aprovisionan los motores."
-      },
-      "engine_cpu": {
-        "label": "CPU del motor",
-        "help": "La CPU asignada a cada motor aprovisionado."
-      },
-      "engine_shard": {
-        "label": "Shard del motor",
-        "help": "El shard del motor al que pertenece este nodo."
-      },
-      "engine_otlp_endpoint": {
-        "label": "Endpoint de telemetría del motor",
-        "help": "Adónde envían su propia telemetría los motores aprovisionados."
-      },
-      "engine_control_plane_host": {
-        "label": "Host del plano de control del motor",
-        "help": "La dirección que usan los motores para alcanzar la base de datos del plano de control, cuando difiere de la que usa este servidor."
-      },
-      "engine_control_plane_port": {
-        "label": "Puerto del plano de control del motor",
-        "help": "El puerto que usan los motores para alcanzar la base de datos del plano de control."
-      },
-      "engine_lakehouse_metastore_host": {
-        "label": "Host del metastore del lakehouse",
-        "help": "La dirección del metastore del lakehouse que usan los motores."
-      },
-      "engine_lakehouse_metastore_port": {
-        "label": "Puerto del metastore del lakehouse",
-        "help": "El puerto del metastore del lakehouse que usan los motores."
-      },
-      "engine_otel_s3_endpoint": {
-        "label": "Dirección del almacén de telemetría del motor",
-        "help": "La dirección del almacén de objetos de telemetría tal como la alcanzan los motores."
-      },
-      "isolated_engine_image": {
-        "label": "Imagen del motor dedicado",
-        "help": "La imagen de contenedor que se usa para el motor dedicado de una organización."
-      },
-      "isolated_engine_network": {
-        "label": "Red del motor dedicado",
-        "help": "La red de contenedores a la que se conecta un motor dedicado."
-      },
-      "isolated_engine_memory": {
-        "label": "Memoria del motor dedicado",
-        "help": "La memoria asignada a un motor dedicado."
-      },
-      "isolated_engine_host_template": {
-        "label": "Patrón de host del motor dedicado",
-        "help": "El patrón con el que se construye el nombre de host de un motor dedicado."
-      },
-      "isolated_engine_port": {
-        "label": "Puerto del motor dedicado",
-        "help": "El puerto en el que escucha un motor dedicado."
-      },
-      "isolated_engine_ready_timeout": {
-        "label": "Tiempo de espera de disponibilidad del motor dedicado",
-        "help": "Cuánto esperar a que un motor dedicado esté listo."
-      },
-      "isolated_engine_docker_socket": {
-        "label": "Socket de Docker del motor dedicado",
-        "help": "El socket de Docker que se usa para iniciar motores dedicados."
-      },
-      "zaychik_cpu": {
-        "label": "CPU de la puerta de enlace de consultas",
-        "help": "La CPU asignada a la puerta de enlace de consultas del motor."
-      },
-      "zaychik_memory": {
-        "label": "Memoria de la puerta de enlace de consultas",
-        "help": "La memoria asignada a la puerta de enlace de consultas del motor."
       }
     },
     "readonlyReasons": {
@@ -865,6 +777,10 @@
       "leak_rate_threshold": {
         "label": "Umbral de tasa de fuga de los valores ficticios",
         "help": "La proporción de los valores de muestra de una columna sensible que su valor ficticio puede dejar igual al valor real antes de que la comprobación de tasa de fuga lo marque como inadecuado. 0 hace fallar un valor ficticio que deja cualquier valor sin cambiar."
+      },
+      "key": {
+        "label": "Clave de valores ficticios",
+        "help": "El secreto del que se deriva cada valor ficticio, el mismo en todos los nodos y regiones. Se crea en el primer arranque de la plataforma. Cambiarlo cambia todos los valores ficticios; protegido, y requiere reinicio."
       }
     },
     "commands": {
@@ -881,6 +797,50 @@
       "union_limit": {
         "label": "Máximo de predicados que cubre un predicado variable",
         "help": "Un patrón SPARQL cuyo predicado es una variable lee cada predicado asignado que podría coincidir, una rama por cada uno. Una consulta que necesita más ramas se rechaza y se indica el límite."
+      }
+    },
+    "codesource": {
+      "duckdb_memory_mb": {
+        "label": "Memoria de DuckDB de la fuente de código",
+        "help": "La memoria en la que la DuckDB de una fuente de código responde una sentencia. Por encima de ella, la sentencia se vuelca a disco."
+      },
+      "duckdb_spill_cap_mb": {
+        "label": "Límite de volcado de DuckDB de la fuente de código",
+        "help": "Lo máximo que la DuckDB de una fuente de código vuelca a disco. Una sentencia que necesita más se rechaza, nombrando este ajuste. Una imagen compilada lo aplica solo cuando su volumen de volcado tiene este tamaño mediante la cuota de la plataforma. Una fuente de código en modo de desarrollo vuelca en el directorio de datos sin límite."
+      },
+      "duckdb_threads": {
+        "label": "Hilos de DuckDB de la fuente de código",
+        "help": "Los hilos en los que la DuckDB de una fuente de código responde sus sentencias."
+      }
+    },
+    "config": {
+      "reload_interval": {
+        "label": "Intervalo de recarga de la configuración",
+        "help": "Con qué frecuencia cada worker comprueba si el modelo o un ajuste ha cambiado y, en ese caso, lo recarga. Un cambio hecho en un worker llega a los demás dentro de este tiempo."
+      }
+    },
+    "hot_tables": {
+      "auto_threshold": {
+        "label": "Límite de tamaño de tablas calientes",
+        "help": "Una tabla con no más filas que este valor se guarda completa en la caché caliente (Redis) y se lee desde allí. Requiere reinicio."
+      },
+      "max_rows": {
+        "label": "Máximo de filas de tablas calientes",
+        "help": "El máximo de filas que la caché caliente guarda para una tabla. Sin valor, se usa el límite de tamaño de tablas calientes. Requiere reinicio."
+      },
+      "max_bytes": {
+        "label": "Máximo de bytes de tablas calientes",
+        "help": "El máximo de bytes que la caché caliente guarda para una tabla; una tabla mayor se lee en vivo. Requiere reinicio."
+      },
+      "refresh_interval": {
+        "label": "Intervalo de actualización de tablas calientes",
+        "help": "Con qué frecuencia las tablas de la caché caliente se recargan desde su origen. Sin valor, se usa la duración predeterminada de las vistas materializadas. Requiere reinicio."
+      }
+    },
+    "materialized_views": {
+      "default_ttl": {
+        "label": "Duración predeterminada de las vistas materializadas",
+        "help": "Cuánto tiempo se usa una vista materializada antes de actualizarse, cuando no fija una duración propia. Requiere reinicio."
       }
     }
   }

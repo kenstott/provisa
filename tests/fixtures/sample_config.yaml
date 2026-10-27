@@ -32,24 +32,24 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: customer_id
         data_type: integer
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: amount
         # REQ-1961: the size the source states (db/init.sql NUMERIC(10, 2)); a numeric with no
         # recorded size is floating point on every read.
         data_type: numeric(10,2)
-        visible_to: [org_admin]
+        visible_to: [data_steward]
       - name: region
         data_type: varchar
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: status
         data_type: varchar
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: created_at
         data_type: varchar
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
   - source_id: sales-pg
     domain_id: sales-analytics
     schema: public
@@ -60,16 +60,16 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: name
         data_type: varchar
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: email
         data_type: varchar
-        visible_to: [org_admin]
+        visible_to: [data_steward]
       - name: region
         data_type: varchar
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
     write_grants:
       - {role: org_admin, operation: insert, columns: [id, name, email, region]}
       - {role: org_admin, operation: update, columns: [id, name, email, region]}
@@ -81,16 +81,16 @@ tables:
     columns:
       - name: id
         data_type: integer
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: name
         data_type: varchar
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
       - name: price
         data_type: numeric
-        visible_to: [org_admin]
+        visible_to: [data_steward]
       - name: category
         data_type: varchar
-        visible_to: [org_admin, analyst]
+        visible_to: [data_steward, sales_analytics_analyst]
 
 relationships:
   - id: orders-to-customers
@@ -105,7 +105,8 @@ roles:
   # provisa/core/schema.sql seed and deliberately excludes the platform-bypass 'admin'/'superadmin'
   # capabilities: those belong to platform_admin alone, which in turn holds no data capability in any
   # org. A fixture that granted 'admin' here would give this role the wildcard the design withholds.
-  - id: analyst
+  - id: sales_analytics_analyst
+    parents: [analyst]
     description: "Queries the sales analytics domain, each analyst their own region's orders."
     capabilities:
       - query_development
@@ -137,7 +138,7 @@ kafka_sources:
 
 rls_rules:
   - table_id: orders
-    role_id: analyst
+    role_id: sales_analytics_analyst
     description: "An analyst reads only the orders of their own region."
     filter: "region = current_setting('provisa.user_region')"
 
@@ -166,7 +167,7 @@ functions:
         columns:
           - {name: id, type: integer}
           - {name: region, type: text}
-    visible_to: [org_admin]
+    visible_to: [data_steward]
     output_columns:
       - {name: id, type: integer}
       - {name: score, type: double}

@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "發布到你的機構所用的工具",
-        "description": "📤 <strong>發布到你的機構本來就在查看的地方。</strong>目錄項目(表、欄位、領域、數據管理員、已批准的關係)、數據產品和欄位層級血緣會發送出去,每個目標接收其所支援的內容:<strong>DataHub、OpenMetadata、Collibra、Atlan 和 Apache Atlas</strong> 作為目錄,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作為數據產品列表,血緣則透過 <strong>OpenLineage</strong> 發送。<p>發布只會向外單向進行:Provisa 絕不會把目標讀回來當作事實來源。</p>"
+        "description": "📤 <strong>發布到你的機構本來就在查看的地方。</strong>目錄項目(表、欄位、領域、數據管理員、已批准的關係)、數據產品和欄位層級血緣會發送出去,每個目標接收其所支援的內容:<strong>DataHub、OpenMetadata、Collibra、{{atlan}} 和 Apache Atlas</strong> 作為目錄,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作為數據產品列表,血緣則透過 <strong>OpenLineage</strong> 發送。<p>發布只會向外單向進行:Provisa 絕不會把目標讀回來當作事實來源。</p>"
       },
       "stepRelsAgents": {
         "title": "關係與 AI 智能體",
@@ -1692,25 +1692,17 @@
         "title": "一天的總數",
         "description": "10 月 1 日現在的樣子。按分行、產品和貨幣，可以看到流入、流出和淨額。透過 pgwire 連接的 BI 工具執行的正是這條 SQL。"
       },
-      "bankingAsReported": {
-        "title": "日終時呈報的樣子",
-        "description": "記錄於現在設為 10 月 1 日的日終。BI 工具在其 pgwire 工作階段中用 SET provisa.as_recorded 做同樣的事。記錄於按 updated_at 篩選交易，按每天的日終篩選每日總數，所以你看到的是銀行當晚呈報的數字。"
-      },
       "bankingReported": {
         "title": "當時呈報了甚麼",
-        "description": "按 10 月 1 日日終呈報的 10 月 1 日和 2 日企業業務總數。倫敦的 GBP 總數仍包含後來被沖銷的那筆付款。10 月 2 日當時還未日終，所以沒有數字。"
-      },
-      "bankingAsRestated": {
-        "title": "之後更正的樣子",
-        "description": "記錄於移到 10 月 12 日的日終，即三十天中的最後一天。到那時，10 月 6 日輸入的沖銷和 10 月 7 日輸入的遲到交易都已記錄。"
+        "description": "按 10 月 1 日日終呈報的 10 月 1 日和 2 日企業業務總數：視圖的 as_recorded 參數按當時的記錄讀取它們，透過 pgwire 連接的 BI 工具用 SET provisa.as_recorded 做同樣的事。倫敦的 GBP 總數仍包含後來被沖銷的那筆付款。10 月 2 日當時還未日終，所以沒有數字。"
       },
       "bankingRestated": {
         "title": "現在的結果",
-        "description": "同一條 SQL。倫敦 10 月 1 日的總數不再包含被沖銷的付款，愛丁堡 10 月 2 日的 USD 總數現在包含了遲到的交易。每次日終呈報的版本與更正後的版本並存，recorded_at 顯示每個版本的記錄時間。"
+        "description": "同一條 SQL，as_recorded 設為 10 月 12 日日終，即三十天中的最後一天。倫敦 10 月 1 日的總數不再包含被沖銷的付款，愛丁堡 10 月 2 日的 USD 總數現在包含了遲到的交易。每次日終呈報的版本與更正後的版本並存，recorded_at 顯示每個版本的記錄時間。"
       },
       "bankingAsOpsSql": {
         "title": "回到營運身份",
-        "description": "瀏覽器現在以營運身份執行，仍然記錄於 10 月 12 日的日終。"
+        "description": "瀏覽器現在以營運身份執行。"
       },
       "bankingPostings": {
         "title": "總數背後的過賬",
@@ -1727,6 +1719,86 @@
       "bankingAsAdmin": {
         "title": "回到管理員身份",
         "description": "儀表板是營運人員看到的內容。導覽的其餘部分重新以管理員身分進行，之後的每條語句都會標明其執行所用的角色。"
+      },
+      "groupexposureScenario": {
+        "title": "這個示範講甚麼",
+        "description": "一家布拉格銀行向企業放貸，並按法律實體識別編碼（LEI）記錄每家企業的擁有者。歐盟規定，銀行對單一客戶或同一擁有者控制的企業集團的授信不得超過其一級資本（Tier 1）的 25%。問題是：銀行對哪些集團超出了這一限額？銀行的賬簿記錄了每個借款人的擁有者，卻不記錄誰擁有這個擁有者。銀行、借款人及其貸款是虛構的，擁有它們的集團是真實的。"
+      },
+      "groupexposureJoin": {
+        "title": "按 LEI 連接",
+        "description": "銀行的擁有者表與 Wikidata 的表共用擁有者的 LEI，這些關係把它們連接起來。銀行的數據留在其資料庫中，Wikidata 的數據留在其副本中；連接在查詢中完成。"
+      },
+      "groupexposureAnswer": {
+        "title": "SQL 中的答案",
+        "description": "視圖 group_exposure 透過擁有者的 LEI 和 Wikidata，將每筆授信歸入借款人所屬集團。Veolia 和 Vinci 集團各自超過一級資本的 25%，Veolia 與 EPH 的合資企業在兩個集團中都計入。無論銀行賬簿還是 Wikidata，單獨都看不出這一點。借款人及其貸款是虛構的。"
+      },
+      "groupexposureExample": {
+        "title": "GraphQL 中的答案",
+        "description": "GraphQL 中的同一視圖：銀行放貸最多的集團、其借款人、承諾金額，以及各集團是否超限。"
+      },
+      "groupexposureRecap": {
+        "title": "您看到了甚麼",
+        "description": "一家虛構銀行的貸款賬簿與 Wikidata 的公共關聯數據，按 LEI 在一個受管治的模型中連接。Wikidata 的擁有權鏈把許多小額貸款變成少數幾個大額集團風險承擔，答案透過 SQL、GraphQL 和 REST 提供。"
+      },
+      "groupexposureWikidata": {
+        "title": "誰擁有這些擁有者：來自 Wikidata",
+        "description": "公共知識圖譜 Wikidata 記錄了每家企業的 LEI 及其母公司。此數據源透過 Wikidata 的 SPARQL 查詢服務讀取這些資料。其表在建立示範時只載入一次，因此您使用示範時它從不呼叫 Wikidata。"
+      },
+      "groupexposureFacilities": {
+        "title": "銀行的授信",
+        "description": "銀行批出的每筆定期貸款、循環信貸額度和保函，包括借款人、承諾金額和已提取金額。限額按承諾金額計算。"
+      },
+      "groupexposureGroups": {
+        "title": "每個擁有者所屬的集團",
+        "description": "對銀行記錄的每個擁有者，取其在 Wikidata 上母公司鏈頂端的企業，只用一條 SPARQL 屬性路徑即可找到。即使銀行賬簿不知道，Wikidata 也知道某家捷克控股公司屬於 Veolia 或 E.ON。"
+      },
+      "groupexposureTerms": {
+        "title": "淺白解釋",
+        "description": "詞彙表解釋風險人員使用的詞彙：大額風險承擔、一級資本、法律實體識別編碼和母公司。關連客戶集團是指因一家控制其他各家而構成同一風險的一組企業。"
+      },
+      "groupexposureAlone": {
+        "title": "只看賬簿",
+        "description": "銀行賬簿所見的每個借款人自身的風險承擔。最大的也低於一級資本的 10%，沒有任何借款人接近 25% 的限額。"
+      },
+      "groupexposureRest": {
+        "title": "透過 REST 取得同一答案",
+        "description": "該視圖也是一個 REST 端點，這裏按是否超限分組並在伺服器端匯總，可直接用於風險報告或試算表。"
+      },
+      "agentdataScenario": {
+        "title": "把數據交給智能體",
+        "description": "一家零售商想讓 AI 智能體使用其訂單數據,但只能看到它所代表的人有權看到的內容。智能體透過 Provisa 的 MCP 伺服器存取數據。接下來的 MCP 瀏覽器準確展示這樣一個外部智能體所看到的內容。而 Polly 是在 Provisa 內部工作的助手。這是零售商的訂單資料庫,即時讀取。"
+      },
+      "agentdataCustomers": {
+        "title": "誰能看到哪些客戶",
+        "description": "規則在客戶表上:West 區的客服只能讀取 West 的客戶及其訂單,電郵地址被遮罩,看不到價格。BI 分析師可讀取所有區域和訂單金額,但看不到任何電郵地址。"
+      },
+      "agentdataSupportRole": {
+        "title": "以 West 區客服身份操作",
+        "description": "智能體以頁首中的角色身份操作。下一步會選擇 West 區客服,因此智能體的每次工具呼叫都以該角色執行。"
+      },
+      "agentdataSupportAsks": {
+        "title": "客服的問題",
+        "description": "智能體尋找表、編寫 SQL 並透過 MCP 工具執行,工具在執行時顯示。只返回 West 的客戶,其電郵地址以遮罩形式到達:該角色只能得到這些。"
+      },
+      "agentdataExplain": {
+        "title": "實際執行了甚麼",
+        "description": "打開智能體的 run_sql 呼叫:先是它發送的語句,然後是為其角色實際執行的語句。West 行篩選和電郵遮罩由 Provisa 加上。智能體兩者都沒寫,也從不會被告知。"
+      },
+      "agentdataOutOfReach": {
+        "title": "超出範圍的問題",
+        "description": "當被問到每位客戶的訂單總額時,智能體在其角色可讀的表中找不到價格,並如實說明。它無法繞過角色:每次工具呼叫都適用同樣的規則。"
+      },
+      "agentdataAnalystRole": {
+        "title": "現在以 BI 分析師身份",
+        "description": "下一步將頁首切換為 BI 分析師。智能體相同,角色不同。"
+      },
+      "agentdataAnalystAsks": {
+        "title": "同一問題,不同角色",
+        "description": "以分析師身份問同一問題:返回所有區域,完全沒有電郵欄,收入視圖也在其表中。同一個智能體、同一部伺服器,得到不同的表、行和欄。"
+      },
+      "agentdataConnect": {
+        "title": "你自己的智能體,同一部伺服器",
+        "description": "這就是瀏覽器中的智能體使用的伺服器。把這段設定貼到 Claude Desktop,或將任何 MCP 客戶端指向該 URL,你自己的智能體就能獲得同樣受管治的工具,遵守同樣的規則。"
       }
     },
     "status": {
@@ -1843,6 +1915,14 @@
       "banking": {
         "title": "不複製總賬的日終報表",
         "summary": "一間銀行的日終總數，在每次日終時直接由從不複製到數據倉庫的總賬產生，可按當時呈報的樣子和之後更正的樣子讀取，透過 GraphQL、SQL 和智能代理都得到相同的答案。"
+      },
+      "groupexposure": {
+        "title": "透過 Wikidata 計算集團風險承擔",
+        "summary": "銀行對哪些企業集團超出了大額風險承擔限額？銀行的貸款賬簿按每個借款人擁有者的 LEI 透過 SPARQL 連接到 Wikidata 的母公司鏈，把每個借款人歸入其集團。銀行及其借款人是虛構的，集團是真實的。"
+      },
+      "agentdata": {
+        "title": "把數據交給智能體",
+        "summary": "能否把零售商的訂單數據交給 AI 智能體,並將其限制在用戶有權查看的範圍內?MCP 瀏覽器分別以客服和分析師身份展示智能體:不同的行和欄、遮罩的電郵,以及每個答案背後受管治的 SQL。"
       }
     }
   }

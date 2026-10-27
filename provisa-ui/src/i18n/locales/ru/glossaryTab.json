@@ -160,6 +160,7 @@
     "moveOneUnnamed": "Перенести {{column}}?",
     "moveManyUnnamed_one": "Перенести {{count}} столбец?",
     "moveManyUnnamed_other": "Перенести {{count}} столбцов?",
-    "moveCarryUnnamed": "Перенести и отметить их новые термины тегами {{tags}}"
+    "moveCarryUnnamed": "Перенести и отметить их новые термины тегами {{tags}}",
+    "termGraphTitle": "Граф терминов"
   }
 }

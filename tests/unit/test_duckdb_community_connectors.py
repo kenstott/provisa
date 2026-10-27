@@ -156,8 +156,38 @@ def test_mssql_attach_uses_tds_dsn():
 
 def test_snowflake_attach_is_read_only_via_secret():
     d = DuckDBSnowflakeConnector().details(_src("sf", SourceType.snowflake))
-    assert d["secret"] == "sf_sf"
     assert "TYPE snowflake" in d["attach"] and "READ_ONLY" in d["attach"]
+
+
+def test_snowflake_attach_creates_the_secret_it_names():
+    """The attach names a SECRET, so it creates it first, from the source: the account (the
+    Account URL's host, without the snowflakecomputing.com domain), user, password and database,
+    and the warehouse and role its federation hints carry. Without it every attach failed
+    ("Snowflake profile not found: sf_<source>") and no Snowflake table was queryable."""
+    d = DuckDBSnowflakeConnector().details(
+        _src(
+            "sf",
+            SourceType.snowflake,
+            host="xy12345.us-east-1.snowflakecomputing.com",
+            database="SALES",
+            username="reader",
+            password="it's secret",
+            federation_hints={"warehouse": "COMPUTE_WH", "role": "ANALYST"},
+        )
+    )
+    create, attach = (s.strip() for s in d["attach"].split(";"))
+    assert create == (
+        "CREATE OR REPLACE SECRET \"sf_sf\" (TYPE snowflake, ACCOUNT 'xy12345.us-east-1', "
+        "USER 'reader', PASSWORD 'it''s secret', DATABASE 'SALES', WAREHOUSE 'COMPUTE_WH', "
+        "ROLE 'ANALYST')"
+    )
+    assert attach == 'ATTACH \'\' AS "_src_sf" (TYPE snowflake, SECRET "sf_sf", READ_ONLY)'
+
+
+def test_snowflake_secret_names_no_warehouse_or_role_the_source_has_none_of():
+    d = DuckDBSnowflakeConnector().details(_src("sf", SourceType.snowflake, host="acct"))
+    assert "ACCOUNT 'acct'" in d["attach"]
+    assert "WAREHOUSE" not in d["attach"] and "ROLE" not in d["attach"]
 
 
 def test_bigquery_attach_reads_project_from_federation_hints():

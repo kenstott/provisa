@@ -157,10 +157,14 @@ def _recorded(value):
     return value
 
 
-def usable_commands(state, role_id: str, *, webhooks: bool = True) -> dict[str, dict]:
-    """The commands ``role_id`` may call, by name: assigned to it and in a domain it reaches. A
-    surface that recognizes a command by its name in the statement (SQL) recognizes only these,
-    so a command the role may not use reads exactly like a name that was never registered."""
+def usable_commands(
+    state, role_id: str, *, webhooks: bool = True, language: str = "sql"
+) -> dict[str, dict]:
+    """The commands ``role_id`` may call, by their command binding in ``language`` (REQ-2168):
+    assigned to it, in a domain it reaches, and offered in the language. A surface that
+    recognizes a command by its name in the statement (SQL, Cypher) recognizes only these, so a
+    command the role may not use reads exactly like a name that was never registered."""
+    from provisa.core.command_bindings import bound
     from provisa.security.mutation_authz import command_reachable
 
     role = (getattr(state, "roles", None) or {}).get(role_id)
@@ -169,15 +173,36 @@ def usable_commands(state, role_id: str, *, webhooks: bool = True) -> dict[str, 
     pools = [getattr(state, "tracked_functions", None) or {}]
     if webhooks:
         pools.append(getattr(state, "tracked_webhooks", None) or {})
-    return {
-        name: command
-        for pool in pools
-        for name, command in pool.items()
-        if command_reachable(command, role)
-    }
+    return bound(
+        (
+            command
+            for pool in pools
+            for command in pool.values()
+            if command_reachable(command, role)
+        ),
+        language,
+    )
 
 
-def list_visible_commands(state, role_id: str | None) -> list[dict]:
+def command_named(state, role_id: str | None, language: str, name: str) -> str:
+    """The command ``name`` calls in ``language`` -- its registered name -- or the unknown-command
+    answer when no command is bound to it there. Whether the role may call it is the one command
+    admission's (``invoke_tracked_function``), which answers a command it may not use the same."""
+    from provisa.core.command_bindings import bound
+
+    if role_id is None:
+        raise unknown_command(name)
+    pools = [
+        *(getattr(state, "tracked_functions", None) or {}).values(),
+        *(getattr(state, "tracked_webhooks", None) or {}).values(),
+    ]
+    command = bound(pools, language).get(name)
+    if command is None:
+        raise unknown_command(name)
+    return command["name"]
+
+
+def list_visible_commands(state, role_id: str | None, language: str) -> list[dict]:
     """Every registered command visible to ``role_id``, as ordered metadata dicts (REQ-1156).
 
     The one discovery path every surface (MCP, Arrow Flight, gRPC, Cypher/Bolt) projects, so a
@@ -192,6 +217,8 @@ def list_visible_commands(state, role_id: str | None) -> list[dict]:
     Flight table catalog; a concrete role filters by ``visible_to`` (empty ``visible_to`` = every
     role), matching the REST/OpenAPI surface.
     """
+    from provisa.core.command_bindings import binding_name
+
     out: list[dict] = []
     seen: set[str] = set()
     # Functions AND webhooks are both governed commands (REQ-872): a webhook is a scalar-argument
@@ -207,16 +234,27 @@ def list_visible_commands(state, role_id: str | None) -> list[dict]:
         if role_id is not None and not command_reachable(fn, require_role(state.roles, role_id)):
             continue
         seen.add(name)
+        # REQ-2168: listed by its command binding in the surface's language; one excluded from
+        # the language is not listed there.
+        called = binding_name(fn, language)
+        if called is None:
+            continue
         out.append(
             {
-                "name": name,
+                "name": called,
+                "command": name,
                 "domain": fn.get("domain_id", "") or "",
                 "kind": fn.get("kind", "mutation"),
                 "set_returning": bool(
                     fn.get("return_schema") or fn.get("returns") or fn.get("inline_return_type")
                 ),
                 "arguments": [
-                    {"name": a.get("name"), "type": a.get("type", "String")}
+                    {
+                        "name": a.get("name"),
+                        "type": a.get("type", "String"),
+                        # REQ-2168: an argument that declares a default may be left out.
+                        **({"default": a["default"]} if "default" in a else {}),
+                    }
                     for a in (fn.get("arguments") or [])
                     if a.get("name")
                 ],
@@ -237,7 +275,14 @@ def _admitted(name: str, state, role_id: str | None) -> dict:
 
 
 def _signature(name: str, declared: list[dict]) -> str:
-    args = ", ".join(f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in declared)
+    import json
+
+    args = ", ".join(
+        f"{a['name']}"
+        + (f" = {json.dumps(a['default'], default=str)}" if "default" in a else "")
+        + f" :: {str(a.get('type', 'String')).upper()}"
+        for a in declared
+    )
     return f"{name}({args})"
 
 
@@ -258,7 +303,9 @@ def bind_named_args(name: str, given: dict, state, role_id: str | None) -> dict:
             signature=signature,
             argument=unknown[0],
         )
-    missing = [n for n in names if n not in given]
+    # REQ-2168: an argument left out takes its default; one that declares none is required.
+    optional = {a["name"] for a in declared if "default" in a}
+    missing = [n for n in names if n not in given and n not in optional]
     if missing:
         raise ApiError(
             400,
@@ -267,7 +314,11 @@ def bind_named_args(name: str, given: dict, state, role_id: str | None) -> dict:
             signature=signature,
             argument=missing[0],
         )
-    return {n: given[n] for n in names}
+    return {n: given[n] if n in given else _default_of(declared, n) for n in names}
+
+
+def _default_of(declared: list[dict], name: str):
+    return next(a["default"] for a in declared if a["name"] == name)
 
 
 def bind_command_args(name: str, values: list, state, role_id: str | None) -> dict:
@@ -277,16 +328,25 @@ def bind_command_args(name: str, values: list, state, role_id: str | None) -> di
     refused, naming the command and the signature."""
     command = _admitted(name, state, role_id)
     declared = [a for a in command.get("arguments") or [] if a.get("name")]
-    if len(values) != len(declared):
+    # REQ-2168: the trailing arguments that declare a default may be left out.
+    required = len(declared)
+    while required and "default" in declared[required - 1]:
+        required -= 1
+    if not required <= len(values) <= len(declared):
+        takes = (
+            f"{len(declared)}" if required == len(declared) else f"{required} to {len(declared)}"
+        )
         raise ApiError(
             400,
             "functions.argument_count",
-            f"{_signature(name, declared)} takes {len(declared)} argument(s); {len(values)} given",
+            f"{_signature(name, declared)} takes {takes} argument(s); {len(values)} given",
             signature=_signature(name, declared),
             count=len(declared),
             given=len(values),
         )
-    return {a["name"]: v for a, v in zip(declared, values, strict=True)}
+    return {
+        a["name"]: values[i] if i < len(values) else a["default"] for i, a in enumerate(declared)
+    }
 
 
 async def invoke_tracked_function(name: str, args: dict, state, role_id: str | None) -> list[dict]:
@@ -311,6 +371,7 @@ async def invoke_command(
     if fn:
         role = admit_command(fn, state, role_id, name)
         assert role_id is not None
+        args = _with_defaults(fn, args)  # REQ-2168: an omitted argument takes its default
         if fn.get("requires_approval"):
             await _require_approval(fn, args, state, role_id, role)
         if fn.get("impl_kind") == "statement":
@@ -326,14 +387,26 @@ async def invoke_command(
     # A webhook is a governed command too (REQ-872): every surface routes here, so a webhook is
     # invocable beyond GraphQL. Kept a distinct path because a webhook is a scalar-argument HTTP
     # POST — the function dispatcher rejects scalar-only external calls (they can't batch).
-    if name in (getattr(state, "tracked_webhooks", None) or {}):
-        return await _invoke_webhook(name, args, state, role_id)
+    webhook = (getattr(state, "tracked_webhooks", None) or {}).get(name)
+    if webhook is not None:
+        return await _invoke_webhook(name, _with_defaults(webhook, args), state, role_id)
     reason = state.undefined_commands.get(name)
     if reason is not None:
         # REQ-1942: a command of a source bound to a synthetic store is not defined in a Test (synthetic)
         # environment; the call is refused saying why, on every surface.
         raise ApiError(409, "functions.not_defined_synthetic", reason, name=name)
     raise unknown_command(name)
+
+
+def _with_defaults(command: dict, args: dict) -> dict:
+    """``args`` by name, an omitted argument taking its default (REQ-2168); one a call cannot
+    bind is refused naming it."""
+    from provisa.core.argument_defaults import ArgumentDefaultRefused, with_defaults
+
+    try:
+        return with_defaults(command, args)
+    except ArgumentDefaultRefused as exc:
+        raise ApiError(400, "functions.argument_refused", str(exc), reason=str(exc)) from exc
 
 
 def _webhook_body(wh: dict, args: dict) -> dict:

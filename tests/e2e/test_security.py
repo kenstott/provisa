@@ -40,6 +40,14 @@ async def client():
             yield c
 
 
+def _refused_by_validation(resp) -> None:
+    """A field the role's schema does not have: the document does not validate, answered with its
+    errors and no data -- 200 under application/json (REQ-2167, GraphQL over HTTP)."""
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["errors"] and "data" not in body, body
+
+
 class TestColumnVisibility:
     async def test_admin_sees_amount(self, client):
         resp = await client.post(
@@ -57,17 +65,17 @@ class TestColumnVisibility:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__orders { id amount } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         # amount is not in analyst's schema — GraphQL validation rejects it
-        assert resp.status_code == 400
+        _refused_by_validation(resp)
 
     async def test_analyst_sees_visible_fields_on_customers(self, client):
         """Analyst can query customers with visible columns (no RLS on customers)."""
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__customers { id name } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__customers"]
@@ -80,9 +88,10 @@ class TestColumnVisibility:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__orders { id product_id } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
-        assert resp.status_code == 400  # product_id not in analyst schema
+        # product_id not in analyst schema
+        _refused_by_validation(resp)
 
 
 _SESSION_REGION = {"x-provisa-session-user_region": "us-east"}
@@ -133,7 +142,7 @@ class TestRLSEnforcement:
         default — never the unfiltered table."""
         read = _READS[transport]
         assert len(await read(client, "org_admin")) >= 25
-        assert await read(client, "analyst") == []
+        assert await read(client, "sales_analytics_analyst") == []
 
     @pytest.mark.parametrize("transport", sorted(_READS))
     async def test_analyst_sees_exactly_the_orders_of_the_bound_region(self, client, transport):
@@ -142,7 +151,7 @@ class TestRLSEnforcement:
         expected = sorted(r["id"] for r in everything if r["region"] == "us-east")
         assert expected and len(expected) < len(everything)  # the filter has something to remove
 
-        rows = await read(client, "analyst", _SESSION_REGION)
+        rows = await read(client, "sales_analytics_analyst", _SESSION_REGION)
         assert sorted(r["id"] for r in rows) == expected
         assert {r["region"] for r in rows} == {"us-east"}
 
@@ -151,21 +160,25 @@ class TestRLSEnforcement:
         """The same read with no region bound, right after one that bound it, is empty again:
         neither a kept plan nor a cached result carries one request's rows to the next."""
         read = _READS[transport]
-        assert await read(client, "analyst", _SESSION_REGION) != []
-        assert await read(client, "analyst") == []
+        assert await read(client, "sales_analytics_analyst", _SESSION_REGION) != []
+        assert await read(client, "sales_analytics_analyst") == []
 
     async def test_the_governed_sql_carries_the_analysts_filter(self, client):
         resp = await client.post(
             "/data/compile",
             json={"query": "{ sa__orders { id region } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         assert resp.status_code == 200, resp.text
         compiled = resp.json()["compiled"][0]
         assert compiled["enforcement"]["rls_filters_applied"] == [
             "region = current_setting('provisa.user_region')"
         ]
-        assert "WHERE" in compiled["sql"] and "provisa.user_region" in compiled["sql"]
+        # REQ-1120/REQ-1682: the session predicate is resolved on every route, so the SQL is what
+        # runs: with no region bound, the documented deny-by-default.
+        assert 'WHERE ("orders"."region" = CAST(NULL AS VARCHAR))' in compiled["sql"], compiled[
+            "sql"
+        ]
 
     async def test_admin_no_rls(self, client):
         """Admin has no RLS rules — should see all data."""
@@ -184,7 +197,7 @@ class TestDomainAccess:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ product_catalog__products { id name } }"},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         # products is in product-catalog domain — not in analyst's schema
-        assert resp.status_code == 400
+        _refused_by_validation(resp)

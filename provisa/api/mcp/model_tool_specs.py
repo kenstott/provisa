@@ -139,7 +139,8 @@ SPECS: list[dict] = [
             "One profile run's results, as YOUR role may see them (masked columns stay "
             "masked). run_id defaults to the latest succeeded run; refused when there is none. "
             "kinds picks result kinds; left out it returns runs, columns, top_values, "
-            "plausible_type, constraints, constraint_checks and drift. Other kinds: quantiles, "
+            "plausible_type, constraints, constraint_checks, classifications and drift. Other "
+            "kinds: quantiles, "
             "histogram, fits, fit_quality, fanout, fanout_runs, shapes, duplicates, correlations, "
             "dependencies, joint_counts, repeats. Read only. " + _RIGHT_TABLE
         ),

@@ -118,7 +118,6 @@ async def test_governance_does_not_starve_concurrent_request(monkeypatch):
         return (
             exec_sql,
             RouteDecision(route=Route.DIRECT, source_id=SOURCE_ID, dialect=None, reason="test"),
-            SOURCE_ID,
             False,
             {SOURCE_ID},
             (),

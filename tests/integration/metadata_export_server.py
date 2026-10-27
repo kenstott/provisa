@@ -36,6 +36,9 @@ from typing import Any
 import httpx
 import yaml
 
+from provisa.core.db import SEEDED_ROLE_IDS, STANDARD_ROLES
+from provisa.security.rights import ORG_ADMIN_ROLE
+
 SCHEMA = "mdx_e2e"
 SOURCE = "mdx-wh"
 DOMAIN = "sales"
@@ -50,19 +53,45 @@ PRODUCT_FIELDS = {
     "limitations": "Orders before 2020 are not loaded",
     "usage": "Join orders to customers on customer_id",
     "version": "1.2.0",
-    "status": "active",
-    "sla": "Refreshed hourly",
+    "status": "live",
     "support": "Ask in the data team's channel",
     "support_contact": "data-team@example.com",
     "custom_properties": {"cost_center": "CC-42"},
 }
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
+# REQ-2158: the orders member's output port, declared as its contract: what it promises, at its
+# own version and status, with the terms the product's prose once held.
+ORDERS_CONTRACT = {
+    "version": "1.2.0",
+    "status": "active",
+    "description": PRODUCT_FIELDS["purpose"],
+    "terms": {"usage": PRODUCT_FIELDS["usage"], "limitations": PRODUCT_FIELDS["limitations"]},
+    "columns": [
+        {"name": "id", "type": "integer"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "amount", "type": "numeric"},
+        {"name": "region", "type": "text"},
+        {"name": "ssn", "type": "text"},
+        {"name": "margin", "type": "numeric"},
+    ],
+}
 RLS_FILTER = "region = 'eu'"
 ORDERS_AMOUNT_DESCRIPTION = "Order total in cents"
 MEMBER_TTL = 3600
 GLOSSARY_TERM = "customer"
 GLOSSARY_DEFINITION = "A person or company that has placed at least one order."
+# REQ-2141/REQ-1389: a Class term grounded in the orders table. Beside it, GLOSSARY_TERM is the
+# Property orders.customer_id derives; customers has no Class, so its key customers.id grounds
+# that Property too. Each catalog receives three assignments: orders, and the two columns.
+CLASS_TERM = "order"
+CLASS_DEFINITION = "A customer's request to buy, placed once."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.
+# The roles a catalog's governance tags name: the model's, and every standard role (REQ-2155) that
+# reaches a domain -- org_admin among them, platform_admin (which reaches none) not. A column read
+# by the model's roles alone is visibility-restricted for the standard ones.
+MODEL_ROLES = ["analyst", "data_owner", "admin"]
+AUDIENCE = sorted({*MODEL_ROLES, *(r for r in SEEDED_ROLE_IDS if STANDARD_ROLES[r].domain_access)})
+
 VIEW = "order_totals"
 VIEW_SQL = f'SELECT o.id AS id, o.amount * 2 AS net FROM "{DOMAIN}"."orders" o'
 
@@ -107,6 +136,7 @@ def model_config(
     product: str = PRODUCT,
     domain: str = DOMAIN,
     product_name: str = PRODUCT_FIELDS["name"],
+    status: str = PRODUCT_FIELDS["status"],
 ) -> dict[str, Any]:
     """The server's configuration: the governed model every target is published from. A target
     that shares the members' physical objects (Snowflake Horizon, Dataplex) takes the product
@@ -114,11 +144,13 @@ def model_config(
     ``product`` is the data product's id: a test publishing into a shared cloud account names it
     for the run (provisa_e2e_*). ``domain`` is the members' domain: a catalog that files a product
     under a domain of its own name (Purview) is given the one that exists there. ``product_name``
-    is its name: a catalog read back by name is given the run's own."""
-    roles = ["analyst", "data_owner", "admin"]
-    # The org's own admin reads every member as well: the tests read as org_admin, the role the
+    is its name: a catalog read back by name is given the run's own. ``status`` is its lifecycle
+    status (REQ-1634): live by default, so a catalog lists it as published (Purview); a draft keeps
+    a listing in a shared account unpublished (Snowflake Horizon's organization listing)."""
+    roles = MODEL_ROLES
+    # Every role, the org's own admin among them: the tests read as org_admin, the role the
     # server's default assignment gives.
-    everyone = [*roles, "org_admin"]
+    everyone = AUDIENCE
     config = {
         "federation_engine": engine,
         "auth": {
@@ -145,12 +177,20 @@ def model_config(
                 "password": "${env:PG_PASSWORD}",
             }
         ],
+        # REQ-2155: a standard role (analyst) is every org's already; a config declares only its own.
         "roles": [
             {"id": r, "description": f"{r} role.", "capabilities": [], "domain_access": ["*"]}
             for r in roles
+            if r not in SEEDED_ROLE_IDS
         ],
         "data_products": [
-            {**PRODUCT_FIELDS, "id": product, "domain_id": domain, "name": product_name}
+            {
+                **PRODUCT_FIELDS,
+                "id": product,
+                "domain_id": domain,
+                "name": product_name,
+                "status": status,
+            }
         ],
         "tables": [
             {
@@ -179,12 +219,19 @@ def model_config(
                 "schema_name": SCHEMA,
                 "table_name": "orders",
                 "description": "Orders placed",
+                "class_term": CLASS_TERM,
+                "contract": ORDERS_CONTRACT,
                 # REQ-1907: a member the engine lands (Snowflake, BigQuery) is re-read on its own
                 # cache_ttl; it is also the member's freshness in its contract.
                 "cache_ttl": MEMBER_TTL,
                 "product_id": product,
                 "columns": [
-                    {"name": "id", "data_type": "integer", "visible_to": everyone},
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "visible_to": everyone,
+                        "is_primary_key": True,
+                    },
                     {"name": "customer_id", "data_type": "integer", "visible_to": everyone},
                     {
                         "name": "amount",
@@ -196,13 +243,14 @@ def model_config(
                     {
                         "name": "ssn",
                         "data_type": "text",
-                        # The masked column's audience is the model's roles: masked for all but
-                        # admin, as the catalogs' restricted and exempt roles show it.
-                        "visible_to": roles,
+                        # The masked column's audience is the org's roles: masked for all but
+                        # admin, as the catalogs' restricted and exempt roles show it. The org's
+                        # admin reads it too, so a catalog published as it receives the column
+                        # (REQ-2152).
+                        "visible_to": everyone,
                         "masks": [
                             {"to": ["admin"], "mask": None},
                             {
-                                "to": ["*"],
                                 "mask": {
                                     "type": "regex",
                                     "pattern": MASK_PATTERN,
@@ -211,7 +259,13 @@ def model_config(
                             },
                         ],
                     },
-                    {"name": "margin", "data_type": "numeric", "visible_to": ["admin"]},
+                    # Restricted: the seeded roles do not read it. The org's admin does, so a
+                    # catalog published as it receives the column (REQ-2152).
+                    {
+                        "name": "margin",
+                        "data_type": "numeric",
+                        "visible_to": ["admin", ORG_ADMIN_ROLE],
+                    },
                 ],
             },
             {
@@ -229,7 +283,8 @@ def model_config(
             },
         ],
         "glossary_terms": [
-            {"name": GLOSSARY_TERM, "definition": GLOSSARY_DEFINITION, "domains": [domain]}
+            {"name": GLOSSARY_TERM, "definition": GLOSSARY_DEFINITION, "domains": [domain]},
+            {"name": CLASS_TERM, "definition": CLASS_DEFINITION, "domains": [domain]},
         ],
         "relationships": [
             {
@@ -272,6 +327,7 @@ async def published_server(
     product: str = PRODUCT,
     domain: str = DOMAIN,
     product_name: str = PRODUCT_FIELDS["name"],
+    status: str = PRODUCT_FIELDS["status"],
 ) -> AsyncGenerator[httpx.AsyncClient]:
     """A started Provisa server for ``org_id`` with the model above, as an HTTP client."""
     from tests.integration.isolated_server import IsolatedServer, drop_org_schema
@@ -287,6 +343,7 @@ async def published_server(
                     product=product,
                     domain=domain,
                     product_name=product_name,
+                    status=status,
                 ),
                 sort_keys=False,
             )
@@ -302,14 +359,49 @@ async def published_server(
             await drop_org_schema(org_id)
 
 
+# A target's settings that are the export's own; the rest are its catalog's (REQ-2122).
+EXPORT_SETTINGS = ("datazone_project_id", "delta_share", "role")
+#: The role each catalog is published as (REQ-2152): what it is sent is what that role reads. The
+#: org's admin reads every column of the model, so every catalog receives all of it.
+PUBLISH_ROLE = ORG_ADMIN_ROLE
+
+
+async def org_domains(client: httpx.AsyncClient) -> list[str]:
+    """Every domain of the org, as the admin API lists them."""
+    answer = await client.post("/admin/graphql", json={"query": "{ domains { id } }"})
+    assert answer.status_code == 200, answer.text
+    return [d["id"] for d in answer.json()["data"]["domains"]]
+
+
+async def save_targets(client: httpx.AsyncClient, targets: list[dict[str, Any]]) -> None:
+    """Connect each target's catalog for every domain of the org in the Catalogs panel, and export
+    to each, both as an admin does (REQ-2122). Each target is named by its ``id``."""
+    cleared = await client.put("/admin/metadata-export", json={"enabled": False, "targets": []})
+    assert cleared.status_code == 200, cleared.text
+    domains = await org_domains(client)
+    catalogs = [
+        {**{k: v for k, v in t.items() if k not in EXPORT_SETTINGS}, "domains": domains}
+        for t in targets
+    ]
+    connected = await client.put("/admin/catalogs", json={"catalogs": catalogs})
+    assert connected.status_code == 200, connected.text
+    exports = [
+        {"catalog": t["id"], "role": PUBLISH_ROLE, **{k: t[k] for k in EXPORT_SETTINGS if k in t}}
+        for t in targets
+    ]
+    saved = await client.put("/admin/metadata-export", json={"enabled": True, "targets": exports})
+    assert saved.status_code == 200, saved.text
+
+
+def refused(outcome: dict[str, Any]) -> str:
+    """A publish outcome's errors, each in full: a non-string assertion message is shortened."""
+    return "\n".join(f"{e['asset']}: {e['message']}" for e in outcome["errors"])
+
+
 async def publish(client: httpx.AsyncClient, target: dict[str, Any]) -> dict[str, Any]:
     """Save ``target`` as the org's one export target and publish now, both as an admin does;
     what the publish reports for that target. The target is named after its provider."""
-    saved = await client.put(
-        "/admin/metadata-export",
-        json={"enabled": True, "targets": [{"id": target["provider"], **target}]},
-    )
-    assert saved.status_code == 200, saved.text
+    await save_targets(client, [{"id": target["provider"], **target}])
     published = await client.post("/admin/metadata-export/publish")
     assert published.status_code == 200, published.text
     (outcome,) = published.json()["targets"]

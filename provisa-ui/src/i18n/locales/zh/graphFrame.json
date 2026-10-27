@@ -4,6 +4,10 @@
     "running": "运行中…",
     "metaCount": "{{nodes}} 个节点 · {{edges}} 条关系",
     "metaCountElapsed": "{{nodes}} 个节点 · {{edges}} 条关系 · {{elapsed}}ms",
+    "metaRows_one": "{{count}}行",
+    "metaRows_other": "{{count}}行",
+    "metaRowsElapsed_one": "{{count}}行 · {{elapsed}}ms",
+    "metaRowsElapsed_other": "{{count}}行 · {{elapsed}}ms",
     "error": "错误",
     "expand": "展开",
     "exitFullScreen": "退出全屏",
@@ -33,6 +37,7 @@
     "showPropertiesPanel": "显示属性面板",
     "copyErrorTitle": "复制错误",
     "expandedDialogLabel": "展开的图视图",
-    "firstNodesShown": "显示前 {{count}} 个节点；还有更多。请在侧边菜单中提高上限。"
+    "firstNodesShown": "显示前 {{count}} 个节点；还有更多。请在侧边菜单中提高上限。",
+    "deleteFrame": "删除此结果"
   }
 }

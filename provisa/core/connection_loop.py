@@ -44,7 +44,6 @@ asyncio machinery itself:
 from __future__ import annotations
 
 import asyncio
-import collections
 import concurrent.futures
 import contextvars
 import logging
@@ -92,6 +91,13 @@ class _InlineExecutor(concurrent.futures.ThreadPoolExecutor):
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
         del wait, cancel_futures  # nothing runs asynchronously, so there is nothing to wait for
+
+
+def live_loops() -> list[asyncio.AbstractEventLoop]:
+    """The process loop and every live connection loop (a leak probe counts their tasks)."""
+    with _REGISTRY_LOCK:
+        loops = list(_LIVE)
+    return ([_process_loop] if _process_loop is not None else []) + loops
 
 
 def is_connection_loop(loop: asyncio.AbstractEventLoop) -> bool:
@@ -332,70 +338,60 @@ def run_on_own_thread(
 # --------------------------------------------------------------------------------------------- #
 
 
+def _wake(fut: "asyncio.Future[None]") -> None:
+    """Wake a CrossLoopLock waiter, unless its wait already ended (cancelled)."""
+    if not fut.done():
+        fut.set_result(None)
+
+
 class CrossLoopLock:
-    """A FIFO async lock whose holder and waiters may be on different event loops and threads.
+    """An async lock whose holder and waiters may be on different event loops and threads.
 
     ``asyncio.Lock`` binds to one loop on first contention and is not thread-safe, so a
     process-global one breaks the moment two connection loops contend for it. Here a thread lock
-    guards the state, each waiter waits on a future of its OWN loop, and release hands the lock
-    straight to the next waiter via ``call_soon_threadsafe`` on that waiter's loop."""
+    guards the state and each waiter waits on a future of its OWN loop. Release frees the lock and
+    wakes every waiter (``call_soon_threadsafe`` on its loop); each woken waiter takes the lock if
+    it is still free and waits again if not. The lock is never held for a waiter that cannot take
+    it: a connection loop runs only while it serves a request, and a lock handed to a waiter
+    whose loop was not running stayed held until that loop next ran -- every other acquirer
+    waited behind it (a demo template's build, for minutes)."""
 
     def __init__(self) -> None:
         self._mutex = threading.Lock()
         self._held = False
-        self._waiters: collections.deque[tuple[asyncio.AbstractEventLoop, asyncio.Future[None]]] = (
-            collections.deque()
-        )
+        self._waiters: list[tuple[asyncio.AbstractEventLoop, asyncio.Future[None]]] = []
 
     def locked(self) -> bool:
         return self._held
 
     async def acquire(self) -> bool:
         loop = asyncio.get_running_loop()
-        with self._mutex:
-            if not self._held and not self._waiters:
-                self._held = True
-                return True
-            fut: asyncio.Future[None] = loop.create_future()
-            self._waiters.append((loop, fut))
-        try:
-            await fut
-        except asyncio.CancelledError:
+        while True:
             with self._mutex:
-                granted = fut.done() and not fut.cancelled()
-                if not granted and (loop, fut) in self._waiters:
-                    self._waiters.remove((loop, fut))
-                # Otherwise the waiter was already chosen: _grant sees the cancelled future
-                # and passes the lock on.
-            if granted:
-                self.release()
-            raise
-        return True
+                if not self._held:
+                    self._held = True
+                    return True
+                fut: asyncio.Future[None] = loop.create_future()
+                self._waiters.append((loop, fut))
+            try:
+                await fut
+            except asyncio.CancelledError:
+                with self._mutex:
+                    if (loop, fut) in self._waiters:
+                        self._waiters.remove((loop, fut))
+                raise
 
     def release(self) -> None:
         with self._mutex:
             if not self._held:
                 raise RuntimeError("CrossLoopLock.release() on an unlocked lock")
-            self._hand_off_locked()
-
-    def _hand_off_locked(self) -> None:
-        while self._waiters:
-            loop, fut = self._waiters.popleft()
+            self._held = False
+            woken, self._waiters = self._waiters, []
+        for loop, fut in woken:
             try:
-                loop.call_soon_threadsafe(self._grant, fut)
+                loop.call_soon_threadsafe(_wake, fut)
             except RuntimeError:
-                # The waiter's loop closed while it waited: the waiter is gone with it, so the
-                # lock goes to the next one.
-                continue
-            return  # _held stays True: ownership passes directly to that waiter
-        self._held = False
-
-    def _grant(self, fut: asyncio.Future[None]) -> None:
-        if fut.cancelled():
-            with self._mutex:
-                self._hand_off_locked()
-            return
-        fut.set_result(None)
+                continue  # the waiter's loop closed while it waited: the waiter is gone with it
 
     async def __aenter__(self) -> "CrossLoopLock":
         await self.acquire()

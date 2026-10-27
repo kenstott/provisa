@@ -52,6 +52,7 @@ Portability (Tier-2: SQLite >=3.35, MySQL 8) is layered on via
 
 from __future__ import annotations
 
+import contextvars
 import io
 import json
 import logging
@@ -82,6 +83,31 @@ log = logging.getLogger(__name__)
 # (max+1)th borrower waits, never fails with "pool exhausted"); capped further by the request's
 # remaining budget when one is bound.
 _POOL_WAIT_S = 30.0
+
+# A caller that must answer fast bounds its checkouts' wait further (checkout_wait).
+_CHECKOUT_WAIT: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "provisa_checkout_wait", default=None
+)
+
+
+class PoolBusy(TimeoutError):
+    """No control-plane connection freed within the checkout's wait: every one is checked out.
+    Not a database that cannot be reached -- one that is busy (REQ-1900)."""
+
+
+@contextmanager
+def checkout_wait(seconds: float) -> Iterator[None]:
+    """Bound every control-plane checkout in the block to ``seconds`` of waiting for a free
+    connection: for a caller that answers fast and says why (the health probe)."""
+    token = _CHECKOUT_WAIT.set(seconds)
+    try:
+        yield
+    finally:
+        _CHECKOUT_WAIT.reset(token)
+
+
+def _checkout_wait() -> float | None:
+    return _CHECKOUT_WAIT.get()
 
 
 # --------------------------------------------------------------------------- #
@@ -394,6 +420,10 @@ def statement_cancel(sc: sa.Connection) -> Callable[[], None]:
 _NotifyCallback = Callable[[Any, int, str, str], None]
 
 
+#: How long closing waits for the LISTEN thread to end before it says so (``_PgListener.close``).
+_LISTENER_STOP_S = 10.0
+
+
 class _PgListener:
     """Delivers PostgreSQL NOTIFY payloads to registered callbacks.
 
@@ -414,6 +444,7 @@ class _PgListener:
         self._thread: threading.Thread | None = None
         self._wake_r, self._wake_w = os.pipe()
         self._stopping = False
+        self._closed = False
         self._conn: Any = None
 
     def _connect(self) -> Any:
@@ -506,14 +537,27 @@ class _PgListener:
                 self._dispatch()
 
     def close(self) -> None:
+        """Stop the listener thread, then close what it used: its connection and the wake pipe.
+        Closed under a thread still in ``select()`` or ``os.read()``, a descriptor number goes to
+        the next socket the process opens and the thread reads that socket's bytes -- so a thread
+        that has not ended within ``_LISTENER_STOP_S`` is named and nothing is closed; a later
+        call, once it has ended, closes them."""
+        if self._closed:
+            return
         self._stopping = True
         os.write(self._wake_w, b"x")
         if self._thread is not None:
-            self._thread.join(timeout=10)
+            self._thread.join(timeout=_LISTENER_STOP_S)
+            if self._thread.is_alive():
+                raise RuntimeError(
+                    f"LISTEN thread {self._thread.name} did not end within {_LISTENER_STOP_S:g}s; "
+                    "its connection and wake pipe are left open while it runs"
+                )
         if self._conn is not None:
             self._conn.close()
         os.close(self._wake_r)
         os.close(self._wake_w)
+        self._closed = True
 
 
 # --------------------------------------------------------------------------- #
@@ -547,6 +591,9 @@ class _PoolGate:
             return
         budget = request_deadline.remaining()
         wait = _POOL_WAIT_S if budget is None else min(_POOL_WAIT_S, budget)
+        bound = _checkout_wait()
+        if bound is not None:
+            wait = min(wait, bound)
         shield = request_deadline.shielded()
         held = False
         try:
@@ -557,7 +604,7 @@ class _PoolGate:
                 shield.settle()
                 held = self._lock.acquire(timeout=wait)
             if not held:
-                raise TimeoutError(f"no control-plane connection freed within {wait:.1f}s")
+                raise PoolBusy(f"no control-plane connection freed within {wait:.1f}s")
             yield
         finally:
             with shield.lock:
@@ -1036,6 +1083,15 @@ class Connection:
         return result
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
+    async def has_table(self, table: str, schema: str | None = None) -> bool:
+        """Whether ``schema.table`` is in this database's catalog, read through SQLAlchemy's
+        inspector in the backend's own dialect: absent is False; a catalog that cannot be read
+        raises. ``schema`` is ignored on a schema-less backend (SQLite), as elsewhere here."""
+        from sqlalchemy import inspect as _sa_inspect
+
+        eff_schema = schema if self.capabilities.schemas else None
+        return bool(_sa_inspect(self._sc).has_table(table, schema=eff_schema))
+
     async def execute_core(self, stmt: Any) -> Any:
         """Execute a SQLAlchemy Core statement (select/insert/update/delete)
         and return the CursorResult. Autocommits outside a transaction.
@@ -1515,9 +1571,12 @@ class Database:
     # Async only to keep the awaitable call-site contract; disposes the pool synchronously.
     async def close(self) -> None:
         with self._listener_lock:
-            listener, self._listener = self._listener, None
+            listener = self._listener
         if listener is not None:
+            # Raises naming a LISTEN thread that has not ended; kept, so the next close finishes it.
             listener.close()
+            with self._listener_lock:
+                self._listener = None
         self._engine.dispose()
 
 

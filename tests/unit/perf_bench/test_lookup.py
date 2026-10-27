@@ -63,6 +63,7 @@ def test_a_table_is_spelled_on_every_transport() -> None:
         "grpc": "order_id",
         "rest": "orderId",
         "jsonapi": "order_id",
+        "sparql": f"{fx.PUBLIC_URL}/vocab/perf-bench/orders#order_id",
     }
     assert names.columns["region"]["graphql"] == "region"
 
@@ -251,6 +252,8 @@ def _server(raw: lookup.RawLookup, seen: list[httpx.Request]) -> httpx.Client:
             return httpx.Response(200, json=raw.jsonapi_spec)
         if p == "/data/proto/org_admin":
             return httpx.Response(200, text=raw.proto)
+        if p == "/data/sparql/vocabulary":
+            return httpx.Response(200, json=raw.sparql_vocabulary)
         return httpx.Response(404)
 
     return httpx.Client(base_url="http://x", transport=httpx.MockTransport(handler))
@@ -267,6 +270,7 @@ def test_fetch_reads_each_endpoint_as_the_role() -> None:
         "/data/rest/openapi.json",
         "/data/jsonapi/openapi.json",
         "/data/proto/org_admin",
+        "/data/sparql/vocabulary",
     ]
     assert all(r.headers["x-provisa-role"] == "org_admin" for r in seen)
     assert json.loads(seen[0].content)["query"] == lookup.ADMIN_QUERY

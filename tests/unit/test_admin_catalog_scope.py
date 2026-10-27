@@ -8,21 +8,22 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The admin catalog reads answer by the caller's rights and reach (REQ-1958).
+"""The admin catalog reads answer by the caller's grants (REQ-1958, REQ-2152).
 
 ``tables``, ``relationships``, ``domains``, ``sources`` and ``metrics`` used to answer every
-signed-in caller with the whole registered catalog, grant lists included. A catalog
-administrator (``table_registration`` or a hiding right, REQ-1944) reads the catalog of the
-domains those roles reach; anyone else reads what the role the request acts as is served, from
-the one narrowing the Flight and MCP catalogs use; grant lists and mask settings need
-``view_governance`` (REQ-1134).
+signed-in caller with the whole registered catalog, grant lists included. Every caller reads what
+the role the request acts as is served, from the one narrowing the Flight and MCP catalogs use; a
+draft table, in no compiled context yet, by the same rule applied to its stored columns. No
+capability widens it (REQ-2152): ``table_registration`` or a hiding right (REQ-1944) opens the
+feature, never more of the catalog. Grant lists and mask settings need ``view_governance``
+(REQ-1134).
 
 The model: two domains. ``sales`` holds ``orders`` (id, region, margin) and ``customers`` (id,
 name), with orders.customer_id → customers.id; ``hr`` holds ``staff`` (id, salary), with
 orders.rep_id → staff.id. The analyst is served orders(id, region, customer_id) and customers.
 """
 
-# Requirements: REQ-1958, REQ-1134, REQ-1944, REQ-1337, REQ-1327
+# Requirements: REQ-1958, REQ-1134, REQ-1944, REQ-1337, REQ-1327, REQ-2152
 
 from __future__ import annotations
 
@@ -60,9 +61,14 @@ _ROLES = {
     },
     "platform": {"capabilities": ["cross_org"], "domain_access": ["*"]},
 }
+# (table id, column) → the grant of a draft table's stored column, set by the draft tests.
+_DRAFT_GRANTS: dict[tuple[int, str], list[str]] = {}
+
 _METRICS = [
+    # REQ-2153: '*' names no role -- a metric for everyone names the roles it is for.
     {"name": "everyone", "visible_to": ["*"]},
-    {"name": "analysts", "visible_to": ["analyst"]},
+    {"name": "both", "visible_to": ["analyst", "masker"]},
+    {"name": "analysts", "visible_to": ["analyst", "auditor"]},
     {"name": "maskers", "visible_to": ["masker"]},
 ]
 
@@ -105,6 +111,8 @@ _RELATIONSHIPS = [
 
 
 class _Conn:
+    _extra: list[dict] = []  # draft rows a test adds to registered_tables
+
     async def __aenter__(self):
         return self
 
@@ -113,6 +121,10 @@ class _Conn:
 
     async def execute_core(self, stmt):
         sql = str(stmt)
+        if "table_columns.scope" in sql:
+            # REQ-2153: the listed columns, outside the domains the query names as reached.
+            reached = [v for v in stmt.compile().params.values() if isinstance(v, list)]
+            return _Rows([r for r in _LISTED if not any(r["domain_id"] in d for d in reached)])
         if "FROM relationships" in sql:
             return _Rows(_RELATIONSHIPS)
         if "FROM sources" in sql:
@@ -128,7 +140,15 @@ class _Conn:
                     for d in ("hr", "marketing", "sales")
                 ]
             )
-        return _Rows(_TABLES)
+        return _Rows(
+            _TABLES + [{k: v for k, v in t.items() if k != "columns"} for t in self._extra]
+        )
+
+
+_LISTED = [
+    {"domain_id": "hr", "table_name": "staff", "column_name": "id"},
+    {"domain_id": "sales", "table_name": "orders", "column_name": "region"},
+]
 
 
 class _Pool:
@@ -146,7 +166,12 @@ def _model(monkeypatch):
         "masker": _context({3: ["id"]}),
         # "platform" has none: a control-plane role is given no data surface (REQ-1327).
     }
-    for name, value in (("roles", _ROLES), ("contexts", contexts)):
+    for name, value in (
+        ("roles", _ROLES),
+        ("contexts", contexts),
+        ("role_build_inputs", {"draft_tables": []}),
+        ("tables", _TABLES),  # what the last schema build compiled
+    ):
         monkeypatch.setattr(appmod.state, name, value, raising=False)
     monkeypatch.setattr("provisa.core.domain_policy.single_domain", lambda: False)
     monkeypatch.setattr(schema_query, "_get_pool", _pool)
@@ -166,10 +191,12 @@ def _model(monkeypatch):
             columns=[
                 types.SimpleNamespace(
                     column_name=c,
-                    visible_to=["analyst"],
+                    scope="domain",
+                    # A draft's columns carry their own grants (test_a_draft_*).
+                    visible_to=_DRAFT_GRANTS.get((row["id"], c), ["analyst"]),
                     masks=[
                         {"to": ["registrar"], "mask": None},
-                        {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                        {"mask": {"type": "constant", "value": "***"}},
                     ],
                 )
                 for c in _COLUMNS[row["id"]]
@@ -245,10 +272,12 @@ async def test_an_analyst_is_answered_the_tables_and_columns_its_role_is_served(
     }
 
 
-async def test_a_registrar_is_answered_the_whole_catalog_of_the_domains_it_reaches():
+async def test_a_catalog_right_never_widens_what_a_registrar_is_answered():
+    """REQ-2152: table_registration opens the feature; the registrar is answered what its role
+    is served, not the whole of the domains it administers."""
     assert await _tables(_caller("registrar")) == {
-        "orders": _COLUMNS[1],
-        "customers": _COLUMNS[2],
+        "orders": ["id", "region", "customer_id"],  # not margin, not rep_id
+        "customers": ["id", "name"],
     }
     assert await _tables(_caller("registrar_all")) == {
         "orders": _COLUMNS[1],
@@ -257,15 +286,80 @@ async def test_a_registrar_is_answered_the_whole_catalog_of_the_domains_it_reach
     }
 
 
-async def test_a_hiding_right_administers_only_the_domains_its_own_role_reaches():
-    """REQ-1944: masking_config in hr is not masking_config in sales, whatever else is held."""
-    assert await _tables(_caller("masker")) == {"staff": _COLUMNS[3]}
-    # Holding the analyst role too adds what the analyst is SERVED in sales — not all of sales.
+async def test_a_hiding_right_never_widens_what_is_answered():
+    """REQ-2152: masking_config in hr answers what the masker's role is served in hr (staff.id),
+    not staff.salary; acting as the analyst answers what the analyst is served."""
+    assert await _tables(_caller("masker")) == {"staff": ["id"]}
     assert await _tables(_caller("masker", "analyst", acting="analyst")) == {
         "orders": ["id", "region", "customer_id"],
         "customers": ["id", "name"],
-        "staff": _COLUMNS[3],
     }
+
+
+def _draft(columns: list[dict]) -> dict:
+    return {
+        "id": 4,
+        "domain_id": "sales",
+        "source_id": "pg",
+        "table_name": "leads",
+        "columns": columns,
+    }
+
+
+async def test_a_draft_is_answered_by_the_grant_on_its_stored_columns(monkeypatch):
+    """REQ-2152: a draft is in no compiled context; column_served decides it from its stored
+    columns, the rule the compile applies. A grant names its roles (REQ-2153)."""
+    draft = _draft(
+        [
+            {"column_name": "id", "visible_to": ["registrar", "auditor"], "scope": "domain"},
+            {"column_name": "score", "visible_to": ["auditor"], "scope": "domain"},
+        ]
+    )
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": [draft]})
+    monkeypatch.setattr(_Conn, "_extra", [draft], raising=False)
+    for column in draft["columns"]:
+        _DRAFT_GRANTS[(draft["id"], column["column_name"])] = column["visible_to"]
+    _COLUMNS[4] = ["id", "score"]
+    try:
+        assert (await _tables(_caller("registrar")))["leads"] == ["id"]
+        assert (await _tables(_caller("auditor")))["leads"] == ["id", "score"]
+        assert "leads" not in await _tables(_caller("masker"))  # hr only: sales out of reach
+    finally:
+        del _COLUMNS[4]
+        _DRAFT_GRANTS.clear()
+
+
+async def test_a_draft_whose_grants_exclude_the_registrants_role_is_not_answered(monkeypatch):
+    """REQ-2152: registration ends when the table is saved; a draft granted to another role only
+    is not listed to the registrar who saved it."""
+    draft = _draft([{"column_name": "id", "visible_to": ["auditor"], "scope": "domain"}])
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": [draft]})
+    monkeypatch.setattr(_Conn, "_extra", [draft], raising=False)
+    for column in draft["columns"]:
+        _DRAFT_GRANTS[(draft["id"], column["column_name"])] = column["visible_to"]
+    _COLUMNS[4] = ["id"]
+    try:
+        assert "leads" not in await _tables(_caller("registrar"))
+        assert (await _tables(_caller("auditor")))["leads"] == ["id"]
+    finally:
+        del _COLUMNS[4]
+        _DRAFT_GRANTS.clear()
+
+
+async def test_a_table_saved_since_the_last_build_is_answered_by_its_stored_columns(monkeypatch):
+    """REQ-2152: a table the last schema build did not compile -- saved since, not a draft -- is
+    answered from the moment it is saved, by the rule the compile will apply to it."""
+    fresh = {"id": 5, "domain_id": "sales", "source_id": "pg", "table_name": "fresh"}
+    monkeypatch.setattr(_Conn, "_extra", [fresh], raising=False)
+    _COLUMNS[5] = ["id", "score"]
+    _DRAFT_GRANTS.update({(5, "id"): ["registrar", "auditor"], (5, "score"): ["auditor"]})
+    try:
+        assert (await _tables(_caller("registrar")))["fresh"] == ["id"]
+        assert (await _tables(_caller("auditor")))["fresh"] == ["id", "score"]
+        assert "fresh" not in await _tables(_caller("masker"))  # hr only
+    finally:
+        del _COLUMNS[5]
+        _DRAFT_GRANTS.clear()
 
 
 async def test_a_control_plane_role_is_answered_no_data_catalog():
@@ -354,14 +448,31 @@ async def test_an_analyst_is_answered_the_relationships_among_what_it_is_served(
     ]
 
 
-async def test_a_registrar_is_answered_the_relationships_within_its_domains():
-    # It administers sales, so it sees rep_id — but staff (hr) is not in its catalog.
+async def test_a_registrar_is_answered_the_relationships_among_what_it_is_served():
+    # REQ-2152: administering sales does not serve rep_id, so orders → staff is not answered.
     assert await _relationship_ids(_caller("registrar")) == ["orders-customers", "orders-fn"]
     assert await _relationship_ids(_caller("registrar_all")) == [
         "orders-customers",
         "orders-staff",
         "orders-fn",
     ]
+
+
+async def test_a_has_table_row_is_answered_with_the_table_it_anchors(monkeypatch):
+    # A HAS_TABLE row anchors a table to its registered_tables row by the table's own id, a
+    # literal: no column of the table is served for it, so it is answered as its table is.
+    async def _synthetic(conn):  # noqa: ARG001
+        return [
+            types.SimpleNamespace(
+                **_relationship(f"meta:has_table:{t}", t, schema_query._HAS_TABLE_KEY, 2, "id")
+            )
+            for t in (1, 3)
+        ]
+
+    monkeypatch.setattr(schema_query, "_has_table_synthetic_relationships", _synthetic)
+    ids = await _relationship_ids(_caller("analyst"), everything=True)
+    # orders is served to the analyst; staff is not.
+    assert [i for i in ids if i.startswith("meta:has_table:")] == ["meta:has_table:1"]
 
 
 async def test_a_control_plane_role_is_answered_no_relationships():
@@ -399,13 +510,30 @@ async def test_a_metric_is_listed_by_its_own_visibility():
     async def _names(info):
         return [m.name for m in await Query().metrics(info)]
 
-    assert await _names(_caller("analyst")) == ["everyone", "analysts"]
-    assert await _names(_caller("masker")) == ["everyone", "maskers"]
-    assert await _names(_caller("platform")) == []  # no data surface: not "everyone" either
-    assert await _names(_caller("registrar_all")) == ["everyone", "analysts", "maskers"]
-    # Who a metric is granted to is a grant list.
+    assert await _names(_caller("analyst")) == ["both", "analysts"]
+    assert await _names(_caller("masker")) == ["both", "maskers"]
+    assert await _names(_caller("platform")) == []  # no data surface
+    # REQ-2152: table_registration does not widen it, and '*' names no role (REQ-2153).
+    assert await _names(_caller("registrar_all")) == []
+    # Who a metric is granted to is a grant list, read with view_governance.
     assert all(m.visible_to is None for m in await Query().metrics(_caller("analyst")))
-    assert (await Query().metrics(_caller("registrar_all")))[1].visible_to == ["analyst"]
+    assert (await Query().metrics(_caller("auditor")))[0].visible_to == ["analyst", "auditor"]
+
+
+# --- listed names (REQ-2153) ------------------------------------------------------------------------
+
+
+async def test_a_reader_outside_the_domain_is_answered_the_listed_names_and_nothing_more():
+    named = await Query().listed_names(_caller("analyst"))
+    assert [(n.domain_id, n.table_name, n.column_names) for n in named] == [
+        ("hr", "staff", ["id"])  # not sales.orders.region: the analyst reaches sales
+    ]
+    # names only: the listed table is not otherwise described to it.
+    assert "staff" not in await _tables(_caller("analyst"))
+
+
+async def test_a_reader_reaching_every_domain_has_no_listed_name_outside_its_reach():
+    assert await Query().listed_names(_caller("registrar_all")) == []
 
 
 # --- the rule itself ------------------------------------------------------------------------------
@@ -423,8 +551,67 @@ def test_the_scope_is_decided_by_rights_and_reach_never_by_a_role_id(monkeypatch
         raising=False,
     )
     registrar = catalog_scope(_caller(by_old["registrar"]))
-    assert registrar.admin and registrar.admin_reach == frozenset({"sales"})
+    assert set(registrar.served) == {1, 2} and registrar.reach == frozenset({"sales"})
     analyst = catalog_scope(_caller(by_old["analyst"]))
-    assert not analyst.admin and set(analyst.served) == {1, 2}
+    assert set(analyst.served) == {1, 2}
     platform = catalog_scope(_caller(by_old["platform"]))
-    assert not platform.admin and platform.served == {}
+    assert platform.served == {}
+
+
+# --- observability (REQ-2152, ruling Q3) ----------------------------------------------------------
+
+
+async def test_observability_lists_only_the_tables_its_caller_reads(monkeypatch):
+    """The cache and materialized-view lists name tables; a caller is told only of those it is
+    served a column of (the analyst reads orders and customers, not staff)."""
+
+    class _Cache:
+        async def table_entry_counts(self, place):
+            return {1: 3, 3: 5}
+
+    monkeypatch.setattr(appmod.state, "response_cache_store", _Cache(), raising=False)
+    monkeypatch.setattr("provisa.cache.tenancy.cache_place", lambda state: "p")
+    monkeypatch.setattr(schema_query, "require_capability", lambda info, cap: None)
+    stats = await Query().cache_table_stats(_caller("analyst"))
+    assert [s.table_id for s in stats] == [1]
+
+    def _mv(mv_id, source_tables):
+        return types.SimpleNamespace(
+            id=mv_id,
+            source_tables=source_tables,
+            target_table="",
+            refresh_interval=60,
+            enabled=True,
+            status=types.SimpleNamespace(value="fresh"),
+            last_refresh_at=None,
+            row_count=0,
+            last_error=None,
+            allowed_lateness=None,
+        )
+
+    registry = types.SimpleNamespace(
+        _mvs={"a": _mv("mv_orders", ["orders"]), "b": _mv("mv_staff", ["staff"])}
+    )
+    monkeypatch.setattr(appmod.state, "mv_registry", registry, raising=False)
+    monkeypatch.setattr("provisa.mv.bitemporal_capture.logged_table_id", lambda mv_id: None)
+    assert [m.id for m in await Query().mv_list(_caller("analyst"))] == ["mv_orders"]
+
+
+def test_a_drafts_name_is_read_by_the_caller_it_is_served_to():
+    """A draft is in no compiled context; the scope serves it by its stored columns, so the
+    observability lists name it (its replica builds) to that caller too."""
+    from provisa.api.admin.catalog_scope import CatalogScope
+
+    state = types.SimpleNamespace(
+        tables=[{"id": 1, "table_name": "orders"}],
+        role_build_inputs={"draft_tables": [{"id": 9, "table_name": "drafted"}]},
+    )
+    scope = CatalogScope(
+        whole=False, reach=None, served={1: {"id"}, 9: {"id"}}, governance=False, role="analyst"
+    )
+    reads = schema_query._names_read(state, scope)
+    assert reads("orders") and reads("public.drafted")
+    unserved = CatalogScope(
+        whole=False, reach=None, served={1: {"id"}}, governance=False, role="analyst"
+    )
+    assert not schema_query._names_read(state, unserved)("drafted")

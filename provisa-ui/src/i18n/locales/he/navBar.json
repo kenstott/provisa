@@ -48,6 +48,7 @@
     "itemMetadataExport": "ייצוא",
     "itemImport": "ייבוא",
     "itemTags": "תגיות",
+    "itemClassificationKinds": "סיווג",
     "itemDataProducts": "מוצרים",
     "itemReports": "דוחות",
     "itemGlossary": "אונטולוגיה",
@@ -74,6 +75,8 @@
     "sandboxExitLogOut": "רק להתנתק",
     "itemPython": "Python",
     "itemNotebook": "מחברת",
-    "itemContainerRegistries": "מאגרי קונטיינרים"
+    "itemContainerRegistries": "מאגרי קונטיינרים",
+    "itemSparql": "SPARQL",
+    "itemCatalogs": "קטלוגים"
   }
 }

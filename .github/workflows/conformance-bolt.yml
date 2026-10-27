@@ -1,0 +1,152 @@
+name: Conformance (Bolt)
+
+# REQ-2167: Provisa's Bolt endpoint against the official Neo4j Python driver's own integration tests
+# (github.com/neo4j/neo4j-python-driver, tests/integration, Apache-2.0), cloned at a pinned release
+# tag, never vendored, installed with its test dependency group in its own virtualenv and run with
+# pytest against Provisa's Bolt port as org_admin.
+#
+# A failing test is data, written to the job summary and to the artifact conformance-bolt.json
+# (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md), never a job failure.
+# The job fails only when the Provisa instance did not start or no test ran.
+#
+# The instance is every conformance job's (.github/actions/conformance-instance), with password
+# auth: the driver signs in as the job user, who holds org_admin.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-bolt-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  bolt:
+    name: Bolt conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      DRIVER_REPO: https://github.com/neo4j/neo4j-python-driver.git
+      # One test waiting on an answer that never comes fails alone, by name, not the whole run.
+      PYTEST_TIMEOUT_VERSION: 2.3.1
+      DRIVER_TEST_TIMEOUT_S: 60
+      DRIVER_VERSION: "6.2.0"
+      # The Bolt port the instance start step gives (API port + 3).
+      PROVISA_BOLT_PORT: "8904"
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - name: Fetch the Neo4j Python driver
+        run: |
+          git clone --quiet --depth 1 --branch "$DRIVER_VERSION" "$DRIVER_REPO" "$RUNNER_TEMP/driver"
+          head -n 2 "$RUNNER_TEMP/driver/LICENSE.txt"
+          grep -q "Apache License" "$RUNNER_TEMP/driver/LICENSE.txt"
+          python3 -m venv "$RUNNER_TEMP/driver-venv"
+          "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --upgrade pip
+          cd "$RUNNER_TEMP/driver" && "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --group test -e . \
+            "pytest-timeout==$PYTEST_TIMEOUT_VERSION"
+
+      # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
+      # its token in CONFORMANCE_AUTHORIZATION.
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+
+
+      - name: Run the driver's integration tests
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          TEST_NEO4J_HOST: 127.0.0.1
+          TEST_NEO4J_PORT: ${{ env.PROVISA_BOLT_PORT }}
+          TEST_NEO4J_SCHEME: bolt
+          TEST_NEO4J_USER: ${{ env.CONFORMANCE_USER }}
+          TEST_NEO4J_PASS: ${{ env.CONFORMANCE_PASSWORD }}
+          TEST_NEO4J_EDITION: community
+          TEST_NEO4J_VERSION: "5.4"
+          TEST_NEO4J_IS_CLUSTER: "false"
+        run: |
+          for _ in $(seq 1 60); do
+            (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_BOLT_PORT") 2>/dev/null && break
+            sleep 2
+          done
+          # The driver's own test package, run from inside it (its tests/conftest.py applies).
+          cd "$RUNNER_TEMP/driver/tests"
+          "$RUNNER_TEMP/driver-venv/bin/python" -m pytest integration -p no:cacheprovider \
+            --timeout="$DRIVER_TEST_TIMEOUT_S" --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q
+
+      - name: Summarise
+        if: ${{ !cancelled() && steps.start.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          .venv/bin/python scripts/conformance/junit_summary.py "$RUNNER_TEMP/bolt-junit.xml" \
+            bolt "neo4j-python-driver integration tests" "$DRIVER_VERSION" "tests/integration" \
+            "$RUNNER_TEMP/report/conformance-bolt.json" "$RUNNER_TEMP/report/conformance-bolt.md"
+          cat "$RUNNER_TEMP/report/conformance-bolt.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        run: cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/" || true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-bolt
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi

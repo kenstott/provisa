@@ -116,7 +116,7 @@ def _seed() -> None:
         password=os.environ.get("PG_PASSWORD", "provisa"),
         autocommit=True,
     ) as pg:
-        for t in _TABLES:
+        for t in _TABLES.values():
             pg.execute(f"DROP TABLE IF EXISTS public.{t}")
             pg.execute(f"CREATE TABLE public.{t} (id integer PRIMARY KEY, ts timestamptz)")
             pg.execute(f"INSERT INTO public.{t} VALUES (1, '{_WRITTEN}')")
@@ -128,7 +128,7 @@ def _seed() -> None:
     )
     ora.autocommit = True
     with ora.cursor() as cur:
-        for t in _TABLES:
+        for t in _TABLES.values():
             cur.execute(
                 f"BEGIN EXECUTE IMMEDIATE 'DROP TABLE {t}'; "
                 "EXCEPTION WHEN OTHERS THEN IF SQLCODE != -942 THEN RAISE; END IF; END;"
@@ -145,7 +145,7 @@ def _seed() -> None:
         "UID=sa;PWD=Provisa_2026!;TrustServerCertificate=yes",
         autocommit=True,
     )
-    for t in _TABLES:
+    for t in _TABLES.values():
         ms.execute(f"DROP TABLE IF EXISTS dbo.{t}")
         ms.execute(f"CREATE TABLE dbo.{t} (id int PRIMARY KEY, ts datetimeoffset)")
         ms.execute(f"INSERT INTO dbo.{t} VALUES (1, '2024-01-02 03:04:05 +02:00')")
@@ -161,7 +161,7 @@ def _seed() -> None:
     )
     with maria.cursor() as cur:
         cur.execute("SET time_zone = '+02:00'")
-        for t in _TABLES:
+        for t in _TABLES.values():
             cur.execute(f"DROP TABLE IF EXISTS {t}")
             cur.execute(f"CREATE TABLE {t} (id int PRIMARY KEY, ts TIMESTAMP NULL)")
             cur.execute(f"INSERT INTO {t} VALUES (1, '2024-01-02 03:04:05')")
@@ -193,6 +193,10 @@ def _config(engine: str) -> dict:
         source = {"id": sid, "type": kind, "host": host, "port": port(), "cache_ttl": 300}
         if database is not None:
             source.update({"database": database, "username": user, "password": password})
+        if kind == "sqlserver":
+            # The test SQL Server's certificate is self-signed: trusted by declaration, as a
+            # deployment declares one (Source.jdbc_url).
+            source["federation_hints"] = {"trust_server_certificate": "true"}
         sources.append(source)
         columns = [
             {"name": "id", "data_type": "integer", "visible_to": [_ROLE], "is_primary_key": True},
@@ -229,7 +233,9 @@ def _config(engine: str) -> dict:
     }
 
 
-@pytest.fixture(scope="module", params=["duckdb", "trino"])
+# Per test, not per module: Oracle, SQL Server and MariaDB are brought up for each test and removed
+# after it (tests/conftest.py _heavy_db_service), so each test seeds them and boots its own server.
+@pytest.fixture(params=["duckdb", "trino"])
 def server(tmp_path_factory, request):
     from tests.integration.isolated_server import IsolatedServer
 

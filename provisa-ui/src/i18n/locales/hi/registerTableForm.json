@@ -23,7 +23,6 @@
     "descriptionLabel": "विवरण",
     "descriptionPlaceholder": "SDL डॉक्स में दिखाई देता है",
     "dataProductLabel": "डेटा प्रोडक्ट",
-    "dataProductHint": "(कैटलॉग में प्रकाशित करें / Atlas, Atlan आदि में निर्यात करें)",
     "discoverLabel": "कॉलम खोजें",
     "discoverHint": "(पंजीकरण के समय लाइव स्रोत से कॉलम का अनुमान लगाएँ — स्कीमा-रहित/NoSQL स्रोतों के लिए; मैन्युअल कॉलम चयन की आवश्यकता नहीं)",
     "watermarkLabel": "वॉटरमार्क कॉलम",
@@ -62,7 +61,6 @@
     "dqResultsTableHint": "(स्कैन की गई टेबल से व्युत्पन्न; प्रति स्कैन प्रति चेक एक पंक्ति, हर स्कैन रखा जाता है)",
     "dqResultsTablePlaceholder": "ऊपर स्कैन करने के लिए टेबल चुनें",
     "dqVisibleToLabel": "परिणाम इन्हें दिखें",
-    "dqDescription": "{{table}} के क्वालिटी स्कैन परिणाम — प्रति स्कैन प्रति चेक एक पंक्ति, परिणाम, मेट्रिक मान और थ्रेशोल्ड के साथ",
     "errorDqContract": "डेटा क्वालिटी पैनल में स्कैन करने के लिए टेबल चुनें।",
     "errorDqVisibleTo": "परिणाम कम से कम एक भूमिका को दिखने चाहिए।",
     "dqScanIntervalLabel": "हर इतने सेकंड में स्कैन करें",
@@ -136,6 +134,9 @@
     "qdrantVectors": "{{collection}} के वेक्टर",
     "qdrantVector": "{{name}}: {{size}} आयाम, {{distance}} से स्कोर किए गए",
     "qdrantUnnamedVector": "(बिना नाम)",
-    "continue": "जारी रखें"
+    "continue": "जारी रखें",
+    "checkReasonLabel": "यह जाँच क्यों है",
+    "checkReasonHint": "व्यावसायिक शब्दों में गुणवत्ता का दावा; यह हर प्रोडक्ट में जाँच के ऊपर दिखता है।",
+    "checkReasonPlaceholder": "ऑर्डर पूरे और अद्वितीय हैं ताकि दैनिक राजस्व वित्त से मेल खाए"
   }
 }

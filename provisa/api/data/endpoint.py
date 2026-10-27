@@ -29,12 +29,13 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 import time as _time
 from typing import Any, cast
 
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
@@ -59,7 +60,14 @@ from provisa.api.data.mutations import (
     _handle_mutation,
     _split_action_fields,
 )
-from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+from provisa.executor.serialize import serialize_aggregate
+from graphql.language.ast import OperationDefinitionNode
+from provisa.api.data.graphql_http import (
+    GraphQLDocumentError,
+    get_parameters,
+    negotiated,
+    post_parameters,
+)
 from provisa.api.data.endpoint_helpers import (
     _format_response,
     _append_mermaid,
@@ -71,7 +79,6 @@ from provisa.api.data.endpoint_helpers import (
     _inject_warnings_into_response,
     _parse_accept,
     _record_per_source_stats,
-    request_time_travel,
 )
 from provisa.federation.engine_wake import ensure_engine_awake
 from provisa.compiler.complexity import ComplexityLimitExceeded
@@ -86,6 +93,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 class GraphQLRequest(BaseModel):
     query: str | None = None
+    operationName: str | None = None  # noqa: N815 -- the GraphQL-over-HTTP parameter's own name
     variables: dict | None = None
     role: str = "org_admin"  # test mode: role passed in request
     extensions: dict | None = None  # APQ: {"persistedQuery": {"sha256Hash": "..."}}
@@ -131,6 +139,16 @@ async def _resolve_apq(
         if expected != apq_hash:
             raise ApiError(400, "data.apq_hash_mismatch", "APQ hash mismatch")
     return request
+
+
+async def _graphql_post_request(raw_request: Request) -> GraphQLRequest:
+    """A POST's GraphQL request, from its JSON body; 400 for a request that is not one."""
+    return GraphQLRequest(**await post_parameters(raw_request))
+
+
+def _graphql_get_request(raw_request: Request) -> GraphQLRequest:
+    """A GET's GraphQL request, from its URL; 400 for a request that is not one."""
+    return GraphQLRequest(**get_parameters(raw_request))
 
 
 class CompileRequest(BaseModel):
@@ -222,10 +240,10 @@ def answered_status(exc: BaseException) -> int:
     return getattr(exc, "status_code", 500)
 
 
-@router.post("/graphql")
-async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-288, REQ-289, REQ-290, REQ-291, REQ-300
+@router.get("/graphql")
+async def graphql_get_endpoint(  # REQ-2167
     raw_request: Request,
-    request: GraphQLRequest,
+    request: GraphQLRequest = Depends(_graphql_get_request),
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
     x_provisa_redirect: str | None = Header(None),
@@ -233,8 +251,36 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     x_provisa_redirect_format: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
     x_provisa_normalized: str | None = Header(None),
-    x_provisa_as_of: str | None = Header(None),  # REQ-1163: read bitemporal MVs as of this time
-    x_provisa_as_recorded: str | None = Header(None),  # REQ-1163: as Provisa had recorded them then
+    x_provisa_trace: str | None = Header(None),
+):
+    """GraphQL over GET: the request's parameters URL-encoded, ``variables`` and ``extensions``
+    each a JSON string; a mutation is refused with 405. Answered as POST is."""
+    return await graphql_endpoint(
+        raw_request,
+        request,
+        x_provisa_role=x_provisa_role,
+        accept=accept,
+        x_provisa_redirect=x_provisa_redirect,
+        x_provisa_redirect_threshold=x_provisa_redirect_threshold,
+        x_provisa_redirect_format=x_provisa_redirect_format,
+        x_provisa_stats=x_provisa_stats,
+        x_provisa_normalized=x_provisa_normalized,
+        x_provisa_trace=x_provisa_trace,
+    )
+
+
+@router.post("/graphql")
+@negotiated  # REQ-2167: the answer's media type, and a document error, as Accept asks
+async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-288, REQ-289, REQ-290, REQ-291, REQ-300
+    raw_request: Request,
+    request: GraphQLRequest = Depends(_graphql_post_request),
+    x_provisa_role: str | None = Header(None),
+    accept: str | None = Header(None),
+    x_provisa_redirect: str | None = Header(None),
+    x_provisa_redirect_threshold: int | None = Header(None),
+    x_provisa_redirect_format: str | None = Header(None),
+    x_provisa_stats: str | None = Header(None),
+    x_provisa_normalized: str | None = Header(None),
     x_provisa_trace: str | None = Header(None),  # REQ-1910: "debug" asks for a debug trace
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
@@ -296,14 +342,24 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     ctx = surface.context
     rls = surface.rls
 
+    # REQ-259: the role the org's subgraph serves as is served the federated form of its own
+    # schema -- its tables plus _service and _entities -- and no other role is.
+    from provisa.api.data import federation as _federation
+
+    _subgraph = _federation.subgraph(state)
+    fed = (
+        _federation.federated(surface, state.active_org_id, role_id)
+        if _subgraph.enabled and _subgraph.role == role_id
+        else None
+    )
+    if fed is not None:
+        schema = fed.schema
+
     # REQ-1877 (amended 2026-09-30): a plain query whose governed plan is already cached skips
     # parse, validation, the complexity guard, compilation and governance — the plan is their
     # result. A normalized read needs the document itself, so it is not offered the plan path.
     from provisa.api.data.graphql_plan import PlanRequest
 
-    # REQ-1163: the request's time travel, both axes validated (400 on malformed) -- before the
-    # plan lookup, whose key it is part of.
-    _as_of = request_time_travel(x_provisa_as_of, x_provisa_as_recorded)
     plan_request = PlanRequest(
         state,
         role_id=role_id,
@@ -311,26 +367,44 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         schema=schema,
         query=request.query,
         variables=request.variables,
-        as_of=_as_of,
         eligible=(x_provisa_normalized or "").lower() != "true",
     )
     plan = plan_request.cached()
 
+    fed_read = None
     if plan is not None:
         document = None
         directives = plan.directives
         effective_variables = None
     else:
         # Parse and validate
+        # REQ-2167: a document that does not parse or validate is a GraphQL error, answered as the
+        # media type asks (graphql_http.negotiated).
         try:
             document = parse_query(schema, request.query, request.variables, ctx=ctx)
         except GraphQLValidationError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise GraphQLDocumentError([err.message for err in e.errors]) from e
         except GraphQLSyntaxError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise GraphQLDocumentError([e.message]) from e
+        # REQ-2167: a mutation is never executed over GET.
+        if getattr(raw_request, "method", "POST") == "GET" and any(
+            isinstance(d, OperationDefinitionNode) and d.operation == OperationType.MUTATION
+            for d in document.definitions
+        ):
+            raise ApiError(
+                405,
+                "data.graphql_mutation_over_get",
+                "A mutation is sent with POST, never GET.",
+                headers={"Allow": "POST"},
+            )
 
         directives = _build_directives_with_legacy(request.query, document, _legacy_hints)
         effective_variables = coerce_variable_defaults(document, request.variables)
+
+        if fed is not None:
+            fed_read = _federation.federation_read(document, effective_variables, fed)
+            if isinstance(fed_read, _federation.ServiceRead):
+                return JSONResponse(fed_read.answer(fed.sdl))
 
         # Introspection: execute directly against GraphQL schema
         if _detect_introspection(document):
@@ -340,8 +414,20 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 
             result = _cast(
                 _ExecutionResult,
-                gql_execute(schema, document, variable_values=effective_variables),
+                gql_execute(
+                    schema,
+                    document,
+                    variable_values=effective_variables,
+                    operation_name=request.operationName,
+                ),
             )
+            if result.errors and result.data is None:
+                # Variables that do not coerce, or no operation to run: nothing was executed.
+                raise GraphQLDocumentError([err.message for err in result.errors])
+            if result.errors:
+                return JSONResponse(
+                    {"data": result.data, "errors": [err.formatted for err in result.errors]}
+                )
             return JSONResponse({"data": result.data})
 
     steward_hint = directives.steward_hint
@@ -443,6 +529,26 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
                         role_id,
                         raw_request,
                     )
+                elif isinstance(fed_read, _federation.EntitiesRead):
+                    # REQ-259: _entities is read as the governed query it was rewritten into, as
+                    # the subgraph's declared role, and answered in the router's shape.
+                    governed = await _handle_query(
+                        fed_read.document,
+                        ctx,
+                        state,
+                        fed_read.variables,
+                        role,
+                        "json",
+                        role_id,
+                        redirect_threshold=effective_threshold,
+                        steward_hint=steward_hint,
+                        query_session_props=directives.to_session_props(),
+                        cache_ttl=cache_hint.ttl,
+                        cache_opt_in=cache_hint.opt_in,
+                        debug_trace=trace_hint,
+                        directives=directives,
+                    )
+                    response = JSONResponse(fed_read.answer(json.loads(bytes(governed.body))))
                 else:
                     response = await _handle_query(
                         document,
@@ -455,7 +561,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
                         force_redirect=force_redirect,
                         redirect_threshold=effective_threshold,
                         redirect_format=redirect_format,
-                        as_of=_as_of,  # REQ-1163
                         steward_hint=steward_hint,
                         query_session_props=directives.to_session_props(),
                         cache_ttl=cache_hint.ttl,
@@ -580,7 +685,6 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     output_format,
     *,
     delivery,
-    as_of: str | None,
     steward_hint: str | None,
     query_session_props: dict | None,
     cache_hint,
@@ -600,7 +704,6 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
         "state": state,
         "cache_hint": cache_hint,
         "serve_cached": delivery is None,
-        "as_of": as_of,
         "steward_hint": steward_hint,
         "session_props": query_session_props,
     }
@@ -611,7 +714,7 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
         deliver=delivery,
         # REQ-1224: a buffered transport — the terminal inlines a result under the threshold and
         # lands one over it. An aggregate's answer is always small.
-        buffered=compiled.nodes_sql is None,
+        buffered=not compiled.has_nodes,
         compiled=compiled,
         **common,
         sdl_joins=True,
@@ -623,31 +726,9 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     if result.redirect is not None:
         return root_field, None, result.redirect, hit
 
-    nodes_rows = None
-    if compiled.nodes_sql is not None:
-        nodes_plan = await _govern_and_route_compiled(
-            compiled.nodes_sql,
-            role_id,
-            exec_params=compiled.nodes_params or None,
-            api_args=compiled.api_args or None,
-            extra_selections=compiled.gql_remote_extra_selections or None,
-            **common,
-            sdl_joins=True,
-        )
-        nodes_rows = (await _executed(nodes_plan, state, root_field)).rows
-
-    if compiled.nodes_sql is not None and compiled.is_group_by:
-        response = serialize_group_by(
-            result.rows, compiled.columns, nodes_rows, compiled.nodes_columns, root_field
-        )
-    elif compiled.nodes_sql is not None:
+    if compiled.has_nodes and not compiled.is_group_by:
         response = serialize_aggregate(
-            result.rows,
-            compiled.columns,
-            nodes_rows,
-            compiled.nodes_columns,
-            root_field,
-            agg_alias=compiled.agg_alias,
+            result.rows, compiled.columns, root_field, agg_alias=compiled.agg_alias
         )
     else:
         response = _format_response(
@@ -704,7 +785,6 @@ async def _handle_query(
     force_redirect=False,
     redirect_threshold=None,
     redirect_format=None,
-    as_of: str | None = None,  # REQ-1163: validated as-of SQL timestamp literal (or None)
     steward_hint: str | None = None,
     query_session_props: dict | None = None,
     cache_ttl: int | None,
@@ -744,7 +824,7 @@ async def _handle_query(
     if plan is not None:
         prepared = plan.prepared_copies()
     else:
-        # REQ-1365: resolve(uri, as_of) dereferences a semantic address through the one pipeline.
+        # REQ-1365: _resolve(uri, as_of, as_recorded) dereferences a semantic address through the one pipeline.
         from provisa.api.data.resolve import (
             AddressError,
             AddressNotFound,
@@ -759,7 +839,7 @@ async def _handle_query(
                 raise ApiError(
                     400,
                     "data.mixed_resolve_and_other_fields",
-                    "resolve cannot be combined with other root fields in one operation",
+                    "_resolve cannot be combined with other root fields in one operation",
                 )
             try:
                 resolved = await execute_resolve_fields(
@@ -768,7 +848,6 @@ async def _handle_query(
                     role_id,
                     variables,
                     org_id=require_current_org(),
-                    as_of=as_of,
                 )
             except AddressNotFound as exc:
                 raise ApiError(404, "data.address_not_found", str(exc), reason=str(exc)) from exc
@@ -819,7 +898,6 @@ async def _handle_query(
     )
     _field_args = {
         "delivery": delivery,
-        "as_of": as_of,
         "steward_hint": steward_hint,
         "query_session_props": query_session_props,
         "cache_hint": _cache_hint,

@@ -148,7 +148,7 @@ Les requêtes GraphQL avec plusieurs champs racine (ex. `{ orders { id } custome
 
 ## Pipeline de requête {: #query-pipeline }
 
-Chaque lecture passe par six étapes, quel que soit le langage dans lequel vous l'écrivez. Chaque étape transmet une instruction SQL à la suivante. Le langage décide seulement de l'endroit où la lecture entre.
+Chaque lecture passe par cinq étapes. GraphQL, Cypher, SPARQL, gRPC et SQL sont des points d'entrée, pas des étapes — chacun compile ou traduit en SQL sémantique avant que le pipeline commence.
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ Le SQL sémantique lit le modèle. Ses tables sont qualifiées par domaine (`sal
 
 Une lecture imbriquée se compile en un pipeline canonique de CTE, identique pour tous les moteurs et construit à partir des seules relations déclarées. Une CTE racine lit la table racine avec son filtre, son tri, sa limite et son décalage. Chaque niveau vers-plusieurs est une CTE à part. Elle joint sa table à la CTE du parent sur les clés de la relation, prend les premières lignes de chaque parent avec `ROW_NUMBER() OVER (PARTITION BY ...)` et les agrège en une liste JSON par parent. Le `SELECT` final lit la CTE racine et fait une jointure externe gauche de chaque niveau sur la clé du parent. Les lectures GraphQL, Cypher et SPARQL qui posent la même question se compilent en la même instruction.
 
-Les compilateurs actuels n'ont pas encore atteint cette forme. Le compilateur GraphQL lit un champ imbriqué avec arguments par un `LEFT JOIN LATERAL` par parent, et le traducteur Cypher écrit une CTE par étape `WITH`. L'exemple ci-dessous montre les deux formes.
+Le traducteur Cypher écrit une CTE par étape `WITH` ; aligner ces formes sur le pipeline canonique est un travail à venir. Jusqu'à son achèvement, des lectures Cypher et GraphQL équivalentes ne compilent pas toujours vers le même SQL sémantique. Le compilateur GraphQL écrit les champs imbriqués avec arguments en `LEFT JOIN LATERAL` par parent. Les deux formes actuelles apparaissent dans l'exemple ci-dessous.
 
 ### SQL gouverné {: #governed-sql }
 
@@ -188,7 +188,18 @@ L'étape d'optimisation réécrit l'instruction gouvernée de façons valables s
 
 ### Planifier et router {: #plan-and-route }
 
-Le routage lit les sources de l'instruction optimisée, jamais celles de l'instruction gouvernée. Une lecture que l'optimisation a réduite à une source peut donc quand même s'exécuter en direct. Une instruction part en direct quand elle lit une seule source et que cette source a un pilote direct. Sinon, le moteur de fédération l'exécute. La règle comporte une troisième condition : que la source prenne en charge chaque construction de l'instruction. Le routeur ne la vérifie pas encore et décide d'après le nombre de sources et le pilote. Les cas du cache, du réplica et du steward sont dans [Décisions de routage](#request-pipeline).
+Atterrir sur le moteur de fédération est le comportement par défaut ; le routage lit les sources optimisées, jamais les sources gouvernées. Une instruction ne s'exécute directement sur sa source que lorsqu'elle passe les six portes dans l'ordre. La première qu'elle échoue nomme la raison.
+
+| Porte | Ce qu'elle vérifie |
+|---|---|
+| `one_source` | Lit une source après optimisation, ou des sources partageant une base de données physique |
+| `dialect_supports` | Le dialecte de cette source prend en charge chaque construction de l'instruction |
+| `access_path` | Un pilote direct, un appelant d'API ou une fonction de code existe pour la source |
+| `colocated_login` | Les sources comptées comme une seule base de données partagent les mêmes identifiants de connexion |
+| `not_forced` | Aucun plancher opérateur, colonne factice ou condition imposant le moteur ne s'applique |
+| `trusted_to_answer` | Une source non SQL peut répondre au jeu de données complet sans filtrage en cours de traitement |
+
+Les cas du cache, du réplica et du steward sont dans [Pipeline de requête](#request-pipeline).
 
 ### SQL natif {: #native-sql }
 
@@ -559,7 +570,7 @@ La boucle de rafraîchissement s'exécute toutes les 30 secondes, vérifie `get_
 | `compiler/cursor.py` | Pagination par curseur de style Relay — arguments `first`/`after`/`last`/`before` et génération de `pageInfo` sur toutes les requêtes de liste |
 | `compiler/aggregate_gen.py` | Types de requête `{table}_aggregate` auto-générés avec sous-champs `count`, `sum`, `avg`, `min`, `max` et accès `nodes` filtré |
 | `compiler/enum_detect.py` | Auto-détection de type enum — types enum natifs PostgreSQL (`pg_enum`) exposés comme types enum GraphQL plutôt que scalaires chaîne |
-| `compiler/hints.py` | Indices de performance de fédération — directives de routage au niveau requête embarquées comme commentaires SQL (`/* @provisa route=federated */`) qui surchargent le routage automatique |
+| `compiler/hints.py` | Indices de performance de fédération — directives de routage au niveau requête embarquées comme commentaires SQL (`-- @provisa route=federated`) qui surchargent le routage automatique |
 | `compiler/mutation_gen.py` | Compilateur de mutation ; préréglages de colonne — valeurs statiques côté serveur ou de variable de session appliquées à l'insertion/mise à jour, non exposées dans le type d'entrée de mutation |
 | `auth/approval_hook.py` | Hook d'approbation ABAC — autorisation externe enfichable appelée avant l'exécution de requête ; transports webhook, gRPC, et unix_socket ; scope par table/source/global ; politique de repli configurable |
 | `subscriptions/` | État et livraison d'abonnement SSE |
@@ -746,7 +757,7 @@ Un rôle nomme au plus un parent via `parent_role_id`. Lors de la construction �
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

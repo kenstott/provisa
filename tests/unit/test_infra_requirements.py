@@ -9,9 +9,9 @@
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 
-import pytest
 import yaml
 
 # Project root - all paths derived from here
@@ -149,28 +149,22 @@ class TestREQ070MaximumBrevity:
 class TestREQ071RequirementsTracker:
     """REQ-071"""
 
-    def test_requirements_tracker_agent_exists(self):
-        # REQ-071. `.claude/` is its own private checkout, never committed to this repo (see
-        # claude-dir-separate-repo convention) — present only on a maintainer's local primary
-        # working tree, absent from a git worktree AND from a plain clone (CI included). Skip
-        # rather than fail when it's genuinely not there instead of asserting content a CI
-        # checkout can never have.
+    def test_the_tracked_requirements_are_the_generated_form_of_the_catalog(self):
+        # REQ-071: new requirements are tracked into docs/arch/requirements.md. The tracker agent
+        # is `.claude/`'s, a private checkout no clone of this repo has (CI included); what this
+        # repo holds, and every checkout can check, is the tracked document itself: the generated
+        # form of docs/arch/requirements.yaml, in sync with it.
         import subprocess
+        import sys
 
-        common = subprocess.run(
-            ["git", "rev-parse", "--git-common-dir"],
+        checked = subprocess.run(
+            [sys.executable, "scripts/gen_requirements_md.py", "--check"],
             cwd=REPO_ROOT,
+            env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},  # the script imports provisa.tools
             capture_output=True,
             text=True,
-            check=True,
-        ).stdout.strip()
-        primary = (REPO_ROOT / common).resolve().parent
-        tracker = primary / ".claude" / "agents" / "requirements-tracker.md"
-        if not primary.joinpath(".claude").is_dir():
-            pytest.skip(
-                ".claude/ not present in this checkout (private, not committed to this repo)"
-            )
-        assert tracker.exists(), ".claude/agents/requirements-tracker.md must exist"
+        )
+        assert checked.returncode == 0, checked.stdout + checked.stderr
 
 
 # ---------------------------------------------------------------------------

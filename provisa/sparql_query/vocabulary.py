@@ -31,6 +31,7 @@ the label map built for it, so a class or predicate the role cannot read is not 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
@@ -65,6 +66,17 @@ def xsd_of(sql_type: str) -> str:
         if head in names:
             return f"{XSD}{xsd}"
     return f"{XSD}string"
+
+
+def xsd_of_sql(column: str) -> str:
+    """:func:`xsd_of` as a PostgreSQL expression over the SQL type held in ``column`` (REQ-2163:
+    a Property's range in ontology._axioms), from the same table."""
+    head = f"LOWER(SPLIT_PART(SPLIT_PART(TRIM({column}), '(', 1), ' ', 1))"
+    whens = " ".join(
+        f"WHEN {head} IN ({', '.join(repr(n) for n in names)}) THEN '{XSD}{xsd}'"
+        for names, xsd in _XSD_OF_SQL
+    )
+    return f"CASE {whens} ELSE '{XSD}string' END"
 
 
 def _seg(value: str) -> str:
@@ -229,3 +241,73 @@ def column_types_of(lm: CypherLabelMap, ctx: object) -> dict[tuple[str, str], st
             if column in by_column:
                 out[(label, by_column[column])] = sql_type
     return out
+
+
+def concepts_of(base: str, terms: list[dict]) -> list[dict]:
+    """The live Concept terms of ``terms`` (glossary list rows): a term that grounds no table and
+    no column (REQ-2141) and that every consuming surface may offer (``live``), as IRIs."""
+    return [
+        {"iri": term_iri(base, t["name"]), "name": t["name"], "definition": t["definition"]}
+        for t in terms
+        if t["is_abstract"] and t["live"]
+    ]
+
+
+def superclasses_of(
+    base: str, terms: list[dict], edges: list[tuple[int, int, str]]
+) -> dict[str, list[str]]:
+    """Each term's superclasses (REQ-2135, VISUALIZER VOCABULARY): the terms it is a KIND_OF, as
+    IRIs. ``terms`` are the glossary rows the role reads (``id``, ``name``); an edge to or from a
+    term outside them is no superclass, so the role learns no term it cannot read. ``edges`` are
+    (from term id, to term id, relationship type)."""
+    names = {t["id"]: t["name"] for t in terms}
+    out: dict[str, list[str]] = {}
+    for from_id, to_id, rel_type in edges:
+        if rel_type == "KIND_OF" and from_id in names and to_id in names:
+            out.setdefault(term_iri(base, names[from_id]), []).append(term_iri(base, names[to_id]))
+    return out
+
+
+def vocabulary_document(
+    vocab: Vocabulary, concepts: list[dict], superclasses: Mapping[str, list[str]]
+) -> dict:
+    """The vocabulary as GET /data/sparql/vocabulary answers it: its base and prefixes; each class
+    (a table's own, or a Class term) with the labels it types and, for a Class term, the terms it
+    is a KIND_OF (:func:`superclasses_of`); each predicate (a column's own, or a Property term) with
+    its label, property and datatype; each edge type with its source and target; and the live
+    Concept terms (:func:`concepts_of`)."""
+    term_root = f"{vocab.base}/vocab/term/"
+
+    def kind(iri: str, own: str) -> str:
+        return "term" if iri.startswith(term_root) else own
+
+    return {
+        "base": vocab.base,
+        "prefixes": dict(vocab.prefixes),
+        "classes": [
+            {
+                "iri": iri,
+                "kind": kind(iri, "table"),
+                "labels": list(labels),
+                "superclasses": list(superclasses.get(iri, [])),
+            }
+            for iri, labels in vocab.classes.items()
+        ],
+        "predicates": [
+            {
+                "iri": iri,
+                "kind": kind(iri, "column"),
+                "label": cp.label,
+                "property": cp.prop,
+                "datatype": cp.datatype,
+            }
+            for iri, cps in vocab.columns.items()
+            for cp in cps
+        ],
+        "edges": [
+            {"iri": iri, "type": ep.rel_type, "source": ep.source, "target": ep.target}
+            for iri, eps in vocab.edges.items()
+            for ep in eps
+        ],
+        "concepts": concepts,
+    }

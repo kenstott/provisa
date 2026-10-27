@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Publiceren naar de tools van je organisatie",
-        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, Atlan en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Publicatie gaat alleen naar buiten: Provisa leest een doel nooit terug als bron van waarheid.</p>"
+        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Publicatie gaat alleen naar buiten: Provisa leest een doel nooit terug als bron van waarheid.</p>"
       },
       "stepRelsAgents": {
         "title": "Relaties en AI-agents",
@@ -1692,25 +1692,17 @@
         "title": "De totalen van één dag",
         "description": "1 oktober zoals het er nu voor staat. Per vestiging, product en valuta ziet u wat er binnenkwam, wat er uitging en het saldo. Een BI-tool die via pgwire verbonden is, voert precies deze SQL uit."
       },
-      "bankingAsReported": {
-        "title": "Zoals gerapporteerd bij de afsluiting",
-        "description": "Vastgelegd op staat nu op de afsluiting van 1 oktober. Een BI-tool doet hetzelfde met SET provisa.as_recorded in zijn pgwire-sessie. Vastgelegd op filtert de transacties op updated_at en de dagtotalen op de afsluiting van elke dag, zodat u de cijfers ziet die de bank die avond rapporteerde."
-      },
       "bankingReported": {
         "title": "Wat er gerapporteerd werd",
-        "description": "De zakelijke totalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten en heeft dus geen cijfers."
-      },
-      "bankingAsRestated": {
-        "title": "Zoals sindsdien gecorrigeerd",
-        "description": "Vastgelegd op schuift naar de afsluiting van 12 oktober, de laatste van de dertig dagen. Tegen die tijd zijn de terugboeking van 6 oktober en de laat ingevoerde handel van 7 oktober allebei vastgelegd."
+        "description": "De zakelijke totalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober: het argument as_recorded van de view leest ze zoals ze toen waren vastgelegd, en een BI-tool via pgwire doet hetzelfde met SET provisa.as_recorded. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten en heeft dus geen cijfers."
       },
       "bankingRestated": {
         "title": "Wat het nu zegt",
-        "description": "Dezelfde SQL. Het totaal van Londen voor 1 oktober bevat de teruggedraaide betaling niet meer, en het USD-totaal van Edinburgh voor 2 oktober bevat nu de late handel. De versies die bij elke afsluiting zijn gerapporteerd, blijven naast de gecorrigeerde bewaard, en recorded_at toont wanneer elke versie is vastgelegd."
+        "description": "Dezelfde SQL met as_recorded op de afsluiting van 12 oktober, de laatste van de dertig dagen. Het totaal van Londen voor 1 oktober bevat de teruggedraaide betaling niet meer, en het USD-totaal van Edinburgh voor 2 oktober bevat nu de late handel. De versies die bij elke afsluiting zijn gerapporteerd, blijven naast de gecorrigeerde bewaard, en recorded_at toont wanneer elke versie is vastgelegd."
       },
       "bankingAsOpsSql": {
         "title": "Terug naar operations",
-        "description": "De explorer draait nu als operations, nog steeds vastgelegd op de afsluiting van 12 oktober."
+        "description": "De explorer draait nu als operations."
       },
       "bankingPostings": {
         "title": "De boekingen achter een totaal",
@@ -1727,6 +1719,86 @@
       "bankingAsAdmin": {
         "title": "Weer als beheerder",
         "description": "Het dashboard is wat operations ziet. De rest van de rondleiding is weer als beheerder, en elke volgende instructie noemt de rol waarmee ze draait."
+      },
+      "groupexposureScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Een Praagse bank leent aan bedrijven en legt van elk bedrijf de eigenaar vast met diens Legal Entity Identifier (LEI). EU-regels beperken wat zij mag lenen aan één klant, of aan een groep bedrijven die één eigenaar beheerst, tot 25% van haar tier 1-kapitaal. De vraag: bij welke groepen zit de bank boven die grens? Haar boeken noemen de eigenaar van elke kredietnemer, niet van wie die eigenaar is. De bank, haar kredietnemers en haar leningen zijn verzonnen; de concerns die hen bezitten zijn echt."
+      },
+      "groupexposureJoin": {
+        "title": "Gekoppeld via de LEI",
+        "description": "De eigenarentabel van de bank en de tabellen uit Wikidata delen de LEI van de eigenaar, en deze relaties koppelen ze. De gegevens van de bank blijven in haar database en die van Wikidata in de replica; de koppeling gebeurt in de query."
+      },
+      "groupexposureAnswer": {
+        "title": "Het antwoord in SQL",
+        "description": "De view group_exposure brengt elke faciliteit via de LEI van de eigenaar en Wikidata onder bij het concern van de kredietnemer. De concerns Veolia en Vinci komen elk boven 25% van het tier 1-kapitaal, en een joint venture van Veolia en EPH telt bij beide mee. Noch de boeken van de bank noch Wikidata laten dat alleen zien. De kredietnemers en hun leningen zijn verzonnen."
+      },
+      "groupexposureExample": {
+        "title": "Het antwoord in GraphQL",
+        "description": "Dezelfde view in GraphQL: de concerns waaraan de bank het meest leent, hun kredietnemers, wat is toegezegd en of elk boven de grens zit."
+      },
+      "groupexposureRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "Het leningenboek van een verzonnen bank en openbare linked data uit Wikidata, via LEI gekoppeld in één beheerst model. De eigendomsketens uit Wikidata maken van veel kleine leningen een paar grote groepsblootstellingen, en het antwoord wordt geleverd in SQL, GraphQL en REST."
+      },
+      "groupexposureWikidata": {
+        "title": "Van wie de eigenaren zijn, uit Wikidata",
+        "description": "Wikidata, de openbare kennisgraaf, legt van elk bedrijf de LEI en de moederorganisatie vast. Deze bron leest dat via de SPARQL-querydienst van Wikidata. De tabellen zijn één keer geladen, toen de demo werd gebouwd, dus de demo roept Wikidata nooit aan terwijl u hem gebruikt."
+      },
+      "groupexposureFacilities": {
+        "title": "De kredietfaciliteiten van de bank",
+        "description": "Elke termijnlening, doorlopende kredietfaciliteit en garantie die de bank heeft verstrekt, met de kredietnemer, wat is toegezegd en wat is opgenomen. De grens telt wat is toegezegd."
+      },
+      "groupexposureGroups": {
+        "title": "Het concern van elke eigenaar",
+        "description": "Voor elke eigenaar die de bank vastlegt, het bedrijf bovenaan de keten van moederorganisaties in Wikidata, gevonden met één SPARQL-eigenschapspad. Wikidata weet dat een Tsjechische holding bij Veolia of E.ON hoort, ook al weten de boeken van de bank dat niet."
+      },
+      "groupexposureTerms": {
+        "title": "In gewone woorden",
+        "description": "De woordenlijst legt de termen uit waarmee een risicomanager werkt: grote blootstelling, tier 1-kapitaal, Legal Entity Identifier en moederorganisatie. Een groep verbonden cliënten is een set bedrijven die één risico vormen omdat één ervan de andere beheerst."
+      },
+      "groupexposureAlone": {
+        "title": "Alleen de boeken",
+        "description": "De eigen blootstelling van elke kredietnemer, zoals de boeken van de bank die zien. De grootste ligt onder 10% van het tier 1-kapitaal, dus geen enkele kredietnemer komt in de buurt van de grens van 25%."
+      },
+      "groupexposureRest": {
+        "title": "Hetzelfde antwoord via REST",
+        "description": "De view is ook een REST-endpoint, hier gegroepeerd op of een concern boven de grens zit en op de server opgeteld, klaar voor een risicorapport of een spreadsheet."
+      },
+      "agentdataScenario": {
+        "title": "Geef een agent je data",
+        "description": "Een retailer wil een AI-agent op zijn orderdata, beperkt tot wat de persoon voor wie hij handelt mag zien. De agent bereikt de data via de MCP-server van Provisa. De MCP-verkenner, zo meteen, toont precies wat zo'n externe agent ziet. Polly is daarentegen de assistent voor het werken in Provisa zelf. Dit is de orderdatabase van de retailer, live gelezen."
+      },
+      "agentdataCustomers": {
+        "title": "Wie welke klanten mag zien",
+        "description": "De klantentabel draagt de regels: een supportmedewerker West leest alleen de klanten in het westen en hun orders, met gemaskeerde e-mailadressen en zonder prijzen. De BI-analist leest elke regio en wat de orders opbrachten, maar geen enkel e-mailadres."
+      },
+      "agentdataSupportRole": {
+        "title": "Handelen als supportmedewerker West",
+        "description": "De agent handelt als de rol in de kopregel. Volgende kiest de supportmedewerker West, zodat elke toolaanroep van de agent als die rol draait."
+      },
+      "agentdataSupportAsks": {
+        "title": "De vraag van de supportmedewerker",
+        "description": "De agent vindt de tabellen, schrijft SQL en voert het uit met MCP-tools, die tijdens het draaien worden getoond. Alleen de klanten in het westen komen terug, en hun e-mailadressen komen gemaskeerd binnen: meer krijgt de rol niet."
+      },
+      "agentdataExplain": {
+        "title": "Wat er echt draaide",
+        "description": "De run_sql-aanroep van de agent, geopend: de opdracht die hij stuurde, en dan de opdracht die voor zijn rol draaide. Provisa voegde het rijfilter West en de e-mailmaskering toe. De agent schreef geen van beide en hoort er nooit over."
+      },
+      "agentdataOutOfReach": {
+        "title": "Een vraag buiten bereik",
+        "description": "Gevraagd wat de orders van elke klant opbrachten, vindt de agent geen prijzen in de tabellen die zijn rol mag lezen, en zegt dat. Hij kan niet om de rol heen: bij elke toolaanroep gelden dezelfde regels."
+      },
+      "agentdataAnalystRole": {
+        "title": "Nu als BI-analist",
+        "description": "Volgende zet de kopregel op de BI-analist. De agent is dezelfde; de rol is anders."
+      },
+      "agentdataAnalystAsks": {
+        "title": "Dezelfde vraag, een andere rol",
+        "description": "Dezelfde vraag als analist: elke regio komt terug, er is helemaal geen e-mailkolom en de omzetweergave staat tussen zijn tabellen. Andere tabellen, rijen en kolommen, van dezelfde agent en dezelfde server."
+      },
+      "agentdataConnect": {
+        "title": "Je eigen agent, dezelfde server",
+        "description": "Dit is de server die de agent van de verkenner gebruikte. Plak deze configuratie in Claude Desktop, of richt een willekeurige MCP-client op de URL, en je eigen agent krijgt dezelfde beheerde tools, gebonden aan dezelfde regels."
       }
     },
     "status": {
@@ -1843,6 +1915,14 @@
       "banking": {
         "title": "Dagafsluitingsrapportage zonder het grootboek te kopiëren",
         "summary": "De dagafsluitingstotalen van een bank, bij elke afsluiting rechtstreeks berekend uit een grootboek dat nooit naar het warehouse wordt gekopieerd, gelezen zoals gerapporteerd en zoals sindsdien gecorrigeerd, met hetzelfde antwoord via GraphQL, SQL en een agent."
+      },
+      "groupexposure": {
+        "title": "Groepsblootstelling via Wikidata",
+        "summary": "Bij welke concerns gaat een bank over haar grens voor grote blootstellingen? Haar leningenportefeuille, via de LEI van de eigenaar van elke kredietnemer en SPARQL gekoppeld aan de ketens van moederorganisaties in Wikidata, brengt elke kredietnemer onder bij zijn concern. De bank en haar kredietnemers zijn verzonnen; de concerns zijn echt."
+      },
+      "agentdata": {
+        "title": "Geef een agent je data",
+        "summary": "Kan een AI-agent de orderdata van een retailer krijgen en beperkt worden tot wat zijn gebruiker mag zien? De MCP-verkenner toont de agent als supportmedewerker en als analist: andere rijen en kolommen, gemaskeerde e-mails en de beheerde SQL achter elk antwoord."
       }
     }
   }

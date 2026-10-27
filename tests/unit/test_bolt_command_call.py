@@ -26,7 +26,7 @@ from provisa.cypher.command_call import CommandCallRefused
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
-def _state(visible_to=()):
+def _state(visible_to=("admin",)):
     return SimpleNamespace(
         roles={"admin": {"id": "admin", "capabilities": ["write"], "domain_access": ["*"]}},
         tracked_functions={
@@ -113,10 +113,23 @@ async def test_yield_with_as_and_return_shape_the_rows():
 
 
 async def test_a_return_it_cannot_apply_is_refused_not_ignored():
-    for tail in ("RETURN id + 1", "WHERE id > 1 RETURN id", "YIELD id ORDER BY id"):
+    for tail in ("RETURN id + 1", "WHERE id > 1 RETURN id"):
         with _executor([{"id": 1}]), pytest.raises(CommandCallRefused):
             await _maybe_invoke_command_call(
                 f"CALL random_python_set(2, 3) {tail}", {}, "admin", _state()
+            )
+
+
+async def test_a_call_composed_in_a_statement_is_left_to_the_translator():
+    # REQ-2168: a YIELD followed by more of the statement is a call composed in it, which the
+    # Cypher translator reads; the command-call reader does not take it.
+    for tail in ("YIELD id ORDER BY id", "YIELD id WHERE id > 1 RETURN id", "YIELD id WITH id"):
+        with _executor([{"id": 1}]):
+            assert (
+                await _maybe_invoke_command_call(
+                    f"CALL random_python_set(2, 3) {tail}", {}, "admin", _state()
+                )
+                is None
             )
 
 
@@ -126,3 +139,21 @@ async def test_parse_call_arg_types():
     assert _parse_call_arg("'x'") == "x"
     assert _parse_call_arg("true") is True
     assert _parse_call_arg("null") is None
+
+
+async def test_a_map_argument_holding_a_parameter_is_bound():
+    # LangChain's Neo4jGraph (via neo4j-graphrag) calls apoc.meta.data({sample: $SAMPLE}).
+    with _executor([{"id": 1}]) as ran:
+        await _maybe_invoke_command_call(
+            "CALL random_python_set({sample: $SAMPLE, deep: [1, 'a']}, 7)",
+            {"SAMPLE": 1000},
+            "admin",
+            _state(),
+        )
+    assert ran.call_args.args[1]["rows"] == {"sample": 1000, "deep": [1, "a"]}
+
+
+async def test_a_composed_call_with_a_map_argument_is_left_to_the_translator():
+    query = "CALL random_python_set({sample: $SAMPLE}, 7) YIELD id WHERE id > 0 RETURN id"
+    with _executor([{"id": 1}]):
+        assert await _maybe_invoke_command_call(query, {"SAMPLE": 1}, "admin", _state()) is None

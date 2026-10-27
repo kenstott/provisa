@@ -30,6 +30,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from provisa.gql.label_map import CypherLabelMap
     from provisa.pgwire._pipeline import StatementOutcome
 
@@ -38,7 +40,6 @@ from provisa.compiler.params import ParametersDoNotFit
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.api.admin._dev_shared import detect_target
-from provisa.api.data.endpoint_helpers import request_time_travel
 from provisa.api.errors import ApiError
 from provisa.api.error_answer import error_answer
 from provisa.core import domain_policy
@@ -163,6 +164,8 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
             seed_ids |= {t["id"] for t in tables if t["domain_id"] == domain_id}
         reachable |= seed_ids
         filtered_tables = [t for t in tables if t["id"] in reachable]
+        from provisa.mv.time_travel import relation_kinds
+
         si = SchemaInput(
             tables=filtered_tables,
             root_table_ids=seed_ids,
@@ -172,6 +175,7 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
             role=role,
             domains=cache["domains"],
             source_types=state.source_types,
+            time_travel=relation_kinds(state, filtered_tables),  # REQ-1163
             domain_prefix=cache["domain_prefix"],
             physical_table_map=cache["physical_table_map"],
             functions=cache["functions"],
@@ -317,8 +321,6 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
-    x_provisa_as_of: str | None = Header(None),  # REQ-1163: read bitemporal MVs as of this time
-    x_provisa_as_recorded: str | None = Header(None),  # REQ-1163: as Provisa had recorded them then
 ):
     """Execute raw SQL through Stage 2 governance (REQ-264, REQ-266, REQ-267).
 
@@ -335,9 +337,6 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     role_id = _resolve_role_id(raw_request, x_provisa_role, request)
     output_format = _parse_accept(accept)
     stats_enabled = (x_provisa_stats or "").lower() == "true"
-
-    # REQ-1163: the request's time travel, both axes validated (400 on malformed).
-    _as_of = request_time_travel(x_provisa_as_of, x_provisa_as_recorded)
 
     import time as _time
     from provisa.executor import stats as _qs_mod
@@ -444,7 +443,6 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 request.sql,
                 role_id,
                 state,
-                as_of=_as_of,
                 deliver=delivery,
                 buffered=True,
                 params=request.params,
@@ -460,7 +458,6 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
             request.sql,
             role_id,
             state,
-            as_of=_as_of,
             deliver=delivery,
             buffered=True,
             params=request.params,
@@ -488,6 +485,30 @@ async def sql_statements_endpoint(request: SplitRequest) -> dict:
     return {"statements": split_sql_statements(request.sql)}
 
 
+@router.get("/sql/approved-joins")
+async def sql_approved_joins_endpoint(
+    raw_request: Request, x_provisa_role: str | None = Header(None)
+) -> dict:
+    """The joins the SQL page's canvas draws for the acting role: exactly the joins its statements
+    may write (sql_validator.canvas_joins), each by its tables' ids and columns."""
+    from provisa.api.acting_role import acting_role
+    from provisa.api.app import state
+    from provisa.compiler.sql_validator import canvas_joins
+
+    role_id = acting_role(raw_request, x_provisa_role, None, "org_admin")
+    ctx = state.contexts.get(role_id)
+    if ctx is None:
+        raise ApiError(
+            400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+        )
+    return {
+        "joins": [
+            {"fromTableId": a, "fromColumn": ac, "toTableId": b, "toColumn": bc}
+            for a, ac, b, bc in canvas_joins(ctx)
+        ]
+    }
+
+
 class ExplainRequest(BaseModel):
     sql: str
     role: str = "org_admin"
@@ -501,8 +522,6 @@ async def sql_explain_endpoint(  # REQ-1519
     raw_request: Request,
     request: ExplainRequest,
     x_provisa_role: str | None = Header(None),
-    x_provisa_as_of: str | None = Header(None),
-    x_provisa_as_recorded: str | None = Header(None),
 ):
     """Explain a statement's governed plan — the engine's own EXPLAIN, annotated with the Provisa
     rewrites that produced the statement it describes.
@@ -522,12 +541,10 @@ async def sql_explain_endpoint(  # REQ-1519
         )
     _check_sql_capabilities(state.roles.get(role_id))
 
-    _as_of = request_time_travel(x_provisa_as_of, x_provisa_as_recorded)
-
     # Same request-boundary contract as /data/sql: a governance denial is 403, an unsupported
     # dialect or an arbitrary query the source rejects is a 400 carrying the reason.
     try:
-        return await analyze_sql(request.sql, role_id, state, analyze=request.analyze, as_of=_as_of)
+        return await analyze_sql(request.sql, role_id, state, analyze=request.analyze)
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:
@@ -622,7 +639,9 @@ def _collect_nl_user_tables(
         _user_nodes = {tn: nm for tn, nm in _lm.nodes.items() if not nm.traversal_only}
     else:
         _user_domains = {
-            d for d in (n.domain_id for n in _lm.nodes.values()) if d not in (None, "ops", "meta")
+            d
+            for d in (n.domain_id for n in _lm.nodes.values())
+            if d not in (None, "ops", "meta", "ontology")
         }
         _user_nodes = {
             tn: nm
@@ -840,10 +859,17 @@ async def _run_sql_generation_loop(
     *,
     config: dict | None = None,
     api_keys: dict[str, str] | None = None,
+    check: "Callable[[str], Awaitable[str | None]] | None" = None,
+    best_effort: bool = False,
 ) -> tuple[str, int, str]:
+    """``check``: the governed run of a generated statement, answering its error or None -- given,
+    it takes the place of the local governance check, so the statement is refined against the
+    path it runs on (the NL page shows no statement with an error). ``best_effort``: an error
+    saying the question cannot be expressed is answered with the closest expressible query."""
     import sqlglot
     from provisa.llm.client import ProvisaLLMClient
     from provisa.compiler.sql_validator import validate_sql
+    from provisa.nl.prompt import BEST_EFFORT_RETRY
     from provisa.nl.sql_group_by import (
         GROUP_BY_GUIDANCE,
         check_distinct_json_agg,
@@ -892,7 +918,8 @@ async def _run_sql_generation_loop(
         if last_error:
             current_prompt = (
                 f"{question}\n\nPrevious attempt:\n{last_sql}\n\n"
-                f"Error: {last_error}\nFix it and output only the corrected SQL."
+                f"Error: {last_error}\nFix this error and output only the corrected SQL."
+                + (f" {BEST_EFFORT_RETRY}" if best_effort else "")
             )
 
         last_sql = await _sql_gen.complete(
@@ -938,11 +965,17 @@ async def _run_sql_generation_loop(
             last_error = group_by_error
             continue
 
-        normalized = rewrite_semantic_to_physical(last_sql, ctx)
-        violations = validate_sql(normalized, ctx, gov_ctx, role_obj, raw_tables)
-        if violations:
-            last_error = "; ".join(f"[{v.code}] {v.message}" for v in violations)
-            continue
+        if check is not None:
+            checked_error = await check(last_sql)
+            if checked_error:
+                last_error = checked_error
+                continue
+        else:
+            normalized = rewrite_semantic_to_physical(last_sql, ctx)
+            violations = validate_sql(normalized, ctx, gov_ctx, role_obj, raw_tables)
+            if violations:
+                last_error = "; ".join(f"[{v.code}] {v.message}" for v in violations)
+                continue
 
         last_error = ""
         break
@@ -1125,8 +1158,6 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
-    x_provisa_as_of: str | None = Header(None),
-    x_provisa_as_recorded: str | None = Header(None),
     x_provisa_trace: str | None = Header(None),  # REQ-1910: forwarded to the GraphQL endpoint
 ):
     """Execute a GraphQL, SQL, or Cypher query; auto-detected from syntax.
@@ -1165,8 +1196,6 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
             x_provisa_redirect_format=None,
             x_provisa_stats=x_provisa_stats,
             x_provisa_normalized=None,
-            x_provisa_as_of=x_provisa_as_of,
-            x_provisa_as_recorded=x_provisa_as_recorded,
             x_provisa_trace=x_provisa_trace,
         )
 
@@ -1178,6 +1207,4 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
         x_provisa_role=x_provisa_role,
         accept=accept,
         x_provisa_stats=x_provisa_stats,
-        x_provisa_as_of=x_provisa_as_of,
-        x_provisa_as_recorded=x_provisa_as_recorded,
     )

@@ -282,12 +282,12 @@ def _serialize_flat(
     truncated_paths: set[str] = set()
 
     for row in rows:
-        if root_cols:
-            root_key = tuple(
-                _to_hashable(_convert_value(row[idx])) for idx, col in root_cols if not col.is_agg
-            )
+        keyed = [idx for idx, col in root_cols if not col.is_agg]
+        if keyed:
+            root_key = tuple(_to_hashable(_convert_value(row[idx])) for idx in keyed)
         else:
-            # group_by: all columns are nested (groupKey/aggregates) — every row is distinct
+            # group_by: every column is nested (groupKey/aggregates) or a group's nodes -- every
+            # row is distinct
             root_key = tuple(_to_hashable(_convert_value(v)) for v in row)
         if root_key in seen_root_keys:
             truncated_paths |= _detect_truncated_paths(
@@ -358,30 +358,32 @@ def serialize_rows(  # REQ-047, REQ-048, REQ-049, REQ-050
 def serialize_aggregate(  # REQ-196, REQ-197
     agg_rows: list[tuple],
     agg_columns: list[ColumnRef],
-    nodes_rows: list[tuple] | None,
-    nodes_columns: list[ColumnRef] | None,
     root_field: str,
     agg_alias: str = "aggregate",
 ) -> dict:
-    """Serialize aggregate query result (with optional nodes) into GraphQL JSON.
+    """Serialize an aggregate query's one row into GraphQL JSON: its aggregates, and its nodes
+    (the rows it aggregates, a column of that row) when they were selected.
 
     Column nested_in paths use agg_alias as prefix (default "aggregate"), e.g.:
       "aggregate"      → aggregate.count
       "aggregate.sum"  → aggregate.sum.amount
+    The nodes column is the JSON list at the root (nested_in None, is_agg); any other column
+    with no nested_in is the aggregate's own.
 
     Returns:
         {"data": {root_field: {agg_alias: {...}, "nodes": [...]}}}
-        "nodes" key is present only when nodes_rows is not None.
     """
-    # Build aggregate inner object from first (only) row.
-    # Strip the leading agg_alias prefix from each nested_in path, then
-    # reconstruct the sub-structure (sum, avg, min, max).
+    # Strip the leading agg_alias prefix from each nested_in path, then reconstruct the
+    # sub-structure (sum, avg, min, max).
     agg_inner: dict = {}
+    payload: dict = {agg_alias: agg_inner}
     if agg_rows:
         row = agg_rows[0]
         for i, col in enumerate(agg_columns):
+            if col.nested_in is None and col.is_agg:
+                payload[col.field_name] = _convert_value(row[i])
+                continue
             path = col.nested_in or agg_alias
-            # Strip agg_alias prefix
             if path == agg_alias:
                 sub_path: list[str] = []
             elif path.startswith(f"{agg_alias}."):
@@ -396,55 +398,7 @@ def serialize_aggregate(  # REQ-196, REQ-197
                 target = target[part]
             target[col.field_name] = _convert_value(row[i])
 
-    payload: dict = {agg_alias: agg_inner}
-
-    if nodes_rows is not None and nodes_columns is not None:
-        node_list: list[dict] = []
-        for row in nodes_rows:
-            node: dict = {}
-            for i, col in enumerate(nodes_columns):
-                node[col.field_name] = _convert_value(row[i])
-            node_list.append(node)
-        payload["nodes"] = node_list
-
     return {"data": {root_field: payload}}
-
-
-def serialize_group_by(
-    rows: list[tuple],
-    columns: list[ColumnRef],
-    nodes_rows: list[tuple] | None,
-    nodes_columns: list[ColumnRef] | None,
-    root_field: str,
-) -> dict:
-    """Serialize group-by query result (with optional per-group nodes) into GraphQL JSON.
-
-    nodes_columns uses nested_in="__join_key__" to mark group-by join columns.
-    Returns:
-        {"data": {root_field: [{"groupKey": {...}, "aggregate": {...}, "nodes": [...]}, ...]}}
-        "nodes" key present on each row only when nodes_rows is not None.
-    """
-    result = serialize_rows(rows, columns, root_field)
-
-    if nodes_rows is None or nodes_columns is None:
-        return result
-
-    join_key_indices = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]
-    output_cols = [(i, c) for i, c in enumerate(nodes_columns) if c.nested_in is None]
-
-    nodes_map: dict = {}
-    for row in nodes_rows:
-        join_key = tuple(_convert_value(row[i]) for i in join_key_indices)
-        node_dict = {c.field_name: _convert_value(row[i]) for i, c in output_cols}
-        nodes_map.setdefault(join_key, []).append(node_dict)
-
-    group_key_indices = [i for i, c in enumerate(columns) if c.nested_in == "groupKey"]
-    group_rows = result["data"][root_field]
-    for idx, row in enumerate(rows):
-        group_key = tuple(_convert_value(row[j]) for j in group_key_indices)
-        group_rows[idx]["nodes"] = nodes_map.get(group_key, [])
-
-    return result
 
 
 def serialize_connection(  # REQ-218

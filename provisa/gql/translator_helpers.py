@@ -249,7 +249,8 @@ def _make_junction_joins(  # REQ-1586
             for node_col, via_col in zip(src_node_cols, src_keys, strict=True)
         ]
     )
-    if via.type_column is not None:
+    # An untyped hop's junction (type_value and type_values both unset) reads every row of it.
+    if via.type_column is not None and (via.type_values or via.type_value is not None):
         discriminator = via_column(via_alias, via.type_column)
         src_cond = exp.And(
             this=src_cond,
@@ -277,7 +278,13 @@ def _make_junction_joins(  # REQ-1586
     )
     return [
         {"table": _via_table_expr(via, via_alias), "on": src_cond, "join_type": join_type},
-        {"table": _node_table_expr(tgt_nm, tgt_alias), "on": tgt_cond, "join_type": join_type},
+        {
+            "table": _node_table_expr(tgt_nm, tgt_alias),
+            "on": tgt_cond,
+            "join_type": join_type,
+            # The junction row it is the far end of: one relationship, two joins.
+            "junction_alias": via_alias,
+        },
     ]
 
 
@@ -388,24 +395,13 @@ def _is_bwd_for_candidate(
     return backward
 
 
-def _optional_vars(clauses: "list[MatchClause]") -> "set[str]":
-    """Return variables first introduced by OPTIONAL MATCH (not already bound by MATCH)."""
-    seen: set[str] = set()
-    optional_only: set[str] = set()
-    for clause in clauses:
-        if not isinstance(clause.pattern, PathPattern):
-            continue
-        new_in_clause = set()
-        for node in clause.pattern.nodes:
-            if node.variable:
-                new_in_clause.add(node.variable)
-        for rel in clause.pattern.rels:
-            if rel.variable:
-                new_in_clause.add(rel.variable)
-        if clause.optional:
-            optional_only.update(new_in_clause - seen)
-        seen.update(new_in_clause)
-    return optional_only
+def _clause_vars(clause: "MatchClause") -> "set[str]":
+    """The node and relationship variables a MATCH or OPTIONAL MATCH clause's pattern names."""
+    if not isinstance(clause.pattern, PathPattern):
+        return set()
+    return {n.variable for n in clause.pattern.nodes if n.variable} | {
+        r.variable for r in clause.pattern.rels if r.variable
+    }
 
 
 def _join_alias(table_expr: "exp.Expression") -> "str | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -423,60 +419,46 @@ def _split_and(expr: "exp.Expression") -> "list[exp.Expression]":  # pyright: ig
 
 def _fold_where_into_optional_joins(
     where_expr: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    optional_vars: "set[str]",
+    step_vars: "set[str]",
     joins: "list[dict]",
 ) -> "tuple[list[dict], exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """Fold WHERE conditions referencing optional variables into the relevant LEFT JOIN ON clauses.
+    """An OPTIONAL MATCH's own WHERE in the ON of the last LEFT JOIN the match introduces
+    (``step_vars``: its variables not bound before it). openCypher scopes the WHERE to the match,
+    so every conjunct conditions it, whatever it names, and none removes a row (REQ-345): as a
+    global WHERE it would turn the LEFT JOIN into an inner one. A ``_nf_`` condition stays in the
+    WHERE, where nf_extractor strips it before the SQL runs.
 
-    Cypher semantics: WHERE after OPTIONAL MATCH constrains the optional pattern.
-    In SQL this must be an ON condition, not a global WHERE — a global WHERE turns
-    a LEFT JOIN into an implicit INNER JOIN, filtering out rows where the optional
-    variable is NULL and eliminating the base MATCH rows.
-
-    Each AND conjunct is assigned only to the LEFT JOIN that introduces its
-    last-referenced optional variable, so a condition on variable `c` is never
-    placed in an earlier join (e.g. `b`) where `c` is not yet in scope.
-
-    Returns (modified_joins, remaining_where_or_None).
+    Returns (modified_joins, what stays in the WHERE).
     """
-    where_sql = where_expr.sql(dialect="postgres")
-    referenced = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", where_sql)}
-    if not referenced:
+    order = {
+        alias: i
+        for i, join in enumerate(joins)
+        if join["join_type"] == "LEFT" and (alias := _join_alias(join["table"])) in step_vars
+    }
+    if not order:
+        # The OPTIONAL MATCH is the statement's FROM, not a join: there is no join to condition,
+        # so its WHERE filters its own rows, as it always has here.
         return joins, where_expr
-
-    # Build position map for LEFT JOIN aliases so we can find the "last" one.
-    join_order: dict[str, int] = {}
-    for i, join in enumerate(joins):
-        alias = _join_alias(join["table"])
-        if alias:
-            join_order[alias] = i
-
-    # Split into individual AND conjuncts, route each to the appropriate join.
-    conjuncts = _split_and(where_expr)
-    alias_to_conjuncts: dict[str, list] = {}
-    remaining_conjuncts: list = []
-
-    for cond in conjuncts:
-        cond_text = cond.sql(dialect="postgres")
-        # _nf_ conditions must stay in WHERE so nf_extractor can strip them before SQL execution.
-        if "_nf_" in cond_text:
-            remaining_conjuncts.append(cond)
+    last = max(order, key=lambda a: order[a])
+    by_target: dict[str, list] = {}
+    remaining: "exp.Expression | None" = None  # pyright: ignore[reportPrivateImportUsage]
+    for cond in _split_and(where_expr):
+        text = cond.sql(dialect="postgres")
+        if "_nf_" in text:
+            remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
             continue
-        refs = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", cond_text)}
-        refs_in_joins = refs & set(join_order.keys())
-        if refs_in_joins:
-            target = max(refs_in_joins, key=lambda v: join_order[v])
-            alias_to_conjuncts.setdefault(target, []).append(cond)
-        else:
-            remaining_conjuncts.append(cond)
-
+        # The join of the last of the match's variables it names, where they are all in scope;
+        # one naming none of them conditions the match's last join.
+        named = [a for a in order if re.search(rf"\b{re.escape(a)}\b", text)]
+        target = max(named, key=lambda a: order[a]) if named else last
+        by_target.setdefault(target, []).append(cond)
+    if not by_target:
+        return joins, remaining
     modified: list[dict] = []
     for join in joins:
-        alias = _join_alias(join["table"])
-        if alias in alias_to_conjuncts and join["join_type"] == "LEFT":
-            existing_on = join["on"]
-            new_on = existing_on
-            for cond in alias_to_conjuncts[alias]:
+        if (target := _join_alias(join["table"])) in by_target:
+            new_on = join["on"]
+            for cond in by_target[target]:
                 if new_on is None or (
                     hasattr(new_on, "sql") and new_on.sql() in ("TRUE", "true", "1 = 1")
                 ):
@@ -486,12 +468,61 @@ def _fold_where_into_optional_joins(
             modified.append({**join, "on": new_on})
         else:
             modified.append(join)
+    return _one_join_per_junction_row(modified, set(by_target)), remaining
 
-    remaining: "exp.Expression | None" = None  # pyright: ignore[reportPrivateImportUsage]
-    for cond in remaining_conjuncts:
-        remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
 
-    return modified, remaining
+def _optional_step_matches_whole(joins: "list[dict]", step_vars: "set[str]") -> "list[dict]":
+    """An OPTIONAL MATCH's pattern -- each of its hops and comma-separated parts, and its own WHERE
+    -- matches whole or not at all: where only part of it matches, every variable it introduces is
+    null (REQ-345). As plain LEFT JOINs a row would keep the hops that matched beside nulls for the
+    rest. Each of the match's joins but the last holds the next as an EXISTS, built from the last
+    back, so a join matches only where all of the pattern after it does."""
+    span = [
+        i
+        for i, join in enumerate(joins)
+        if join["join_type"] == "LEFT" and _join_alias(join["table"]) in step_vars
+    ]
+    if len(span) < 2:
+        return joins
+    out = list(joins)
+    for k in range(span[-1] - 1, span[0] - 1, -1):
+        after = out[k + 1]
+        rest = exp.select(exp.Literal.number(1)).from_(after["table"].copy())
+        if after["on"] is not None:
+            rest = rest.where(after["on"].copy())
+        on = out[k]["on"]
+        whole = exp.Exists(this=rest)
+        bare = on is None or (isinstance(on, exp.Boolean) and on.this is True)
+        out[k] = {**out[k], "on": whole if bare else exp.And(this=on, expression=whole)}
+    return out
+
+
+def _one_join_per_junction_row(joins: "list[dict]", constrained: "set[str]") -> "list[dict]":
+    """An optional junction-backed relationship constrained at its far end matches a junction
+    row only where its far node meets the condition: the junction's join holds the far join as an
+    EXISTS. As two plain LEFT JOINs, a junction row whose far node the condition refuses would
+    stay, beside a null node, where the pattern has no match."""
+    out: list[dict] = []
+    for join in joins:
+        via = join.get("junction_alias")
+        alias = _join_alias(join["table"])
+        if (
+            via is not None
+            and alias in constrained
+            and join["join_type"] == "LEFT"
+            and out
+            and _join_alias(out[-1]["table"]) == via
+            and out[-1]["join_type"] == "LEFT"
+        ):
+            far = exp.Exists(
+                this=exp.select(exp.Literal.number(1))
+                .from_(join["table"].copy())
+                .where(join["on"].copy())
+            )
+            junction = out[-1]
+            out[-1] = {**junction, "on": exp.And(this=junction["on"], expression=far)}
+        out.append(join)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -528,10 +559,67 @@ _CYPHER_CAST_FNS: dict[str, tuple[str, bool]] = {
     "TOFLOATORNULL": ("DOUBLE", True),
     "TOBOOLEAN": ("BOOLEAN", True),
     "TOBOOLEANORNULL": ("BOOLEAN", True),
+    # SPARQL's xsd:decimal, xsd:date and xsd:dateTime casts (REQ-2135)
+    "TODECIMAL": ("DECIMAL", True),
+    "TODATE": ("DATE", True),
+    "TODATETIME": ("TIMESTAMP", True),
 }
+
+# Cypher's temporal values: from a string, a cast to the type (date('2015-07-21')); with no
+# argument, the engine's current value of the type (datetime()).
+_CYPHER_TEMPORAL_FNS: dict[str, tuple[str, exp.Expression]] = {
+    "DATE": ("DATE", exp.CurrentDate()),
+    "DATETIME": ("TIMESTAMPTZ", exp.CurrentTimestamp()),
+    "LOCALDATETIME": ("TIMESTAMP", exp.Localtimestamp()),
+    "TIME": ("TIMETZ", exp.CurrentTime()),
+    "LOCALTIME": ("TIME", exp.Localtime()),
+}
+
+_MINUTE_ONLY = re.compile(r"((?:^|T)\d{2}:\d{2})(?=$|[-+Z])")
+
+# SPARQL's date parts (REQ-2135): its function → the field extracted.
+_DATE_PARTS: dict[str, str] = {
+    "YEAR": "YEAR",
+    "MONTH": "MONTH",
+    "DAY": "DAY",
+    "HOURS": "HOUR",
+    "MINUTES": "MINUTE",
+    "SECONDS": "SECOND",
+}
+_SPARQL_SCALARS = frozenset({*_DATE_PARTS, "STRCONCAT", "STRBEFORE", "STRAFTER"})
 
 # SUBSTRING(str, start[, len]) needs at least the string + start-index args.
 _SUBSTRING_MIN_ARGS = 2
+
+
+def _str_before_after(
+    name: str,
+    text: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    sought: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """SPARQL's STRBEFORE / STRAFTER (REQ-2135): the text before (after) the first ``sought`` in
+    ``text``, the empty string where it is not found."""
+    # substr, 1-based: an exp.Substring is a Cypher substring, whose start this transform shifts.
+    at = exp.StrPosition(this=text.copy(), substr=sought.copy())
+    if name == "STRBEFORE":
+        part = exp.Anonymous(
+            this="substr",
+            expressions=[
+                text.copy(),
+                exp.Literal.number(1),
+                exp.Sub(this=at.copy(), expression=exp.Literal.number(1)),
+            ],
+        )
+    else:
+        part = exp.Anonymous(
+            this="substr",
+            expressions=[
+                text.copy(),
+                exp.Add(this=at.copy(), expression=exp.Length(this=sought.copy())),
+            ],
+        )
+    missing = exp.EQ(this=at, expression=exp.Literal.number(0))
+    return exp.Case(ifs=[exp.If(this=missing, true=exp.Literal.string(""))], default=part)
 
 
 def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -557,20 +645,29 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
 
     # exp.Left / exp.Right — SQLGlot parses left()/right() as these; emit as Anonymous
     # so the engine receives LEFT(str, n) rather than a SUBSTRING expansion.
-    if isinstance(node, exp.Left):
-        return exp.Anonymous(this="left", expressions=[node.this, node.expression])
-
-    if isinstance(node, exp.Right):
-        return exp.Anonymous(this="right", expressions=[node.this, node.expression])
+    # The transform does not descend into the node it is handed back, so its arguments are
+    # rewritten here (toLower(x) ENDS WITH y reads right(toLower(x), ...)).
+    if isinstance(node, (exp.Left, exp.Right)):
+        return exp.Anonymous(
+            this="left" if isinstance(node, exp.Left) else "right",
+            expressions=[
+                node.this.transform(_rewrite_cypher_fn_node),
+                node.expression.transform(_rewrite_cypher_fn_node),
+            ],
+        )
 
     # Handle built-in exp.Substring — adjust 0-indexed Cypher start to 1-indexed SQL
     if isinstance(node, exp.Substring):
         start = node.args.get("start")
         if start is not None:
+            length = node.args.get("length")
             return exp.Substring(
-                this=node.this,
-                start=exp.Add(this=start, expression=exp.Literal.number(1)),
-                length=node.args.get("length"),
+                this=node.this.transform(_rewrite_cypher_fn_node),
+                start=exp.Add(
+                    this=start.transform(_rewrite_cypher_fn_node),
+                    expression=exp.Literal.number(1),
+                ),
+                length=length.transform(_rewrite_cypher_fn_node) if length is not None else None,
             )
         return node
 
@@ -610,10 +707,39 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
     if name in _CYPHER_FN_RENAMES:
         return exp.Anonymous(this=_CYPHER_FN_RENAMES[name], expressions=args)
 
+    if name in _SPARQL_SCALARS or name in _CYPHER_CAST_FNS:
+        # The transform does not descend into the node it is handed back: its arguments first
+        # (toInteger(substring(x, 1)) shifts the substring's start).
+        args = [a.transform(_rewrite_cypher_fn_node) for a in args]
+
     if name in _CYPHER_CAST_FNS and args:
         sql_type, use_try = _CYPHER_CAST_FNS[name]
         cls = exp.TryCast if use_try else exp.Cast
         return cls(this=args[0], to=exp.DataType.build(sql_type))
+
+    if name in _CYPHER_TEMPORAL_FNS and len(args) <= 1:
+        sql_type, current = _CYPHER_TEMPORAL_FNS[name]
+        if not args:
+            return current.copy()
+        value = args[0].transform(_rewrite_cypher_fn_node)
+        if isinstance(value, exp.Literal) and value.is_string:
+            # A time written to the minute (16:30, 16:30+0100) is the minute's first second, which
+            # an engine reads only written out (16:30:00).
+            value = exp.Literal.string(_MINUTE_ONLY.sub(r"\1:00", value.this))
+        return exp.Cast(this=value, to=exp.DataType.build(sql_type))
+
+    if name in _DATE_PARTS and len(args) == 1:
+        return exp.Extract(this=exp.var(_DATE_PARTS[name]), expression=args[0])
+
+    if name == "STRCONCAT" and args:
+        # SPARQL's CONCAT: unbound where any part is, as || is (an engine's concat() skips nulls).
+        out = args[0]
+        for arg in args[1:]:
+            out = exp.DPipe(this=out, expression=arg)
+        return out
+
+    if name in ("STRBEFORE", "STRAFTER") and len(args) == 2:
+        return _str_before_after(name, args[0], args[1])
 
     if name == "SUBSTRING" and len(args) >= _SUBSTRING_MIN_ARGS:
         # Fallback if sqlglot parsed as Anonymous instead of Substring

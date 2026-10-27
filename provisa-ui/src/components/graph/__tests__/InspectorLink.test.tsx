@@ -29,7 +29,12 @@ const edge: GEdge = {
   startNode: from,
   endNode: to,
 };
-const rel = { id: 7, alias: "PLACED_BY", graphqlAlias: null } as unknown as Relationship;
+const rel = {
+  id: 7,
+  alias: "PLACED_BY",
+  graphqlAlias: null,
+  cypherType: "PLACED_BY",
+} as unknown as Relationship;
 
 function show(selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge }) {
   render(
@@ -41,7 +46,6 @@ function show(selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GE
       width={320}
       onResizeStart={() => {}}
       relationships={[rel]}
-      pkMap={{}}
       labelToTableId={{ "sales:Order": 41 }}
     />,
   );

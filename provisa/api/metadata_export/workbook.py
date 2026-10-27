@@ -39,8 +39,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.api.metadata_export.refs import metric_uri, table_ref, table_uri
+from provisa.sparql_query.vocabulary import OWL, RDF, RDFS, SKOS, XSD
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
     from provisa.api.metadata_export.model import MetadataSnapshot
@@ -56,7 +58,11 @@ RELATIONSHIPS = "Relationships"
 VIEWS = "Views"
 METRICS = "Metrics"
 MATERIALIZED_VIEWS = "Materialized Views"
-GLOSSARY = "Glossary Terms"
+ONTOLOGY = "Ontology"
+DATA_PRODUCTS = "Data Products"
+DATA_CONTRACTS = "Data Contracts"
+DATA_QUALITY = "Data Quality"
+DATA_PROFILING = "Data Profiling"
 
 OBJECT_SHEETS = (
     SOURCES,
@@ -66,7 +72,11 @@ OBJECT_SHEETS = (
     VIEWS,
     METRICS,
     MATERIALIZED_VIEWS,
-    GLOSSARY,
+    ONTOLOGY,
+    DATA_PRODUCTS,
+    DATA_CONTRACTS,
+    DATA_QUALITY,
+    DATA_PROFILING,
 )
 
 HEADERS: dict[str, tuple[str, ...]] = {
@@ -105,7 +115,79 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "tags",
         "definition",
     ),
-    GLOSSARY: ("id", "term", "definition", "abstract", "deprecated", "refs", "experts"),
+    # REQ-1592 (2026-10-27): the ontology model (REQ-2163) -- a Class's tables (its union), a
+    # Property's columns, each term's edges to the other terms shown, its domains and experts.
+    ONTOLOGY: (
+        "id",
+        "term",
+        "kind",
+        "definition",
+        "status",
+        "abstract",
+        "tables",
+        "columns",
+        "edges",
+        "domains",
+        "experts",
+        "axioms",
+    ),
+    # REQ-1592 (2026-10-27): each product with its lifecycle (REQ-1634 STATUS), its output ports
+    # (its members) and its inputs.
+    DATA_PRODUCTS: (
+        "id",
+        "product",
+        "domain",
+        "owner",
+        "status",
+        "status reason",
+        "retire on",
+        "successor",
+        "version",
+        "output ports",
+        "inputs",
+        "description",
+    ),
+    # REQ-1592 (2026-10-27): each output port's contract (REQ-2158), its columns those served.
+    DATA_CONTRACTS: (
+        "id",
+        "product",
+        "output port",
+        "version",
+        "status",
+        "purpose",
+        "usage",
+        "limitations",
+        "columns",
+    ),
+    # REQ-1592 (2026-10-27): each check's latest result on the table or column it checks
+    # (REQ-2132/2133); a metric on a column masked to the reader is blank.
+    DATA_QUALITY: (
+        "id",
+        "table",
+        "column",
+        "checker",
+        "check",
+        "definition",
+        "severity",
+        "status",
+        "scan time",
+        "metric value",
+        "failed rows",
+        "results table",
+    ),
+    # REQ-1592 (2026-10-27): the latest profiling run's figures per column, as the reader may
+    # see them (governance.safe_run): a restricted column's figures are blank.
+    DATA_PROFILING: (
+        "id",
+        "table",
+        "column",
+        "run time",
+        "rows",
+        "nulls",
+        "distinct",
+        "min",
+        "max",
+    ),
 }
 
 
@@ -251,7 +333,14 @@ def _relationships_rows(snapshot: "MetadataSnapshot", tags: _Tags) -> list[list[
     return rows
 
 
-def _views_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[Any]]:
+def _definition(org_id: str, table: "Table", withheld: frozenset[str]) -> str:
+    """A view's definition, or blank where it names what the reader is not served (REQ-2152)."""
+    return "" if table_uri(org_id, table) in withheld else _view_definition(table)
+
+
+def _views_rows(
+    org_id: str, tables: list["Table"], tags: _Tags, withheld: frozenset[str]
+) -> list[list[Any]]:
     return [
         [
             table_uri(org_id, table),
@@ -259,7 +348,7 @@ def _views_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[An
             table.domain_id,
             table.source_id,
             tags.asset(table_ref(table).parts),
-            _view_definition(table),
+            _definition(org_id, table, withheld),
             table.description,
         ]
         for table in tables
@@ -267,7 +356,9 @@ def _views_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[An
     ]
 
 
-def _materialized_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[Any]]:
+def _materialized_rows(
+    org_id: str, tables: list["Table"], tags: _Tags, withheld: frozenset[str]
+) -> list[list[Any]]:
     return [
         [
             table_uri(org_id, table),
@@ -278,7 +369,7 @@ def _materialized_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[
             table.mv_persist,
             table.mv_incremental,
             tags.asset(table_ref(table).parts),
-            _view_definition(table),
+            _definition(org_id, table, withheld),
         ]
         for table in tables
         if table.materialize and _is_view(table)
@@ -312,19 +403,185 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
     return rows
 
 
-def _glossary_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+# The vocabularies an axiom is written in, by the prefix the sheet spells them with.
+_PREFIXES = {RDF: "rdf:", RDFS: "rdfs:", OWL: "owl:", SKOS: "skos:", XSD: "xsd:"}
+# skos:prefLabel and skos:definition are the term and definition columns already.
+_STATED_ELSEWHERE = frozenset({f"{SKOS}prefLabel", f"{SKOS}definition"})
+
+
+def _prefixed(iri: str) -> str:
+    for namespace, prefix in _PREFIXES.items():
+        if iri.startswith(namespace):
+            return prefix + iri[len(namespace) :]
+    return iri
+
+
+def _ontology_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+    """One row per term. An edge is listed on the term it leaves and an axiom on the term it
+    states, each only when the term it names is shown too (REQ-2163)."""
+    names = {term.term_id: term.name for term in snapshot.glossary_terms}
+    edges: dict[int, list[str]] = {}
+    for edge in snapshot.glossary_edges:
+        if edge.from_term_id in names and edge.to_term_id in names:
+            edges.setdefault(edge.from_term_id, []).append(
+                f"{edge.rel_type} {names[edge.to_term_id]}"
+            )
+    axioms: dict[int, list[str]] = {}
+    for axiom in snapshot.glossary_axioms:
+        if axiom.subject_term_id not in names or axiom.predicate in _STATED_ELSEWHERE:
+            continue
+        if axiom.object_term_id is not None:
+            if axiom.object_term_id not in names:
+                continue
+            said = names[axiom.object_term_id]
+        elif axiom.object_iri is not None:
+            said = _prefixed(axiom.object_iri)
+        else:
+            said = f'"{axiom.object_literal}"'
+        axioms.setdefault(axiom.subject_term_id, []).append(f"{_prefixed(axiom.predicate)} {said}")
     return [
         [
             term.semantic_uri,
             term.name,
+            term.role,
             term.definition or "",
+            term.status,
             term.is_abstract,
-            term.deprecated,
-            ", ".join("/".join(ref.parts) for ref in term.refs),
+            ", ".join(ref.parts[-1] for ref in term.tables),
+            ", ".join(".".join(ref.parts[-2:]) for ref in term.refs),
+            ", ".join(edges.get(term.term_id, [])),
+            ", ".join(term.domains),
             ", ".join(term.experts),
+            "; ".join(axioms.get(term.term_id, [])),
         ]
         for term in snapshot.glossary_terms
     ]
+
+
+def _products_rows(
+    snapshot: "MetadataSnapshot", config: "ProvisaConfig", inputs: "Mapping[str, list[str]]"
+) -> list[list[Any]]:
+    # The lifecycle's reason, planned retirement and successor are the product's own (REQ-1634
+    # STATUS); the snapshot carries its status alone.
+    declared = {product.id: product for product in config.data_products}
+    rows: list[list[Any]] = []
+    for product in snapshot.data_products:
+        own = declared[product.id]
+        rows.append(
+            [
+                product.semantic_uri,
+                product.name,
+                product.domain_id,
+                product.owner.id if product.owner is not None else "",
+                product.status,
+                own.status_reason or "",
+                own.retire_on.isoformat() if own.retire_on is not None else "",
+                own.successor or "",
+                product.version or "",
+                ", ".join(member.parts[-1] for member in product.members),
+                ", ".join(inputs.get(product.id, [])),
+                product.description,
+            ]
+        )
+    return rows
+
+
+def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+    """Each output port's contract: a member of a product the workbook shows, with the contract
+    its owner declared. A promised column the reader is not served is not named."""
+    product_of = {
+        member: product for product in snapshot.data_products for member in product.members
+    }
+    rows: list[list[Any]] = []
+    for table in snapshot.tables:
+        contract = table.contract
+        product = product_of.get(table.ref)
+        if contract is None or product is None:
+            continue
+        served = {column.name for column in table.columns}
+        rows.append(
+            [
+                table.semantic_uri,
+                product.name,
+                table.name,
+                contract.version,
+                contract.status,
+                contract.description or "",
+                contract.terms.usage or "",
+                contract.terms.limitations or "",
+                ", ".join(
+                    f"{column.name} ({column.type}{', required' if column.required else ''})"
+                    for column in contract.columns
+                    if column.name in served
+                ),
+            ]
+        )
+    return rows
+
+
+def _quality_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+    """Each check's latest result, on the table or column it checks. A check is listed only
+    where the workbook shows both what it checks and the table its outcomes land in."""
+    tables = {table.ref.parts: table for table in snapshot.tables}
+    rows: list[list[Any]] = []
+    for check in snapshot.assertions:
+        parts = check.asset.parts
+        table = tables.get(parts) or tables.get(parts[:-1])
+        if table is None or check.results_table.parts not in tables:
+            continue
+        if table.ref.parts == parts:
+            uri, column = table.semantic_uri, ""
+        else:
+            found = next((c for c in table.columns if c.ref == check.asset), None)
+            if found is None:
+                continue
+            uri, column = found.semantic_uri, found.name
+        outcome = check.outcome
+        rows.append(
+            [
+                uri,
+                table.name,
+                column,
+                check.checker,
+                check.check_type,
+                check.definition,
+                check.severity,
+                outcome.status,
+                outcome.scan_time.isoformat() if outcome.scan_time is not None else "",
+                outcome.metric_value,
+                outcome.failed_rows,
+                tables[check.results_table.parts].name,
+            ]
+        )
+    return rows
+
+
+def _profiling_rows(
+    snapshot: "MetadataSnapshot", profiles: "Mapping[tuple[str, ...], list[dict]]"
+) -> list[list[Any]]:
+    """Each served column's figures from its table's latest profiling run. A profiled column the
+    Columns sheet does not name is not named here either."""
+    rows: list[list[Any]] = []
+    for table in snapshot.tables:
+        columns = {column.name: column for column in table.columns}
+        for figures in profiles.get(table.ref.parts, []):
+            column = columns.get(figures["physical_column"])
+            if column is None:
+                continue
+            rows.append(
+                [
+                    column.semantic_uri,
+                    table.name,
+                    column.name,
+                    figures["run_time"].isoformat(),
+                    figures["row_count"],
+                    figures["null_count"],
+                    figures["distinct_count"],
+                    figures["min_value"],
+                    figures["max_value"],
+                ]
+            )
+    return rows
 
 
 def sheet_rows(  # REQ-1592
@@ -332,8 +589,16 @@ def sheet_rows(  # REQ-1592
     config: "ProvisaConfig",
     *,
     org_id: str,
+    withheld_definitions: frozenset[str],
+    profiles: "Mapping[tuple[str, ...], list[dict]]",
+    inputs: "Mapping[str, list[str]]",
 ) -> dict[str, list[list[Any]]]:
     """Every object sheet's rows, keyed by sheet name, from an ALREADY-NARROWED snapshot.
+
+    ``withheld_definitions``: the views (by table URI) whose definition names a column its reader
+    is not served, printed with a blank definition (REQ-2152). ``profiles``: each profiled
+    table's latest run's columns rows, by the table's ref parts, already made safe for the reader.
+    ``inputs``: each product's nearest physical inputs as the reader's lineage gives them.
 
     Narrowing (rights, domains) is the router's job and has happened before this is called; this
     function's only filtering is the snapshot-to-config alignment described in the module docstring.
@@ -352,10 +617,14 @@ def sheet_rows(  # REQ-1592
         TABLES: _tables_rows(snapshot, tags),
         COLUMNS: _columns_rows(snapshot, tags),
         RELATIONSHIPS: _relationships_rows(snapshot, tags),
-        VIEWS: _views_rows(org_id, tables, tags),
+        VIEWS: _views_rows(org_id, tables, tags, withheld_definitions),
         METRICS: _metrics_rows(org_id, config, metric_names),
-        MATERIALIZED_VIEWS: _materialized_rows(org_id, tables, tags),
-        GLOSSARY: _glossary_rows(snapshot),
+        MATERIALIZED_VIEWS: _materialized_rows(org_id, tables, tags, withheld_definitions),
+        ONTOLOGY: _ontology_rows(snapshot),
+        DATA_PRODUCTS: _products_rows(snapshot, config, inputs),
+        DATA_CONTRACTS: _contracts_rows(snapshot),
+        DATA_QUALITY: _quality_rows(snapshot),
+        DATA_PROFILING: _profiling_rows(snapshot, profiles),
     }
 
 

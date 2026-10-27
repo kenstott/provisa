@@ -79,7 +79,8 @@ async def test_each_pull_by_qid_gets_its_own_results_records():
     assert records == [[1], [2], [3], [10], [20]]
     summaries = [f[0]["has_more"] for tag, f in said if tag == msg.SUCCESS and "has_more" in f[0]]
     assert summaries == [True, False, False]
-    assert said[-1] == (msg.SUCCESS, [{}])  # COMMIT
+    tag, [commit] = said[-1]  # COMMIT: its SUCCESS carries the unit of work's bookmark
+    assert tag == msg.SUCCESS and set(commit) == {"bookmark"}
     assert request_deadline.expire_all("the test is over") == 0
 
 

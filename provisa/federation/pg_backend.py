@@ -17,11 +17,27 @@ import logging
 from typing import Any
 
 import psycopg2
+import psycopg2.errors
 
+from provisa.core.read_refusal import ReadRefused
 from provisa.federation.native_backend import NativeEngineBackend
 from provisa.federation.pg_runtime import PgFederationRuntime
 
 _log = logging.getLogger(__name__)
+
+
+class TryCastNeedsPostgres16(ReadRefused):  # REQ-778
+    """toInteger, toFloat or toBoolean of a value that may not convert, on a PostgreSQL engine
+    older than 16: it has no ``pg_input_is_valid``, which the null-on-failure cast is written by."""
+
+    code = "cypher.try_cast_needs_postgres_16"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 "
+            "or later on this engine"
+        )
+        self.params = {}
 
 
 class PgBackend(NativeEngineBackend):
@@ -38,6 +54,21 @@ class PgBackend(NativeEngineBackend):
 
     #: REQ-1195: Postgres writes a result file in CSV (``COPY ... TO STDOUT``).
     local_result_formats = frozenset({"csv"})
+
+    def refusal_of(self, exc: Exception) -> ReadRefused | None:
+        """REQ-778: a null-on-failure cast is written ``pg_input_is_valid`` for PostgreSQL
+        (``transpile.postgres_try_casts``), which a server older than 16 does not have."""
+        if isinstance(exc, psycopg2.errors.UndefinedFunction) and "pg_input_is_valid" in str(exc):
+            return TryCastNeedsPostgres16()
+        return None
+
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: psycopg2's own (PEP 249)."""
+        from provisa.federation.dbapi_errors import dbapi_errors
+
+        return dbapi_errors(psycopg2)
 
     def write_result_file(
         self, state: Any, physical_sql: str, output_format: str, params: list | None, path: str

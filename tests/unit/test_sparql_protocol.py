@@ -80,6 +80,32 @@ def test_a_request_without_a_query_or_with_a_dataset_is_refused():
     assert _text(_request("GET", "query=ASK%7B%7D&default-graph-uri=x")).status_code == 400
 
 
+def test_a_refusal_is_the_apps_error_body_with_its_code():
+    """REQ-778/REQ-1350: SPARQL answers its refusals as the Cypher routes do -- detail, code and
+    params -- so every client reads the reason."""
+
+    def body(response) -> dict:
+        return json.loads(bytes(response.body))
+
+    assert body(_text(_request("GET"))) == {
+        "detail": "The request carries no query",
+        "code": "sparql.no_query",
+        "params": {},
+    }
+    dataset = body(_text(_request("GET", "query=ASK%7B%7D&default-graph-uri=x")))
+    assert dataset["code"] == "sparql.dataset_not_supported" and dataset["detail"]
+    other = body(_text(_request("POST", body=b"{}", content_type="application/json")))
+    assert other["code"] == "sparql.unsupported_content_type" and "error" not in other
+
+
+def test_no_sparql_refusal_answers_an_error_field():
+    import inspect
+
+    from provisa.api.rest import sparql_router
+
+    assert 'content={"error"' not in inspect.getsource(sparql_router)
+
+
 @pytest.mark.parametrize(
     "accept, form, media",
     [
@@ -137,3 +163,32 @@ def test_construct_keeps_each_triple_once():
     assert len(g) == 1
     iri = URIRef(f"{BASE}/id/hr/persons/a%2Fb%20c")
     assert (iri, URIRef("http://example.org/knows"), iri) in g
+
+
+def test_stats_ride_a_json_answer_and_a_header_on_any_other():
+    # X-Provisa-Stats: true (REQ-1911's per-request split): a SPARQL JSON result carries them as
+    # provisa_stats beside head and results; another format, which has nowhere for them, carries
+    # them in the X-Provisa-Stats response header.
+    from provisa.api.rest.sparql_router import with_stats
+
+    stats = {"total_elapsed_ms": 3.5, "sources": []}
+    body = write_select(["n"], [{"n": {"literal": "Ann"}}], BASE, "json")
+    json_body, headers = with_stats(body, "application/sparql-results+json", stats)
+    doc = json.loads(json_body)
+    assert doc["provisa_stats"] == stats and doc["head"] == {"vars": ["n"]}
+    assert headers == {}
+    csv_body = write_select(["n"], [{"n": {"literal": "Ann"}}], BASE, "csv")
+    same, headers = with_stats(csv_body, "text/csv", stats)
+    assert same == csv_body
+    assert json.loads(headers["X-Provisa-Stats"]) == stats
+
+
+def test_a_sparql_query_opts_into_the_response_cache_in_a_comment():
+    # REQ-544: the opt-in SQL and Cypher take, in SPARQL's comment syntax. An IRI's fragment is
+    # no comment, and a query without the line is not opted in.
+    from provisa.compiler.directives import cache_hint_for
+
+    hint = cache_hint_for("sparql", "# @provisa cache=true\nSELECT ?n WHERE { ?s <x#name> ?n }")
+    assert hint.opt_in is True
+    assert cache_hint_for("sparql", "# @provisa cache_ttl=60\nASK {}").ttl == 60
+    assert cache_hint_for("sparql", "SELECT ?n WHERE { ?s <https://x/y#n> ?n }").opt_in is False

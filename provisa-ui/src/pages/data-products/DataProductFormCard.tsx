@@ -22,7 +22,10 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import type { RegisteredTable } from "../../types/admin";
+import type { DataContract, RegisteredTable } from "../../types/admin";
+import type { DataContractInput } from "../../hooks/useDataProductMutations";
+import { ContractEditor } from "./ContractEditor";
+import { contractDraft } from "./contractDraft";
 import type { TrackedFunction } from "../../api/actions";
 import { CustomPropertiesEditor } from "./CustomPropertiesEditor";
 import type { DataProductForm } from "./types";
@@ -46,6 +49,12 @@ export interface DataProductFormCardProps {
   msg: string;
   onSave: () => void;
   onCancel: () => void;
+  // REQ-2158: the product's members' contracts and their edits, by table id.
+  contracts?: DataContract[];
+  contractDrafts?: Record<number, DataContractInput>;
+  setContractDrafts?: React.Dispatch<React.SetStateAction<Record<number, DataContractInput>>>;
+  /** The field the form opens on, where a finding's fix sent the reader. */
+  focus?: "supportContact";
 }
 
 // One titled panel. `errors` is how many of its fields currently show an error; the panel shows it
@@ -102,6 +111,10 @@ export function DataProductFormCard({
   msg,
   onSave,
   onCancel,
+  contracts = [],
+  contractDrafts = {},
+  setContractDrafts,
+  focus,
 }: DataProductFormCardProps) {
   const { t } = useTranslation();
   // Required fields are checked when Save is pressed, so the empty ones say so on the field instead
@@ -175,19 +188,6 @@ export function DataProductFormCard({
               />
             </FormField>
           </FormLayout>
-          {/* The backend holds status as free text (DataProduct.status: str | None), so it stays a
-              text input; the placeholder lists the usual values. */}
-          <FormLayout>
-            <FormField size="medium">
-              <TextInput
-                label={t("dataProductsTab.statusLabel")}
-                value={form.status}
-                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                placeholder={t("dataProductsTab.statusPlaceholder")}
-                data-testid="data-product-status-input"
-              />
-            </FormField>
-          </FormLayout>
         </Panel>
         <Panel id="ownership" title={t("dataProductsTab.panelOwnership")} errors={0}>
           <FormLayout>
@@ -224,13 +224,14 @@ export function DataProductFormCard({
                 data-testid="data-product-support-input"
               />
             </FormField>
-            <FormField size="medium">
+            <FormField size="medium" help={t("dataProductsTab.supportContactHelp")}>
               <TextInput
-                label={t("dataProductsTab.slaLabel")}
-                value={form.sla}
-                onChange={(e) => setForm((f) => ({ ...f, sla: e.target.value }))}
-                placeholder={t("dataProductsTab.slaPlaceholder")}
-                data-testid="data-product-sla-input"
+                label={t("dataProductsTab.supportContactLabel")}
+                value={form.supportContact}
+                onChange={(e) => setForm((f) => ({ ...f, supportContact: e.target.value }))}
+                placeholder={t("dataProductsTab.supportContactPlaceholder")}
+                autoFocus={focus === "supportContact"}
+                data-testid="data-product-support-contact-input"
               />
             </FormField>
           </FormLayout>
@@ -288,16 +289,11 @@ export function DataProductFormCard({
                 disabled={!form.domainId}
                 value={selectedTableIds}
                 onChange={setSelectedTableIds}
-                // REQ-1634: a table may only join a data product owned by its own domain.
-                // REQ-1443 clause 10: a checker table (one carrying a contract) is a member through the
-                // table it scans, so it is listed but not toggled.
+                // REQ-1634: a table may only join a data product owned by its own domain. A checker
+                // table is toggled as any member is (REQ-1443 PRODUCT ASSIGNMENT).
                 data={tables
                   .filter((tb) => tb.domainId === form.domainId)
-                  .map((tb) => ({
-                    value: String(tb.id),
-                    label: relationName(tb),
-                    disabled: tb.dqContract != null,
-                  }))}
+                  .map((tb) => ({ value: String(tb.id), label: relationName(tb) }))}
                 searchable
                 data-testid="data-product-tables-input"
               />
@@ -323,6 +319,23 @@ export function DataProductFormCard({
             </FormField>
           </FormLayout>
         </Panel>
+        {contracts.length > 0 && setContractDrafts && (
+          <Panel id="contracts" title={t("dataProductsTab.contract.label")} errors={0}>
+            <Stack gap="lg">
+              {contracts.map((c) => (
+                <ContractEditor
+                  key={c.tableId}
+                  contract={c}
+                  draft={contractDrafts[c.tableId] ?? contractDraft(c)}
+                  memberColumns={(tables.find((tb) => tb.id === c.tableId)?.columns ?? []).map(
+                    (col) => ({ name: col.columnName, dataType: col.dataType }),
+                  )}
+                  onChange={(draft) => setContractDrafts((d) => ({ ...d, [c.tableId]: draft }))}
+                />
+              ))}
+            </Stack>
+          </Panel>
+        )}
       </div>
       {/* Save and Cancel stay at the bottom of the viewport while the panels scroll under them. */}
       <Stack

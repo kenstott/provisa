@@ -328,6 +328,10 @@ async def _start_servers(_log: logging.Logger) -> None:
     from provisa.core.connection_loop import set_process_loop
 
     set_process_loop(asyncio.get_running_loop())
+    # REQ-1882: what every request awaits, on a timer, when PROVISA_TASK_DUMP_S asks for it.
+    from provisa.core.task_dump import start_from_env as _start_task_dump
+
+    _start_task_dump()
 
     if state.wire_proto:
         try:
@@ -415,16 +419,10 @@ async def _start_servers(_log: logging.Logger) -> None:
         # on the Flight handler thread).
         flight_server = _build_flight_server(0)
 
-        import threading
+        from provisa.api.flight.relay import FlightRelay, serve_in_background
 
-        flight_thread = threading.Thread(
-            target=flight_server.serve,
-            daemon=True,
-        )
-        flight_thread.start()
+        serve_in_background(flight_server)
         state._flight_server = flight_server
-
-        from provisa.api.flight.relay import FlightRelay
 
         state._flight_relay = FlightRelay(
             "0.0.0.0",  # nosec B104 - the Flight endpoint intentionally binds all interfaces
@@ -637,6 +635,19 @@ def _start_scheduler(_log: logging.Logger) -> None:
                 trigger=CronTrigger.from_crontab("* * * * *"),
                 id="sandbox_late_templates",
                 name="sandboxes:queue_late_templates",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            from provisa.scheduler.jobs import compact_otel_signals
+
+            # REQ-862: the tier lands its own traces, so it merges them as the deployment's API
+            # does; never merged, a first read of an ops view over them opened every batch file.
+            scheduler.add_job(
+                compact_otel_signals,
+                trigger=CronTrigger.from_crontab(state.otel_compact_cron),
+                id="otel_compact",
+                name="otel:compact_signals",
                 replace_existing=True,
                 max_instances=1,
                 coalesce=True,
@@ -972,11 +983,15 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                         index_elements=["id"],
                         update_columns=[],
                     )
+                from provisa.api.admin.read_rights import SERVICE_READER
+
+                # The boot's own seed: Provisa's identity, which shows nothing to a person.
                 await _upsert_tables_to_semantic_layer(
                     "graphql-demo",
                     "shelter",
                     tables,
                     _demo_pool,
+                    SERVICE_READER,
                 )
                 from provisa.api.admin.graphql_remote_router import (
                     _upsert_relationships_to_semantic_layer,

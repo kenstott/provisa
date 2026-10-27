@@ -109,7 +109,7 @@ def _column_input(c: Any) -> Any:
         visible_to=list(c.visible_to),
         masks=[
             MaskEntryInput(
-                to=list(e.to),
+                to=None if e.to is None else list(e.to),
                 mask=None if e.mask is None else MaskSpecInput(**vars(e.mask)),
             )
             for e in c.masks
@@ -169,6 +169,7 @@ def table_input(t: Any) -> Any:
         push_debounce_max_delay=t.push_debounce_max_delay,
         mv_consistency=t.mv_consistency,
         mv_preprocess=t.mv_preprocess or None,
+        mv_hold_on_failing_checks=t.mv_hold_on_failing_checks,  # REQ-2133
         business_key=list(t.business_key),
         valid_time=t.valid_time,
         recorded_time=t.recorded_time,
@@ -183,8 +184,7 @@ def table_input(t: Any) -> Any:
         mv_business_day_grain=t.mv_business_day_grain,
         modeling_role=t.modeling_role,
         modeling_history=t.modeling_history,
-        # REQ-1443 clause 10: a checker table's product is derived and refused on the row.
-        product_id=None if t.dq_contract else t.stored_product_id,
+        product_id=t.stored_product_id,
         enable_aggregates=t.enable_aggregates,
         enable_group_by=t.enable_group_by,
         live=_live_input(t.live),
@@ -207,8 +207,23 @@ def editor_input(request: Any, t: Any) -> Any:
     """
     from provisa.api.admin._hiding_guard import GOVERNANCE_FIELDS
     from provisa.api.admin.capabilities import has_capability_request
+    from provisa.api.admin.catalog_scope import catalog_scope
 
     edited = table_input(t)
+    # REQ-2152: only the columns the caller is served; the save keeps the rest as stored
+    # (``_hiding_guard.keep_unserved_columns``) and refuses a payload naming one.
+    served = catalog_scope(types.SimpleNamespace(context={"request": request})).answered_columns(
+        {
+            "id": t.id,
+            "domain_id": t.domain_id,
+            "columns": [
+                {"column_name": c.name, "visible_to": c.visible_to, "scope": c.scope}
+                for c in edited.columns
+            ],
+        }
+    )
+    if served is not None:
+        edited.columns = [c for c in edited.columns if c.name in served]
     if has_capability_request(request, "view_governance"):
         return edited
     for column in edited.columns:

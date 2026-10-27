@@ -176,13 +176,13 @@ class TestGenerateProto:
                 "name": "active_users",
                 "kind": "query",
                 "returns": "pet-store.users",
-                "visible_to": [],
+                "visible_to": ["admin"],
                 "arguments": [{"name": "since", "type": "Int"}],
             },
             {
                 "name": "reset_cache",
                 "kind": "mutation",
-                "visible_to": [],
+                "visible_to": ["admin"],
                 "arguments": [],
             },
             {  # hidden from this role — must not appear
@@ -414,3 +414,56 @@ def test_a_postgres_double_precision_column_is_a_proto_double():
     from provisa.grpc.proto_gen import _physical_to_proto
 
     assert _physical_to_proto("double precision") == "double"
+
+
+def _compiled(proto: str):
+    from provisa.grpc.descriptor import OrgDescriptor
+
+    return OrgDescriptor(proto)
+
+
+def test_a_null_result_value_arrives_unset_not_as_its_type_s_zero():
+    """A null -- the source's, or a mask's -- is a field left unset, which a client tells from a
+    zero: a masked amount read as 0.0 is a wrong answer, not a hidden one."""
+    orders = _compiled(generate_proto(_make_si())).Orders
+    assert not orders().HasField("amount")
+    assert orders(amount=0.0).HasField("amount")
+    assert orders.FromString(orders(amount=0.0).SerializeToString()).HasField("amount")
+    assert not orders.FromString(orders(id=1).SerializeToString()).HasField("amount")
+
+
+def test_a_not_null_column_has_presence_too():
+    """A regex mask fails closed to NULL on a column that is not text, whatever the column
+    declares (REQ-2142): every scalar result column carries presence, the NOT NULL ``id`` too."""
+    proto = generate_proto(_make_si())
+    assert "optional int32 id = 3;" in proto
+    assert not _compiled(proto).Orders().HasField("id")
+
+
+def test_a_row_with_a_null_is_encoded_with_that_field_unset():
+    from types import SimpleNamespace
+
+    from provisa.grpc.server import ProvisaServicer
+
+    orders = _compiled(generate_proto(_make_si())).Orders
+    msg = ProvisaServicer._dict_row_to_message(
+        SimpleNamespace(_pb2=None), orders, {"id": 7, "amount": None}
+    )
+    assert msg.HasField("id") and msg.id == 7
+    assert not msg.HasField("amount")
+
+
+def test_a_role_s_proto_reads_the_wire_s_null_as_unset():
+    """What a role is described (reflection, its downloaded file) and what the wire encodes
+    agree on every row field's number and presence, so a null the wire leaves unset is unset
+    to the role's client."""
+    from provisa.grpc.field_numbering import FieldNumberAllocator
+
+    numbers = FieldNumberAllocator([])
+    wire = _compiled(generate_proto(_make_si(), numbers, authoritative=True)).Orders
+    role = _compiled(generate_proto(_make_si(), numbers)).Orders
+    for field in wire.DESCRIPTOR.fields:
+        described = role.DESCRIPTOR.fields_by_name[field.name]
+        assert (described.number, described.has_presence) == (field.number, field.has_presence)
+    read = role.FromString(wire(id=1).SerializeToString())
+    assert not read.HasField("amount") and read.id == 1

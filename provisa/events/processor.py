@@ -107,6 +107,9 @@ class NodeContext:
     window_id: str | None = None
     frontier: dict[str, Any] | None = None
     warns: list[str] = field(default_factory=list)
+    # REQ-2133: the table ids of a view's nearest physical inputs (REQ-2126) -- what its refresh
+    # reads -- for a check that asks dq about them (the built-in Hold on failing checks among them).
+    nearest_inputs: tuple[int, ...] = ()
 
     def warn(self, reasons: str | Iterable[str]) -> None:
         """REQ-957: record advisory reason(s). Non-fatal — the loop emits a single ``warn`` event and

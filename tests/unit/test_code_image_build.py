@@ -101,12 +101,13 @@ def base(tmp_path: Path) -> oci.Registry:
     return registry, digest
 
 
-NAMES = {"rates": {"columns": [], "parameters": [], "pushdown": {}}}
+NAMES = {"rates": {"columns": [], "parameters": [], "takes": []}}
 FRONT = [
     "-I",
     "/opt/provisa/front/front.py",
     "7443",
     "/var/lib/provisa",
+    "/var/lib/provisa-spill",
     "/opt/provisa/front/names.json",
 ]
 
@@ -204,6 +205,9 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "opt/provisa/host/host.py",
         "opt/provisa/front/front.py",
         "opt/provisa/front/residual.py",
+        "opt/provisa/front/duckdb_sql.py",
+        # Provisa's own engine_memory, which caps every DuckDB the front end opens (REQ-2006).
+        "opt/provisa/front/engine_memory.py",
         "opt/provisa/front/pgfront.py",
         "opt/provisa/front/pgcatalog.py",
         "opt/provisa/front/names.json",
@@ -347,4 +351,7 @@ def test_the_compose_service_requires_its_host_port_and_keeps_its_state():
         '"${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"' in snippet
     )
     assert "provisa-code-rates-state:/var/lib/provisa" in snippet
+    # REQ-2100: the spill on a volume of its own, sized to the cap by the platform's quota.
+    assert "provisa-code-rates-spill:/var/lib/provisa-spill" in snippet
+    assert "codesource.duckdb_spill_cap_mb" in snippet
     assert "image: ghcr.io/acme/provisa-code-rates:abc" in snippet

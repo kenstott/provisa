@@ -58,7 +58,7 @@ describe("GovernedTableViewer XLSX export", () => {
       .mockResolvedValueOnce({ columns: ["id"], rows: rows(0, CHUNK + 1) })
       .mockResolvedValueOnce({ columns: ["id"], rows: rows(CHUNK, 3) });
 
-    render(<GovernedTableViewer table={TABLE} />);
+    render(<GovernedTableViewer table={TABLE} role="analyst" />);
     await waitFor(() => expect(screen.getByTestId("download-xlsx-btn")).toBeTruthy());
     fireEvent.click(screen.getByTestId("download-xlsx-btn"));
 
@@ -81,7 +81,7 @@ describe("GovernedTableViewer XLSX export", () => {
       .mockResolvedValueOnce({ columns: ["id"], rows: rows(0, 2) })
       .mockResolvedValueOnce({ columns: [], rows: [], error: "permission denied" });
 
-    render(<GovernedTableViewer table={TABLE} />);
+    render(<GovernedTableViewer table={TABLE} role="analyst" />);
     await waitFor(() => expect(screen.getByTestId("download-xlsx-btn")).toBeTruthy());
     fireEvent.click(screen.getByTestId("download-xlsx-btn"));
 

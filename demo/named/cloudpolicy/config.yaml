@@ -40,12 +40,14 @@ naming:
   rules: []
 roles:
 - id: auditor
+  parents: [viewer]
   description: "The security lead: reads every account's resources and incidents, and the policy."
   capabilities:
   - query_development
   domain_access:
   - cloudpolicy
 - id: app_payments
+  parents: [viewer]
   description: "The payments team: reads its own resources and incidents only, and the policy."
   capabilities:
   - query_development
@@ -97,7 +99,7 @@ sources:
   description: A Python package that reads the cloud security policy's published HTML into a row a control
   mapping:
     runtime: python
-    code: {kind: upload, upload: 04ae29c7cf01a6479975dbaf9c46079826fa9d9185722ced0e71bb9e9fb5bca5, filename: policy_reader.tar.gz}
+    code: {kind: upload, upload: 0aadbdb2804498f2eeca37ad7717ca95687ed82595d55456f7dc53ab303162ea, filename: policy_reader.tar.gz}
 - id: review-db
   type: postgresql
   host: ${env:CLOUDPOLICY_PG_HOST:-localhost}
@@ -113,83 +115,83 @@ tables:
   table: compute_resources
   description: Every virtual machine across the three clouds
   columns:
-  - {name: cloud_provider, data_type: varchar, description: 'The cloud it is in: Azure, AWS or GCP', visible_to: [org_admin, auditor, app_payments]}
-  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [org_admin, auditor, app_payments]}
-  - {name: instance_id, data_type: varchar, description: 'The cloud''s short id for it', visible_to: [org_admin, auditor, app_payments]}
-  - {name: instance_name, data_type: varchar, description: 'Its name; a database server''s has -db- in it', visible_to: [org_admin, auditor, app_payments]}
-  - {name: application, data_type: varchar, description: 'The application team that owns it', visible_to: [org_admin, auditor, app_payments]}
-  - {name: region, data_type: varchar, description: 'Where it is', visible_to: [org_admin, auditor, app_payments]}
-  - {name: availability_zone, data_type: varchar, description: 'Its zone', visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_group, data_type: varchar, description: 'Its Azure resource group', visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_id, data_type: varchar, is_primary_key: true, description: 'The cloud''s full id for it', visible_to: [org_admin, auditor, app_payments]}
-  - {name: instance_type, data_type: varchar, description: 'Its size', visible_to: [org_admin, auditor, app_payments]}
-  - {name: state, data_type: varchar, description: 'Whether it is running', visible_to: [org_admin, auditor, app_payments]}
-  - {name: platform, data_type: varchar, description: 'Its operating system', visible_to: [org_admin, auditor, app_payments]}
-  - {name: architecture, data_type: varchar, description: 'Its processor architecture', visible_to: [org_admin, auditor, app_payments]}
-  - {name: virtualization_type, data_type: varchar, description: 'How it is virtualized', visible_to: [org_admin, auditor, app_payments]}
-  - {name: public_ip, data_type: varchar, description: 'Its public IP address; empty when it has none', visible_to: [org_admin, auditor, app_payments]}
-  - {name: private_ip, data_type: varchar, description: 'Its private IP address', visible_to: [org_admin, auditor, app_payments]}
-  - {name: vpc_id, data_type: varchar, description: 'Its virtual network', visible_to: [org_admin, auditor, app_payments]}
-  - {name: subnet_id, data_type: varchar, description: 'Its subnet', visible_to: [org_admin, auditor, app_payments]}
-  - {name: iam_role, data_type: varchar, description: 'The role it runs as', visible_to: [org_admin, auditor, app_payments]}
-  - {name: security_groups, data_type: varchar, description: 'Its security groups, as JSON', visible_to: [org_admin, auditor, app_payments]}
-  - {name: disk_encryption_enabled, data_type: boolean, description: 'Whether all its disks are encrypted with a customer-managed key', visible_to: [org_admin, auditor, app_payments]}
-  - {name: monitoring_enabled, data_type: boolean, description: 'Whether it is monitored', visible_to: [org_admin, auditor, app_payments]}
-  - {name: launch_time, data_type: timestamp, description: 'When it was started', visible_to: [org_admin, auditor, app_payments]}
+  - {name: cloud_provider, data_type: varchar, description: 'The cloud it is in: Azure, AWS or GCP', visible_to: [data_steward, auditor, app_payments]}
+  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [data_steward, auditor, app_payments]}
+  - {name: instance_id, data_type: varchar, description: 'The cloud''s short id for it', visible_to: [data_steward, auditor, app_payments]}
+  - {name: instance_name, data_type: varchar, description: 'Its name; a database server''s has -db- in it', visible_to: [data_steward, auditor, app_payments]}
+  - {name: application, data_type: varchar, description: 'The application team that owns it', visible_to: [data_steward, auditor, app_payments]}
+  - {name: region, data_type: varchar, description: 'Where it is', visible_to: [data_steward, auditor, app_payments]}
+  - {name: availability_zone, data_type: varchar, description: 'Its zone', visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_group, data_type: varchar, description: 'Its Azure resource group', visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_id, data_type: varchar, is_primary_key: true, description: 'The cloud''s full id for it', visible_to: [data_steward, auditor, app_payments]}
+  - {name: instance_type, data_type: varchar, description: 'Its size', visible_to: [data_steward, auditor, app_payments]}
+  - {name: state, data_type: varchar, description: 'Whether it is running', visible_to: [data_steward, auditor, app_payments]}
+  - {name: platform, data_type: varchar, description: 'Its operating system', visible_to: [data_steward, auditor, app_payments]}
+  - {name: architecture, data_type: varchar, description: 'Its processor architecture', visible_to: [data_steward, auditor, app_payments]}
+  - {name: virtualization_type, data_type: varchar, description: 'How it is virtualized', visible_to: [data_steward, auditor, app_payments]}
+  - {name: public_ip, data_type: varchar, description: 'Its public IP address; empty when it has none', visible_to: [data_steward, auditor, app_payments]}
+  - {name: private_ip, data_type: varchar, description: 'Its private IP address', visible_to: [data_steward, auditor, app_payments]}
+  - {name: vpc_id, data_type: varchar, description: 'Its virtual network', visible_to: [data_steward, auditor, app_payments]}
+  - {name: subnet_id, data_type: varchar, description: 'Its subnet', visible_to: [data_steward, auditor, app_payments]}
+  - {name: iam_role, data_type: varchar, description: 'The role it runs as', visible_to: [data_steward, auditor, app_payments]}
+  - {name: security_groups, data_type: varchar, description: 'Its security groups, as JSON', visible_to: [data_steward, auditor, app_payments]}
+  - {name: disk_encryption_enabled, data_type: boolean, description: 'Whether all its disks are encrypted with a customer-managed key', visible_to: [data_steward, auditor, app_payments]}
+  - {name: monitoring_enabled, data_type: boolean, description: 'Whether it is monitored', visible_to: [data_steward, auditor, app_payments]}
+  - {name: launch_time, data_type: timestamp, description: 'When it was started', visible_to: [data_steward, auditor, app_payments]}
 - source_id: inventory
   domain_id: cloudpolicy
   schema: inventory
   table: storage_resources
   description: Every disk across the three clouds, its encryption key and the machine it is attached to
   columns:
-  - {name: cloud_provider, data_type: varchar, description: 'The cloud it is in: Azure, AWS or GCP', visible_to: [org_admin, auditor, app_payments]}
-  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_name, data_type: varchar, description: 'The disk''s name', visible_to: [org_admin, auditor, app_payments]}
-  - {name: storage_type, data_type: varchar, description: 'Managed Disk, EBS Volume or Persistent Disk', visible_to: [org_admin, auditor, app_payments]}
-  - {name: application, data_type: varchar, description: 'The application team that owns it', visible_to: [org_admin, auditor, app_payments]}
-  - {name: region, data_type: varchar, description: 'Where it is', visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_group, data_type: varchar, description: 'Its Azure resource group', visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_id, data_type: varchar, is_primary_key: true, description: 'The cloud''s own id for it', visible_to: [org_admin, auditor, app_payments]}
-  - {name: size_bytes, data_type: bigint, description: 'Its size in bytes', visible_to: [org_admin, auditor, app_payments]}
-  - {name: storage_class, data_type: varchar, description: 'Its performance tier', visible_to: [org_admin, auditor, app_payments]}
-  - {name: replication_type, data_type: varchar, description: 'How it is replicated', visible_to: [org_admin, auditor, app_payments]}
-  - {name: encryption_enabled, data_type: boolean, description: 'Whether it is encrypted at rest', visible_to: [org_admin, auditor, app_payments]}
-  - {name: encryption_type, data_type: varchar, description: 'How it is encrypted, in the cloud''s words', visible_to: [org_admin, auditor, app_payments]}
-  - {name: encryption_key_type, data_type: varchar, description: 'customer-managed or service-managed', visible_to: [org_admin, auditor, app_payments]}
-  - {name: public_access_enabled, data_type: boolean, description: 'Whether it allows public access', visible_to: [org_admin, auditor, app_payments]}
-  - {name: public_access_level, data_type: varchar, description: 'The public access it allows', visible_to: [org_admin, auditor, app_payments]}
-  - {name: network_restrictions, data_type: varchar, description: 'The networks it accepts', visible_to: [org_admin, auditor, app_payments]}
-  - {name: https_only, data_type: boolean, description: 'Whether it accepts HTTPS only', visible_to: [org_admin, auditor, app_payments]}
-  - {name: versioning_enabled, data_type: boolean, description: 'Whether it keeps versions', visible_to: [org_admin, auditor, app_payments]}
-  - {name: soft_delete_enabled, data_type: boolean, description: 'Whether deletes are recoverable', visible_to: [org_admin, auditor, app_payments]}
-  - {name: soft_delete_retention_days, data_type: integer, description: 'How long a deleted item is kept', visible_to: [org_admin, auditor, app_payments]}
-  - {name: backup_enabled, data_type: boolean, description: 'Whether it is backed up', visible_to: [org_admin, auditor, app_payments]}
-  - {name: lifecycle_rules_count, data_type: integer, description: 'Its lifecycle rules', visible_to: [org_admin, auditor, app_payments]}
-  - {name: access_tier, data_type: varchar, description: 'Its access tier', visible_to: [org_admin, auditor, app_payments]}
-  - {name: created_date, data_type: timestamp, description: 'When it was created', visible_to: [org_admin, auditor, app_payments]}
-  - {name: modified_date, data_type: timestamp, description: 'When it last changed', visible_to: [org_admin, auditor, app_payments]}
-  - {name: tags, data_type: varchar, description: 'Its tags, as JSON', visible_to: [org_admin, auditor, app_payments]}
-  - {name: key_id, data_type: varchar, description: 'The customer-managed key it is encrypted with; empty when the cloud manages the key', visible_to: [org_admin, auditor, app_payments]}
-  - {name: attached_instance_id, data_type: varchar, description: 'The virtual machine it is attached to; empty when it is not attached', visible_to: [org_admin, auditor, app_payments]}
+  - {name: cloud_provider, data_type: varchar, description: 'The cloud it is in: Azure, AWS or GCP', visible_to: [data_steward, auditor, app_payments]}
+  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_name, data_type: varchar, description: 'The disk''s name', visible_to: [data_steward, auditor, app_payments]}
+  - {name: storage_type, data_type: varchar, description: 'Managed Disk, EBS Volume or Persistent Disk', visible_to: [data_steward, auditor, app_payments]}
+  - {name: application, data_type: varchar, description: 'The application team that owns it', visible_to: [data_steward, auditor, app_payments]}
+  - {name: region, data_type: varchar, description: 'Where it is', visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_group, data_type: varchar, description: 'Its Azure resource group', visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_id, data_type: varchar, is_primary_key: true, description: 'The cloud''s own id for it', visible_to: [data_steward, auditor, app_payments]}
+  - {name: size_bytes, data_type: bigint, description: 'Its size in bytes', visible_to: [data_steward, auditor, app_payments]}
+  - {name: storage_class, data_type: varchar, description: 'Its performance tier', visible_to: [data_steward, auditor, app_payments]}
+  - {name: replication_type, data_type: varchar, description: 'How it is replicated', visible_to: [data_steward, auditor, app_payments]}
+  - {name: encryption_enabled, data_type: boolean, description: 'Whether it is encrypted at rest', visible_to: [data_steward, auditor, app_payments]}
+  - {name: encryption_type, data_type: varchar, description: 'How it is encrypted, in the cloud''s words', visible_to: [data_steward, auditor, app_payments]}
+  - {name: encryption_key_type, data_type: varchar, description: 'customer-managed or service-managed', visible_to: [data_steward, auditor, app_payments]}
+  - {name: public_access_enabled, data_type: boolean, description: 'Whether it allows public access', visible_to: [data_steward, auditor, app_payments]}
+  - {name: public_access_level, data_type: varchar, description: 'The public access it allows', visible_to: [data_steward, auditor, app_payments]}
+  - {name: network_restrictions, data_type: varchar, description: 'The networks it accepts', visible_to: [data_steward, auditor, app_payments]}
+  - {name: https_only, data_type: boolean, description: 'Whether it accepts HTTPS only', visible_to: [data_steward, auditor, app_payments]}
+  - {name: versioning_enabled, data_type: boolean, description: 'Whether it keeps versions', visible_to: [data_steward, auditor, app_payments]}
+  - {name: soft_delete_enabled, data_type: boolean, description: 'Whether deletes are recoverable', visible_to: [data_steward, auditor, app_payments]}
+  - {name: soft_delete_retention_days, data_type: integer, description: 'How long a deleted item is kept', visible_to: [data_steward, auditor, app_payments]}
+  - {name: backup_enabled, data_type: boolean, description: 'Whether it is backed up', visible_to: [data_steward, auditor, app_payments]}
+  - {name: lifecycle_rules_count, data_type: integer, description: 'Its lifecycle rules', visible_to: [data_steward, auditor, app_payments]}
+  - {name: access_tier, data_type: varchar, description: 'Its access tier', visible_to: [data_steward, auditor, app_payments]}
+  - {name: created_date, data_type: timestamp, description: 'When it was created', visible_to: [data_steward, auditor, app_payments]}
+  - {name: modified_date, data_type: timestamp, description: 'When it last changed', visible_to: [data_steward, auditor, app_payments]}
+  - {name: tags, data_type: varchar, description: 'Its tags, as JSON', visible_to: [data_steward, auditor, app_payments]}
+  - {name: key_id, data_type: varchar, description: 'The customer-managed key it is encrypted with; empty when the cloud manages the key', visible_to: [data_steward, auditor, app_payments]}
+  - {name: attached_instance_id, data_type: varchar, description: 'The virtual machine it is attached to; empty when it is not attached', visible_to: [data_steward, auditor, app_payments]}
 - source_id: itsm
   domain_id: cloudpolicy
   schema: itsm
   table: incident
   description: The security team's incidents, each naming a disk and the policy section it cites
   columns:
-  - {name: sys_id, data_type: varchar, is_primary_key: true, description: 'The incident''s record id', visible_to: [org_admin, auditor, app_payments]}
-  - {name: number, data_type: varchar, description: 'The incident''s number', visible_to: [org_admin, auditor, app_payments]}
-  - {name: short_description, data_type: varchar, description: 'What it is about', visible_to: [org_admin, auditor, app_payments]}
-  - {name: state, data_type: integer, description: '1 new, 2 in progress, 3 on hold, 6 resolved, 7 closed', visible_to: [org_admin, auditor, app_payments]}
-  - {name: priority, data_type: integer, description: '1 critical, 2 high, 3 moderate, 4 low', visible_to: [org_admin, auditor, app_payments]}
-  - {name: category, data_type: varchar, description: 'Security for a violation; Policy exception for an exception', visible_to: [org_admin, auditor, app_payments]}
-  - {name: opened_at, data_type: timestamp, description: 'When it was opened', visible_to: [org_admin, auditor, app_payments]}
-  - {name: resolved_at, data_type: timestamp, description: 'When it was resolved; empty while it is open', visible_to: [org_admin, auditor, app_payments]}
-  - {name: u_policy_control, data_type: varchar, description: 'The policy section it cites', visible_to: [org_admin, auditor, app_payments]}
-  - {name: assignment_group, data_type: varchar, description: 'The team it is assigned to, by record id', visible_to: [org_admin, auditor, app_payments]}
-  - {name: assignment_group__display, data_type: varchar, description: 'The team it is assigned to', visible_to: [org_admin, auditor, app_payments]}
-  - {name: cmdb_ci, data_type: varchar, description: 'The configuration item it is about, by record id', visible_to: [org_admin, auditor, app_payments]}
-  - {name: cmdb_ci__display, data_type: varchar, description: 'The configuration item it is about: the disk''s name', visible_to: [org_admin, auditor, app_payments]}
+  - {name: sys_id, data_type: varchar, is_primary_key: true, description: 'The incident''s record id', visible_to: [data_steward, auditor, app_payments]}
+  - {name: number, data_type: varchar, description: 'The incident''s number', visible_to: [data_steward, auditor, app_payments]}
+  - {name: short_description, data_type: varchar, description: 'What it is about', visible_to: [data_steward, auditor, app_payments]}
+  - {name: state, data_type: integer, description: '1 new, 2 in progress, 3 on hold, 6 resolved, 7 closed', visible_to: [data_steward, auditor, app_payments]}
+  - {name: priority, data_type: integer, description: '1 critical, 2 high, 3 moderate, 4 low', visible_to: [data_steward, auditor, app_payments]}
+  - {name: category, data_type: varchar, description: 'Security for a violation; Policy exception for an exception', visible_to: [data_steward, auditor, app_payments]}
+  - {name: opened_at, data_type: timestamp, description: 'When it was opened', visible_to: [data_steward, auditor, app_payments]}
+  - {name: resolved_at, data_type: timestamp, description: 'When it was resolved; empty while it is open', visible_to: [data_steward, auditor, app_payments]}
+  - {name: u_policy_control, data_type: varchar, description: 'The policy section it cites', visible_to: [data_steward, auditor, app_payments]}
+  - {name: assignment_group, data_type: varchar, description: 'The team it is assigned to, by record id', visible_to: [data_steward, auditor, app_payments]}
+  - {name: assignment_group__display, data_type: varchar, description: 'The team it is assigned to', visible_to: [data_steward, auditor, app_payments]}
+  - {name: cmdb_ci, data_type: varchar, description: 'The configuration item it is about, by record id', visible_to: [data_steward, auditor, app_payments]}
+  - {name: cmdb_ci__display, data_type: varchar, description: 'The configuration item it is about: the disk''s name', visible_to: [data_steward, auditor, app_payments]}
 # The policy's function, a table: its columns are its PolicySection's fields, its parameter the
 # function's url, which defaults to the policy shipped in the package.
 - source_id: policy-reader
@@ -198,34 +200,34 @@ tables:
   table: policy_sections
   description: The cloud security policy, a row a control, read from its published HTML
   columns:
-  - {name: section, data_type: text, is_primary_key: true, description: The section number, visible_to: [org_admin, auditor, app_payments]}
-  - {name: heading, data_type: text, description: The control's heading, visible_to: [org_admin, auditor, app_payments]}
-  - {name: clause, data_type: text, description: What the control requires, visible_to: [org_admin, auditor, app_payments]}
-  - {name: effective_date, data_type: date, description: The day the control took effect, visible_to: [org_admin, auditor, app_payments]}
-  - {name: _nf_url, data_type: text, native_filter_type: query_arg, native_filter_required: false, description: 'The policy document to read; the shipped policy when left out', visible_to: []}
+  - {name: section, data_type: text, is_primary_key: true, description: The section number, visible_to: [data_steward, auditor, app_payments]}
+  - {name: heading, data_type: text, description: The control's heading, visible_to: [data_steward, auditor, app_payments]}
+  - {name: clause, data_type: text, description: What the control requires, visible_to: [data_steward, auditor, app_payments]}
+  - {name: effective_date, data_type: date, description: The day the control took effect, visible_to: [data_steward, auditor, app_payments]}
+  - {name: _nf_url, data_type: text, native_filter_type: query_arg, native_filter_required: false, description: 'The policy document to read; the shipped policy when left out', visible_to: [viewer]}
 - source_id: review-db
   domain_id: cloudpolicy
   schema: public
   table: control_checks
   description: Each check the security team runs, and the policy section it enforces
   columns:
-  - {name: section, data_type: varchar, description: The policy section it enforces, visible_to: [org_admin, auditor, app_payments]}
-  - {name: check_name, data_type: varchar, is_primary_key: true, description: The check, visible_to: [org_admin, auditor, app_payments]}
-  - {name: checked_by, data_type: varchar, description: The view that runs it, visible_to: [org_admin, auditor, app_payments]}
+  - {name: section, data_type: varchar, description: The policy section it enforces, visible_to: [data_steward, auditor, app_payments]}
+  - {name: check_name, data_type: varchar, is_primary_key: true, description: The check, visible_to: [data_steward, auditor, app_payments]}
+  - {name: checked_by, data_type: varchar, description: The view that runs it, visible_to: [data_steward, auditor, app_payments]}
 - source_id: review-db
   domain_id: cloudpolicy
   schema: public
   table: review_history
   description: The daily review as the daily trigger keeps it, a row an attached disk a day
   columns:
-  - {name: review_date, data_type: date, is_primary_key: true, description: The day of the review, visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_id, data_type: varchar, is_primary_key: true, description: The disk, visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_name, data_type: varchar, description: The disk's name, visible_to: [org_admin, auditor, app_payments]}
-  - {name: cloud_provider, data_type: varchar, description: The cloud it is in, visible_to: [org_admin, auditor, app_payments]}
-  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [org_admin, auditor, app_payments]}
-  - {name: application, data_type: varchar, description: The application team that owns it, visible_to: [org_admin, auditor, app_payments]}
-  - {name: status, data_type: varchar, description: What the review found that day, visible_to: [org_admin, auditor, app_payments]}
-  - {name: incident_number, data_type: varchar, description: The incident that decided it, visible_to: [org_admin, auditor, app_payments]}
+  - {name: review_date, data_type: date, is_primary_key: true, description: The day of the review, visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_id, data_type: varchar, is_primary_key: true, description: The disk, visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_name, data_type: varchar, description: The disk's name, visible_to: [data_steward, auditor, app_payments]}
+  - {name: cloud_provider, data_type: varchar, description: The cloud it is in, visible_to: [data_steward, auditor, app_payments]}
+  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [data_steward, auditor, app_payments]}
+  - {name: application, data_type: varchar, description: The application team that owns it, visible_to: [data_steward, auditor, app_payments]}
+  - {name: status, data_type: varchar, description: What the review found that day, visible_to: [data_steward, auditor, app_payments]}
+  - {name: incident_number, data_type: varchar, description: The incident that decided it, visible_to: [data_steward, auditor, app_payments]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [review_date, resource_id, resource_name, cloud_provider, account_id, application, status, incident_number]}
 - source_id: review-db
@@ -234,8 +236,8 @@ tables:
   table: clause_vectors
   description: Each policy clause's embedding, for searching the policy by meaning; written by embed_clauses
   columns:
-  - {name: section, data_type: varchar, is_primary_key: true, description: The policy section, visible_to: [org_admin, auditor, app_payments]}
-  - {name: clause_vec, data_type: array(float), embedding: true, embedding_model: sentence-transformers/all-MiniLM-L6-v2, description: The embedding of the clause's words, visible_to: [org_admin, auditor, app_payments]}
+  - {name: section, data_type: varchar, is_primary_key: true, description: The policy section, visible_to: [data_steward, auditor, app_payments]}
+  - {name: clause_vec, data_type: array(float), embedding: true, embedding_model: sentence-transformers/all-MiniLM-L6-v2, description: The embedding of the clause's words, visible_to: [data_steward, auditor, app_payments]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [section, clause_vec]}
 views:
@@ -252,14 +254,14 @@ views:
     JOIN "cloudpolicy"."compute_resources" AS m ON m.resource_id = d.attached_instance_id
     WHERE d.key_id IS NULL
   columns:
-  - {name: cloud_provider, data_type: varchar, description: The cloud it is in, visible_to: [org_admin, auditor, app_payments]}
-  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [org_admin, auditor, app_payments]}
-  - {name: application, data_type: varchar, description: The application team that owns it, visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_name, data_type: varchar, description: The disk's name, visible_to: [org_admin, auditor, app_payments]}
-  - {name: storage_type, data_type: varchar, description: 'Managed Disk, EBS Volume or Persistent Disk', visible_to: [org_admin, auditor, app_payments]}
-  - {name: encryption_type, data_type: varchar, description: 'How it is encrypted, in the cloud''s words', visible_to: [org_admin, auditor, app_payments]}
-  - {name: instance_name, data_type: varchar, description: The machine it is attached to, visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_id, data_type: varchar, description: The cloud's own id for the disk, visible_to: [org_admin, auditor, app_payments]}
+  - {name: cloud_provider, data_type: varchar, description: The cloud it is in, visible_to: [data_steward, auditor, app_payments]}
+  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [data_steward, auditor, app_payments]}
+  - {name: application, data_type: varchar, description: The application team that owns it, visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_name, data_type: varchar, description: The disk's name, visible_to: [data_steward, auditor, app_payments]}
+  - {name: storage_type, data_type: varchar, description: 'Managed Disk, EBS Volume or Persistent Disk', visible_to: [data_steward, auditor, app_payments]}
+  - {name: encryption_type, data_type: varchar, description: 'How it is encrypted, in the cloud''s words', visible_to: [data_steward, auditor, app_payments]}
+  - {name: instance_name, data_type: varchar, description: The machine it is attached to, visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_id, data_type: varchar, description: The cloud's own id for the disk, visible_to: [data_steward, auditor, app_payments]}
 # The daily review: each attached disk on the review day, 2026-10-20, the day the inventory was
 # taken (generate.py REVIEW_DAY), by the policy's rules. A disk with a
 # customer-managed key is compliant (§4.2). Otherwise an exception opened within 90 days covers it
@@ -304,13 +306,13 @@ views:
       ON l.cmdb_ci__display = d.resource_name AND l.n = 1
     WHERE d.attached_instance_id IS NOT NULL
   columns:
-  - {name: resource_id, data_type: varchar, description: The disk, visible_to: [org_admin, auditor, app_payments]}
-  - {name: resource_name, data_type: varchar, description: The disk's name, visible_to: [org_admin, auditor, app_payments]}
-  - {name: cloud_provider, data_type: varchar, description: The cloud it is in, visible_to: [org_admin, auditor, app_payments]}
-  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [org_admin, auditor, app_payments]}
-  - {name: application, data_type: varchar, description: The application team that owns it, visible_to: [org_admin, auditor, app_payments]}
-  - {name: status, data_type: varchar, description: What the review finds, visible_to: [org_admin, auditor, app_payments]}
-  - {name: incident_number, data_type: varchar, description: The incident that decides it, visible_to: [org_admin, auditor, app_payments]}
+  - {name: resource_id, data_type: varchar, description: The disk, visible_to: [data_steward, auditor, app_payments]}
+  - {name: resource_name, data_type: varchar, description: The disk's name, visible_to: [data_steward, auditor, app_payments]}
+  - {name: cloud_provider, data_type: varchar, description: The cloud it is in, visible_to: [data_steward, auditor, app_payments]}
+  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [data_steward, auditor, app_payments]}
+  - {name: application, data_type: varchar, description: The application team that owns it, visible_to: [data_steward, auditor, app_payments]}
+  - {name: status, data_type: varchar, description: What the review finds, visible_to: [data_steward, auditor, app_payments]}
+  - {name: incident_number, data_type: varchar, description: The incident that decides it, visible_to: [data_steward, auditor, app_payments]}
 # §5.1 as a view: database servers with a public address.
 - id: public_database_servers
   domain_id: cloudpolicy
@@ -320,11 +322,11 @@ views:
     FROM "cloudpolicy"."compute_resources"
     WHERE instance_name LIKE '%-db-%' AND public_ip IS NOT NULL
   columns:
-  - {name: cloud_provider, data_type: varchar, description: The cloud it is in, visible_to: [org_admin, auditor, app_payments]}
-  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [org_admin, auditor, app_payments]}
-  - {name: application, data_type: varchar, description: The application team that owns it, visible_to: [org_admin, auditor, app_payments]}
-  - {name: instance_name, data_type: varchar, description: The database server, visible_to: [org_admin, auditor, app_payments]}
-  - {name: public_ip, data_type: varchar, description: Its public IP address, visible_to: [org_admin, auditor, app_payments]}
+  - {name: cloud_provider, data_type: varchar, description: The cloud it is in, visible_to: [data_steward, auditor, app_payments]}
+  - {name: account_id, data_type: varchar, description: 'The subscription, account or project', visible_to: [data_steward, auditor, app_payments]}
+  - {name: application, data_type: varchar, description: The application team that owns it, visible_to: [data_steward, auditor, app_payments]}
+  - {name: instance_name, data_type: varchar, description: The database server, visible_to: [data_steward, auditor, app_payments]}
+  - {name: public_ip, data_type: varchar, description: Its public IP address, visible_to: [data_steward, auditor, app_payments]}
 # Each incident beside the policy section it cites: a disk-encryption incident cites §4.2, an
 # exception §4.3, and a section the policy does not have is no control at all.
 - id: incident_controls
@@ -341,12 +343,12 @@ views:
     FROM "cloudpolicy"."incident" AS i
     LEFT JOIN "cloudpolicy"."policy_sections" AS p ON p.section = i.u_policy_control
   columns:
-  - {name: number, data_type: varchar, description: The incident's number, visible_to: [org_admin, auditor, app_payments]}
-  - {name: short_description, data_type: varchar, description: What it is about, visible_to: [org_admin, auditor, app_payments]}
-  - {name: category, data_type: varchar, description: Security or Policy exception, visible_to: [org_admin, auditor, app_payments]}
-  - {name: cited, data_type: varchar, description: The policy section it cites, visible_to: [org_admin, auditor, app_payments]}
-  - {name: cited_heading, data_type: text, description: That section's heading; empty when the policy has no such section, visible_to: [org_admin, auditor, app_payments]}
-  - {name: finding, data_type: varchar, description: Whether it cites the control it is about, visible_to: [org_admin, auditor, app_payments]}
+  - {name: number, data_type: varchar, description: The incident's number, visible_to: [data_steward, auditor, app_payments]}
+  - {name: short_description, data_type: varchar, description: What it is about, visible_to: [data_steward, auditor, app_payments]}
+  - {name: category, data_type: varchar, description: Security or Policy exception, visible_to: [data_steward, auditor, app_payments]}
+  - {name: cited, data_type: varchar, description: The policy section it cites, visible_to: [data_steward, auditor, app_payments]}
+  - {name: cited_heading, data_type: text, description: That section's heading; empty when the policy has no such section, visible_to: [data_steward, auditor, app_payments]}
+  - {name: finding, data_type: varchar, description: Whether it cites the control it is about, visible_to: [data_steward, auditor, app_payments]}
 # The controls no check enforces.
 - id: unchecked_controls
   domain_id: cloudpolicy
@@ -357,8 +359,8 @@ views:
     LEFT JOIN "cloudpolicy"."control_checks" AS c ON c.section = p.section
     WHERE c.section IS NULL
   columns:
-  - {name: section, data_type: text, description: The section number, visible_to: [org_admin, auditor, app_payments]}
-  - {name: heading, data_type: text, description: The control's heading, visible_to: [org_admin, auditor, app_payments]}
+  - {name: section, data_type: text, description: The section number, visible_to: [data_steward, auditor, app_payments]}
+  - {name: heading, data_type: text, description: The control's heading, visible_to: [data_steward, auditor, app_payments]}
 rls_rules:
 # The payments team reads its own resources, its own incidents and its own review rows.
 - {description: The payments team reads its own machines only., table_id: compute_resources, role_id: app_payments, filter: "application = 'payments'"}
@@ -381,7 +383,7 @@ functions:
   description: Embed every clause of the policy and write each embedding to clause_vectors
   source_id: ''
   returns: ''
-  visible_to: [org_admin]
+  visible_to: [data_steward]
   binding:
     sql: >-
       INSERT INTO "cloudpolicy"."clause_vectors" (section, clause_vec)

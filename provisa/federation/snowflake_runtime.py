@@ -299,6 +299,23 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
         return await self._land_guard.run(_run)
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether the replica ``schema.table`` of the landing database exists, from the
+        database's own catalog (``snowflake_store.object_exists``). Absent is False; a catalog
+        that cannot be read raises."""
+        from provisa.federation.snowflake_store import object_exists
+
+        parts = (self.ensure_materialize_attached(), schema, table)
+
+        def _run() -> bool:
+            cur = open_cursor(self._conn)
+            try:
+                return object_exists(cur, parts)
+            finally:
+                close_cursor(cur)
+
+        return await self._land_guard.run(_run)
+
     async def reconcile_landed_metadata(self, plan: Any) -> int:
         """Apply the landed model's keys and descriptions (REQ-1652, REQ-1654): PRIMARY/FOREIGN KEY
         constraints on the replicas, PRIMARY_KEY / FOREIGN_KEY column tags on their export views
@@ -532,3 +549,12 @@ def resolve_snowflake_iceberg_metadata_location(source: Any) -> str:  # REQ-1867
         raise ValueError(f"SYSTEM$GET_ICEBERG_TABLE_INFORMATION('{table}') returned no row")
     info = json.loads(row[0])
     return info["metadataLocation"]
+
+
+def driver_errors() -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+    """REQ-778: the Snowflake connector's own (PEP 249)."""
+    import snowflake.connector.errors as sf
+
+    from provisa.federation.dbapi_errors import dbapi_errors
+
+    return dbapi_errors(sf)

@@ -48,6 +48,9 @@ _TARGETS = (
     "polly",
     "image",
     "notebook",
+    "mcp",
+    "mcp_explain",
+    "mcp_connect",
 )
 # The query parameters a table's REST endpoint declares (provisa/api/rest/openapi_spec.py).
 _REST_PARAMS = {
@@ -222,7 +225,11 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     sources = {s["id"] for s in config["sources"]}
     aliases = {r["alias"] for r in config["relationships"] if r.get("alias")}
     examples = {q.stem for q in (home / "queries").glob("*.graphql")}
-    roles = {r["id"] for r in config["roles"]} | {"all"}
+    # The demo's own roles, and the standard roles its tour acts as, which a visitor is granted too
+    # (REQ-2155: demo_templates.tour_standard_roles refuses one the sandbox withholds).
+    from provisa.api.demo_templates import tour_standard_roles
+
+    roles = {r["id"] for r in config["roles"]} | {"all"} | set(tour_standard_roles(home))
     # prod, and each environment the demo's setup makes (REQ-2053).
     setup = home / "setup.yaml"
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []
@@ -245,6 +252,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     before = None
     # REQ-2083: each sql step's statement, by key, for a later step that takes a value of its answer.
     sql_steps: dict[str, str] = {}
+    mcp_asked = False
     for step in steps:
         page = step.get("route", page)
         previous, before = before, step
@@ -399,10 +407,24 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert step["notebook"] is True, step
             assert page == "/notebook", f"{step['key']}: the notebook runs on /notebook, not {page}"
             _check_notebook(home, relations)
+        if "mcp" in step:
+            # REQ-2172: a question handed to the MCP explorer, which its agent answers live.
+            assert page == "/explore", f"{step['key']}: mcp asks on /explore, not {page}"
+            assert isinstance(step["mcp"], str) and step["mcp"].strip(), step
+            mcp_asked = True
+        if "mcp_explain" in step:
+            # The explain of the last run_sql call of the question asked before it.
+            assert step["mcp_explain"] is True, step
+            assert page == "/explore", f"{step['key']}: mcp_explain is on /explore, not {page}"
+            assert mcp_asked, f"{step['key']}: no mcp step before it made a call to explain"
+        if "mcp_connect" in step:
+            assert step["mcp_connect"] is True, step
+            assert page == "/explore", f"{step['key']}: mcp_connect is on /explore, not {page}"
         if "sql" in step:
             sql_steps[step["key"]] = step["sql"]
+            # A relation read at a time is named with its arguments (REQ-1163): its name is the call's.
             read = {
-                f"{t.db}.{t.name}"
+                f"{t.db}.{t.name or t.this.name}"
                 for t in sqlglot.parse_one(step["sql"], read="postgres").find_all(sqlglot.exp.Table)
             }
             assert read and read <= relations, f"{step['key']}: reads {read - relations}"
@@ -756,5 +778,48 @@ def test_a_recording_time_is_taken_from_an_earlier_statements_answer():
     ids=["no-step", "column", "row", "page"],
 )
 def test_a_recording_time_from_nothing_the_tour_ran_is_refused(steps):
+    with pytest.raises(AssertionError):
+        _check_steps(_WEBLOGS, steps)
+
+
+# REQ-2172: the MCP explorer's steps -- a question for its agent, the explain of the agent's last
+# run_sql call, and the Connect Claude Desktop panel -- each on /explore.
+_MCP_ASK = {
+    "key": "q",
+    "route": "/explore",
+    "capability": "query_development",
+    "mcp": "Who ordered?",
+}
+
+
+def test_the_mcp_explorer_s_steps_are_on_the_explorer():
+    _check_steps(
+        _WEBLOGS, [_MCP_ASK, {"key": "e", "mcp_explain": True}, {"key": "c", "mcp_connect": True}]
+    )
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        # An explain with no question asked before it: no call to explain.
+        [
+            {
+                "key": "c",
+                "route": "/explore",
+                "capability": "query_development",
+                "mcp_connect": True,
+            },
+            {"key": "e", "mcp_explain": True},
+        ],
+        # A question asked on another page than the explorer.
+        [{**_MCP_ASK, "route": "/sql"}],
+        # An empty question.
+        [{**_MCP_ASK, "mcp": " "}],
+        # The panel opened on another page.
+        [_VERSIONS, {"key": "c", "mcp_connect": True}],
+    ],
+    ids=["explain-first", "page", "empty", "connect-page"],
+)
+def test_an_mcp_step_off_the_explorer_or_with_nothing_to_explain_is_refused(steps):
     with pytest.raises(AssertionError):
         _check_steps(_WEBLOGS, steps)

@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} 正在執行。",
     "toolDoneTooltip": "{{name}} 已完成，結果已交回助理。",
     "toolErrorTooltip": "{{name}} 失敗。助理已收到該錯誤，可能會改用其他引數重試。",
-    "roleNoteHelpTitle": "本工作階段所使用的角色"
+    "roleNoteHelpTitle": "本工作階段所使用的角色",
+    "toolExplainTooltip": "{{name}} 已完成。點擊查看它發送的語句和實際執行的語句。",
+    "explainTitle": "智能體的查詢執行了甚麼",
+    "explainSent": "智能體發送的語句",
+    "explainRan": "實際執行的語句,已按 {{role}} 管治"
   }
 }

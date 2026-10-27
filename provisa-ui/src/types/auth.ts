@@ -18,7 +18,6 @@ export type Capability =
   | "approve_view"
   | "full_results"
   | "usage"
-  | "read_restricted"
   | "approve_relationship"
   | "create_view"
   | "column_grant"
@@ -41,6 +40,9 @@ export type Capability =
   // reaching the environments admin surface; `environment_switch` is being served by one other than
   // prod. org_admin and developer carry both; analyst and modeler carry neither.
   | "environment_management"
+  // REQ-2155: manage the environments the caller owns (create one, becoming its owner; delete one
+  // it owns) -- a developer's; `environment_management` manages any.
+  | "environment_owned_management"
   | "environment_switch"
   // REQ-1942: changing an environment's data choices; org_admin alone.
   | "environment_data"
@@ -63,7 +65,13 @@ export type Capability =
   // analyst, developer, and modeler all hold it. `data_product_rw` is create/delete, on the
   // same footing as `table_registration`: org_admin only.
   | "data_product_read"
-  | "data_product_rw";
+  | "data_product_rw"
+  // REQ-2155: edit a data product the caller's role owns (its owner_role, an ancestor included).
+  | "data_product_owned_rw"
+  // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
+  // checks, expectations and promises -- so managing checks needs no table registration.
+  | "dq_read"
+  | "dq_rw";
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;
@@ -83,6 +91,9 @@ export interface Role {
    *  definition is withheld: it explains, it grants nothing. */
   description: string;
   capabilities: Capability[];
+  /** REQ-2155: what the role holds -- its own capabilities and every ancestor's. A caller's rights
+   *  are the union of this over the roles it acts as. */
+  effectiveCapabilities: Capability[];
   /**
    * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
    * badged as belonging to the production system. A role defined by subtraction (the sandbox,
@@ -92,7 +103,10 @@ export interface Role {
   demonstrated: Capability[];
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
-  parentRoleId?: string | null; // REQ-1677: the role this one inherits from
+  /** REQ-2155: the roles this one inherits from, in order; its capabilities are their union. */
+  parents?: string[];
+  /** REQ-2155: a standard role is Provisa's and locked -- extended with child roles, never edited. */
+  standard?: boolean;
   /** REQ-1921: with data_residency, the region values its grant covers (regions, "no_region"). */
   residencyValues?: string[];
   /** REQ-1682: the role's own constant session values, what its row rules read when the request

@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import random
+import re
 import socket
 import socketserver
 import struct
@@ -210,6 +211,45 @@ def _time_to_microseconds(t):
     return int(total_microseconds)
 
 
+def _infinity(v) -> int:
+    """1 or -1 for a value standing for PostgreSQL's ``infinity`` or ``-infinity`` date or
+    timestamp (its ``pg_infinity``, the nearest value Python holds marked with its sign), else 0."""
+    return getattr(v, "pg_infinity", 0)
+
+
+def _infinity_text(v) -> str:
+    return "infinity" if _infinity(v) > 0 else "-infinity"
+
+
+def _date_text(v) -> str:
+    return _infinity_text(v) if _infinity(v) else v.isoformat()
+
+
+def _date_binary(r) -> bytes:
+    # date binary: int32 days since 2000-01-01; infinity is the int32 range's ends.
+    if _infinity(r):
+        return struct.pack("!i", 0x7FFFFFFF if _infinity(r) > 0 else -0x80000000)
+    return int.to_bytes((r.toordinal() - 730120), 4, "big", signed=True)
+
+
+def _timestamp_text(v) -> str:
+    return _infinity_text(v) if _infinity(v) else v.isoformat().replace("T", " ")
+
+
+def _timestamp_binary(micros):
+    """timestamp/timestamptz binary: int64 microseconds since 2000-01-01 (``micros`` reads them);
+    infinity is the int64 range's ends."""
+
+    def encode(r) -> bytes:
+        if _infinity(r):
+            return struct.pack(
+                "!q", 0x7FFFFFFFFFFFFFFF if _infinity(r) > 0 else -0x8000000000000000
+            )
+        return int.to_bytes(micros(r), 8, "big", signed=True)
+
+    return encode
+
+
 def _micros_since_2000_utc(dt):
     """timestamptz binary: microseconds since 2000-01-01 UTC. A value with no time zone is not a
     timestamptz — refused rather than assumed to be UTC."""
@@ -301,11 +341,7 @@ BVTYPE_TO_PGTYPE = {
         # jsonb binary = a version byte (1) + the JSON text.
         lambda r: b"\x01" + (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
     ),
-    BVType.TIMESTAMPTZ: (
-        1184,
-        lambda v: v.isoformat().replace("T", " "),
-        lambda r: int.to_bytes(_micros_since_2000_utc(r), 8, "big", signed=True),
-    ),
+    BVType.TIMESTAMPTZ: (1184, _timestamp_text, _timestamp_binary(_micros_since_2000_utc)),
     BVType.TIMETZ: (1266, lambda v: v.isoformat(), _timetz_to_pg_binary),
     BVType.UUID: (2950, str, _uuid_to_pg_binary),
     BVType.NULL: (-1, lambda *_: None),
@@ -317,26 +353,15 @@ BVTYPE_TO_PGTYPE = {
     BVType.BIGINT: (20, str, lambda r: r.to_bytes(8, "big", signed=True)),
     BVType.BOOL: (
         16,
-        lambda v: "true" if v else "false",
+        # boolout: PostgreSQL's text form of a boolean is t / f.
+        lambda v: "t" if v else "f",
         lambda r: b"\x01" if r else b"\x00",
     ),
     BVType.BYTES: (17, lambda v: "\\x" + v.hex(), lambda r: r),
-    BVType.DATE: (
-        1082,
-        lambda v: v.isoformat(),
-        lambda r: int.to_bytes((r.toordinal() - 730120), 4, "big", signed=True),
-    ),
+    BVType.DATE: (1082, _date_text, _date_binary),
     BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
     BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
     BVType.INTEGER: (23, str, lambda r: r.to_bytes(4, "big", signed=True)),
-    BVType.INTEGERARRAY: (
-        1007,
-        lambda v: "{" + ",".join(str(x) for x in v) + "}",
-        lambda r: (
-            struct.pack("!iiiii", 1, 0, 23, len(r), 1)
-            + b"".join(struct.pack("!ii", 4, x) for x in r)
-        ),
-    ),
     BVType.INTERVAL: (
         1186,
         _interval_text,
@@ -349,19 +374,6 @@ BVTYPE_TO_PGTYPE = {
         lambda v: json.dumps(v) if not isinstance(v, str) else v,
         lambda r: (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
     ),
-    BVType.STRINGARRAY: (
-        1009,
-        lambda v: "{" + ",".join(v) + "}",
-        lambda r: (
-            struct.pack("!iiiii", 1, 0, 25, len(r), 1)
-            + b"".join(
-                (struct.pack("!i", len(s.encode("utf-8"))) + s.encode("utf-8"))
-                if s is not None
-                else struct.pack("!i", -1)
-                for s in r
-            )
-        ),
-    ),
     # str(r) in binary too: a declared text-family column may carry a non-str value (a UUID, a
     # driver-specific scalar) — its text form is the wire value in both formats.
     BVType.TEXT: (25, str, lambda r: str(r).encode("utf-8")),
@@ -370,13 +382,63 @@ BVTYPE_TO_PGTYPE = {
         lambda v: v.isoformat(),
         lambda r: int.to_bytes(_time_to_microseconds(r), 8, "big"),
     ),
-    BVType.TIMESTAMP: (
-        1114,
-        lambda v: v.isoformat().replace("T", " "),
-        # signed: a value before 2000-01-01 is a negative offset (unsigned raised OverflowError).
-        lambda r: int.to_bytes(_micros_since_2000(r), 8, "big", signed=True),
-    ),
+    # signed: a value before 2000-01-01 is a negative offset (unsigned raised OverflowError).
+    BVType.TIMESTAMP: (1114, _timestamp_text, _timestamp_binary(_micros_since_2000)),
 }
+
+
+_ARRAY_TEXT_SPECIAL = re.compile(r'[{}",\\\s]')
+
+
+def _array_text_element(text: str) -> str:
+    """An array element's text as PostgreSQL's array_out writes it: double-quoted (with \\ and "
+    escaped) when it is empty, spells NULL, or holds a brace, quote, comma, backslash or space."""
+    if text == "" or text.upper() == "NULL" or _ARRAY_TEXT_SPECIAL.search(text):
+        return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return text
+
+
+def _array_entry(element: BVType, array_oid: int, element_text=None):
+    """The (OID, text, binary) entry of a one-dimensional array of ``element``: text as
+    ``{a,b,NULL}``, binary as PostgreSQL's array_send (dimensions, null flag, element OID, then
+    each element length-prefixed, -1 for NULL)."""
+    elem_oid, elem_text, elem_binary = BVTYPE_TO_PGTYPE[element]
+    text_of = element_text or elem_text
+
+    def text(values):
+        return (
+            "{"
+            + ",".join("NULL" if v is None else _array_text_element(text_of(v)) for v in values)
+            + "}"
+        )
+
+    def binary(values):
+        has_null = any(v is None for v in values)
+        out = [struct.pack("!iiiii", 1, 1 if has_null else 0, elem_oid, len(values), 1)]
+        for v in values:
+            if v is None:
+                out.append(struct.pack("!i", -1))
+            else:
+                encoded = elem_binary(v)
+                out.append(struct.pack("!i", len(encoded)) + encoded)
+        return b"".join(out)
+
+    return (array_oid, text, binary)
+
+
+BVTYPE_TO_PGTYPE.update(
+    {
+        BVType.INTEGERARRAY: _array_entry(BVType.INTEGER, 1007),
+        BVType.BIGINTARRAY: _array_entry(BVType.BIGINT, 1016),
+        BVType.SMALLINTARRAY: _array_entry(BVType.SMALLINT, 1005),
+        BVType.FLOATARRAY: _array_entry(BVType.FLOAT, 1022),
+        BVType.REALARRAY: _array_entry(BVType.REAL, 1021),
+        BVType.DECIMALARRAY: _array_entry(BVType.DECIMAL, 1231),
+        # array_out writes a boolean element as t / f.
+        BVType.BOOLARRAY: _array_entry(BVType.BOOL, 1000, lambda v: "t" if v else "f"),
+        BVType.STRINGARRAY: _array_entry(BVType.TEXT, 1009),
+    }
+)
 
 
 class BVBuffer(object):

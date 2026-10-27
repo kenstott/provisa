@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2136: a graph view's Open as query (→) opens the view's own query in the surface chosen:
-// GraphQL as it runs, SQL and Cypher as it compiles, SPARQL later; none while a focus is set.
+// GraphQL as it runs, SQL, Cypher and SPARQL as it compiles; none while a focus is set.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Routes, useLocation } from "react-router-dom";
@@ -17,13 +17,20 @@ import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
 const compiles = vi.hoisted(() => ({
-  calls: [] as [string, string][],
+  calls: [] as [string, string, boolean | undefined][],
   answer: null as unknown,
 }));
 vi.mock("../../../hooks/useAdminQueries", () => ({
   useCompileQuery: () => ({
-    compileQuery: async (role: string, query: string) => {
-      compiles.calls.push([role, query]);
+    compileQuery: async (
+      role: string,
+      query: string,
+      _variables?: unknown,
+      _flatSql?: boolean,
+      _flatCypher?: boolean,
+      nodeOnlyCypher?: boolean,
+    ) => {
+      compiles.calls.push([role, query, nodeOnlyCypher]);
       return compiles.answer;
     },
   }),
@@ -31,7 +38,7 @@ vi.mock("../../../hooks/useAdminQueries", () => ({
 
 import { OpenAsQuery } from "../OpenAsQuery";
 
-const QUERY = "query Ontology {\n  glossary_terms: m__glossaryTerms { id: id }\n}";
+const QUERY = "query Ontology {\n  _terms: ont__terms { id: id }\n}";
 
 /** Where the control navigated, and what it handed over. */
 function Landed() {
@@ -55,7 +62,7 @@ beforeEach(() => {
   compiles.answer = {
     queries: [
       {
-        semantic_sql: 'SELECT "id" FROM "meta"."glossary_terms"',
+        semantic_sql: 'SELECT "id" FROM "ontology"."_terms"',
         compiled_cypher: "MATCH (n:GlossaryTerm) RETURN n.id",
         cypher_error: null,
       },
@@ -71,13 +78,13 @@ describe("a graph view's Open as query", () => {
     expect(landed()).toEqual(["/query", { query: QUERY }]);
   });
 
-  it("opens its compiled semantic SQL in SQL, compiled as the user's role", async () => {
+  it("opens its compiled semantic SQL in SQL, compiled as the user's role, its Cypher as nodes", async () => {
     view(QUERY);
     fireEvent.click(screen.getByTestId("x-open-as-query"));
     await waitFor(() => expect(screen.getByTestId("x-open-as-sql")).not.toBeDisabled());
-    expect(compiles.calls).toEqual([["analyst", QUERY]]);
+    expect(compiles.calls).toEqual([["analyst", QUERY, true]]);
     fireEvent.click(screen.getByTestId("x-open-as-sql"));
-    expect(landed()).toEqual(["/sql", { sql: 'SELECT "id" FROM "meta"."glossary_terms"' }]);
+    expect(landed()).toEqual(["/sql", { sql: 'SELECT "id" FROM "ontology"."_terms"' }]);
   });
 
   it("opens its Cypher in Cypher, and not when it has none", async () => {
@@ -92,13 +99,13 @@ describe("a graph view's Open as query", () => {
     compiles.answer = {
       queries: [
         {
-          root_field: "glossary_terms",
+          root_field: "_terms",
           semantic_sql: "SELECT 1",
           compiled_cypher: "MATCH (n:GlossaryTerm) RETURN n.id",
           cypher_error: null,
         },
         {
-          root_field: "glossary_term_edges",
+          root_field: "_term_edges",
           semantic_sql: "SELECT 2",
           compiled_cypher: null,
           cypher_error: "no mapping",
@@ -119,7 +126,7 @@ describe("a graph view's Open as query", () => {
       "/graph",
       {
         query:
-          "MATCH (n:GlossaryTerm) RETURN n.id;\n\n// glossary_term_edges: no mapping;\n\n" +
+          "MATCH (n:GlossaryTerm) RETURN n.id;\n\n// _term_edges: no mapping;\n\n" +
           "MATCH (p:DataProduct) RETURN p.id",
       },
     ]);
@@ -135,10 +142,66 @@ describe("a graph view's Open as query", () => {
     expect(screen.getByTestId("x-open-as-cypher")).toBeDisabled();
   });
 
-  it("offers SPARQL disabled until its endpoint exists", async () => {
+  it("opens its one root's SPARQL in SPARQL", async () => {
+    compiles.answer = {
+      queries: [
+        {
+          root_field: "glossary_terms",
+          semantic_sql: "SELECT 1",
+          compiled_cypher: null,
+          cypher_error: "no mapping",
+          compiled_sparql:
+            "PREFIX term: <https://x/vocab/term/>\nSELECT ?t WHERE { ?t a term:Term }",
+          sparql_error: null,
+        },
+      ],
+    };
     view(QUERY);
     fireEvent.click(screen.getByTestId("x-open-as-query"));
-    expect(await screen.findByTestId("x-open-as-sparql")).toBeDisabled();
+    await waitFor(() => expect(screen.getByTestId("x-open-as-sparql")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("x-open-as-sparql"));
+    expect(landed()).toEqual([
+      "/sparql",
+      { query: "PREFIX term: <https://x/vocab/term/>\nSELECT ?t WHERE { ?t a term:Term }" },
+    ]);
+  });
+
+  it("offers no SPARQL for a root that has none, saying why, nor for several roots", async () => {
+    compiles.answer = {
+      queries: [
+        {
+          root_field: "glossary_terms",
+          semantic_sql: "SELECT 1",
+          compiled_sparql: null,
+          sparql_error: "The function sum() has no exact SPARQL form",
+        },
+      ],
+    };
+    view(QUERY);
+    fireEvent.click(screen.getByTestId("x-open-as-query"));
+    await waitFor(() => expect(screen.getByTestId("x-open-as-sql")).not.toBeDisabled());
+    expect(screen.getByTestId("x-open-as-sparql")).toBeDisabled();
+  });
+
+  it("offers no SPARQL for a query of several roots: each is its own", async () => {
+    compiles.answer = {
+      queries: [
+        {
+          root_field: "a",
+          semantic_sql: "SELECT 1",
+          compiled_sparql: "SELECT ?a WHERE { ?a ?b ?c }",
+        },
+        {
+          root_field: "b",
+          semantic_sql: "SELECT 2",
+          compiled_sparql: "SELECT ?b WHERE { ?a ?b ?c }",
+        },
+      ],
+    };
+    view(QUERY);
+    fireEvent.click(screen.getByTestId("x-open-as-query"));
+    await waitFor(() => expect(screen.getByTestId("x-open-as-sql")).not.toBeDisabled());
+    expect(screen.getByTestId("x-open-as-sparql")).toBeDisabled();
   });
 
   it("opens nothing while a focus is set, and compiles nothing", async () => {

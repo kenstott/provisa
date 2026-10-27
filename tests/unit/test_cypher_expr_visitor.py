@@ -30,8 +30,20 @@ class _FakeCtx:
     def property_is_table_column(self, obj, name):
         return True  # every property here is a plain column of the variable's table
 
+    def property_type(self, obj, name):
+        return None  # no registered types: comparisons are not type-checked here
+
     def resolve_parameter(self, name):
         return exp.Placeholder(this=name)
+
+    def temporal_kind(self, expr):
+        return None  # no temporal values in scope here
+
+    def temporal_zone(self, expr):
+        return None
+
+    def is_text(self, expr):
+        return False
 
     def resolve_function(self, name, args, *, distinct):
         return exp.Anonymous(this=name, expressions=args)
@@ -79,13 +91,17 @@ class TestStringPredicates:
         assert _sql("n.name STARTS WITH 'A'") == 'STARTS_WITH("n"."name", \'A\')'
 
     def test_ends_with(self):
-        assert _sql("n.name ENDS WITH 'z'") == "(\"n\".\"name\" LIKE CONCAT('%', 'z'))"
+        # The value's own characters: a % or _ in it is no LIKE wildcard.
+        assert _sql("n.name ENDS WITH 'z'") == (
+            '(SUBSTR("n"."name", LENGTH("n"."name") - (LENGTH(\'z\') - 1)) = \'z\')'
+        )
 
     def test_contains(self):
         assert _sql("n.name CONTAINS 'x'") == '(STRPOS("n"."name", \'x\') > 0)'
 
     def test_regex(self):
-        assert _sql("n.name =~ '.*'") == 'REGEXP_LIKE("n"."name", \'.*\')'
+        # Cypher's =~ matches the whole string.
+        assert _sql("n.name =~ '.*'") == 'REGEXP_LIKE("n"."name", \'^(?:.*)$\')'
 
     def test_in_list(self):
         assert _sql("n.x IN [1, 2, 3]") == '"n"."x" IN (1, 2, 3)'

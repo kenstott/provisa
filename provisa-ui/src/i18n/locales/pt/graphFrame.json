@@ -4,6 +4,10 @@
     "running": "Executando…",
     "metaCount": "{{nodes}} nós · {{edges}} rel.",
     "metaCountElapsed": "{{nodes}} nós · {{edges}} rel. · {{elapsed}}ms",
+    "metaRows_one": "{{count}} linha",
+    "metaRows_other": "{{count}} linhas",
+    "metaRowsElapsed_one": "{{count}} linha · {{elapsed}}ms",
+    "metaRowsElapsed_other": "{{count}} linhas · {{elapsed}}ms",
     "error": "Erro",
     "expand": "Expandir",
     "exitFullScreen": "Sair da tela cheia",
@@ -33,6 +37,7 @@
     "showPropertiesPanel": "Mostrar painel de propriedades",
     "copyErrorTitle": "Copiar erro",
     "expandedDialogLabel": "Visualização expandida do grafo",
-    "firstNodesShown": "Mostrando os primeiros {{count}} nós; há mais. Aumente o limite no menu lateral."
+    "firstNodesShown": "Mostrando os primeiros {{count}} nós; há mais. Aumente o limite no menu lateral.",
+    "deleteFrame": "Excluir este resultado"
   }
 }

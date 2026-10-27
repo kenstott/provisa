@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Kaggle API トークン",
-    "tokenDescription": "データセットピッカーのロックが解除される前に、Kaggle API に対してリアルタイムで検証されます",
+    "tokenDescription": "Kaggle でリアルタイムに確認されます。データソースの認証情報として保持され、更新のたびに再び使われます。",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "トークンを検証",
     "tokenValid": "トークンは有効です",

@@ -1,14 +1,16 @@
 {
   "graph3d": {
     "canvasLabel": "3D graph of data products and what they are made of",
-    "panelTitle": "Knowledge graph",
-    "expandTitle": "{{product}}: knowledge graph",
+    "panelTitle": "Graph",
+    "expandTitle": "{{product}}: graph",
     "productMap": "Product map",
     "preset": "Preset",
-    "preset_knowledge": "Knowledge graph",
+    "dimension": "2D or 3D",
+    "view2d": "2D",
+    "view3d": "3D",
+    "preset_all": "All",
     "preset_ontology": "Ontology",
-    "preset_productMap": "Product map",
-    "preset_lineage": "Lineage",
+    "preset_products": "Products",
     "layers": "Layers",
     "layer_products": "Products and domains",
     "layer_tables": "Member tables",
@@ -96,7 +98,6 @@
     "openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
     "openAsQueryCompiling": "Compiling the query…",
     "openAsQueryNoCypher": "This query has no Cypher form.",
-    "openAsQuerySparqlLater": "SPARQL opens once its endpoint is available.",
     "layersMenu": "Layers",
     "termsMenu": "Terms",
     "menuAll": "all",
@@ -109,6 +110,8 @@
     "overBudget": "{{count}} match; narrow the search or pick a domain",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Grounded in tables not yet linked as the same entity: {{tables}}",
-    "status_draft": "Draft"
+    "status_draft": "Draft",
+    "openAsQueryNoSparql": "This query has no SPARQL form.",
+    "openAsQuerySparqlRoots": "Each root of this query is its own SPARQL query: open the GraphQL to read them one by one."
   }
 }

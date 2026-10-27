@@ -130,6 +130,8 @@ on:
     secrets:
       ANTHROPIC_API_KEY:
         required: false
+      OPENROUTER_API_KEY:
+        required: false
       SPLUNKBASE_USERNAME:
         required: false
       SPLUNKBASE_PASSWORD:
@@ -176,6 +178,13 @@ on:
       AZURE_CLIENT_SECRET:
         required: false
       AZURE_TENANT_ID:
+        required: false
+      # Live APIs the core UI lane's specs call: AskAmerica/govdata, Kaggle, Stripe.
+      FREE_ASKAMERICA_KEY:
+        required: false
+      KAGGLE_API_TOKEN:
+        required: false
+      STRIPE_API_KEY:
         required: false
       # SharePoint (with SP_CERT_P12_BASE64 above)
       SP_TENANT_ID:
@@ -327,6 +336,7 @@ jobs:
           PROVISA_TEST_SERVER_LOG_DIR: ${{ github.workspace }}/results/${{ steps.key.outputs.lane }}/server-logs
           # A lane that reaches the live model; the caller passes the key only to such a lane.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           # For the Splunk CIM fetch tests/conftest.py runs before starting splunk.
           SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
           SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
@@ -348,6 +358,9 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
           SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
           SP_SITE_URL: ${{ secrets.SP_SITE_URL }}

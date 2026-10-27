@@ -23,7 +23,6 @@
     "descriptionLabel": "Descrizione",
     "descriptionPlaceholder": "Compare nella documentazione SDL",
     "dataProductLabel": "Data product",
-    "dataProductHint": "(pubblica nel catalogo / esporta verso Atlas, Atlan, ecc.)",
     "discoverLabel": "Individua colonne",
     "discoverHint": "(deduce le colonne dall'origine live alla registrazione — per origini schemaless/NoSQL; nessuna selezione manuale delle colonne necessaria)",
     "watermarkLabel": "Colonna watermark",
@@ -62,7 +61,6 @@
     "dqResultsTableHint": "(derivata dalla tabella analizzata; una riga per controllo per scansione, ogni scansione conservata)",
     "dqResultsTablePlaceholder": "Scegli sopra la tabella da analizzare",
     "dqVisibleToLabel": "Risultati visibili a",
-    "dqDescription": "Risultati della scansione di qualità per {{table}} — una riga per controllo per scansione, con esito, valore della metrica e soglia",
     "errorDqContract": "Scegli la tabella da analizzare nel pannello Qualità dei dati.",
     "errorDqVisibleTo": "I risultati devono essere visibili ad almeno un ruolo.",
     "dqScanIntervalLabel": "Scansiona ogni (secondi)",
@@ -136,6 +134,9 @@
     "qdrantVectors": "Vettori di {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensioni, punteggio per {{distance}}",
     "qdrantUnnamedVector": "(senza nome)",
-    "continue": "Continua"
+    "continue": "Continua",
+    "checkReasonLabel": "Perché esiste questo controllo",
+    "checkReasonHint": "La promessa di qualità in termini di business; fa da titolo al controllo in ogni prodotto.",
+    "checkReasonPlaceholder": "Gli ordini sono completi e univoci così che il fatturato giornaliero quadri con la finanza"
   }
 }

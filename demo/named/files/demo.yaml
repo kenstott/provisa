@@ -15,6 +15,7 @@ description: >-
   step: which neighborhoods have the most complaints near active construction?
 screenshot: card.png
 published: true
+group: bi
 # The oldest Provisa this demo's bundle runs on (REQ-2049): the first release carrying the demo.
 requires_provisa: 0.1.0a485
 # The demo's video: its tagline names what the demo shows Provisa being.

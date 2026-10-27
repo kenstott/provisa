@@ -55,6 +55,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # REQ-1949: the ceiling that bounds the statement last governed with this context, when a
     # ceiling and not the statement's own LIMIT is what bounds it (compiler/row_limit.RowLimit).
     row_limit: Any = None
+    # REQ-005: the ceiling that bounds each list the statement last governed with this context
+    # nests (compiler/list_cap), when it nests any; None otherwise.
+    list_limit: Any = None
     sample_size: int | None = None
     # The role this context was built for, and what it may write (compiler/write_admission.py):
     # whether it holds the ``write`` right (REQ-868), and per table its write grant for each
@@ -215,11 +218,12 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # every column regardless (REQ-1327). The lockdown domains (ops) need an explicit grant; the
     # meta domain is governed by the tiered rule below.
     from provisa.security.rights import (
-        GLOSSARY_SCOPED_META_VIEWS,
+        GLOSSARY_SCOPED_VIEWS,
         GOVERNANCE_META_COLUMNS,
-        GOVERNANCE_META_ROWS,
         META_DOMAIN_ID,
+        LISTED_NAMES_VIEW,
         META_ROW_SCOPED_VIEWS,
+        ONTOLOGY_DOMAIN_ID,
         Capability,
         column_served,
         compute_meta_row_scope,
@@ -286,14 +290,24 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # published column (REQ-1959).
             _tbl_domain = tbl.get("domain_id")
             # A table registered with no domain is gated by none, as the direct-read check
-            # (V001) treats it.
-            _reaches = not _tbl_domain or reaches_domain(role["domain_access"], _tbl_domain)
+            # (V001) treats it. Every role reaches the ontology schema, as it does meta (REQ-2163):
+            # its rows are scoped by the glossary's own rule below.
+            _reaches = (
+                not _tbl_domain
+                or _tbl_domain == ONTOLOGY_DOMAIN_ID
+                or reaches_domain(role["domain_access"], _tbl_domain)
+            )
             _subject = {"id": role_id}
             visible = {
                 c["column_name"]
                 for c in cols
                 if column_served(_subject, _tbl_domain, c, reaches=_reaches)
             }
+            # A parameter column is an argument, not data: it carries no grant of its own, and a
+            # role served the table's data may pass it (REQ-1614, as the schema build serves it),
+            # or its condition would read NULL and the argument never reach the source (REQ-1986).
+            if visible - {c["column_name"] for c in cols if c.get("native_filter_type")}:
+                visible |= {c["column_name"] for c in cols if c.get("native_filter_type")}
             all_visible = len(visible) == len(cols)
             if not _reaches and served_across_domains(_subject, tbl):
                 _public.add(table_id)
@@ -366,31 +380,17 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
 
-    # REQ-2126: the governance rows of a meta view are read only with view_governance, under the
-    # same WHERE-injection as the row scope above.
-    if not _has_view_gov:
-        for tm in ctx.tables.values():
-            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
-                continue
-            predicate = GOVERNANCE_META_ROWS.get(getattr(tm, "table_name", ""))
-            if predicate is None:
-                continue
-            existing = gov.rls_rules.get(tm.table_id)
-            gov.rls_rules[tm.table_id] = (
-                f"({existing}) AND ({predicate})" if existing else predicate
-            )
-
-    # REQ-1593: the glossary meta views answer what the glossary API does -- a term is read where
-    # glossary.readable_term admits it -- by the same WHERE-injection.
+    # REQ-1593, REQ-2163: the ontology schema's definition views answer what the glossary API
+    # does -- a term is read where glossary.readable_term admits it -- by the same WHERE-injection.
     from provisa.core import domain_policy
     from provisa.core.env_authority import domains_within
 
     readable_in = None if domain_policy.single_domain() else domains_within(role["domain_access"])
     if readable_in is not None:
         for tm in ctx.tables.values():
-            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+            if getattr(tm, "domain_id", None) != ONTOLOGY_DOMAIN_ID:
                 continue
-            scope_cols = GLOSSARY_SCOPED_META_VIEWS.get(getattr(tm, "table_name", ""))
+            scope_cols = GLOSSARY_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
             if scope_cols is None:
                 continue
             predicate = " AND ".join(
@@ -400,6 +400,25 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
+
+    # REQ-2153: a listed name is the reader's only for a domain it does not reach -- what it reaches
+    # is in registered_tables_meta / table_columns_meta -- by the same WHERE-injection.
+    from provisa.compiler.sql_literals import sql_literal
+
+    for tm in ctx.tables.values():
+        if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+            continue
+        if getattr(tm, "table_name", "") != LISTED_NAMES_VIEW:
+            continue
+        if readable_in is None:
+            predicate = "1 = 0"  # the reader reaches every domain: nothing is outside its reach
+        elif readable_in:
+            reached = ", ".join(sql_literal(d, "postgres") for d in sorted(readable_in))
+            predicate = f"listed_domain NOT IN ({reached})"
+        else:
+            continue  # the reader reaches no domain: every listed name is outside its reach
+        existing = gov.rls_rules.get(tm.table_id)
+        gov.rls_rules[tm.table_id] = f"({existing}) AND ({predicate})" if existing else predicate
 
     # REQ-971: mask pushdown/streaming decision. When a masked table's connector cannot push
     # the predicate down and cannot stream, fail loud here rather than silently inlining an
@@ -1422,14 +1441,27 @@ def apply_governance(
 
     tree = _govern_selects(tree, gov_ctx, answers=not writes)
 
-    governed = tree.sql(dialect="postgres")
-
     # Apply LIMIT ceiling (REQ-005): most restrictive of the role-level ceiling and
     # any per-table ceiling on a table referenced by the query.
     # A ceiling bounds the rows a READ returns; a write returns none, and what it may write
     # is its admission's to decide.
     bound = None if writes else _effective_ceiling(tree, gov_ctx)
     gov_ctx.row_limit = None
+    gov_ctx.list_limit = None
+    if bound is not None:
+        from provisa.compiler.list_cap import cap_lists
+
+        def columns_of(table: exp.Table) -> list[str] | None:
+            tid = _table_id_for_node(table, gov_ctx)
+            if tid is None or tid not in gov_ctx.all_columns:
+                return None
+            return [name for name, _type in gov_ctx.all_columns[tid]]
+
+        # REQ-005 (amended 2026-10-24): and each list the read nests, at the same ceiling.
+        if cap_lists(tree, bound.limit, columns_of):
+            gov_ctx.list_limit = bound
+
+    governed = tree.sql(dialect="postgres")
     if bound is not None:
         from provisa.compiler.row_limit import binds
 

@@ -133,13 +133,12 @@
     "mvPrimaryKeyDerived": "Row-identity key (from the Primary Key checkboxes in the columns below):",
     "mvPrimaryKeyMissing": "Upsert and incremental maintenance need a row-identity key. Mark the key column(s) as Primary Key in the columns list below.",
     "preprocessLabel": "Preflight Check (Python)",
-    "preprocessHelp": "Optional preflight check run after the view SQL and before landing: define preflight(streams, ctx) and return a VERDICT — ctx.ok() to continue, ctx.abort(reason) to reject (error + poison downstream), or ctx.quarantine(reason) to hold without landing. streams is a dict keyed by input node: streams[\"schema.table\"] yields that input's rows lazily, so you inspect an input without materializing it. A check inspects; it does NOT transform rows (put transforms in SQL or an external processor). A SQL-expressible check — if any(...)/all(...) over one input's rows — is pushed down to the engine as a count probe over that input, so it scales to a billion rows; anything else streams each input as Arrow batches and short-circuits. Call ctx.warn(reason) for a non-fatal advisory. It MUST be deterministic — no clock, randomness, imports, or IO — and is purity-checked when you save; a non-deterministic or unsafe check is rejected.",
+    "preprocessHelp": "Optional preflight check run after the view SQL and before landing: define preflight(streams, ctx) and return a VERDICT — ctx.ok() to continue, ctx.abort(reason) to reject (error + poison downstream), or ctx.quarantine(reason) to hold without landing. streams is a dict keyed by input node: streams[\"schema.table\"] yields that input's rows lazily, so you inspect an input without materializing it. A check inspects; it does NOT transform rows (put transforms in SQL or an external processor). A SQL-expressible check — if any(...)/all(...) over one input's rows — is pushed down to the engine as a count probe over that input, so it scales to a billion rows; anything else streams each input as Arrow batches and short-circuits. Call ctx.warn(reason) for a non-fatal advisory. It may import one module, provisa_services, to call Provisa's services (dq among them); such a check always streams and its verdict is the state at refresh time. Otherwise it MUST be deterministic — no clock, randomness, other imports, or IO — and is purity-checked when you save; a non-deterministic or unsafe check is rejected.",
     "preprocessAria": "MV preflight check Python source",
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "Data Product",
     "dataProductNone": "None",
-    "dataProductDesc": "Published to the catalog and exported to Atlas, Atlan and others.",
-    "dataProductInherited": "Inherited from the table this contract scans",
+    "dataProductDesc": "Published to the catalog and exported to Atlas, {{atlan}} and others.",
     "enableAggregatesLabel": "Enable Aggregates",
     "enableAggregatesDesc": "(expose _aggregate root field in GraphQL)",
     "enableGroupByLabel": "Enable Group By",
@@ -280,6 +279,11 @@
     "timeTravelSectionHelp": "Bitemporal keeps both when it happened and when it was recorded, so the data can be read as of a date, or as it was recorded on a date. Map the business key, valid time and recorded time to columns; Provisa decides how the versions are kept.",
     "timeTravelLabel": "Keep history",
     "timeTravelOff": "Off",
-    "timeTravelBitemporal": "Bitemporal"
+    "timeTravelBitemporal": "Bitemporal",
+    "holdOnFailingChecksLabel": "Hold on failing checks",
+    "holdOnFailingChecksHelp": "Abort a refresh, keeping the previous copy, when the latest run of a checker table scanning one of this view's inputs failed. Runs before the preflight check above; both must continue.",
+    "holdOnFailingChecksShowCode": "Show its code",
+    "holdOnFailingChecksHideCode": "Hide its code",
+    "holdOnFailingChecksCodeHelp": "The check this option applies. Copy it into the preflight check above to change it."
   }
 }

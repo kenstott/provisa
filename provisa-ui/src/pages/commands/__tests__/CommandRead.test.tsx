@@ -47,7 +47,7 @@ const fn: TrackedFunction = {
       visible_to: ["finance"],
       masks: [
         { to: ["auditor"], mask: null },
-        { to: ["*"], mask: { type: "regex", pattern: "\\d{12}", replace: "****" } },
+        { to: null, mask: { type: "regex", pattern: "\\d{12}", replace: "****" } },
       ],
     },
     { name: "status", type: "string" },
@@ -64,7 +64,7 @@ const wh: TrackedWebhook = {
     {
       name: "ok",
       type: "Boolean",
-      masks: [{ to: ["*"], mask: { type: "constant", value: "hidden" } }],
+      masks: [{ to: null, mask: { type: "constant", value: "hidden" } }],
     },
   ],
   arguments: [],

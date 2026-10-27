@@ -18,7 +18,7 @@ from typing import Any
 
 import duckdb
 
-from provisa.core import request_deadline
+from provisa.core import engine_memory, request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.result import QueryResult
@@ -50,12 +50,17 @@ def _is_file(database: str) -> bool:
     return database not in ("", ":memory:") and not database.startswith(":memory:")
 
 
+#: The column types DuckDB's own Python rows misread, and its Arrow export keeps.
+READ_THROUGH_ARROW = frozenset({"INTERVAL", "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE"})
+
+
 def fetch_rows(result: Any) -> list[tuple]:  # noqa: ANN401 — a DuckDB result relation
-    """A DuckDB result's rows, each interval the IR interval it is.
-    DuckDB's own Python rows fold an interval's months into days, 30 to a month (``1 year 2
-    months`` reads as 420 days); its Arrow export keeps them, so a result with an interval column
-    is read through Arrow (ir_arrow.column_values)."""
-    if not any(str(d[1]) == "INTERVAL" for d in result.description):
+    """A DuckDB result's rows, each interval the IR interval it is and each infinite date or
+    timestamp the IR infinity it is. DuckDB's own Python rows fold an interval's months into days,
+    30 to a month (``1 year 2 months`` reads as 420 days), and read ``infinity`` as the last date
+    Python holds, a value a table may hold itself; its Arrow export keeps both, so a result with
+    such a column is read through Arrow (ir_arrow.column_values)."""
+    if not any(str(d[1]) in READ_THROUGH_ARROW for d in result.description):
         return result.fetchall()
     from provisa.core.ir_arrow import column_values
 
@@ -94,7 +99,7 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
 
     def _open(self) -> None:
         database = self._database
-        root = duckdb.connect(database, read_only=_is_file(database))
+        root = engine_memory.connect(database, read_only=_is_file(database))
         self._root = root
         self._pool = BlockingPool(
             root.cursor,
@@ -141,6 +146,8 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
         self._database = resolve_path(database) if _is_file(database) else database
         self._min_pool, self._max_pool = min_pool, max_pool
         self._open()
+        assert self._root is not None
+        engine_memory.log_limit(self._root, f"source {database}")
         if _is_file(database):
             from provisa.federation import file_locks
 
@@ -180,7 +187,7 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
         file_locks.refuse_unprotected(self._database, self._shown)
         with file_locks.exclusive(self._database):
             try:
-                conn = duckdb.connect(self._database)
+                conn = engine_memory.connect(self._database)
             except duckdb.IOException as exc:
                 if file_locks.is_lock_conflict(exc):
                     raise file_locks.FileLocked(self._shown) from None

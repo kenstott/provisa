@@ -40,6 +40,7 @@ naming:
   rules: []
 roles:
 - id: fan
+  parents: [viewer]
   description: Reads the World Cup domain's tables, views and graph.
   capabilities:
   - query_development
@@ -146,7 +147,7 @@ sources:
     runtime: python
     code:
       kind: upload
-      upload: bbca888c502cb34a0c1b9ab5ac9ed50e6797c12bb9125b6559721de650ec3578
+      upload: 6857c1d1c4d0d5e4bd7fa822f9dbf0c06c8357abfbbd7d44482cb64ac87351bb
       filename: country_alias.tar.gz
   description: 'country_alias(name): matches a team''s name to the FIFA member it stands for with an LLM (code/country_alias.tar.gz,
     its source in country_alias/)'
@@ -162,7 +163,7 @@ tables:
   - name: year
     data_type: integer
     visible_to: &id001
-    - org_admin
+    - data_steward
     - fan
     description: The year of the final
   - name: winners
@@ -616,7 +617,7 @@ tables:
     description: That member's three-letter FIFA code
   - name: _nf_name
     data_type: varchar
-    visible_to: []
+    visible_to: [viewer]
     native_filter_type: query_arg
     native_filter_required: true
     description: The name to match

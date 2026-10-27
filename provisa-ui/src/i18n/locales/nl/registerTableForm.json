@@ -23,7 +23,6 @@
     "descriptionLabel": "Beschrijving",
     "descriptionPlaceholder": "Verschijnt in SDL-documentatie",
     "dataProductLabel": "Dataproduct",
-    "dataProductHint": "(publiceren naar catalogus / exporteren naar Atlas, Atlan, enz.)",
     "discoverLabel": "Kolommen detecteren",
     "discoverHint": "(kolommen afleiden uit de live bron bij registratie — voor schemaloze/NoSQL-bronnen; geen handmatige kolomselectie nodig)",
     "watermarkLabel": "Watermerkkolom",
@@ -62,7 +61,6 @@
     "dqResultsTableHint": "(afgeleid van de gescande tabel; één rij per controle per scan, elke scan blijft bewaard)",
     "dqResultsTablePlaceholder": "Kies hierboven de te scannen tabel",
     "dqVisibleToLabel": "Resultaten zichtbaar voor",
-    "dqDescription": "Kwaliteitsscanresultaten voor {{table}} — één rij per controle per scan, met uitkomst, meetwaarde en drempel",
     "errorDqContract": "Kies de te scannen tabel in het paneel Datakwaliteit.",
     "errorDqVisibleTo": "Resultaten moeten zichtbaar zijn voor minstens één rol.",
     "dqScanIntervalLabel": "Scannen elke (seconden)",
@@ -136,6 +134,9 @@
     "qdrantVectors": "Vectoren van {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensies, gescoord met {{distance}}",
     "qdrantUnnamedVector": "(naamloos)",
-    "continue": "Doorgaan"
+    "continue": "Doorgaan",
+    "checkReasonLabel": "Waarom deze controle bestaat",
+    "checkReasonHint": "De kwaliteitsbelofte in zakelijke termen; ze staat boven de controle in elk product.",
+    "checkReasonPlaceholder": "Bestellingen zijn volledig en uniek zodat de dagomzet aansluit op finance"
   }
 }

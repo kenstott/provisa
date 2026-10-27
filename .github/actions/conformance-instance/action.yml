@@ -1,0 +1,104 @@
+name: Conformance instance
+description: >-
+  The Provisa instance every conformance job tests (REQ-2167): the PostgreSQL fixture seeded, the
+  model written by scripts/conformance/pgwire_catalog_types.py, the embedded control plane and
+  `uvicorn main:app` started natively on the DuckDB engine, the model loaded by PUT /admin/config
+  as the break-glass account, the job user created (org_admin by the model's default assignment)
+  and its session token put in the job's env as CONFORMANCE_AUTHORIZATION ("Bearer ..."), which
+  every runner presents. Reads the job's env: PROVISA_API_PORT, PROVISA_PGWIRE_PORT,
+  CONFORMANCE_PG_HOST/PORT/DATABASE/USER/PASSWORD, PROVISA_SUPERUSER_USERNAME/PASSWORD,
+  CONFORMANCE_USER, CONFORMANCE_PASSWORD and CONFORMANCE_JWT_SECRET. The instance's home is
+  $RUNNER_TEMP/provisa (server.log, server.pid, control-pg).
+runs:
+  using: composite
+  steps:
+    # The fixture the type comparison reads, in the real PostgreSQL: conformance.types_fixture,
+    # one column per type, one row.
+    - name: Seed the PostgreSQL fixture
+      shell: bash
+      run: |
+        .venv/bin/python scripts/conformance/pgwire_catalog_types.py seed \
+          --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+
+    # The model (scripts/conformance/pgwire_catalog_types.py provisa_config): domain conformance,
+    # source conformance-pg over the PostgreSQL service, table types_fixture, its columns visible
+    # to org_admin; password auth (basic provider, SCRAM-SHA-256).
+    - name: Start the Provisa instance
+      shell: bash
+      run: |
+        home="$RUNNER_TEMP/provisa"
+        mkdir -p "$home"
+        .venv/bin/python scripts/conformance/pgwire_catalog_types.py config \
+          --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT" \
+          --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+        started=$(.venv/bin/python -m provisa.core.control_plane_pg start "$home/control-pg" --init-sql db/init.sql)
+        cp_host=$(sed -n 's/^PG_HOST=//p' <<<"$started")
+        cp_port=$(sed -n 's/^PG_PORT=//p' <<<"$started")
+        cp_password=$(sed -n 's/^PG_PASSWORD=//p' <<<"$started")
+        echo "::add-mask::$cp_password"
+        test -n "$cp_host" && test -n "$cp_port" && test -n "$cp_password"
+        cp_url="postgresql+psycopg://provisa:$cp_password@/provisa?host=$cp_host&port=$cp_port"
+        key=$(python3 -c 'import base64, os; print(base64.b64encode(os.urandom(32)).decode())')
+        echo "::add-mask::$key"
+        GRPC_PORT=$((PROVISA_API_PORT + 1)) \
+        FLIGHT_PORT=$((PROVISA_API_PORT + 2)) \
+        PROVISA_BOLT_PORT=$((PROVISA_API_PORT + 3)) \
+        PROVISA_MCP_PORT=$((PROVISA_API_PORT + 4)) \
+        PROVISA_DATA_DIR="$home" \
+        PROVISA_TELEMETRY_DIR="$home/telemetry" \
+        PROVISA_CONFIG="$home/provisa.yaml" \
+        PROVISA_HOME="$home" \
+        PROVISA_LICENSING_SANDBOX_DIR="$home/licensing" \
+        PYTHON_KEYRING_BACKEND=tests._memory_keyring.MemoryKeyring \
+        PROVISA_ENCRYPTION_KEY="$key" \
+        ORG_ID=conformance \
+        TENANT_DATABASE_URL="$cp_url" \
+        PLATFORM_DATABASE_URL="$cp_url" \
+          nohup .venv/bin/uvicorn main:app --host 127.0.0.1 --port "$PROVISA_API_PORT" \
+          > "$home/server.log" 2>&1 &
+        echo $! > "$home/server.pid"
+        for _ in $(seq 1 90); do
+          curl -sf "http://127.0.0.1:$PROVISA_API_PORT/health" >/dev/null && break
+          sleep 2
+        done
+        curl -sf "http://127.0.0.1:$PROVISA_API_PORT/health" >/dev/null || { echo "::error::Provisa never answered /health"; tail -n 200 "$home/server.log"; exit 1; }
+        # The model, as global-setup.ts bootstraps each backend (PUT /admin/config).
+        su="$PROVISA_SUPERUSER_USERNAME:$PROVISA_SUPERUSER_PASSWORD"
+        status=$(curl -s -o "$home/config-response.txt" -w '%{http_code}' --retry 5 --retry-all-errors --retry-delay 3 \
+          -u "$su" -X PUT -H 'Content-Type: application/yaml' --data-binary @"$home/provisa.yaml" \
+          "http://127.0.0.1:$PROVISA_API_PORT/admin/config")
+        if [ "${status:0:1}" != "2" ]; then
+          echo "::error::PUT /admin/config answered $status"; cat "$home/config-response.txt"; tail -n 200 "$home/server.log"; exit 1
+        fi
+        # Warm (REQ-1882's readiness probe): the first statement is not paying for the warm-up.
+        for _ in $(seq 1 90); do
+          curl -sf "http://127.0.0.1:$PROVISA_API_PORT/ready" >/dev/null && break
+          sleep 2
+        done
+        curl -sf "http://127.0.0.1:$PROVISA_API_PORT/ready" >/dev/null || { echo "::error::Provisa never answered /ready"; tail -n 200 "$home/server.log"; exit 1; }
+        for _ in $(seq 1 60); do
+          (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null && break
+          sleep 2
+        done
+        (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null || { echo "::error::pgwire never listened on $PROVISA_PGWIRE_PORT"; tail -n 200 "$home/server.log"; exit 1; }
+        # The job user: created by the break-glass account, so its SCRAM verifier is written
+        # with it (REQ-1394); org_admin by the model's default assignment.
+        status=$(curl -s -o "$home/user-response.txt" -w '%{http_code}' -u "$su" \
+          -X POST -H 'Content-Type: application/json' \
+          --data "{\"username\": \"$CONFORMANCE_USER\", \"password\": \"$CONFORMANCE_PASSWORD\"}" \
+          "http://127.0.0.1:$PROVISA_API_PORT/admin/users/")
+        if [ "${status:0:1}" != "2" ]; then
+          echo "::error::POST /admin/users answered $status"; cat "$home/user-response.txt"; tail -n 200 "$home/server.log"; exit 1
+        fi
+        # The job user's session token, presented by every runner (HTTP, Flight, ...).
+        status=$(curl -s -o "$home/login-response.txt" -w '%{http_code}' \
+          -X POST -H 'Content-Type: application/json' \
+          --data "{\"username\": \"$CONFORMANCE_USER\", \"password\": \"$CONFORMANCE_PASSWORD\"}" \
+          "http://127.0.0.1:$PROVISA_API_PORT/auth/login")
+        if [ "${status:0:1}" != "2" ]; then
+          echo "::error::POST /auth/login answered $status"; cat "$home/login-response.txt"; tail -n 200 "$home/server.log"; exit 1
+        fi
+        token=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["access_token"])' "$home/login-response.txt")
+        echo "::add-mask::$token"
+        echo "CONFORMANCE_AUTHORIZATION=Bearer $token" >> "$GITHUB_ENV"
+        echo "Provisa is up: API $PROVISA_API_PORT, pgwire $PROVISA_PGWIRE_PORT"

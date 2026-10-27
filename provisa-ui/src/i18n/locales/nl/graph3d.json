@@ -1,14 +1,16 @@
 {
   "graph3d": {
     "canvasLabel": "3D-graaf van de dataproducten en waaruit ze bestaan",
-    "panelTitle": "Kennisgraaf",
-    "expandTitle": "{{product}}: kennisgraaf",
+    "panelTitle": "Graaf",
+    "expandTitle": "{{product}}: graaf",
     "productMap": "Productkaart",
     "preset": "Voorinstelling",
-    "preset_knowledge": "Kennisgraaf",
+    "dimension": "2D of 3D",
+    "view2d": "2D",
+    "view3d": "3D",
+    "preset_all": "Alles",
     "preset_ontology": "Ontologie",
-    "preset_productMap": "Productkaart",
-    "preset_lineage": "Lineage",
+    "preset_products": "Producten",
     "layers": "Lagen",
     "layer_products": "Producten en domeinen",
     "layer_tables": "Lidtabellen",
@@ -96,7 +98,6 @@
     "openAsQueryFocused": "De omgeving van zoeken of focus is nog niet als één query uit te drukken.",
     "openAsQueryCompiling": "Query wordt gecompileerd…",
     "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
-    "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is.",
     "layersMenu": "Lagen",
     "termsMenu": "Termen",
     "menuAll": "alle",
@@ -109,6 +110,8 @@
     "overBudget": "{{count}} treffers; verfijn de zoekopdracht of kies een domein",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Verankerd in tabellen die nog niet als dezelfde entiteit zijn gekoppeld: {{tables}}",
-    "status_draft": "Ontwerp"
+    "status_draft": "Ontwerp",
+    "openAsQueryNoSparql": "Deze query heeft geen SPARQL-vorm.",
+    "openAsQuerySparqlRoots": "Elke root van deze query is een eigen SPARQL-query: open de GraphQL om ze een voor een te lezen."
   }
 }

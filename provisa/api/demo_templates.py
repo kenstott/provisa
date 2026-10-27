@@ -42,7 +42,9 @@ import asyncio
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -161,6 +163,21 @@ def published_demo(name: str) -> PublishedDemo:
             demo=name,
         )
     return demo
+
+
+def demo_visitor_attributes(directory: Path) -> dict[str, str]:
+    """The attributes demo ``directory``'s sandbox visitor carries (REQ-2151): demo.yaml's
+    ``visitor: attributes:``, each a name and its text value; none when it declares none. A
+    declaration that is not names to text refuses the demo by name."""
+    spec_file = directory / "demo.yaml"
+    declared = (yaml.safe_load(spec_file.read_text()).get("visitor") or {}).get("attributes")
+    if declared is None:
+        return {}
+    if not isinstance(declared, dict) or not all(
+        isinstance(name, str) and isinstance(value, str) for name, value in declared.items()
+    ):
+        raise ValueError(f"{spec_file}: visitor.attributes must map each name to a text value")
+    return dict(declared)
 
 
 def demo_profilers(directory: Path) -> list[str]:
@@ -318,7 +335,6 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
         from provisa.core.demo_bundles import store_namespaces
 
         raw = _with_stores(raw, store_namespaces(demo.directory))
-    _sandbox_sees_what_its_rights_cover(raw, _role_rights(raw))
     from provisa.core.demo_secrets import resolving
 
     # REQ-2095: the secrets it names, from its own secrets.yaml, wherever it is parsed.
@@ -326,17 +342,29 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
         return parse_config_dict(raw)
 
 
-async def write_declared_vector_models(model_db: Any, seed: Any) -> None:  # REQ-2006
-    """The embedding models a demo's configuration declares (``vector_models``) are its template
-    org's own settings, and so, copied with the template's settings (``clone_model``), each of its
-    sandboxes': a demo whose queries embed text (the sonnets demo's ``lines_like``) is refused by
-    the model allowlist without them. Written at every build of the template, as the rest of its
-    model is rebuilt from its configuration (REQ-1919); a configuration that declares none clears
-    the setting."""
-    from provisa.core.org_settings import write_org_overrides
+async def write_declared_settings(model_db: Any, seed: Any) -> None:  # REQ-2006, REQ-2057
+    """Every org setting a sandbox is cloned with (``carries_setting``, by ``clone_model``) that the
+    demo's configuration declares, as its template org's own settings, in one write at every build
+    of the template: its embedding models (the sonnets demo's ``lines_like`` is refused by the model
+    allowlist without them), its derived roles (retail's region__eu, REQ-2151). A carried setting
+    the configuration does not declare is cleared, as the rest of the template's model is rebuilt
+    from its configuration (REQ-1919); a setting the configuration cannot declare is cleared too."""
+    from provisa.core.env_classes import carries_setting
+    from provisa.core.org_settings import NAMING_ORG_KEYS, ORG_OVERRIDABLE_KEYS, write_org_overrides
 
-    models = [m.model_dump() for m in seed.vector_models]
-    await write_org_overrides(model_db, {"vector_models": models or None}, updated_by="platform")
+    updates: dict[str, Any] = {}
+    for key in sorted(k for k in ORG_OVERRIDABLE_KEYS if carries_setting(k)):
+        declared = key in seed.model_fields_set
+        value = getattr(seed, key) if declared else None
+        if key == "naming" and value is not None:
+            # Only the naming keys an org owns; the rest configure the process (org_settings).
+            value = {k: getattr(value, k) for k in value.model_fields_set & NAMING_ORG_KEYS}
+        elif isinstance(value, list):
+            value = [v.model_dump() for v in value]
+        elif value is not None:
+            value = value.model_dump()
+        updates[key] = value or None
+    await write_org_overrides(model_db, updates, updated_by="platform")
 
 
 def connector_bundles() -> list[Any]:  # list[BundleSpec]
@@ -435,58 +463,51 @@ def _with_stores(node: Any, values: dict[str, str]) -> Any:
     return node
 
 
-def _role_rights(raw: dict) -> dict[str, frozenset[str]]:
-    """Each role a demo's configuration can name, with its rights: the seeded roles, and the
-    demo's own (flattened, inheritance included), which stand in for a seeded one of the same id."""
-    from provisa.core.db import SEEDED_ROLE_RIGHTS
-    from provisa.core.models import Role, flatten_roles
+def tour_standard_roles(directory: Path) -> list[str]:  # REQ-2155
+    """The standard roles the demo's tour acts as (its steps' ``role``), in tour order: a role is
+    acted as only when it is held, so a sandbox's person is granted them with the demo's own. One
+    the sandbox withholds (what org_admin holds and sandbox does not) refuses the demo by name."""
+    from provisa.core.db import SANDBOX_WITHHELD, STANDARD_ROLE_RIGHTS
 
-    rights = dict(SEEDED_ROLE_RIGHTS)
-    own = flatten_roles([Role(**role) for role in raw.get("roles", [])])
-    rights.update({role.id: frozenset(role.capabilities) for role in own})
-    return rights
-
-
-def _sandbox_sees_what_its_rights_cover(node: Any, rights: dict[str, frozenset[str]]) -> None:
-    """A demo names who sees each column and table as it would anywhere (its admin, its own
-    roles). Its sandbox's person holds the sandbox role (REQ-1597): wherever a role holding every
-    right the sandbox role holds is named, the sandbox role is named with it."""
-    from provisa.api.demo_sandbox import SANDBOX_ROLE
-
-    covered = rights[SANDBOX_ROLE]
-    if isinstance(node, list):
-        for item in node:
-            _sandbox_sees_what_its_rights_cover(item, rights)
-    elif isinstance(node, dict):
-        visible = node.get("visible_to")
-        if (
-            isinstance(visible, list)
-            and SANDBOX_ROLE not in visible
-            and any(covered <= rights.get(role_id, frozenset()) for role_id in visible)
-        ):
-            visible.append(SANDBOX_ROLE)
-        for value in node.values():
-            _sandbox_sees_what_its_rights_cover(value, rights)
+    tour = directory / "tour.yaml"
+    if not tour.is_file():
+        return []
+    named = [s["role"] for s in yaml.safe_load(tour.read_text())["steps"] if "role" in s]
+    out = []
+    for role_id in dict.fromkeys(named):
+        if role_id not in STANDARD_ROLE_RIGHTS:
+            continue
+        withheld = sorted(STANDARD_ROLE_RIGHTS[role_id] & SANDBOX_WITHHELD)
+        if withheld:
+            raise ValueError(
+                f"{directory.name}: its tour acts as {role_id!r}, which holds "
+                f"{', '.join(withheld)}, which a sandbox's person may not"
+            )
+        out.append(role_id)
+    return out
 
 
 def demo_roles(template_org: str) -> list[str]:
-    """The roles a demo's configuration defines for itself (its analyst, say), which a sandbox's
-    person also holds so the demo's tour can run as each. One that would carry a right the sandbox
-    role withholds (REQ-1597), on its own or by inheritance, is refused by name rather than
-    granted."""
-    from provisa.core.db import SANDBOX_DENIED
-    from provisa.core.models import flatten_roles
+    """The roles a demo's configuration defines for itself (its shop analyst, say), and the standard
+    roles its tour acts as (:func:`tour_standard_roles`), which a sandbox's person also holds so the
+    demo's tour can run as each. One that would carry a right the sandbox role withholds (REQ-2155:
+    what org_admin holds and sandbox does not), on its own or through a standard role it inherits
+    from, is refused by name rather than granted."""
+    from provisa.core.db import SANDBOX_WITHHELD, standard_role_dicts
+    from provisa.security.inheritance import flatten_role_dicts
 
+    own = [role.model_dump() for role in template_seed(template_org).roles]
+    flattened = {r["id"]: r for r in flatten_role_dicts([*standard_role_dicts(), *own])}
     out = []
-    for role in flatten_roles(list(template_seed(template_org).roles)):
-        withheld = sorted(set(role.capabilities) & SANDBOX_DENIED)
+    for role in own:
+        withheld = sorted(set(flattened[role["id"]]["capabilities"]) & SANDBOX_WITHHELD)
         if withheld:
             raise ValueError(
-                f"demo role {role.id!r} of {template_org} holds {', '.join(withheld)}, which a "
+                f"demo role {role['id']!r} of {template_org} holds {', '.join(withheld)}, which a "
                 "sandbox's person may not"
-            )  # REQ-1597
-        out.append(role.id)
-    return out
+            )
+        out.append(role["id"])
+    return [*out, *tour_standard_roles(demo_of_template(template_org).directory)]
 
 
 def replicated_tables(config: Any) -> list[Any]:
@@ -624,7 +645,7 @@ async def queue_late_templates(pool) -> list[str]:
                 continue
             # A visitor's open builds a newer version itself (follow_latest), marked first.
             if template_builds.state_of(demo.name) != "unknown" or (
-                _templated(demo.name) == demo.directory.name
+                await _templated(pool, demo.name) == demo.directory.name
             ):
                 continue
             await _queue_template(pool, demo)
@@ -654,11 +675,12 @@ async def _queue_template(pool, demo: PublishedDemo) -> str:
     # A template another demo version or another Provisa release built is replaced, not loaded: its
     # schema is that release's (no migrations), and a column added since fails every read of it
     # (sources.download_from on the sandbox tier).
+    # Another demo version or release is the record's, on the control plane (readiness_version):
+    # never told by a node's own files, which a fresh disk does not have.
     stale = await _built_for(pool, demo) != readiness_version(demo)
-    if stale or (bundled_demos() and _templated(demo.name) != demo.directory.name):
+    if stale:
         await _retire_template(demo.name)
     build = await _template_row(pool, demo)
-    _mark_templated(demo)
     template_builds.add(demo, build=build)
     return "building" if build else "ready"
 
@@ -674,7 +696,8 @@ def _start_builds() -> None:
     # A few at a time (sandbox.template_builds_at_once): all at once, a small tier's machine was
     # too busy to serve the visitors it was preparing for.
     at_once = int(settings_registry.value("sandbox.template_builds_at_once"))
-    task = spawn_background(template_builds.run(at_once, _prepare), name="demo-templates")
+    prepare = _prepare_seeding if seeding_release() else _prepare
+    task = spawn_background(template_builds.run(at_once, prepare), name="demo-templates")
     _build_tasks.add(task)
     task.add_done_callback(_build_tasks.discard)
 
@@ -858,15 +881,24 @@ async def _built_for(pool, demo: PublishedDemo) -> str | None:
     return row[0] if row is not None else None
 
 
-def _templated(name: str) -> str | None:
-    """The version of bundled demo ``name`` its template was built from."""
-    path = bundles_root() / name / "templated"
-    return path.read_text().strip() if path.is_file() else None
+async def _templated(pool, name: str) -> str | None:
+    """The version of bundled demo ``name`` its template was recorded ready from, on the control
+    plane beside its ready record (readiness_version: ``<version>@<release>``); None when it was
+    never recorded ready. Never a node's own file: a fresh disk under a shared plane would read
+    no version and retire the template the other nodes serve."""
+    from sqlalchemy import select
 
+    from provisa.core.schema_admin import demo_template_readiness
 
-def _mark_templated(demo: PublishedDemo) -> None:
-    if bundled_demos():
-        (bundles_root() / demo.name / "templated").write_text(demo.directory.name + "\n")
+    async with pool.acquire() as conn:
+        version = (
+            await conn.execute_core(
+                select(demo_template_readiness.c.version).where(
+                    demo_template_readiness.c.template_org == template_org_id(name)
+                )
+            )
+        ).scalar_one_or_none()
+    return None if version is None else version.partition("@")[0]
 
 
 # The lock that keeps two openers of one demo from replacing its template at once, one a demo.
@@ -920,9 +952,19 @@ async def follow_latest(name: str) -> None:
     await asyncio.to_thread(hold, name)
     lock = _following.setdefault(name, CrossLoopLock())
     async with lock:
-        if _templated(name) == ready and template_builds.state_of(name) != "unknown":
-            return
         from provisa.api.admin.orgs_router import _admin_pool
+
+        # Being prepared here already: the open waits for that preparation
+        # (demo_sandbox._template_ready). Its ready record is written only when it finishes, so
+        # it read as built from another version, and queueing it again built it twice at once --
+        # one build's rollback dropping the schema the other was creating its tables in.
+        if template_builds.state_of(name) in ("queued", "building"):
+            return
+        if (
+            await _templated(_admin_pool(), name) == ready
+            and template_builds.state_of(name) != "unknown"
+        ):
+            return
 
         # _queue_template replaces a template built from another version.
         await _queue_template(_admin_pool(), published_demo(name))
@@ -991,6 +1033,78 @@ async def _template_row(pool, demo: PublishedDemo) -> bool:
     return build
 
 
+#: How long another region's node may go unanswered while a seeding region waits on its views
+#: (its nodes start together, and one may still be starting).
+_REGION_ANSWER_GRACE_S = 60.0
+
+
+async def _build_view(org_id: str, mv_id: str) -> None:
+    """Build the template's materialized view ``mv_id`` now (a seeding run's view nothing else
+    builds); a failed build is recorded on the view (mv.refresh.refresh_mv), where the wait reads
+    it."""
+    from provisa.api.app import state
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.mv.refresh import refresh_mv
+
+    token = set_current_org(org_id)
+    try:
+        assert state.federation_engine is not None
+        mv = state.mv_registry.get(mv_id)
+        if mv is None:
+            raise LookupError(f"view {mv_id!r} is kept in this region and not registered")
+        await refresh_mv(
+            state.federation_engine,
+            mv,
+            state.mv_registry,
+            store=state.model_db,
+            ledger=state.tenant_db,
+        )
+    finally:
+        reset_current_org(token)
+
+
+def silent_regions(
+    down: dict[str, str], since: dict[str, float], now: float
+) -> tuple[list[tuple[str, str]], dict[str, float]]:
+    """Of the regions not answering now (``down``: region -> address), those that have not answered
+    for _REGION_ANSWER_GRACE_S, given when each was first found not answering (``since``); and the
+    record to carry to the next poll. A region that answers again starts over."""
+    since = {region: since.get(region, now) for region in down}
+    return [
+        (region, down[region])
+        for region, first in sorted(since.items())
+        if now - first >= _REGION_ANSWER_GRACE_S
+    ], since
+
+
+#: Why a seeding run's template was not ready, by demo (_prepare_seeding writes it out).
+_seeding_failures: dict[str, str] = {}
+
+
+async def _prepare_seeding(demo: PublishedDemo, build: bool) -> bool:
+    """:func:`_prepare` in a bundle build's seeding run: a template that is not ready, or cannot be
+    prepared, says why beside the record the build waits for (demo_replicas.seed_failure_path),
+    which ends the build at once by name instead of at the end of its budget."""
+    from provisa.api.demo_replicas import seed_failure_path
+
+    try:
+        ready = await _prepare(demo, build)
+    except Exception as exc:  # allow-ble: re-raised; its reason is written out first
+        _write_seeding_failure(seed_failure_path(demo.directory), f"{type(exc).__name__}: {exc}")
+        raise
+    if not ready:
+        _write_seeding_failure(
+            seed_failure_path(demo.directory),
+            _seeding_failures.get(demo.name, "the template was not ready"),
+        )
+    return ready
+
+
+def _write_seeding_failure(path: Path, reason: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(reason)
+
+
 async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     """Build (or only load) the template, wait until every replica it declares has landed, then
     run the ready hooks. A replica whose build failed stops the wait: the template is not ready,
@@ -1016,6 +1130,7 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         landed, failed, declared, waiting = await _replica_progress(rt)
         if failed:
             log.error("demo template %s: replicas failed to land: %s", demo.name, failed)
+            _seeding_failures[demo.name] = f"replicas failed to land: {failed}"
             return False
         # Every table of a demo is replicated always (template_seed): its template is ready when
         # each one has a landed replica, whether or not convergence has asked for all yet.
@@ -1048,18 +1163,44 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         reset_current_org(token)
     from provisa.api.demo_region_seed import (
         regional,
+        unanswered_regions,
         views_built_here,
         views_kept_here,
+        views_kept_here_ids,
         views_waiting_here,
     )
 
     if exporting and regional():
-        # REQ-2068: a region's seed carries its views too; no node of it builds them after.
+        # REQ-2068: a region's seed carries its views too; no node of it builds them after. Each
+        # is built from the replicas that have now landed: one built before then (as the node
+        # started, from replicas not yet there) would be carried as it read them, short.
+        landed_at = datetime.now(UTC)
+        for mv_id in views_kept_here_ids(template_seed(org_id)):
+            # As an operator's refresh asks (schema_mutation.refresh_mv): a view nothing else
+            # builds -- its inputs all read in place, its refresh periodic -- is built here too.
+            await _build_view(org_id, mv_id)
         said = None
-        while (built := await views_built_here(org_id)) < (
+        unanswered_since: dict[str, float] = {}
+        while (built := await views_built_here(org_id, landed_at)) < (
             kept := views_kept_here(template_seed(org_id))
         ):
-            waiting = await views_waiting_here(org_id)
+            waiting = await views_waiting_here(org_id, landed_at)
+            # A view may read a table another region keeps in place: that region's node answers
+            # at the address the deployment config declares for it, or the view never builds.
+            from provisa.api.app import state
+
+            down = dict(
+                await unanswered_regions({r.id: r.address for r in state.config.platform.regions})
+            )
+            dead, unanswered_since = silent_regions(down, unanswered_since, time.monotonic())
+            if dead:
+                reason = "views wait on " + ", ".join(
+                    f"region {region}, whose node at {address} does not answer"
+                    for region, address in dead
+                )
+                log.error("demo template %s: %s", demo.name, reason)
+                _seeding_failures[demo.name] = reason
+                return False
             if waiting != said:
                 said = waiting
                 log.warning(
@@ -1093,8 +1234,11 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
                 log.exception("demo template %s: ready hook %r failed", demo.name, hook)
     finally:
         reset_current_org(token)
-    if not regional() and not exporting:
-        # REQ-2006: the next start serves this template as it is built (warm_ready).
+    if not exporting:
+        # REQ-2006: the record says which demo version the template is (_templated, _built_for),
+        # on every tier: a regions tier's unrecorded template read as another version's, and the
+        # next open retired it and built it again. The next start serves it as it is built
+        # (warm_ready) only off a regions tier (_served_as_built).
         from provisa.api.admin.orgs_router import _admin_pool
 
         await record_ready(_admin_pool(), demo)

@@ -94,11 +94,11 @@ class TestJSONBFieldPromotion:
                 "columns": [
                     {
                         "column_name": "id",
-                        "visible_to": [],
+                        "visible_to": ["admin"],
                     },
                     {
                         "column_name": "payload",
-                        "visible_to": [],
+                        "visible_to": ["admin"],
                         "object_fields": [
                             {"name": "order_id", "type": "integer"},
                             {"name": "amount", "type": "number"},
@@ -182,10 +182,10 @@ class TestViewRLSEnforcement:
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
                 "write_refused_forms": [],
                 "columns": [
-                    {"column_name": "id", "visible_to": []},
+                    {"column_name": "id", "visible_to": ["admin", "analyst"]},
                     # 'secret_col' only visible to admin
                     {"column_name": "secret_col", "visible_to": ["admin"]},
-                    {"column_name": "amount", "visible_to": []},
+                    {"column_name": "amount", "visible_to": ["admin", "analyst"]},
                 ],
             }
         ]
@@ -260,7 +260,7 @@ class TestViewRLSEnforcement:
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
                 "write_refused_forms": [],
                 "columns": [
-                    {"column_name": "id", "visible_to": []},
+                    {"column_name": "id", "visible_to": ["admin", "analyst"]},
                     {"column_name": "revenue", "visible_to": ["analyst"]},
                     {"column_name": "cost", "visible_to": ["admin"]},
                 ],
@@ -314,10 +314,10 @@ class TestViewComputedSemantics:
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
                 "write_refused_forms": [],
                 "columns": [
-                    {"column_name": "id", "visible_to": []},
+                    {"column_name": "id", "visible_to": ["admin"]},
                     {
                         "column_name": "payload",
-                        "visible_to": [],
+                        "visible_to": ["admin"],
                         "path": "payload.total",
                     },
                 ],
@@ -373,10 +373,10 @@ class TestJSONPathExpressions:
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
                 "write_refused_forms": [],
                 "columns": [
-                    {"column_name": "id", "visible_to": []},
+                    {"column_name": "id", "visible_to": ["admin"]},
                     {
                         "column_name": "payload",
-                        "visible_to": [],
+                        "visible_to": ["admin"],
                         "path": "order_id",
                         "alias": "order_id",
                     },
@@ -435,8 +435,8 @@ class TestDomainPrefix:
                 "write_returns_rows": registry_write_returns_rows("postgresql"),
                 "write_refused_forms": [],
                 "columns": [
-                    {"column_name": "id", "visible_to": []},
-                    {"column_name": "amount", "visible_to": []},
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
                 ],
             }
         ]
@@ -500,8 +500,8 @@ class TestTableAlias:
                 "write_refused_forms": [],
                 "alias": alias,
                 "columns": [
-                    {"column_name": "id", "visible_to": []},
-                    {"column_name": "total", "visible_to": []},
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "total", "visible_to": ["admin"]},
                 ],
             }
         ]

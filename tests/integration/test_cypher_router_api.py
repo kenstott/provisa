@@ -57,6 +57,26 @@ async def client():
             os.environ["PROVISA_CONFIG"] = _prev_config
 
 
+def _engine_catalogs() -> str:
+    """What the engine's runtime holds attached, for a failure's message: a meta read on DuckDB
+    needs the control plane attached as provisa_admin (native_backend's registry walk)."""
+    from provisa.api.app import state
+
+    backend = state.federation_engine
+    runtime = getattr(backend, "_runtime", None)
+    if runtime is None or not hasattr(runtime, "_con"):
+        return f"engine {type(backend).__name__}: no native runtime"
+    attached = [
+        r[0]
+        for r in runtime._con.execute("SELECT database_name FROM duckdb_databases()").fetchall()
+    ]
+    return (
+        f"attached={attached} control_plane_attached={getattr(runtime, '_control_plane_attached', None)} "
+        f"phys_catalogs={sorted(getattr(runtime, '_phys_catalogs', []))} "
+        f"failed={dict(getattr(backend, '_failed', {}))} walks={getattr(backend, '_walks', None)}"
+    )
+
+
 async def _cypher(client: AsyncClient, query: str, params: dict | None = None, headers=None):
     return await client.post(
         "/data/cypher",
@@ -133,7 +153,7 @@ class TestGraphSchema:
 
     async def test_schema_scoped_by_analyst_role(self, client):
         """analyst role's domain_access excludes product-catalog (REQ-392 domain scoping)."""
-        schema = await _schema(client, headers={"X-Provisa-Role": "analyst"})
+        schema = await _schema(client, headers={"X-Provisa-Role": "sales_analytics_analyst"})
         domain_ids = {n["domain_id"] for n in schema["node_labels"]}
         assert "product-catalog" not in domain_ids
 
@@ -207,10 +227,12 @@ class TestGraphCounts:
 
     async def test_counts_scoped_by_analyst_role(self, client):
         """analyst lacks product-catalog domain_access — counts must omit those labels."""
-        resp = await client.get("/data/graph-counts", headers={"X-Provisa-Role": "analyst"})
+        resp = await client.get(
+            "/data/graph-counts", headers={"X-Provisa-Role": "sales_analytics_analyst"}
+        )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        schema = await _schema(client, headers={"X-Provisa-Role": "analyst"})
+        schema = await _schema(client, headers={"X-Provisa-Role": "sales_analytics_analyst"})
         allowed_labels = {n["label"] for n in schema["node_labels"]}
         assert set(data["label_counts"].keys()) <= allowed_labels
 
@@ -240,7 +262,7 @@ class TestCypherNodeAndRelationshipQueries:
             client,
             f"MATCH (a)-[r:{rel['type']}]->(b) RETURN a, b LIMIT 3",
         )
-        assert resp.status_code == 200, resp.text
+        assert resp.status_code == 200, f"{resp.text}\n{_engine_catalogs()}"
         data = resp.json()
         assert "columns" in data
         assert "rows" in data
@@ -301,7 +323,7 @@ class TestCypherDomainScoping:
         resp = await _cypher(
             client,
             f"MATCH (n:{products['label']}) RETURN n LIMIT 1",
-            headers={"X-Provisa-Role": "analyst"},
+            headers={"X-Provisa-Role": "sales_analytics_analyst"},
         )
         # Either the label doesn't resolve for analyst (400 translate error) or governance
         # rejects it (403) — never a bare 200 success against an out-of-scope domain.
@@ -327,12 +349,12 @@ class TestCypherErrorPaths:
     async def test_malformed_cypher_returns_400(self, client):
         resp = await _cypher(client, "MATCH (n RETURN n")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
     async def test_unbound_param_returns_400(self, client):
         resp = await _cypher(client, "MATCH (n) WHERE n.id = $missing_param RETURN n LIMIT 1")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
     async def test_unknown_label_returns_error_not_500(self, client):
         resp = await _cypher(client, "MATCH (n:TotallyUnknownLabel) RETURN n LIMIT 1")
@@ -353,9 +375,13 @@ class TestCypherErrorPaths:
             pytest.skip("Engine coerced the type mismatch instead of erroring")
         assert resp.status_code in (400, 500, 503)
         data = resp.json()
-        assert "error" in data
-        assert "trino" not in data["error"].lower()
-        assert "postgresql" not in data["error"].lower()
+        assert data["code"] in (
+            "cypher.type_mismatch",
+            "cypher.engine_refused",
+            "cypher.execution_failed",
+        ), data
+        assert "trino" not in data["detail"].lower()
+        assert "postgresql" not in data["detail"].lower()
 
     async def test_query_id_removed_endpoint_returns_410(self, client):
         resp = await client.post(
@@ -363,12 +389,12 @@ class TestCypherErrorPaths:
             json={"query": "MATCH (n) RETURN n LIMIT 1"},
         )
         assert resp.status_code == 410
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.query_id_removed"
 
     async def test_merge_write_rejected(self, client):
         resp = await _cypher(client, "MERGE (n:TestNode {id: 999})")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
 
 # --------------------------------------------------------------------------- #
@@ -407,8 +433,7 @@ class TestCypherResponseContract:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data.get("type") == "cypher"
-        if "error" in data:
-            assert data["error"] is None
+        assert "detail" not in data and "code" not in data
 
     async def test_stats_header_includes_provisa_stats(self, client):
         schema = await _schema(client)

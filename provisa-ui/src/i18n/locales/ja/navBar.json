@@ -48,6 +48,7 @@
     "itemMetadataExport": "エクスポート",
     "itemImport": "インポート",
     "itemTags": "タグ",
+    "itemClassificationKinds": "分類",
     "itemDataProducts": "プロダクト",
     "itemReports": "レポート",
     "itemGlossary": "オントロジー",
@@ -74,6 +75,8 @@
     "sandboxExitLogOut": "ログアウトのみ",
     "itemPython": "Python",
     "itemNotebook": "ノートブック",
-    "itemContainerRegistries": "コンテナレジストリ"
+    "itemContainerRegistries": "コンテナレジストリ",
+    "itemSparql": "SPARQL",
+    "itemCatalogs": "カタログ"
   }
 }

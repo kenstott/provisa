@@ -46,6 +46,9 @@ function recordingContext(canvas: HTMLCanvasElement): Ctx {
     setTransform: vi.fn(),
     beginPath: vi.fn(),
     roundRect: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
     fill: vi.fn(),
     stroke: vi.fn(),
     drawImage: vi.fn(),
@@ -221,6 +224,40 @@ describe("a 3D view's export", () => {
     expect(svg).toContain("<line ");
     expect(svg).toMatch(/<text [^>]*>Customer<\/text>/);
     expect(svg).toMatch(/<text [^>]*>concrete term<\/text>/);
+  });
+});
+
+describe("a legend glyph clipped to its outline", () => {
+  it("is painted as that polygon, in an SVG and on a canvas", async () => {
+    const { stage, scene } = stageWith();
+    // A data product's glyph: a hexagon, 10 by 10 at the legend's corner.
+    const glyph = document.createElement("i");
+    glyph.dataset.glyph = "0.5,0 0.933,0.25 0.933,0.75 0.5,1 0.067,0.75 0.067,0.25";
+    glyph.style.background = "rgb(1, 2, 3)";
+    glyph.getBoundingClientRect = () =>
+      ({
+        left: 20,
+        top: 30,
+        width: 10,
+        height: 10,
+        right: 30,
+        bottom: 40,
+        x: 20,
+        y: 30,
+      }) as DOMRect;
+    stage.querySelector(".p3d-legend")!.prepend(glyph);
+
+    const svg = await (await exportImage(scene, stage, "svg", 1)).text();
+    expect(svg).toContain(
+      '<polygon transform="matrix(1 0 0 1 20 30)" points="5,0 9.33,2.5 9.33,7.5 5,10 0.67,7.5 0.67,2.5" fill="rgb(1, 2, 3)"',
+    );
+    // Not also as the box it is clipped from.
+    expect(svg).not.toMatch(/<rect [^>]*fill="rgb\(1, 2, 3\)"/);
+
+    await exportImage(scene, stage, "png", 1);
+    const ctx = made[made.length - 1];
+    expect(ctx.lineTo).toHaveBeenCalledTimes(5);
+    expect(ctx.closePath).toHaveBeenCalled();
   });
 });
 

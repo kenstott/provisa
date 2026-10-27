@@ -49,13 +49,14 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from provisa.core.db import _SEED_ROLES
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from provisa.core.schema_admin import environments
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
-#: What the creator of a branch holds INSIDE it: the seeded ``developer`` role, verbatim (REQ-1528).
+#: What the creator of a branch holds INSIDE it: the standard ``developer`` role's rights, ancestors
+#: included (REQ-1528, REQ-2155).
 #:
 #: Not org_admin's rights less a withheld list. That construction had to name every right that must
 #: not travel, and would have handed over any right added to org_admin afterwards; naming the role
@@ -72,9 +73,7 @@ if TYPE_CHECKING:
 #: that define what each name means there (REQ-1489), and what remains here is exactly the ability
 #: to build the model and nothing else.
 _DATA_RIGHTS: frozenset[str] = frozenset({"write", "full_results", "usage"})
-ENVIRONMENT_OWNER_CAPABILITIES: frozenset[str] = (
-    frozenset(dict(_SEED_ROLES)["developer"]) - _DATA_RIGHTS
-)
+ENVIRONMENT_OWNER_CAPABILITIES: frozenset[str] = STANDARD_ROLE_RIGHTS["developer"] - _DATA_RIGHTS
 
 #: The domain_access value meaning "every domain" — the state of every seeded role, and therefore
 #: what makes a developer unlimited until an org_admin narrows it (REQ-1530).

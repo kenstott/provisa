@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { TableAccessPanel } from "./TableAccessPanel";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@mantine/core";
@@ -192,7 +193,6 @@ export function TableEditForm({
           <TableAssociationsSection
             editingTable={editingTable}
             setEditingTable={setEditingTable}
-            isCheckerTable={isCheckerTable}
             dataProducts={dataProducts}
             relationships={relationships}
           />
@@ -257,6 +257,8 @@ export function TableEditForm({
           }
         />
       )}
+      {/* REQ-2162: who can read or write each column, as the read view shows it. */}
+      {section === "access" && <TableAccessPanel tableId={creating ? null : editingTable.id} />}
       {section === "writes" && (
         // REQ-2074: the grants are saved on their own, apart from the table's other settings.
         <WriteGrantsPanel

@@ -47,6 +47,14 @@ def test_optional_match_flag():
     assert ast.match_clauses[1].optional is True
 
 
+def test_comma_separated_patterns_are_clauses_of_one_match():
+    ast = parse_cypher("MATCH (a:A)-[:R]->(b:B), (b)-[:S]->(c:C) WHERE a.x = 1 RETURN a.x")
+    assert len(ast.pipeline[0].matches) == 2
+    assert [m.optional for m in ast.match_clauses] == [False, False]
+    assert ast.match_clauses[1].pattern.nodes[0].variable == "b"
+    assert _holds_number(ast.where.expression, 1)
+
+
 def test_where_clause_parsed():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 RETURN n.name")
     assert ast.where is not None
@@ -148,9 +156,12 @@ def test_remove_rejected():
         parse_cypher("MATCH (n:Person) REMOVE n.name")
 
 
-def test_apoc_rejected():
-    with pytest.raises(CypherParseError, match="APOC"):
-        parse_cypher("MATCH (n) RETURN apoc.util.sleep(100)")
+def test_an_apoc_function_is_read_as_a_function_call():
+    # REQ-2168: a namespaced function is a function's Cypher command binding; one no function is
+    # bound to is refused when the statement is bound for its role (api/data/cypher_commands.py).
+    ast = parse_cypher("MATCH (n) RETURN apoc.util.sleep(100)")
+    (item,) = ast.return_clause.items
+    assert item.expression.name == "apoc.util.sleep"
 
 
 def test_unbounded_variable_length_rejected():
@@ -240,7 +251,7 @@ def test_union_all_parsed():
 
 
 def test_union_sub_ast_has_match():
-    query = "MATCH (n:Person) RETURN n.name UNION MATCH (c:Company) RETURN c.name"
+    query = "MATCH (n:Person) RETURN n.name AS name UNION MATCH (c:Company) RETURN c.name AS name"
     ast = parse_cypher(query)
     sub_ast, _ = ast.union_parts[0]
     assert sub_ast.match_clauses[0].pattern.nodes[0].labels == ["Company"]
@@ -379,3 +390,30 @@ def test_two_writes_in_one_query_are_refused():
 
     with pytest.raises(CypherWriteParseError, match="but got: 2"):
         parse_cypher_write("CREATE (a:A {x: 1}); CREATE (b:A {x: 2})")
+
+
+@pytest.mark.parametrize(
+    ("query", "direction"),
+    [
+        ("MATCH (a:A)--(b:A) RETURN a", "none"),
+        ("MATCH (a:A)-->(b:A) RETURN a", "right"),
+        ("MATCH (a:A)<--(b:A) RETURN a", "left"),
+        ("MATCH (a:A)<-->(b:A) RETURN a", "none"),
+    ],
+)
+def test_a_relationship_written_without_brackets_is_read(query, direction):
+    """openCypher TCK: ``(me)--(you)`` is a relationship of any type, either direction."""
+    rel = parse_cypher(query).match_clauses[0].pattern.rels[0]
+    assert (rel.types, rel.direction) == ([], direction)
+
+
+def test_a_single_dash_between_nodes_is_not_a_relationship():
+    with pytest.raises(CypherParseError):
+        parse_cypher("MATCH (a:A)-(b:A) RETURN a")
+
+
+def test_a_statement_that_is_not_cypher_is_invalid_input_as_neo4j_says_it():
+    """A Neo4j client reads a syntax error by its words (the driver's cypher-error example):
+    the token the statement cannot start with is "Invalid input"."""
+    with pytest.raises(CypherParseError, match=r"^Invalid input 'SELECT'"):
+        parse_cypher("SELECT * FROM Employees WHERE name = $name")

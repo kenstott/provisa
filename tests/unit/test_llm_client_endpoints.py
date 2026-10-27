@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from provisa.llm.client import ProvisaLLMClient
+from provisa.llm.client import LLMEmptyResponseError, ProvisaLLMClient
 
 
 def _aisuite_stub():
@@ -111,3 +111,28 @@ class TestAiEndpointDispatch:
         }
         client = ProvisaLLMClient(operation="sql_generation", config=cfg)
         assert "my-gateway" not in client._endpoints
+
+
+class TestEmptyContent:
+    def test_none_content_raises_named_error(self):
+        cfg = {
+            "ai_models": {"sql_generation": {"vendor": "gw", "model": "m"}},
+            "ai_endpoints": [
+                {"id": "gw", "style": "openai", "base_url": "https://gw/v1", "enabled": True}
+            ],
+        }
+        client = ProvisaLLMClient(operation="sql_generation", config=cfg)
+        stub, _ = _aisuite_stub()
+        orig = stub.Client
+
+        class _NoneClient(orig):
+            def __init__(self, config=None):
+                super().__init__(config)
+                self.chat.completions.create.return_value.choices = [
+                    MagicMock(message=MagicMock(content=None), finish_reason="length")
+                ]
+
+        stub.Client = _NoneClient
+        with patch.dict("sys.modules", {"aisuite": stub}):
+            with pytest.raises(LLMEmptyResponseError, match="finish_reason='length'"):
+                client.complete_sync("hello", max_tokens=16)

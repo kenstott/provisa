@@ -454,6 +454,7 @@ async def test_a_read_goes_to_the_engine_and_a_write_direct_to_the_api_driver(so
         source_types={"s": source_type},
         source_dialects={"s": "postgres"},
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decide_route(**common).route is Route.ENGINE  # type: ignore[arg-type]
     write = decide_route(**common, is_mutation=True)  # type: ignore[arg-type]

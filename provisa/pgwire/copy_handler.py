@@ -28,7 +28,7 @@ import io
 import logging
 import re
 import struct
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.pgwire.copy_binary import (
@@ -172,6 +172,17 @@ def _queryresult_to_copy_bytes(result: QueryResult, fmt: str) -> bytes:
     return _rows_to_copy_text(result.rows, col_count)
 
 
+def _copy_out_messages(
+    rows: Sequence[Sequence[object]], col_count: int, fmt: str, binary_tags: list[str]
+) -> list[bytes]:
+    """The CopyData payloads of a COPY TO: one per row in text and csv, as PostgreSQL sends them
+    (a client counts rows by its CopyData messages); the whole stream in binary."""
+    if fmt == "binary":
+        return [_rows_to_copy_binary(rows, binary_tags)]
+    encode = _rows_to_copy_csv if fmt == "csv" else _rows_to_copy_text
+    return [encode([row], col_count) for row in rows]
+
+
 def _unescape_copy_text(s: str) -> str | None:
     if s == r"\N":
         return None
@@ -201,6 +212,8 @@ def _parse_copy_data_text(data: bytes) -> list[list]:
     rows = []
     text = data.decode("utf-8", errors="replace")
     for line in text.splitlines():
+        if line == "\\.":
+            break  # the end-of-data marker
         if not line:
             continue
         fields = line.split("\t")
@@ -212,6 +225,41 @@ def _parse_copy_data_csv(data: bytes) -> list[list]:
     text = data.decode("utf-8", errors="replace")
     reader = csv.reader(io.StringIO(text))
     return [list(row) for row in reader if row]
+
+
+# How many bytes of whole CopyData messages COPY TO writes at a time.
+_COPY_WRITE_BYTES = 64 * 1024
+
+_COPY_BINARY_SIGNATURE = b"PGCOPY\n\xff\r\n\x00"
+
+
+def _parse_copy_binary(data: bytes) -> list[list]:
+    """PostgreSQL's COPY binary stream as rows of raw fields (None for NULL): the signature, the
+    flags and header extension, then each tuple's field count and length-prefixed fields, ended by
+    a field count of -1."""
+    if not data.startswith(_COPY_BINARY_SIGNATURE):
+        raise ValueError(
+            "COPY FROM STDIN (FORMAT binary): the data does not start with the signature"
+        )
+    at = len(_COPY_BINARY_SIGNATURE)
+    (_flags, extension) = struct.unpack("!ii", data[at : at + 8])
+    at += 8 + extension
+    rows: list[list] = []
+    while True:
+        (count,) = struct.unpack("!h", data[at : at + 2])
+        at += 2
+        if count == -1:
+            return rows
+        row: list = []
+        for _ in range(count):
+            (length,) = struct.unpack("!i", data[at : at + 4])
+            at += 4
+            if length == -1:
+                row.append(None)
+            else:
+                row.append(data[at : at + length])
+                at += length
+        rows.append(row)
 
 
 def _parse_copy_data(data: bytes, fmt: str) -> list[list]:
@@ -310,13 +358,19 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
             table = m_from.group("table")
             cols_raw = m_from.group("cols")
             fmt = (m_from.group("fmt") or "text").lower()
+            explicit_cols = [c.strip() for c in cols_raw.split(",")] if cols_raw else None
+            from provisa.compiler import temp_tables
+
+            session = temp_tables.current()
+            if schema is None and session is not None and table in session.tables:
+                # REQ-615: a session's own temporary table takes text, csv and binary.
+                return self._handle_copy_from_temp(ctx, session, table, explicit_cols, fmt)
             if fmt not in _COPY_FROM_FORMATS:
                 # Anything else would be read as text and its rows misread, so it is refused
                 # before the client is asked for data. pgwire answers it 0A000.
                 raise NotAvailableHere(
                     f"COPY FROM STDIN does not read FORMAT {fmt}: it reads text and csv"
                 )
-            explicit_cols = [c.strip() for c in cols_raw.split(",")] if cols_raw else None
             return self._handle_copy_from(ctx, schema, table, explicit_cols, fmt, role_id)
 
         raise ValueError(f"Cannot parse COPY statement: {sql!r}")
@@ -353,9 +407,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
 
         try:
             if plan.route == Route.ENGINE and streams_from_terminal(plan):
-                data_bytes, nrows = self._exec_engine_flight(plan, fmt)
+                messages, nrows = self._exec_engine_flight(plan, fmt)
             else:
-                data_bytes, nrows = self._exec_direct_plan(plan, fmt)
+                messages, nrows = self._exec_direct_plan(plan, fmt)
         except Exception:
             self._finalize_audit(plan, 500, org_id)
             raise
@@ -363,7 +417,7 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         self._finalize_audit(plan, 200, org_id)
 
         self._send_copy_out_response(fmt)
-        self._send_copy_data(data_bytes)
+        self._send_copy_data(messages)
         self._send_copy_done()
         return nrows
 
@@ -380,7 +434,7 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
             _srv._run_with_org(org_id, finalize_audit(plan, status_code)), timeout=30
         )
 
-    def _exec_engine_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
+    def _exec_engine_flight(self, plan: _Plan, fmt: str) -> tuple[list[bytes], int]:
         from provisa.api.app import state
         from provisa.federation.query_residency import ensure_resident, put_on_plan
         from provisa.pgwire._pipeline import require_governed_plan
@@ -407,27 +461,39 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
         table = state.federation_engine.execute_engine_arrow(plan.physical_sql, plan.exec_params)
-        data_bytes = _arrow_table_to_copy_bytes(table, fmt)
-        return data_bytes, table.num_rows
+        names = table.column_names
+        rows = [[row.get(n) for n in names] for row in table.to_pylist()]
+        tags = [_arrow_binary_tag(f.type) for f in table.schema]
+        return _copy_out_messages(rows, table.num_columns, fmt, tags), table.num_rows
 
-    def _exec_direct_plan(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
+    def _exec_direct_plan(self, plan: _Plan, fmt: str) -> tuple[list[bytes], int]:
         from provisa.pgwire._pipeline import _execute_plan
 
         result = run_on_connection_loop(_execute_plan(plan), timeout=request_timeout_for("pgwire"))
-        data_bytes = _queryresult_to_copy_bytes(result, fmt)
-        return data_bytes, len(result.rows)
+        count = len(result.column_names)
+        types = result.column_types or []
+        tags = [_sql_binary_tag(types[i] if i < len(types) else None) for i in range(count)]
+        return _copy_out_messages(result.rows, count, fmt, tags), len(result.rows)
 
     def _send_copy_out_response(self, fmt: str) -> None:
         # overall_format: 0=text, 1=binary; col_count 0 means unknown/variable (REQ-883)
         overall = 1 if fmt == "binary" else 0
         body = struct.pack("!bh", overall, 0)
-        self._h.wfile.write(struct.pack("!ci", _COPY_OUT_RESPONSE, len(body) + 4))
-        self._h.wfile.write(body)
+        # One write per message: sent whole or not at all (see server._send_pg_error).
+        self._h.wfile.write(struct.pack("!ci", _COPY_OUT_RESPONSE, len(body) + 4) + body)
         self._h.wfile.flush()
 
-    def _send_copy_data(self, data: bytes) -> None:
-        self._h.wfile.write(struct.pack("!ci", _COPY_DATA, len(data) + 4))
-        self._h.wfile.write(data)
+    def _send_copy_data(self, messages: list[bytes]) -> None:
+        """Each payload as its own CopyData message. Whole messages are written together, about
+        64 KiB at a time (never one cut across two writes: see server._send_pg_error)."""
+        batch = bytearray()
+        for data in messages:
+            batch += struct.pack("!ci", _COPY_DATA, len(data) + 4) + data
+            if len(batch) >= _COPY_WRITE_BYTES:
+                self._h.wfile.write(bytes(batch))
+                batch.clear()
+        if batch:
+            self._h.wfile.write(bytes(batch))
         self._h.wfile.flush()
 
     def _send_copy_done(self) -> None:
@@ -465,7 +531,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         from provisa.security.rights import require_role
 
         _role = require_role(_state.roles, role_id)
-        _surface = _state.surfaces[role_id]  # one snapshot: parts of one build
+        from provisa.api.role_surface import built_surface
+
+        _surface = built_surface(_state.surfaces[role_id])  # one snapshot: parts of one build
         _gov = build_governance_context(
             role_id,
             _surface.rls,
@@ -479,27 +547,7 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
 
         self._send_copy_in_response(fmt)
 
-        # Read all CopyData chunks until CopyDone or CopyFail
-        data_chunks: list[bytes] = []
-        while True:
-            code = self._h.rfile.read(1)
-            if not code:
-                raise RuntimeError("Connection closed during COPY FROM")
-            length_bytes = self._h.rfile.read(4)
-            msglen = struct.unpack("!i", length_bytes)[0] - 4
-            payload = self._h.rfile.read(msglen) if msglen > 0 else b""
-
-            if code == _COPY_DATA:
-                data_chunks.append(payload)
-            elif code == _COPY_DONE:
-                break
-            elif code == _COPY_FAIL:
-                msg = payload.rstrip(b"\x00").decode("utf-8", errors="replace")
-                raise RuntimeError(f"Client aborted COPY FROM: {msg}")
-            else:
-                log.warning("[COPY FROM] unexpected message code %r, ignoring", code)
-
-        all_data = b"".join(data_chunks)
+        all_data = self._read_copy_in()
         rows = _parse_copy_data(all_data, fmt)
         admit_rows(_gov, tm.table_id, table, use_cols, rows, session_vars_for(_role))
 
@@ -524,9 +572,57 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         )
         return inserted
 
-    def _send_copy_in_response(self, _fmt: str) -> None:  # pyright: ignore[reportUnusedParameter]
-        overall = 0
+    def _read_copy_in(self) -> bytes:
+        """Every CopyData the client sends up to its CopyDone; a CopyFail ends the COPY."""
+        data_chunks: list[bytes] = []
+        while True:
+            code = self._h.rfile.read(1)
+            if not code:
+                raise RuntimeError("Connection closed during COPY FROM")
+            length_bytes = self._h.rfile.read(4)
+            msglen = struct.unpack("!i", length_bytes)[0] - 4
+            payload = self._h.rfile.read(msglen) if msglen > 0 else b""
+
+            if code == _COPY_DATA:
+                data_chunks.append(payload)
+            elif code == _COPY_DONE:
+                return b"".join(data_chunks)
+            elif code == _COPY_FAIL:
+                msg = payload.rstrip(b"\x00").decode("utf-8", errors="replace")
+                raise RuntimeError(f"Client aborted COPY FROM: {msg}")
+            else:
+                log.warning("[COPY FROM] unexpected message code %r, ignoring", code)
+
+    def _handle_copy_from_temp(
+        self,
+        _ctx: BVContext,  # pyright: ignore[reportUnusedParameter]
+        session: Any,
+        table: str,
+        explicit_cols: list[str] | None,
+        fmt: str,
+    ) -> int:
+        """COPY FROM STDIN into the session's temporary table ``table`` (REQ-615): the rows are
+        the session's own, so no grant admits them. Nothing lands until the CopyDone; a
+        CopyFail, or a row that does not read, lands none."""
+        from provisa.api.app import state
+        from provisa.pgwire.temp_exec import copy_into
+
+        if fmt not in (*_COPY_FROM_FORMATS, "binary"):
+            raise NotAvailableHere(
+                f"COPY FROM STDIN does not read FORMAT {fmt}: it reads text, csv and binary"
+            )
+        self._send_copy_in_response(fmt)
+        data = self._read_copy_in()
+        binary = fmt == "binary"
+        rows = _parse_copy_binary(data) if binary else _parse_copy_data(data, fmt)
+        return run_on_connection_loop(
+            copy_into(session, table, explicit_cols, rows, state, binary=binary),
+            timeout=request_timeout_for("pgwire"),
+        )
+
+    def _send_copy_in_response(self, fmt: str) -> None:
+        overall = 1 if fmt == "binary" else 0
         body = struct.pack("!bh", overall, 0)
-        self._h.wfile.write(struct.pack("!ci", _COPY_IN_RESPONSE, len(body) + 4))
-        self._h.wfile.write(body)
+        # One write per message: sent whole or not at all (see server._send_pg_error).
+        self._h.wfile.write(struct.pack("!ci", _COPY_IN_RESPONSE, len(body) + 4) + body)
         self._h.wfile.flush()

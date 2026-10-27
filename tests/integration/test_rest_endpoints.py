@@ -402,7 +402,9 @@ class TestRestEndpointsHTTP:
         # and every governed REST route hard-fails 401 (REQ per commit 935589f0).
         from provisa.auth.middleware import AuthMiddleware
 
-        app.add_middleware(AuthMiddleware)
+        # The deployment org is the one this state serves, as the server's resolver names it: the
+        # middleware binds it to read the platform plane, and only its runtime is built here.
+        app.add_middleware(AuthMiddleware, default_org_id=app_state.org_id)
 
         transport = httpx.ASGITransport(app=app)
         client = httpx.AsyncClient(transport=transport, base_url="http://test")
@@ -539,7 +541,7 @@ class TestRestEndpointsHTTP:
         # reaches table resolution (404) instead of hard-failing 401 at auth.
         from provisa.auth.middleware import AuthMiddleware
 
-        app.add_middleware(AuthMiddleware)
+        app.add_middleware(AuthMiddleware, default_org_id=app_state.org_id)
 
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

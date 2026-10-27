@@ -88,7 +88,6 @@ async def _field(compiled, *, delivery=None, output_format="json", **over):
 
     args = dict(
         delivery=delivery,
-        as_of="TIMESTAMP '2026-01-01 00:00:00'",
         steward_hint="engine",
         query_session_props={"query_max_run_time": "1m"},
         cache_hint=_HINT,
@@ -111,7 +110,7 @@ async def test_the_field_asks_the_pipeline_with_what_the_request_carried(pipelin
     assert call["serve_cached"] is True  # an inline read may be answered from the cache
     assert call["buffered"] is True  # REQ-1224: inlined under the threshold, landed over it
     assert call["deliver"] is None
-    assert call["as_of"] == "TIMESTAMP '2026-01-01 00:00:00'"
+    assert "as_of" not in call  # a field's time is its relation's argument, in its SQL
     assert call["steward_hint"] == "engine"
     assert call["session_props"] == {"query_max_run_time": "1m"}
 
@@ -146,25 +145,26 @@ async def test_a_forced_delivery_answers_with_its_handle(pipeline):
     assert call["serve_cached"] is False  # a delivery is never answered from the cache
 
 
-async def test_an_aggregate_reads_its_nodes_through_a_second_plan(pipeline):
+async def test_an_aggregate_reads_its_nodes_in_its_one_plan(pipeline):
+    # Its nodes are a column of its one statement's one row (aggregates._nodes_column).
     compiled = _compiled(
-        sql='SELECT COUNT(*) AS "count" FROM "sales"."orders"',
-        columns=[ColumnRef(None, "count", "count", None)],
-        nodes_sql='SELECT "id" FROM "sales"."orders"',
-        nodes_params=[3],
-        nodes_columns=[ColumnRef(None, "id", "id", None)],
+        sql='SELECT COUNT(*) AS "count", json_agg(json_object(KEY \'id\' VALUE "id")) AS "nodes" '
+        'FROM "sales"."orders"',
+        columns=[
+            ColumnRef(None, "count", "count", "aggregate"),
+            ColumnRef(None, "nodes", "nodes", None, cardinality="one-to-many", is_agg=True),
+        ],
+        has_nodes=True,
         api_args={"region": "EU"},
-        gql_remote_extra_selections={"orders": {"x": "y"}},
         agg_alias="aggregate",
     )
-    pipeline.results.append(QueryResult(rows=[(2,)], column_names=["count"]))
-    pipeline.results.append(QueryResult(rows=[(1,), (2,)], column_names=["id"]))
+    pipeline.results.append(
+        QueryResult(rows=[(2, '[{"id": 1}, {"id": 2}]')], column_names=["count", "nodes"])
+    )
     root, field_rows, redirect, hit = await _field(compiled)
-    first, nodes = pipeline.asked
-    assert first["buffered"] is False  # an aggregate's answer is always small
-    assert nodes["sql"] == compiled.nodes_sql and nodes["exec_params"] == [3]
-    assert nodes["api_args"] == {"region": "EU"}
-    assert nodes["extra_selections"] == {"orders": {"x": "y"}}
+    (only,) = pipeline.asked
+    assert only["buffered"] is False  # the rows it aggregates may be many
+    assert only["compiled"] is compiled
     assert field_rows == {"aggregate": {"count": 2}, "nodes": [{"id": 1}, {"id": 2}]}
 
 

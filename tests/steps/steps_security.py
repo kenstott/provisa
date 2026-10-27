@@ -25,11 +25,8 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
-from provisa.security.visibility import (
-    is_column_visible,
-    visible_column_names,
-    visible_tables,
-)
+from provisa.security.visibility import visible_tables
+from tests.served_columns import is_column_visible, visible_column_names
 from provisa.security.rights import (
     Capability,
     InsufficientRightsError,
@@ -57,6 +54,7 @@ from provisa.security.masking import (
     MaskingRule,
     MaskType,
     MaskingValidationError,
+    UNIVERSAL_REGEX_REPLACE,
     build_mask_expression,
     validate_masking_rule,
 )
@@ -618,8 +616,9 @@ def _ctx_740() -> CompilationContext:
     return ctx
 
 
-# REQ-263: every match is replaced ('g'), on every engine.
-_MASK_740 = "REGEXP_REPLACE(\"customers\".\"email\", '^(.{2}).*(@.*)$', '\\1***\\2', 'g')"
+# REQ-2142: the universal call, lowered per engine with every match replaced; a value the pattern
+# does not match reads as the full mask.
+_MASK_740 = "PROVISA_REGEX_REPLACE(\"customers\".\"email\", '^(.{2}).*(@.*)$', '$1***$2', '****')"
 
 
 @given("a column masked for a role and referenced in the select list and in a JOIN ON")
@@ -632,7 +631,7 @@ def masked_column_in_select_and_join(shared_data: dict) -> None:
     mask_rule = MaskingRule(
         mask_type=MaskType.regex,
         pattern=r"^(.{2}).*(@.*)$",
-        replace=r"\1***\2",
+        replace="$1***$2",
     )
     shared_data["masking_rules_740"] = {
         (_CUSTOMERS_TABLE_ID, role_id): {"email": (mask_rule, "varchar")},
@@ -702,7 +701,7 @@ def where_having_masked_refused(shared_data: dict) -> None:
 @given("a masked column in queries against different source types")
 def masked_column_across_source_types(shared_data: dict) -> None:
     shared_data["regex_rule"] = MaskingRule(
-        mask_type=MaskType.regex, pattern=r"^(.).*(@.*)$", replace=r"\1***\2"
+        mask_type=MaskType.regex, pattern=r"^(.).*(@.*)$", replace="$1***$2"
     )
     shared_data["truncate_rule"] = MaskingRule(mask_type=MaskType.truncate, precision="month")
     shared_data["source_column_refs"] = {
@@ -727,13 +726,15 @@ def build_mask_expression_across_sources(shared_data: dict) -> None:
     }
 
 
-@then("output is ANSI REGEXP_REPLACE/DATE_TRUNC regardless of source dialect")
+@then(
+    "output is the universal provisa_regex_replace and ANSI DATE_TRUNC regardless of source dialect"
+)
 def output_is_ansi_regardless_of_dialect(shared_data: dict) -> None:
     regex_outputs = shared_data["regex_outputs"]
     truncate_outputs = shared_data["truncate_outputs"]
 
     for src, out in regex_outputs.items():
-        assert out.startswith("REGEXP_REPLACE("), f"{src}: {out!r}"
+        assert out.startswith(f"{UNIVERSAL_REGEX_REPLACE}("), f"{src}: {out!r}"
     for src, out in truncate_outputs.items():
         assert out.startswith("DATE_TRUNC("), f"{src}: {out!r}"
         assert "DATE_TRUNC('month'" in out
@@ -746,8 +747,10 @@ def output_is_ansi_regardless_of_dialect(shared_data: dict) -> None:
         out.replace(shared_data["source_column_refs"][src], "<col>")
         for src, out in truncate_outputs.items()
     }
-    # REQ-263: every match is replaced ('g'), on every engine.
-    assert normalized_regex == {"REGEXP_REPLACE(<col>, '^(.).*(@.*)$', '\\1***\\2', 'g')"}
+    # REQ-2142: the transpiler lowers the call per engine, every match replaced (REQ-263).
+    assert normalized_regex == {
+        f"{UNIVERSAL_REGEX_REPLACE}(<col>, '^(.).*(@.*)$', '$1***$2', '****')"
+    }
     assert normalized_truncate == {"DATE_TRUNC('month', <col>)"}
 
 
@@ -901,13 +904,13 @@ def role_specific_masks_applied(shared_data: dict) -> None:
     sql_viewer = shared_data["sql_masked_viewer"]
 
     assert sql_admin == shared_data["compiled_745"].sql
-    assert "REGEXP_REPLACE" not in sql_admin
+    assert "PROVISA_REGEX_REPLACE" not in sql_admin
     assert '"salary"' in sql_admin
 
-    assert "REGEXP_REPLACE" in sql_analyst
+    assert "PROVISA_REGEX_REPLACE" in sql_analyst
     assert 'AS "salary"' in sql_analyst
 
-    assert "REGEXP_REPLACE" not in sql_viewer
+    assert "PROVISA_REGEX_REPLACE" not in sql_viewer
     assert '0 AS "salary"' in sql_viewer
 
     assert len({sql_admin, sql_analyst, sql_viewer}) == 3

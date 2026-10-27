@@ -1082,14 +1082,27 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
         return None
 
     t = source_type.lower()
-    if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum", "redshift"):
-        # cockroachdb/yugabytedb/greenplum/redshift: same wire-compatible grouping as
-        # native_schemas's postgres-wire branch — were missing from this tuple, so each fell
-        # through to the generic engine-catalog fallback (empty pre-registration), leaving the
-        # Register Table TABLE picker permanently empty even once the schema picker itself
-        # worked (verified live: cockroachdb's schema list resolves fine, but "widgets" never
-        # appeared in the table select without this; redshift's regclass/pg_class support is
-        # identical to upstream Postgres's for this already-schema-scoped query).
+    if t == "redshift":
+        # Redshift has no text-to-regclass cast ("cannot cast type text to regclass"), so the
+        # postgres-wire listing below failed and the Register Table picker stayed empty. Its
+        # tables and their comments are read from the pg_catalog it keeps.
+        result = await pool.execute(
+            source_id,
+            "SELECT c.relname, d.description FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "LEFT JOIN pg_description d ON d.objoid = c.oid AND d.objsubid = 0 "
+            "WHERE n.nspname = $1 AND c.relkind = 'r' ORDER BY c.relname",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
+
+    if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum"):
+        # cockroachdb/yugabytedb/greenplum: same wire-compatible grouping as native_schemas's
+        # postgres-wire branch — were missing from this tuple, so each fell through to the
+        # generic engine-catalog fallback (empty pre-registration), leaving the Register Table
+        # TABLE picker permanently empty even once the schema picker itself worked (verified
+        # live: cockroachdb's schema list resolves fine, but "widgets" never appeared in the
+        # table select without this).
         result = await pool.execute(
             source_id,
             "SELECT table_name, obj_description("
@@ -1389,7 +1402,39 @@ def _pg_column_typing(
         if typtype == "c":
             return composite_typing(formatted or udt_name, kind)
         return ColumnTyping("text")
+    if data_type == "numeric" and formatted and formatted != "numeric":
+        return ColumnTyping(formatted)  # a sized decimal keeps its size (REQ-1961)
     return ColumnTyping(to_ir(data_type))
+
+
+# REQ-2167: an unsized PostgreSQL numeric registers with a precision of 38 -- the widest every
+# engine holds exactly -- and the largest scale its values have, read from at most this many rows.
+_NUMERIC_PRECISION = 38
+_NUMERIC_SCALE_SAMPLE_ROWS = 100_000
+# The scale an unsized numeric registers with when its table has no value to read it from.
+_NUMERIC_SCALE_WITHOUT_VALUES = 10
+
+
+async def _sized_numeric(
+    pool: "SourcePool", source_id: str, schema_name: str, table_name: str, column: str
+) -> "ColumnTyping":
+    """An unsized numeric column as ``numeric(38,s)``: ``s`` the largest scale among its values
+    (a bounded sample), so an engine that cannot hold an unbounded numeric (DuckDB reads one as
+    a double) reads it exactly at the source instead."""
+    from provisa.core.ir_types import ColumnTyping
+
+    def ident(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    result = await pool.execute(
+        source_id,
+        f"SELECT max(scale({ident(column)})) FROM (SELECT {ident(column)} FROM "
+        f"{ident(schema_name)}.{ident(table_name)} LIMIT {_NUMERIC_SCALE_SAMPLE_ROWS}) sampled",
+    )
+    scale = result.rows[0][0] if result.rows else None
+    if scale is None:
+        scale = _NUMERIC_SCALE_WITHOUT_VALUES
+    return ColumnTyping(f"numeric({_NUMERIC_PRECISION},{min(int(scale), _NUMERIC_PRECISION)})")
 
 
 async def native_column_typings(  # REQ-1965
@@ -1412,7 +1457,13 @@ async def native_column_typings(  # REQ-1965
             _PG_COLUMN_TYPES_SQL if kind in _PG_CATALOG_KINDS else _PG_WIRE_COLUMN_TYPES_SQL,
             [schema_name, table_name],
         )
-        return [(row[0], _pg_column_typing(kind, *row[1:5])) for row in result.rows]
+        typings = [(row[0], _pg_column_typing(kind, *row[1:5])) for row in result.rows]
+        return [
+            (name, await _sized_numeric(pool, source_id, schema_name, table_name, name))
+            if typing.data_type == "numeric"
+            else (name, typing)
+            for name, typing in typings
+        ]
     listed = await native_columns(
         source_id, source_type, schema_name, table_name, pool, config_conn
     )
@@ -1829,17 +1880,13 @@ async def require_live_attach(state, source_id: str, what: str) -> None:
 
 def _listed_by_its_server(source_type: str, state) -> bool:
     """Whether a source of ``source_type`` is read through its bundled connector server on the
-    bound engine: a pgwire-replica type the engine lands through that server, or attaches through
-    it (``Connector.served_by_bundle``). Trino reads files with its own file catalog, for one."""
+    bound engine (``strategy.read_through_its_server``)."""
     from provisa.federation.pgwire_replica import PGWIRE_REPLICA_TYPES
-    from provisa.federation.strategy import engine_attaches
+    from provisa.federation.strategy import read_through_its_server
 
     if source_type not in PGWIRE_REPLICA_TYPES:
         return False
-    engine = state.federation_engine.engine
-    if not engine_attaches(engine, source_type):
-        return True
-    return engine.connector_for(source_type).served_by_bundle
+    return read_through_its_server(state.federation_engine.engine, source_type)
 
 
 async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147
@@ -2078,10 +2125,13 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t in ("fabric", "synapse"):
         from provisa.api.admin.types import AvailableTableType
 
+        # A Synapse serverless pool holds no tables of its own, only views and external tables,
+        # so its views are what it offers; a Fabric warehouse offers its base tables.
+        kinds = "'BASE TABLE', 'VIEW'" if t == "synapse" else "'BASE TABLE'"
         result = await pool.execute(
             source_id,
             "SELECT TABLE_NAME, NULL FROM INFORMATION_SCHEMA.TABLES "
-            "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+            f"WHERE TABLE_SCHEMA = ? AND TABLE_TYPE IN ({kinds}) ORDER BY TABLE_NAME",
             [schema_name],
         )
         return [AvailableTableType(name=row[0], comment=None) for row in result.rows]

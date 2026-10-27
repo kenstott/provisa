@@ -148,16 +148,16 @@ class CommandNotFound(LookupError):
 
 def command_assigned(command: dict, role_id: str) -> bool:
     """Whether ``command`` is assigned to ``role_id``: its one list of assigned roles,
-    ``visible_to`` — empty assigns it to every role."""
-    assigned = command.get("visible_to") or []
-    return not assigned or role_id in assigned
+    ``visible_to``, names it. Empty assigns it to no role (REQ-1317, REQ-2154)."""
+    return role_id in (command.get("visible_to") or ())
 
 
 def command_reachable(command: dict, role: dict) -> bool:
-    """Whether ``role`` may see ``command`` at all: assigned it, and reaching its domain."""
-    from provisa.security.rights import reaches_domain
+    """Whether ``role`` may see ``command`` at all: assigned it, and reaching its domain -- one it
+    lists, or one every role reaches (rights.IMPLICIT_DOMAINS, REQ-2168)."""
+    from provisa.security.rights import reaches_implicitly
 
-    return command_assigned(command, str(role.get("id", ""))) and reaches_domain(
+    return command_assigned(command, str(role.get("id", ""))) and reaches_implicitly(
         role.get("domain_access"), command.get("domain_id") or ""
     )
 

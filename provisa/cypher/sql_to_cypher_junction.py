@@ -20,8 +20,11 @@ from dataclasses import dataclass
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.sql_to_cypher_agg import UntranslatableSubquery
-from provisa.cypher.sql_to_cypher_helpers import _resolve_label, _sql_to_cypher_expr
+from provisa.cypher.sql_to_cypher_helpers import (
+    UntranslatableSubquery,
+    _resolve_label,
+    _sql_to_cypher_expr,
+)
 from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 
 
@@ -81,14 +84,22 @@ def junction_type_name(
     domain_to_sql_name,
 ) -> str | None:
     """The type name of the registered table ``table`` names, or None. Semantic SQL names a table
-    by its field or by its own name (before a meta view's alias), as the naming convention has it."""
+    by its field or by its own name (before a meta view's alias), as the naming convention has it,
+    or by the name semantic SQL itself writes (semantic_table_name: an ontology table's leading
+    underscore is not in it, REQ-2163)."""
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
     for table_meta in ctx.tables.values():  # type: ignore[attr-defined]
         field_key = (
             table_meta.field_name.split("__", 1)[1]
             if "__" in table_meta.field_name
             else table_meta.field_name
         )
-        names = {field_key, table_meta.original_table_name or table_meta.table_name}
+        names = {
+            field_key,
+            table_meta.original_table_name or table_meta.table_name,
+            semantic_table_name(table_meta),
+        }
         if table.name in names and (
             not table.db or domain_to_sql_name(table_meta.domain_id) == table.db
         ):

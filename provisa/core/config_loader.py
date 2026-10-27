@@ -127,6 +127,7 @@ _VIEW_KEYS = {
     "alias": "alias",
     "columns": "columns",
     "preprocess": "mv_preprocess",
+    "hold_on_failing_checks": "mv_hold_on_failing_checks",  # REQ-2133
     # REQ-2009: a view offers the GraphQL Aggregate and GroupBy root fields as a table does.
     "enable_aggregates": "enable_aggregates",
     "enable_group_by": "enable_group_by",
@@ -1351,8 +1352,13 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
         await role_repo.upsert(conn, role, org_id=None)
 
     # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
+    # REQ-1634 STATUS: a retired product's successor may come later in the file, so every product
+    # exists before any names its successor.
     for dp in config.data_products:
-        await data_product_repo.upsert(conn, dp)
+        await data_product_repo.upsert(conn, dp.model_copy(update={"successor": None}))
+    for dp in config.data_products:
+        if dp.successor is not None:
+            await data_product_repo.upsert(conn, dp)
 
     # 4.6 Glossary terms (after domains, so declared scope names something real)  # REQ-1641
     # upsert_declared_term upserts by name (its unique key); an apply removes nothing.
@@ -1853,38 +1859,13 @@ def _validate_file_globs(config) -> None:  # REQ-788
 #: filtered by its own parameters (its parameter sets are its row-level reads); govdata is read live
 #: on every request and never replicated; the remaining types have no connector or driver that
 #: reaches them yet (REQ-1874), so nothing can read their rows at all.
-_ROW_LEVEL_REFUSED: dict[str, str] = {
-    **{
-        t: "an API source is filtered by its own parameters, not replicated row by row"
-        for t in ("openapi", "graphql_remote", "grpc_remote")
-    },
-    "govdata": "a govdata source is read live on every request and is never replicated",
-    **{
-        t: "no connector or driver reaches this source type yet"
-        for t in (
-            "airtable",
-            "auth0",
-            "aws_cognito",
-            "dynamodb",
-            "firebase",
-            "logflare",
-            "s3_vectors",
-            "stripe",
-            "calcom",
-            "calendly",
-            "clerk",
-            "cloudflare_d1",
-            "gravatar",
-            "hubspot",
-            "infura",
-            "notion",
-            "orb",
-            "paddle",
-            "shopify",
-            "slack",
-        )
-    },
-}
+def _table_fetches_by_keys(source: Any, table: Any) -> bool:  # REQ-1865
+    """Whether a remote GraphQL ``table`` fetches its rows by its primary key: the fetch its
+    spec, stored on the source when it was registered, names (graphql_remote.by_keys)."""
+    from provisa.graphql_remote.by_keys import fetches_by_keys
+
+    pk_columns = [c.name for c in table.columns if c.is_primary_key]
+    return fetches_by_keys(source.mapping, table.table_name, pk_columns)
 
 
 def _validate_row_materialize(config) -> None:  # REQ-1865
@@ -1900,6 +1881,7 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
     a keyed-fetch translation wired at all (today: neo4j only — sparql has no parser/AST to safely
     resolve a projected property against, confirmed absent). Both are registration-time
     ValueErrors, never a silent fallback to an undefined TTL or an unbounded per-lookup scan."""
+    from provisa.core.source_registry import ROW_FETCH_BY_KEYS_PER_TABLE, row_materialize_refusal
     from provisa.cypher.query_template_filter import (
         ProjectionFilterError,
         resolve_projected_property,
@@ -1912,12 +1894,17 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
         source = sources_by_id.get(table.source_id)
         if source is not None:
             stype = source.type.value if hasattr(source.type, "value") else str(source.type)
-            refused = _ROW_LEVEL_REFUSED.get(stype)
+            # REQ-1865, REQ-1915: the type's own declaration (core.source_registry), and for a
+            # type whose fetch by keys is each table's own, this table's.
+            refused = row_materialize_refusal(
+                table.table_name,
+                stype,
+                table_fetches_by_keys=_table_fetches_by_keys(source, table)
+                if stype in ROW_FETCH_BY_KEYS_PER_TABLE
+                else None,
+            )
             if refused is not None:
-                raise ValueError(  # REQ-1915
-                    f"table {table.table_name!r}: row_materialize=True is refused for source type "
-                    f"{stype!r}: {refused}"
-                )
+                raise ValueError(refused)
         eff_ttl = (
             table.cache_ttl
             if table.cache_ttl is not None
@@ -1968,7 +1955,7 @@ async def _validate_existing_domains(conn: "Connection", default_domain: str) ->
             registered_tables.c.domain_id,
         ).where(
             registered_tables.c.domain_id != "",
-            registered_tables.c.domain_id.not_in([default_domain, "meta", "ops"]),
+            registered_tables.c.domain_id.not_in([default_domain, "meta", "ops", "ontology"]),
         )
     )
     rows = [dict(r._mapping) for r in result.fetchall()]
@@ -2035,7 +2022,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     seeded_sources = SEEDED_SOURCE_IDS - {DERIVED_SOURCE_ID}
     internal = select(registered_tables.c.id).where(
         registered_tables.c.source_id.in_(sorted(seeded_sources))
-        | registered_tables.c.domain_id.in_(["meta", "ops"])
+        | registered_tables.c.domain_id.in_(["meta", "ops", "ontology"])
     )
     internal_ids = set(await _ids(internal))
     model_tables = [
@@ -2060,7 +2047,8 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
             await _ids(
                 select(rls_rules.c.id).where(
                     _off_internal(rls_rules.c.table_id),
-                    rls_rules.c.domain_id.is_(None) | rls_rules.c.domain_id.not_in(["meta", "ops"]),
+                    rls_rules.c.domain_id.is_(None)
+                    | rls_rules.c.domain_id.not_in(["meta", "ops", "ontology"]),
                 )
             ),
         ),
@@ -2087,7 +2075,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         (
             "data_product",
             await _ids(
-                select(data_products.c.id).where(data_products.c.domain_id.not_in(["meta", "ops"]))
+                select(data_products.c.id).where(
+                    data_products.c.domain_id.not_in(["meta", "ops", "ontology"])
+                )
             ),
         ),
         (
@@ -2124,19 +2114,20 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     await conn.execute_core(delete(scheduled_triggers))
     await conn.execute_core(delete(kafka_sources))
     await conn.execute_core(delete(naming_rules))
-    # Roles a child before its parent; the seeded ones and those who hold them stay.
+    # Roles a child before its parents; the seeded ones and those who hold them stay.
     remaining = {
-        r.id: r.parent_role_id
+        r.id: list(r.parents or [])
         for r in (
             await conn.execute_core(
-                select(roles.c.id, roles.c.parent_role_id).where(
+                select(roles.c.id, roles.c.parents).where(
                     roles.c.id.not_in(sorted(SEEDED_ROLE_IDS))
                 )
             )
         ).fetchall()
     }
     while remaining:
-        leaves = [r for r in remaining if r not in set(remaining.values())]
+        named = {p for ps in remaining.values() for p in ps}
+        leaves = [r for r in remaining if r not in named]
         for role_id in leaves:
             await role_repo.discard(conn, role_id)
             del remaining[role_id]

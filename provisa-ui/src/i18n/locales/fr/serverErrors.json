@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "Aucune requête gRPC enregistrée pour la table « {{table}} »",
       "no_mutation_fields": "Aucun champ de mutation trouvé",
       "no_proto_for_role": "Le rôle '{{role_id}}' n'a pas de proto : aucune surface de données ne lui est fournie, car il n'atteint aucun domaine ou ne détient que des droits du plan de contrôle",
+      "role_served_nothing": "Le rôle '{{role_id}}' ne reçoit aucune table : aucune colonne d'aucune table ne lui est accordée",
       "no_query_field_for_proto_type": "Aucun champ de requête pour le type proto « {{type_name}} » sous le rôle « {{role_id}} »",
       "no_query_fields": "Aucun champ de requête trouvé",
       "no_role": "Aucun rôle « {{role_id}} »",
@@ -129,7 +130,12 @@
       "address_not_found": "Rien à résoudre : {{reason}}",
       "mixed_resolve_and_other_fields": "resolve ne peut pas être combiné avec d'autres champs racine dans une même opération",
       "source_starting": "La source {{source}} est encore en cours de démarrage. Réessayez dans un instant.",
-      "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}."
+      "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}.",
+      "graphql_body_missing": "La requête n'a pas de corps : une requête GraphQL est un objet JSON contenant une requête.",
+      "graphql_body_not_json": "Le corps de la requête n'est pas du JSON : {{error}}",
+      "graphql_request_not_object": "Une requête GraphQL est un objet JSON contenant une requête.",
+      "graphql_parameter_type": "Le paramètre {{parameter}} de la requête GraphQL doit être {{expected}}.",
+      "graphql_mutation_over_get": "Une mutation s'envoie en POST, jamais en GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -256,10 +262,15 @@
       "database_unavailable": "Base de données indisponible",
       "query_engine_unavailable": "Moteur de requête indisponible",
       "role_header_required": "En-tête X-Provisa-Role requis pour profiler une vue",
-      "table_not_found": "Table {{table_id}} introuvable"
+      "table_not_found": "Table {{table_id}} introuvable",
+      "column_not_found": "La colonne {{column}} n'est pas une colonne de la table que lit org_admin",
+      "classification_kind_unknown": "Type de classification inconnu {{kind}}",
+      "classification_status_invalid": "Une décision de classification est acceptée ou rejetée, pas {{status}}",
+      "classification_decision_not_found": "Aucune décision sur {{column}} en tant que {{kind}}",
+      "classification_pii_refused": "La colonne n'a pas pu être marquée PII"
     },
     "replication": {
-      "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
+      "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : [{{content_type}}] {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
       "no_whole_copy": "La table {{schema}}.{{table}} de la source {{source}} n'a pas de copie complète à construire : elle est répliquée ligne par ligne ou comporte une colonne de paramètre.",
       "page_limit_reached": "La réplique de {{table}} n'a pas été construite : la pagination de son point de terminaison s'arrête à max_pages={{max_pages}}, et le point de terminaison avait encore des données après la page {{max_pages}} ({{rows}} lignes lues). Une réplique est la table entière ; elle n'est donc pas tronquée à la limite. Augmentez max_pages ou la taille de page du point de terminaison.",
       "row_limit_reached": "La réplique de {{table}} n'a pas été construite : une lecture s'arrête à max_rows={{max_rows}} (graphql_remote.max_rows), et le service distant avait encore des données après {{rows}} lignes. Une réplique est la table entière ; elle n'est donc pas tronquée à la limite. Augmentez graphql_remote.max_rows.",
@@ -273,7 +284,7 @@
     "roles": {
       "cannot_delete_system": "Impossible de supprimer les rôles système",
       "cannot_modify_administrative": "Impossible de modifier les rôles administratifs",
-      "has_dependents": "Le rôle {{role}} est encore référencé par {{count}} objet(s) ; supprimez d’abord ces références",
+      "has_dependents": "Le rôle {{role}} est encore référencé par d’autres objets ; supprimez d’abord ces références",
       "not_found": "Rôle introuvable",
       "org_selection_required": "Sélection d'une organisation requise",
       "already_exists": "Le rôle '{{role}}' existe déjà",
@@ -288,9 +299,9 @@
       "cache_purged": "{{count}} entrées de cache purgées",
       "cache_purged_table": "{{count}} entrées de cache purgées pour la table {{table}}",
       "calendar_deleted": "calendrier « {{calendar}} » supprimé",
-      "calendar_in_use": "le calendrier « {{calendar}} » est utilisé par {{count}} vue(s) matérialisée(s) — retirez leur planification d'instantané avant de le supprimer",
+      "calendar_in_use": "le calendrier « {{calendar}} » est utilisé par des vues matérialisées — retirez leur planification d'instantané avant de le supprimer",
       "calendar_not_found": "calendrier « {{calendar}} » introuvable",
-      "calendar_saved": "calendrier « {{calendar}} » v{{version}} enregistré",
+      "calendar_saved": "calendrier « {{calendar}} » {{version}} enregistré",
       "column_natively_nested": "Enregistrement impossible : la colonne {{column}} est nativement {{native_type}} dans sa source, son type est donc json, et non {{type}}.",
       "column_types_unresolved": "Enregistrement impossible : aucun type de données n'a pu être résolu depuis la source pour la ou les colonnes : {{columns}}. Introspectez la table (Découvrir le schéma) ou définissez un type de données pour chacune avant d'enregistrer.",
       "config_not_found": "Fichier de configuration introuvable",
@@ -336,6 +347,7 @@
       "change_signal_no_topic": "La table '{{table}}' de la source '{{source}}' utilise le signal de changement kafka mais n'indique aucun topic dans live.kafka.topic : rien ne l'actualiserait.",
       "change_signal_no_receiver": "Provisa ne reçoit pas le signal de changement {{signal}} d'une source de type {{type}} : une table de la source '{{source}}' ne serait donc jamais actualisée par celui-ci. Capturez la source avec Debezium et utilisez debezium.",
       "change_signal_not_honoured": "Une source de type {{type}} ne peut pas encore être vérifiée pour détecter des changements ; le signal de changement {{signal}} ne serait donc jamais interrogé. Utilisez ttl pour la source « {{source}} ».",
+      "row_materialize_no_key_fetch": "{{table}} ne peut pas être répliquée ligne par ligne : son schéma distant n'a aucun champ qui renvoie ses lignes pour une liste de sa clé primaire.",
       "sentinel_path_not_applicable": "Une source de type {{type}} ne peut pas avoir de chemin sentinelle : aucun producteur à vous ne peut signaler un changement de ses données, ou la source n’est pas sondée. Retirez le chemin sentinelle de la source « {{source}} ».",
       "source_cache_ttl_required": "La source « {{source}} » a besoin d’un TTL du cache : chacune de ses tables est une réplique, actualisée selon cette horloge avec le signal de changement {{signal}}. Définissez-le dans « Gestion de la charge et fraîcheur » de la source.",
       "landing_ttl_required": "La table « {{table}} » est une réplique actualisée selon un TTL du cache, et ni elle ni sa source « {{source}} » n’en ont. Définissez le TTL du cache dans « Gestion de la charge et fraîcheur » de la source, ou sur la table elle-même une fois enregistrée.",
@@ -427,6 +439,7 @@
       "relationship_unknown_source": "La table source '{{table}}' n'est pas enregistrée",
       "relationship_unknown_target": "La table cible '{{table}}' n'est pas enregistrée",
       "relationship_unknown_junction": "La table de jonction '{{table}}' n'est pas enregistrée",
+      "relationship_column_beyond_reads": "Une relation ne peut joindre que des colonnes que votre rôle peut lire.",
       "source_id_taken": "La source '{{source}}' existe déjà",
       "domain_id_taken": "Le domaine '{{domain}}' existe déjà",
       "role_id_taken": "Le rôle « {{role}} » existe déjà",
@@ -453,7 +466,8 @@
       "relationship_same_entity_direct": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : elle joint via une table de jonction ou une fonction, pas une ligne à une ligne",
       "relationship_same_entity_cardinality": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : elle est {{cardinality}}, et la même entité est une ligne à une ligne",
       "relationship_same_entity_not_grounded": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : {{source}} et {{target}} ne sont pas ancrées dans le même terme",
-      "relationship_same_entity_not_keys": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : {{columns}} n’est ni la clé primaire ni une clé unique de {{table}}"
+      "relationship_same_entity_not_keys": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : {{columns}} n’est ni la clé primaire ni une clé unique de {{table}}",
+      "kaggle_token_missing": "Jeu de données Kaggle {{owner}}/{{ref}} : la source ne contient aucun jeton d'API Kaggle. Ajoutez-le dans le formulaire Sources de données, où son jeton est saisi."
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",
@@ -483,7 +497,10 @@
       "unknown_encryption_provider": "fournisseur de chiffrement « {{provider}} » inconnu",
       "unknown_engine": "moteur « {{engine}} » inconnu ; valides : {{valid}}",
       "use_domains_invalid": "use_domains doit être true, false ou null",
-      "claims_with_multitenancy": "Un déploiement multi-locataire ne peut pas lire les attributions de rôles dans les claims de connexion : il accorde lui-même les rôles, par organisation, et les claims les écraseraient. Définissez la source des attributions sur Provisa."
+      "claims_with_multitenancy": "Un déploiement multi-locataire ne peut pas lire les attributions de rôles dans les claims de connexion : il accorde lui-même les rôles, par organisation, et les claims les écraseraient. Définissez la source des attributions sur Provisa.",
+      "federation_unknown_field": "Ce n'est pas un paramètre de fédération : {{fields}}",
+      "federation_invalid": "Paramètre de fédération non valide : {{error}}",
+      "federation_role_unknown": "Le rôle de fédération '{{role}}' n'est pas un rôle de cette organisation"
     },
     "setup": {
       "admin_credentials_required": "admin_username et admin_password requis",
@@ -528,7 +545,38 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Un comptage n’a pas pu être effectué, le total est donc inconnu : {{statement}} : {{reason}}"
+      "count_unknown": "Un comptage n’a pas pu être effectué, le total est donc inconnu : {{statement}} : {{reason}}",
+      "access_violations": "Ce rôle ne peut pas exécuter cette requête :",
+      "invalid_regex": "Le motif \"{{pattern}}\" dans {{expression}} n'est pas une expression régulière valide : {{reason}}. =~ attend une expression régulière, par ex. \".*{{word}}.*\", ou utilisez CONTAINS \"{{word}}\".",
+      "unknown_label": "Il n'existe pas de libellé :{{label}}. Libellés enregistrés : {{suggestions}}.",
+      "no_labels": "Il n'existe pas de libellé :{{label}} : ce rôle ne peut lire aucune table.",
+      "unknown_relationship_type": "Il n'existe pas de type de relation {{types}}. Types enregistrés les plus proches : {{suggestions}}.",
+      "no_relationship_types": "Il n'existe pas de type de relation {{types}} : ce rôle ne peut parcourir aucune relation.",
+      "type_mismatch": "Dans {{expression}}, {{value}} ne peut pas être comparé à {{property}}, de type {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE ne peut pas utiliser l'agrégat {{aggregate}} : WHERE filtre les lignes avant leur regroupement. Agrégez dans un WITH et filtrez ensuite.",
+      "nested_aggregate": "{{outer}} agrège l'agrégat {{inner}} : on ne peut pas agréger un autre agrégat. Agrégez d'abord dans un WITH.",
+      "node_and_relationship": "{{variable}} désigne à la fois un nœud et une relation : une variable désigne une seule chose. Donnez à chacun sa propre variable.",
+      "path_variable_reused": "{{variable}} désigne le chemin et un nœud ou une relation de ce chemin : une variable désigne une seule chose. Donnez à chacun sa propre variable.",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] agrège dans une compréhension de liste, qui lit une liste à la fois. Agrégez d'abord dans un WITH et utilisez son résultat dans la liste.",
+      "length_of_entity": "length({{variable}}) prend un chemin, et {{variable}} est un nœud ou une relation. Liez un chemin, MATCH p = ..., et prenez length(p).",
+      "column_name_conflict": "{{clause}} nomme deux colonnes {{column}} : chaque colonne a son propre nom. Renommez-en une avec AS.",
+      "union_mixed": "UNION et UNION ALL sont mélangés dans une instruction : utilisez l'un des deux partout.",
+      "union_columns_differ": "Les instructions que joint UNION renvoient des colonnes différentes, {{first}} et {{second}} : chacune doit renvoyer les mêmes noms de colonnes.",
+      "integer_overflow": "{{value}} est hors de la plage d'un entier, de -9223372036854775808 à 9223372036854775807.",
+      "invalid_unicode_escape": "La séquence d'échappement {{escape}} de la chaîne n'est pas lue par Cypher. Un échappement Unicode est \\u suivi de quatre chiffres hexadécimaux, par ex. \\u00e9.",
+      "boolean_operand": "{{operator}} prend true, false ou null, et reçoit une valeur d'un autre type écrite dans l'instruction.",
+      "nondeterministic_aggregate": "{{aggregate}} agrège rand(), qui change à chaque appel. Calculez-le d'abord dans un WITH et agrégez le résultat.",
+      "value_as_node": "MATCH lit {{variable}} comme un nœud ou une relation, et l'instruction la lie à une valeur qui n'est ni l'un ni l'autre. Donnez au nœud sa propre variable.",
+      "undefined_variable": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} n'est pas un nombre entier de lignes : LIMIT attend un nombre supérieur ou égal à 0, par ex. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} n'est pas un nombre entier de lignes : SKIP attend un nombre supérieur ou égal à 0, par ex. SKIP 10.",
+      "engine_refused": "Le moteur a refusé la requête : {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} lit {{variable}}, mais l'instruction ne lie aucune variable : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL.",
+      "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
+      "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}.",
+      "non_finite_number": "La réponse contient un nombre que JSON ne peut pas représenter : {{column}} vaut {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur."
     },
     "requests": {
       "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",
@@ -542,6 +590,7 @@
     "statement": {
       "rows_cut": "La réponse a été coupée à {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}) : plus de lignes correspondent que celles renvoyées.",
       "rows_cut_unchecked": "La réponse compte {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}). Impossible de vérifier si d'autres lignes correspondent : {{reason}}",
+      "list_at_ceiling": "Une liste contient le maximum de {{limit}} entrées que la limite de lignes autorise pour cette lecture ({{kind}}) ; elle peut en avoir davantage.",
       "approximate_index": "Les lignes les plus similaires ont été trouvées au moyen d'un index vectoriel approximatif : une ligne légèrement plus similaire que la dernière renvoyée peut manquer.",
       "path_cut": "Un chemin sans borne supérieure a été coupé à la limite de profondeur du graphe de {{limit}} sauts : les chemins plus longs manquent dans la réponse."
     },
@@ -662,6 +711,34 @@
       "also_term_needs_column": "Taguer le terme à la place demande une colonne.",
       "inherited_from_term": "Cette colonne est une donnée PII parce qu'elle signifie {{term}}. Retirez le marquage de ce sens, ou déplacez la colonne si elle signifie autre chose.",
       "move_loses": "Ce déplacement retire des tags à des colonnes qui ne les porteraient plus. Confirmez la perte de chaque tag, ou reportez les tags sur le terme vers lequel les colonnes sont déplacées."
+    },
+    "data_product": {
+      "status": {
+        "published": "Produit de données {{data_product}} publié.",
+        "deprecated": "Produit de données {{data_product}} déclaré obsolète.",
+        "retired": "Produit de données {{data_product}} retiré.",
+        "restored": "Produit de données {{data_product}} restauré.",
+        "reason_required": "Un motif est requis : indiquez pourquoi le produit de données est déclaré obsolète ou retiré.",
+        "not_found": "Produit de données {{data_product}} introuvable.",
+        "not_draft": "Seul un produit de données à l'état de brouillon peut être publié ; celui-ci est {{status}}.",
+        "not_live": "Seul un produit de données actif peut être déclaré obsolète, et seul un produit actif ou obsolète peut être retiré ; celui-ci est {{status}}.",
+        "not_restorable": "Seul un produit de données obsolète ou retiré peut être restauré ; celui-ci est {{status}}.",
+        "retire_on_past": "La date de retrait prévue {{retire_on}} est passée. Choisissez aujourd'hui ou une date ultérieure.",
+        "successor_required": "Ce produit de données a {{members}} membre(s) ; le retirer les transfère à un successeur. Choisissez-en un.",
+        "successor_is_self": "Un produit de données ne peut pas être son propre successeur.",
+        "successor_retired": "Le successeur « {{successor}} » est retiré. Choisissez un produit de données en service.",
+        "successor_other_domain": "Le successeur « {{successor}} » est dans le domaine {{domain}}. Les membres d'un produit partagent son domaine : choisissez un successeur du même domaine."
+      },
+      "finding": {
+        "no_members": "Aucune table, vue ni commande n'appartient à ce produit de données.",
+        "member_deprecated": "La table membre {{table}} est obsolète.",
+        "no_owner": "Aucun rôle propriétaire n'est responsable de ce produit de données.",
+        "no_support_contact": "Ce produit de données n'a pas de contact de support, qu'exige une cible d'export configurée.",
+        "retirement_blocked": "Ce produit de données devait être retiré le {{retire_on}}, mais il a encore des membres. Retirez-le avec un successeur qui les reprend.",
+        "domain_steward_unset": "Le domaine {{domain}} n'a pas d'intendant.",
+        "no_description": "Ce produit de données n'indique ni son objectif ni son usage.",
+        "successor_retired": "Le produit de données qui a repris les membres de celui-ci, « {{successor}} », a lui aussi été retiré."
+      }
     }
   }
 }

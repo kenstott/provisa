@@ -683,26 +683,49 @@ class TestTrinoInternalTls:
             for p in _get_pods()
             if "trino-coordinator" in p["metadata"]["name"]
         )
-        result = _kubectl(
-            "exec",
-            coordinator,
-            "-c",
-            "trino",
-            "--",
-            # The CLI wrapper starts its JVM with -Xmx1G beside a server allowed 80% of the
-            # container's 4Gi, past the limit: the exec was killed (137). _JAVA_OPTIONS outranks
-            # the wrapper's own flag.
-            "env",
-            "_JAVA_OPTIONS=-Xmx192m",
-            "trino",
-            "--execute",
+
+        def curl(*args: str) -> dict:
+            # No JVM beside the server: the coordinator is held to 1Gi (_CHART_SETS) and its server
+            # takes 80% of it, so even a 192m Trino CLI took the container past its limit and was
+            # killed (137). curl asks the statement API on the coordinator's own HTTP port.
+            result = _kubectl(
+                "exec", coordinator, "-c", "trino", "--", "curl", "-sS", "--fail-with-body", *args
+            )
+            assert result.returncode == 0, f"{result.stdout}{result.stderr}"
+            return json.loads(result.stdout)
+
+        page = curl(
+            "-X",
+            "POST",
+            "-H",
+            "X-Trino-User: provisa-e2e",
+            "--data",
             "SELECT count(*) FROM system.runtime.nodes WHERE state = 'active'",
+            "http://localhost:8080/v1/statement",
         )
-        assert result.returncode == 0, f"{result.stdout}{result.stderr}"
-        return result.stdout.strip().strip('"')
+        rows: list[list] = []
+        while True:
+            assert "error" not in page, page["error"]
+            rows.extend(page.get("data", []))
+            if "nextUri" not in page:
+                break
+            page = curl(page["nextUri"])
+        ((count,),) = rows
+        return str(count)
 
     def test_workers_join_over_internal_tls(self):
-        result = _helm_deploy(worker_replicas=1, extra=("--set", "trino.internalTls=true"))
+        # The coordinator's JVM takes 80% of its container for heap; serving its HTTPS endpoint
+        # and the worker's HTTPS announcements on top took it past _CHART_SETS' 1Gi (exit 137,
+        # run 40364893477). 1.5Gi fits in the 6Gi minikube beside the rest of the release.
+        result = _helm_deploy(
+            worker_replicas=1,
+            extra=(
+                "--set",
+                "trino.internalTls=true",
+                "--set",
+                "trino.coordinator.resources.limits.memory=1536Mi",
+            ),
+        )
         assert result.returncode == 0, f"helm upgrade failed:\n{result.stderr}\n{_why_not_ready()}"
         try:
             # The coordinator and its one worker, the worker having joined over HTTPS.

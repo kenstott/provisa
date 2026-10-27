@@ -34,6 +34,7 @@ capacity is the engine's.
 
 from __future__ import annotations
 
+import gc
 import logging
 import os
 import random
@@ -66,12 +67,29 @@ from provisa.federation.replica_locks import BuildClaim, BuildLocks
 from provisa.federation.replica_state import ReplicaKey
 
 log = logging.getLogger(__name__)
+# Each build's start and end, at WARNING where the server log shows it: a build holds its node's
+# slot from one to the other, and what held it while others waited is named by these lines.
+_builds_log = logging.getLogger(f"{__name__}.builds")
 
 
 # How many of the oldest candidates one pass considers, per free slot it is filling.
 _CANDIDATES_PER_PASS = 16
 # The running build's progress is written to the record no more often than this.
 _PROGRESS_EVERY_S = 1.0
+# REQ-1911: whether this process froze its heap once boot's replica builds were done.
+_boot_builds_frozen = False
+
+
+def _freeze_after_boot_builds() -> None:
+    """Move what boot's replica builds left behind -- the model rows, compiled plans and imports
+    their reads made -- to the permanent generation, once per process. The warm-up's freeze runs
+    before these builds end when the warm-up is fast, and a full collection then walks them on
+    every request's behalf (the stall rounds measured the gen-2 median 16.6 -> 27.4 ms)."""
+    global _boot_builds_frozen
+    if _boot_builds_frozen:
+        return
+    _boot_builds_frozen = True
+    gc.freeze()
 
 
 def engine_job_key(kind: str, address: str | None) -> str:
@@ -200,6 +218,8 @@ class ReplicaRunner:
         # Set when the process shuts down: no build is claimed or started after it, so nothing
         # rebuilds the engine's runtime after the engine has been closed.
         self._stopped = False
+        # This runner's builds still running: a pass that starts none while none run is idle.
+        self._running = 0
         # Each hold a requested build is waiting on, said once (_held) until it clears.
         self._holds: set[tuple[Any, ...]] = set()
 
@@ -273,10 +293,19 @@ class ReplicaRunner:
                 # Stopped while this claim was being made: hand it back for the next pass.
                 await self._abandon(job)
                 break
-            self._spawn(self._run(job), name=f"replica-build:{'.'.join(job.key)}")
+            self._running += 1
+            self._spawn(self._run_counted(job), name=f"replica-build:{'.'.join(job.key)}")
             started += 1
         await self._start_index_builds()
+        if started == 0 and self._running == 0:
+            _freeze_after_boot_builds()
         return started
+
+    async def _run_counted(self, job: _Job) -> None:
+        try:
+            await self._run(job)
+        finally:
+            self._running -= 1
 
     async def _start_index_builds(self) -> None:
         """REQ-2015: start building the indexes each standing replica's landing asked for and
@@ -531,6 +560,10 @@ class ReplicaRunner:
             async with self._db.acquire() as conn:
                 await build_state.record_progress(conn, key, rows_copied=rows_copied)
 
+        name = ", ".join(".".join(key) for key in keys)
+        _builds_log.warning("replica build of %s started (org %s)", name, self._org_id)
+        began = time.monotonic()
+        ended = "failed"
         shield = request_deadline.shielded()
         try:
             try:
@@ -577,10 +610,14 @@ class ReplicaRunner:
                         len(keys),
                     )
                 done = [o for o in outcomes.values() if not isinstance(o, BaseException)]
+                ended = f"built {len(done)} of {len(keys)} tables"
                 if len(done) == len(keys):
                     # One read, one source: its ``committed`` is the same on every outcome.
                     await self._committed(keys, done[0])
         finally:
+            _builds_log.warning(
+                "replica build of %s %s in %.1f s", name, ended, time.monotonic() - began
+            )
             with shield.lock:
                 shield.settle()
                 if job.permit is not None:
@@ -606,6 +643,10 @@ class ReplicaRunner:
             async with self._db.acquire() as conn:
                 await build_state.record_progress(conn, job.key, rows_copied=rows_copied)
 
+        name = ".".join(job.key)
+        _builds_log.warning("replica build of %s started (org %s)", name, self._org_id)
+        began = time.monotonic()
+        ended = "failed"
         shield = request_deadline.shielded()
         try:
             try:
@@ -651,8 +692,12 @@ class ReplicaRunner:
                     outcome.rows_copied,
                     outcome.method,
                 )
+                ended = f"built {outcome.rows_copied} rows"
                 await self._committed([job.key], outcome)
         finally:
+            _builds_log.warning(
+                "replica build of %s %s in %.1f s", name, ended, time.monotonic() - began
+            )
             with shield.lock:
                 shield.settle()
                 if job.permit is not None:

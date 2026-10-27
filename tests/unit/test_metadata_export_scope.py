@@ -1,0 +1,245 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0c8f4e26-91a7-4b3d-8e15-7d2a6f9b3c40
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""REQ-2122: a catalog is published its domains' tables and data products, and the glossary.
+
+Every other fact goes with the assets it is about, so nothing a catalog receives points at an
+asset it was not given.
+"""
+
+from __future__ import annotations
+
+from provisa.api.metadata_export.model import (
+    AssetKind,
+    AssetRef,
+    ColumnAsset,
+    DataProductAsset,
+    DomainAsset,
+    GlossaryTermAsset,
+    GlossaryTermEdge,
+    LineageEdge,
+    MetadataSnapshot,
+    ModelTag,
+    RelationshipEdge,
+    SourceAsset,
+    TableAsset,
+)
+from provisa.api.metadata_export.scope import for_domains
+
+
+def _table(source: str, name: str, domain: str) -> TableAsset:
+    ref = AssetRef(kind=AssetKind.TABLE, parts=(source, name))
+    column = ColumnAsset(
+        ref=AssetRef(kind=AssetKind.COLUMN, parts=(source, name, "id")),
+        name="id",
+        data_type="integer",
+        description="",
+    )
+    return TableAsset(
+        ref=ref, name=name, source_id=source, domain_id=domain, description="", columns=[column]
+    )
+
+
+def _snapshot() -> MetadataSnapshot:
+    orders = _table("pg", "orders", "sales")
+    ledger = _table("wh", "ledger", "finance")
+    rel = RelationshipEdge(
+        id="orders-ledger",
+        source=orders.ref,
+        target=ledger.ref,
+        source_column="id",
+        target_column="id",
+        cardinality="many-to-one",
+        alias=None,
+        owner=None,
+        version=1,
+        needs_review=False,
+    )
+    return MetadataSnapshot(
+        org_id="acme",
+        sources=[
+            SourceAsset(
+                ref=AssetRef(kind=AssetKind.SOURCE, parts=("pg",)),
+                id="pg",
+                source_type="postgresql",
+                description="",
+            ),
+            SourceAsset(
+                ref=AssetRef(kind=AssetKind.SOURCE, parts=("wh",)),
+                id="wh",
+                source_type="snowflake",
+                description="",
+            ),
+        ],
+        domains=[
+            DomainAsset(id="sales", description="", steward=None, pending=True),
+            DomainAsset(id="finance", description="", steward=None, pending=True),
+        ],
+        tables=[orders, ledger],
+        data_products=[
+            DataProductAsset(
+                ref=AssetRef(kind=AssetKind.DATA_PRODUCT, parts=("sales_360",)),
+                id="sales_360",
+                name="Sales 360",
+                domain_id="sales",
+                owner=None,
+                description="",
+                members=(orders.ref,),
+            ),
+            DataProductAsset(
+                ref=AssetRef(kind=AssetKind.DATA_PRODUCT, parts=("books",)),
+                id="books",
+                name="Books",
+                domain_id="finance",
+                owner=None,
+                description="",
+                members=(ledger.ref,),
+            ),
+        ],
+        relationships=[rel],
+        lineage=[
+            LineageEdge(upstream=orders.columns[0].ref, downstream=ledger.columns[0].ref),
+            LineageEdge(upstream=orders.ref, downstream=orders.ref),
+        ],
+        model_tags=[
+            ModelTag(tag_id="pii", is_system=False, asset=orders.ref),
+            ModelTag(tag_id="gl", is_system=False, asset=ledger.ref),
+            ModelTag(tag_id="joined", is_system=False, relationship_id="orders-ledger"),
+        ],
+        glossary_terms=[
+            GlossaryTermAsset(
+                term_id=1,
+                name="order id",
+                definition=None,
+                is_abstract=False,
+                deprecated=False,
+                status="live",
+                refs=(orders.columns[0].ref, ledger.columns[0].ref),
+            ),
+            GlossaryTermAsset(
+                term_id=2,
+                name="revenue",
+                definition="x",
+                is_abstract=True,
+                deprecated=False,
+                status="live",
+            ),
+        ],
+        glossary_edges=[GlossaryTermEdge(from_term_id=2, to_term_id=1, rel_type="RELATED_TO")],
+    )
+
+
+def test_a_catalog_gets_its_domains_tables_and_products_alone():
+    sales = for_domains(_snapshot(), ["sales"])
+
+    assert [t.name for t in sales.tables] == ["orders"]
+    assert [p.id for p in sales.data_products] == ["sales_360"]
+    assert [d.id for d in sales.domains] == ["sales"]
+    assert [s.id for s in sales.sources] == ["pg"]
+
+
+def test_every_other_fact_goes_only_with_the_assets_it_is_about():
+    sales = for_domains(_snapshot(), ["sales"])
+
+    # The relationship reaches a finance table, so a sales-only catalog is not given it, nor the
+    # tag on it, nor the lineage edge that crosses into finance.
+    assert sales.relationships == []
+    assert [m.tag_id for m in sales.model_tags] == ["pii"]
+    assert [(e.upstream.parts, e.downstream.parts) for e in sales.lineage] == [
+        (("pg", "orders"), ("pg", "orders"))
+    ]
+
+
+def test_the_glossary_goes_to_every_catalog_linked_to_its_assets_alone():
+    sales = for_domains(_snapshot(), ["sales"])
+
+    assert [t.name for t in sales.glossary_terms] == ["order id", "revenue"]
+    assert [r.parts for r in sales.glossary_terms[0].refs] == [("pg", "orders", "id")]
+    assert len(sales.glossary_edges) == 1
+
+
+def test_a_catalog_serving_both_domains_gets_everything():
+    snapshot = _snapshot()
+    both = for_domains(snapshot, ["sales", "finance"])
+
+    assert both.tables == snapshot.tables
+    assert both.relationships == snapshot.relationships
+    assert both.model_tags == snapshot.model_tags
+    assert both.lineage == snapshot.lineage
+
+
+# --- a target's role (REQ-2152, ruling Q1) --------------------------------------------------------
+
+
+def test_a_role_is_published_only_the_columns_it_reads_and_what_rides_on_them():
+    """Each export target names a role, and it is published exactly what that role reads: the
+    columns it is served, the tables holding one, and every other fact only with them."""
+    from provisa.api.metadata_export.scope import for_role
+
+    def _sales_reader(table: TableAsset) -> set[str] | None:
+        return {"id"} if table.name == "orders" else set()
+
+    narrowed = for_role(_snapshot(), _sales_reader, lambda domain_id: False)
+    assert [t.name for t in narrowed.tables] == ["orders"]
+    assert [c.name for c in narrowed.tables[0].columns] == ["id"]
+    assert [p.id for p in narrowed.data_products] == ["sales_360"]
+    assert [s.id for s in narrowed.sources] == ["pg"]
+    assert narrowed.relationships == []
+    assert [m.tag_id for m in narrowed.model_tags] == ["pii"]
+    assert [r.parts for r in narrowed.glossary_terms[0].refs] == [("pg", "orders", "id")]
+
+
+def test_a_column_the_role_is_not_served_is_not_published():
+    from provisa.api.metadata_export.scope import for_role
+
+    def _no_ids(table: TableAsset) -> set[str] | None:
+        return set()
+
+    assert for_role(_snapshot(), _no_ids, lambda domain_id: False).tables == []
+
+
+def test_a_role_nothing_narrows_is_published_everything():
+    from provisa.api.metadata_export.scope import for_role
+
+    snapshot = _snapshot()
+    assert for_role(snapshot, lambda table: None, lambda domain_id: True) == snapshot
+
+
+def test_a_role_is_published_every_domain_it_reaches_empty_ones_included():
+    """A domain the role reaches is published though it holds nothing the role reads, as the
+    admin catalog lists it (CatalogScope.lists_domain); one it neither reaches nor holds a kept
+    table of is not."""
+    from provisa.api.metadata_export.scope import for_role
+
+    def _nothing(table: TableAsset) -> set[str] | None:
+        return set()
+
+    reached = for_role(_snapshot(), _nothing, lambda domain_id: domain_id == "finance")
+    assert reached.tables == [] and [d.id for d in reached.domains] == ["finance"]
+
+
+def test_a_retired_product_the_role_reaches_is_published_to_be_withdrawn():
+    """REQ-1634 STATUS: a retired product's members went to its successor, so it has none the role
+    reads; it is still sent where the role reaches its domain, so a catalog withdraws it."""
+    from dataclasses import replace
+
+    from provisa.api.metadata_export.scope import for_role
+
+    snapshot = _snapshot()
+    retired = replace(snapshot.data_products[1], members=(), status="retired")
+    snapshot = replace(snapshot, data_products=[snapshot.data_products[0], retired])
+
+    def _nothing(table: TableAsset) -> set[str] | None:
+        return set()
+
+    reached = for_role(snapshot, _nothing, lambda domain_id: domain_id == "finance")
+    assert [p.id for p in reached.data_products] == ["books"]
+    unreached = for_role(snapshot, _nothing, lambda domain_id: False)
+    assert unreached.data_products == []

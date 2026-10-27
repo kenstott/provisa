@@ -12,8 +12,9 @@
 
 A table with parameters has a ``{Type}Params`` message beside its ``{Type}Filter``, one
 ``optional`` field per parameter, and its ``{Type}Request`` a ``params`` field. The native
-servicer and the HTTP gRPC proxy (``body["params"]``) lower the parameters into the semantic
-SELECT as ``_nf_<name> = $N``, the form an SQL client gives a parameter in, the values bound.
+servicer and the HTTP gRPC proxy (``body["params"]``) lower the parameters to the table field's
+parameter arguments, as REST and JSON:API give them, and the compiler writes each into the
+statement as ``_nf_<name> = <value>``, the form an SQL client gives a parameter in.
 """
 
 # Requirements: REQ-1986, REQ-1991, REQ-803
@@ -26,10 +27,10 @@ import pytest
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput
-from provisa.compiler.sql_types import TableMeta
 from provisa.grpc.field_numbering import FieldNumberAllocator
 from provisa.grpc.proto_gen import generate_proto
-from provisa.grpc.query_ir import ParameterError, grpc_table_to_semantic_sql
+from provisa.grpc.query_ir import ParameterError
+from tests.grpc_model import compiled_read, grpc_model
 from provisa.grpc.schema_gen import compile_descriptor_set
 
 
@@ -108,20 +109,12 @@ def test_parameter_field_numbers_are_kept_under_their_own_kind():
     assert "optional double min = 8;" in params
 
 
-def _ctx():
-    meta = TableMeta(
-        table_id=1,
-        field_name="orders",
-        type_name="Orders",
-        source_id="api",
-        catalog_name="api",
-        schema_name="public",
-        table_name="orders",
-    )
-    return SimpleNamespace(
-        tables={"orders": meta},
-        aggregate_columns={1: [("id", "integer"), ("region", "varchar")]},
-        native_filter_columns={1: {"_nf_region": "varchar", "_nf_min": "double"}},
+def _model():
+    """``orders`` with a ``region`` column and the parameters ``region`` (whose argument is
+    ``_region`` beside the column's own field) and ``min``."""
+    return grpc_model(
+        [("id", "integer"), ("region", "varchar")],
+        parameters=[("region", "varchar"), ("min", "double")],
     )
 
 
@@ -139,38 +132,29 @@ def _params_message(**set_fields):
     [_params_message(region="EU", min=10.5), {"region": "EU", "min": 10.5}],
     ids=["native", "proxy"],
 )
-def test_parameters_lower_to_bound_predicates_after_the_filter(params):
-    sql, bound = grpc_table_to_semantic_sql(  # type: ignore[misc]
-        _ctx(), "Orders", 5, {"region": "x"}, None, params
-    )
-    assert 'WHERE "region" = $1 AND "_nf_region" = $2 AND "_nf_min" = $3 LIMIT $4' in sql
-    assert bound == ["x", "EU", 10.5, 5]
+def test_parameters_lower_to_their_predicates_after_the_filter(params):
+    sql, bound = compiled_read(_model(), "Orders", 5, {"region": "x"}, None, params)  # type: ignore[misc]
+    assert 'WHERE "region" = $1 AND "_nf_region" = \'EU\' AND "_nf_min" = 10.5 LIMIT $2' in sql
+    assert bound == ["x", 5]
 
 
 def test_a_name_that_is_not_a_parameter_is_refused_naming_it():
     with pytest.raises(ParameterError, match="'colour'") as err:
-        grpc_table_to_semantic_sql(_ctx(), "Orders", 0, None, None, {"colour": "red"})
+        compiled_read(_model(), "Orders", 0, None, None, {"colour": "red"})
     assert err.value.field == "colour"
 
 
 def test_a_proxy_value_of_another_type_is_refused():
     with pytest.raises(ParameterError, match="must be a number"):
-        grpc_table_to_semantic_sql(_ctx(), "Orders", 0, None, None, {"min": "lots"})
+        compiled_read(_model(), "Orders", 0, None, None, {"min": "lots"})
 
 
 @pytest.mark.asyncio
-async def test_the_servicer_hands_the_pipeline_the_parameters(monkeypatch):
+async def test_the_servicer_hands_the_pipeline_the_parameters():
     from tests.unit import test_grpc_read_mask as harness
 
-    plain_ctx = harness._ctx
-
-    def _ctx_with_parameters():
-        ctx = plain_ctx()
-        ctx.native_filter_columns = {1: {"_nf_region": "varchar"}}
-        return ctx
-
-    monkeypatch.setattr(harness, "_ctx", _ctx_with_parameters)
-    servicer, _msg_cls = harness._servicer()
+    model = grpc_model(harness._COLUMNS, parameters=[("region", "varchar")])
+    servicer, _msg_cls = harness._servicer(model)
     params = SimpleNamespace(
         DESCRIPTOR=SimpleNamespace(fields=[SimpleNamespace(name="region")]),
         HasField=lambda name: name == "region",
@@ -187,8 +171,7 @@ async def test_the_servicer_hands_the_pipeline_the_parameters(monkeypatch):
     govern = await harness._run(servicer, request, harness._context(), result)
 
     govern.assert_awaited_once()
-    assert '"_nf_region" = $1' in govern.await_args.args[0]
-    assert govern.await_args.kwargs["exec_params"] == ["EU"]
+    assert "\"_nf_region\" = 'EU'" in govern.await_args.args[0]
 
 
 def _array_si() -> SchemaInput:
@@ -235,10 +218,8 @@ def test_an_array_parameter_is_a_repeated_field():
     assert compile_descriptor_set(proto)
 
 
-def _vector_ctx():
-    ctx = _ctx()
-    ctx.native_filter_columns = {1: {"_nf_query_vector": "array(double)"}}
-    return ctx
+def _vector_model():
+    return grpc_model([("id", "integer")], parameters=[("query_vector", "array(double)")])
 
 
 def test_a_repeated_parameter_is_given_when_it_holds_values():
@@ -246,25 +227,19 @@ def test_a_repeated_parameter_is_given_when_it_holds_values():
         DESCRIPTOR=SimpleNamespace(fields=[SimpleNamespace(name="query_vector", label=3)]),
         query_vector=[0.1, 0.2],
     )
-    sql, bound = grpc_table_to_semantic_sql(  # type: ignore[misc]
-        _vector_ctx(), "Orders", 0, None, None, given
-    )
-    assert '"_nf_query_vector" = $1' in sql and bound == [[0.1, 0.2]]
+    sql, _bound = compiled_read(_vector_model(), "Orders", 0, None, None, given)  # type: ignore[misc]
+    assert "\"_nf_query_vector\" = '[0.1, 0.2]'" in sql
     empty = SimpleNamespace(DESCRIPTOR=given.DESCRIPTOR, query_vector=[])
-    sql, bound = grpc_table_to_semantic_sql(  # type: ignore[misc]
-        _vector_ctx(), "Orders", 0, None, None, empty
-    )
-    assert "_nf_query_vector" not in sql and bound == []
+    sql, _bound = compiled_read(_vector_model(), "Orders", 0, None, None, empty)  # type: ignore[misc]
+    assert "_nf_query_vector" not in sql
 
 
 def test_a_proxy_array_parameter_is_a_list_of_its_items():
-    sql, bound = grpc_table_to_semantic_sql(  # type: ignore[misc]
-        _vector_ctx(), "Orders", 0, None, None, {"query_vector": [0.1, 2]}
+    sql, _bound = compiled_read(  # type: ignore[misc]
+        _vector_model(), "Orders", 0, None, None, {"query_vector": [0.1, 2]}
     )
-    assert bound == [[0.1, 2]]
+    assert "\"_nf_query_vector\" = '[0.1, 2.0]'" in sql
     with pytest.raises(ParameterError, match="must be a list"):
-        grpc_table_to_semantic_sql(_vector_ctx(), "Orders", 0, None, None, {"query_vector": 0.1})
+        compiled_read(_vector_model(), "Orders", 0, None, None, {"query_vector": 0.1})
     with pytest.raises(ParameterError, match="each item is a number"):
-        grpc_table_to_semantic_sql(
-            _vector_ctx(), "Orders", 0, None, None, {"query_vector": [0.1, "x"]}
-        )
+        compiled_read(_vector_model(), "Orders", 0, None, None, {"query_vector": [0.1, "x"]})

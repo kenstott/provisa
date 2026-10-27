@@ -31,7 +31,7 @@ vi.mock("../../../../components/graph3d/graphScene", () => ({
         "setData",
         "setSelected",
         "focus",
-        "setFrontal",
+        "setFlat",
       ])
         calls[m] = vi.fn();
       Object.assign(this, calls);
@@ -62,7 +62,6 @@ describe("a 3D network graph's Grid checkbox", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -81,7 +80,6 @@ describe("a 3D network graph's Grid checkbox", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -98,7 +96,6 @@ describe("a 3D network graph's Grid checkbox", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -110,7 +107,6 @@ describe("a 3D network graph's Grid checkbox", () => {
         data={g}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         settingsKey={{ kind: "test", subject: "another" }}
         exportName="test"
         testId="y"

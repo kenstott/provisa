@@ -82,8 +82,8 @@ TABLE_FIELDS = (
     "probeQuery probeType viewSql dqContract profilerSourceId queryTemplate fileGlob "
     "sourceFileColumn importSet arguments landingFilter loadProtected offPeakWindow offPeakTz "
     "materialize mvRefreshInterval mvDebounceQuiet mvDebounceMaxDelay pushDebounceQuiet "
-    "pushDebounceMaxDelay mvConsistency mvPreprocess businessKey validTime "
-    "recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
+    "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks businessKey "
+    "validTime recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
     "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productId enableAggregates "
     "enableGroupBy uniqueConstraints { name columns } "
     "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn landingTimeColumn } "
@@ -131,6 +131,7 @@ _TABLE_AS_IS = (
     "recordedTime",
     "mvPersist",
     "mvIncremental",
+    "mvHoldOnFailingChecks",
     "mvAllowedLateness",
     "mvExpectedEvents",
     "mvBusinessDayGrain",
@@ -304,7 +305,7 @@ class AdminGovernance:
 
     # ---- reads
     def _roles(self) -> dict[str, dict[str, Any]]:
-        data = self._graphql("{ roles { id capabilities domainAccess parentRoleId } }")
+        data = self._graphql("{ roles { id capabilities domainAccess parents } }")
         return {r["id"]: r for r in data["roles"]}
 
     def _tables(self) -> dict[int, dict[str, Any]]:
@@ -343,7 +344,7 @@ class AdminGovernance:
                                 "description": f"Benchmark governance: {level} below {r.role}",
                                 "capabilities": list(top["capabilities"]),
                                 "domainAccess": list(top["domainAccess"]),
-                                "parentRoleId": cm.chain_role(r.role, level - 1),
+                                "parents": [cm.chain_role(r.role, level - 1)],
                             }
                         },
                     )

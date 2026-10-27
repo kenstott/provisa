@@ -21,6 +21,7 @@ import pytest
 from sqlalchemy import insert, select
 
 from provisa.api.admin.column_dependents import _glossary_dependents
+from provisa.api.admin.read_rights import SERVICE_READER
 
 from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
@@ -363,7 +364,7 @@ async def test_column_removal_warning_states_each_terms_fate(control_plane):
         fates = {
             d.name: d.detail
             for col in ("cust_id", "order_dt")
-            for d in await _glossary_dependents(conn, table_id, col)
+            for d in await _glossary_dependents(conn, table_id, col, SERVICE_READER)
         }
         assert fates == {
             "customer": "bound term, derived and blank — deleted with the column",
@@ -372,7 +373,7 @@ async def test_column_removal_warning_states_each_terms_fate(control_plane):
 
         # A term bound to a second column loses nothing at all.
         await table_repo.upsert(conn, _tbl("invoices", ["cust_id"]))
-        again = await _glossary_dependents(conn, table_id, "cust_id")
+        again = await _glossary_dependents(conn, table_id, "cust_id", SERVICE_READER)
         assert [d.detail for d in again] == ["bound term, keeps its other columns"]
 
 
@@ -435,6 +436,8 @@ async def test_export_graph_shape(control_plane):
         assert graph["experts"] == [
             {"term_id": customer["id"], "user_id": "alice", "kind": "expert"}
         ]
+        # REQ-1591: the derived domain of the rooted term; the unscoped abstract term has none.
+        assert graph["domains"] == [{"term_id": customer["id"], "domain_id": "d"}]
 
 
 def test_a_search_is_its_quoted_phrases_and_its_words():

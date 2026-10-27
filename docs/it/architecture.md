@@ -148,7 +148,7 @@ Le query GraphQL con più campi root (es. `{ orders { id } customers { name } }`
 
 ## Pipeline di query {: #query-pipeline }
 
-Ogni lettura attraversa sei stadi, qualunque sia il linguaggio in cui la scrivete. Ogni stadio passa al successivo un'istruzione SQL. Il linguaggio decide solo dove la lettura entra.
+Ogni lettura attraversa cinque stadi. GraphQL, Cypher, SPARQL, gRPC e SQL sono punti di ingresso, non stadi — ognuno compila o traduce in SQL semantico prima che la pipeline inizi.
 
 ```mermaid
 flowchart TD
@@ -176,7 +176,7 @@ L'SQL semantico legge il modello. Le sue tabelle sono qualificate per dominio (`
 
 Una lettura annidata si compila in un'unica pipeline canonica di CTE, uguale per ogni motore e costruita solo dalle relazioni dichiarate. Una CTE radice legge la tabella radice con il suo filtro, il suo ordinamento, il suo limite e il suo offset. Ogni livello verso-molti è una CTE a sé. Unisce la sua tabella alla CTE del genitore sulle chiavi della relazione, prende le prime righe di ogni genitore con `ROW_NUMBER() OVER (PARTITION BY ...)` e le aggrega in una lista JSON per genitore. Il `SELECT` finale legge la CTE radice e fa un left join di ogni livello sulla chiave del genitore. Le letture GraphQL, Cypher e SPARQL che pongono la stessa domanda si compilano nella stessa istruzione.
 
-I compilatori attuali non hanno ancora raggiunto quella forma. Il compilatore GraphQL legge un campo annidato con argomenti tramite un `LEFT JOIN LATERAL` per genitore, e il traduttore Cypher scrive una CTE per ogni stadio `WITH`. L'esempio qui sotto mostra entrambe le forme.
+Il traduttore Cypher scrive una CTE per ogni stadio `WITH`; allineare quelle forme alla pipeline canonica è un lavoro futuro. Fino al suo completamento, letture equivalenti in Cypher e GraphQL non sempre compilano nello stesso SQL semantico. Il compilatore GraphQL scrive i campi annidati con argomenti come `LEFT JOIN LATERAL` per genitore. Entrambe le forme attuali compaiono nell'esempio seguente.
 
 ### SQL governato {: #governed-sql }
 
@@ -188,7 +188,18 @@ Lo stadio di ottimizzazione riscrive l'istruzione governata in modi validi su og
 
 ### Pianificare e instradare {: #plan-and-route }
 
-L'instradamento legge le sorgenti dell'istruzione ottimizzata, mai quelle dell'istruzione governata. Una lettura che l'ottimizzazione ha ristretto a una sorgente può quindi comunque andare in diretta. Un'istruzione va in diretta quando legge una sorgente e quella sorgente ha un driver diretto. Altrimenti la esegue il motore di federazione. La regola ha una terza condizione: che la sorgente supporti ogni costrutto dell'istruzione. Il router non la verifica ancora e decide in base al numero di sorgenti e al driver. I casi di cache, replica e steward sono in [Decisioni di instradamento](#request-pipeline).
+Atterrare sul motore di federazione è il comportamento predefinito; l'instradamento legge le sorgenti ottimizzate, mai quelle governate. Un'istruzione viene eseguita direttamente sulla propria sorgente solo quando supera tutti e sei i gate in ordine. Il primo che non supera indica il motivo.
+
+| Gate | Cosa verifica |
+|---|---|
+| `one_source` | Legge una sorgente dopo l'ottimizzazione, o sorgenti che condividono un database fisico |
+| `dialect_supports` | Il dialetto di quella sorgente supporta ogni costrutto dell'istruzione |
+| `access_path` | Esiste un driver diretto, un chiamante API o una funzione di codice per la sorgente |
+| `colocated_login` | Le sorgenti contate come un unico database condividono le stesse credenziali di accesso |
+| `not_forced` | Non si applica nessun floor dell'operatore, colonna falsa o condizione che richiede il motore |
+| `trusted_to_answer` | Una sorgente non SQL può rispondere all'intero dataset senza ulteriore filtraggio in corso |
+
+I casi di cache, replica e steward sono in [Pipeline delle richieste](#request-pipeline).
 
 ### SQL nativo {: #native-sql }
 
@@ -559,7 +570,7 @@ Il loop di refresh gira ogni 30 secondi, controlla `get_due_for_refresh()` ed es
 | `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
 | `compiler/enum_detect.py` | Enum type auto-detection — PostgreSQL native enum types (`pg_enum`) exposed as GraphQL enum types rather than string scalars |
-| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`/* @provisa route=federated */`) that override automatic routing |
+| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`-- @provisa route=federated`) that override automatic routing |
 | `compiler/mutation_gen.py` | Mutation compiler; column presets — server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
 | `auth/approval_hook.py` | ABAC approval hook — pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
 | `subscriptions/` | SSE subscription state and delivery |
@@ -746,7 +757,7 @@ Un ruolo nomina al massimo un padre tramite `parent_role_id`. Al build a runtime
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

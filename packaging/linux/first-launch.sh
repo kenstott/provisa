@@ -947,7 +947,7 @@ services:
       # one's bundle into demo-bundles/ and runs its stores; the tier serves the ready version
       # and, at each sandbox opened, asks for a newer published one -- no redeploy. A demo's
       # logs are read live from its bundle there.
-      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma"
+      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata"
       PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       # This tier builds the deployment's org at startup too, from the control plane, and the
@@ -967,15 +967,17 @@ services:
       minio:
         condition: service_healthy
         required: false
-  # REQ-2068: the regions sandbox tier -- the demos whose models select regions (the retail
-  # demo). Its own single-worker API, as provisa-sandbox's, run as the demos' visitor region (us)
-  # under its own deployment config (config/provisa-sandbox-regions.yaml: the platform's regions
-  # and its own boot org, never the deployment's). Each region keeps what it holds in a PostgreSQL
-  # of its own (region-pg-eu, region-pg-us below); the eu region's is landed from the bundle, and no
-  # eu node runs. The UI server reaches it by PROVISA_SANDBOX_REGIONS_API_URL. It is of the
-  # "sandbox" profile on purpose: a node with no sandbox VM runs both profiles, and so every
-  # sandbox tier, this one and its two PostgreSQL stores included.
-  provisa-sandbox-regions:
+  # REQ-2068: the regions sandbox tier -- the demos whose models select regions. A single-worker
+  # API, as provisa-sandbox's, per visitor region, each under the tier's deployment config
+  # (config/provisa-sandbox-regions.yaml: the platform's regions and its own boot org, never the
+  # deployment's): this one, region us, serves retail (eu headless); provisa-sandbox-regions-warehouse
+  # below, region warehouse, serves banking (ledger headless). Each region keeps what it holds in a
+  # PostgreSQL database of its own: eu and ledger in region-pg-eu, us and warehouse in region-pg-us
+  # (below). A headless region's is landed from the bundle, and no node of it runs. The UI server
+  # reaches each node by PROVISA_SANDBOX_REGIONS_NODES. Of the "sandbox" profile on purpose: a node
+  # with no sandbox VM runs both profiles, and so every sandbox tier, these and their PostgreSQL
+  # stores included.
+  provisa-sandbox-regions: &regions_node
     profiles: ["sandbox"]
     restart: unless-stopped
     image: provisa/provisa:local
@@ -990,19 +992,24 @@ services:
       # The demo stores sync pulls every bundle into provisa-sandbox's demo-bundles/; this tier
       # serves its demos from there.
       - ${PROVISA_HOME}/sandbox-data/demo-bundles:/var/lib/provisa/demo-bundles
-    environment:
+    environment: &regions_env
       <<: *provisa_env
       ORG_ID: "sbxrtier"
       PROVISA_CONFIG: "/app/config/provisa-sandbox-regions.yaml"
       PROVISA_REGION: "us"
-      # The platform names an address per region. No eu node runs, and nothing here asks it: the us
-      # node reads eu's store in place. Its address is one nothing listens at, so a call to it
-      # fails as unreachable, by name, rather than reaching another node.
+      # The platform names an address per region. No node of a headless region (eu, ledger) runs,
+      # and nothing asks one: a visitor region's node reads its store in place. Its address is one
+      # nothing listens at, so a call to it fails as unreachable, by name, rather than reaching
+      # another node.
       PROVISA_DEMO_EU_ADDRESS: "https://provisa-sandbox-regions-eu.invalid:8100"
       PROVISA_DEMO_US_ADDRESS: "https://provisa-sandbox-regions:8100"
+      PROVISA_DEMO_LEDGER_ADDRESS: "https://provisa-sandbox-regions-ledger.invalid:8100"
+      PROVISA_DEMO_WAREHOUSE_ADDRESS: "https://provisa-sandbox-regions-warehouse:8100"
       # Unpublished, on this compose network only, as minio's credentials above.
       PROVISA_DEMO_EU_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-eu:5432/provisa"
       PROVISA_DEMO_US_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-us:5432/provisa"
+      PROVISA_DEMO_LEDGER_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-eu:5432/ledger"
+      PROVISA_DEMO_WAREHOUSE_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-us:5432/warehouse"
       PROVISA_SANDBOX_TIER: "true"
       PROVISA_DATA_DIR: /var/lib/provisa
       PROVISA_ENGINE: "duckdb"
@@ -1019,6 +1026,23 @@ services:
       redis:
         condition: service_healthy
         required: false
+  # banking's visitor region (demo/named/banking/demo.yaml regions.visitor): a node serves its demo
+  # only in the region it runs as (core/repositories/region.require_serves_here), so banking's
+  # template and sandboxes are built here, on a store of their own. The UI server reaches it at
+  # PROVISA_SANDBOX_REGIONS_NODES' warehouse entry.
+  provisa-sandbox-regions-warehouse:
+    <<: *regions_node
+    ports:
+      - "\${PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH:-127.0.0.1:18101}:8100"
+    volumes:
+      - ${CERT_DIR}:/app/certs:ro
+      - ${PROVISA_HOME}/sandbox-regions-warehouse-data:/var/lib/provisa
+      - ${PROVISA_HOME}/sandbox-data/demo-bundles:/var/lib/provisa/demo-bundles
+    environment:
+      <<: *regions_env
+      ORG_ID: "sbxrtierwh"
+      PROVISA_REGION: "warehouse"
+      PROVISA_DEMO_BUNDLES: "banking"
   region-pg-eu: &region_pg
     profiles: ["sandbox"]
     restart: unless-stopped
@@ -1027,23 +1051,35 @@ services:
       POSTGRES_USER: provisa
       POSTGRES_PASSWORD: "\${PROVISA_PG_PASSWORD:?the deployment database password}"
       POSTGRES_DB: provisa
+      # The database of the second region this server keeps (ledger here, warehouse in
+      # region-pg-us), made by the healthcheck below when the volume has none: the volume may have
+      # been initialised before the region was.
+      REGION_PG_ALSO: ledger
     volumes:
       - region_pg_eu:/var/lib/postgresql/data
     healthcheck:
       # Healthy once it serves THIS deployment's password: a volume initialised under another one
       # keeps that one, so it is set again, over the local socket, whenever signing in with the
-      # current one fails. Everything that signs in waits on this (service_healthy).
+      # current one fails. And once its second region's database exists. Everything that signs in
+      # waits on this (service_healthy).
       test:
         - CMD-SHELL
         - >-
           pg_isready -U provisa &&
           { PGPASSWORD="\$\$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U provisa -d provisa -tAc 'select 1' >/dev/null 2>&1 ||
-          printf '%s\\n' "ALTER ROLE provisa PASSWORD :'pw';" | psql -v ON_ERROR_STOP=1 -q -U provisa -d provisa -v pw="\$\$POSTGRES_PASSWORD"; }
+          printf '%s\\n' "ALTER ROLE provisa PASSWORD :'pw';" | psql -v ON_ERROR_STOP=1 -q -U provisa -d provisa -v pw="\$\$POSTGRES_PASSWORD"; } &&
+          { psql -U provisa -d provisa -tAc "SELECT 1 FROM pg_database WHERE datname = '\$\$REGION_PG_ALSO'" | grep -q 1 ||
+          createdb -U provisa "\$\$REGION_PG_ALSO"; }
       interval: 5s
       timeout: 5s
       retries: 30
   region-pg-us:
     <<: *region_pg
+    environment:
+      POSTGRES_USER: provisa
+      POSTGRES_PASSWORD: "\${PROVISA_PG_PASSWORD:?the deployment database password}"
+      POSTGRES_DB: provisa
+      REGION_PG_ALSO: warehouse
     volumes:
       - region_pg_us:/var/lib/postgresql/data
   provisa-ui:
@@ -1059,9 +1095,9 @@ services:
       PROVISA_API_URL: "https://provisa:8000"
       # The sandbox tier: this node's, or a sandbox node's (https://<its address>:8000).
       PROVISA_SANDBOX_API_URL: "\${PROVISA_SANDBOX_API_URL:-https://provisa-sandbox:8000}"
-      # REQ-2068: the regions sandbox tier, and the demos it serves, by name.
-      PROVISA_SANDBOX_REGIONS_API_URL: "\${PROVISA_SANDBOX_REGIONS_API_URL:-https://provisa-sandbox-regions:8100}"
-      PROVISA_SANDBOX_REGIONS_DEMOS: "retail"
+      # REQ-2068: the regions sandbox tier's nodes, by region, and the node each demo is served by.
+      PROVISA_SANDBOX_REGIONS_NODES: "\${PROVISA_SANDBOX_REGIONS_NODES:-us=https://provisa-sandbox-regions:8100,warehouse=https://provisa-sandbox-regions-warehouse:8100}"
+      PROVISA_SANDBOX_REGIONS_DEMOS: "retail=us,banking=warehouse"
       # Its Compute Engine instance, which the UI server starts when it finds the tier down
       # (provisa/sandbox_wake.py); empty for a tier on this node.
       PROVISA_SANDBOX_INSTANCE: "\${PROVISA_SANDBOX_INSTANCE:-}"
@@ -1234,6 +1270,7 @@ write_env_file() {
              PROVISA_GRAFANA_ADMIN_PASSWORD PROVISA_TRINO_SHARED_SECRET PROVISA_STORE_BIND_IP \
              COMPOSE_PROFILES PROVISA_REDIS_HOST PROVISA_MINIO_HOST PROVISA_SANDBOX_API_URL PROVISA_SANDBOX_PUBLISH \
              PROVISA_SANDBOX_REGIONS_API_URL PROVISA_SANDBOX_REGIONS_PUBLISH \
+             PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH \
              PROVISA_SANDBOX_INSTANCE PROVISA_SANDBOX_IDLE_STOP_SECONDS \
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do

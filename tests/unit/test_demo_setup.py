@@ -386,3 +386,65 @@ def test_a_profile_run_that_fails_for_a_table_fails_the_step_naming_it(
     assert _run(monkeypatch, home, server) == 1
     assert server.stored is None
     assert "orders: it broke" in capsys.readouterr().err
+
+
+class _CarriedServer(_Server):
+    """A bundled demo's server: the runs its bundle carries are loaded, or refused by name."""
+
+    def __init__(self, refused: str | None = None) -> None:
+        super().__init__(done=[])
+        self.refused = refused
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == setup.CARRIED_RUNS:
+            self.calls.append(request.url.path)
+            if self.refused is not None:
+                return httpx.Response(404, json={"error": {"message": self.refused}})
+            return httpx.Response(200, json={"loaded": ["customers_7_profile_runs"]})
+        if request.url.path == "/auth/me":
+            return httpx.Response(200, json={"active_org_id": "acme"})
+        if request.url.path.endswith("/environments"):
+            self.calls.append(request.url.path)
+            return httpx.Response(200, json={"environment": json.loads(request.content)})
+        return super().__call__(request)
+
+
+def _profiling(tmp_path: Path) -> Path:
+    home = tmp_path / "profiling"
+    home.mkdir()
+    steps = [
+        {"profile": "harbor-profiler"},
+        {"client": "setup_drift.py"},
+        {"profile": "harbor-profiler"},
+        {"environment": {"name": "dev", "data_mode": "test_fake"}},
+    ]
+    (home / "setup.yaml").write_text(yaml.safe_dump({"steps": steps}))
+    (home / "setup_drift.py").write_text("")
+    return home
+
+
+def test_a_bundled_demo_loads_the_runs_its_bundle_carries_once_in_place_of_profiling(
+    monkeypatch, tmp_path
+):
+    """REQ-2052 (A FIRST RUN IS SEEDED): a bundle's demo started here has the runs its build
+    measured -- the first and the drift run -- as its hosted template does, not two runs of the
+    data as setup left it."""
+    server = _CarriedServer()
+    real = httpx.Client
+    monkeypatch.setattr(
+        setup.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(server), **kw)
+    )
+    assert setup.run(_profiling(tmp_path), "http://provisa.test", environments_only=True) == 0
+    assert server.calls == [setup.CARRIED_RUNS, "/admin/orgs/acme/environments"]
+
+
+def test_a_bundle_whose_runs_are_refused_fails_the_start_naming_why(monkeypatch, tmp_path, capsys):
+    refusal = "the bundle carries no profile runs (profile_results.json): rebuild it"
+    server = _CarriedServer(refused=refusal)
+    real = httpx.Client
+    monkeypatch.setattr(
+        setup.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(server), **kw)
+    )
+    assert setup.run(_profiling(tmp_path), "http://provisa.test", environments_only=True) == 1
+    assert server.stored is None
+    assert refusal in capsys.readouterr().err

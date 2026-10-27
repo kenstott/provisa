@@ -359,6 +359,7 @@ def route_through_federation(shared_data):
         source_types=shared_data["source_types"],
         source_dialects=shared_data["source_dialects"],
         operator_floor={},
+        statement="SELECT 1",
     )
     shared_data["decision"] = decision
     assert decision.route == Route.ENGINE, (
@@ -466,6 +467,7 @@ def execute_query(shared_data):
         source_types=shared_data["source_types"],
         source_dialects=shared_data["source_dialects"],
         operator_floor={},
+        statement="SELECT 1",
     )
     shared_data["decision"] = decision
 

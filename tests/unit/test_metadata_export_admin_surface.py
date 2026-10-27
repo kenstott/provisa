@@ -40,6 +40,14 @@ def _request(org_id: str = ORG_ID):
     )
 
 
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here; what a target may be published as is the role tests below."""
+    from tests.unit.gate_identity import serve_every_column
+
+    serve_every_column(monkeypatch)
+
+
 def _json_body(body: dict):
     async def _json():
         return body
@@ -75,9 +83,14 @@ def surface(monkeypatch, control_plane):
 
     stored: dict = {}
     written: dict = {}
+    # REQ-2122: the org's catalogs, which each target names.
+    catalogs: list = [
+        {"id": "mz", "provider": "openlineage", "endpoint": "http://mz", "domains": ["sales"]},
+        {"id": "dh", "provider": "datahub", "endpoint": "http://b", "domains": ["sales"]},
+    ]
 
     async def _resolve(_db):
-        return {"metadata_export": dict(stored)}
+        return {"catalogs": list(catalogs), "metadata_export": dict(stored)}
 
     async def _write(_db, updates, *, updated_by):
         written.clear()
@@ -116,7 +129,7 @@ def surface(monkeypatch, control_plane):
         tiers[org_id] = tier
 
     _org()
-    return types.SimpleNamespace(stored=stored, written=written, org=_org)
+    return types.SimpleNamespace(stored=stored, written=written, org=_org, catalogs=catalogs)
 
 
 async def _put(body: dict):
@@ -131,31 +144,17 @@ async def _put(body: dict):
 
 
 @pytest.mark.asyncio
-async def test_the_read_reports_credentials_as_set_and_never_returns_them(surface):
-    """A token readable through the tab is a token any org admin can exfiltrate."""
+async def test_the_read_reports_each_target_by_its_catalog(surface):  # REQ-2122
+    """A target names its catalog and carries the export's own settings, never a credential."""
     from provisa.api.admin.metadata_export_router import get_metadata_export
 
-    surface.stored.update(
-        {
-            "enabled": True,
-            "targets": [
-                {
-                    "id": "mz",
-                    "provider": "openlineage",
-                    "endpoint": "http://mz",
-                    "api_key": "s3cr3t",
-                }
-            ],
-        }
-    )
+    surface.stored.update({"enabled": True, "targets": [{"catalog": "mz"}]})
     body = await get_metadata_export(_request())
 
-    (target,) = body["config"]["targets"]
-    assert target["api_key_set"] is True
-    assert target["token_set"] is False
-    assert "api_key" not in target
-    assert "s3cr3t" not in str(body)
-    assert target["endpoint"] == "http://mz"
+    assert body["config"]["targets"] == [
+        # REQ-2152: the role it publishes as, none until the export names one.
+        {"catalog": "mz", "datazone_project_id": "", "delta_share": False, "role": None}
+    ]
 
 
 @pytest.mark.asyncio
@@ -182,116 +181,37 @@ async def test_the_read_lists_the_providers_the_registry_actually_has(surface):
 
 
 @pytest.mark.asyncio
-async def test_editing_the_endpoint_does_not_erase_the_stored_credential(surface):
-    """The tab never receives the secret, so it cannot send it back.
-
-    If an omitted credential meant "clear", every endpoint edit would silently break the
-    connection — and the next publish, not the edit, would be what reported it.
-    """
-    surface.stored.update(
-        {
-            "enabled": True,
-            "targets": [
-                {
-                    "id": "mz",
-                    "provider": "openlineage",
-                    "endpoint": "http://old",
-                    "api_key": "keep-me",
-                }
-            ],
-        }
-    )
-    await _put({"targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://new"}]})
-
-    (written,) = surface.written["metadata_export"]["targets"]
-    assert written["endpoint"] == "http://new"
-    assert written["api_key"] == "keep-me"
-
-
-@pytest.mark.asyncio
-async def test_two_targets_of_one_provider_keep_their_credentials_apart(surface):  # REQ-2118
-    surface.stored.update(
-        {
-            "enabled": True,
-            "targets": [
-                {"id": "om-a", "provider": "openmetadata", "endpoint": "http://a", "token": "ta"},
-                {"id": "om-b", "provider": "openmetadata", "endpoint": "http://b", "token": "tb"},
-            ],
-        }
-    )
-    await _put(
-        {
-            "targets": [
-                {"id": "om-b", "provider": "openmetadata", "endpoint": "http://b2"},
-                {"id": "om-a", "provider": "openmetadata", "endpoint": "http://a"},
-            ]
-        }
-    )
-
-    written = {t["id"]: t for t in surface.written["metadata_export"]["targets"]}
-    assert (written["om-a"]["token"], written["om-b"]["token"]) == ("ta", "tb")
-    assert written["om-b"]["endpoint"] == "http://b2"
-
-
-@pytest.mark.asyncio
 async def test_a_target_left_out_of_the_list_is_removed(surface):  # REQ-2118
-    surface.stored.update(
-        {
-            "enabled": True,
-            "targets": [
-                {"id": "om", "provider": "openmetadata", "endpoint": "http://a"},
-                {"id": "dh", "provider": "datahub", "endpoint": "http://b"},
-            ],
-        }
-    )
-    await _put({"targets": [{"id": "dh", "provider": "datahub", "endpoint": "http://b"}]})
+    surface.stored.update({"enabled": True, "targets": [{"catalog": "mz"}, {"catalog": "dh"}]})
+    await _put({"targets": [{"catalog": "dh"}]})
 
-    assert [t["id"] for t in surface.written["metadata_export"]["targets"]] == ["dh"]
+    assert surface.written["metadata_export"]["targets"] == [{"catalog": "dh"}]
 
 
 @pytest.mark.asyncio
-async def test_an_empty_credential_clears_it(surface):
-    surface.stored.update(
-        {
-            "enabled": True,
-            "targets": [
-                {"id": "mz", "provider": "openlineage", "endpoint": "http://mz", "api_key": "old"}
-            ],
-        }
-    )
-    await _put(
-        {
-            "targets": [
-                {"id": "mz", "provider": "openlineage", "endpoint": "http://mz", "api_key": ""}
-            ]
-        }
-    )
+async def test_a_target_naming_no_catalog_of_the_org_is_refused_at_the_write(surface):  # REQ-2122
+    with pytest.raises(ApiError) as exc:
+        await _put({"enabled": True, "targets": [{"catalog": "gone"}]})
 
-    assert surface.written["metadata_export"]["targets"][0]["api_key"] == ""
+    assert exc.value.status_code == 400
+    assert "name no catalog of the org: gone" in str(exc.value.detail)
+    assert surface.written == {}
 
 
 @pytest.mark.asyncio
 async def test_a_key_outside_the_export_settings_is_not_written(surface):
     # The body is an untrusted dict; only the enumerated settings may reach storage, or an admin
     # writes arbitrary config through the export door.
-    await _put(
-        {
-            "enabled": True,
-            "tier": "x",
-            "targets": [
-                {"id": "mz", "provider": "openlineage", "endpoint": "http://mz", "tier": "x"}
-            ],
-        }
-    )
+    await _put({"enabled": True, "tier": "x", "targets": [{"catalog": "mz", "tier": "x"}]})
 
     assert "tier" not in surface.written["metadata_export"]
     assert "tier" not in surface.written["metadata_export"]["targets"][0]
 
 
 @pytest.mark.asyncio
-async def test_an_enabled_target_with_no_endpoint_is_refused_at_the_write(surface):
+async def test_an_enabled_export_with_no_target_is_refused_at_the_write(surface):
     with pytest.raises(ApiError) as exc:
-        await _put({"enabled": True, "targets": [{"id": "mz", "provider": "openlineage"}]})
+        await _put({"enabled": True, "targets": []})
 
     assert exc.value.status_code == 400
     assert surface.written == {}
@@ -319,7 +239,7 @@ async def test_every_operating_handler_refuses_an_unentitled_org(surface, handle
     surface.stored.update(
         {
             "enabled": True,
-            "targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://mz"}],
+            "targets": [{"catalog": "mz"}],
         }
     )
     request = _request()
@@ -358,7 +278,7 @@ async def test_health_reports_the_refusal_text_rather_than_a_bare_failure(surfac
     surface.stored.update(
         {
             "enabled": True,
-            "targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://mz"}],
+            "targets": [{"catalog": "mz"}],
         }
     )
 
@@ -382,9 +302,10 @@ async def test_health_on_a_target_that_cannot_be_built_answers_instead_of_500ing
     raises MetadataExportNotConfiguredError and that text is the answer."""
     from provisa.api.admin.metadata_export_router import check_metadata_export
 
-    surface.stored.update(
-        {"enabled": False, "targets": [{"id": "x", "provider": "nope", "endpoint": "http://a"}]}
+    surface.catalogs.append(
+        {"id": "x", "provider": "nope", "endpoint": "http://a", "domains": ["sales"]}
     )
+    surface.stored.update({"enabled": False, "targets": [{"catalog": "x"}]})
 
     body = await check_metadata_export(_request())
 
@@ -399,13 +320,13 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
         get_metadata_export,
         publish_metadata_export,
     )
-    from provisa.api.metadata_export.model import AssetRef
+    from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot
     from provisa.api.metadata_export.provider import AssetError, PublishResult
 
     surface.stored.update(
         {
             "enabled": True,
-            "targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://mz"}],
+            "targets": [{"catalog": "mz", "role": "steward"}],
         }
     )
     result = PublishResult(
@@ -421,6 +342,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
 
     class _Partial:
         needs_export_views = False  # a remote catalog: it addresses nothing in the engine's store
+        binds_products = False  # OpenLineage keeps no product bindings
 
         async def publish(self, snapshot):
             return result
@@ -434,7 +356,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
         sync_mod,
         "build_snapshot",
         lambda config, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None: (
-            object()
+            MetadataSnapshot(org_id=ORG_ID)
         ),
     )
 
@@ -446,6 +368,12 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
     # The model now assembles from the registration tables (DB truth, #97); stub the
     # assembly the same way the builder is stubbed — this test is about the publish report.
     monkeypatch.setattr(sync_mod, "_model_for_export", _stub_model)
+
+    async def _reads_everything(state, role):
+        return lambda table: None  # what a role is sent is test_metadata_export_scope
+
+    monkeypatch.setattr(sync_mod, "role_reader", _reads_everything)
+    monkeypatch.setattr(sync_mod, "role_reach", lambda state, role: lambda domain_id: True)
     body = await publish_metadata_export(_request())
 
     assert body["ok"] is False
@@ -463,10 +391,91 @@ async def test_publishing_a_disabled_target_is_refused_before_a_snapshot_is_buil
     surface.stored.update(
         {
             "enabled": False,
-            "targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://mz"}],
+            "targets": [{"catalog": "mz"}],
         }
     )
 
     with pytest.raises(ApiError) as exc:
         await publish_metadata_export(_request())
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_a_target_naming_no_role_is_sent_nothing_and_says_why(surface, monkeypatch):
+    """REQ-2152 (Q1): a catalog is published as a role; a target naming none is refused by name
+    and the other targets still publish."""
+    from provisa.api.admin.metadata_export_router import publish_metadata_export
+    from provisa.api.metadata_export.model import MetadataSnapshot
+
+    import provisa.api.metadata_export.publishing as sync_mod
+
+    surface.stored.update({"enabled": True, "targets": [{"catalog": "mz"}]})
+    monkeypatch.setattr(
+        sync_mod,
+        "build_snapshot",
+        lambda config, **kwargs: MetadataSnapshot(org_id=ORG_ID),
+    )
+
+    async def _stub_model():
+        return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+
+    monkeypatch.setattr(sync_mod, "_model_for_export", _stub_model)
+    monkeypatch.setattr(sync_mod, "metadata_export", lambda config: pytest.fail("published"))
+    body = await publish_metadata_export(_request())
+    (target,) = body["targets"]
+    assert target["errors"] == [
+        {
+            "asset": "mz",
+            "message": "catalog 'mz' names no role to publish as: set the role whose reads it is sent",
+        }
+    ]
+
+
+# --- a target's role is within its saver's reads (REQ-2152, ruling Q8) ----------------------------
+
+
+def _narrowed(monkeypatch):
+    """A saver served orders.id alone; ``steward`` reads orders.id and orders.ssn, ``analyst``
+    orders.id."""
+    import provisa.api.app as appmod
+    from provisa.api.admin.catalog_scope import CatalogScope
+
+    scope = CatalogScope(
+        whole=False,
+        reach=None,
+        served={1: {"id"}},
+        governance=False,
+        role="saver",
+        compiled=frozenset({1}),
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+    reads = {"steward": {1: {"id", "ssn"}}, "analyst": {1: {"id"}}}
+    monkeypatch.setattr(
+        "provisa.api.flight.catalog.role_visibility", lambda state, role: reads.get(role, {})
+    )
+    monkeypatch.setattr(appmod.state, "roles", {"steward": {}, "analyst": {}}, raising=False)
+
+
+@pytest.mark.asyncio
+async def test_a_target_cannot_be_published_as_a_role_reading_more_than_its_saver(
+    surface, monkeypatch
+):
+    _narrowed(monkeypatch)
+    with pytest.raises(ApiError) as refused:
+        await _put({"enabled": True, "targets": [{"catalog": "mz", "role": "steward"}]})
+    assert (refused.value.status_code, refused.value.code) == (
+        403,
+        "metadata_export.role_beyond_reads",
+    )
+    assert "ssn" not in str(refused.value)
+    await _put({"enabled": True, "targets": [{"catalog": "mz", "role": "analyst"}]})
+    assert surface.written["metadata_export"]["targets"] == [{"catalog": "mz", "role": "analyst"}]
+
+
+@pytest.mark.asyncio
+async def test_the_role_picker_offers_only_roles_within_the_callers_reads(surface, monkeypatch):
+    from provisa.api.admin.metadata_export_router import get_metadata_export
+
+    _narrowed(monkeypatch)
+    surface.stored.update({"enabled": True, "targets": [{"catalog": "mz"}]})
+    assert (await get_metadata_export(_request()))["publishable_roles"] == ["analyst"]

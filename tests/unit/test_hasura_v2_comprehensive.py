@@ -1028,7 +1028,7 @@ class TestConvertMetadata:
         md = _build_full_metadata()
         config = convert_metadata(md)
         role_ids = {r.id for r in config.roles}
-        assert "analyst" in role_ids
+        assert "analyst" not in role_ids  # REQ-2155: the standard analyst stands for it
         assert "admin" in role_ids
         assert "customer" in role_ids
 
@@ -1042,8 +1042,8 @@ class TestConvertMetadata:
         md = _build_full_metadata()
         config = convert_metadata(md)
         superadmin = next(r for r in config.roles if r.id == "superadmin")
-        # Two roles inherited: written out as their union, not a single parent.
-        assert superadmin.parent_role_id is None
+        # Two roles inherited: written out as their union; it builds on viewer (REQ-2155).
+        assert superadmin.parents == ["viewer"]
 
     def test_admin_has_write_capability(self):
         md = _build_full_metadata()
@@ -1052,10 +1052,13 @@ class TestConvertMetadata:
         assert "write" in admin.capabilities
 
     def test_analyst_has_query_development_capability(self):
+        """REQ-2155: Hasura's analyst is the standard analyst, which queries."""
+        from provisa.core.db import STANDARD_ROLE_RIGHTS
+
         md = _build_full_metadata()
         config = convert_metadata(md)
-        analyst = next(r for r in config.roles if r.id == "analyst")
-        assert "query_development" in analyst.capabilities
+        assert "analyst" not in {r.id for r in config.roles}
+        assert "query_development" in STANDARD_ROLE_RIGHTS["analyst"]
 
     def test_rls_rules_generated_for_filtered_permissions(self):
         md = _build_full_metadata()
@@ -1704,7 +1707,7 @@ class TestCollectRoles:
             ],
         )
         roles = _collect_roles(md)
-        assert roles["superadmin"].parent_role_id == "admin"
+        assert roles["superadmin"].parents == ["admin"]
 
     def test_write_capability_added_for_insert_permissions(self):
         tbl = HasuraTable(

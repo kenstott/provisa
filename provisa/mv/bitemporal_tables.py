@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from provisa.compiler.stage2 import GovernanceContext
+    from provisa.mv.time_travel import Travel
 
 #: The version number a read ranks each key's versions by; never a column of the answer.
 _VERSION = "_provisa_version"
@@ -107,9 +108,15 @@ def version_read_sql(ref: str, table: VersionedTable, columns: list[str], as_of:
     return f"SELECT {cols} FROM ({ranked}) AS {_q('_provisa_ranked')} WHERE {_q(_VERSION)} = 1"
 
 
-def read_versions(sql: str, state: Any, gov: "GovernanceContext", as_of: str | None) -> str:
-    """``sql`` with every reference to a versioned table replaced by its read (one pass: the read
-    names the table itself, which stays the registered table governance judges)."""
+def read_versions(
+    sql: str, state: Any, gov: "GovernanceContext", travel: "Travel | str | None"
+) -> str:
+    """``sql`` with every reference to a bitemporal table replaced by its read at that
+    reference's time (``travel``: per alias, else the request's; REQ-1163), in one pass: the read
+    names the table itself, which stays the registered table governance judges."""
+    from provisa.mv.time_travel import as_travel  # noqa: PLC0415
+
+    travel = as_travel(travel)
     tables = versioned_tables(state)
     if not tables:
         return sql
@@ -132,7 +139,8 @@ def read_versions(sql: str, state: Any, gov: "GovernanceContext", as_of: str | N
         bare = node.copy()
         bare.set("alias", None)
         read = sqlglot.parse_one(
-            version_read_sql(bare.sql(dialect="postgres"), table, columns, as_of), read="postgres"
+            version_read_sql(bare.sql(dialect="postgres"), table, columns, travel.at(alias)),
+            read="postgres",
         )
         node.replace(exp.Subquery(this=read, alias=exp.TableAlias(this=exp.to_identifier(alias))))
     return tree.sql(dialect="postgres")
