@@ -39,7 +39,7 @@ import pyarrow as pa
 import pyarrow.flight as flight
 
 from provisa.auth import bearer
-from provisa.api.flight import flightsql, flightsql_catalog
+from provisa.api.flight import flightsql, flightsql_catalog, sessions
 from provisa.api.flight.compression import generator_stream, record_batch_stream
 from provisa.api.flight.catalog import (
     CatalogTable,
@@ -74,6 +74,7 @@ if TYPE_CHECKING:
     from provisa.api.app import AppState
     from provisa.api.rate_limit import RateLimiter
     from provisa.compiler.sql_gen import CompilationContext, CompiledQuery
+    from provisa.proto import Flight_pb2
     from provisa.transpiler.router import RouteDecision
 
 log = logging.getLogger(__name__)
@@ -251,6 +252,11 @@ def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServ
     return err
 
 
+class _NotFound(KeyError):
+    """A name the RPC was asked for that is not there: pyarrow answers a KeyError NOT_FOUND, which
+    pyarrow's Flight errors cannot (REQ-2175)."""
+
+
 def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     """A Flight RPC's failure that is not a Flight error is a defect: log it with its traceback,
     then let pyarrow answer the client as before. A Flight error is the RPC's answer (not found,
@@ -267,7 +273,7 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
         def _stream(*args: Any, **kwargs: Any) -> Any:
             try:
                 yield from rpc(*args, **kwargs)
-            except (flight.FlightError, NotImplementedError):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            except (flight.FlightError, NotImplementedError, _NotFound):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 raise
             except Exception as exc:
                 _log(exc)
@@ -279,7 +285,7 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     def _call(*args: Any, **kwargs: Any) -> Any:
         try:
             return rpc(*args, **kwargs)
-        except (flight.FlightError, NotImplementedError):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        except (flight.FlightError, NotImplementedError, _NotFound):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             raise
         except Exception as exc:
             _log(exc)
@@ -390,6 +396,8 @@ _FLIGHT_SQL_ACTIONS = frozenset(
 # Flight's session options action (Flight.proto), which a Flight SQL client reads its current
 # catalog and schema by (REQ-2175).
 _GET_SESSION_OPTIONS = "GetSessionOptions"
+_SET_SESSION_OPTIONS = "SetSessionOptions"
+_CLOSE_SESSION = "CloseSession"
 
 
 # The middleware key the call's headers are kept under.
@@ -397,21 +405,45 @@ _HEADERS = "headers"
 
 
 class _CallHeaders(flight.ServerMiddleware):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """The headers a call arrived with."""
+    """The headers a call arrived with, and the Flight session it is in (REQ-2175): the one its
+    cookie names, or for an action that names none a new session id, set as its cookie. pyarrow
+    sends a call's headers before its handler runs, so the id is chosen here; nothing is held
+    for it until the session sets an option (provisa.api.flight.sessions)."""
 
-    def __init__(self, headers: dict[str, list[str]]) -> None:
+    def __init__(self, headers: dict[str, list[str]], *, action: bool) -> None:
         self.headers = headers
+        self.session_id = _session_cookie(headers)
+        self._minted = self.session_id is None and action
+        if self._minted:
+            self.session_id = sessions.new_session_id()
+
+    def sending_headers(self) -> dict[str, str]:
+        if not self._minted:
+            return {}
+        return {"set-cookie": f"{sessions.COOKIE}={self.session_id}"}
 
 
 class _CallHeadersFactory(flight.ServerMiddlewareFactory):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    def start_call(self, info: flight.CallInfo, headers: dict[str, list[str]]) -> _CallHeaders:  # noqa: ARG002  # required by the override signature
-        return _CallHeaders(headers)
+    def start_call(self, info: flight.CallInfo, headers: dict[str, list[str]]) -> _CallHeaders:
+        return _CallHeaders(headers, action=info.method == flight.FlightMethod.DO_ACTION)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
 
 def _header(headers: dict[str, list[str]], name: str) -> str | None:
     """The first value of call header ``name`` (gRPC lowercases header names), if it was sent."""
     values = headers.get(name)
     return values[0] if values else None
+
+
+def _session_cookie(headers: dict[str, list[str]]) -> str | None:
+    """The Flight session the call's cookie names, if it names one (REQ-2175)."""
+    from http.cookies import SimpleCookie
+
+    for raw in headers.get("cookie", []):
+        jar = SimpleCookie()
+        jar.load(raw)
+        if sessions.COOKIE in jar:
+            return jar[sessions.COOKIE].value
+    return None
 
 
 def _bearer(headers: dict[str, list[str]]) -> str | None:
@@ -439,6 +471,7 @@ class ProvisaFlightServer(
         # get_schema): their credential and requested role arrive there (_catalog_role).
         super().__init__(location, middleware={_HEADERS: _CallHeadersFactory()}, **kwargs)  # type: ignore[arg-type]
         self._state = state
+        self._sessions = sessions.SessionStore()  # REQ-2175: Flight SQL sessions, this worker's
 
     # ------------------------------------------------------------------
     # Per-org routing (REQ-1266)
@@ -977,26 +1010,86 @@ class ProvisaFlightServer(
             return []
         raise NotImplementedError(f"Flight SQL action {action.type}")
 
-    def _session_options(
+    def _session_action(
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> list[flight.Result]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """GetSessionOptions (REQ-2175): the caller's current catalog and schema, as pgwire
-        answers current_database() and current_schema()."""
-        from provisa.pgwire.catalog import CURRENT_SCHEMA
-        from provisa.pgwire.catalog_populate import served_database_name
+        """Flight's session actions (REQ-2175), as the caller the call's headers name, on the
+        session its cookie names (provisa.api.flight.sessions): GetSessionOptions answers the
+        session's current catalog and schema -- as pgwire answers current_database() and
+        current_schema() until the session sets them -- SetSessionOptions sets them, and
+        CloseSession ends the session."""
+        from provisa.audit.context import current_audit_identity
+        from provisa.core.request_context import current_org
         from provisa.proto import Flight_pb2
 
-        Flight_pb2.GetSessionOptionsRequest.FromString(
-            action.body.to_pybytes() if action.body else b""
-        )
+        body = action.body.to_pybytes() if action.body else b""
+        middleware = context.get_middleware(_HEADERS)
+        session_id = middleware.session_id if middleware is not None else None
         request = self._caller_headers(context)
 
-        def _options() -> bytes:
-            return flightsql.session_options(served_database_name(self._state), CURRENT_SCHEMA)
+        def _act() -> bytes:
+            identity = current_audit_identity()
+            owner = (identity.user_id if identity is not None else None, current_org.get())
+            try:
+                if action.type == _GET_SESSION_OPTIONS:
+                    Flight_pb2.GetSessionOptionsRequest.FromString(body)
+                    held = self._sessions.options(session_id, owner)
+                    return flightsql.session_options({**self._session_defaults(), **(held or {})})
+                if action.type == _SET_SESSION_OPTIONS:
+                    asked = Flight_pb2.SetSessionOptionsRequest.FromString(body).session_options
+                    chosen, refused = self._chosen_options(request, asked)
+                    if chosen:
+                        if session_id is None:
+                            raise _flight_error("a session option is set in a session")
+                        self._sessions.update(session_id, owner, chosen)
+                    return flightsql.session_options_set(refused)
+                Flight_pb2.CloseSessionRequest.FromString(body)
+                if not self._sessions.close(session_id, owner):
+                    raise _NotFound("no session to close")
+                return flightsql.session_closed()
+            except sessions.ForeignSession as exc:
+                raise flight.FlightUnauthorizedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        return [flight.Result(_run_rpc(lambda: self._as_ticket_caller(request, _options)))]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return [flight.Result(_run_rpc(lambda: self._as_ticket_caller(request, _act)))]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+    def _session_defaults(self) -> dict[str, str]:
+        """A session's options until it sets them: as pgwire answers current_database() and
+        current_schema()."""
+        from provisa.pgwire.catalog import CURRENT_SCHEMA
+        from provisa.pgwire.catalog_populate import served_database_name
+
+        return {"catalog": served_database_name(self._state), "schema": CURRENT_SCHEMA}
+
+    def _chosen_options(
+        self, request: dict[str, object], asked: Any
+    ) -> tuple[dict[str, str], dict[str, "Flight_pb2.SetSessionOptionsResult.ErrorValue"]]:
+        """The options of a SetSessionOptions the session takes, and the rest refused by name: an
+        option Provisa does not have (INVALID_NAME), or a value that is not a name
+        (INVALID_VALUE). A catalog or schema the caller is not served is not found."""
+        from provisa.proto import Flight_pb2
+
+        errors = Flight_pb2.SetSessionOptionsResult
+        chosen: dict[str, str] = {}
+        refused: dict[str, Flight_pb2.SetSessionOptionsResult.ErrorValue] = {}
+        for name, value in asked.items():
+            if name not in flightsql.SESSION_OPTIONS:
+                refused[name] = errors.INVALID_NAME
+            elif value.WhichOneof("option_value") != "string_value":
+                refused[name] = errors.INVALID_VALUE
+            else:
+                chosen[name] = value.string_value
+        if "catalog" in chosen and chosen["catalog"] != self._session_defaults()["catalog"]:
+            raise _NotFound(f"no catalog {chosen['catalog']!r}: the connection is served one")
+        if "schema" in chosen:
+            if not request.get("role"):
+                raise _flight_error("role is required")
+            catalog = flightsql_catalog.role_catalog(self._state, str(request["role"]))
+            served = {t.schema for t in catalog.tables} | {self._session_defaults()["schema"]}
+            if chosen["schema"] not in served:
+                raise _NotFound(f"no schema {chosen['schema']!r} the role is served")
+        return chosen, refused
 
     # ------------------------------------------------------------------
     # get_schema — Arrow schema for a catalog table
@@ -1284,8 +1377,8 @@ class ProvisaFlightServer(
         :meth:`_session_options`'s."""
         if action.type in _FLIGHT_SQL_ACTIONS:
             return self._flightsql_action(context, action)
-        if action.type == _GET_SESSION_OPTIONS:
-            return self._session_options(context, action)
+        if action.type in (_GET_SESSION_OPTIONS, _SET_SESSION_OPTIONS, _CLOSE_SESSION):
+            return self._session_action(context, action)
         if action.type == _HEALTHCHECK_ACTION:
             from provisa.api.health_report import health_report
 

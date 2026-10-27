@@ -282,17 +282,34 @@ def prepared_info(
     return flight.FlightInfo(None, descriptor, [endpoint], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
 
-def session_options(catalog: str, schema: str) -> bytes:
-    """GetSessionOptions' answer: the session's current ``catalog`` and ``schema``, under the
-    option names the ADBC Flight SQL driver reads them by."""
+#: The session options Provisa has: the session's current catalog and schema, under the names
+#: the ADBC Flight SQL driver reads and sets them by.
+SESSION_OPTIONS = ("catalog", "schema")
+
+
+def session_options(options: dict[str, str]) -> bytes:
+    """GetSessionOptions' answer: the session's ``options``, each a string."""
     value = flight_pb.SessionOptionValue
     result = flight_pb.GetSessionOptionsResult(
-        session_options={
-            "catalog": value(string_value=catalog),
-            "schema": value(string_value=schema),
-        }
+        session_options={name: value(string_value=v) for name, v in options.items()}
     )
     return result.SerializeToString()
+
+
+def session_options_set(refused: dict[str, flight_pb.SetSessionOptionsResult.ErrorValue]) -> bytes:
+    """SetSessionOptions' answer: each option refused, by name, with why (an ErrorValue)."""
+    error = flight_pb.SetSessionOptionsResult.Error
+    result = flight_pb.SetSessionOptionsResult(
+        errors={name: error(value=why) for name, why in refused.items()}
+    )
+    return result.SerializeToString()
+
+
+def session_closed() -> bytes:
+    """CloseSession's answer: the session is closed."""
+    return flight_pb.CloseSessionResult(
+        status=flight_pb.CloseSessionResult.CLOSED
+    ).SerializeToString()
 
 
 #: The one transaction id Provisa answers BeginTransaction with: a transaction holds nothing
