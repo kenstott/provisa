@@ -93,7 +93,7 @@
       "no_grpc_query_for_table": "Aucune requête gRPC enregistrée pour la table « {{table}} »",
       "no_mutation_fields": "Aucun champ de mutation trouvé",
       "no_proto_for_role": "Le rôle '{{role_id}}' n'a pas de proto : aucune surface de données ne lui est fournie, car il n'atteint aucun domaine ou ne détient que des droits du plan de contrôle",
-      "role_served_nothing": "Le rôle '{{role_id}}' ne reçoit aucune table : aucune colonne d'aucune table ne lui est accordée",
+      "role_served_nothing": "Aucune table n'est servie au rôle '{{role_id}}' : aucune colonne d'aucune table ne lui est accordée",
       "no_query_field_for_proto_type": "Aucun champ de requête pour le type proto « {{type_name}} » sous le rôle « {{role_id}} »",
       "no_query_fields": "Aucun champ de requête trouvé",
       "no_role": "Aucun rôle « {{role_id}} »",
@@ -467,7 +467,7 @@
       "relationship_same_entity_cardinality": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : elle est {{cardinality}}, et la même entité est une ligne à une ligne",
       "relationship_same_entity_not_grounded": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : {{source}} et {{target}} ne sont pas ancrées dans le même terme",
       "relationship_same_entity_not_keys": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : {{columns}} n’est ni la clé primaire ni une clé unique de {{table}}",
-      "kaggle_token_missing": "Jeu de données Kaggle {{owner}}/{{ref}} : la source ne contient aucun jeton d'API Kaggle. Ajoutez-le dans le formulaire Sources de données, où son jeton est saisi."
+      "kaggle_token_missing": "Jeu de données Kaggle {{owner}}/{{ref}} : la source ne détient aucun jeton d'API Kaggle. Ajoutez-le dans le formulaire Sources, où son jeton est saisi."
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",
@@ -564,7 +564,7 @@
       "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
       "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}.",
       "non_finite_number": "La réponse contient un nombre que JSON ne peut pas représenter : {{column}} vaut {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur."
+      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui risque de ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur."
     },
     "requests": {
       "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",
@@ -578,7 +578,7 @@
     "statement": {
       "rows_cut": "La réponse a été coupée à {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}) : plus de lignes correspondent que celles renvoyées.",
       "rows_cut_unchecked": "La réponse compte {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}). Impossible de vérifier si d'autres lignes correspondent : {{reason}}",
-      "list_at_ceiling": "Une liste contient le maximum de {{limit}} entrées que permet la limite de lignes pour cette lecture ({{kind}}) ; il peut y en avoir davantage.",
+      "list_at_ceiling": "Une liste contient le maximum de {{limit}} entrées que la limite de lignes autorise pour cette lecture ({{kind}}) ; il peut y en avoir davantage.",
       "approximate_index": "Les lignes les plus similaires ont été trouvées au moyen d'un index vectoriel approximatif : une ligne légèrement plus similaire que la dernière renvoyée peut manquer.",
       "path_cut": "Un chemin sans borne supérieure a été coupé à la limite de profondeur du graphe de {{limit}} sauts : les chemins plus longs manquent dans la réponse."
     },
@@ -703,29 +703,29 @@
     "data_product": {
       "status": {
         "published": "Produit de données {{data_product}} publié.",
-        "deprecated": "Produit de données {{data_product}} déclaré obsolète.",
+        "deprecated": "Produit de données {{data_product}} rendu obsolète.",
         "retired": "Produit de données {{data_product}} retiré.",
         "restored": "Produit de données {{data_product}} restauré.",
-        "reason_required": "Un motif est requis : indiquez pourquoi le produit de données est déclaré obsolète ou retiré.",
+        "reason_required": "Un motif est requis : indiquez pourquoi le produit de données est rendu obsolète ou retiré.",
         "not_found": "Produit de données {{data_product}} introuvable.",
-        "not_draft": "Seul un produit de données à l'état de brouillon peut être publié ; celui-ci est {{status}}.",
-        "not_live": "Seul un produit de données actif peut être déclaré obsolète, et seul un produit actif ou obsolète peut être retiré ; celui-ci est {{status}}.",
+        "not_draft": "Seul un produit de données en brouillon peut être publié ; celui-ci est {{status}}.",
+        "not_live": "Seul un produit de données en service peut être rendu obsolète, et seul un produit en service ou obsolète peut être retiré ; celui-ci est {{status}}.",
         "not_restorable": "Seul un produit de données obsolète ou retiré peut être restauré ; celui-ci est {{status}}.",
         "retire_on_past": "La date de retrait prévue {{retire_on}} est passée. Choisissez aujourd'hui ou une date ultérieure.",
         "successor_required": "Ce produit de données a {{members}} membre(s) ; le retirer les transfère à un successeur. Choisissez-en un.",
         "successor_is_self": "Un produit de données ne peut pas être son propre successeur.",
-        "successor_retired": "Le successeur « {{successor}} » est retiré. Choisissez un produit de données en service.",
-        "successor_other_domain": "Le successeur « {{successor}} » est dans le domaine {{domain}}. Les membres d'un produit partagent son domaine : choisissez un successeur du même domaine."
+        "successor_retired": "Le successeur '{{successor}}' est retiré. Choisissez un produit de données en service.",
+        "successor_other_domain": "Le successeur '{{successor}}' appartient au domaine {{domain}}. Les membres d'un produit partagent son domaine : choisissez un successeur du même domaine."
       },
       "finding": {
         "no_members": "Aucune table, vue ni commande n'appartient à ce produit de données.",
         "member_deprecated": "La table membre {{table}} est obsolète.",
-        "no_owner": "Aucun rôle propriétaire n'est responsable de ce produit de données.",
-        "no_support_contact": "Ce produit de données n'a pas de contact de support, qu'exige une cible d'export configurée.",
-        "retirement_blocked": "Ce produit de données devait être retiré le {{retire_on}}, mais il a encore des membres. Retirez-le avec un successeur qui les reprend.",
+        "no_owner": "Aucun rôle propriétaire ne répond de ce produit de données.",
+        "no_support_contact": "Ce produit de données n'a pas de contact support, qu'une cible d'export configurée exige.",
+        "retirement_blocked": "Ce produit de données devait être retiré le {{retire_on}} mais a encore des membres. Retirez-le avec un successeur qui les reprend.",
         "domain_steward_unset": "Le domaine {{domain}} n'a pas d'intendant.",
-        "no_description": "Ce produit de données n'indique ni son objectif ni son usage.",
-        "successor_retired": "Le produit de données qui a repris les membres de celui-ci, « {{successor}} », a lui aussi été retiré."
+        "no_description": "Ce produit de données n'indique ni sa finalité ni son usage.",
+        "successor_retired": "Le produit de données qui a repris les membres de celui-ci, '{{successor}}', a lui aussi été retiré."
       }
     }
   }

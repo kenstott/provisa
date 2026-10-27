@@ -73,8 +73,8 @@
     },
     "engine": {
       "duckdb_memory_limit": {
-        "label": "Limite de mémoire du moteur DuckDB",
-        "help": "La mémoire maximale que peut utiliser tout moteur DuckDB de ce déploiement. Au-delà, une requête déborde sur le disque ou est refusée. Non définie : la limite propre de DuckDB, la majeure partie de la mémoire de l'hôte."
+        "label": "Limite mémoire du moteur DuckDB",
+        "help": "La mémoire maximale que tout moteur DuckDB de ce déploiement peut utiliser. Au-delà, une requête déborde sur disque ou est refusée. Non défini : la limite propre de DuckDB, l'essentiel de la mémoire de l'hôte."
       },
       "ready_timeout": {
         "label": "Délai de disponibilité du moteur",
@@ -890,15 +890,15 @@
     "codesource": {
       "duckdb_memory_mb": {
         "label": "Mémoire DuckDB de la source de code",
-        "help": "La mémoire dans laquelle la DuckDB d'une source de code répond à une instruction. Au-delà, l'instruction déborde sur le disque."
+        "help": "La mémoire dans laquelle le DuckDB d'une source de code répond à une instruction. Au-delà, l'instruction déborde sur disque."
       },
       "duckdb_spill_cap_mb": {
         "label": "Plafond de débordement DuckDB de la source de code",
-        "help": "Le maximum que la DuckDB d'une source de code déborde sur le disque. Une instruction qui en demande plus est refusée, en nommant ce paramètre. Une image construite ne l'applique que si son volume de débordement est dimensionné à ce plafond par le quota de la plateforme. Une source de code en mode développement déborde dans le répertoire de données sans limite."
+        "help": "Le maximum que le DuckDB d'une source de code déborde sur disque. Une instruction qui en demande plus est refusée, en nommant ce paramètre. Une image construite ne l'applique que si son volume de débordement est dimensionné à ce plafond avec le quota de la plateforme. Une source de code en mode développement déborde dans le répertoire de données sans limite."
       },
       "duckdb_threads": {
         "label": "Threads DuckDB de la source de code",
-        "help": "Les threads sur lesquels la DuckDB d'une source de code répond à ses instructions."
+        "help": "Les threads sur lesquels le DuckDB d'une source de code répond à ses instructions."
       }
     }
   }

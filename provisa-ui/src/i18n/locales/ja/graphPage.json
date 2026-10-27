@@ -1,7 +1,7 @@
 {
   "graphPage": {
     "emptyStateHint": "Cypherクエリを実行してグラフを探索してください",
-    "emptyStateHintSparql": "SPARQLクエリを実行してグラフを探索してください",
+    "emptyStateHintSparql": "SPARQL クエリを実行してグラフを探索します",
     "emptyStateShortcut": "⌘↵ で実行"
   }
 }

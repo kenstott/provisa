@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Kaggle API टोकन",
-    "tokenDescription": "Kaggle के साथ लाइव जाँचा जाता है। डेटा स्रोत के क्रेडेंशियल के रूप में रखा जाता है और हर रीफ़्रेश पर फिर से उपयोग होता है।",
+    "tokenDescription": "Kaggle के साथ लाइव जाँचा गया। स्रोत के क्रेडेंशियल के रूप में रखा जाता है और हर रिफ़्रेश पर फिर से उपयोग होता है।",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "टोकन सत्यापित करें",
     "tokenValid": "टोकन मान्य है",

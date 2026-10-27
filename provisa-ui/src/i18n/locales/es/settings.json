@@ -74,7 +74,7 @@
     "engine": {
       "duckdb_memory_limit": {
         "label": "Límite de memoria del motor DuckDB",
-        "help": "La memoria máxima que puede usar cualquier motor DuckDB de esta implementación. Por encima de ella, una consulta se vuelca a disco o se rechaza. Sin definir: el límite propio de DuckDB, la mayor parte de la memoria del host."
+        "help": "La memoria máxima que puede usar cualquier motor DuckDB de esta implantación. Por encima, una consulta se vuelca a disco o se rechaza. Sin definir: el límite propio de DuckDB, la mayor parte de la memoria del host."
       },
       "ready_timeout": {
         "label": "Tiempo de espera de disponibilidad del motor",
@@ -889,16 +889,16 @@
     },
     "codesource": {
       "duckdb_memory_mb": {
-        "label": "Memoria de DuckDB de la fuente de código",
-        "help": "La memoria en la que la DuckDB de una fuente de código responde una sentencia. Por encima de ella, la sentencia se vuelca a disco."
+        "label": "Memoria DuckDB de la fuente de código",
+        "help": "La memoria con la que el DuckDB de una fuente de código responde a una sentencia. Por encima, la sentencia se vuelca a disco."
       },
       "duckdb_spill_cap_mb": {
-        "label": "Límite de volcado de DuckDB de la fuente de código",
-        "help": "Lo máximo que la DuckDB de una fuente de código vuelca a disco. Una sentencia que necesita más se rechaza, nombrando este ajuste. Una imagen compilada lo aplica solo cuando su volumen de volcado tiene este tamaño mediante la cuota de la plataforma. Una fuente de código en modo de desarrollo vuelca en el directorio de datos sin límite."
+        "label": "Tope de volcado DuckDB de la fuente de código",
+        "help": "Lo máximo que el DuckDB de una fuente de código vuelca a disco. Una sentencia que necesite más se rechaza, citando este ajuste. Una imagen compilada solo lo aplica cuando su volumen de volcado está dimensionado a este tope con la cuota de la plataforma. Una fuente de código en modo de desarrollo vuelca en el directorio de datos sin límite."
       },
       "duckdb_threads": {
-        "label": "Hilos de DuckDB de la fuente de código",
-        "help": "Los hilos en los que la DuckDB de una fuente de código responde sus sentencias."
+        "label": "Hilos DuckDB de la fuente de código",
+        "help": "Los hilos con los que el DuckDB de una fuente de código responde a sus sentencias."
       }
     }
   }

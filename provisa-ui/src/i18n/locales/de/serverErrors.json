@@ -93,7 +93,7 @@
       "no_grpc_query_for_table": "Keine gRPC-Abfrage für Tabelle '{{table}}' registriert",
       "no_mutation_fields": "Keine Mutationsfelder gefunden",
       "no_proto_for_role": "Rolle '{{role_id}}' hat keine Proto-Datei: Sie erhält keine Datenoberfläche, weil sie keine Domäne erreicht oder nur Rechte der Steuerungsebene besitzt",
-      "role_served_nothing": "Der Rolle '{{role_id}}' werden keine Tabellen bereitgestellt: Ihr ist keine Spalte einer Tabelle gewährt",
+      "role_served_nothing": "Rolle '{{role_id}}' werden keine Tabellen bereitgestellt: Ihr ist keine Spalte irgendeiner Tabelle gewährt",
       "no_query_field_for_proto_type": "Kein Abfragefeld für Proto-Typ '{{type_name}}' unter Rolle '{{role_id}}'",
       "no_query_fields": "Keine Abfragefelder gefunden",
       "no_role": "Keine Rolle '{{role_id}}'",
@@ -467,7 +467,7 @@
       "relationship_same_entity_cardinality": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: Sie ist {{cardinality}}, und dieselbe Entität ist eine Zeile zu einer Zeile",
       "relationship_same_entity_not_grounded": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{source}} und {{target}} sind nicht im selben Begriff verankert",
       "relationship_same_entity_not_keys": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{columns}} ist weder der Primärschlüssel noch ein eindeutiger Schlüssel von {{table}}",
-      "kaggle_token_missing": "Kaggle-Dataset {{owner}}/{{ref}}: Die Datenquelle enthält keinen Kaggle-API-Token. Fügen Sie ihn im Formular unter „Datenquellen“ hinzu, wo der Token eingegeben wird."
+      "kaggle_token_missing": "Kaggle-Datensatz {{owner}}/{{ref}}: Die Quelle hat kein Kaggle-API-Token. Im Quellenformular hinzufügen, wo das Token eingegeben wird."
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",
@@ -550,7 +550,7 @@
       "invalid_regex": "Das Muster \"{{pattern}}\" in {{expression}} ist kein gültiger regulärer Ausdruck: {{reason}}. =~ erwartet einen regulären Ausdruck, z. B. \".*{{word}}.*\", oder verwenden Sie CONTAINS \"{{word}}\".",
       "unknown_label": "Es gibt kein Label :{{label}}. Registrierte Labels: {{suggestions}}.",
       "no_labels": "Es gibt kein Label :{{label}}: Diese Rolle kann keine Tabelle lesen.",
-      "unknown_relationship_type": "Es gibt keinen Beziehungstyp {{types}}. Nächstliegende registrierte Typen: {{suggestions}}.",
+      "unknown_relationship_type": "Es gibt keinen Beziehungstyp {{types}}. Nächstgelegene registrierte Typen: {{suggestions}}.",
       "no_relationship_types": "Es gibt keinen Beziehungstyp {{types}}: Diese Rolle kann keine Beziehung durchlaufen.",
       "type_mismatch": "In {{expression}} kann {{value}} nicht mit {{property}} (Typ {{property_type}}) verglichen werden. {{fix}}",
       "aggregate_in_where": "WHERE kann das Aggregat {{aggregate}} nicht verwenden: WHERE filtert Zeilen, bevor sie gruppiert werden. Aggregieren Sie in einem WITH und filtern Sie danach.",
@@ -564,7 +564,7 @@
       "undefined_variable_property": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestion}}? {{owner}} ist an :{{label}} gebunden, das eine Eigenschaft {{variable}} hat.",
       "undefined_variable_properties": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestions}}? Jede ist an ein Label mit einer Eigenschaft {{variable}} gebunden.",
       "non_finite_number": "Die Antwort enthält eine Zahl, die JSON nicht darstellen kann: {{column}} ist {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean eines Werts, der sich womöglich nicht umwandeln lässt, benötigen auf dieser Engine PostgreSQL 16 oder neuer."
+      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean auf einen Wert, der sich eventuell nicht umwandeln lässt, erfordern auf dieser Engine PostgreSQL 16 oder neuer."
     },
     "requests": {
       "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",
@@ -578,7 +578,7 @@
     "statement": {
       "rows_cut": "Die Antwort wurde bei {{limit}} Zeilen abgeschnitten, dem für diese Abfrage geltenden Zeilenlimit ({{kind}}): Es passen mehr Zeilen, als zurückgegeben wurden.",
       "rows_cut_unchecked": "Die Antwort hat {{limit}} Zeilen, das für diese Abfrage geltende Zeilenlimit ({{kind}}). Ob mehr Zeilen passen, konnte nicht geprüft werden: {{reason}}",
-      "list_at_ceiling": "Eine Liste enthält das Maximum von {{limit}} Einträgen, das das Zeilenlimit für diese Abfrage erlaubt ({{kind}}); es kann mehr geben.",
+      "list_at_ceiling": "Eine Liste enthält das Maximum von {{limit}} Einträgen, das das Zeilenlimit für diesen Lesevorgang erlaubt ({{kind}}); es kann mehr geben.",
       "approximate_index": "Die ähnlichsten Zeilen wurden über einen näherungsweisen Vektorindex gefunden: Eine Zeile, die etwas ähnlicher ist als die zuletzt zurückgegebene, kann fehlen.",
       "path_cut": "Ein Pfad ohne Obergrenze wurde an der Graph-Tiefengrenze von {{limit}} Hops abgeschnitten: Längere Pfade fehlen in der Antwort."
     },
@@ -704,28 +704,28 @@
       "status": {
         "published": "Datenprodukt {{data_product}} veröffentlicht.",
         "deprecated": "Datenprodukt {{data_product}} als veraltet markiert.",
-        "retired": "Datenprodukt {{data_product}} ausgemustert.",
+        "retired": "Datenprodukt {{data_product}} außer Betrieb genommen.",
         "restored": "Datenprodukt {{data_product}} wiederhergestellt.",
-        "reason_required": "Ein Grund ist erforderlich: Geben Sie an, warum das Datenprodukt als veraltet markiert oder ausgemustert wird.",
+        "reason_required": "Ein Grund ist erforderlich: Angeben, warum das Datenprodukt veraltet ist oder außer Betrieb genommen wird.",
         "not_found": "Datenprodukt {{data_product}} nicht gefunden.",
         "not_draft": "Nur ein Datenprodukt im Entwurf kann veröffentlicht werden; dieses ist {{status}}.",
-        "not_live": "Nur ein aktives Datenprodukt kann als veraltet markiert werden, und nur ein aktives oder veraltetes ausgemustert; dieses ist {{status}}.",
-        "not_restorable": "Nur ein veraltetes oder ausgemustertes Datenprodukt kann wiederhergestellt werden; dieses ist {{status}}.",
-        "retire_on_past": "Das geplante Ausmusterungsdatum {{retire_on}} liegt in der Vergangenheit. Wählen Sie heute oder ein späteres Datum.",
-        "successor_required": "Dieses Datenprodukt hat {{members}} Mitglied(er); beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
+        "not_live": "Nur ein Live-Datenprodukt kann als veraltet markiert werden, und nur ein live oder veraltetes außer Betrieb genommen werden; dieses ist {{status}}.",
+        "not_restorable": "Nur ein veraltetes oder außer Betrieb genommenes Datenprodukt kann wiederhergestellt werden; dieses ist {{status}}.",
+        "retire_on_past": "Das geplante Datum der Außerbetriebnahme {{retire_on}} liegt in der Vergangenheit. Heute oder ein späteres Datum wählen.",
+        "successor_required": "Dieses Datenprodukt hat {{members}} Mitglied(er); die Außerbetriebnahme überträgt sie an einen Nachfolger. Einen wählen.",
         "successor_is_self": "Ein Datenprodukt kann nicht sein eigener Nachfolger sein.",
-        "successor_retired": "Der Nachfolger '{{successor}}' ist ausgemustert. Wählen Sie ein Datenprodukt, das in Gebrauch ist.",
-        "successor_other_domain": "Der Nachfolger '{{successor}}' liegt in der Domäne {{domain}}. Die Mitglieder eines Produkts teilen seine Domäne; wählen Sie also einen Nachfolger in derselben Domäne."
+        "successor_retired": "Der Nachfolger '{{successor}}' ist außer Betrieb. Ein Datenprodukt wählen, das in Betrieb ist.",
+        "successor_other_domain": "Der Nachfolger '{{successor}}' liegt in Domäne {{domain}}. Die Mitglieder eines Produkts teilen seine Domäne, daher einen Nachfolger in derselben Domäne wählen."
       },
       "finding": {
-        "no_members": "Zu diesem Datenprodukt gehört keine Tabelle, keine Sicht und kein Befehl.",
-        "member_deprecated": "Die Mitgliedstabelle {{table}} ist veraltet.",
+        "no_members": "Keine Tabelle, Sicht und kein Befehl gehört zu diesem Datenprodukt.",
+        "member_deprecated": "Mitgliedstabelle {{table}} ist veraltet.",
         "no_owner": "Keine Eigentümerrolle ist für dieses Datenprodukt verantwortlich.",
         "no_support_contact": "Dieses Datenprodukt hat keinen Support-Kontakt, den ein konfiguriertes Exportziel verlangt.",
-        "retirement_blocked": "Dieses Datenprodukt sollte am {{retire_on}} ausgemustert werden, hat aber noch Mitglieder. Mustern Sie es mit einem Nachfolger aus, der sie übernimmt.",
-        "domain_steward_unset": "Die Domäne {{domain}} hat keinen Steward.",
+        "retirement_blocked": "Dieses Datenprodukt sollte am {{retire_on}} außer Betrieb gehen, hat aber noch Mitglieder. Mit einem Nachfolger, der sie übernimmt, außer Betrieb nehmen.",
+        "domain_steward_unset": "Domäne {{domain}} hat keinen Steward.",
         "no_description": "Dieses Datenprodukt nennt weder seinen Zweck noch seine Verwendung.",
-        "successor_retired": "Das Datenprodukt, das die Mitglieder dieses Produkts übernommen hat, '{{successor}}', ist ebenfalls ausgemustert."
+        "successor_retired": "Das Datenprodukt, das die Mitglieder dieses Produkts übernommen hat, '{{successor}}', ist ebenfalls außer Betrieb."
       }
     }
   }

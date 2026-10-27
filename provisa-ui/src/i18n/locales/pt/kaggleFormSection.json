@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Token de API do Kaggle",
-    "tokenDescription": "Verificado em tempo real com o Kaggle. Mantido como credencial da fonte de dados e usado de novo a cada atualização.",
+    "tokenDescription": "Verificado ao vivo com o Kaggle. Guardado como credencial da fonte e usado de novo a cada atualização.",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "Validar token",
     "tokenValid": "Token válido",

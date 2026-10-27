@@ -74,7 +74,7 @@
     "engine": {
       "duckdb_memory_limit": {
         "label": "Limite di memoria del motore DuckDB",
-        "help": "La memoria massima che qualsiasi motore DuckDB di questo deployment può usare. Oltre, una query viene riversata su disco o rifiutata. Non impostato: il limite proprio di DuckDB, la maggior parte della memoria dell'host."
+        "help": "La memoria massima che qualsiasi motore DuckDB di questa installazione può usare. Oltre, una query viene riversata su disco o rifiutata. Non impostato: il limite proprio di DuckDB, gran parte della memoria dell'host."
       },
       "ready_timeout": {
         "label": "Timeout di disponibilità del motore",
@@ -890,15 +890,15 @@
     "codesource": {
       "duckdb_memory_mb": {
         "label": "Memoria DuckDB della sorgente di codice",
-        "help": "La memoria in cui la DuckDB di una sorgente di codice risponde a un'istruzione. Oltre, l'istruzione si riversa su disco."
+        "help": "La memoria in cui il DuckDB di una sorgente di codice risponde a un'istruzione. Oltre, l'istruzione viene riversata su disco."
       },
       "duckdb_spill_cap_mb": {
         "label": "Limite di riversamento DuckDB della sorgente di codice",
-        "help": "Il massimo che la DuckDB di una sorgente di codice riversa su disco. Un'istruzione che ne richiede di più viene rifiutata, indicando questa impostazione. Un'immagine compilata lo applica solo se il suo volume di riversamento è dimensionato a questo limite con la quota della piattaforma. Una sorgente di codice in modalità sviluppo riversa nella directory dei dati senza limite."
+        "help": "Il massimo che il DuckDB di una sorgente di codice riversa su disco. Un'istruzione che ne richiede di più viene rifiutata, citando questa impostazione. Un'immagine compilata lo applica solo quando il suo volume di riversamento è dimensionato su questo limite con la quota della piattaforma. Una sorgente di codice in modalità sviluppo riversa nella directory dei dati senza limite."
       },
       "duckdb_threads": {
         "label": "Thread DuckDB della sorgente di codice",
-        "help": "I thread su cui la DuckDB di una sorgente di codice risponde alle sue istruzioni."
+        "help": "I thread su cui il DuckDB di una sorgente di codice risponde alle sue istruzioni."
       }
     }
   }

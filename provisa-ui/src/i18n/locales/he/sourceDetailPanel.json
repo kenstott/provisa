@@ -9,7 +9,7 @@
     "deleteTitleShort": "מחיקה",
     "deleteConsequence": "פעולה זו תסיר את מקור הנתונים \"{{id}}\" ועלולה לשבור טבלאות המפנות אליו.",
     "refreshKaggleTitle": "רענון מ-Kaggle",
-    "refreshKaggleHint": "הורדה מחדש של {{owner}}/{{ref}} מ-Kaggle עם האסימון של מקור הנתונים עצמו, תוך דריסת הקבצים שהוכנו במקומם.",
+    "refreshKaggleHint": "הורדה מחדש של {{owner}}/{{ref}} מ-Kaggle עם הטוקן של המקור עצמו, תוך דריסת הקבצים שהוכנו במקומם.",
     "refreshKaggleSubmit": "רענון",
     "runProfilerTitle": "הרצה עכשיו לכל טבלה חברה",
     "profilerNoMembers": "אף טבלה לא הצטרפה לפרופיילר זה.",

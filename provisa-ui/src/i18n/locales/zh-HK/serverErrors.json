@@ -93,7 +93,7 @@
       "no_grpc_query_for_table": "資料表「{{table}}」沒有已註冊的 gRPC 查詢",
       "no_mutation_fields": "找不到變更欄位",
       "no_proto_for_role": "角色「{{role_id}}」沒有 proto：它沒有資料介面，因為它未涵蓋任何網域，或只擁有控制平面權限",
-      "role_served_nothing": "角色 '{{role_id}}' 未獲提供任何表：未授予其任何表的任何欄",
+      "role_served_nothing": "角色「{{role_id}}」未獲提供任何表:未授予它任何表的任何欄位",
       "no_query_field_for_proto_type": "角色「{{role_id}}」下的 proto 類型「{{type_name}}」沒有查詢欄位",
       "no_query_fields": "找不到查詢欄位",
       "no_role": "沒有角色「{{role_id}}」",
@@ -467,7 +467,7 @@
       "relationship_same_entity_cardinality": "關係 '{{relationship}}' 不能標記為同一實體：它是 {{cardinality}}，而同一實體是一行對一行",
       "relationship_same_entity_not_grounded": "關係 '{{relationship}}' 不能標記為同一實體：{{source}} 和 {{target}} 未關聯到同一術語",
       "relationship_same_entity_not_keys": "關係 '{{relationship}}' 不能標記為同一實體：{{columns}} 不是 {{table}} 的主鍵或唯一鍵",
-      "kaggle_token_missing": "Kaggle 數據集 {{owner}}/{{ref}}：數據來源沒有 Kaggle API 權杖。請在數據來源表單中加入，權杖在那裡輸入。"
+      "kaggle_token_missing": "Kaggle 數據集 {{owner}}/{{ref}}:數據源沒有 Kaggle API 權杖。請在輸入權杖的數據源表單中加入。"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
@@ -550,7 +550,7 @@
       "invalid_regex": "{{expression}} 中的模式 \"{{pattern}}\" 不是有效的正則表達式：{{reason}}。=~ 需要正則表達式，例如 \".*{{word}}.*\"，或使用 CONTAINS \"{{word}}\"。",
       "unknown_label": "沒有標籤 :{{label}}。已登記的標籤：{{suggestions}}。",
       "no_labels": "沒有標籤 :{{label}}：此角色無法讀取任何表。",
-      "unknown_relationship_type": "沒有關係類型 {{types}}。最接近的已登記類型：{{suggestions}}。",
+      "unknown_relationship_type": "不存在關係類型 {{types}}。最接近的已登記類型:{{suggestions}}。",
       "no_relationship_types": "沒有關係類型 {{types}}：此角色無法遍歷任何關係。",
       "type_mismatch": "在 {{expression}} 中，{{value}} 無法與類型為 {{property_type}} 的 {{property}} 比較。{{fix}}",
       "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分組之前篩選行。請在 WITH 中聚合，之後再篩選。",
@@ -563,8 +563,8 @@
       "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。",
       "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。",
-      "non_finite_number": "結果包含 JSON 無法表示的數字：{{column}} 為 {{value}}。",
-      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 和 toBoolean 時，此引擎需要 PostgreSQL 16 或以上版本。"
+      "non_finite_number": "結果包含 JSON 無法表示的數字:{{column}} 為 {{value}}。",
+      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 和 toBoolean,需要此引擎使用 PostgreSQL 16 或更新版本。"
     },
     "requests": {
       "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",
@@ -578,7 +578,7 @@
     "statement": {
       "rows_cut": "結果在 {{limit}} 行處被截斷，這是適用於此次讀取的行數限制（{{kind}}）：符合的行多於傳回的行。",
       "rows_cut_unchecked": "結果有 {{limit}} 行，即適用於此次讀取的行數限制（{{kind}}）。無法檢查是否還有更多符合的行：{{reason}}",
-      "list_at_ceiling": "列表包含此次讀取的行數限制所允許的最多 {{limit}} 個條目（{{kind}}）；可能還有更多。",
+      "list_at_ceiling": "清單已包含行數限制容許此次讀取 ({{kind}}) 的最多 {{limit}} 個項目;可能還有更多。",
       "approximate_index": "最相似的行是透過近似向量索引找到的：可能缺少一行比最後傳回的行稍微更相似的行。",
       "path_cut": "一條沒有上限的路徑在圖深度上限 {{limit}} 跳處被截斷：更長的路徑未包含在結果中。"
     },
@@ -703,28 +703,28 @@
     "data_product": {
       "status": {
         "published": "數據產品 {{data_product}} 已發佈。",
-        "deprecated": "數據產品 {{data_product}} 已標記為棄用。",
+        "deprecated": "數據產品 {{data_product}} 已棄用。",
         "retired": "數據產品 {{data_product}} 已停用。",
         "restored": "數據產品 {{data_product}} 已還原。",
-        "reason_required": "需要填寫原因：說明為何棄用或停用此數據產品。",
+        "reason_required": "需要原因:說明該數據產品為何被棄用或停用。",
         "not_found": "找不到數據產品 {{data_product}}。",
-        "not_draft": "只有草稿狀態的數據產品可以發佈；此產品為 {{status}}。",
-        "not_live": "只有已上線的數據產品可以棄用，只有已上線或已棄用的可以停用；此產品為 {{status}}。",
-        "not_restorable": "只有已棄用或已停用的數據產品可以還原；此產品為 {{status}}。",
+        "not_draft": "只有草稿狀態的數據產品才能發佈;此產品為 {{status}}。",
+        "not_live": "只有已上線的數據產品才能棄用,只有已上線或已棄用的才能停用;此產品為 {{status}}。",
+        "not_restorable": "只有已棄用或已停用的數據產品才能還原;此產品為 {{status}}。",
         "retire_on_past": "計劃停用日期 {{retire_on}} 已過。請選擇今天或之後的日期。",
-        "successor_required": "此數據產品有 {{members}} 個成員；停用後它們會轉給繼任者。請選擇一個。",
-        "successor_is_self": "數據產品不能是自己的繼任者。",
-        "successor_retired": "繼任者「{{successor}}」已停用。請選擇一個正在使用的數據產品。",
-        "successor_other_domain": "繼任者「{{successor}}」屬於網域 {{domain}}。產品的成員與其共用同一網域，因此請選擇同一網域中的繼任者。"
+        "successor_required": "此數據產品有 {{members}} 個成員;停用會將其移交給繼任者。請選擇一個。",
+        "successor_is_self": "數據產品不能繼任自身。",
+        "successor_retired": "繼任者「{{successor}}」已停用。請選擇仍在服務中的數據產品。",
+        "successor_other_domain": "繼任者「{{successor}}」位於網域 {{domain}}。產品的成員與其共用同一網域,請選擇同一網域中的繼任者。"
       },
       "finding": {
-        "no_members": "沒有任何表格、檢視或指令屬於此數據產品。",
-        "member_deprecated": "成員表格 {{table}} 已棄用。",
+        "no_members": "沒有表、檢視或命令屬於此數據產品。",
+        "member_deprecated": "成員表 {{table}} 已棄用。",
         "no_owner": "沒有擁有者角色對此數據產品負責。",
-        "no_support_contact": "此數據產品沒有支援聯絡人，而已設定的匯出目標要求提供。",
-        "retirement_blocked": "此數據產品原定於 {{retire_on}} 停用，但仍有成員。請指定一個繼任者接收這些成員後再停用。",
+        "no_support_contact": "此數據產品沒有支援聯絡方式,而已設定的匯出目標要求提供。",
+        "retirement_blocked": "此數據產品原定於 {{retire_on}} 停用,但仍有成員。請指定接收成員的繼任者後停用。",
         "domain_steward_unset": "網域 {{domain}} 沒有數據管家。",
-        "no_description": "此數據產品既未說明用途，也未說明使用方式。",
+        "no_description": "此數據產品既未說明用途,也未說明用法。",
         "successor_retired": "接收此產品成員的數據產品「{{successor}}」亦已停用。"
       }
     }

@@ -1,7 +1,7 @@
 {
   "graphPage": {
     "emptyStateHint": "Führen Sie eine Cypher-Abfrage aus, um den Graphen zu erkunden",
-    "emptyStateHintSparql": "Führen Sie eine SPARQL-Abfrage aus, um den Graphen zu erkunden",
+    "emptyStateHintSparql": "Eine SPARQL-Abfrage ausführen, um den Graphen zu erkunden",
     "emptyStateShortcut": "⌘↵ zum Ausführen"
   }
 }
