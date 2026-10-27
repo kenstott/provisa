@@ -163,3 +163,102 @@ def sql_info_info(
     """CommandGetSqlInfo's FlightInfo: its ticket is the command itself."""
     endpoint = flight.FlightEndpoint(descriptor.command, [])  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     return flight.FlightInfo(SQL_INFO_SCHEMA, descriptor, [endpoint], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+
+# --- prepared statements ----------------------------------------------------------------------
+#
+# A prepared statement is stateless: its handle carries the statement and, once DoPut binds them,
+# its parameter rows (DoPutPreparedStatementResult hands the client the new handle, which the
+# protocol provides for exactly this). Nothing is kept on the server, so ClosePreparedStatement has
+# nothing to release, and any worker of a deployment answers any handle.
+
+
+def prepared_handle(query: str, parameters: pa.Table | None = None) -> bytes:
+    """The handle of ``query`` with ``parameters`` bound: its statement as JSON on the first line,
+    then the parameter rows as an Arrow IPC stream."""
+    head = json.dumps({"query": query}).encode("utf-8") + b"\n"
+    if parameters is None:
+        return head
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, parameters.schema) as writer:
+        writer.write_table(parameters)
+    return head + sink.getvalue().to_pybytes()
+
+
+def read_prepared_handle(handle: bytes) -> tuple[str, pa.Table | None]:
+    """The statement and the bound parameter rows (None before DoPut binds any) of a
+    :func:`prepared_handle`."""
+    head, _, body = handle.partition(b"\n")
+    try:
+        query = json.loads(head.decode("utf-8"))["query"]
+    except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise flight.FlightServerError("not a prepared statement handle of this server") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if not body:
+        return query, None
+    return query, pa.ipc.open_stream(body).read_all()
+
+
+def bound_statement(query: str, parameters: pa.Table | None) -> str:
+    """``query`` with its ``$N`` placeholders written as the bound values' SQL literals, as pgwire
+    writes a bound statement's before governing it. Each parameter row is one execution; several
+    are answered as one statement, their results in turn (UNION ALL)."""
+    from provisa.compiler.params import substitute_positional_placeholders
+    from provisa.compiler.sql_literals import sql_literal
+
+    if parameters is None or parameters.num_columns == 0:
+        return query
+    rows = parameters.to_pylist()
+    names = parameters.column_names
+    statements = [
+        substitute_positional_placeholders(
+            query,
+            [row[name] for name in names],
+            lambda i, row=row: sql_literal(row[names[i - 1]], "postgres"),
+        )
+        for row in rows
+    ]
+    if len(statements) == 1:
+        return statements[0]
+    return "\nUNION ALL\n".join(f"({statement})" for statement in statements)
+
+
+def described_schema(shape: list[tuple[str, str]]) -> pa.Schema | None:
+    """The Arrow schema of a statement described as ``shape`` (its result columns and their
+    types, as pgwire's Describe derives them), or None when a column's type has no Arrow type
+    Provisa names. The protocol makes a prepared statement's dataset schema the server's best
+    guess and lets it be absent, which None is."""
+    from provisa.core.catalog_types import _physical_type_to_arrow
+
+    fields = []
+    for name, column_type in shape:
+        try:
+            fields.append(pa.field(name, _physical_type_to_arrow(column_type)))
+        except KeyError:
+            return None
+    return pa.schema(fields)
+
+
+def serialized_schema(schema: pa.Schema | None) -> bytes:
+    """``schema`` as the IPC-encapsulated bytes a Flight SQL message carries; none for None."""
+    return b"" if schema is None else schema.serialize().to_pybytes()
+
+
+def prepared_result(handle: bytes, schema: pa.Schema | None) -> bytes:
+    """CreatePreparedStatement's answer: the handle, and the statement's schema when it is
+    known."""
+    return pack(
+        pb.ActionCreatePreparedStatementResult(
+            prepared_statement_handle=handle, dataset_schema=serialized_schema(schema)
+        )
+    )
+
+
+def prepared_info(
+    descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    handle: bytes,
+) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A prepared statement's FlightInfo: one endpoint whose ticket runs it, with the rows
+    carrying their schema (as :func:`statement_info`)."""
+    ticket = pack(pb.CommandPreparedStatementQuery(prepared_statement_handle=handle))
+    endpoint = flight.FlightEndpoint(ticket, [])  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    return flight.FlightInfo(None, descriptor, [endpoint], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
