@@ -134,10 +134,37 @@ STATISTICS_RELATIONS: tuple[tuple[str, str], ...] = tuple(
 )
 
 
+# The relations of particular object types psql, pgAdmin and DBeaver list (REQ-2167, tier 3). Provisa
+# runs no text search configuration, holds no large object and grants no parameter privilege, so
+# those are empty; the available extensions are the installed ones, Provisa installing no other.
+OBJECT_TYPE_RELATIONS: tuple[tuple[str, str], ...] = tuple(
+    ("pg_catalog", name)
+    for name in (
+        # psql \dF, \dFp, \dFd, \dFt (describe.c listTSConfigs, listTSParsers, listTSDictionaries,
+        # listTSTemplates); pgAdmin fts_configurations, fts_parsers, fts_dictionaries,
+        # fts_templates.
+        "pg_ts_config",
+        "pg_ts_config_map",
+        "pg_ts_parser",
+        "pg_ts_dict",
+        "pg_ts_template",
+        # DBeaver PostgreDatabase.java:1275; pgAdmin extensions/sql/extensions.sql,
+        # properties.sql.
+        "pg_available_extensions",
+        "pg_available_extension_versions",
+        # psql \dl (describe.c listLargeObjects).
+        "pg_largeobject_metadata",
+        # psql \dconfig+ (describe.c describeConfigurationParameters).
+        "pg_parameter_acl",
+    )
+)
+
+
 def populate_client_relations(db) -> None:  # REQ-2167
-    """Create the client and statistics relations; list the roles in pg_authid (never a password, as the
+    """Create the client, statistics and object type relations; list the installed extensions as
+    the available ones, and the roles in pg_authid (never a password, as the
     catalog has none to give) and the sequences in pg_sequences, from pg_roles and pg_sequence."""
-    for schema, name in (*CLIENT_RELATIONS, *STATISTICS_RELATIONS):
+    for schema, name in (*CLIENT_RELATIONS, *STATISTICS_RELATIONS, *OBJECT_TYPE_RELATIONS):
         create_relation(db, schema, name)
     db.execute(
         "INSERT INTO _pg_authid SELECT oid, rolname, rolsuper, rolinherit, rolcreaterole, "
@@ -150,4 +177,13 @@ def populate_client_relations(db) -> None:  # REQ-2167
         "FROM _pg_sequence s JOIN _pg_class c ON c.oid = s.seqrelid "
         "JOIN _pg_namespace n ON n.oid = c.relnamespace "
         "LEFT JOIN _pg_roles r ON r.oid = c.relowner"
+    )
+    db.execute(
+        "INSERT INTO _pg_available_extensions "
+        "SELECT extname, extversion, extversion, NULL FROM _pg_extension"
+    )
+    db.execute(
+        "INSERT INTO _pg_available_extension_versions SELECT e.extname, e.extversion, TRUE, "
+        "FALSE, FALSE, e.extrelocatable, n.nspname, NULL, NULL "
+        "FROM _pg_extension e JOIN _pg_namespace n ON n.oid = e.extnamespace"
     )
