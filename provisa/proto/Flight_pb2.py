@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 64b2b2cd-8e39-4c42-a480-8356b30e2451
 #
 # Generated from Flight.proto (Apache Arrow, Apache-2.0) by scripts/gen_flightsql_proto.py.
 
