@@ -243,6 +243,24 @@ async def test_connecting_the_host_switches_the_source_to_built_mode(host, wired
     assert wired["saved"] == built
 
 
+async def test_connecting_dials_the_host_to_pair_and_to_check_and_no_more(host, wired, monkeypatch):
+    # No engine attaches a code host (REQ-2100): the host's certificate is kept by no one, and
+    # the source is not dialled a third time for it.
+    port, pairing, hashed = host
+    wired["give"](hashed)
+    dials = []
+    dial = remote._dial
+
+    def counted(*args, **kwargs):
+        dials.append(args[:2])
+        return dial(*args, **kwargs)
+
+    monkeypatch.setattr(remote, "_dial", counted)
+    built = await remote_sources.connect(None, "shop", "127.0.0.1", port, pairing)
+    assert "certificate" not in built["remote"]
+    assert len(dials) == 2
+
+
 async def test_a_host_running_other_code_is_refused_naming_both_hashes(host, wired):
     port, pairing, hashed = host
     wired["give"]("0" * 64)

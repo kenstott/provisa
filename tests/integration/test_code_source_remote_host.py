@@ -66,7 +66,8 @@ def _api(srv, method: str, path: str, **kw) -> httpx.Response:
 
 @pytest.fixture(scope="module")
 def remote_host(server, code_source, tmp_path_factory):  # noqa: F811
-    """The source's image, built through the API, loaded and run; its port and pairing code."""
+    """The source's image, built through the API, loaded and run; its port, its pairing code and
+    its container's name."""
     started = _api(server, "POST", "/builds", json={"arch": _ARCH, "download": True})
     assert started.status_code == 200, started.text
     build = started.json()
@@ -116,10 +117,18 @@ def remote_host(server, code_source, tmp_path_factory):  # noqa: F811
         assert pairing is not None, subprocess.run(
             ["docker", "logs", name], capture_output=True, text=True
         )
-        yield port, pairing
+        yield port, pairing, name
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
         subprocess.run(["docker", "rmi", "-f", build["image_ref"]], capture_output=True)
+
+
+def _container_log(name: str) -> str:
+    shown = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
+    state = subprocess.run(
+        ["docker", "inspect", "--format", "{{json .State}}", name], capture_output=True, text=True
+    )
+    return f"{shown.stdout}{shown.stderr}\nstate: {state.stdout or state.stderr}"
 
 
 def _usd(srv) -> list[dict]:
@@ -131,7 +140,7 @@ def test_a_built_source_is_read_from_its_remote_host_and_back_on_the_server_in_d
     code_source,  # noqa: F811
     remote_host,
 ):
-    port, pairing = remote_host
+    port, pairing, name = remote_host
     on_server = _usd(server)
     connected = _api(
         server,
@@ -139,7 +148,9 @@ def test_a_built_source_is_read_from_its_remote_host_and_back_on_the_server_in_d
         "/connect",
         json={"host": "127.0.0.1", "port": port, "pairing_code": pairing},
     )
-    assert connected.status_code == 200, connected.text
+    # The host's own log beside the server's answer: CI keeps neither the isolated server's log
+    # nor the container's.
+    assert connected.status_code == 200, (connected.text, _container_log(name))
     assert connected.json()["mode"] == "built"
     assert _usd(server) == on_server  # the same rows, served by the container
     status = _api(server, "GET", "/host").json()
