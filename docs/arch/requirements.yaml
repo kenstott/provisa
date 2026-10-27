@@ -89796,7 +89796,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     View and the Product map) offers a 2D/3D toggle. In 2D the same stage lays the graph out flat and locks
     a face-on orthographic camera with pan and zoom and no turning; selection, expansion and the detail
     panel work the same. Each graph remembers the choice per user. The label-spacing rule above applies
-    in 2D as in 3D.'
+    in 2D as in 3D. (Amended 2026-10-27, A LAYERED LAYOUT WHERE EDGES HAVE DIRECTION:) Maintainer 2026-10-27:
+    every network graph can be laid out in layers. Each edge kind is one of three classes: RANKS (one end
+    above the other: term KIND_OF, PART_OF and VALID_VALUE_OF; domain to table; product to member table;
+    table to column; term to the columns bound to it; a command, check or profile under its table), FLOWS
+    (one end before the other: lineage, column lineage, term DERIVED_FROM and REPLACES) or LATERAL (neither:
+    term RELATED_TO, SYNONYM_OF, PREFERRED_TERM_FOR, TRANSLATION_OF and ANTONYM_OF; a relationship between
+    tables; a tag). A layered layout places each node one level below the deepest node ranking or flowing
+    into it, every parent kept (a node with two parents sits under both, not under one), orders each level
+    by sweeps that cut crossings, and ignores an edge that closes a cycle; ranks run top-down and flows
+    left-to-right. Lateral edges are drawn as arcs laid over the rank and flow edges and never move a node.
+    When a view opens, the layout is layered if its drawn rank and flow edges are all of one class and form
+    no cycle, else force; a Force/Layered control lets the reader override it, Layered disabled where a
+    cycle makes it impossible. A layered layout is flat in 3D as the tree is. It extends today''s tree layout
+    (the Taxonomy preset becomes a layered view) and holds in both the 2D and 3D views.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
