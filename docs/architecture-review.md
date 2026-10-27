@@ -11,7 +11,7 @@ pip install "provisa[embedded]"
 provisa run
 ```
 
-Python 3.12. The embedded profile brings its own PostgreSQL model store (pgserver) and DuckDB federation engine. No Docker, no daemon. The wheel is published to PyPI with Sigstore attestation; the dependency set is pinned with hashes in `uv.lock`.
+Python 3.12. The embedded profile brings its own PostgreSQL model store (pgserver) and DuckDB query engine. No Docker, no daemon. The wheel is published to PyPI with Sigstore attestation; the dependency set is pinned with hashes in `uv.lock`.
 
 To upgrade, install the newer version from PyPI.
 
@@ -24,8 +24,8 @@ The only outbound network calls Provisa makes are the ones you configure. Source
 ## Deployment options
 
 - **Single wheel** — `pip install "provisa[embedded]"`, runs on a VM or a laptop, no container runtime required.
-- **Docker Compose** — a compose stack for a multi-service deployment with an external federation engine.
-- **Kubernetes** — a Helm chart deploys the control plane, federation workers and engine; the federation tier scales horizontally.
+- **Docker Compose** — a compose stack for a multi-service deployment with an external query engine.
+- **Kubernetes** — a Helm chart deploys the control plane, query workers and engine; the query tier scales horizontally.
 - **Terraform** — modules for AWS, Azure and GCP stand up a VM or cluster deployment end to end.
 
 See [Deployment](deployment.md) for configuration details.
