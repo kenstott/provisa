@@ -35,7 +35,16 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 import sqlglot.expressions as exp
 
 from provisa.gql import temporal
-from provisa.gql.expr_ast import Binary, CypherExpr, MapLiteral, Paren, Property, Variable, walk
+from provisa.gql.expr_ast import (
+    Binary,
+    CypherExpr,
+    Literal as ExprLiteral,
+    MapLiteral,
+    Paren,
+    Property,
+    Variable,
+    walk,
+)
 from provisa.gql.ir import (
     CypherAST,
     MatchClause,
@@ -1103,6 +1112,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         ``@N`` in some), and a variable is its bare name, resolved by the engine."""
         if isinstance(expr, Variable):
             return exp.Column(this=exp.Identifier(this=expr.name, quoted=False))
+        if isinstance(expr, ExprLiteral) and expr.kind == "null":
+            # UNWIND null is no rows, as UNWIND [] is (openCypher).
+            return exp.Array(expressions=[])
 
         def _placeholder(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             if isinstance(node, exp.Parameter):

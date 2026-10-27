@@ -81,3 +81,20 @@ def test_a_string_plus_a_value_is_one_string(query, row):
 )
 def test_to_integer_cuts_toward_zero(query, row):
     assert _row(query) == row
+
+
+@pytest.mark.parametrize(
+    ("query", "row"),
+    [
+        # Conditional2: a WHEN of another kind than the subject never matches.
+        ("RETURN CASE '0' WHEN 0 THEN 'zero' ELSE 'else' END AS a", ("else",)),
+        ("RETURN CASE true WHEN 1 THEN 'one' WHEN true THEN 'yes' END AS a", ("yes",)),
+        ("RETURN CASE 1 WHEN 1 THEN 'one' END AS a", ("one",)),
+        # Precedence4 [4]: a string predicate of a value that is no string is null.
+        ("RETURN 'abc' STARTS WITH (null OR true) AS a, 1 CONTAINS 'a' AS b", (None, None)),
+        # Map2: null[k] and m[null] are null.
+        ("RETURN null['x'] AS a, {name: 'Mats'}[null] AS b", (None, None)),
+    ],
+)
+def test_values_of_another_kind_match_nothing(query, row):
+    assert _row(query) == row

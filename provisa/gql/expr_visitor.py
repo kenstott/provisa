@@ -565,6 +565,12 @@ class ExprLowering:
         if isinstance(node, Binary) and node.op in ("-", "*", "/", "%", "^"):
             left, right = self._value_kind(node.left), self._value_kind(node.right)
             return "number" if left == right == "number" else None
+        if isinstance(node, Binary) and node.op in ("AND", "OR", "XOR", *_BINARY_CMP):
+            return "boolean"
+        if isinstance(node, (IsNull, LabelPredicate)) or (
+            isinstance(node, Unary) and node.op == "NOT"
+        ):
+            return "boolean"
         if self._ctx.is_text(node):
             return "text"
         return None
@@ -675,6 +681,12 @@ class ExprLowering:
             )
         if op == "IN":
             return self._lower_in(left, node.right, right)
+        if op in ("STARTS WITH", "ENDS WITH", "CONTAINS") and {
+            self._value_kind(node.left),
+            self._value_kind(node.right),
+        } & {"number", "boolean"}:
+            # A string predicate of a value that is no string is null (openCypher).
+            return exp.Null()
         if op == "STARTS WITH":
             return _anon("starts_with", left, right)
         if op == "ENDS WITH":
@@ -844,7 +856,19 @@ class ExprLowering:
         return self._ctx.resolve_function(node.name, args, distinct=node.distinct)
 
     def _lower_Case(self, node: Case) -> exp.Expression:
-        ifs = [exp.If(this=self.lower(cond), true=self.lower(res)) for cond, res in node.whens]
+        whens = node.whens
+        if node.subject is not None:
+            # A WHEN of another kind than the subject ('0' and 0) never matches (openCypher): never
+            # the engine's cast of one to the other.
+            subject_kind = self._value_kind(node.subject)
+            whens = [
+                (cond, res)
+                for cond, res in whens
+                if not (subject_kind and self._value_kind(cond) not in (None, subject_kind))
+            ]
+            if not whens:
+                return self.lower(node.default) if node.default is not None else exp.Null()
+        ifs = [exp.If(this=self.lower(cond), true=self.lower(res)) for cond, res in whens]
         case = exp.Case(ifs=ifs)
         if node.subject is not None:
             case.set("this", self.lower(node.subject))
@@ -883,6 +907,8 @@ class ExprLowering:
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
+        if any(isinstance(n, Literal) and n.kind == "null" for n in (node.obj, node.index)):
+            return exp.Null()  # null[k] and m[null] are null (openCypher)
         if (
             isinstance(node.obj, (MapLiteral, Variable))
             and isinstance(node.index, Literal)

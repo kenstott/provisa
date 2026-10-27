@@ -121,3 +121,17 @@ def _answer(query: str) -> list[dict]:
 )
 def test_a_list_of_several_types_answers_its_values(query, row):
     assert _answer(query) == [row]
+
+
+def test_unwind_null_is_no_rows():
+    assert _rows("UNWIND null AS nil RETURN nil") == []
+
+
+def test_return_star_returns_its_columns_by_name():
+    # Unwind1 [13]: openCypher orders the columns RETURN * returns by name.
+    sql_ast, _, _ = cypher_to_sql(
+        parse_cypher("WITH [1, 2] AS xs, [3, 4] AS ys UNWIND xs AS x UNWIND ys AS y RETURN *"),
+        _EMPTY,
+        {},
+    )
+    assert [s.alias_or_name for s in sql_ast.selects] == ["x", "xs", "y", "ys"]
