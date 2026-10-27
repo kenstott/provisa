@@ -89831,7 +89831,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     types widen as above. SET n:L and REMOVE n:L insert or delete one node_labels row; a node never moves
     table. Ephemeral relationships have one row in a session rels table (rel_id, type, from_id, to_id, table),
     their properties in a per-type table. Domain and model names resolve first and always win; a label in
-    neither with no CREATE is refused by name.'
+    neither with no CREATE is refused by name. (Amended 2026-10-27, FREE LABELS TAG MODEL NODES TOO; MODEL
+    TABLES NEVER WIDEN:) Maintainer 2026-10-27: a free label is always session data. It creates an ephemeral
+    storage table only when its CREATE names no model or ephemeral table; otherwise it is a node_labels
+    row. That includes model nodes: SET n:Tag on a matched model node, or a free label in a CREATE that
+    names a model label, records (the model node''s id, Tag) in node_labels with the model table as its
+    table, so MATCH (n:Tag) reads those rows from the model table under the role''s governance, beside any
+    ephemeral tables carrying the tag, and labels(n) adds the session tags to the node''s {Domain}:{Table}.
+    The model itself never changes: a CREATE naming a model label is a model write governed as any (REQ-661),
+    refused by name when the role cannot write that table, never diverted into an ephemeral table; and a
+    model table is never widened, so a CREATE or SET giving a model node a property its table does not declare
+    is refused by name. Session tags on model nodes end with the session.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
