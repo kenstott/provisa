@@ -46,6 +46,8 @@ on:
     secrets:
       ANTHROPIC_API_KEY:
         required: false
+      OPENROUTER_API_KEY:
+        required: false
       AZURE_CLIENT_ID:
         required: false
       AZURE_CLIENT_SECRET:
@@ -165,10 +167,12 @@ jobs:
         provisa-ui/playwright-results.json
       artifact-retention: 7
     secrets:
-      # chat-panel-streaming.spec.ts drives a live model and fails by name without it. This
+      # chat-panel-streaming.spec.ts drives a live model (Haiku through OpenRouter, the e2e
+      # config's ai_endpoints/ai_models: e2e/liveModel.ts) and fails by name without it. This
       # workflow runs on release pushes, tags and dispatch only (no pull_request trigger), so
       # the secret never reaches a fork's code.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # The live sources this job's specs register: Snowflake, Databricks, BigQuery, Google
       # Sheets and Fabric (source-to-query-cloud-warehouse / -special-cases). Passed by name.
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
@@ -235,6 +239,7 @@ jobs:
       artifact-retention: 7
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # SharePoint (source-to-query.spec.ts), the one live source among this job's specs.
       SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
       SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
