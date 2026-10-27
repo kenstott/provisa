@@ -375,14 +375,36 @@ async def test_an_import_set_row_goes_through_its_transform_map(client, register
                 )
 
 
+async def _orderable_without_variables(
+    client: AsyncClient, detail: str, items: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """The first catalog item none of whose variables is mandatory: the instance refuses an order
+    that leaves one unset ("Mandatory Variables are required", run 39444269086), and which items
+    ask for what is the instance's own catalog."""
+    for item in items:
+        if not item.get("sys_id"):
+            continue
+        answer = await _data(client, f'query {{ {detail}(sys_id: "{item["sys_id"]}") }}')
+        variables = _result(answer[detail]).get("variables") or []
+        if not any(v.get("mandatory") for v in variables):
+            return item
+    raise AssertionError("the instance's catalog has no item that orders without its variables")
+
+
 async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
     client, registered, offered
 ):
-    """A Service Catalog order through the instance's own API: the first orderable item, once;
-    the request it creates is removed through the Table API as a registered table."""
+    """A Service Catalog order through the instance's own API: the first item that orders with
+    no variables, once; the request it creates is removed through the Table API as a registered
+    table."""
     del registered
     items = await _register_command(
         client, "snowCatalogItems", _operation(offered, "GET", "/api/sn_sc/servicecatalog/items")
+    )
+    detail = await _register_command(
+        client,
+        "snowCatalogItem",
+        _operation(offered, "GET", "/api/sn_sc/servicecatalog/items/{sys_id}"),
     )
     order = await _register_command(
         client,
@@ -390,7 +412,7 @@ async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
         _operation(offered, "POST", "/api/sn_sc/servicecatalog/items/{sys_id}/order_now"),
     )
     listed = await _data(client, f"query {{ {items} }}")
-    item = next(i for i in _result(listed[items]) if i.get("sys_id"))
+    item = await _orderable_without_variables(client, detail, _result(listed[items]))
     ordered = await _data(
         client,
         f'mutation {{ {order}(sys_id: "{item["sys_id"]}", body: {{ sysparm_quantity: 1 }}) }}',
