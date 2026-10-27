@@ -32,7 +32,7 @@ Declare the key with `is_primary_key: true` on the column. A replica with no dec
 
 A landing never waits for indexes. The replica is read from the moment it is swapped in; the replica runner then builds its indexes one at a time, in a separate pass, under a per-replica index lock. Expect the first queries after a landing to run without them.
 
-Each landing records the indexes it asked for, the ones built, and the ones that failed, by name, on the replica's record in the control plane (`replica_state.index_state`).
+Each landing records the indexes it asked for, the ones built, and the ones that failed, by name, on the replica's record in the model store (`replica_state.index_state`).
 
 - **A failed index never fails the landing.** It is logged with its cause and asked for again by the next landing. The log line reads `replica of <source>.<schema>.<table>: index <name> on (<columns>) failed: <cause>`.
 - **Rows that repeat a declared key are their own failure**, code `replica.index_duplicate_key`, naming the key's columns. The source holds duplicates of a column set the model declares unique. A retry does not fix that: correct the data at the source, or correct the declared key.

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Coming from Hasura v2 — Provisa</title>
-  <meta name="description" content="The v2 idea, continued. Point the converter at your Hasura v2 metadata directory and get a Provisa config: tables, permissions, relationships, remote schemas, actions, and triggers — keep the per-role GraphQL API, gain SQL, Cypher, and eight more protocols." />
+  <title>Provisa and Hasura — Provisa</title>
+  <meta name="description" content="Hasura DDN is centred on instant GraphQL APIs over your own databases. Provisa adds SQL, Cypher, and eight more protocols over the same governed model — and imports your Hasura v2 metadata with one command." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -34,11 +34,11 @@
         <a href="/#interfaces">Interfaces</a>
         <a href="/#governance">Governance</a>
         <a href="/#sources">Sources</a>
-        <a href="/vs/starburst">Compare</a>
+        <a href="/compare">Compare</a>
         <a href="/#deploy">Deploy</a>
-        <a href="/demos">Live demos</a>
+        <a href="/how-it-works">Works</a>
+        <a href="/demos">Demos</a>
         <a href="/docs">Docs</a>
-        <a href="/#download">Download</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
     </div>
@@ -47,16 +47,15 @@
   <main id="main" class="doc">
     <div class="container">
       <div class="doc-head">
-        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Coming from Hasura</span></p>
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Provisa and Hasura</span></p>
         <h1>Where the v2 idea kept going.</h1>
         <p class="lead">
-          Instant, per-role, metadata-driven APIs over your own databases was the right
-          idea. Provisa keeps the premise and adds more languages, more ways in, and
-          governance that holds on all of them. Bring your metadata with you: the
-          converter reads a Hasura v2 metadata directory and writes a Provisa config,
-          tables, permissions, relationships, remote schemas, actions and triggers
-          included. Admin › Import does the same from an upload and shows what each
-          piece became before it applies anything.
+          Hasura DDN is centred on instant, per-role GraphQL APIs over your own databases —
+          metadata-driven, with a connector-per-source model for federation. Provisa shares
+          that core idea and extends it: more languages, more protocols, federation defined
+          in the model and run on the engine you choose, and governance that holds
+          identically on every entry point. Bring your Hasura v2 metadata — the converter reads it and writes a Provisa
+          config in one command.
         </p>
       </div>
 
@@ -72,176 +71,101 @@
 <span class="c-cmd">python</span> -m provisa.hasura_v2 ./hasura/metadata <span class="c-flag">--domain-map</span> public=sales billing=finance</code></pre>
         </div>
 
-        <h2>What converts</h2>
-        <ul>
-          <li><strong>Sources</strong> — Postgres, Citus, MySQL, MS SQL, and BigQuery connections map to Provisa sources.</li>
-          <li><strong>Tables and columns</strong> — with per-role select permissions becoming column visibility.</li>
-          <li><strong>Row permissions</strong> — Hasura boolean expressions convert to SQL row-level security rules.</li>
-          <li><strong>Relationships</strong> — object and array relationships become registered, governed relationships.</li>
-          <li><strong>Remote schemas</strong> — mapped to GraphQL remote sources.</li>
-          <li><strong>Actions</strong> — each becomes a command that calls the same
-          handler, with its arguments and output.</li>
-          <li><strong>Event triggers and cron triggers</strong> — carried across as event and scheduled triggers.</li>
-          <li><strong>Roles and rate limits</strong> — preserved as Provisa roles.</li>
-        </ul>
         <p>
-          Anything the converter can't map cleanly is reported as a warning, so the gaps
-          are a list you work through.
+          Sources, tables, row permissions, relationships, remote schemas, actions and event
+          triggers all convert. Roles and rate limits come across as Provisa roles. Anything
+          that doesn't map cleanly becomes a warning so you have a list to work through,
+          not a silent gap.
         </p>
 
-        <h2>What you keep</h2>
-        <p>
-          A per-role GraphQL API over your database, generated from metadata, with
-          permissions enforced at query time. That model was right, and Provisa keeps it:
-          per-role schemas, field-level visibility, cursor pagination, aggregates, and
-          Apollo Automatic Persisted Queries. No new modeling universe to learn first, no
-          rewrite as the price of admission.
-        </p>
-
-        <h2>What you gain</h2>
+        <h2>Where each fits</h2>
         <div class="cmp-wrap">
           <table class="cmp">
             <thead>
-              <tr><th>&nbsp;</th><th>Hasura v2</th><th>Provisa</th></tr>
+              <tr><th>You need to&hellip;</th><th>Hasura DDN</th><th>Provisa</th></tr>
             </thead>
             <tbody>
               <tr>
-                <th>Query languages</th>
-                <td>GraphQL</td>
-                <td class="is-us">GraphQL, SQL, and Cypher over the same model</td>
+                <th>Instant per-role GraphQL API over a relational database</th>
+                <td>&#10003; Metadata-driven; per-role schemas; cursor pagination; aggregates; subscriptions; JSON:API</td>
+                <td class="is-us">&#10003; Same, from the same declarative config; import from Hasura v2 metadata in one command</td>
               </tr>
               <tr>
-                <th>Ways in</th>
-                <td>HTTP GraphQL</td>
-                <td class="is-us">pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, MCP</td>
+                <th>One API for an app backend over sources that don't match</th>
+                <td>&#10003; Connector per source; cross-connector joins assembled in the DDN engine from each connector's results</td>
+                <td class="is-us">&#10003; Cross-source joins run in the engine you choose (Trino, DuckDB, Postgres) with statistics and spill-to-disk for large joins</td>
               </tr>
               <tr>
-                <th>Sources</th>
-                <td>Relational databases, plus remote schemas</td>
-                <td class="is-us">73 connectors reaching 85+ kinds of source — graph, RDF, files, SharePoint, Salesforce, ServiceNow, Jira, Splunk, and API endpoints as governed tables</td>
+                <th>Ask graph or path questions over relationships</th>
+                <td>GraphQL over relational sources; no Cypher query path</td>
+                <td class="is-us">&#10003; Cypher first-class; relationships are registered and governed in the model, traversable from any protocol</td>
               </tr>
               <tr>
-                <th>Analytics</th>
-                <td>Aggregates over the source</td>
-                <td class="is-us">Cross-source federation and layered materialized views with recorded transforms</td>
+                <th>SQL, pgwire or Arrow Flight alongside GraphQL</th>
+                <td>GraphQL and JSON:API; JDBC via an additional connector</td>
+                <td class="is-us">&#10003; pgwire, Bolt, Arrow Flight, gRPC, REST, WebSocket, Airport and MCP alongside GraphQL — all on the same model and policy</td>
               </tr>
               <tr>
-                <th>AI access</th>
-                <td>—</td>
-                <td class="is-us">An MCP server where the OAuth token maps to a role, so agents inherit the same governance</td>
+                <th>Give AI agents governed access</th>
+                <td>PromptQL (natural-language AI layer, cloud-hosted)</td>
+                <td class="is-us">&#10003; MCP server; the OAuth token maps to a role and inherits the same six access-control layers as a person</td>
               </tr>
               <tr>
-                <th>Deployment</th>
-                <td>Container</td>
-                <td class="is-us">Desktop installer, a single wheel for airgaps, Helm, or Terraform</td>
+                <th>Analytics over many sources at scale</th>
+                <td>Aggregates per connector; cross-connector joins held in the engine's memory with a response-size limit</td>
+                <td class="is-us">&#10003; The engine you choose runs the join with statistics; DuckDB and Postgres joins can spill to disk</td>
+              </tr>
+              <tr>
+                <th>Change data sources or engines without rewriting queries</th>
+                <td>Connector and NDC metadata per source; supergraph rebuild on each change</td>
+                <td class="is-us">&#10003; Portable declarative config in git; engine swappable; compiled SQL is yours to read and export</td>
+              </tr>
+              <tr>
+                <th>Run entirely off-network or air-gapped</th>
+                <td>Private DDN Self-Hosted (enterprise license, Kubernetes cluster required)</td>
+                <td class="is-us">&#10003; <code>pip install "provisa[embedded]"</code> — one wheel, desktop installer or Helm; no enterprise license gating the self-hosted path</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <h2>Your own code</h2>
+        <h2>Use them together</h2>
         <p>
-          Hasura DDN puts your code behind the API in two ways. A
-          <a href="https://hasura.io/docs/3.0/business-logic/overview/" rel="noopener">lambda connector</a>
-          turns each TypeScript, Python or Go function into a command: a query or a
-          mutation, marked with a <code>@readonly</code> JSDoc tag, a
-          <code>@connector.register_query</code> decorator or a <code>Function</code>
-          name prefix. A <a href="https://hasura.io/docs/3.0/connectors/build-your-own" rel="noopener">connector you build yourself</a>
-          implements the NDC specification's endpoints, and every feature it declares,
-          filtering and relationships included, is code you write.
+          If you already run Hasura DDN for your application's GraphQL API, Provisa can
+          provide the governed semantic layer underneath it — or alongside it for the
+          queries that go beyond what the connector model covers. Your Hasura permissions
+          and connectors stay in place.
         </p>
         <p>
-          In Provisa you tag a Node or Python function with <code>@table</code>,
-          <code>@command</code> or <code>@stream</code>, with no SDK to import. The command
-          covers what a lambda is for. The table is what a lambda doesn't give you: rows
-          that join, filter and sort with every other table, carry the same grants, masks
-          and row rules, and read the same way over SQL, GraphQL, Cypher and every other
-          way in. The code is pinned to a package version, a Git commit or an upload.
-          It runs in a sandboxed worker while you develop, and <strong>Build image</strong>
-          packages it to run on a remote host of your own.
-        </p>
-        <div class="cmp-wrap">
-          <table class="cmp">
-            <thead>
-              <tr><th>&nbsp;</th><th>Hasura DDN lambda</th><th>Provisa code source</th></tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th>A function becomes</th>
-                <td>A command (query or mutation)</td>
-                <td class="is-us">A table, a command or a live table</td>
-              </tr>
-              <tr>
-                <th>Writing it</th>
-                <td>JSDoc tag, decorator with an SDK import, or a name prefix</td>
-                <td class="is-us">One tag in the docstring; no import</td>
-              </tr>
-              <tr>
-                <th>Permissions</th>
-                <td>Per-role execution and argument presets</td>
-                <td class="is-us">Grants, masks and row rules, as on any table</td>
-              </tr>
-              <tr>
-                <th>Deploying</th>
-                <td>Connector service, introspect, a metadata file per command, supergraph build</td>
-                <td class="is-us">Register the pinned code; sandboxed worker in development, a built image on a remote host</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <h2>How sources are reached</h2>
-        <p>
-          Every DDN connector, the first-party database connectors included, is its own
-          web service. Each
-          <a href="https://hasura.io/docs/3.0/connectors/build-your-own" rel="noopener">connector SDK</a>
-          starts an HTTP server answering the
-          <a href="https://hasura.github.io/ndc-spec/specification/index.html" rel="noopener">NDC specification's</a>
-          endpoints, and the
-          <a href="https://github.com/hasura/ndc-postgres" rel="noopener">Postgres connector</a>
-          is built on the Rust one. The connector reads its source over the source's own
-          protocol; the hop from connector to engine is HTTP, with requests and results
-          sent as JSON in the shapes the spec defines. In Provisa a single-source read goes
-          straight to the source over its native driver, with no connector service in
-          between.
-        </p>
-        <p>
-          A DDN join across two connectors is assembled in the engine from each
-          connector's serialized results: the engine queries the first connector, passes
-          the join-field values to the second as query variables, and
-          <a href="https://github.com/hasura/graphql-engine/blob/master/v3/crates/execute/src/execute/remote_joins.rs" rel="noopener">joins the two responses itself</a>.
-          In Provisa a cross-source join runs in the chosen federation engine (Trino,
-          DuckDB or Postgres), which reads each source over its native connector. The
-          planner always joins real tables: replicas landed in the engine's store, which
-          carry statistics, or live catalogs the engine attaches directly, which carry the
-          statistics that engine's connector reports. DDN joins two connectors' JSON
-          results.
-        </p>
-        <p>
-          DDN holds a cross-connector join in the engine's memory: the left-hand rows, the
-          join keys collected from them and the second connector's response, with
-          <a href="https://github.com/hasura/graphql-engine/blob/master/v3/crates/execute/src/execute/remote_joins.rs" rel="noopener">no spill or streaming path</a>.
-          Each hop has a size limit. The engine refuses a connector response over
-          <code>NDC_RESPONSE_SIZE_LIMIT</code> (30 MB by default), and the SDK servers cap
-          the requests they accept. Values travel as JSON, with 64-bit and arbitrary-precision
-          numbers as strings and bytes as base64. In Provisa the join runs in the federation
-          engine, and on DuckDB and Postgres a join that outgrows memory can spill to disk.
-        </p>
-        <p>
-          Self-hosting DDN's engine and connectors on Docker
-          <a href="https://hasura.io/docs/3.0/deployment/overview/" rel="noopener">comes without a control plane</a>.
-          <a href="https://hasura.io/docs/3.0/architecture/private/self-hosted" rel="noopener">Private DDN Self-Hosted</a>,
-          which brings the control plane onto your infrastructure, needs an enterprise
-          license and a Kubernetes cluster. Provisa installs the same product on a laptop,
-          a single VM, a VM cluster or Kubernetes.
+          Where they complement each other most directly: Hasura handles the immediate
+          app API with its DDN supergraph; Provisa handles the SQL analytics layer, the
+          graph traversals, and the MCP connection that agents use. Both draw from the
+          same underlying databases.
         </p>
 
-        <h2>On staying put</h2>
+        <h2>What you keep coming from Hasura v2</h2>
         <p>
-          Provisa is a handful of primitives (domains, tables, relationships, masking,
-          views) compiled deterministically. Your model is portable declarative config and the
-          SQL it compiles is yours to read and export, so the next migration, whenever it
-          comes and wherever it goes, starts from a file you already own.
+          A per-role API over your database, generated from metadata, with permissions
+          enforced at query time. Per-role schemas, field-level visibility, cursor
+          pagination, aggregates, Apollo Automatic Persisted Queries — all of it carries
+          across. No new modeling universe to learn, no rewrite as the price of admission.
+        </p>
+
+        <h2>If you only need Hasura DDN</h2>
+        <p>
+          Your application speaks GraphQL. Your data lives in relational databases you own.
+          You want a metadata-driven connector-per-source model with lambda functions for
+          custom logic, and PromptQL handles the AI access your team needs. Hasura DDN
+          covers that well on its own.
+        </p>
+
+        <h2>If you only need Provisa</h2>
+        <p>
+          Your consumers are not only GraphQL clients. You need Cypher, SQL, or pgwire on
+          the same governed model. Cross-source analytics runs at a scale where join
+          statistics and spill-to-disk matter. You need to run entirely off-network without
+          an enterprise license gating the self-hosted path. Or you're migrating from
+          Hasura v2 and want a single conversion rather than a DDN supergraph rebuild.
         </p>
       </div>
 
@@ -266,14 +190,29 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/hasura">Coming from Hasura</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">Provisa and Starburst</a>
+        <a href="/vs/hasura">Provisa and Hasura</a>
+        <a href="/vs/denodo">Provisa and Denodo</a>
         <a href="/docs">Docs</a>
       </nav>
     </div>
   </footer>
 </body>
 </html>
+<!-- Sources verified 2026-10-26:
+  Hasura DDN connector model, cross-connector joins in memory, NDC spec:
+    https://hasura.io/docs/3.0/connectors/overview/
+    https://hasura.github.io/ndc-spec/specification/index.html
+    https://github.com/hasura/graphql-engine/blob/master/v3/crates/execute/src/execute/remote_joins.rs
+  Hasura DDN NDC_RESPONSE_SIZE_LIMIT (30 MB default):
+    https://hasura.io/docs/3.0/connectors/build-your-own (referenced in existing verified page)
+  Hasura DDN JSON:API support: visible in DDN docs navigation at https://hasura.io/docs/3.0/index/ (2026-10-26)
+  Hasura PromptQL: https://hasura.io/docs/3.0/ navigation (AI with PromptQL section visible 2026-10-26)
+  Hasura Private DDN Self-Hosted (enterprise license, Kubernetes):
+    https://hasura.io/docs/3.0/architecture/private/self-hosted
+  Hasura v2 lambda connectors (TypeScript, Python, Go), decorator/tag patterns:
+    https://hasura.io/docs/3.0/business-logic/overview/
+  Hasura DDN cursor pagination, aggregates, APQ: standard DDN GraphQL capabilities per docs.
+-->

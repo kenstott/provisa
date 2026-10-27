@@ -16,6 +16,7 @@ import type {
   Source,
   Domain,
   DataProduct,
+  ListedNames,
   RegisteredTable,
   Metric,
   RefreshPolicySummary,
@@ -43,6 +44,7 @@ import {
   SourcesQuery as SOURCES_QUERY,
   DomainsQuery as DOMAINS_QUERY,
   DataProductsQuery as DATA_PRODUCTS_QUERY,
+  ListedNamesQuery as LISTED_NAMES_QUERY,
   TablesQuery as TABLES_QUERY,
   Calendars as CALENDARS_QUERY,
   CreateCalendar as CREATE_CALENDAR_MUTATION,
@@ -209,6 +211,16 @@ export function useDataProducts() {
     error,
     refetch,
   };
+}
+
+const NO_LISTED_NAMES: ListedNames[] = [];
+
+// REQ-2153: names listed in domains the caller does not reach.
+export function useListedNames() {
+  const { data } = useQuery<{ listedNames: ListedNames[] }>(LISTED_NAMES_QUERY, {
+    fetchPolicy: "cache-and-network",
+  });
+  return data?.listedNames ?? NO_LISTED_NAMES;
 }
 
 export function useTables() {

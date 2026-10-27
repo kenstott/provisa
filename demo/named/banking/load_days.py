@@ -81,10 +81,10 @@ def _figures_at_close(client: httpx.Client, day: date) -> int:
     response = client.post(
         "/data/sql",
         json={
-            "sql": 'SELECT COUNT(*) AS n FROM "banking"."view_eod_totals" '
+            "sql": 'SELECT COUNT(*) AS n FROM "banking"."view_eod_totals"'
+            f"(as_recorded => '{close_of(day)}') "
             f"WHERE business_date = DATE '{day.isoformat()}'"
         },
-        headers={"X-Provisa-As-Recorded": close_of(day)},
     )
     if response.status_code != 200:
         raise SystemExit(f"{day}: HTTP {response.status_code}: {response.text}")

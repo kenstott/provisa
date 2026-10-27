@@ -35,7 +35,8 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: agriculture_analyst
+  parents: [analyst]
   description: "Queries the agriculture domain's data."
   capabilities:
   - query_development
@@ -70,44 +71,44 @@ tables:
   table: counties
   description: The counties the insurer writes crop policies in
   columns:
-  - {name: county_fips, data_type: varchar, is_primary_key: true, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
-  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [org_admin, analyst]}
-  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [org_admin, analyst]}
-  - {name: weight, data_type: integer, description: 'How many of the portfolio''s farms the county holds, relative to the others', visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: 'The county''s 5-digit FIPS code', visible_to: [data_steward, agriculture_analyst]}
+  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [data_steward, agriculture_analyst]}
+  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [data_steward, agriculture_analyst]}
+  - {name: weight, data_type: integer, description: 'How many of the portfolio''s farms the county holds, relative to the others', visible_to: [data_steward, agriculture_analyst]}
 - source_id: portfolio
   domain_id: agriculture
   schema: public
   table: farms
   description: The farms the insurer covers, one row a farm and the crop it insures
   columns:
-  - {name: farm_id, data_type: integer, is_primary_key: true, description: 'The farm''s number', visible_to: [org_admin, analyst]}
-  - {name: county_fips, data_type: varchar, description: 'The county the farm is in', visible_to: [org_admin, analyst]}
-  - {name: crop, data_type: varchar, description: 'The crop it insures: corn or soybeans', visible_to: [org_admin, analyst]}
-  - {name: insured_acres, data_type: integer, description: 'The acres it insures', visible_to: [org_admin, analyst]}
-  - {name: aph_yield, data_type: decimal, description: 'Its actual production history (APH) yield, in bushels an acre', visible_to: [org_admin, analyst]}
+  - {name: farm_id, data_type: integer, is_primary_key: true, description: 'The farm''s number', visible_to: [data_steward, agriculture_analyst]}
+  - {name: county_fips, data_type: varchar, description: 'The county the farm is in', visible_to: [data_steward, agriculture_analyst]}
+  - {name: crop, data_type: varchar, description: 'The crop it insures: corn or soybeans', visible_to: [data_steward, agriculture_analyst]}
+  - {name: insured_acres, data_type: integer, description: 'The acres it insures', visible_to: [data_steward, agriculture_analyst]}
+  - {name: aph_yield, data_type: decimal, description: 'Its actual production history (APH) yield, in bushels an acre', visible_to: [data_steward, agriculture_analyst]}
 - source_id: portfolio
   domain_id: agriculture
   schema: public
   table: policies
   description: The policy each farm buys every crop year -- its coverage level, liability and premium
   columns:
-  - {name: farm_id, data_type: integer, is_primary_key: true, description: 'The farm it covers', visible_to: [org_admin, analyst]}
-  - {name: crop_year, data_type: integer, is_primary_key: true, description: 'The crop year it covers', visible_to: [org_admin, analyst]}
-  - {name: coverage_level, data_type: decimal, description: 'The share of the APH yield insured, from 0.70 to 0.85', visible_to: [org_admin, analyst]}
-  - {name: liability, data_type: decimal, description: 'The most the policy pays in USD', visible_to: [org_admin, analyst]}
-  - {name: premium, data_type: decimal, description: 'Its total premium in USD, before subsidy', visible_to: [org_admin, analyst]}
+  - {name: farm_id, data_type: integer, is_primary_key: true, description: 'The farm it covers', visible_to: [data_steward, agriculture_analyst]}
+  - {name: crop_year, data_type: integer, is_primary_key: true, description: 'The crop year it covers', visible_to: [data_steward, agriculture_analyst]}
+  - {name: coverage_level, data_type: decimal, description: 'The share of the APH yield insured, from 0.70 to 0.85', visible_to: [data_steward, agriculture_analyst]}
+  - {name: liability, data_type: decimal, description: 'The most the policy pays in USD', visible_to: [data_steward, agriculture_analyst]}
+  - {name: premium, data_type: decimal, description: 'Its total premium in USD, before subsidy', visible_to: [data_steward, agriculture_analyst]}
 - source_id: portfolio
   domain_id: agriculture
   schema: public
   table: claims
   description: The indemnities the insurer paid, one row a claim
   columns:
-  - {name: claim_id, data_type: integer, is_primary_key: true, description: 'The claim''s number', visible_to: [org_admin, analyst]}
-  - {name: farm_id, data_type: integer, description: 'The farm it paid', visible_to: [org_admin, analyst]}
-  - {name: crop_year, data_type: integer, description: 'The crop year of the policy it paid on', visible_to: [org_admin, analyst]}
-  - {name: cause_of_loss, data_type: varchar, description: 'The peril: drought, heat, excess_moisture, hail or freeze', visible_to: [org_admin, analyst]}
-  - {name: month_of_loss, data_type: integer, description: 'The month the loss happened', visible_to: [org_admin, analyst]}
-  - {name: indemnity, data_type: decimal, description: 'What was paid in USD', visible_to: [org_admin, analyst]}
+  - {name: claim_id, data_type: integer, is_primary_key: true, description: 'The claim''s number', visible_to: [data_steward, agriculture_analyst]}
+  - {name: farm_id, data_type: integer, description: 'The farm it paid', visible_to: [data_steward, agriculture_analyst]}
+  - {name: crop_year, data_type: integer, description: 'The crop year of the policy it paid on', visible_to: [data_steward, agriculture_analyst]}
+  - {name: cause_of_loss, data_type: varchar, description: 'The peril: drought, heat, excess_moisture, hail or freeze', visible_to: [data_steward, agriculture_analyst]}
+  - {name: month_of_loss, data_type: integer, description: 'The month the loss happened', visible_to: [data_steward, agriculture_analyst]}
+  - {name: indemnity, data_type: decimal, description: 'What was paid in USD', visible_to: [data_steward, agriculture_analyst]}
 - source_id: govdata
   domain_id: agriculture
   schema: ag
@@ -120,18 +121,18 @@ tables:
   description: The USDA Risk Management Agency's crop insurance experience by county, crop, cause of
     loss and month -- the whole market's premium and the indemnities it paid, per peril
   columns:
-  - {name: year, data_type: integer, description: 'The crop year', visible_to: [org_admin, analyst]}
-  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
-  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [org_admin, analyst]}
-  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [org_admin, analyst]}
-  - {name: commodity_name, data_type: varchar, description: 'The insured crop', visible_to: [org_admin, analyst]}
-  - {name: insurance_plan_abbr, data_type: varchar, description: 'The insurance plan: YP, RP, RPHPE and others', visible_to: [org_admin, analyst]}
-  - {name: cause_of_loss_desc, data_type: varchar, description: 'The peril: Drought, Heat, Excess Moisture/Precip/Rain, Hail, Freeze and others', visible_to: [org_admin, analyst]}
-  - {name: month_of_loss, data_type: integer, description: 'The month the loss happened; 0 for the annual roll-up of minor perils', visible_to: [org_admin, analyst]}
-  - {name: policies_indemnified_count, data_type: bigint, description: 'Policies paid for this peril', visible_to: [org_admin, analyst]}
-  - {name: liability_amount, data_type: double, description: 'The insurance in force in USD', visible_to: [org_admin, analyst]}
-  - {name: total_premium_amount, data_type: double, description: 'The premium before subsidy in USD', visible_to: [org_admin, analyst]}
-  - {name: indemnity_amount, data_type: double, description: 'The indemnity paid for this peril in USD', visible_to: [org_admin, analyst]}
+  - {name: year, data_type: integer, description: 'The crop year', visible_to: [data_steward, agriculture_analyst]}
+  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [data_steward, agriculture_analyst]}
+  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [data_steward, agriculture_analyst]}
+  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [data_steward, agriculture_analyst]}
+  - {name: commodity_name, data_type: varchar, description: 'The insured crop', visible_to: [data_steward, agriculture_analyst]}
+  - {name: insurance_plan_abbr, data_type: varchar, description: 'The insurance plan: YP, RP, RPHPE and others', visible_to: [data_steward, agriculture_analyst]}
+  - {name: cause_of_loss_desc, data_type: varchar, description: 'The peril: Drought, Heat, Excess Moisture/Precip/Rain, Hail, Freeze and others', visible_to: [data_steward, agriculture_analyst]}
+  - {name: month_of_loss, data_type: integer, description: 'The month the loss happened; 0 for the annual roll-up of minor perils', visible_to: [data_steward, agriculture_analyst]}
+  - {name: policies_indemnified_count, data_type: bigint, description: 'Policies paid for this peril', visible_to: [data_steward, agriculture_analyst]}
+  - {name: liability_amount, data_type: double, description: 'The insurance in force in USD', visible_to: [data_steward, agriculture_analyst]}
+  - {name: total_premium_amount, data_type: double, description: 'The premium before subsidy in USD', visible_to: [data_steward, agriculture_analyst]}
+  - {name: indemnity_amount, data_type: double, description: 'The indemnity paid for this peril in USD', visible_to: [data_steward, agriculture_analyst]}
 - source_id: govdata
   domain_id: agriculture
   schema: weather
@@ -142,13 +143,13 @@ tables:
   description: NOAA's daily weather for each county -- the mean of every reporting station's maximum
     temperature and precipitation that day
   columns:
-  - {name: county_fips, data_type: varchar, is_primary_key: true, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
-  - {name: date, data_type: varchar, is_primary_key: true, description: 'The day, YYYY-MM-DD', visible_to: [org_admin, analyst]}
-  - {name: year, data_type: integer, description: 'The year', visible_to: [org_admin, analyst]}
-  - {name: tmax_c, data_type: double, description: 'The day''s maximum temperature in degrees Celsius', visible_to: [org_admin, analyst]}
-  - {name: tmin_c, data_type: double, description: 'The day''s minimum temperature in degrees Celsius', visible_to: [org_admin, analyst]}
-  - {name: prcp_mm, data_type: double, description: 'The day''s precipitation in millimetres', visible_to: [org_admin, analyst]}
-  - {name: station_count, data_type: bigint, description: 'How many stations reported', visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: 'The county''s 5-digit FIPS code', visible_to: [data_steward, agriculture_analyst]}
+  - {name: date, data_type: varchar, is_primary_key: true, description: 'The day, YYYY-MM-DD', visible_to: [data_steward, agriculture_analyst]}
+  - {name: year, data_type: integer, description: 'The year', visible_to: [data_steward, agriculture_analyst]}
+  - {name: tmax_c, data_type: double, description: 'The day''s maximum temperature in degrees Celsius', visible_to: [data_steward, agriculture_analyst]}
+  - {name: tmin_c, data_type: double, description: 'The day''s minimum temperature in degrees Celsius', visible_to: [data_steward, agriculture_analyst]}
+  - {name: prcp_mm, data_type: double, description: 'The day''s precipitation in millimetres', visible_to: [data_steward, agriculture_analyst]}
+  - {name: station_count, data_type: bigint, description: 'How many stations reported', visible_to: [data_steward, agriculture_analyst]}
 - source_id: govdata
   domain_id: agriculture
   schema: ag
@@ -159,17 +160,17 @@ tables:
   description: The USDA National Agricultural Statistics Service's county estimates -- here each
     county's corn and soybean yield, in bushels an acre
   columns:
-  - {name: year, data_type: integer, description: 'The crop year', visible_to: [org_admin, analyst]}
-  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
-  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [org_admin, analyst]}
-  - {name: commodity_desc, data_type: varchar, description: 'The crop: CORN or SOYBEANS', visible_to: [org_admin, analyst]}
-  - {name: statisticcat_desc, data_type: varchar, description: 'The statistic: YIELD', visible_to: [org_admin, analyst]}
-  - {name: agg_level_desc, data_type: varchar, description: 'The geography: COUNTY', visible_to: [org_admin, analyst]}
-  - {name: unit_desc, data_type: varchar, description: 'The unit: BU / ACRE', visible_to: [org_admin, analyst]}
-  - {name: util_practice_desc, data_type: varchar, description: 'The use: GRAIN for corn', visible_to: [org_admin, analyst]}
-  - {name: prodn_practice_desc, data_type: varchar, description: 'The practice: ALL PRODUCTION PRACTICES, IRRIGATED or not', visible_to: [org_admin, analyst]}
-  - {name: domain_desc, data_type: varchar, description: 'TOTAL, or a breakdown', visible_to: [org_admin, analyst]}
-  - {name: value, data_type: double, description: 'The yield in bushels an acre; empty where NASS withheld it', visible_to: [org_admin, analyst]}
+  - {name: year, data_type: integer, description: 'The crop year', visible_to: [data_steward, agriculture_analyst]}
+  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [data_steward, agriculture_analyst]}
+  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [data_steward, agriculture_analyst]}
+  - {name: commodity_desc, data_type: varchar, description: 'The crop: CORN or SOYBEANS', visible_to: [data_steward, agriculture_analyst]}
+  - {name: statisticcat_desc, data_type: varchar, description: 'The statistic: YIELD', visible_to: [data_steward, agriculture_analyst]}
+  - {name: agg_level_desc, data_type: varchar, description: 'The geography: COUNTY', visible_to: [data_steward, agriculture_analyst]}
+  - {name: unit_desc, data_type: varchar, description: 'The unit: BU / ACRE', visible_to: [data_steward, agriculture_analyst]}
+  - {name: util_practice_desc, data_type: varchar, description: 'The use: GRAIN for corn', visible_to: [data_steward, agriculture_analyst]}
+  - {name: prodn_practice_desc, data_type: varchar, description: 'The practice: ALL PRODUCTION PRACTICES, IRRIGATED or not', visible_to: [data_steward, agriculture_analyst]}
+  - {name: domain_desc, data_type: varchar, description: 'TOTAL, or a breakdown', visible_to: [data_steward, agriculture_analyst]}
+  - {name: value, data_type: double, description: 'The yield in bushels an acre; empty where NASS withheld it', visible_to: [data_steward, agriculture_analyst]}
 views:
 # The answer: each county and crop year, the portfolio's premium, indemnity and loss ratio beside the
 # season's weather, the whole market's losses by cause and the county's yields. One UNION of what
@@ -241,21 +242,21 @@ views:
     GROUP BY county_fips, year
     HAVING SUM(premium) IS NOT NULL
   columns:
-  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [org_admin, analyst]}
-  - {name: year, data_type: integer, description: 'The crop year', visible_to: [org_admin, analyst]}
-  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [org_admin, analyst]}
-  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [org_admin, analyst]}
-  - {name: premium, data_type: double, description: 'The portfolio''s premium in the county that year in USD', visible_to: [org_admin, analyst]}
-  - {name: indemnity, data_type: double, description: 'The indemnities it paid there in USD', visible_to: [org_admin, analyst]}
-  - {name: loss_ratio, data_type: double, description: 'Indemnity over premium: above 1, the year lost money', visible_to: [org_admin, analyst]}
-  - {name: dry_share, data_type: double, description: 'The share of its indemnity paid for drought and heat', visible_to: [org_admin, analyst]}
-  - {name: market_loss_ratio, data_type: double, description: 'The whole market''s loss ratio on corn and soybeans in the county, from the USDA', visible_to: [org_admin, analyst]}
-  - {name: market_dry_share, data_type: double, description: 'The share of the market''s indemnity the USDA attributes to drought and heat', visible_to: [org_admin, analyst]}
-  - {name: season_rain_mm, data_type: double, description: 'May-to-August rainfall in millimetres, from NOAA', visible_to: [org_admin, analyst]}
-  - {name: season_tmax_c, data_type: double, description: 'The season''s mean daily maximum temperature in degrees Celsius', visible_to: [org_admin, analyst]}
-  - {name: hot_days, data_type: bigint, description: 'Days of the season above 32 degrees Celsius (90 F)', visible_to: [org_admin, analyst]}
-  - {name: corn_yield, data_type: double, description: 'The county''s corn yield in bushels an acre, from NASS', visible_to: [org_admin, analyst]}
-  - {name: soybean_yield, data_type: double, description: 'The county''s soybean yield in bushels an acre, from NASS', visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, description: 'The county''s 5-digit FIPS code', visible_to: [data_steward, agriculture_analyst]}
+  - {name: year, data_type: integer, description: 'The crop year', visible_to: [data_steward, agriculture_analyst]}
+  - {name: county_name, data_type: varchar, description: 'The county''s name', visible_to: [data_steward, agriculture_analyst]}
+  - {name: state_abbr, data_type: varchar, description: 'The county''s state', visible_to: [data_steward, agriculture_analyst]}
+  - {name: premium, data_type: double, description: 'The portfolio''s premium in the county that year in USD', visible_to: [data_steward, agriculture_analyst]}
+  - {name: indemnity, data_type: double, description: 'The indemnities it paid there in USD', visible_to: [data_steward, agriculture_analyst]}
+  - {name: loss_ratio, data_type: double, description: 'Indemnity over premium: above 1, the year lost money', visible_to: [data_steward, agriculture_analyst]}
+  - {name: dry_share, data_type: double, description: 'The share of its indemnity paid for drought and heat', visible_to: [data_steward, agriculture_analyst]}
+  - {name: market_loss_ratio, data_type: double, description: 'The whole market''s loss ratio on corn and soybeans in the county, from the USDA', visible_to: [data_steward, agriculture_analyst]}
+  - {name: market_dry_share, data_type: double, description: 'The share of the market''s indemnity the USDA attributes to drought and heat', visible_to: [data_steward, agriculture_analyst]}
+  - {name: season_rain_mm, data_type: double, description: 'May-to-August rainfall in millimetres, from NOAA', visible_to: [data_steward, agriculture_analyst]}
+  - {name: season_tmax_c, data_type: double, description: 'The season''s mean daily maximum temperature in degrees Celsius', visible_to: [data_steward, agriculture_analyst]}
+  - {name: hot_days, data_type: bigint, description: 'Days of the season above 32 degrees Celsius (90 F)', visible_to: [data_steward, agriculture_analyst]}
+  - {name: corn_yield, data_type: double, description: 'The county''s corn yield in bushels an acre, from NASS', visible_to: [data_steward, agriculture_analyst]}
+  - {name: soybean_yield, data_type: double, description: 'The county''s soybean yield in bushels an acre, from NASS', visible_to: [data_steward, agriculture_analyst]}
 relationships:
 - {id: farm-to-county, alias: FARMED_IN, cardinality: many-to-one, source_table_id: farms, source_column: county_fips, target_table_id: counties, target_column: county_fips}
 - {id: policy-to-farm, alias: COVERS, cardinality: many-to-one, source_table_id: policies, source_column: farm_id, target_table_id: farms, target_column: farm_id}

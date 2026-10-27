@@ -22,6 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect, BACKEND_URL, TRINO_BACKEND_URL, UI_URL } from "./coverage";
+import { WAREHOUSE_SCHEMA } from "./cloud-warehouse";
 import { runSqlOnPage, typeSql } from "./source-to-query-helpers";
 import type { Page } from "./coverage";
 import { deleteSourceAndItsTables, type AdminGql } from "./delete-source";
@@ -32,7 +33,6 @@ export const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
 export const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 export const SWAP_PREFIX = "provisa-swap";
 export const MAKE_FILE_LAKE_FIXTURES = path.join(ROOT, "provisa-ui", "e2e", "make-file-lake-fixtures.py");
-export const CLOUD_WAREHOUSE_SEED = path.join(ROOT, "provisa-ui", "e2e", "cloud_warehouse_seed.py");
 // redshift: unlike snowflake/databricks/bigquery/fabric (standing accounts, never provisioned by
 // this harness), Redshift Serverless is AWS-only and billable — `scripts/redshift_e2e.py` bridges
 // `tests/integration/redshift_cluster.py`'s pytest-scoped provision/teardown fixture into two
@@ -656,7 +656,7 @@ function rebootEngineExtraEnv(engineKind: RebootEngineKind): Record<string, stri
       const user = encodeURIComponent(process.env.SNOWFLAKE_USER ?? "");
       const password = encodeURIComponent(process.env.SNOWFLAKE_PASSWORD ?? "");
       const account = process.env.SNOWFLAKE_ACCOUNT ?? "";
-      const database = process.env.SNOWFLAKE_DATABASE ?? "PROVISA_UI_E2E";
+      const database = process.env.SNOWFLAKE_DATABASE ?? WAREHOUSE_SCHEMA.toUpperCase();
       const warehouse = process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH";
       return {
         PROVISA_ENGINE_URL: `snowflake://${user}:${password}@${account}/${database}/PUBLIC?warehouse=${warehouse}`,

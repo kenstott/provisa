@@ -6333,25 +6333,33 @@
   feature: connector-catalog-files-and-lake
   priority: SHOULD
   type: behavioral
-  description: Iceberg and Delta Lake sources support time-travel queries via an optional `as_of` argument
-    on root query fields (snapshot ID, version number, or ISO 8601 timestamp). The compiler translates
-    `as_of` to Trino `FOR TIMESTAMP AS OF` / `FOR VERSION AS OF` syntax. Time-travel is read-only and
-    only available on source types whose Trino connector supports it. Queries against non-time-travel-capable
-    sources that supply `as_of` are rejected at compile time.
+  description: '[SUPERSEDED by REQ-1163, 2026-10-26 -- an Iceberg or Delta table travels under the one time-travel
+    argument every relation that keeps versions takes. Kept here for history; do not implement against it.]
+    Iceberg and Delta Lake sources support time-travel queries via an optional `as_of` argument on root query
+    fields (snapshot ID, version number, or ISO 8601 timestamp). The compiler translates `as_of` to Trino `FOR
+    TIMESTAMP AS OF` / `FOR VERSION AS OF` syntax. Time-travel is read-only and only available on source types
+    whose Trino connector supports it. Queries against non-time-travel-capable sources that supply `as_of` are
+    rejected at compile time. [END SUPERSEDED BLOCK] (Amended 2026-10-26, ONE WAY TO TIME-TRAVEL:) An Iceberg
+    or Delta table travels by its snapshots under REQ-1163''s arguments, written where the statement names it:
+    a snapshot is a commit time, which is recorded time, so as_recorded selects the snapshot current then (SQL
+    "lake"."events"(as_recorded => ''2024-01-15T12:00:00''), the GraphQL field''s as_recorded argument, REST''s
+    ?as_recorded=), read with the engine''s FOR TIMESTAMP AS OF. as_of applies only where a valid time is mapped
+    and is refused by name on such a table; there is no other syntax or parameter, and no version number.'
   use_case: Time-travel queries let consumers audit historical snapshots of Iceberg and Delta tables without
     separate table copies.
   code:
-  - provisa/compiler/sql_gen.py
+  - provisa/mv/time_travel.py
+  - provisa/compiler/schema_gen.py
   tests:
   - tests/unit/test_time_travel.py
   - tests/integration/test_registration_governance_integration.py
   since: 2026-01
-  scenario: 'Given an Iceberg source with an as_of argument supplied at query time
+  scenario: 'Given an Iceberg table read with as_recorded at query time
 
-    When the compiler processes the query
+    When the statement is routed to the engine
 
-    Then FOR TIMESTAMP AS OF / FOR VERSION AS OF syntax is emitted; non-capable sources with as_of are
-    rejected
+    Then the snapshot current at that time is read (FOR TIMESTAMP AS OF), as_of is refused by name, and a table
+    that keeps no versions refuses both
 
     '
   integration_test: required
@@ -8896,9 +8904,15 @@
   priority: MUST
   type: behavioral
   description: 'Cypher clauses map to SQL as follows: `MATCH` → `JOIN`; `OPTIONAL MATCH` → `LEFT JOIN`;
-    `WHERE` → `WHERE`; `RETURN` → `SELECT`; `ORDER BY` → `ORDER BY`; `SKIP`/`LIMIT` → `OFFSET`/`LIMIT`;
-    `WITH` (pipeline) → CTE or subquery. Node label `:Label` and relationship type `:TYPE` are resolved
-    via the steward-declared label mapping (REQ-351) to physical table and join references.'
+    [SUPERSEDED by REQ-347, 2026-10-25 -- a WHERE after OPTIONAL MATCH conditions that match (openCypher),
+    see the amendment below. Kept here for history; do not implement against it.] `WHERE` → `WHERE`; [END
+    SUPERSEDED BLOCK] `RETURN` → `SELECT`; `ORDER BY` → `ORDER BY`; `SKIP`/`LIMIT` → `OFFSET`/`LIMIT`; `WITH`
+    (pipeline) → CTE or subquery. Node label `:Label` and relationship type `:TYPE` are resolved via the
+    steward-declared label mapping (REQ-351) to physical table and join references. (Amended 2026-10-25,
+    OPENCYPHER CONFORMANCE:) A WHERE that follows an OPTIONAL MATCH is that match''s condition and never
+    removes a row, including conjuncts that name only required variables: a row whose optional part fails
+    it is kept with the optional variables null. A WHERE after a MATCH filters rows. A MATCH or OPTIONAL
+    MATCH may list several comma-separated patterns, which form one match step as consecutive clauses do.'
   use_case: Cypher clause mapping enables graph queries to execute as governed SQL via Trino.
   code:
   - provisa/cypher/
@@ -19802,8 +19816,10 @@
   feature: roles-and-capabilities-inheritance
   priority: SHOULD
   type: behavioral
-  description: 'Inherited roles: a role hierarchy where child role inherits capabilities and domain_access
-    from parent. Config: `parent_role_id` on role definition. Flattened at startup (merge capabilities/domain_access
+  description: 'Inherited roles: a role hierarchy where [SUPERSEDED by REQ-2155, 2026-10-25 -- a role inherits
+    capabilities; its domain reach is its own (ALL or a list), never inherited. Kept here for history; do
+    not implement against it.] child role inherits capabilities and domain_access from parent. [END SUPERSEDED
+    BLOCK] Config: `parent_role_id` on role definition. Flattened at startup (merge capabilities/domain_access
     up the chain). Lookups remain O(1).'
   use_case: 'Hasura v2 parity: inherited roles eliminate redundant permission duplication across similar role definitions.'
   code:
@@ -33963,6 +33979,7 @@
   - REQ-1056
   superseded_by: REQ-1240
 - id: REQ-1058
+  value: 'Publish selected tables and views to unauthenticated visitors, with no account required.'
   status: proposed
   group: 1. Access Governance & Security
   category: Public Data Publishing
@@ -34004,6 +34021,7 @@
     The text predates the current terms: the org is named by its provisa.dev subdomain and there is no
     tenant_id claim (REQ-1276).'
 - id: REQ-1059
+  value: 'Control public access through the same role and grant model as private access—no separate publishing system.'
   status: proposed
   group: 1. Access Governance & Security
   category: Public Data Publishing
@@ -34258,7 +34276,7 @@
     by REQ-1330, 2026-10-03 -- There is no EmailProvider; mail goes through the EmailSender port (provisa/core/mail.py:79).
     Kept here for history; do not implement against it.] (mirroring AuthProvider/EmailProvider pattern)
     [END SUPERSEDED BLOCK] enables organizations to publish Provisa''s governance metadata OUTBOUND to
-    external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only: Provisa never ingests an external catalog as source of truth.'
+    external data catalogs. Configured per org in YAML with vendor-specific credentials. [SUPERSEDED by REQ-2122, 2026-10-21 -- a steward may read descriptions, owners, tags and glossary links back from a catalog, and may lock a table to a catalog. Kept here for history; do not implement against it.] Outbound only: Provisa never ingests an external catalog as source of truth. [END SUPERSEDED BLOCK]'
   use_case: Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance
     catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them.
     Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of
@@ -34519,7 +34537,12 @@
   description: 'Metadata export user documentation: a published docs page (docs/metadata-export.md, navigated
     under Security & Governance) covering the supported targets, the YAML configuration, what the payload
     contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile
-    sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.'
+    sync model. [SUPERSEDED by REQ-2122, 2026-10-25 -- Provisa now also reads from catalogs (descriptions
+    taken, refreshed or locked from a domain''s catalogs). Kept here for history; do not implement against
+    it.] Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path. [END
+    SUPERSEDED BLOCK] (Amended 2026-10-25, PUBLISH AND READ-BACK:) The page states what flows each way:
+    the export publishes governed metadata to a domain''s catalogs, and a table''s description can be taken
+    from, refreshed from or locked to those catalogs (REQ-2122). Nothing else is ingested from a catalog.'
   use_case: An admin evaluating or configuring catalog integration finds the supported targets and the
     exact configuration in the product docs instead of in the architecture notes.
   code:
@@ -34535,7 +34558,8 @@
 
     Then the metadata export page is reachable from the Security and Governance navigation
 
-    And the page states that publication is outbound only
+    And the page states that metadata is published to a domain''s catalogs and that only table descriptions
+    are read back from them
 
     And the page names every registered export provider
 
@@ -35712,8 +35736,10 @@
   priority: MUST
   type: constraint
   description: 'The `ops` domain behaves like any ordinary data domain: roles must be explicitly granted
-    rights to access it. There is no implicit access to ops tables; admins bypass this via the admin capability
-    override.'
+    rights to access it. There is no implicit access to ops tables; [SUPERSEDED by REQ-2159, 2026-10-25
+    -- no capability widens a role''s grants (REQ-2152); there is no admin override. Kept here for history;
+    do not implement against it.] admins bypass this via the admin capability override. [END SUPERSEDED
+    BLOCK]'
   use_case: Prevents unintended exposure of operational/internal tables. Each role must be explicitly
     granted access according to their responsibility.
   code:
@@ -37053,7 +37079,64 @@
   priority: SHOULD
   type: behavioral
   since: 2026-07
-  description: "A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized view's inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta), never the raw log. (2) Time travel: a request-level `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to the whole query: _prepare_compiled overlays each bitemporal view's expansion entry with an as-of reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every substrate. A whole-query as-of context (like a bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema. Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES). [SUPERSEDED by REQ-2109, 2026-10-20 -- as_of filters valid time and as_recorded filters recorded time; all three declarations are required. Kept here for history; do not implement against it.] Amended 2026-10-16 (maintainer): the clock of time travel is the SOURCE's time, not Provisa's load time. A bitemporal table or view declares its source-time column (the source's own change timestamp such as updated_at, or the commit timestamp a CDC landing carries); X-Provisa-As-Of and its range (REQ-2064) measure against that time, so \"as of last Tuesday\" means as of last Tuesday in the source. Provisa's own recorded (load) time is kept beside it as the audit answer to when Provisa knew, and is not the default clock. Declaring a source-time column is optional: a view that declares none uses Provisa's load time as its clock (maintainer 2026-10-16), and the docs and the view's editor state the implication: versions are then ordered and read as of when Provisa landed each change, which depends on refresh timing, not when it happened in the source. [END SUPERSEDED BLOCK] Amended 2026-10-17 (maintainer): a SECOND axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one ISO 8601 point, validated by parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded) reads each bitemporal view as Provisa had recorded it then: its append log is cut to rows recorded at or before that time before any version span is drawn, then the as-of picks the version in force at its time. So a correction recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the original; as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query endpoints' headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight ticket option as_recorded. The audit row records both (query_audit_log.as_of, as_recorded). The SQL explorer offers both pickers and a demo tour can set each (step kinds as_of, as_recorded). (Amended 2026-10-20, VALID TIME AND RECORDED TIME, REQ-2109:) as_of means valid_time <= X: the latest version per business_key among rows whose valid time is at or before X. as_recorded means what was known at Y: only versions whose recorded_time is at or before Y. Every surface that takes them (the GraphQL and SQL headers, Flight options, the gRPC and MCP resolve arguments, and a pgwire session's SET provisa.as_of / provisa.as_recorded, REQ-2110) applies the same meaning."
+  description: 'A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers
+    get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized view''s
+    inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over the physical
+    append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed state (latest
+    batch for snapshot; latest-version-per-business-key window dropping tombstones for delta), never the raw
+    log. [SUPERSEDED by REQ-1163, 2026-10-25 -- time travel is an argument on each bitemporal view, not a request
+    header (amendment 2026-10-26). Kept here for history; do not implement against it.] (2) Time travel: a request-level
+    `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400)
+    applies to the whole query: [END SUPERSEDED BLOCK] _prepare_compiled overlays each bitemporal view''s expansion
+    entry with an as-of reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical
+    consumer-facing as-of semantics across every substrate. [SUPERSEDED by REQ-1163, 2026-10-25 -- the arguments
+    are in the schema, where they apply. Kept here for history; do not implement against it.] A whole-query
+    as-of context (like a bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema.
+    [END SUPERSEDED BLOCK] Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES). [SUPERSEDED by REQ-2109,
+    2026-10-20 -- as_of filters valid time and as_recorded filters recorded time; all three declarations are
+    required. Kept here for history; do not implement against it.] Amended 2026-10-16 (maintainer): the clock
+    of time travel is the SOURCE''s time, not Provisa''s load time. A bitemporal table or view declares its
+    source-time column (the source''s own change timestamp such as updated_at, or the commit timestamp a CDC
+    landing carries); X-Provisa-As-Of and its range (REQ-2064) measure against that time, so "as of last Tuesday"
+    means as of last Tuesday in the source. Provisa''s own recorded (load) time is kept beside it as the audit
+    answer to when Provisa knew, and is not the default clock. Declaring a source-time column is optional: a
+    view that declares none uses Provisa''s load time as its clock (maintainer 2026-10-16), and the docs and
+    the view''s editor state the implication: versions are then ordered and read as of when Provisa landed each
+    change, which depends on refresh timing, not when it happened in the source. [END SUPERSEDED BLOCK] Amended
+    2026-10-17 (maintainer): a SECOND axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one
+    ISO 8601 point, validated by parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded)
+    reads each bitemporal view as Provisa had recorded it then: its append log is cut to rows recorded at or
+    before that time before any version span is drawn, then the as-of picks the version in force at its time.
+    So a correction recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the
+    original; as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical
+    value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query endpoints''
+    headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight ticket option as_recorded.
+    The audit row records both (query_audit_log.as_of, as_recorded). The SQL explorer offers both pickers and
+    a demo tour can set each (step kinds as_of, as_recorded). (Amended 2026-10-20, VALID TIME AND RECORDED TIME,
+    REQ-2109:) as_of means valid_time <= X: the latest version per business_key among rows whose valid time
+    is at or before X. as_recorded means what was known at Y: only versions whose recorded_time is at or before
+    Y. Every surface that takes them (the GraphQL and SQL headers, Flight options, the gRPC and MCP resolve
+    arguments, and a pgwire session''s SET provisa.as_of / provisa.as_recorded, REQ-2110) applies the same meaning.
+    (Amended 2026-10-25, TIME TRAVEL IS AN ARGUMENT OF THE VIEW:) Time travel is written where it applies: each
+    bitemporal view''s GraphQL field takes optional as_of (valid time) and as_recorded (recorded time) arguments,
+    validated as before, and only bitemporal views have them. REST and MCP carry the same arguments through
+    their generation from the schema (REQ-1929), and Cypher and SPARQL use the same names. Arguments are per
+    field, so one GraphQL request may read a view at two times through aliases. The X-Provisa-As-Of request
+    header is removed; there is one way to say it. (Amended 2026-10-26, THE ARGUMENTS EVERYWHERE:) The arguments
+    are on every relation that keeps versions: a bitemporal table or view (REQ-2109: business_key, valid_time
+    and recorded_time mapped, a table read from its captured version log included) and an Iceberg or Delta table
+    (REQ-372, as_recorded alone); any other relation refuses them by name. In SQL they are the call form SQL
+    has for a relation in FROM (docs/commands.md): "banking"."view_eod_totals"(as_recorded => ''2026-10-02T17:00:00'',
+    as_of => ''...'') AS e, so two references read two times; a plain reference reads current state. A value
+    may be a bound $n, written into the statement before it is governed and validated as a written one. The
+    GraphQL arguments are on root fields and on relationship fields whose target keeps versions; the compiler
+    writes them in the SQL call form, and the pipeline lifts each reference''s time by its alias before governance
+    (provisa.mv.time_travel). The X-Provisa-As-Recorded header is removed with X-Provisa-As-Of; a pgwire session''s
+    SET provisa.as_of / provisa.as_recorded stays as the session''s default (a BI tool cannot write per-relation
+    arguments) and a reference''s own arguments override it; Flight, gRPC and MCP per-call arguments stay. The
+    SQL explorer''s pickers write the arguments into the statement. The audit row''s as_of and as_recorded record
+    the one time a statement reads at, and none when it reads at several (its text names each). Cypher and SPARQL
+    follow in a later change.'
   use_case: Without routing reads through reconstruction a bitemporal MV read would surface all historical
     versions instead of current state. Current-by-default makes bitemporal MVs usable; the X-Provisa-As-Of
     header adds opt-in, whole-query time travel.
@@ -44060,14 +44143,17 @@
   priority: SHOULD
   type: behavioral
   since: 2026-07
-  description: Provisa has a first-class Metric object - a named, governed aggregate definition with no
-    grain of its own. Shape follows Apache Ossie's metric natively (name, aggregate ANSI-SQL expression,
+  description: 'Provisa has a first-class Metric object - a named, governed aggregate definition with no
+    grain of its own. Shape follows Apache Ossie''s metric natively (name, aggregate ANSI-SQL expression,
     datatype, description, ai_context) plus Provisa governance fields (role visibility, steward/version,
     same pattern as tables). Dataset binding is implicit through the field references inside the expression,
     with relationship-derived joins when an expansion spans datasets. A metric query (metric plus a requested
     dimension set) is expanded by the compiler into GROUP BY SQL inside the single settled query pipeline
     - metrics are a compile-time expansion, never a second pipeline. Metrics appear in the UI as a third
-    Model-nav item beside Views and Commands.
+    Model-nav item beside Views and Commands. (Amended 2026-10-25, NO EVERYONE DEFAULT:) A metric''s grant
+    list has no everyone default and ''*'' names no role (REQ-2153, REQ-2154): an empty list means no role,
+    and creating a metric grants it to the acting role and to Viewer, as registering a table does. The same
+    holds for the role lists of functions, webhooks and commands.'
   use_case: A metric is neither a derived column (which has per-row grain) nor a view (which has fixed
     grain) - it is an aggregate definition whose grain is bound at query time, the concept every semantic
     layer since BusinessObjects has converged on. Defining it once, governed, gives every consumer the
@@ -46045,10 +46131,13 @@
   priority: SHOULD
   type: behavioral
   description: 'Governed dereference API for semantic data-location URIs: REST and MCP tool `resolve(uri,
-    as_of?)` that takes a Provisa semantic-address URI and returns the governed value(s) it addresses,
-    optionally at a point in time. For relational sources, the canonical address shape is `<table>/pk=<value>/<column>`,
+    as_of?)` that takes a Provisa semantic-address URI and returns the governed value(s) it addresses, optionally
+    at a point in time. For relational sources, the canonical address shape is `<table>/pk=<value>/<column>`,
     addressing a single value as table → primary-key predicate → column. Only semantic addresses (provisa://<org>/<domain_schema>/...)
-    are dereferenceable; physical URIs are refused.'
+    are dereferenceable; physical URIs are refused. (Amended 2026-10-25, A SYSTEM FIELD:) In the GraphQL
+    schema the resolver is the system field _resolve(uri, as_of, as_recorded), named like the other system
+    fields (_meta, _domain_) so it does not sit among a role''s domain roots; REST and MCP offer it under
+    the same name through REQ-1929.'
   use_case: Exported documents, lineage nodes, audit records, and agent citations carry resolvable links
     to live or historical governed values, giving dereferenceable provenance. Complements REQ-1364 (export addressing).
   code:
@@ -47758,6 +47847,7 @@
   - tests/unit/test_tag_params.py
   - tests/unit/test_derived_tags.py
 - id: REQ-1414
+  value: 'Query tag assignments as a SQL view and join them with any other data in your model.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -51573,6 +51663,7 @@
   docs:
   - sources.md
 - id: REQ-1492
+  value: 'Write operations are locked to the environment they were granted in, so a promotion cannot mutate production.'
   status: proposed
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
@@ -52720,6 +52811,7 @@
   - REQ-1490
   since: 2026-08
 - id: REQ-1506
+  value: 'Promote a single corrected metric to production without pulling along every other pending change.'
   status: accepted
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
@@ -56974,9 +57066,9 @@
     is the right to CREATE and DELETE environments; ``environment_switch`` is the right to BE SERVED BY
     one other than prod: to send x-provisa-env and have it honoured. They are separate because they
     answer different questions: the first is who may spend the org''s plan ceiling and drop a schema,
-    the second is who may work anywhere but production. The seed grants BOTH to org_admin and to developer,
+    the second is who may work anywhere but production. [SUPERSEDED by REQ-2155, 2026-10-25 -- environment_management is org_admin''s alone; developer and modeler hold environment_switch and manage only the environments they own. Kept here for history; do not implement against it.] The seed grants BOTH to org_admin and to developer,
     and NEITHER to analyst or modeler: an analyst reads production, and an environment they cannot create
-    is not one they should be able to switch into. WHICH environment a holder may delete is unchanged
+    is not one they should be able to switch into. [END SUPERSEDED BLOCK] WHICH environment a holder may delete is unchanged
     (REQ-1488 keeps deletion an org_admin act); the right decides who may make one at all and who may
     reach the environments surface. This AMENDS REQ-1528, which left creation open to any member on the
     argument that the authority is useless without bindings. That argument holds against an attacker and
@@ -56988,7 +57080,12 @@
     is bound in the org-routing middleware, before a route is reached. prod needs no right, since it is
     what a request naming nothing is served by. The platform bypass and dev/no-auth mode are exempt exactly
     as they are for every other capability gate, and an environment''s OWNER still holds their REQ-1528 authority inside it. Ownership decides what may be done to a model, these two rights decide who
-    may make an environment and be served by one.'
+    may make an environment and be served by one. (Amended 2026-10-25, REQ-2155 STANDARD ROLES:) The rights are
+    carried by the standard roles: ``environment_management`` (manage any environment) by org_admin alone;
+    ``environment_switch`` and ``environment_owned_management`` (manage the environments it owns: create one,
+    becoming its owner, and delete one it owns, never another''s) by developer, and so by modeler, sandbox and
+    org_admin, which inherit them. analyst holds none, and the sandbox role never holds
+    ``environment_management``.'
   use_case: An org_admin grants a contractor the analyst role; the contractor can query production and
     neither sees the environment switcher nor can create or delete an environment.
   scenario: 'Given a member holding only the analyst role
@@ -58379,49 +58476,54 @@
   feature: roles-and-capabilities-sandbox-role
   priority: MUST
   type: behavioral
-  description: 'THE SANDBOX ROLE IS org_admin MINUS A DENYLIST, AND THE SUBTRACTION IS THE DESIGN. ``sandbox``
-    is the sixth system template role and what a "Try it Out" invitation confers. A stranger holding that
-    link is meant to be able to do everything the product does -- register a source, model it, govern
-    it, query it, write to it -- inside an environment that expires. Defining the role by ENUMERATING
+  description: '[SUPERSEDED by REQ-2155, 2026-10-25 -- the sandbox role is composed from standard roles
+    by union, like every role; no subtraction. Kept here for history; do not implement against it.] THE
+    SANDBOX ROLE IS org_admin MINUS A DENYLIST, AND THE SUBTRACTION IS THE DESIGN. [END SUPERSEDED BLOCK]
+    ``sandbox`` is the sixth system template role and what a "Try it Out" invitation confers. A stranger
+    holding that link is meant to be able to do everything the product does -- register a source, model
+    it, govern it, query it, write to it -- inside an environment that expires. Defining the role by ENUMERATING
     what it may do would make every capability added later invisible to visitors until somebody remembered
     to edit this one row, so the demo would silently narrow with every release; subtracting is the direction
     that stays correct, and a new right reaches the sandbox with no second edit. WHAT IS WITHHELD: four
-    rights, each because it reaches something the environment does not contain or lets a visitor write
-    back into shared state. ``environment_switch``: the visitor would leave the sandbox, and REQ-1596''s
-    membership pin is pointless against a role that can name another environment. The two halves contain
-    a stranger only together. ``environment_management``: spends the org''s plan ceiling and drops other
-    environments'' schemas. ``user_management``: would let a visitor confer roles or admit more people,
-    and withholding it is also what closes the role-editing surface to them, so the denylist cannot be
-    edited away from inside the sandbox. ``org_glossary_rw``: the override over terms the org''s own
-    people authored. ``org_settings`` and ``observability`` are HELD, not withheld: REQ-1349 made ``org_settings``
-    the single capability nearly every org-scoped admin surface is gated on (cache, AI models, import, tags, secrets, scheduler, requests, org-engine, billing, domains; see adminNavCapabilities.test.ts),
-    so denying it wholesale took out most of the Admin tab rather than the few org-wide surfaces the original
-    denylist intended; a sandbox visitor is meant to see the product, including its settings and telemetry,
-    and only loses the right to write back into what it does not own. TWO PLANES, ONE DEFINITION: schema.sql
-    is PostgreSQL-only DDL and provisa/core/db.py is its portable mirror; a role seeded into one and not
-    the other exists on SaaS and not on a laptop, so the two are asserted equal. The re-assertion seams
-    that hand ``environment_management``/``environment_switch`` to pre-existing role rows name org_admin
-    and developer only: naming sandbox there would give back on the next init_schema exactly what the
-    denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE VISITOR ALSO HOLDS org_admin: a column is visible to a role when ``table_columns.visible_to`` NAMES that role, and every grant in an authored
-    model names the roles the model was authored against. ``sandbox`` is named by none of them, so a visitor
-    holding only that id is shown no column on any table, and schema_gen then drops every table left with none, leaving the tables whose API path/query parameters are exempt from the gate and nothing else.
-    That is not a narrower demo; it is an empty one, and it is not fixable by re-granting columns, because
-    the model belongs to the org and the visitor is a stranger to it. So redeeming a sandbox invitation
-    seats the redeemer under BOTH names: the role the invitation confers, and ``org_admin``, whose row
-    in the visitor''s own ephemeral environment is reduced at creation to the ``sandbox`` row''s own capabilities
-    and demonstrated list. Capabilities resolve as the UNION over the holder''s roles, so the union is
-    the sandbox definition exactly, the denylist keeps one author, and production''s org_admin is untouched
-    (REQ-1539 makes roles the environment''s own answer). AND THE ROLE IS CONFERRABLE NOWHERE ELSE: minting
-    an invitation that names ``sandbox`` under any policy but ``per_visitor`` is refused, because the
-    reduction is performed by the environment creation that only that policy triggers. Conferred anywhere else the name would carry org_admin''s full definition, unnarrowed. STILL TO SUBTRACT (open): the
-    settled target is most of org_admin, less the ability to WRITE BACK to the original sample data sources
-    -- a visitor''s hour is disposable but the demo sources it points at are shared and outlive it --
-    and less further destructive acts still to be enumerated. The four above are the rights withheld today;
-    the denylist is where those additions land, so the subtraction stays the one definition. (Amended 2026-10-15,
-    REQ-2053: environment_switch is no longer withheld. A demo sandbox is an org of its own, so its
-    environments are its visitor''s, who switches between those that exist; creating and deleting one stays
-    withheld with environment_management. A membership pinned to one environment (REQ-1596) is still
-    confined by the pin, which is checked before the right. Three rights are withheld.)'
+    rights, each because it reaches something the environment does not contain or lets a visitor write back
+    into shared state. ``environment_switch``: the visitor would leave the sandbox, and REQ-1596''s membership
+    pin is pointless against a role that can name another environment. The two halves contain a stranger
+    only together. ``environment_management``: spends the org''s plan ceiling and drops other environments''
+    schemas. ``user_management``: would let a visitor confer roles or admit more people, and withholding
+    it is also what closes the role-editing surface to them, so the denylist cannot be edited away from
+    inside the sandbox. ``org_glossary_rw``: the override over terms the org''s own people authored. ``org_settings``
+    and ``observability`` are HELD, not withheld: REQ-1349 made ``org_settings`` the single capability nearly
+    every org-scoped admin surface is gated on (cache, AI models, import, tags, secrets, scheduler, requests,
+    org-engine, billing, domains; see adminNavCapabilities.test.ts), so denying it wholesale took out most
+    of the Admin tab rather than the few org-wide surfaces the original denylist intended; a sandbox visitor
+    is meant to see the product, including its settings and telemetry, and only loses the right to write
+    back into what it does not own. TWO PLANES, ONE DEFINITION: schema.sql is PostgreSQL-only DDL and provisa/core/db.py
+    is its portable mirror; a role seeded into one and not the other exists on SaaS and not on a laptop,
+    so the two are asserted equal. The re-assertion seams that hand ``environment_management``/``environment_switch``
+    to pre-existing role rows name org_admin and developer only: naming sandbox there would give back on
+    the next init_schema exactly what the denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE
+    VISITOR ALSO HOLDS org_admin: a column is visible to a role when ``table_columns.visible_to`` NAMES
+    that role, and every grant in an authored model names the roles the model was authored against. ``sandbox``
+    is named by none of them, so a visitor holding only that id is shown no column on any table, and schema_gen
+    then drops every table left with none, leaving the tables whose API path/query parameters are exempt
+    from the gate and nothing else. That is not a narrower demo; it is an empty one, and it is not fixable
+    by re-granting columns, because the model belongs to the org and the visitor is a stranger to it. So
+    redeeming a sandbox invitation seats the redeemer under BOTH names: the role the invitation confers,
+    and ``org_admin``, whose row in the visitor''s own ephemeral environment is reduced at creation to the
+    ``sandbox`` row''s own capabilities and demonstrated list. Capabilities resolve as the UNION over the
+    holder''s roles, so the union is the sandbox definition exactly, the denylist keeps one author, and
+    production''s org_admin is untouched (REQ-1539 makes roles the environment''s own answer). AND THE ROLE
+    IS CONFERRABLE NOWHERE ELSE: minting an invitation that names ``sandbox`` under any policy but ``per_visitor``
+    is refused, because the reduction is performed by the environment creation that only that policy triggers.
+    Conferred anywhere else the name would carry org_admin''s full definition, unnarrowed. STILL TO SUBTRACT
+    (open): the settled target is most of org_admin, less the ability to WRITE BACK to the original sample
+    data sources -- a visitor''s hour is disposable but the demo sources it points at are shared and outlive
+    it -- and less further destructive acts still to be enumerated. The four above are the rights withheld
+    today; the denylist is where those additions land, so the subtraction stays the one definition. (Amended
+    2026-10-15, REQ-2053: environment_switch is no longer withheld. A demo sandbox is an org of its own,
+    so its environments are its visitor''s, who switches between those that exist; creating and deleting
+    one stays withheld with environment_management. A membership pinned to one environment (REQ-1596) is
+    still confined by the pin, which is checked before the right. Three rights are withheld.)'
   tests:
   - tests/unit/test_sandbox_role_seed.py
   - tests/unit/test_open_invite.py
@@ -59525,13 +59627,15 @@
   feature: lineage-and-provenance-column-lineage
   priority: MUST
   type: behavioral
-  description: The federation lineage graph (REQ-1161) is read through a role. The role is an analytic
-    lens, not a redaction - an analyst holding several roles switches between them to see where each role's
-    data comes from. The columns the selected roles can query seed the graph; the walk from those seeds
-    runs upstream and unrestricted, so every ancestor of a seed is shown in full whether or not the role
-    could query it. What is reachable only downstream of the seeds belongs to another role's perspective
-    and is cut. The domain filter restricts which relations may seed, never which may be an ancestor,
-    so a chain crossing an unchecked domain is not severed.
+  description: The federation lineage graph (REQ-1161) is read through a role. [SUPERSEDED by REQ-2156,
+    2026-10-25 -- lineage shows only what the caller can read; the lens narrows within the caller's rights.
+    Kept here for history; do not implement against it.] The role is an analytic lens, not a redaction -
+    an analyst holding several roles switches between them to see where each role's data comes from. The
+    columns the selected roles can query seed the graph; the walk from those seeds runs upstream and unrestricted,
+    so every ancestor of a seed is shown in full whether or not the role could query it. [END SUPERSEDED
+    BLOCK] What is reachable only downstream of the seeds belongs to another role's perspective and is cut.
+    The domain filter restricts which relations may seed, never which may be an ancestor, so a chain crossing
+    an unchecked domain is not severed.
   code:
   - provisa/lineage/merge.py
   - provisa/api/admin/lineage_router.py
@@ -60189,20 +60293,22 @@
   feature: catalog-and-discovery-data-products
   priority: SHOULD
   type: behavioral
-  description: 'The Data Product detail panel shows a computed, read-only "Lineage" section rendering
-    the same interactive LineageDag graph visualization used on the Lineage page ("model / lineage"),
-    scoped to a subgraph of the whole federation-wide column lineage graph (GET /admin/lineage/federation,
-    no domains filter, so cross-domain ancestor chains are never severed): [SUPERSEDED by REQ-1667, 2026-10-03
-    -- REQ-1667 draws contributors in lanes -1, -2... by longest upstream path, so the subgraph is the
-    full upstream ancestry plus one hop downstream. Kept here for history; do not implement against it.]
-    the product''s member tables plus every node one relation-hop upstream or downstream of them [END
-    SUPERSEDED BLOCK], matched via each node''s relation string (<sql_domain>.<table>, using the domainToSqlName
-    TS mirror of domain_to_sql_name). The graph opens dataset-collapsed by default (one node per relation),
-    same as the Lineage page''s Complete Lineage view (REQ-1627), with per-relation expand/collapse. Gated
-    independently on the view_governance capability — separate from data_product_read/data_product_rw
-    — and hidden entirely (not merely disabled) for a caller lacking it, since Data Product access does
-    not imply lineage/governance visibility. Purely informational, mirrors the Related Tables panel''s
-    non-stored, computed-at-render pattern.'
+  description: 'The Data Product detail panel shows a computed, read-only "Lineage" section rendering the
+    same interactive LineageDag graph visualization used on the Lineage page ("model / lineage"), scoped
+    to a subgraph of the whole federation-wide column lineage graph (GET /admin/lineage/federation, no domains
+    filter, so cross-domain ancestor chains are never severed): [SUPERSEDED by REQ-1667, 2026-10-03 -- REQ-1667
+    draws contributors in lanes -1, -2... by longest upstream path, so the subgraph is the full upstream
+    ancestry plus one hop downstream. Kept here for history; do not implement against it.] the product''s
+    member tables plus every node one relation-hop upstream or downstream of them [END SUPERSEDED BLOCK],
+    matched via each node''s relation string (<sql_domain>.<table>, using the domainToSqlName TS mirror
+    of domain_to_sql_name). The graph opens dataset-collapsed by default (one node per relation), same as
+    the Lineage page''s Complete Lineage view (REQ-1627), with per-relation expand/collapse. [SUPERSEDED
+    by REQ-2156, 2026-10-25 -- product lineage is served by a product-scoped endpoint, trimmed to the reader''s
+    rights, with no governance gate. Kept here for history; do not implement against it.] Gated independently
+    on the view_governance capability — separate from data_product_read/data_product_rw — and hidden entirely
+    (not merely disabled) for a caller lacking it, since Data Product access does not imply lineage/governance
+    visibility. [END SUPERSEDED BLOCK] Purely informational, mirrors the Related Tables panel''s non-stored,
+    computed-at-render pattern.'
   use_case: Lets a data product owner or consumer see, without leaving the product's detail view, which
     tables feed the product's data and which tables consume it, without requiring a separate trip to the
     Lineage page or knowledge of the underlying SQL views.
@@ -61038,6 +61144,7 @@
   e2e_reason: The derived name and the checker badge on the registered row depend on the live dataset
     resolution against the compiled schema and on the register mutation's checker derivation.
 - id: REQ-1664
+  value: 'Extend Great Expectations checks with your own Python logic, registered and governed as a command.'
   status: accepted
   target: 2026-Q4
   group: 4. Source Connectors
@@ -61525,19 +61632,21 @@
   feature: roles-and-capabilities-inheritance
   priority: MUST
   type: behavioral
-  description: 'Role inheritance is one parent per role (`parent_role_id`), resolved by walking the chain
-    from the child up, and it covers the whole permission surface, not only capabilities and domain_access
-    (REQ-215). Grants are unioned up the chain: a column''s visible_to, writable_by and unmasked_to, and
-    a metric''s, function''s or webhook''s visible_to, hold for a role when they name it or any ancestor.
-    RLS resolves per table with the child taking precedence: the nearest role in the chain that has a
-    rule for the table (its own table rule, else its domain rule) supplies the one predicate that runs;
-    an ancestor''s rule is never ANDed or ORed with it. A masked column is masked for a role unless the
-    role or an ancestor is in unmasked_to. rate_limit is inherited when the child sets none. The chain
-    is materialized once per runtime build so every lookup stays keyed by the acting role id. A parent
-    must be an existing role in the same org, may not be the role itself, and may not close a cycle; each
-    is refused at save with the reason. `parent_role_id` is exposed on the admin GraphQL role type and
-    input, on the roles REST router, and on the Security page''s role form as "Inherits from". Deleting
-    a role that other roles inherit from is refused naming them.'
+  description: '[SUPERSEDED by REQ-2155, 2026-10-25 -- a role may inherit from several parents; capabilities
+    are the union over all ancestors. Kept here for history; do not implement against it.] Role inheritance
+    is one parent per role (`parent_role_id`), resolved by walking the chain from the child up, [END SUPERSEDED
+    BLOCK] and it covers the whole permission surface, not only capabilities and domain_access (REQ-215).
+    Grants are unioned up the chain: a column''s visible_to, writable_by and unmasked_to, and a metric''s,
+    function''s or webhook''s visible_to, hold for a role when they name it or any ancestor. RLS resolves
+    per table with the child taking precedence: the nearest role in the chain that has a rule for the table
+    (its own table rule, else its domain rule) supplies the one predicate that runs; an ancestor''s rule
+    is never ANDed or ORed with it. A masked column is masked for a role unless the role or an ancestor
+    is in unmasked_to. rate_limit is inherited when the child sets none. The chain is materialized once
+    per runtime build so every lookup stays keyed by the acting role id. A parent must be an existing role
+    in the same org, may not be the role itself, and may not close a cycle; each is refused at save with
+    the reason. `parent_role_id` is exposed on the admin GraphQL role type and input, on the roles REST
+    router, and on the Security page''s role form as "Inherits from". Deleting a role that other roles inherit
+    from is refused naming them.'
   code:
   - provisa/security/inheritance.py
   - provisa/core/models.py
@@ -66419,7 +66528,7 @@
   feature: row-security-and-masking-two-layers
   priority: MUST
   type: constraint
-  description: '"*" is the codebase''s established "visible to everyone" sentinel for visible_to grants: Metric.visible_to (provisa/core/models.py) defaults to ["*"], and schema_gen.py''s metrics-visibility
+  description: '[SUPERSEDED by REQ-2153, 2026-10-26 -- ''*'' names no role; a grant to every role is a grant to Viewer (REQ-2154). Kept here for history; do not implement against it.] "*" is the codebase''s established "visible to everyone" sentinel for visible_to grants: Metric.visible_to (provisa/core/models.py) defaults to ["*"], and schema_gen.py''s metrics-visibility
     branch (~line 109) already special-cased "*" not in vt correctly, but the COLUMN-visibility checks
     never got the same treatment. provisa/compiler/stage2.py''s build_governance_context (~line 174-184)
     computed each role''s visible-columns set via a literal `role_id in visible_to` membership test with
@@ -66430,7 +66539,10 @@
     in c["visible_to"]` with no "*" case, so a ["*"]-granted column was silently omitted from the generated
     schema for every role. Both are fixed by adding "*" in visible_to (or "*" in c["visible_to"]) as an
     additional short-circuit alongside the existing membership check, mirroring the already-correct metrics-visibility
-    pattern.'
+    pattern. [END SUPERSEDED BLOCK] (Amended 2026-10-26, ''*'' NAMES NO ROLE:) A grant list names the roles that
+    read a column, a metric, a function, a webhook or a command, and ''*'' names none (REQ-2153); a grant to every
+    role is a grant to the standard Viewer role, which every role built on it holds (REQ-2154). The read checks
+    test membership of the role alone.'
   use_case: 'Found via the grpc_remote e2e test (REQ-1742): grpc_remote_router.py''s auto-registered columns
     start with visible_to: [] (zero-trust default) and the UI''s own grant flow (updateTable mutation)
     sets visible_to: ["*"]. The grant call itself succeeded and persisted ["*"] correctly (table_repo.upsert
@@ -66448,7 +66560,8 @@
   unit_test_reason: 'No dedicated regression test yet asserts visible_to: ["*"] is treated as visible
     to every role in either build_governance_context (stage2.py) or the per-role schema projection (schema_gen.py);
     coverage is currently incidental via e2e only.'
-  scenario: 'Given a column has visible_to: ["*"] persisted via the UI grant flow (updateTable mutation)
+  scenario: '[SUPERSEDED by REQ-2153, 2026-10-26 -- ''*'' names no role. Kept here for history; do not implement
+    against it.] Given a column has visible_to: ["*"] persisted via the UI grant flow (updateTable mutation)
 
     When a role other than a role literally named "*" queries that column
 
@@ -66462,6 +66575,7 @@
     When schema_gen.py builds the per-role GraphQL/other-surface schema projection for any role
 
     Then the column is included in that role''s generated schema instead of being silently omitted
+    [END SUPERSEDED BLOCK]
 
     '
 - id: REQ-1779
@@ -66821,6 +66935,7 @@
   docs:
   - admin-graphql.md
 - id: REQ-1786
+  value: 'Adding a new source immediately discovers its tables, with no separate crawl step needed.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -75598,6 +75713,7 @@
   - tests/unit/test_admin_routes_gated.py
   - tests/unit/test_admin_read_gates.py
 - id: REQ-1928
+  value: 'Pass typed parameters and column references to commands from SQL, so queries stay parameterised.'
   status: proposed
   group: 5. Query Languages, Compilation & Operations
   category: Extensible Functions
@@ -77151,6 +77267,7 @@
     Current GovData contract is REQ-540/541.'
   superseded_by: REQ-540
 - id: REQ-493
+  value: 'Connect Apache Accumulo tables as governed relational sources and query them alongside your other data.'
   status: accepted
   group: 4. Source Connectors
   category: Source Connectors
@@ -80062,7 +80179,27 @@
   feature: roles-and-capabilities-domain-access
   priority: MUST
   type: behavioral
-  description: 'A standard data_steward role is seeded in every organisation: the owner of a domain''s governance. It governs the role-based access to its domain''s tables -- which roles see each table and column, and how values are hidden from them: masks, fakes and synthetic rules -- and their row rules. It holds access_config and column_grant (visibility), masking_config (masks and row rules, REQ-1531), masking_config, sensitive_data (REQ-1943), glossary_read and glossary_rw, data_product_read and data_product_rw, usage, query_development, full_results and view_governance, and nothing operational: not write, source_registration, table_registration, user_management, org_settings or environment_data. A steward''s rights apply only within the domains its role reaches: every edit those rights allow -- a visibility setting, a row rule, a column grant, a mask, a fake or synthetic rule, a mutation command''s reclassification as read-safe (REQ-870), a sensitive tag, a fake or synthetic rule on a sensitive column, a glossary term, a data product -- is checked against the domain of what it changes, and an edit to anything outside the steward''s domains is refused naming the domain. The seeded data_steward role reaches every domain, because a deployment may be a small team with one steward or an enterprise with many; best practice in production is several domains, each with a steward aligned to it, made by copying the role per domain (a sales steward reaching only sales). org_admin holds every one of these rights across all domains, and org_glossary_rw stays org_admin''s alone (REQ-1592). Defining roles and assigning them to people are not the steward''s: roles are organisation-wide and stay with org_admin. The data_steward role is a seeded collection of rights over a set of domains and nothing more: no check anywhere tests a role''s name; every check asks whether the caller holds the right in the domain of what changes, so a copy with another name, or a role an organisation composes with the same rights, behaves identically.'
+  description: 'A standard data_steward role is seeded in every organisation: the owner of a domain''s governance.
+    It governs the role-based access to its domain''s tables -- which roles see each table and column, and
+    how values are hidden from them: masks, fakes and synthetic rules -- and their row rules. It holds access_config
+    and column_grant (visibility), masking_config (masks and row rules, REQ-1531), masking_config, sensitive_data
+    (REQ-1943), glossary_read and glossary_rw, data_product_read and data_product_rw, usage, query_development,
+    full_results and view_governance, and nothing operational: not write, source_registration, table_registration,
+    user_management, org_settings or environment_data. A steward''s rights apply only within the domains
+    its role reaches: every edit those rights allow -- a visibility setting, a row rule, a column grant,
+    a mask, a fake or synthetic rule, a mutation command''s reclassification as read-safe (REQ-870), a sensitive
+    tag, a fake or synthetic rule on a sensitive column, a glossary term, a data product -- is checked against
+    the domain of what it changes, and an edit to anything outside the steward''s domains is refused naming
+    the domain. The seeded data_steward role reaches every domain, because a deployment may be a small team
+    with one steward or an enterprise with many; best practice in production is several domains, each with
+    a steward aligned to it, made by copying the role per domain (a sales steward reaching only sales).
+    org_admin holds every one of these rights across all domains, and org_glossary_rw stays org_admin''s
+    alone (REQ-1592). Defining roles and assigning them to people are not the steward''s: roles are organisation-wide
+    and stay with org_admin. The data_steward role is a seeded collection of rights over a set of domains
+    and nothing more: no check anywhere tests a role''s name; every check asks whether the caller holds
+    the right in the domain of what changes, so a copy with another name, or a role an organisation composes
+    with the same rights, behaves identically. (Amended 2026-10-25, A STANDARD ROLE:) data_steward is one
+    of the standard roles of REQ-2155 and is defined there.'
   use_case: The sales data steward sets the row rules, masks and sensitive tags on the sales tables, curates the
     sales glossary and data products, and audits sales data with full results, while having no say over marketing's
     governance and no access to sources, environments or users.
@@ -80501,7 +80638,20 @@
   feature: public-data-publishing-all-domains
   priority: MUST
   type: behavioral
-  description: 'What is public is available to all domains. An item marked public is served to every role of the organisation whatever domains that role''s domain access reaches: a public column is served, with the table it belongs to, to a role with no reach into that table''s domain, and only that table''s public columns are served to such a role; a relationship both of whose ends are served is served; a metric marked public is listed. Public is decided in the one place a role''s served set is decided, so every surface -- SQL, GraphQL, Cypher, pgwire, Bolt, Flight and its catalog, gRPC, MCP, JSON:API, the JDBC driver''s metadata and the admin API''s listings (REQ-1958) -- agrees, and none has a rule of its own. Public widens who is served and nothing else: masks, row rules, the relationship guard and row limits apply to a public item as to any other, and a column''s own visibility list still applies within its scope. An item is public only because someone with the right to set it said so; nothing is public by default. A restricted item is served only as its own visibility list says.'
+  description: 'What is public is available to all domains. An item marked public is served to every role
+    of the organisation whatever domains that role''s domain access reaches: a public column is served,
+    with the table it belongs to, to a role with no reach into that table''s domain, and only that table''s
+    public columns are served to such a role; a relationship both of whose ends are served is served; a
+    metric marked public is listed. Public is decided in the one place a role''s served set is decided,
+    so every surface -- SQL, GraphQL, Cypher, pgwire, Bolt, Flight and its catalog, gRPC, MCP, JSON:API,
+    the JDBC driver''s metadata and the admin API''s listings (REQ-1958) -- agrees, and none has a rule
+    of its own. Public widens who is served and nothing else: masks, row rules, the relationship guard and
+    row limits apply to a public item as to any other, and a column''s own visibility list still applies
+    within its scope. An item is public only because someone with the right to set it said so; nothing is
+    public by default. A restricted item is served only as its own visibility list says. (Amended 2026-10-25,
+    SCOPE IS DOMAIN, LISTED OR PUBLIC:) A column''s scope is one of domain, listed or public (REQ-2153).
+    public keeps its meaning here; listed makes a column''s name discoverable across domains without serving
+    it.'
   use_case: A reference table of country codes is published once and every team can join to it, without each team's
     domain being granted reach into the owning domain.
   related_reqs:
@@ -81298,7 +81448,7 @@
   feature: source-registration-explicit-tables
   priority: MUST
   type: behavioral
-  description: 'A table declares its parameters: the values a caller passes to the source to read the table. Each parameter has a name, a type, and how it reaches the source: a path parameter or a query parameter of an OpenAPI operation, an argument of a remote GraphQL field, a field of a gRPC request, or an argument of a source''s native query (a MongoDB pipeline, REQ-1980; a Cosmos DB query, REQ-1982). Each parameter is optional or required. It is required when the source requires it, or when a steward has made it required for this table. A parameter the source requires is required for good; a steward can make an optional parameter required, and can make it optional again. Registration records every parameter the source describes, the optional ones included, with whether the source requires it. One rule holds for every source kind and every surface: a read of the table that leaves a required parameter without a value is refused before anything is sent to the source, and the refusal names the table and the parameter. GraphQL marks a required parameter''s argument non-null. The admin API reads and sets the steward''s switch per parameter. The table page has a Parameters section listing each parameter with its type, how it reaches the source, and the switch, which is on and locked where the source requires the parameter.'
+  description: 'A table declares its parameters: the values a caller passes to the source to read the table. Each parameter has a name, a type, and how it reaches the source: a path parameter or a query parameter of an OpenAPI operation, an argument of a remote GraphQL field, a field of a gRPC request, or an argument of a source''s native query (a MongoDB pipeline, REQ-1980; a Cosmos DB query, REQ-1982). Each parameter is optional or required. It is required when the source requires it, or when a steward has made it required for this table. A parameter the source requires is required for good; a steward can make an optional parameter required, and can make it optional again. Registration records every parameter the source describes, the optional ones included, with whether the source requires it. One rule holds for every source kind and every surface: a read of the table that leaves a required parameter without a value is refused before anything is sent to the source, and the refusal names the table and the parameter. GraphQL marks a required parameter''s argument non-null. The admin API reads and sets the steward''s switch per parameter. The table page has a Parameters section listing each parameter with its type, how it reaches the source, and the switch, which is on and locked where the source requires the parameter. (Amended 2026-10-23, a parameterized table keeps nothing unless it says so:) A parameterized table -- any table that declares a parameter (an OpenAPI/REST argument, a code function''s parameter, a Qdrant search''s query, a GraphQL- or gRPC-remote argument, a Cosmos DB partition key) -- has a TTL of 0 unless the table itself sets cache_ttl: it is fetched live for each statement and handed to that statement alone (inlined as a VALUES CTE, or landed in a scratch table dropped when the statement ends; the engine still runs the statement), and nothing it answers is reused by another statement. It does not take its source''s TTL, the organisation''s response-cache default or an endpoint''s TTL. A table that sets cache_ttl keeps the answer to each set of arguments for it, and a statement asking the same arguments within it reuses that answer. A table with no parameter keeps the chain: its own TTL, else its source''s, else the organisation''s default, else (for an API endpoint) the endpoint''s. One resolver decides it for every landing surface (pipeline and native-query tables, OpenAPI/REST endpoints and the fills a compiled GraphQL read fetches for them, GraphQL-remote and gRPC-remote tables); GraphQL-remote keeps for that TTL rather than a fixed 300 seconds. A join''s parent keys are still fetched in one batched call per statement; at a TTL of 0 the next statement fetches them again, and a statement reads only the fills it fetched itself, never another statement''s.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
@@ -81334,6 +81484,8 @@
   tests:
   - tests/unit/test_native_filter_required.py
   - provisa-ui/src/components/__tests__/nativeParams.test.ts
+  - tests/unit/test_parameterized_ttl.py
+  - tests/unit/test_landing_ttl.py
   docs:
   - api-reference.md
   - sources.md
@@ -81618,6 +81770,7 @@
   docs:
   - sources.md
 - id: REQ-1995
+  value: 'Refer a pending data registration to another domain steward for confirmation, keeping the request live.'
   status: proposed
   since: 2026-10
   target: 2027-Q1
@@ -82137,7 +82290,7 @@
   feature: replicas-and-freshness-freshness-gate
   priority: MUST
   type: behavioral
-  description: 'A table Provisa reads itself for each statement (a parameterized or native-query table: a MongoDB pipeline, a Cosmos DB query, a Qdrant search, a code source''s function, a live-only table''s part) is kept for its TTL, which is the first one set of the table''s own, its source''s, and the response cache''s default. A TTL of 0 is set: it means 0, never "unset", so it does not fall through to the source''s TTL or the default. With a TTL above 0 the rows are landed for the engine and kept under the statement''s arguments for the TTL, and the next statement asking the same reuses them (the reuse pays for the write). With a TTL of 0 the read always goes live and nothing is kept: rows up to the large-result threshold (redirect.threshold) are inlined into the statement as a VALUES CTE, with no write on any engine, and more rows are landed in a scratch table of that statement alone, dropped when it ends and never reused. An API endpoint table''s TTL, and a gRPC remote query''s, are likewise the first one set. A statement that lands a scratch table is answered through the pipeline terminal, which drops it, so its answer is buffered rather than streamed.'
+  description: 'A table Provisa reads itself for each statement (a parameterized or native-query table: a MongoDB pipeline, a Cosmos DB query, a Qdrant search, a code source''s function, a live-only table''s part) is kept for its TTL, [SUPERSEDED by REQ-1986, 2026-10-23 -- a parameterized table''s TTL is its own, else 0; only a table with no parameter takes the chain. Kept here for history; do not implement against it.] which is the first one set of the table''s own, its source''s, and the response cache''s default. [END SUPERSEDED BLOCK] A TTL of 0 is set: it means 0, never "unset", so it does not fall through to the source''s TTL or the default. With a TTL above 0 the rows are landed for the engine and kept under the statement''s arguments for the TTL, and the next statement asking the same reuses them (the reuse pays for the write). With a TTL of 0 the read always goes live and nothing is kept: rows up to the large-result threshold (redirect.threshold) are inlined into the statement as a VALUES CTE, with no write on any engine, and more rows are landed in a scratch table of that statement alone, dropped when it ends and never reused. [SUPERSEDED by REQ-1986, 2026-10-23 -- one resolver decides every surface''s TTL; a parameterized endpoint or remote query keeps only for a TTL of its own. Kept here for history; do not implement against it.] An API endpoint table''s TTL, and a gRPC remote query''s, are likewise the first one set. [END SUPERSEDED BLOCK] A statement that lands a scratch table is answered through the pipeline terminal, which drops it, so its answer is buffered rather than streamed.'
   use_case: 'A Cosmos DB query table on a Databricks engine is read with new arguments on every dashboard refresh. With its TTL set to 0, each statement reads it live and inlines the few dozen rows it answers, instead of writing a parquet table the next statement would not reuse.'
   scenario: 'Given a pipeline table whose TTL is 0 and whose source''s TTL is 300
 
@@ -85365,7 +85518,18 @@ And a role its token does not hold is not listed'
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'A named demo''s tour step can take its "as recorded at" time from data instead of a literal: as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its statement returns. When the step runs, the tour runner runs that statement again as it ran (the run-as role and the time travel the steps before it set) and sets the SQL explorer''s as-recorded picker to that value; a refused statement or a missing value fails the step by name. The tour test checks the step names an earlier sql step, a valid row and a returned column, on the SQL explorer. It is a tour feature only: how Provisa stamps recording time does not change, and no recording time can be chosen, so a demo of transaction time cannot forge it.'
+  description: 'A named demo''s tour step can take its "as recorded at" time from data instead of a literal:
+    as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its
+    statement returns. When the step runs, the tour runner runs that statement again as it ran (the run-as role
+    and the time travel the steps before it set) and sets the SQL explorer''s as-recorded picker to that value;
+    a refused statement or a missing value fails the step by name. The tour test checks the step names an earlier
+    sql step, a valid row and a returned column, on the SQL explorer. It is a tour feature only: how Provisa
+    stamps recording time does not change, and no recording time can be chosen, so a demo of transaction time
+    cannot forge it. (Amended 2026-10-26, A BOUND VALUE:) Time travel is the relation''s argument in the statement
+    (REQ-1163), so the as_of and as_recorded step kinds that set the explorer''s pickers are removed: a tour
+    writes a literal time in its SQL. as_recorded_from stays: it binds the value it takes to the next statement''s
+    $1, which names it as a relation''s argument ((as_recorded => $1)); the page sends it as that statement''s
+    params, and the tour warm-up does the same.'
   use_case: 'The reproduce demo reads its report as recorded when it was filed, at a time Provisa stamped during the demo''s own setup.'
   scenario: 'Given a tour whose refreshes step returns two refresh records
 
@@ -86801,7 +86965,34 @@ Then she is told by name and the form is unchanged"
   feature: lineage-and-provenance-column-lineage
   priority: SHOULD
   type: behavioral
-  description: "Lineage reaches below the registered table to the source itself. Each source node of the lineage graph (REQ-1160) gains one hop beneath it: the native address the rows are read from and the raw field each column is taken from, with any renaming on the way (row location, path flattening, naming convention, alias). For an API (OpenAPI, remote GraphQL, a branded source) that is the operation with its address and fixed parameters, the row location and each raw field as it is read (a top-level field, an object kept as one JSON column). For a document or search store it is the collection or index and the field path. For a file it is the path or glob. For Kafka it is the topic and message field. For a code source it is the function and the field it returns. For a SQL database it is the native schema, table and column. The landing node says how the table is served: virtual (read at each statement) or a replica, with its freshness and last load. Each native node carries its source's visual branding, the same icon and type label the Sources page shows for it (Kaggle, CSV, Parquet, Salesforce, PostgreSQL and so on, brand before carrier), so the graph shows at a glance where each column comes from. Every element of the lineage graph links to where it is defined: a native node to its source, a table or column to the table, a view or materialized view to its definition, a relationship to the relationship, a command to the command, a metric to the metric, and a transform's named function to its documentation; a link opens the element as the user's own rights allow. Credentials and secret references are never shown. The native hop is shown only to a user who can see the source's configuration (source registration); anyone else sees lineage from the registered table upward, as before. (Amended 2026-10-20, LINKS AND NAMES:) A built-in SQL function or operator has no page of its own and is not linked; a command, whether called inline or writing a table, opens on the Commands page. Only the elements the graph draws are linked: it draws no relationship or metric. The Lineage page asks view_governance, as its endpoints do. A registered column is drawn by its SQL name (its alias, else its name under the naming convention), the name a view reads it by, so the native hop and the views meet on one node."
+  description: 'Lineage reaches below the registered table to the source itself. Each source node of the
+    lineage graph (REQ-1160) gains one hop beneath it: the native address the rows are read from and the
+    raw field each column is taken from, with any renaming on the way (row location, path flattening, naming
+    convention, alias). For an API (OpenAPI, remote GraphQL, a branded source) that is the operation with
+    its address and fixed parameters, the row location and each raw field as it is read (a top-level field,
+    an object kept as one JSON column). For a document or search store it is the collection or index and
+    the field path. For a file it is the path or glob. For Kafka it is the topic and message field. For
+    a code source it is the function and the field it returns. For a SQL database it is the native schema,
+    table and column. The landing node says how the table is served: virtual (read at each statement) or
+    a replica, with its freshness and last load. Each native node carries its source''s visual branding,
+    the same icon and type label the Sources page shows for it (Kaggle, CSV, Parquet, Salesforce, PostgreSQL
+    and so on, brand before carrier), so the graph shows at a glance where each column comes from. Every
+    element of the lineage graph links to where it is defined: a native node to its source, a table or column
+    to the table, a view or materialized view to its definition, a relationship to the relationship, a command
+    to the command, a metric to the metric, and a transform''s named function to its documentation; a link
+    opens the element as the user''s own rights allow. Credentials and secret references are never shown.
+    The native hop is shown only to a user who can see the source''s configuration (source registration);
+    anyone else sees lineage from the registered table upward, as before. (Amended 2026-10-20, LINKS AND
+    NAMES:) A built-in SQL function or operator has no page of its own and is not linked; a command, whether
+    called inline or writing a table, opens on the Commands page. Only the elements the graph draws are
+    linked: it draws no relationship or metric. The Lineage page asks view_governance, as its endpoints
+    do. A registered column is drawn by its SQL name (its alias, else its name under the naming convention),
+    the name a view reads it by, so the native hop and the views meet on one node. (Amended 2026-10-25,
+    SOURCE NAMES ON THE NODE; VISIBILITY BY READ RIGHTS:) Each native node carries its source id and, where
+    the source type has them, the source''s own schema and table names (null for API, topic, file and function
+    sources, whose address says what they are). A native node is shown to whoever can read the registered
+    column it feeds (REQ-2156), not by the source_registration capability. The natives payload (address,
+    served state) is source configuration and stays gated on source_registration.'
   use_case: An auditor asks where a masked column physically comes from and is shown the API endpoint and raw field path that land in the table, and through which views it reaches the report.
   scenario: "Given an OpenAPI source whose GET /v2/customers rows sit under data.items and whose postalCode field is registered as postal_code
 
@@ -86852,7 +87043,70 @@ Then the schema <catalog>.customer_360 holds both tables, its comment and tags c
   feature: catalog-and-discovery-warehouse-listings
   priority: SHOULD
   type: behavioral
-  description: 'The data product export publishes Provisa''s data products as listings in the internal catalogs an enterprise''s other data teams use. It is not a set of one-off ETL flows: the data product, its members, owner and fields stay defined once in Provisa, and each target receives a listing in that catalog''s own data-product terms or, where a catalog has none, the closest thing to one in spirit. The scope is internal publishing only, never a public or paid listing: data team A in an enterprise publishes its data products for data team B in the same enterprise. When team B also uses Provisa it reaches A''s products in Provisa itself; these targets are for the team B that does not, and works in BigQuery, Purview, DataZone or its own catalog. An org may publish to several targets at once, each publish going to every one configured (today an org has exactly one). Every data product field reaches each target: owner, team, purpose, limitations, usage and version, mapped onto the target''s own fields (today only owner and purpose are carried). Approvers are the holders of the product''s owner role, and a target''s access groups map from Provisa roles; no new approver fields are added. Contracts are per member table: each member gets an ODCS 3.1 contract built from what Provisa knows of it (columns and types, freshness, quality checks), and the product''s ODPS document names its members'' contracts; the product''s SLA stays prose. Masked columns are published with their MASKED governance tag and never the rule body, as the export does today. Targets: Google Dataplex data products, one per product (dataProducts.create, dataAssets.create) with owners, description and documentation, the member tables as assets, access groups and approvers from roles, and each member asset''s refresh cadence from its freshness; this replaces the bigquery_dataplex target, which sends a request matching neither the Dataplex nor the Analytics Hub API and is never wired in production (REQ-1636 is reopened for it). Microsoft Purview Unified Catalog data products, in the product''s governance domain with owners, use case, member assets and an access policy naming the approvers, beside the existing Purview Data Map path through the Atlas adapter. AWS DataZone / SageMaker Catalog, one data product in the owning project with its member assets, its fields in metadata forms and consumers requesting it by subscription. An ODPS document and the members'' ODCS contracts are also written per product, so a catalog importing either standard (Collibra, DataHub, OpenMetadata, Alation) reads them. Alation''s Data Products App is a later phase, built when an Alation account is available to test against; Dataplex, Purview and DataZone are tested against the project''s GCP, Azure and AWS accounts. The ODPS field set on a data product (id, domain, name, owner role, team role, purpose, limitations, usage, version, status, SLA as prose, support, support contact, publish, custom properties) is recorded here; code traces it to REQ-1660 in error. (Amended 2026-10-20, DECISIONS:) An org''s targets are a list, each named by an id unique in the org; two targets may be of one provider, and what is recorded of each published asset''s id in a catalog is kept per target. Owners and approvers are the holders of the product''s owner role: Dataplex takes their email addresses and Purview their Entra object ids, resolved from those addresses; no setting maps a role to a principal. Access groups are not published yet. The ODPS document and the ODCS contracts are served read-only by Provisa, for a catalog to pull, at /data-products/{id}/odps.yaml and /data-products/{id}/contracts/{source.schema.table}.yaml, to a user holding data_product_read; they are also pushed to OpenMetadata''s data-contract import. A contract''s version is the product''s (unversioned when it has none); a product with no status is active when published and draft when not. A member''s freshness is its cache_ttl, else its source''s; one with neither makes no freshness promise. (Amended 2026-10-20, DATAPLEX MEMBERS:) A Dataplex asset is a BigQuery object: a member on a BigQuery source is its own table in the source''s project; a member the BigQuery engine serves from a replica is the replica''s export view in the org''s export dataset, which the replica reconcile publishes beside the replica; any other member, a view among them, is reported by name and not published. Owners are the addresses of the owner role''s holders whose grant is in force; a product whose owner role has none is reported and not sent. The target names its GCP project and location and signs in with a service account key. The provider is dataplex; bigquery_dataplex is removed. (Amended 2026-10-20, PURVIEW:) The purview provider publishes the Data Map through the Atlas adapter, then each data product in the Unified Catalog over the Data Map entities that publish returns. A product is filed in the governance domain named after its Provisa domain; one with no such domain is reported and not sent, and governance domains are not created. Owners are the owner role''s holders, resolved to Entra users through Microsoft Graph; an address Graph does not know is reported. Approvers and access policies are not published yet. (Amended 2026-10-20, DATAZONE:) The datazone provider publishes each data product as a DataZone data product owned by the target''s project, published for subscription. Its members are assets of a Provisa table asset type the target creates in the domain once (a ProvisaTableForm form: Provisa URI, address, columns, freshness); the product''s fields are a ProvisaDataProductForm form. A member is read through Provisa, so the owning project approves subscriptions and DataZone grants nothing. The target names its region, domain and project and signs with AWS keys. Glue-native assets are not published yet. (Amended 2026-10-21, DATAZONE IDS:) Each DataZone asset''s and product''s id is kept in the target''s catalog bindings, as the Atlas adapter keeps its guids, and a later publish revises it by that id; the project''s search, which DataZone indexes late, is used only for what no earlier publish recorded. An entity deleted in DataZone since it was recorded is published anew. Data products'' bindings are kept with the other published assets''.'
+  description: 'The data product export publishes Provisa''s data products as listings in the internal catalogs
+    an enterprise''s other data teams use. It is not a set of one-off ETL flows: the data product, its members,
+    owner and fields stay defined once in Provisa, and each target receives a listing in that catalog''s
+    own data-product terms or, where a catalog has none, the closest thing to one in spirit. The scope is
+    internal publishing only, never a public or paid listing: data team A in an enterprise publishes its
+    data products for data team B in the same enterprise. When team B also uses Provisa it reaches A''s
+    products in Provisa itself; these targets are for the team B that does not, and works in BigQuery, Purview,
+    DataZone or its own catalog. An org may publish to several targets at once, each publish going to every
+    one configured (today an org has exactly one). Every data product field reaches each target: owner,
+    team, purpose, limitations, usage and version, mapped onto the target''s own fields (today only owner
+    and purpose are carried). Approvers are the holders of the product''s owner role, and a target''s access
+    groups map from Provisa roles; no new approver fields are added. Contracts are per member table: each
+    member gets an ODCS 3.1 contract built from what Provisa knows of it (columns and types, freshness,
+    quality checks), and the product''s ODPS document names its members'' contracts; the product''s SLA
+    stays prose. Masked columns are published with their MASKED governance tag and never the rule body,
+    as the export does today. Targets: Google Dataplex data products, one per product (dataProducts.create,
+    dataAssets.create) with owners, description and documentation, the member tables as assets, access groups
+    and approvers from roles, and each member asset''s refresh cadence from its freshness; this replaces
+    the bigquery_dataplex target, which sends a request matching neither the Dataplex nor the Analytics
+    Hub API and is never wired in production (REQ-1636 is reopened for it). Microsoft Purview Unified Catalog
+    data products, in the product''s governance domain with owners, use case, member assets and an access
+    policy naming the approvers, beside the existing Purview Data Map path through the Atlas adapter. AWS
+    DataZone / SageMaker Catalog, one data product in the owning project with its member assets, its fields
+    in metadata forms and consumers requesting it by subscription. An ODPS document and the members'' ODCS
+    contracts are also written per product, so a catalog importing either standard (Collibra, DataHub, OpenMetadata,
+    Alation) reads them. Alation''s Data Products App is a later phase, built when an Alation account is
+    available to test against; Dataplex, Purview and DataZone are tested against the project''s GCP, Azure
+    and AWS accounts. The ODPS field set on a data product (id, domain, name, owner role, team role, purpose,
+    limitations, usage, version, status, SLA as prose, support, support contact, publish, custom properties)
+    is recorded here; code traces it to REQ-1660 in error. (Amended 2026-10-20, DECISIONS:) An org''s targets
+    are a list, each named by an id unique in the org; two targets may be of one provider, and what is recorded
+    of each published asset''s id in a catalog is kept per target. Owners and approvers are the holders
+    of the product''s owner role: Dataplex takes their email addresses and Purview their Entra object ids,
+    resolved from those addresses; no setting maps a role to a principal. Access groups are not published
+    yet. The ODPS document and the ODCS contracts are served read-only by Provisa, for a catalog to pull,
+    at /data-products/{id}/odps.yaml and /data-products/{id}/contracts/{source.schema.table}.yaml, to a
+    user holding data_product_read; they are also pushed to OpenMetadata''s data-contract import. A contract''s
+    version is the product''s (unversioned when it has none); a product with no status is active when published
+    and draft when not. A member''s freshness is its cache_ttl, else its source''s; one with neither makes
+    no freshness promise. (Amended 2026-10-20, DATAPLEX MEMBERS:) A Dataplex asset is a BigQuery object:
+    a member on a BigQuery source is its own table in the source''s project; a member the BigQuery engine
+    serves from a replica is the replica''s export view in the org''s export dataset, which the replica
+    reconcile publishes beside the replica; any other member, a view among them, is reported by name and
+    not published. Owners are the addresses of the owner role''s holders whose grant is in force; a product
+    whose owner role has none is reported and not sent. The target names its GCP project and location and
+    signs in with a service account key. The provider is dataplex; bigquery_dataplex is removed. (Amended
+    2026-10-20, PURVIEW:) The purview provider publishes the Data Map through the Atlas adapter, then each
+    data product in the Unified Catalog over the Data Map entities that publish returns. A product is filed
+    in the governance domain named after its Provisa domain; one with no such domain is reported and not
+    sent, and governance domains are not created. Owners are the owner role''s holders, resolved to Entra
+    users through Microsoft Graph; an address Graph does not know is reported. Approvers and access policies
+    are not published yet. (Amended 2026-10-20, DATAZONE:) The datazone provider publishes each data product
+    as a DataZone data product owned by the target''s project, published for subscription. Its members are
+    assets of a Provisa table asset type the target creates in the domain once (a ProvisaTableForm form:
+    Provisa URI, address, columns, freshness); the product''s fields are a ProvisaDataProductForm form.
+    A member is read through Provisa, so the owning project approves subscriptions and DataZone grants nothing.
+    The target names its region, domain and project and signs with AWS keys. Glue-native assets are not
+    published yet. (Amended 2026-10-21, DATAZONE IDS:) Each DataZone asset''s and product''s id is kept
+    in the target''s catalog bindings, as the Atlas adapter keeps its guids, and a later publish revises
+    it by that id; the project''s search, which DataZone indexes late, is used only for what no earlier
+    publish recorded. An entity deleted in DataZone since it was recorded is published anew. Data products''
+    bindings are kept with the other published assets''. (Amended 2026-10-25, BOTH PORT KINDS:) The ODPS
+    document carries input ports (the product''s expectations) as well as output ports (promises), and each
+    output port names its declared ODCS contract (REQ-2158).'
   use_case: A platform team publishes its Customer 360 product once, and data teams across the company find it, read its contract and request access in the catalog their part of the company already uses.
   scenario: "Given a data product customer_360 with two member tables and the Dataplex target configured for the organisation's project
 
@@ -86952,7 +87206,7 @@ Then the form offers Open in VS Code as a vscode://file link to it"
   feature: catalog-and-discovery-warehouse-listings
   priority: SHOULD
   type: behavioral
-  description: "Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A Catalogs panel, beside Package Registries and Container Registries, holds each catalog connection once: provider (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake Horizon, Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection test. A catalog connection is assigned to one or more domains, so each domain works with its own catalogs (sales with one, finance with another): a domain's tables offer only its catalogs in the pick list, Refresh from catalog, import and lock, and its data products publish to its catalogs, a product shared across domains appearing in each listing domain's catalogs. A metadata export target names a catalog and keeps only its export settings, in place of its own endpoint and credentials. Description import: a table's description has From catalog, which opens a pick list of the connected catalogs' assets for it, the asset for the same physical table preselected when a catalog has one, the rest ranked by name similarity and searchable; the steward picks one or none, and the picked asset's description, column descriptions (matched by column name and adjustable one by one), owners, tags and linked glossary terms are offered to the table, each shown with its catalog. The LLM matches nothing; the existing generated descriptions only fill what the catalog never described, when the steward asks. A pick is stored as the table's catalog binding, the same binding an export records, so export and import share one link per table per catalog, an export updates the asset the steward picked, and a description can be refreshed from it later. Every export target records the catalog's id for what it publishes and, where the catalog's API allows, writes the table's Provisa address into the catalog asset, so after one export each published table is linked both ways. Catalog import: a catalog's Import action reads, for every table linked to that catalog (by an export or a pick), its current description, column descriptions, owners, tags and glossary links, and shows them as a review list beside Provisa's current values; the steward accepts all or table by table. A table not yet linked is listed as not linked, with the two ways to link it (export once, or pick its asset in the table editor), and nothing is guessed for it. The table editor of a linked table offers Refresh from catalog, which reads the linked asset's current description, column descriptions, owners, tags and glossary links and offers the changes beside the current values for the steward to accept. Imported metadata records its provenance: a table shows that its descriptions were last imported from a named catalog at a stated time, and they stay editable; Provisa claims no authority it cannot know. A steward may elect to lock a table to a catalog, and only then is that catalog its authority: the locked table's descriptive fields (descriptions, column descriptions, owners, tags, glossary links) are read-only in Provisa's editor with a link to edit them in the catalog, and the export no longer writes them to that catalog. Scheduled import, using the existing scheduler, applies a catalog's current metadata without review to the tables locked to it, and for its other linked tables lists what changed for the steward to review, never overwriting a local edit. Governance (grants, row rules, masks) stays Provisa's on every table."
+  description: "Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A Catalogs panel, beside Package Registries and Container Registries, holds each catalog connection once: provider (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake Horizon, Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection test. A catalog connection is assigned to one or more domains, so each domain works with its own catalogs (sales with one, finance with another): a domain's tables offer only its catalogs in the pick list, Refresh from catalog, import and lock, and its data products publish to its catalogs, [SUPERSEDED by REQ-2122, 2026-10-21 -- a data product has one owning domain and no cross-domain listing; see the amendment below. Kept here for history; do not implement against it.] a product shared across domains appearing in each listing domain's catalogs. [END SUPERSEDED BLOCK] A metadata export target names a catalog and keeps only its export settings, in place of its own endpoint and credentials. Description import: a table's description has From catalog, which opens a pick list of the connected catalogs' assets for it, the asset for the same physical table preselected when a catalog has one, the rest ranked by name similarity and searchable; the steward picks one or none, and the picked asset's description, column descriptions (matched by column name and adjustable one by one), owners, tags and linked glossary terms are offered to the table, each shown with its catalog. The LLM matches nothing; the existing generated descriptions only fill what the catalog never described, when the steward asks. A pick is stored as the table's catalog binding, the same binding an export records, so export and import share one link per table per catalog, an export updates the asset the steward picked, and a description can be refreshed from it later. Every export target records the catalog's id for what it publishes and, where the catalog's API allows, writes the table's Provisa address into the catalog asset, so after one export each published table is linked both ways. Catalog import: a catalog's Import action reads, for every table linked to that catalog (by an export or a pick), its current description, column descriptions, owners, tags and glossary links, and shows them as a review list beside Provisa's current values; the steward accepts all or table by table. A table not yet linked is listed as not linked, with the two ways to link it (export once, or pick its asset in the table editor), and nothing is guessed for it. The table editor of a linked table offers Refresh from catalog, which reads the linked asset's current description, column descriptions, owners, tags and glossary links and offers the changes beside the current values for the steward to accept. Imported metadata records its provenance: a table shows that its descriptions were last imported from a named catalog at a stated time, and they stay editable; Provisa claims no authority it cannot know. A steward may elect to lock a table to a catalog, and only then is that catalog its authority: the locked table's descriptive fields (descriptions, column descriptions, owners, tags, glossary links) are read-only in Provisa's editor with a link to edit them in the catalog, and the export no longer writes them to that catalog. Scheduled import, using the existing scheduler, applies a catalog's current metadata without review to the tables locked to it, and for its other linked tables lists what changed for the steward to review, never overwriting a local edit. Governance (grants, row rules, masks) stays Provisa's on every table. (Amended 2026-10-21, DOMAIN SCOPE:) A catalog connection serves at least one domain. A table and its columns publish to the catalogs of their domain, a data product to the catalogs of its owning domain, and the glossary to every catalog; there is no cross-domain listing of a data product. Each other published fact (a source, a relationship, a lineage edge, a tag, a quality check, a term's link to an asset) goes to a catalog only with the assets it is about. The export's own settings for a catalog are the DataZone project that owns its data products and the Unity Catalog Delta Share; the catalog holds the address, credentials and the DataZone domain. The Catalogs panel's connection test is the provider's own health check, the one the export runs."
   use_case: A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
   scenario: "Given a Collibra catalog connected in the Catalogs panel holding an asset for the physical table behind sales.orders
 
@@ -86969,6 +87223,7 @@ Then it updates the linked asset rather than creating another"
   - REQ-1389
   notes: "Maintainer 2026-10-21, through the lead: pull descriptions and references from the customer's catalog when describing a table; a human pick list rather than LLM matching; catalogs as their own admin panel reused by export and import; store each pick; an export records the reference in the catalog too, so the catalog can later become the authority by importing. Maintainer: a catalog import, useful once a table is linked by an export or a pick in the table editor. Maintainer: a scheduled import, so for certain tables the catalog is the authority and they are updated on a stated schedule. Maintainer: authority can't be known for sure, so show when descriptions were last imported from which catalog, and let a steward elect to lock a table to a catalog. Maintainer: the table editor lets you refresh descriptions from the catalog. Maintainer: different domains can use their own catalogs."
 - id: REQ-2123
+  value: 'Explore column profiles as a rotatable 3D terrain, making shape anomalies visible at a glance.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -86986,6 +87241,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2026-Q4"
   notes: '2026-10-21, the maintainer via the lead: the profiling demo''s tour shows its graphs, each step opening the customers table''s View Profile Runs and picking the graph itself, then explaining it once drawn (a stage carries data-ready): the terrain, and the drift strata on postal_code. Relationships and Joint cloud are left out: this run''s correlations and dependencies are all below the map''s lowest strength (0.1), and customers has no joint counts.'
 - id: REQ-2124
+  value: 'Compare column distributions, completeness and outliers in three additional 3D views from the same profile.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87068,41 +87324,43 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: catalog-and-discovery-data-products
   priority: SHOULD
   type: behavioral
-  description: >-
-    The meta domain has a view-only data_product_edges view, related to data_products_meta by
-    product_id. It holds the links from a data product to the rest of the model, and the detail panel's
-    Related Tables and Lineage sections read from it. There are two edge kinds. A relationship edge
-    links a product to a table or to another product through approved relationships. It is direct
-    when one relationship joins a member to the other end. It is indirect when the path runs through
-    tables that belong to no product, and then it carries the shortest hop count. A lineage edge links
-    a product to a relation upstream or downstream of a member at relation level: the full upstream
-    ancestry and one hop downstream, crossing domains. There is at most one row per product, target and
-    kind. When several paths connect the same pair, the row carries the path count and the connecting
-    relationship aliases, so the extra paths become detail on one edge rather than separate edges. The
-    path count is the number of distinct relationships leaving the product's members that lead on to
-    the target; the aliases and supporting tables are those on any walk from a member to the target
-    through tables that belong to no product. All of this is computed from reachability, so its cost
-    grows with the model's size rather than with the number of routes through it. A
-    product-to-product row exists when the target end is a member of another product, so the domain and
-    cross-domain product graph is a query over this view. Relationship edges are computed from
-    relationships and registered tables. Lineage edges are read from the lineage edge table
-    (REQ-2129), which each model build derives from its compiled views; nothing in either is edited. (Amended 2026-10-21, INPUTS AND RELATED:)
-    The detail panel separates three things: a product's own datasets, the datasets it is built from
-    and the tables it can join to. Its own datasets stay in the existing Output Ports section. Related
-    Tables becomes two sections. Related shows tables with a direct declared
-    relationship to a member; indirect relationship edges stay in this view for the product graph but
-    are not listed in the panel. Inputs shows the product's nearest physical datasets.
-    For each member that is a view, materialized view or dataset transform (REQ-1924), its lineage is
-    walked upstream through plain views, which are expanded at query time and so are not inputs, and
-    stops at the first physical dataset on each path: a source table or a materialized view. A
-    materialized view's inputs are what its refresh reads, found the same way. A member that is a
-    source table has its source as its input, shown by source type and name with its physical address
-    (REQ-1364). Lineage edges
-    carry a direction (upstream or downstream), and an upstream edge carries whether its target is a
-    nearest physical input, so Inputs is a query over this view. An input that is a member of another
-    product makes a product-to-product derivation edge, distinct from a relationship edge, so the
-    product graph can draw "built from" apart from "joins to". The Lineage section is unchanged: it
-    shows the full ancestry, plain views included.
+  description: 'The meta domain has a view-only data_product_edges view, related to data_products_meta by
+    product_id. It holds the links from a data product to the rest of the model, and the detail panel''s
+    Related Tables and Lineage sections read from it. There are two edge kinds. A relationship edge links
+    a product to a table or to another product through approved relationships. It is direct when one relationship
+    joins a member to the other end. It is indirect when the path runs through tables that belong to no
+    product, and then it carries the shortest hop count. [SUPERSEDED by REQ-2156, 2026-10-25 -- data_product_edges
+    holds relationship rows only; product lineage comes from the filtered product lineage endpoint. Kept
+    here for history; do not implement against it.] A lineage edge links a product to a relation upstream
+    or downstream of a member at relation level: the full upstream ancestry and one hop downstream, crossing
+    domains. [END SUPERSEDED BLOCK] There is at most one row per product, target and kind. When several
+    paths connect the same pair, the row carries the path count and the connecting relationship aliases,
+    so the extra paths become detail on one edge rather than separate edges. The path count is the number
+    of distinct relationships leaving the product''s members that lead on to the target; the aliases and
+    supporting tables are those on any walk from a member to the target through tables that belong to no
+    product. All of this is computed from reachability, so its cost grows with the model''s size rather
+    than with the number of routes through it. A product-to-product row exists when the target end is a
+    member of another product, so the domain and cross-domain product graph is a query over this view. Relationship
+    edges are computed from relationships and registered tables. Lineage edges are read from the lineage
+    edge table (REQ-2129), which each model build derives from its compiled views; nothing in either is
+    edited. (Amended 2026-10-21, INPUTS AND RELATED:) The detail panel separates three things: a product''s
+    own datasets, the datasets it is built from and the tables it can join to. Its own datasets stay in
+    the existing Output Ports section. Related Tables becomes two sections. Related shows tables with a
+    direct declared relationship to a member; indirect relationship edges stay in this view for the product
+    graph but are not listed in the panel. Inputs shows the product''s nearest physical datasets. For each
+    member that is a view, materialized view or dataset transform (REQ-1924), its lineage is walked upstream
+    through plain views, which are expanded at query time and so are not inputs, and stops at the first
+    physical dataset on each path: a source table or a materialized view. A materialized view''s inputs
+    are what its refresh reads, found the same way. A member that is a source table has its source as its
+    input, shown by source type and name with its physical address (REQ-1364). Lineage edges carry a direction
+    (upstream or downstream), and an upstream edge carries whether its target is a nearest physical input,
+    so Inputs is a query over this view. An input that is a member of another product makes a product-to-product
+    derivation edge, distinct from a relationship edge, so the product graph can draw "built from" apart
+    from "joins to". The Lineage section is unchanged: it shows the full ancestry, plain views included.
+    (Amended 2026-10-25, LINEAGE ROWS REMOVED:) Lineage rows leave this view (REQ-2156): the Inputs and
+    Lineage sections and the product Graph''s lineage edges read the product lineage endpoint, which answers
+    only what the reader can read. Inputs are computed there on the filtered graph by the nearest-physical
+    rule above.'
   use_case: >-
     A consumer sees which products and tables a data product joins to or derives from, whether each
     link is direct or through supporting tables, and how many paths connect them, from one meta-domain
@@ -87138,6 +87396,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - tests/unit/test_statement_contract.py
   - tests/integration/test_data_product_edges_e2e.py
 - id: REQ-2127
+  value: 'Browse and inspect your data products in a dedicated page, with metadata drawn live from the governed model.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87178,6 +87437,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1634
   target: "2026-Q4"
 - id: REQ-2128
+  value: 'See a data product''s member tables, contracts and linked glossary terms as an interactive knowledge graph.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87185,31 +87445,37 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: catalog-and-discovery-data-products
   priority: SHOULD
   type: ui
-  description: >-
-    The Data Product detail panel has a Knowledge Graph panel, one of its masonry panels, scoped to the
-    selected product. It shows a simplified graph with a fixed set of layers (the product, its member
-    tables, its commands, and the glossary terms bound to its columns) and no layer controls or
-    filters. three.js loads only when the panel scrolls into view. The panel's expand button opens the
-    full graph at 95% of the viewport, starting on the Knowledge graph preset and focused on that
-    product. The Data Products page has its own entry point that opens the full graph on the Product
-    map preset, because that preset covers every product rather than one. The full graph is one 3D
-    network graph, built on the profile3d scene components (Stage3D, Expandable3D, baseScene and the
-    relations force layout). Its contents are layers that the user
-    turns on and off. Each layer is a node type or an edge kind. The layers are: product and domain;
-    member tables, with each table's columns collapsed into it until the user expands it; commands;
-    data quality (checker tables linked to the table they check through dq_contract) and profile
-    results; tags; ontology (glossary terms, term-to-term edges and term-to-column bindings);
-    relationships between members, on by default; relationships from a member to a table outside
-    the product, off by default; and lineage. Filters by domain, tag, sensitivity, and a focus term
-    or product apply to every layer. Presets are named sets of layers, and each preset also sets the
-    layout. Knowledge graph has every layer except outside relationships, with the force layout.
-    Ontology has terms, term edges, the bound columns and the products that own those columns, with
-    the force layout. Product map has products grouped by domain, with edges from data_product_edges
-    and the force layout. Lineage has lineage edges only, drawn left to right in REQ-1667's upstream
-    lanes. Choosing a preset sets the layers and layout; after that the user can add or remove layers.
-    All graph data comes from meta-domain queries run as the signed-in user (REQ-2125, REQ-2126,
-    REQ-2129), so a layer the user's role cannot read is not offered. Both the panel and the full
-    graph have the shared 3D controls: drag to rotate and a reset-view control.
+  description: 'The Data Product detail panel has a Knowledge Graph panel, one of its masonry panels, scoped
+    to the selected product. It shows a simplified graph with a fixed set of layers (the product, its member
+    tables, its commands, and the glossary terms bound to its columns) and no layer controls or filters.
+    three.js loads only when the panel scrolls into view. The panel''s expand button opens the full graph
+    at 95% of the viewport, starting on the Knowledge graph preset and focused on that product. The Data
+    Products page has its own entry point that opens the full graph on the Product map preset, because that
+    preset covers every product rather than one. The full graph is one 3D network graph, built on the profile3d
+    scene components (Stage3D, Expandable3D, baseScene and the relations force layout). Its contents are
+    layers that the user turns on and off. Each layer is a node type or an edge kind. The layers are: product
+    and domain; member tables, with each table''s columns collapsed into it until the user expands it; commands;
+    data quality (checker tables linked to the table they check through dq_contract) and profile results;
+    tags; ontology (glossary terms, term-to-term edges and term-to-column bindings); relationships between
+    members, on by default; relationships from a member to a table outside the product, off by default;
+    and lineage. Filters by domain, tag, sensitivity, and a focus term or product apply to every layer.
+    Presets are named sets of layers, and each preset also sets the layout. Knowledge graph has every layer
+    except outside relationships, with the force layout. Ontology has terms, term edges, the bound columns
+    and the products that own those columns, with the force layout. Product map has products grouped by
+    domain, with edges from data_product_edges and the force layout. Lineage has lineage edges only, drawn
+    left to right in REQ-1667''s upstream lanes. Choosing a preset sets the layers and layout; after that
+    the user can add or remove layers. All graph data comes from meta-domain queries run as the signed-in
+    user (REQ-2125, REQ-2126, REQ-2129), so a layer the user''s role cannot read is not offered. Both the
+    panel and the full graph have the shared 3D controls: drag to rotate and a reset-view control. (Amended
+    2026-10-25, GRAPH, ALL / ONTOLOGY / PRODUCTS:) The panel is titled Graph and its expanded view ''<product>:
+    graph''. Its presets are All (every layer except outside relationships), Ontology and Products (the
+    former Product map), all 3D. The Lineage preset is removed: the panel''s lineage diagram (REQ-1640)
+    is the one lineage view, and lineage edges stay a layer of All. ''Knowledge graph'' is reserved for
+    the instance level, data entities typed by ontology terms; this panel shows metadata. The Data Products
+    page''s entry point keeps its ''Product map'' label. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This
+    corrects a defect in the data product requirements, not a feature: the earlier rules left expectations
+    and promises undistinguished, contracts generated rather than declared, one view for owner and consumer,
+    and two lineage views. It is resolved before the product is declared green.'
   use_case: >-
     A steward or consumer sees a data product whole, including structure, meaning, quality and
     provenance, in one graph. They narrow it to the question at hand by turning layers on and off or
@@ -87352,6 +87618,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1592
   target: "2026-Q4"
 - id: REQ-2131
+  value: 'Process columns in batch with a Python or Node function, reducing round-trip overhead on large tables.'
   status: proposed
   since: 2026-10
   group: 4. Source Connectors
@@ -87390,6 +87657,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2105
   target: "2027-Q1"
 - id: REQ-2132
+  value: 'State the business meaning of each data quality check in plain language, not just its technical predicate.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87436,6 +87704,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2127
   target: "2027-Q1"
 - id: REQ-2133
+  value: 'A preflight check can call Provisa''s own services—LLM, vectors, cache, data quality—before a source refresh.'
   status: proposed
   since: 2026-10
   group: 9. Live Data & Events
@@ -87689,6 +87958,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - tests/unit/test_graphql_front_answers.py
     - tests/integration/test_sparql_endpoint.py
 - id: REQ-2136
+  value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
   status: proposed
   since: 2026-10
   group: 10. UI & Admin Surfaces
@@ -87739,6 +88009,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2125
   target: "2027-Q1"
 - id: REQ-2137
+  value: 'Write back to your model through SPARQL Update, with governance enforced on every triple change.'
   status: proposed
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
@@ -87758,6 +88029,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-885
   target: "2027-Q2"
 - id: REQ-2138
+  value: 'Attach an OWL reasoner to a SPARQL source so Provisa reads inferred triples alongside the asserted ones.'
   status: proposed
   since: 2026-10
   group: 4. Source Connectors
@@ -87822,6 +88094,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2056
   target: "2027-Q1"
 - id: REQ-2141
+  value: 'Glossary terms derive their OWL type automatically from what they are grounded in—no manual classification.'
   status: proposed
   docs:
   - admin-graphql.md
@@ -88317,6 +88590,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     '
 - id: REQ-2150
+  value: 'See a glossary term''s related terms and column bindings as a small interactive graph in its detail view.'
   status: proposed
   target: "2027-Q1"
   group: 10. UI & Admin Surfaces
@@ -88332,3 +88606,872 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     each way. Nodes are named by their catalog names only. It reads the same metadata query the view
     already reads, with no request of its own. It is compact by default, and an expand control shows
     it at full size.
+- id: REQ-2151
+  status: proposed
+  target: "2027-Q1"
+  group: 11. Platform, Infrastructure & Delivery
+  category: Demo Provisioning
+  feature: product-tour-and-demos-sandbox
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A published named demo may declare, in its demo.yaml, the attributes its sandbox visitor carries
+    (visitor: attributes: {name: value}). Opening a visitor's sandbox records each one as the org's
+    attribute for that visitor, through the same user-attribute record an administrator writes, so a
+    derived role the demo's tour acts as (retail's region__eu, REQ-2057) is held from an attribute as
+    it is for any member. A visitor's token is a signed-in credential, and a signed-in principal holds
+    a derived role only from its attributes; without the declaration a tour step naming one is refused
+    as a role the visitor does not hold. Only a visitor's sandbox is given them, and there is no other
+    path by which a visitor gets an attribute. A value that is not text, or a name that may not be
+    recorded, refuses the demo by name.
+  use_case: >-
+    Retail's tour acts as reviewer,region__eu to show the EU-only reveal of a flagged message's sender;
+    its visitor carries region eu, so the step answers instead of being refused.
+  scenario: 'Given a published demo whose demo.yaml declares visitor attributes region eu
+
+
+    When a visitor opens its sandbox
+
+
+    Then the visitor''s org record says region eu
+
+
+    And the visitor may act as reviewer,region__eu'
+  related_reqs:
+  - REQ-2057
+  - REQ-2006
+  - REQ-2068
+- id: REQ-2152
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Authorization
+  feature: roles-and-capabilities-capabilities
+  priority: MUST
+  type: behavioral
+  description: 'A capability assigned to a role never widens that role''s read or write grants. A capability
+    opens a feature only; whatever the feature shows or changes stays within the role''s grants. Reads include
+    field, table, column and check names, counts, error text and exports (lineage, source detail, column
+    dependents, profiling and data quality results, ontology bindings, the model download, metadata export,
+    audit views). Writes include model, glossary and settings edits, which are refused on a table or column
+    the role cannot write. Every surface applies the same shared read-rights filter used by lineage. Two
+    exceptions. The source registrant sees the raw source schema during registration only; after registration
+    the registrant''s grants apply. Provisa''s own service identity (replica builds, fakes, checkers) is
+    not capped, and never shows anything to a person. Each metadata export target names a role, and every
+    publish to it (manual, the scheduled drain and the reconcile) carries exactly what that role can read;
+    the role is a setting of the target with its own UI. A model or glossary edit is permitted on a column
+    the acting role can read (the column_served rule); metadata edits are not data writes. Observability
+    surfaces (materialized views, cache, hot tables, replica builds) list only tables the caller can read
+    at least one column of. The registration-time raw schema is shown in the registration flow only; the
+    table edit page of a registered table is capped like every other surface. There is no special capability
+    for security administration: column_grant, masking_config and access_config are capped like any other,
+    so a role grants, masks or configures access only on columns it can read itself, as a grant option works.
+    Read rights flow only by delegation; the registrant sets the first grants at registration, and holders
+    then delegate what they hold. This applies wherever grants and masks are written (the admin API, MCP
+    tools and settings). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access
+    model''s requirements, not a feature: the earlier rules let a capability or a default reveal or reach
+    more than a role''s grants. It is resolved before the product is declared green.'
+  scenario: |
+    Given a role holding the view_governance capability that cannot read column ssn of table customers
+    When a member of that role opens lineage, source detail, column dependents, profiling, data quality, ontology bindings, the model download, metadata export or an audit view
+    Then ssn appears in none of them, by name, count or error text
+    When the member edits the glossary or model entry for customers.ssn
+    Then the edit is refused, and the refusal does not name ssn
+    Given the same user registering a new source
+    When the registration form lists the source's raw schema
+    Then ssn is listed until registration completes, and after it the user's grants apply
+    Given a role holding column_grant and masking_config that is not served column ssn
+    When it grants ssn to another role or sets a mask on it
+    Then the change is refused, and the refusal names nothing the role cannot read
+- id: REQ-2153
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Governance Column Visibility
+  feature: public-data-publishing-all-domains
+  priority: MUST
+  type: behavioral
+  description: 'A column''s scope says how far beyond its table''s domain it reaches, and nothing else:
+    domain, listed or public. domain, the default: outside the domain the column does not exist; inside
+    it, roles that reach the domain read and write it per grants. listed: every role of the organisation
+    sees the table''s name and the column''s name in the catalog and nothing more (no description, type,
+    sample, value or count); reading or writing it still needs a role that reaches the domain and holds
+    a grant. listed is how a domain makes a table discoverable, so that someone in another domain (one allowed
+    to bypass the relationship guard, for example) can find its keys and ask its owners for a grant. public:
+    every role of the organisation sees the table''s and column''s names and descriptions, and the column
+    is served to roles of every domain per grants; masks, row rules and limits apply as inside the domain
+    (REQ-1959). Who reads or writes a column is decided only by its grants; scope decides only where. A
+    table appears outside its domain only through its listed or public columns. The restricted scope and
+    the ''*'' grant entry are removed: with an empty grant list meaning no role (REQ-2154) restricted is
+    the same as domain, and a grant to the standard Viewer role (REQ-2155) is how a column is granted to
+    every role. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model''s
+    requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than
+    a role''s grants. It is resolved before the product is declared green.'
+  scenario: 'Given finance.invoice_ledger with customer_id listed, amount domain and currency public
+
+    When a sales role with no reach into finance opens the catalog
+
+    Then it sees invoice_ledger with customer_id and currency, currency''s description, and no amount
+
+    And a query reading customer_id is refused while currency is served per its grants'
+- id: REQ-2154
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: MUST
+  type: behavioral
+  description: 'Registering a table grants read on every one of its columns to the role the registrant is
+    acting as and to the standard Viewer role (REQ-2155), written into each column''s grant list where they
+    can be seen and changed. Registration never grants write; write is an explicit grant (REQ-868). An empty
+    grant list means no role, in every domain. A column is made sensitive by removing Viewer from its grant
+    list. A role cannot remove its own read on a column; to keep a column''s values from itself it adds
+    a mask rule for itself, which keeps the column''s name so the role can still administer it. The last
+    role holding read on a column cannot lose it, so every column has a reader. If no role can read a column,
+    re-registering the table from its source recovers it: registration shows the raw schema (REQ-2152) and
+    sets new grants. Seeds and demo configurations state their grants explicitly. (Amended 2026-10-25, A
+    REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
+    earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
+    before the product is declared green.'
+  scenario: 'Given a steward acting as data_steward registers table claims
+
+    Then every column of claims grants read to data_steward and viewer and grants no write
+
+    When the steward removes data_steward from claims.diagnosis
+
+    Then the change is refused, and a mask rule for data_steward is offered instead
+
+    When viewer is removed from claims.diagnosis
+
+    Then only data_steward and roles it delegates to can read diagnosis'
+- id: REQ-2155
+  value: 'Start from built-in analyst, steward and operator roles and extend them, instead of building access from scratch.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: MUST
+  type: behavioral
+  description: 'Provisa ships standard roles: named collections of capabilities, maintained by Provisa,
+    that organisations extend with their own roles. A standard role carries capabilities only, never grants;
+    what any role reads or writes comes from grants (REQ-2152). A role may inherit from several parents,
+    and its capabilities are the deduplicated union of its own and every ancestor''s; least privilege is
+    applied when roles are assigned, not when they are composed. The initial set: Viewer, the base (reads
+    the catalog, the glossary and data products); Analyst (Viewer, plus querying and query development);
+    Developer (Analyst, plus views, environments and write); Data product owner (Viewer, plus editing the
+    data products it owns); Data steward (Viewer, plus glossary editing and relationships); Data quality
+    steward (Data steward, plus managing checks, expectations and promises); Data quality reader (Viewer,
+    plus reading check definitions and results); Source admin (Viewer, plus source and table registration);
+    Security admin (Viewer, plus access configuration, column grants, masking and user management); Org
+    admin (all of the above, plus org settings and observability). Data quality gets its own read and read/write
+    capabilities, so managing checks no longer needs table registration, and editing a data product can
+    be limited to the products a role owns. The existing seeded roles (data_steward, REQ-1944, and the system
+    roles) are expressed in this set. (Amended 2026-10-25, LOCKED; SANDBOX COMPOSED:) Standard roles are
+    locked: Provisa maintains them and an organisation cannot edit them; it extends them with its own child
+    roles, so a capability Provisa adds to a standard role reaches every role built on it. The sandbox role
+    a ''Try it Out'' visitor holds (REQ-1597) is composed from standard roles by union like any role, not
+    as org_admin minus a denylist. (Amended 2026-10-25, DESIGN ANSWERS:) Environment management and user
+    management belong to Org admin alone: Developer switches environments and Security admin governs grants,
+    masks and sensitive data but manages no users, so the sandbox role is a pure union of Developer, Data
+    product owner, Data quality steward, Source admin and Security admin. Data steward keeps REQ-1944''s
+    meaning, a domain''s meaning and access: it inherits Security admin and adds glossary editing, relationships
+    and data product editing within its reach, so it can delegate read. Data quality steward inherits Viewer
+    and adds the data quality capabilities. A standard Modeler role is Developer plus the relationship-guard
+    bypass. Parents are a list. Capabilities, domain access, residency and grants are unions over the ancestors.
+    A row rule resolves as follows: a role''s own rule for a table stands; otherwise the rules found anywhere
+    among its ancestors are ORed, and a parent with no rule contributes nothing, so adding a parent never
+    lifts a row rule; a role with no rule anywhere among its ancestors is unrestricted, as before. Write-grant
+    row conditions resolve the same way. A property (rate limit, row limit, session variables) is the role''s
+    own, else the first ancestor''s that sets it, depth-first in declared parent order. (Amended 2026-10-25,
+    STANDARD ROLES REACH NO DOMAIN:) [SUPERSEDED by REQ-2155, 2026-10-25 -- reach is not inherited; every
+    role, standard roles included, states its own. Kept here for history; do not implement against it.]
+    A standard role carries no domain reach: domain reach is a union over ancestors, so a standard role
+    reaching a domain would hand it to every role built on it. An organisation''s own child roles carry
+    the reach (a Finance steward is a child of Data steward reaching finance). [END SUPERSEDED BLOCK] (Amended
+    2026-10-25, REACH IS THE ROLE''S OWN; ORG OPERATOR:) Every role states its own domain reach, ALL or
+    a list of domains, and reach is not inherited: a role inherits its parents'' capabilities, and its own
+    reach says where they apply. Standard roles, Org admin and Sandbox reach ALL; a domain-specific role
+    (a Finance steward, child of Data steward) states its own list. Giving a role reach follows REQ-1531:
+    the caller must reach every domain it adds, so a security admin for a domain gives reach to that domain
+    only. A standard Org operator role holds org settings, observability and the approval of views and relationships;
+    Org admin and Sandbox inherit it. Sandbox is the union of Developer, Data product owner, Data quality
+    steward, Source admin, Security admin, Data steward and Org operator. Data steward''s parents are Security
+    admin and Analyst, and it adds glossary editing, relationships, data product editing and full results.
+    Environment data stays Org admin''s alone (REQ-1942). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This
+    corrects a defect in the access model''s requirements, not a feature: the earlier rules let a capability
+    or a default reveal or reach more than a role''s grants. It is resolved before the product is declared
+    green. (Amended 2026-10-25, SANDBOX DOES NOT INHERIT DEVELOPER:) The sandbox role does not inherit Developer,
+    because Developer carries the right to manage environments it owns and a sandbox visitor never manages
+    environments (REQ-2053). Sandbox inherits Analyst, Data product owner, Data quality steward, Source
+    admin, Security admin, Data steward and Org operator, and holds creating views, creating relationships,
+    full results, write and environment switching as its own capabilities. Reading an environment''s synthetic-data
+    report, profile runs and relationships is admitted to the owner of that environment who can switch into
+    it; creating or deleting an environment stays with managing environments (own or any).'
+  scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
+
+    Then it holds the union of both roles'' capabilities
+
+    And it reads only the columns its grants name'
+- id: REQ-2156
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Federation-Wide Provenance Graph
+  feature: lineage-and-provenance-column-lineage
+  priority: MUST
+  type: behavioral
+  description: 'Every lineage surface answers only what the caller can read, through one shared server-side
+    filter: the admin Lineage page (the federation graph and statement lineage), the data product panel''s
+    Lineage and Inputs, the product Graph panel, and anything else that names a field from lineage. A registered
+    column is shown only if the acting role is served it. A native node (REQ-2116) is shown only if the
+    registered column it feeds is shown. A physical column nobody registered is never shown. A view''s internal
+    step (a CTE or a command call) is shown only if every field it feeds is shown. Hidden steps collapse:
+    A to B to C with B hidden is drawn A to C, with no transform; an edge into a shown node that also had
+    a hidden parent carries no transform text, since the expression would name the hidden column. A statement''s
+    own outputs are the caller''s. Nothing marks that anything was hidden. The admin Lineage page keeps
+    its view_governance gate and its roles lens, but the lens only narrows within what the caller can read.
+    A data product''s lineage comes from a product-scoped endpoint: the product''s members, their filtered
+    lineage and the product''s nearest physical inputs computed on the filtered graph (REQ-2126). It needs
+    no governance capability: any reader of the product sees its lineage trimmed to their own rights. data_product_edges
+    holds relationship rows only, so no unfiltered second path to lineage exists. (Amended 2026-10-25, A
+    REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
+    earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
+    before the product is declared green.'
+  scenario: 'Given view orders_v reads staging.orders_clean, which reads raw.orders
+
+    And role sales can read orders_v and raw.orders but not staging.orders_clean
+
+    When sales opens the lineage of a product holding orders_v
+
+    Then it sees raw.orders feeding orders_v directly, with no transform and no sign of a hidden step'
+- id: REQ-2157
+  value: 'Define input expectations and output promises for a data product, with check results tracked over time.'
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Data Products
+  feature: catalog-and-discovery-data-products
+  priority: MUST
+  type: behavioral
+  description: 'A data product''s data quality has three parts. Expectations are checks the product owns
+    on its inputs; promises are checks it owns on its outputs, its member tables; related are checks on
+    those same tables that the product does not own, such as another product''s promises on one of its inputs.
+    Whether a check is an expectation or a promise follows from what it checks; whether it is the product''s
+    follows from ownership. A checker table may name one data product as its owner, because several products''
+    checks can run over the same table; a checker table naming none is related for every product whose tables
+    it checks. The product panel''s data quality section is three expandable rows: Expectations, Promises
+    and Related. A check whose checked columns the reader cannot read is absent from every row, with its
+    name and its results (REQ-2152). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect
+    in the data product requirements, not a feature: the earlier rules left expectations and promises undistinguished,
+    contracts generated rather than declared, one view for owner and consumer, and two lineage views. It
+    is resolved before the product is declared green.'
+  scenario: 'Given product revenue owns a check on its input orders and a check on its member daily_revenue
+
+    And product fulfilment owns a check on orders
+
+    When a reader opens revenue''s data quality section
+
+    Then Expectations holds the orders check revenue owns, Promises the daily_revenue check
+
+    And Related holds fulfilment''s check on orders'
+- id: REQ-2158
+  value: 'Declare a versioned data contract per output port so consumers know exactly what they can rely on.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-warehouse-listings
+  priority: MUST
+  type: behavioral
+  description: 'A data product (ODPS) declares a data contract (ODCS) for each output port, stored with
+    the product rather than generated at export: the port''s schema (its member''s columns), its promises
+    (REQ-2157), a structured SLA (freshness from the member''s declared freshness) and its terms. The product''s
+    prose SLA moves into its contracts. Input ports are the product''s expectations: each names the upstream
+    contract it consumes when the input is another product''s output port, and carries the product''s own
+    expectation checks on it. The ODPS export writes both port kinds and each output port''s contract (REQ-2118),
+    following Bitol ODPS, whose inputPorts are labelled Expectations and outputPorts Promises. (Amended
+    2026-10-25, A CONTRACT HAS ITS OWN VERSION:) Each output port''s contract carries its own version, as
+    ODPS versions each port by its contract: a breaking change to one port''s schema or promises bumps that
+    contract alone. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the data product
+    requirements, not a feature: the earlier rules left expectations and promises undistinguished, contracts
+    generated rather than declared, one view for owner and consumer, and two lineage views. It is resolved
+    before the product is declared green. (Amended 2026-10-25, ONE CONTRACT PER MEMBER:) An output port
+    is one member table, so a product has one contract per member table, as one ODCS contract describes
+    one dataset.'
+  scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
+    fulfilment
+
+    When revenue is exported as ODPS
+
+    Then its output port daily_revenue names revenue''s ODCS contract for it
+
+    And its input port orders names fulfilment''s contract for orders'
+- id: REQ-2159
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: MUST
+  type: constraint
+  description: 'The access model has no carve-outs: one composition rule (inheritance as a union, REQ-2155),
+    one access rule (a capability opens a feature and grants scope it, REQ-2152) and visible defaults (REQ-2154).
+    Removed: the admin capability override of domain access (REQ-1133); lockdown domains, whose only purpose
+    was an empty grant list meaning no role, now true everywhere (REQ-2154); and the read_restricted capability,
+    which nothing uses. Convenience comes from defaults and composition (standard roles, Viewer''s default
+    grant, public and listed scope, derived roles), never from a bypass. The two things outside the rules
+    are not people: registration, where data enters governance, and Provisa''s service identity, which runs
+    the rules and shows nothing to anyone (REQ-2152). (Amended 2026-10-25, THE OBJECTIVE:) The security
+    model is described, documented and shown as one composition: scope (where a column reaches: domain,
+    listed, public, REQ-2153) + capabilities (which features a role may use, REQ-2155) + read/write grants
+    (which tables, columns and rows those features touch). Its objective is clarity: a person''s effective
+    rights follow unambiguously from that composition, for users, owners and auditors alike. It is held
+    against user burden: common cases are covered by defaults and composition (standard roles, inheritance,
+    the registrant''s and Viewer''s default grants, public scope), so that governing a model does not demand
+    a stream of manual grant entries. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect
+    in the access model''s requirements, not a feature: the earlier rules let a capability or a default
+    reveal or reach more than a role''s grants. It is resolved before the product is declared green. (Amended
+    2026-10-25, ADDITIVE ONLY, NO DENY:) Capabilities and grants are additive only. There is no deny: nothing
+    subtracts from what another role or an ancestor grants, so no precedence rule exists to learn. Revoking
+    takes back a grant itself and nothing else. What a deny would be used for is expressed additively: a
+    role that should not have some inherited capability is composed from narrower parents; a column for
+    everyone but some people is granted to the roles that should read it rather than to Viewer; seeing a
+    column without its values is a mask, whose unmasking is a grant; and only some rows is a row rule, which
+    adding a parent never lifts (REQ-2155).'
+- id: REQ-2160
+  value: 'A product''s owner sees health and expectations; a consumer sees the contract, SLA and latest check results.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-data-products
+  priority: MUST
+  type: behavioral
+  description: 'The data product panel shows the product''s owner a different subset from other readers.
+    A consumer sees the product''s promises (its contracts: schema, SLA, promise checks and their latest
+    results, REQ-2157, REQ-2158), how to access it, its support, and its lineage up to the product. The
+    owner, a holder of the product''s owner or team role (REQ-2125), also sees its expectations and their
+    failures, related checks, its input ports, its consumers one hop downstream, and edits its contracts.
+    Both views are capped by the reader''s read rights (REQ-2152): neither shows a column, check or table
+    the reader cannot read. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the data
+    product requirements, not a feature: the earlier rules left expectations and promises undistinguished,
+    contracts generated rather than declared, one view for owner and consumer, and two lineage views. It
+    is resolved before the product is declared green. (Amended 2026-10-25, ONLY THE OWNER-ONLY ITEMS ARE
+    HIDDEN:) A consumer''s view hides only what is owner-only: expectations, related checks, unattached
+    checks, input ports, downstream consumers and contract editing. Every other part of the panel (fields,
+    Graph, terms, tags, related tables, commands, promises, lineage, support) is shown to owner and consumer
+    alike, capped by the reader''s read rights. The owner is a reader whose acting roles include the product''s
+    owner or team role.'
+  scenario: 'Given product revenue owned by role revenue_team
+
+    When a member of revenue_team opens revenue
+
+    Then the panel shows Expectations, Promises, Related, input ports and downstream consumers
+
+    When an analyst outside revenue_team opens revenue
+
+    Then the panel shows Promises, access, support and lineage only'
+- id: REQ-2161
+  value: 'See a role''s effective rights—the composition of its scope, capabilities and grants—in one panel.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: MUST
+  type: ui
+  description: 'The Security page''s role detail panel shows the role''s effective rights, as the composition
+    of scope, capabilities and grants (REQ-2159): every capability the role holds with the role it comes
+    from (its own or the ancestor that carries it), its domain reach, and per table and column the access
+    it has (read, write, masked, row rule) with the grant that gives it and the column''s scope. It is shown
+    for any role, including a meta-role, whose view is the union of its members''. A derived role (REQ-2057)
+    carries no capabilities and is never granted by hand: its panel shows only the grants that name it,
+    so it reads as what an attribute value unlocks. The view is itself capped by the viewer''s read rights
+    (REQ-2152): it lists only tables and columns the viewer can read, and nothing marks that others exist.
+    (Amended 2026-10-25, TWO DIMENSIONS:) The effective rights are shown in two tabs, one per dimension.
+    Capabilities: a role lineage drawn left to right with the lineage diagram component, from the standard
+    roles to the selected role, each node listing the capabilities it adds and the last the accumulated
+    set; a capability reached through two parents is shown where it first enters; a meta-role''s members
+    are its branches. Data access: every table the role reaches once scope is applied (its domains, and
+    listed or public columns of other domains), each expanding to its columns with scope, read or write,
+    mask, row rule and the granting role. A derived role has the data access tab only. (Amended 2026-10-25,
+    DOMAIN SELECTOR:) [SUPERSEDED by REQ-2161, 2026-10-25 -- no selector: a role''s reach is the selection;
+    a standard role shows capabilities only. Kept here for history; do not implement against it.] The data
+    access tab has a domain selector. For a role with domain reach it defaults to that reach and can narrow
+    to one domain. For a standard role, which reaches none, it previews the role as if it reached the chosen
+    domain, which is what a child role reaching that domain gets. The selected domain decides which other
+    domains'' columns appear as listed or public. [END SUPERSEDED BLOCK] (Amended 2026-10-25, NO DOMAIN
+    SELECTOR:) The data access tab shows the role''s own reach, with the listed and public columns of other
+    domains; domain-specific roles are how reach varies, so there is no selector. [SUPERSEDED by REQ-2161,
+    2026-10-25 -- standard roles reach ALL (REQ-2155), so every role shows both tabs. Kept here for history;
+    do not implement against it.] A standard role, which reaches no domain, shows the Capabilities tab only.
+    [END SUPERSEDED BLOCK] The table list has the ordinary domain filter every list page has. (Amended 2026-10-25,
+    A REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
+    earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
+    before the product is declared green. (Amended 2026-10-25, EVERY ROLE HAS BOTH TABS:) Standard roles
+    reach ALL (REQ-2155), so every role, standard or not, shows both tabs; a derived role shows the Data
+    access tab only.'
+  scenario: 'Given role dq_lead inheriting Data quality steward and Data product owner
+
+    When a security admin opens dq_lead on the Security page
+
+    Then the panel lists each capability with the standard role it comes from
+
+    And each readable column with its scope and the grant that serves it to dq_lead'
+- id: REQ-2162
+  value: 'See every role that can read, write or mask a column, with the inheritance chain that gave each role access.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: MUST
+  type: ui
+  description: 'A table''s detail panel answers who can read or write each of its columns: for a chosen
+    column, every role that reads it, writes it, sees it masked or has a row rule on it, each with the
+    chain that gives it (the granting role, the ancestor it is inherited through, the column''s scope
+    and the role''s reach). It is the inverse of the role panel''s data access tab (REQ-2161) and is resolved
+    by the same rule (column_served). It is capped by the viewer''s own read rights (REQ-2152): only columns
+    the viewer can read can be chosen. This corrects a defect in the access model''s requirements and
+    is resolved before the product is declared green.'
+  scenario: 'Given claims.diagnosis granted to data_steward and to clinical_reviewer, a child of analyst
+    reaching claims
+
+    When an auditor holding read on diagnosis opens claims and chooses diagnosis
+
+    Then the panel lists data_steward and clinical_reviewer with the grant, inheritance and reach behind
+    each'
+- id: REQ-2163
+  value: 'Query your business glossary as a live SQL, GraphQL or Cypher table, with row-level governance applied.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'A third generated system schema, ontology, holds the model''s meaning, as meta holds its
+    structure. Two parts. Definitions: the glossary views move from meta to ontology (terms, their bindings
+    to columns, the edges between terms, their domains and experts), and every reader of them (the Ontology
+    page, the product Graph''s ontology layer, the SPARQL vocabulary, the meta goldens) reads them there;
+    a binding links a term to a column in meta across the two system schemas. Instances: each Class term
+    is a table and each Property term bound to one of its columns is a column of it, generated as a view
+    over the tables the Class is bound to and governed through the one pipeline like any view, so a query
+    can be written in the ontology''s terms on every surface (SQL, GraphQL, Cypher, REST, MCP), as SPARQL
+    already is. The schema is read-only and regenerated with the model. Read rights apply throughout: a
+    term is shown only to a reader who reaches one of its domains (the glossary API''s readable_term rule,
+    one rule for both), a term with no domain is shown to every reader, a binding only when its column is
+    also served to the reader, an edge only when both its terms are shown, and an instance column only when
+    its underlying column is served. [SUPERSEDED by REQ-2163, 2026-10-25 -- settled 2026-10-26, see amendment.
+    Kept here for history; do not implement against it.] Open points to settle before building: a Class
+    bound to several tables (joined as one entity on the Class key, or not offered until curated), a Property
+    bound to several columns, and the naming of definition views against Class tables in the one schema.
+    [END SUPERSEDED BLOCK] (Amended 2026-10-25, OPEN POINTS SETTLED; SPARQL SERVES THE ONTOLOGY:) Maintainer
+    2026-10-26, scheduled before green, in parallel with the benchmark. (1) A Class bound to several tables
+    is their union, no join: each row an instance from one table, with a column naming that table; a Property
+    column a table does not bind is null for its rows. Identity across tables is a later curation step (owl:sameAs),
+    never inferred. (2) A Property bound to several columns of one table is a list column (SQL array, GraphQL
+    list); SPARQL answers each value. A steward who wants them apart binds narrower properties, each rdfs:subPropertyOf
+    the broader one. (3) The definition views carry a leading underscore (_terms, _term_refs, _term_edges,
+    _domains, _experts), as system fields do, so they never collide with a generated Class table. (4) SPARQL
+    serves the ontology schema as standard RDFS/OWL/SKOS: Class terms as owl:Class, kind-of edges as rdfs:subClassOf,
+    Property terms as owl:DatatypeProperty or owl:ObjectProperty with rdfs:domain and rdfs:range, sub-properties
+    as rdfs:subPropertyOf, names as skos:prefLabel, definitions as skos:definition, all under the same read
+    rights as the views. (Amended 2026-10-25, AXIOMS JOIN INSTANCES:) Maintainer 2026-10-26, before launch:
+    a SPARQL query may join the ontology''s axioms to instance data, e.g. ?x a ?c . ?c rdfs:subClassOf*
+    :Party answers every instance of Party and of its subclasses, and rdfs:subPropertyOf chains likewise,
+    computed in SQL and governed as any read: a role that cannot read a subclass''s table gets none of its
+    instances.'
+  scenario: 'Given Class term Customer bound to sales.customers (key id) with Property terms name and
+    segment bound to its columns
+
+    And a role that reaches sales and is served customers.name but not customers.segment
+
+    When it queries SELECT name FROM ontology.Customer
+
+    Then the rows are the governed rows of sales.customers
+
+    And ontology.Customer offers no segment column to that role
+
+    And a term none of whose domains the role reaches is absent from ontology.terms'
+- id: REQ-2164
+  value: 'Export server logs with secrets and physical addresses redacted, ready to attach to a support email.'
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Operations
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: behavioral
+  description: 'Redacted log export: an operator can export the server''s recent logs as one plain-text
+    file with redaction applied, to attach to a support email. Support is by email only; the customer
+    owns what it sends, and this feature helps it redact. The export runs the same redaction the server
+    already applies (provisa/security/redaction.py: secrets, credentials) plus the client-facing naming
+    rule (physical source addresses written as model names), and it is offered from the admin UI and as
+    a command. The file is readable as written so the operator can review it before sending; the product
+    never sends it anywhere (no upload, no support portal, no phone-home), so an air-gapped install exports
+    the same way.'
+  scenario: 'Given server logs containing a source password, a physical address pet_store_sqlite.pet_store.pets
+    and a query error
+
+    When an operator exports logs for support
+
+    Then the file contains the error
+
+    And the password does not appear in it
+
+    And the table appears as pet_store.pets, not by its physical address
+
+    And no network request is made'
+- id: REQ-2165
+  value: 'Export your governed graph as Turtle or N-Triples and load it into any triple store you already run.'
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'Bulk RDF export of the governed graph, the counterpart of the Neo4j export (REQ-392),
+    so a customer who already runs a triple store (Jena, GraphDB, Stardog or another) uses it with Provisa''s
+    data: we work with what you have. Scope is the whole graph, a domain or a class. The export carries
+    the ontology schema (REQ-2163''s RDFS/OWL/SKOS: classes, sub-classes, properties with domain and range,
+    labels and definitions) together with the instances, so the receiving store''s reasoner and tools
+    work from the first load. It is governed: it contains exactly what the exporting role may read, masks
+    applied, through the one pipeline. Two forms: a file (Turtle, or N-Triples streamed for large exports)
+    and a direct load into a running store over the SPARQL 1.1 Graph Store HTTP Protocol, reporting triples
+    loaded and failures as the Neo4j export does. It accepts as_recorded (and as_of where a valid time
+    is mapped), so an export can be reproduced exactly later.'
+  scenario: 'Given a role that reads the Customer class with email masked
+
+    When it exports class Customer as Turtle
+
+    Then the file declares Customer as an owl:Class with its properties'' domains and ranges
+
+    And every instance the role reads is in the file
+
+    And each email in the file is masked
+
+    And an export with the same as_recorded later yields the same triples'
+- id: REQ-2166
+  value: 'Join your Jena, GraphDB or Stardog triples with Provisa''s governed data live, with no copy needed.'
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'A customer''s own graph store queries Provisa live, with no copy: we work with what you
+    have. RDF: a SPARQL 1.1 SERVICE clause in Jena, GraphDB or Stardog against Provisa''s SPARQL endpoint
+    is answered correctly, so a query in their store joins their triples with Provisa''s governed data.
+    Neo4j: apoc.bolt.load (and apoc.bolt.execute for reads) from a customer''s Neo4j against Provisa''s
+    Bolt endpoint is answered correctly. Each call runs as the Provisa role its credentials name, governed
+    through the one pipeline like any request, and a call without valid credentials is refused. Together
+    with direct tool access (SPARQL clients over the endpoint; Neo4j Browser and Bloom over Bolt) and
+    the exports (REQ-392, REQ-2165), this is the full graph story: use your tools on Provisa, query it
+    live from your store, or load the governed graph into it.'
+  scenario: 'Given a Jena Fuseki holding triples about accounts, and a Provisa role that reads Customer
+    with email masked
+
+    When a Fuseki query joins its accounts to Provisa''s customers through SERVICE with that role''s credentials
+
+    Then the joined rows come back and each email is masked
+
+    And given a Neo4j instance, when it calls apoc.bolt.load against Provisa''s Bolt endpoint as that
+    role
+
+    Then it receives the role''s governed rows'
+- id: REQ-2167
+  value: 'Every protocol surface publishes its conformance pass rate and deliberate differences, so you know what works.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Protocol Conformance
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: constraint
+  description: 'Every protocol and language Provisa serves is checked against its public conformance suite,
+    run in CI against a test instance, scheduled after green. Suites: SPARQL 1.1 (W3C test suite: query,
+    update, result formats) and RDF 1.1 syntax (Turtle, N-Triples) from w3c/rdf-tests; Cypher (openCypher
+    TCK); Bolt (the Neo4j driver test kit); GraphQL over HTTP (the graphql-http compliance audit); pgwire
+    (the Postgres conformance suite plus the psycopg and JDBC drivers'' own test suites); Arrow Flight SQL
+    (Apache Arrow''s Flight SQL integration scenarios); and the equivalent public suite for every other
+    served surface (REST/OpenAPI, JSON:API, gRPC, MCP) where one exists. Each run reports a pass rate per
+    surface. Every failing case is either fixed or listed as a deliberate difference with its reason (for
+    example, transaction statements are a no-op by design); none is skipped silently. The deliberate differences
+    are published as a compatibility page per surface. (Amended 2026-10-25, RESULTS IN THE DOCS:) Maintainer
+    2026-10-26: the results are published in the docs under a Conformance section, one page per surface,
+    each giving the suite and its version, the pass rate, and every deliberate difference with its reason.
+    The pages are generated from the CI run''s results, never typed by hand, so they cannot drift from what
+    the suite last reported. (Amended 2026-10-25, DIFFERENCES WITH WORKAROUNDS:) Maintainer 2026-10-26:
+    the suites are what gives customers comfort, so each Conformance page lists every difference in detail
+    with its workaround, grouped by cause: writes (supported where they map onto the model through governed
+    table writes; a write needing structure the model lacks is refused by name; transactions are a no-op
+    by design), vocabulary fixed by the model (new vocabulary is defined in the model as a table, column
+    or ontology term, not written into the data; unbounded patterns answer within named limits), and add-ins
+    such as APOC, GDS, custom SPARQL functions or Postgres extensions (offered as commands where commonly
+    needed; otherwise run in the customer''s own store by querying Provisa live or loading the governed
+    graph into it, REQ-2165/2166). Each page also lists the real tools verified to work over that surface
+    (e.g. psql, DBeaver and Tableau over pgwire; Neo4j Browser and Bloom over Bolt; Protege and Stardog
+    Studio over SPARQL), which stays the priority when ordering fixes. (Amended 2026-10-25, HOW TOOLS ARE
+    VERIFIED:) Maintainer 2026-10-26: GUI tools are hard to automate and sometimes to acquire, so a tool
+    is verified in one of three ways, and its Conformance entry says which, with the tool''s version and
+    the date: (a) covered by its driver: the open-source driver the tool sits on (Postgres JDBC/ODBC under
+    Tableau and DBeaver, the Neo4j JavaScript driver under Bloom and Browser, SPARQL over HTTP under Protege
+    and Stardog Studio) runs in CI, with the driver''s own test suite where it has one; (b) verified by
+    replay: the real tool is run once by hand against a test instance, its protocol conversation (pgwire,
+    Bolt or HTTP: introspection queries, catalog calls, procedures) is captured, and the capture is replayed
+    in CI so a change that breaks what the tool relies on fails; a licence is needed only at capture time;
+    (c) verified manually. (Amended 2026-10-25, PGWIRE CATALOG AND TYPES:) Maintainer 2026-10-26: pgwire
+    is already verified with DBeaver and DataGrip, and the gaps found there were always metadata functions
+    and tables, and some data type conversions. So the pgwire conformance job adds, against a real Postgres
+    of a pinned version started in the same job: (1) a catalog shape diff: for every pg_catalog and information_schema
+    relation Provisa serves, column names, order and types compared with Postgres''s own definitions, and
+    for every catalog function tools call (format_type, pg_get_constraintdef, pg_get_expr, col_description,
+    has_table_privilege, current_schema and the like) signature and return type compared with pg_proc; (2)
+    coverage: the catalog relations and functions Postgres has that Provisa does not serve, each added or
+    listed with its reason; (3) type conversions: for every type Provisa returns, the result column''s type
+    OID and typmod, and its text and binary encodings, compared with what Postgres sends for the same value,
+    plus the casts tools issue. Catalog content stays the role''s governed view of the model, stated once
+    as a deliberate difference. Keys shown in pg_constraint and pg_index come from the source''s declarations
+    once discovery records them (REQ-2170).'
+  scenario: 'Given the openCypher TCK run against a test instance
+
+    When a scenario fails
+
+    Then it is either fixed or listed on the Cypher compatibility page with its reason
+
+    And the CI report shows the Cypher pass rate'
+- id: REQ-2168
+  value: 'LangChain, Neo4j Browser and other Cypher tools connect and learn your graph''s schema without any changes.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Graph Query
+  feature: cypher-and-graph-analytics-translation
+  priority: SHOULD
+  type: behavioral
+  description: 'Common APOC calls work unchanged against Provisa''s Cypher surface (HTTP and Bolt), scheduled
+    before green because agent frameworks depend on them: LangChain''s Neo4j integration and similar tools
+    call apoc.meta.data / apoc.meta.schema to learn the graph''s schema before writing Cypher. Four kinds,
+    each mapped its own way. (1) Introspection procedures (apoc.meta.data, apoc.meta.schema and the like)
+    are predefined commands answered from the acting role''s label map, so a caller sees only what the role
+    may read. (2) Scalar functions (apoc.text.*, apoc.coll.*, apoc.date.*, apoc.convert.* and the like)
+    are translated to the engine''s own SQL functions so they push down with the query; they are not commands.
+    (3) Traversal procedures (apoc.path.expand, apoc.path.subgraphNodes) are predefined commands compiled
+    to the same recursive SQL as variable-length paths. (4) Procedures that act outside the model (apoc.create.*
+    dynamic labels, apoc.periodic.iterate, apoc.load.*) are listed on the Cypher Conformance page (REQ-2167)
+    with their workarounds. The predefined commands live in a built-in apoc namespace, so CALL apoc.meta.data()
+    YIELD ... works as written, and every one is governed like any command. The set is chosen from what
+    real tools and agent frameworks call (captured as REQ-2167 replays), not all of APOC. (Amended 2026-10-25,
+    CALLING PATTERNS: NAMING ALIASES PER LANGUAGE:) Maintainer 2026-10-26: build a general mechanism first,
+    then ship the APOC set on it as declarations. A command declares a calling pattern per language, each
+    a naming alias with a generated default: SQL name(args) in FROM, Cypher CALL ns.name(args) YIELD, a
+    GraphQL field, a REST endpoint, an MCP tool, a SPARQL function or property-function IRI. Any can be
+    overridden (e.g. the Cypher name apoc.meta.data). A function is declared as a canonical SQL expression
+    template with the same per-language names (apoc.text.join(list, sep) -> array_to_string({list}, {sep}));
+    the transpiler renders it per engine so it pushes down, and the template is parsed and transpiled for
+    every engine in the deployment when it is saved, so a broken one fails at save. The calling pattern
+    is naming only: arguments, governance and grants are declared once on the command or function, and producing
+    results in the format the caller expects is the command developer''s responsibility. The prime use case
+    is emulating the calls real tools expect (APOC for Cypher tools and agent frameworks, and likewise catalog
+    functions or service descriptions on other surfaces), so end users extend it themselves. A declared
+    name that would shadow a built-in or another command is refused, naming both. The built-in APOC set
+    is shipped as declarations on this mechanism. (Amended 2026-10-25, TARGETED LANGUAGES:) Maintainer 2026-10-26:
+    a command or function may be targeted to specific languages. When it lists its languages it is offered
+    only in those (an APOC emulation only in Cypher, [SUPERSEDED by REQ-2168, 2026-10-25 -- SQL is always
+    offered (amendment SQL ALWAYS). Kept here for history; do not implement against it.] [SUPERSEDED by
+    REQ-2168, 2026-10-25 -- SQL is always offered (amendment SQL ALWAYS; VARIANTS ARE COMMANDS). Kept here
+    for history; do not implement against it.] a catalog-function emulation only in SQL) [END SUPERSEDED
+    BLOCK] [END SUPERSEDED BLOCK], so tool-emulation shims do not appear in GraphQL, REST or MCP. When it
+    lists none it is offered in every language with the generated default names. A call in a language it
+    is not offered in is refused by name like any unknown command. (Amended 2026-10-25, SQL ALWAYS:) Maintainer
+    2026-10-26: SQL is always offered, because every language compiles to it. A targeted command or function
+    lists the other languages it is offered in, and SQL is implied and cannot be excluded. The APOC set
+    is offered in Cypher and SQL. (Amended 2026-10-25, SQL ALWAYS; VARIANTS ARE COMMANDS:) Maintainer 2026-10-26:
+    SQL is always offered, because every language compiles to it; [SUPERSEDED by REQ-2168, 2026-10-25 --
+    targeting is opt-out (amendment OPT-OUT). Kept here for history; do not implement against it.] targeting
+    lists the other languages a command or function is offered in, and SQL cannot be excluded. [END SUPERSEDED
+    BLOCK] Not everything is exposed in GraphQL, Cypher or SPARQL. Where a language expects a different
+    result shape, the variant is a separate command with its own implementation and its own targeting, not
+    an overload: e.g. meta_schema is the general command, and apoc.meta.data is a Cypher-targeted command
+    that may call it and reshape its result into APOC''s format. Calling patterns stay naming aliases. The
+    APOC set is Cypher-targeted commands and functions (offered in SQL as always). (Amended 2026-10-25,
+    OPT-OUT:) Maintainer 2026-10-26: language targeting is opt-out. A command or function is offered in
+    every language under its generated default name; excluding it from a language, or renaming it there,
+    is an explicit declaration, so leaving it out is always an active choice. SQL cannot be excluded. The
+    APOC set''s commands declare their exclusions from GraphQL, REST, MCP and SPARQL. (Amended 2026-10-25,
+    TERM: COMMAND BINDINGS:) Maintainer 2026-10-26: the mechanism is named command bindings. A command (or
+    function) has a binding per language; each binding has a name, defaulting to the generated one, and
+    may be renamed or excluded; the SQL binding cannot be excluded. Always written in full as ''command
+    binding'', never a bare ''binding'', since a term binding (a term bound to a column, REQ-2163) is a
+    different thing; in the UI a command''s tab is Bindings and a term shows Bound columns. It is the answer
+    to ''does it support this library or tool we use?'': it can, by creating command bindings for it. (Amended
+    2026-10-25, META IS REACHED BY EVERY ROLE:) Maintainer 2026-10-26: every role reaches the meta domain,
+    for command admission as well as schema building, under one rule rather than two. The built-in APOC
+    commands live in meta, and grants decide who may call them: they are granted to the standard roles (REQ-2155),
+    changeable like any grant. A role without the grant cannot call them, whatever its domains. (Amended
+    2026-10-25, ARGUMENT DEFAULTS:) Maintainer 2026-10-26: a command or function argument may declare a
+    default value. A call that omits it uses the default; an argument without a default stays required,
+    and omitting it is refused by name as now. Defaults are validated against the argument''s type at save.
+    Every surface honours them (SQL, Cypher CALL, GraphQL optional arguments, REST, MCP tool schemas, gRPC),
+    so apoc.meta.data() with no arguments, as older langchain_community sends, answers with its declared
+    default sample.'
+  scenario: 'Given a role that reads Shelter:Employees but not Shelter:Payroll
+
+    When LangChain''s Neo4j integration connects over Bolt as that role and loads the schema with apoc.meta.data
+
+    Then it receives Employees and its relationships
+
+    And Payroll is absent
+
+    And a Cypher query it then writes with apoc.text.join runs and pushes the function down'
+- id: REQ-2169
+  value: 'Add a new data source, query engine or secrets vault by writing a driver, using the same kit the built-ins use.'
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Extensibility
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: behavioral
+  description: 'Provisa is extended through drivers, one kind per core contract: source drivers, engine
+    drivers and secrets drivers, alongside command bindings (REQ-2168) for commands and functions. Every
+    built-in implementation is itself a driver of its kind, and each kind ships with the kit the built-ins
+    use: (1) a scaffold (provisa new source-driver / engine-driver / secrets-driver); (2) the contract test
+    kit, the same tests every built-in driver must pass, so a third-party driver is held to the same standard
+    and the kit is also the gate for Provisa''s own drivers; (3) a docs guide with an effort table by case.
+    Source drivers cover schema discovery, filter and limit pushdown, reachability methods and write operations;
+    a code data source (a Python or Node function as a governed table) remains the quick path for rows only.
+    Engine drivers cover the SQL dialect, connection, live-attach methods for reachability and the materialize
+    store. Secrets drivers resolve credentials from a vault the customer already runs. Security is not a
+    driver kind: the model (scope, capabilities, grants) is the governance, and its extension point is the
+    external policy hook (the ABAC approval hook). Always written in full (''source driver'', ''engine driver''),
+    distinct from a database''s client driver such as psycopg or JDBC. (Amended 2026-10-25, UI DETAILS:)
+    Maintainer 2026-10-26: a driver carries its UI details, so a new driver appears on every UI surface
+    with no UI code change: its name, category and mark for the source (or engine, or secrets) picker; its
+    setup form (fields, types, which are credentials, defaults, hints, validation), following the shared
+    form layout and the rule that a credential field holds what was entered; its connection test; the capabilities
+    it reports (pushdown, reachability methods, writes) as the UI shows them; and its strings for every
+    UI locale (English required, others translated as for any UI string). The UI renders all of this generically
+    from the driver''s declaration, and the generated site source picker reads the same declaration. The
+    contract test kit checks the UI details too (required fields present, hints within the length limit,
+    strings for every locale).'
+  scenario: 'Given a third-party source driver scaffolded with provisa new source-driver
+
+    When its author runs the source driver contract test kit
+
+    Then it runs the same tests the built-in Postgres source driver passes
+
+    And a driver that fails a test is reported by test name'
+- id: REQ-2170
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  feature: source-registration-introspection
+  priority: MUST
+  type: behavioral
+  description: 'Discovery records the keys a source declares: its primary key, unique (alternate) keys
+    and foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys
+    as relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres
+    and DuckDB and then each other connector that can. Today keys are marked only as a side effect of
+    registering a relationship, so a key the source declares is unknown until some relationship happens
+    to point at it; every key-dependent feature (relationship candidates, REQ-1385''s introspected primary
+    key, cardinality, row identity) reads the source''s own declaration instead. A source that declares
+    no keys records none, and nothing is guessed.'
+  scenario: 'Given a SQLite source whose pets table declares id INTEGER PRIMARY KEY and no relationship
+    points at pets
+
+    When the source is discovered
+
+    Then pets.id is recorded as the primary key
+
+    And a foreign key the source declares is offered as a relationship candidate'
+- id: REQ-2171
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  feature: source-registration-introspection
+  priority: MUST
+  type: behavioral
+  description: 'The canonical IR has type aliases. An alias is declared once in the IR vocabulary: a name,
+    a canonical base type, and per-surface details (the pgwire type OID and text format, the GraphQL scalar
+    name, the RDF datatype, the Arrow extension name). A source column whose native type is an aliased type
+    registers as its canonical base type carrying the alias: a Postgres inet column is canonical text with
+    alias inet. Every surface that needs only the canonical type treats it as the base type (filters, joins,
+    aggregation, the engines); surfaces that care read the alias: pgwire reports the alias''s type OID and
+    sends the value in Postgres''s text form, GraphQL names the alias''s scalar (serialized as its base),
+    RDF uses its datatype. [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded by SUBTYPE SEMANTICS ON EVERY
+    ENGINE. Kept here for history; do not implement against it.] An alias adds names and wire details only,
+    never new comparison or arithmetic rules; [END SUPERSEDED BLOCK] a type needing its own operators is
+    a real IR type. First set: inet (text, pgwire 869, GraphQL IPAddress; Trino ipaddress and ClickHouse
+    IPv4/IPv6 map to it), cidr (text, 650, CIDR), macaddr (text, 829, MACAddress), xml (text, 142), point
+    (text, 600), oid (bigint, 26), money (numeric, 790, Postgres money text format). Binary pgwire encoding
+    of an alias is listed as a difference on the pgwire Conformance page unless a tool needs it. Source
+    drivers (REQ-2169) can declare aliases for their own types. (Amended 2026-10-25, ALIAS WHERE SUPPORTED,
+    BASE ELSEWHERE:) Maintainer 2026-10-26: the rule is uniform for engines and language surfaces alike.
+    Where the native engine (or store) or the downstream surface supports the aliased type, it uses the
+    alias''s native form: a Postgres or Trino engine keeps inet/ipaddress, a replica into a store with the
+    type lands it natively, pgwire reports the alias''s OID, GraphQL names the alias''s scalar. Where it
+    does not, it uses the canonical base type. Each engine driver and surface declares which aliases it
+    supports; nothing is guessed. (Amended 2026-10-25, TYPE MAPPINGS KEY ON ALIASES:) Maintainer 2026-10-26,
+    the simpler rule: every engine''s and surface''s type mapping simply includes the aliases. An alias
+    maps to that engine''s or surface''s equivalent type where one exists (Trino ipaddress, Postgres inet,
+    ClickHouse IPv6, DuckDB''s inet; pgwire OID 869; GraphQL IPAddress), and a mapping with no entry for
+    an alias maps it as its base type. Declaring support is just adding the alias to the mapping; there
+    is no separate support list. (Amended 2026-10-25, TERM: SUBTYPE:) Maintainer 2026-10-26: the term is
+    subtype, not alias. Some IR types are subtypes of another IR type: inet is a subtype of text, oid of
+    bigint, money of numeric. [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded by SUBTYPE SEMANTICS ON
+    EVERY ENGINE. Kept here for history; do not implement against it.] A subtype has its base type''s semantics
+    everywhere [END SUPERSEDED BLOCK] (comparison, ordering, filters, joins, governance); a type mapping
+    that has no entry for a subtype maps it as its base type. Every ''alias'' above reads as ''subtype'',
+    in code, UI and docs. (Amended 2026-10-25, REGISTRATION ALWAYS RECORDS THE SUBTYPE:) Maintainer 2026-10-26:
+    table registration always records the subtype when the source''s native type has one (a Postgres inet,
+    a Trino ipaddress, a ClickHouse IPv4 registers as inet), never the bare base type. Each source driver''s
+    type mapping maps its native types to subtypes the same way engines and surfaces map subtypes outward.
+    Whether a subtype is used afterwards is then each engine''s and surface''s own choice. (Amended 2026-10-25,
+    CROSS-SOURCE TYPE AUDIT:) Maintainer 2026-10-26: equivalent ideas exist under different names across
+    source types, so every source driver''s type mapping is audited against the subtypes: each native type
+    equivalent to a subtype maps to it on registration (inet: Postgres/CockroachDB/YugabyteDB inet and cidr,
+    Trino ipaddress, ClickHouse IPv4/IPv6, Elasticsearch ip, Cassandra inet, DuckDB INET; money: SQL Server
+    money and smallmoney; xml: SQL Server and Oracle XML types; point: MySQL POINT, Elasticsearch geo_point;
+    and so on). The audit also lists native types that suggest a new subtype; those are proposed to the
+    maintainer, not added unasked. (Amended 2026-10-25, SUBTYPE SEMANTICS ON EVERY ENGINE:) Maintainer 2026-10-26:
+    engine mapping is not low stakes; engines make every effort to map types correctly. Each subtype states
+    its semantics (ordering, equality, comparison); where it states none, its base type''s apply. inet orders
+    numerically and compares as an address (10.0.0.1 equals 10.0.0.1/32); money behaves as numeric; xml,
+    macaddr and point as text. Every engine driver maps each subtype to an equivalent with those semantics
+    (Postgres inet, Trino ipaddress, ClickHouse IPv6), and [SUPERSEDED by REQ-2171, 2026-10-25 -- superseded
+    by KNOWN ANOMALY WHERE AN ENGINE LACKS THE TYPE. Kept here for history; do not implement against it.]
+    an engine with no native equivalent delivers the semantics on the base type itself [END SUPERSEDED BLOCK]
+    (a sortable normalised form for ordering, normalised comparison for equality), never plain base-type
+    behaviour. The engine driver contract test kit (REQ-2169) checks every subtype''s semantics on every
+    engine, so moving between engines never changes an answer. (Amended 2026-10-25, KNOWN ANOMALY WHERE
+    AN ENGINE LACKS THE TYPE:) Maintainer 2026-10-26: emulating a subtype''s semantics on an engine without
+    the type is more challenging than it is worth. Engines map every subtype to a native equivalent wherever
+    one exists (every effort); an engine with no equivalent treats the subtype as its base type, and that
+    difference is a known anomaly, listed per engine and subtype (e.g. ''inet orders as text on engine X'')
+    on the engine''s compatibility page, not emulated. The engine contract test kit checks native mappings
+    and asserts the listed anomalies, so an undocumented difference fails. (Amended 2026-10-25, PUSHDOWN
+    REWRITES WHERE STRAIGHTFORWARD:) Maintainer 2026-10-26: an exception to the known-anomaly rule. Where
+    a subtype''s predicate or ordering has a straightforward rewrite into an expression the engine evaluates
+    natively, so it still pushes down (e.g. normalising both sides of an inet equality with the engine''s
+    own string functions, or ordering by an engine-native sortable expression), the engine driver uses it,
+    and the case is not an anomaly. Only what has no straightforward pushdown rewrite is listed as a known
+    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used.'
+  scenario: 'Given a Postgres source table with an inet column ip
+
+    When it is registered
+
+    Then ip is canonical text with alias inet
+
+    And a pgwire query of ip reports type OID 869 and the value as Postgres''s text form
+
+    And GraphQL types ip as IPAddress
+
+    And a SQL filter ip = ''10.0.0.1'' compares it as text'

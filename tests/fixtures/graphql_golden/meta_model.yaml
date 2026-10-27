@@ -14,30 +14,56 @@ tables:
   columns:
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
   - name: source_column
     data_type: text
+    visible_to:
+    - viewer
   - name: source_column_key
     data_type: text
+    visible_to:
+    - viewer
   - name: source_column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: source_relation
     data_type: text
+    visible_to:
+    - viewer
   - name: source_table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: target_column
     data_type: text
+    visible_to:
+    - viewer
   - name: target_column_key
     data_type: text
+    visible_to:
+    - viewer
   - name: target_column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: target_relation
     data_type: text
+    visible_to:
+    - viewer
   - name: target_table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: via
     data_type: text
+    visible_to:
+    - viewer
   - name: via_kind
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -45,32 +71,60 @@ tables:
   columns:
   - name: aliases
     data_type: text
+    visible_to:
+    - viewer
   - name: direct
     data_type: boolean
+    visible_to:
+    - viewer
   - name: direction
     data_type: text
+    visible_to:
+    - viewer
   - name: hops
     data_type: integer
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
   - name: kind
     data_type: text
+    visible_to:
+    - viewer
   - name: path_count
     data_type: bigint
+    visible_to:
+    - viewer
   - name: product_id
     data_type: text
+    visible_to:
+    - viewer
   - name: relationship_ids
     data_type: text
+    visible_to:
+    - viewer
   - name: supporting_tables
     data_type: text
+    visible_to:
+    - viewer
   - name: target_product_id
     data_type: text
+    visible_to:
+    - viewer
   - name: target_relation
     data_type: text
+    visible_to:
+    - viewer
   - name: target_table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: vias
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -78,35 +132,65 @@ tables:
   columns:
   - name: custom_properties
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: limitations
     data_type: text
+    visible_to:
+    - viewer
   - name: name
     data_type: text
+    visible_to:
+    - viewer
   - name: owner_role
     data_type: text
+    visible_to:
+    - viewer
   - name: publish
     data_type: boolean
+    visible_to:
+    - viewer
   - name: purpose
     data_type: text
+    visible_to:
+    - viewer
   - name: sla
     data_type: text
+    visible_to:
+    - viewer
   - name: status
     data_type: text
+    visible_to:
+    - viewer
   - name: support
     data_type: text
+    visible_to:
+    - viewer
   - name: support_contact
     data_type: text
+    visible_to:
+    - viewer
   - name: team_role
     data_type: text
+    visible_to:
+    - viewer
   - name: usage
     data_type: text
+    visible_to:
+    - viewer
   - name: version
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -114,20 +198,36 @@ tables:
   columns:
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: object_key
     data_type: text
+    visible_to:
+    - viewer
   - name: object_type
     data_type: text
+    visible_to:
+    - viewer
   - name: source_id
     data_type: text
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: table_name
     data_type: text
+    visible_to:
+    - viewer
   - name: tag_id
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -135,19 +235,33 @@ tables:
   columns:
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: graphql_alias
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: org_id
     data_type: text
+    visible_to:
+    - viewer
   - name: parent_domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: steward
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -155,22 +269,40 @@ tables:
   columns:
   - name: check_type
     data_type: text
+    visible_to:
+    - viewer
   - name: checker
     data_type: text
+    visible_to:
+    - viewer
   - name: column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: definition
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
   - name: position
     data_type: bigint
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -178,26 +310,48 @@ tables:
   columns:
   - name: base_tag_id
     data_type: text
+    visible_to:
+    - viewer
   - name: column_key
     data_type: text
+    visible_to:
+    - viewer
   - name: column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
   - name: reason
     data_type: text
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: tag_id
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: text
+    visible_to:
+    - viewer
   - name: term
     data_type: text
+    visible_to:
+    - viewer
   - name: term_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: via
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -205,15 +359,25 @@ tables:
   columns:
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: term_domains
     data_type: text
+    visible_to:
+    - viewer
   - name: term_id
     data_type: integer
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -221,23 +385,41 @@ tables:
   columns:
   - name: from_term
     data_type: text
+    visible_to:
+    - viewer
   - name: from_term_domains
     data_type: text
+    visible_to:
+    - viewer
   - name: from_term_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: rel_type
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: to_term
     data_type: text
+    visible_to:
+    - viewer
   - name: to_term_domains
     data_type: text
+    visible_to:
+    - viewer
   - name: to_term_id
     data_type: integer
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -245,17 +427,29 @@ tables:
   columns:
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: kind
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: term_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: term_name
     data_type: text
+    visible_to:
+    - viewer
   - name: user_id
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -263,27 +457,49 @@ tables:
   columns:
   - name: column_key
     data_type: text
+    visible_to:
+    - viewer
   - name: column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: schema_name
     data_type: text
+    visible_to:
+    - viewer
   - name: source_id
     data_type: text
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: table_name
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: term_domains
     data_type: text
+    visible_to:
+    - viewer
   - name: term_id
     data_type: integer
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -291,39 +507,98 @@ tables:
   columns:
   - name: definition
     data_type: text
+    visible_to:
+    - viewer
   - name: deprecated
     data_type: boolean
+    visible_to:
+    - viewer
   - name: export_excluded
     data_type: boolean
+    visible_to:
+    - viewer
   - name: grounded
     data_type: boolean
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: identity_gap
     data_type: boolean
+    visible_to:
+    - viewer
   - name: is_abstract
     data_type: boolean
+    visible_to:
+    - viewer
   - name: is_rooted
     data_type: boolean
+    visible_to:
+    - viewer
   - name: live
     data_type: boolean
+    visible_to:
+    - viewer
   - name: name
     data_type: text
+    visible_to:
+    - viewer
   - name: ref_count
     data_type: bigint
+    visible_to:
+    - viewer
   - name: retire_on
     data_type: date
+    visible_to:
+    - viewer
   - name: retired
     data_type: boolean
+    visible_to:
+    - viewer
   - name: status
     data_type: text
+    visible_to:
+    - viewer
   - name: status_reason
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: term_domains
     data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: listed_names
+  columns:
+  - name: column_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: domain_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: listed_domain
+    data_type: text
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -331,51 +606,97 @@ tables:
   columns:
   - name: alias
     data_type: text
+    visible_to:
+    - viewer
   - name: cache_ttl
     data_type: integer
+    visible_to:
+    - viewer
   - name: checked_table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: class_term_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: clusters_computed_at
     data_type: timestamp
+    visible_to:
+    - viewer
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: dq_contract
     data_type: text
+    visible_to:
+    - viewer
   - name: gql_naming_convention
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: l1_cluster
     data_type: integer
+    visible_to:
+    - viewer
   - name: l2_cluster
     data_type: integer
+    visible_to:
+    - viewer
   - name: l3_cluster
     data_type: integer
+    visible_to:
+    - viewer
   - name: materialize
     data_type: boolean
+    visible_to:
+    - viewer
   - name: mv_refresh_interval
     data_type: integer
+    visible_to:
+    - viewer
   - name: product_id
     data_type: text
+    visible_to:
+    - viewer
   - name: profiled_table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: schema_name
     data_type: text
+    visible_to:
+    - viewer
   - name: source_id
     data_type: text
+    visible_to:
+    - viewer
   - name: table_name
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: view_sql
     data_type: text
+    visible_to:
+    - viewer
   - name: watermark_column
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -383,63 +704,121 @@ tables:
   columns:
   - name: alias
     data_type: text
+    visible_to:
+    - viewer
   - name: cardinality
     data_type: text
+    visible_to:
+    - viewer
   - name: cypher_type
     data_type: text
+    visible_to:
+    - viewer
   - name: disable_cypher
     data_type: boolean
+    visible_to:
+    - viewer
   - name: function_arg
     data_type: text
+    visible_to:
+    - viewer
   - name: graphql_alias
     data_type: text
+    visible_to:
+    - viewer
   - name: graphql_field
     data_type: text
+    visible_to:
+    - viewer
   - name: hide_target_meta
     data_type: boolean
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: materialize
     data_type: boolean
+    visible_to:
+    - viewer
   - name: needs_review
     data_type: boolean
+    visible_to:
+    - viewer
   - name: owner
     data_type: text
+    visible_to:
+    - viewer
   - name: parameters
     data_type: text
+    visible_to:
+    - viewer
   - name: refresh_interval
     data_type: integer
+    visible_to:
+    - viewer
   - name: same_entity
     data_type: boolean
+    visible_to:
+    - viewer
   - name: source_column
     data_type: text
+    visible_to:
+    - viewer
   - name: source_json_key
     data_type: text
+    visible_to:
+    - viewer
   - name: source_table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: target_column
     data_type: text
+    visible_to:
+    - viewer
   - name: target_function_name
     data_type: text
+    visible_to:
+    - viewer
   - name: target_table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: version
     data_type: integer
+    visible_to:
+    - viewer
   - name: via_label_source
     data_type: text
+    visible_to:
+    - viewer
   - name: via_source_column
     data_type: text
+    visible_to:
+    - viewer
   - name: via_table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: via_target_column
     data_type: text
+    visible_to:
+    - viewer
   - name: via_type_column
     data_type: text
+    visible_to:
+    - viewer
   - name: via_type_value
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -447,25 +826,45 @@ tables:
   columns:
   - name: action_name
     data_type: text
+    visible_to:
+    - viewer
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: filter_expr
     data_type: bytea
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: role_id
     data_type: text
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: tag_id
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: why
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -473,19 +872,29 @@ tables:
   columns:
   - name: capabilities
     data_type: text
+    visible_to:
+    - viewer
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: org_id
     data_type: text
-  - name: parent_role_id
-    data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -493,12 +902,45 @@ tables:
   columns:
   - name: accessed_domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
   - name: role_id
     data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: roles_parents
+  columns:
+  - name: domain_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: parent_role_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: position
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: role_id
+    data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -506,48 +948,92 @@ tables:
   columns:
   - name: checked_at
     data_type: timestamp
+    visible_to:
+    - viewer
   - name: column_key
     data_type: text
+    visible_to:
+    - viewer
   - name: column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: copies_real_status
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: fake
     data_type: text
+    visible_to:
+    - viewer
   - name: fake_derives_from_real
     data_type: boolean
+    visible_to:
+    - viewer
   - name: fake_deterministic
     data_type: boolean
+    visible_to:
+    - viewer
   - name: fake_kind
     data_type: text
+    visible_to:
+    - viewer
   - name: fake_stable
     data_type: boolean
+    visible_to:
+    - viewer
   - name: has_fake
     data_type: boolean
+    visible_to:
+    - viewer
   - name: has_synthetic_rule
     data_type: boolean
+    visible_to:
+    - viewer
   - name: kind_mismatch_status
     data_type: text
+    visible_to:
+    - viewer
   - name: leak_rate
     data_type: double precision
+    visible_to:
+    - viewer
   - name: leak_rate_status
     data_type: text
+    visible_to:
+    - viewer
   - name: reason
     data_type: text
+    visible_to:
+    - viewer
   - name: status
     data_type: text
+    visible_to:
+    - viewer
   - name: synthetic_rule
     data_type: text
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: table_name
     data_type: text
+    visible_to:
+    - viewer
   - name: tags
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -555,9 +1041,13 @@ tables:
   columns:
   - name: id
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: type
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -565,41 +1055,77 @@ tables:
   columns:
   - name: alias
     data_type: text
+    visible_to:
+    - viewer
   - name: column_key
     data_type: text
+    visible_to:
+    - viewer
   - name: column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: data_type
     data_type: text
+    visible_to:
+    - viewer
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: is_alternate_key
     data_type: boolean
+    visible_to:
+    - viewer
   - name: is_foreign_key
     data_type: boolean
+    visible_to:
+    - viewer
   - name: is_primary_key
     data_type: boolean
+    visible_to:
+    - viewer
   - name: masks
     data_type: text
+    visible_to:
+    - viewer
   - name: native_filter_type
     data_type: text
+    visible_to:
+    - viewer
   - name: object_fields
     data_type: text
+    visible_to:
+    - viewer
   - name: path
     data_type: text
+    visible_to:
+    - viewer
   - name: scope
     data_type: text
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: visible_to
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -607,37 +1133,69 @@ tables:
   columns:
   - name: base_tag_id
     data_type: text
+    visible_to:
+    - viewer
   - name: column_key
     data_type: text
+    visible_to:
+    - viewer
   - name: column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: command_name
     data_type: text
+    visible_to:
+    - viewer
   - name: expires_on
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: object_key
     data_type: text
+    visible_to:
+    - viewer
   - name: object_type
     data_type: text
+    visible_to:
+    - viewer
   - name: product_id
     data_type: text
+    visible_to:
+    - viewer
   - name: reason
     data_type: text
+    visible_to:
+    - viewer
   - name: relationship_id
     data_type: text
+    visible_to:
+    - viewer
   - name: source_id
     data_type: text
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: tag_id
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: term_id
     data_type: integer
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -645,32 +1203,60 @@ tables:
   columns:
   - name: column_key
     data_type: text
+    visible_to:
+    - viewer
   - name: column_name
     data_type: text
+    visible_to:
+    - viewer
   - name: command_name
     data_type: text
+    visible_to:
+    - viewer
   - name: expires_on
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
   - name: object_key
     data_type: text
+    visible_to:
+    - viewer
   - name: object_type
     data_type: text
+    visible_to:
+    - viewer
   - name: reason
     data_type: text
+    visible_to:
+    - viewer
   - name: relationship_id
     data_type: text
+    visible_to:
+    - viewer
   - name: source_id
     data_type: text
+    visible_to:
+    - viewer
   - name: status
     data_type: text
+    visible_to:
+    - viewer
   - name: table_id
     data_type: integer
+    visible_to:
+    - viewer
   - name: tag_id
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -678,13 +1264,21 @@ tables:
   columns:
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: tag_id
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: tenant_id
     data_type: uuid
+    visible_to:
+    - viewer
   - name: value
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
 - source_id: provisa-admin
   domain_id: meta
@@ -693,23 +1287,41 @@ tables:
   columns:
   - name: applies_to
     data_type: text
+    visible_to:
+    - viewer
   - name: derived
     data_type: boolean
+    visible_to:
+    - viewer
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: expires_policy
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: text
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: is_system
     data_type: boolean
+    visible_to:
+    - viewer
   - name: param_policy
     data_type: text
+    visible_to:
+    - viewer
   - name: reason_policy
     data_type: text
+    visible_to:
+    - viewer
   - name: tenant_id
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -717,35 +1329,65 @@ tables:
   columns:
   - name: arguments
     data_type: text
+    visible_to:
+    - viewer
   - name: created_at
     data_type: timestamp
+    visible_to:
+    - viewer
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: function_name
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: kind
     data_type: text
+    visible_to:
+    - viewer
   - name: name
     data_type: text
+    visible_to:
+    - viewer
   - name: product_id
     data_type: text
+    visible_to:
+    - viewer
   - name: return_schema
     data_type: text
+    visible_to:
+    - viewer
   - name: returns
     data_type: text
+    visible_to:
+    - viewer
   - name: schema_name
     data_type: text
+    visible_to:
+    - viewer
   - name: source_id
     data_type: text
+    visible_to:
+    - viewer
   - name: updated_at
     data_type: timestamp
+    visible_to:
+    - viewer
   - name: visible_to
     data_type: text
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -753,33 +1395,61 @@ tables:
   columns:
   - name: arguments
     data_type: text
+    visible_to:
+    - viewer
   - name: created_at
     data_type: timestamp
+    visible_to:
+    - viewer
   - name: description
     data_type: text
+    visible_to:
+    - viewer
   - name: domain_id
     data_type: text
+    visible_to:
+    - viewer
   - name: id
     data_type: integer
+    visible_to:
+    - viewer
     is_primary_key: true
   - name: inline_return_type
     data_type: text
+    visible_to:
+    - viewer
   - name: kind
     data_type: text
+    visible_to:
+    - viewer
   - name: method
     data_type: text
+    visible_to:
+    - viewer
   - name: name
     data_type: text
+    visible_to:
+    - viewer
   - name: returns
     data_type: text
+    visible_to:
+    - viewer
   - name: timeout_ms
     data_type: integer
+    visible_to:
+    - viewer
   - name: updated_at
     data_type: timestamp
+    visible_to:
+    - viewer
   - name: url
     data_type: text
+    visible_to:
+    - viewer
   - name: visible_to
     data_type: text
+    visible_to:
+    - viewer
 relationships:
 - id: meta:column_lineage_edges:source_column
   source_column: source_column_key
@@ -1843,22 +2513,6 @@ relationships:
   needs_review: false
   source_table_id: roles
   target_table_id: domains
-- id: meta:roles:parent_role
-  source_column: parent_role_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: PARENT_ROLE
-  graphql_alias: parentRole
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: roles
-  target_table_id: roles
 - id: meta:roles:rls_rules
   source_column: id
   target_column: role_id
@@ -1916,6 +2570,36 @@ relationships:
   version: 1
   needs_review: false
   source_table_id: roles_domain_access
+  target_table_id: roles
+- id: meta:roles_parents:parent_roles
+  source_column: parent_role_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  alias: PARENT_ROLE
+  graphql_alias: parentRole
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: roles_parents
+  target_table_id: roles
+- id: meta:roles_parents:roles
+  source_column: role_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: roles_parents
   target_table_id: roles
 - id: meta:table_columns:downstream_lineage
   source_column: column_key

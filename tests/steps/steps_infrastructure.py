@@ -284,6 +284,8 @@ async def _whitelisted_and_protected_responses(shared_data, control_plane, monke
     from provisa.core.database import Database
 
     monkeypatch.setattr(_state, "admin_db", control_plane.platform, raising=False)
+    # The org's control plane the probe checks (REQ-1900): unreachable, /health says degraded.
+    monkeypatch.setattr(_state, "tenant_db", control_plane.org(), raising=False)
     monkeypatch.setattr(
         _state,
         "platform_state_db",

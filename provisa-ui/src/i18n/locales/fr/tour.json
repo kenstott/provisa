@@ -1692,25 +1692,17 @@
         "title": "Les totaux d'une journée",
         "description": "Le 1er octobre tel qu'il est aujourd'hui. Pour chaque agence, produit et devise, vous voyez ce qui est entré, ce qui est sorti et le net. Un outil de BI connecté en pgwire exécute ce même SQL."
       },
-      "bankingAsReported": {
-        "title": "Tel que déclaré à la clôture",
-        "description": "Enregistré au est maintenant réglé sur la clôture du 1er octobre. Un outil de BI fait de même avec SET provisa.as_recorded dans sa session pgwire. Enregistré au filtre les transactions sur updated_at et les totaux quotidiens sur la clôture de chaque jour : vous voyez les chiffres que la banque a déclarés ce soir-là."
-      },
       "bankingReported": {
         "title": "Ce qui a été déclaré",
-        "description": "Les totaux entreprises des 1er et 2 octobre, tels que déclarés à la clôture du 1er octobre. Le total en GBP de Londres contient encore le paiement annulé plus tard. Le 2 octobre n'était pas encore clôturé, il n'a donc aucun chiffre."
-      },
-      "bankingAsRestated": {
-        "title": "Tel que corrigé depuis",
-        "description": "Enregistré au passe à la clôture du 12 octobre, la dernière des trente journées. À cette date, l'annulation saisie le 6 octobre et la transaction tardive saisie le 7 octobre sont toutes deux enregistrées."
+        "description": "Les totaux entreprises des 1er et 2 octobre, tels que déclarés à la clôture du 1er octobre : l'argument as_recorded de la vue les lit tels qu'ils étaient enregistrés alors, et un outil de BI via pgwire fait de même avec SET provisa.as_recorded. Le total en GBP de Londres contient encore le paiement annulé plus tard. Le 2 octobre n'était pas encore clôturé, il n'a donc aucun chiffre."
       },
       "bankingRestated": {
         "title": "Ce qu'il dit maintenant",
-        "description": "Le même SQL. Le total du 1er octobre de Londres ne contient plus le paiement annulé, et le total en USD du 2 octobre d'Édimbourg inclut désormais la transaction tardive. Les versions déclarées à chaque clôture sont conservées à côté des versions corrigées, et recorded_at indique quand chacune a été enregistrée."
+        "description": "Le même SQL avec as_recorded à la clôture du 12 octobre, le dernier des trente jours. Le total du 1er octobre de Londres ne contient plus le paiement annulé, et le total en USD du 2 octobre d'Édimbourg inclut désormais la transaction tardive. Les versions déclarées à chaque clôture sont conservées à côté des versions corrigées, et recorded_at indique quand chacune a été enregistrée."
       },
       "bankingAsOpsSql": {
         "title": "Retour aux opérations",
-        "description": "L'explorateur s'exécute maintenant en tant qu'opérations, toujours enregistré à la clôture du 12 octobre."
+        "description": "L'explorateur s'exécute maintenant en tant qu'opérations."
       },
       "bankingPostings": {
         "title": "Les écritures derrière un total",

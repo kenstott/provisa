@@ -117,7 +117,7 @@ def test_the_front_keeps_the_bounds_each_call_gives_and_starts_again_with_them(t
     try:
         assert pairing is not None
         identity = remote.new_identity()
-        pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+        pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS).pin
         assert json.loads(held.read_text()) == BOUNDS
         worker = remote.RemoteWorker(
             "shop-src", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity

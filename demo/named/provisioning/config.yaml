@@ -47,6 +47,7 @@ naming:
 roles:
 # The finance team: every order, margins included.
 - id: finance
+  parents: [viewer]
   description: "The finance team: every order, margins included."
   capabilities:
   - query_development
@@ -56,6 +57,7 @@ roles:
   - provisioning
 # The data science team's feature store: margins masked, product orders only.
 - id: data_science
+  parents: [viewer]
   description: "The data science team's feature store: product orders only, margins masked."
   capabilities:
   - query_development
@@ -90,12 +92,12 @@ tables:
   table: products
   description: What the roaster sells, and what one costs it
   columns:
-  - {name: sku, data_type: varchar, is_primary_key: true, description: The product's code, visible_to: [org_admin, finance, data_science]}
-  - {name: name, data_type: varchar, description: The product's name, visible_to: [org_admin, finance, data_science]}
-  - {name: category, data_type: varchar, description: 'beans, equipment, merchandise or services', visible_to: [org_admin, finance, data_science]}
+  - {name: sku, data_type: varchar, is_primary_key: true, description: The product's code, visible_to: [data_steward, finance, data_science]}
+  - {name: name, data_type: varchar, description: The product's name, visible_to: [data_steward, finance, data_science]}
+  - {name: category, data_type: varchar, description: 'beans, equipment, merchandise or services', visible_to: [data_steward, finance, data_science]}
   # Data science reads order_margins, whose SQL reads unit_cost: a view is governed for its reader
   # with its SQL in place, so the cost is visible to data science, masked to 0.
-  - {name: unit_cost, data_type: decimal, description: What one costs the roaster in USD, visible_to: [org_admin, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
+  - {name: unit_cost, data_type: decimal, description: What one costs the roaster in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
 - source_id: warehouse
   domain_id: provisioning
   schema: public
@@ -113,10 +115,10 @@ tables:
       bootstrap_servers: ${env:PROVISIONING_KAFKA_HOST:-127.0.0.1}:${env:PROVISIONING_KAFKA_PORT:-29192}
       role: org_admin
   columns:
-  - {name: notice_id, data_type: integer, is_primary_key: true, description: The notice's number, visible_to: [org_admin, finance, data_science]}
-  - {name: dataset, data_type: varchar, description: The dataset that is ready, visible_to: [org_admin, finance, data_science]}
-  - {name: consumer, data_type: varchar, description: The team it is for, visible_to: [org_admin, finance, data_science]}
-  - {name: version_time, data_type: timestamptz, description: 'The version of the dataset a pull reads: the newest recorded time it held when the notice was sent', visible_to: [org_admin, finance, data_science]}
+  - {name: notice_id, data_type: integer, is_primary_key: true, description: The notice's number, visible_to: [data_steward, finance, data_science]}
+  - {name: dataset, data_type: varchar, description: The dataset that is ready, visible_to: [data_steward, finance, data_science]}
+  - {name: consumer, data_type: varchar, description: The team it is for, visible_to: [data_steward, finance, data_science]}
+  - {name: version_time, data_type: timestamptz, description: 'The version of the dataset a pull reads: the newest recorded time it held when the notice was sent', visible_to: [data_steward, finance, data_science]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [dataset, consumer, version_time]}
   - {role: org_admin, operation: update, columns: [dataset, consumer]}
@@ -128,17 +130,17 @@ tables:
   enable_aggregates: true
   enable_group_by: true
   columns:
-  - {name: pull_id, data_type: integer, is_primary_key: true, description: The pull's number, visible_to: [org_admin, finance, data_science]}
-  - {name: notice_id, data_type: integer, description: The notice it answered, visible_to: [org_admin, finance, data_science]}
-  - {name: consumer, data_type: varchar, description: The team that pulled, visible_to: [org_admin, finance, data_science]}
-  - {name: dataset, data_type: varchar, description: The dataset it pulled, visible_to: [org_admin, finance, data_science]}
-  - {name: version_time, data_type: timestamptz, description: 'The version it read, as of this time', visible_to: [org_admin, finance, data_science]}
-  - {name: notified_at, data_type: timestamptz, description: When the consumer had the notice, visible_to: [org_admin, finance, data_science]}
-  - {name: pulled_at, data_type: timestamptz, description: When it had every row, visible_to: [org_admin, finance, data_science]}
-  - {name: rows, data_type: bigint, description: The rows it read, visible_to: [org_admin, finance, data_science]}
-  - {name: seconds, data_type: double, description: How long the pull took, visible_to: [org_admin, finance, data_science]}
-  - {name: rows_per_sec, data_type: double, description: Rows read a second, visible_to: [org_admin, finance, data_science]}
-  - {name: refused, data_type: varchar, description: 'Why the pull was refused, if it was', visible_to: [org_admin, finance, data_science]}
+  - {name: pull_id, data_type: integer, is_primary_key: true, description: The pull's number, visible_to: [data_steward, finance, data_science]}
+  - {name: notice_id, data_type: integer, description: The notice it answered, visible_to: [data_steward, finance, data_science]}
+  - {name: consumer, data_type: varchar, description: The team that pulled, visible_to: [data_steward, finance, data_science]}
+  - {name: dataset, data_type: varchar, description: The dataset it pulled, visible_to: [data_steward, finance, data_science]}
+  - {name: version_time, data_type: timestamptz, description: 'The version it read, as of this time', visible_to: [data_steward, finance, data_science]}
+  - {name: notified_at, data_type: timestamptz, description: When the consumer had the notice, visible_to: [data_steward, finance, data_science]}
+  - {name: pulled_at, data_type: timestamptz, description: When it had every row, visible_to: [data_steward, finance, data_science]}
+  - {name: rows, data_type: bigint, description: The rows it read, visible_to: [data_steward, finance, data_science]}
+  - {name: seconds, data_type: double, description: How long the pull took, visible_to: [data_steward, finance, data_science]}
+  - {name: rows_per_sec, data_type: double, description: Rows read a second, visible_to: [data_steward, finance, data_science]}
+  - {name: refused, data_type: varchar, description: 'Why the pull was refused, if it was', visible_to: [data_steward, finance, data_science]}
 - source_id: feeds
   domain_id: provisioning
   schema: default
@@ -155,12 +157,12 @@ tables:
   enable_aggregates: true
   enable_group_by: true
   columns:
-  - {name: order_id, data_type: varchar, is_primary_key: true, description: The order's id, visible_to: [org_admin, finance, data_science]}
-  - {name: sku, data_type: varchar, description: The product ordered, visible_to: [org_admin, finance, data_science]}
-  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [org_admin, finance, data_science]}
-  - {name: unit_price, data_type: decimal, description: The price each sold at in USD, visible_to: [org_admin, finance, data_science]}
-  - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [org_admin, finance, data_science]}
-  - {name: landed_at, data_type: timestamp, description: When Provisa landed it (UTC), visible_to: [org_admin, finance, data_science]}
+  - {name: order_id, data_type: varchar, is_primary_key: true, description: The order's id, visible_to: [data_steward, finance, data_science]}
+  - {name: sku, data_type: varchar, description: The product ordered, visible_to: [data_steward, finance, data_science]}
+  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [data_steward, finance, data_science]}
+  - {name: unit_price, data_type: decimal, description: The price each sold at in USD, visible_to: [data_steward, finance, data_science]}
+  - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [data_steward, finance, data_science]}
+  - {name: landed_at, data_type: timestamp, description: When Provisa landed it (UTC), visible_to: [data_steward, finance, data_science]}
 - source_id: feeds
   domain_id: provisioning
   schema: default
@@ -171,9 +173,9 @@ tables:
     kafka:
       topic: prices${env:PROVISIONING_KAFKA_NS}
   columns:
-  - {name: sku, data_type: varchar, is_primary_key: true, description: The product, visible_to: [org_admin, finance, data_science]}
-  - {name: list_price, data_type: decimal, description: Its list price in USD, visible_to: [org_admin, finance, data_science]}
-  - {name: changed_at, data_type: timestamp, description: When the price was set (UTC), visible_to: [org_admin, finance, data_science]}
+  - {name: sku, data_type: varchar, is_primary_key: true, description: The product, visible_to: [data_steward, finance, data_science]}
+  - {name: list_price, data_type: decimal, description: Its list price in USD, visible_to: [data_steward, finance, data_science]}
+  - {name: changed_at, data_type: timestamp, description: When the price was set (UTC), visible_to: [data_steward, finance, data_science]}
 - source_id: feeds
   domain_id: provisioning
   schema: default
@@ -184,9 +186,9 @@ tables:
     kafka:
       topic: inventory${env:PROVISIONING_KAFKA_NS}
   columns:
-  - {name: sku, data_type: varchar, is_primary_key: true, description: The product, visible_to: [org_admin, finance, data_science]}
-  - {name: on_hand, data_type: integer, description: Units on hand, visible_to: [org_admin, finance, data_science]}
-  - {name: counted_at, data_type: timestamp, description: When they were counted (UTC), visible_to: [org_admin, finance, data_science]}
+  - {name: sku, data_type: varchar, is_primary_key: true, description: The product, visible_to: [data_steward, finance, data_science]}
+  - {name: on_hand, data_type: integer, description: Units on hand, visible_to: [data_steward, finance, data_science]}
+  - {name: counted_at, data_type: timestamp, description: When they were counted (UTC), visible_to: [data_steward, finance, data_science]}
 views:
 # The dataset provisioned: every order with its revenue, cost and margin. Each version of each row
 # is kept, keyed on the order: its valid time is when it was placed, its recorded time when Provisa
@@ -212,16 +214,16 @@ views:
     FROM "provisioning"."orders" AS o
     JOIN "provisioning"."products" AS p ON p.sku = o.sku
   columns:
-  - {name: order_id, data_type: varchar, description: The order's id, visible_to: [org_admin, finance, data_science]}
-  - {name: sku, data_type: varchar, description: The product ordered, visible_to: [org_admin, finance, data_science]}
-  - {name: product, data_type: varchar, description: The product's name, visible_to: [org_admin, finance, data_science]}
-  - {name: category, data_type: varchar, description: The product's category, visible_to: [org_admin, finance, data_science]}
-  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [org_admin, finance, data_science]}
-  - {name: revenue, data_type: decimal, description: What the order came to in USD, visible_to: [org_admin, finance, data_science]}
-  - {name: cost, data_type: decimal, description: What the goods cost the roaster in USD, visible_to: [org_admin, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
-  - {name: margin, data_type: decimal, description: Revenue less cost in USD, visible_to: [org_admin, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
-  - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [org_admin, finance, data_science]}
-  - {name: landed_at, data_type: timestamp, description: When Provisa landed it (UTC), visible_to: [org_admin, finance, data_science]}
+  - {name: order_id, data_type: varchar, description: The order's id, visible_to: [data_steward, finance, data_science]}
+  - {name: sku, data_type: varchar, description: The product ordered, visible_to: [data_steward, finance, data_science]}
+  - {name: product, data_type: varchar, description: The product's name, visible_to: [data_steward, finance, data_science]}
+  - {name: category, data_type: varchar, description: The product's category, visible_to: [data_steward, finance, data_science]}
+  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [data_steward, finance, data_science]}
+  - {name: revenue, data_type: decimal, description: What the order came to in USD, visible_to: [data_steward, finance, data_science]}
+  - {name: cost, data_type: decimal, description: What the goods cost the roaster in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
+  - {name: margin, data_type: decimal, description: Revenue less cost in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
+  - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [data_steward, finance, data_science]}
+  - {name: landed_at, data_type: timestamp, description: When Provisa landed it (UTC), visible_to: [data_steward, finance, data_science]}
 # Finance's close: each category's revenue and margin with the value of its stock, built over the
 # dataset and the price and stock feeds as they land -- each product's stock (STOCK_OF), price
 # (PRICE_OF) and orders (ORDERED, summed by product first so stock is counted once) joined on the
@@ -247,10 +249,10 @@ views:
     GROUP BY p.category
     HAVING SUM(m.revenue) IS NOT NULL
   columns:
-  - {name: category, data_type: varchar, description: The category, visible_to: [org_admin, finance]}
-  - {name: revenue, data_type: decimal, description: Its revenue in USD, visible_to: [org_admin, finance]}
-  - {name: margin, data_type: decimal, description: Its margin in USD, visible_to: [org_admin, finance]}
-  - {name: stock_value, data_type: decimal, description: Its stock on hand at list price in USD, visible_to: [org_admin, finance]}
+  - {name: category, data_type: varchar, description: The category, visible_to: [data_steward, finance]}
+  - {name: revenue, data_type: decimal, description: Its revenue in USD, visible_to: [data_steward, finance]}
+  - {name: margin, data_type: decimal, description: Its margin in USD, visible_to: [data_steward, finance]}
+  - {name: stock_value, data_type: decimal, description: Its stock on hand at list price in USD, visible_to: [data_steward, finance]}
 rls_rules:
 # Data science builds features from product orders: service orders are not its to see.
 - {description: "Data science builds features from product orders: service orders are not its to see.", table_id: view_order_margins, role_id: data_science, filter: "category <> 'services'"}

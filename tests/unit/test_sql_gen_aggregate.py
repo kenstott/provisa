@@ -757,7 +757,7 @@ _METRICS = [
         "datatype": None,
         "description": "Gross minus refunds.",
         "ai_context": "Use for revenue questions; excludes tax.",
-        "visible_to": ["*"],
+        "visible_to": ["admin", "analyst", "limited"],
     },
     {
         "name": "customer_count",
@@ -765,7 +765,7 @@ _METRICS = [
         "datatype": None,
         "description": None,
         "ai_context": None,
-        "visible_to": ["*"],
+        "visible_to": ["admin", "analyst", "limited"],
     },
     {
         "name": "admin_only_margin",
@@ -782,7 +782,7 @@ _METRICS = [
         "datatype": None,
         "description": None,
         "ai_context": None,
-        "visible_to": ["*"],
+        "visible_to": ["admin", "analyst", "limited"],
     },
 ]
 

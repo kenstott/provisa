@@ -120,7 +120,7 @@ def test_its_certificate_is_a_self_signed_p256_certificate_its_code_names(starte
 def test_provisa_pairs_dials_and_calls_it(started):
     port, pairing, state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS).pin
     assert pin == pairing.split(".")[0]
     assert (state / "provisa.crt").read_text() == identity.certificate
     assert not (state / "pairing.secret").exists()
@@ -150,7 +150,7 @@ def test_another_secret_is_refused_and_the_host_stays_unpaired(started):
 def test_once_paired_only_the_paired_provisa_is_served(started):
     port, pairing, _state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS).pin
     stranger = remote.RemoteWorker(
         "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=remote.new_identity()
     )
@@ -165,7 +165,7 @@ def test_once_paired_only_the_paired_provisa_is_served(started):
 def test_a_host_running_other_code_is_refused_by_name(started):
     port, pairing, _state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS).pin
     other = remote.RemoteWorker(
         "shop", "h2", address="127.0.0.1", port=port, pin=pin, identity=identity
     )
@@ -228,7 +228,7 @@ def test_arrow_the_code_returns_or_yields_is_sent_as_it_is(tmp_path):
             break
     assert pairing is not None and port, "the host did not start"
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS).pin
     worker = remote.RemoteWorker(
         "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity
     )
@@ -293,7 +293,7 @@ def test_a_table_is_called_with_its_inputs_object_and_its_read_context(tmp_path)
             break
     assert pairing is not None and port, "the host did not start"
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS).pin
     worker = remote.RemoteWorker(
         "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity
     )

@@ -61,7 +61,7 @@ from dulwich.objects import Blob, Commit, ObjectID, ShaFile, Tree
 from dulwich.refs import Ref
 from dulwich.repo import Repo
 
-from provisa.core.env_files import dump
+from provisa.core.env_files import Rendered, dump_reusing
 from provisa.core.env_project import project
 
 if TYPE_CHECKING:
@@ -319,6 +319,12 @@ def forget_pushed(org_id: str, env: str) -> None:
         del repo.refs[remote_ref(env)]
 
 
+#: Each environment's last projection as rendered, by (org, env): a write-through re-renders only
+#: the objects the change touched (env_files.dump_reusing). Any entry is correct whatever it is
+#: reused for -- text is reused only for an entity equal to the one it was rendered from.
+_rendered: dict[tuple[str, str], Rendered] = {}
+
+
 async def write_through(
     conn: "Connection",
     admin_db: "Database",
@@ -355,7 +361,9 @@ async def write_through(
         # was read, so the commit holds exactly the model at that stamp. Unequal, the commit is
         # recorded without a stamp and no statement's audit row will name it.
         before = await model_stamp(conn, schema)
-        files = dump(await project(conn, schema))
+        files, _rendered[(org_id, env)] = dump_reusing(
+            await project(conn, schema), _rendered.get((org_id, env), {})
+        )
         exact_stamp = before if await model_stamp(conn, schema) == before else None
         repo = ensure_repo(org_id)
         sha = commit_files(repo, env, files, message, actor, onto, merged_from)

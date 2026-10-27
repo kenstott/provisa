@@ -465,6 +465,10 @@ class DataZoneExport(MetadataExport):  # REQ-2118
 
     async def health(self) -> None:
         def _check() -> None:
-            self._client().get_project(**self._scope(), identifier=self._config.datazone_project_id)
+            client = self._client()
+            client.get_domain(identifier=self._config.datazone_domain_id)
+            # REQ-2122: a catalog connection is tested before an export names the project.
+            if self._config.datazone_project_id:
+                client.get_project(**self._scope(), identifier=self._config.datazone_project_id)
 
         await asyncio.to_thread(_check)

@@ -69,9 +69,11 @@ query RolesQuery {
     id
     description
     capabilities
+    effectiveCapabilities
     demonstrated
     domainAccess
-    parentRoleId
+    parents
+    standard
     residencyValues
     inactivityDays
     sessionVars {
@@ -159,6 +161,15 @@ query ResolveOwners($refs: [String!]!) {
     userId
     displayName
     email
+  }
+}
+
+# REQ-2153: listed columns' names in domains the caller does not reach -- names only.
+query ListedNamesQuery {
+  listedNames {
+    domainId
+    tableName
+    columnNames
   }
 }
 
@@ -253,6 +264,7 @@ query TablesQuery {
     }
     gqlNamingConvention
     graphqlFieldName
+    timeTravel
     dqDataset
     qualityCheckers {
       tableId

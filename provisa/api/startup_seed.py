@@ -51,6 +51,7 @@ from provisa.api._catalog_descriptions import (
     TABLE_DESCRIPTIONS as _TBL_DESC,
 )
 from provisa.core.db import init_schema
+from provisa.security.default_grant import VIEWER_ROLE
 from provisa.core.environments import org_schema
 from provisa.core.repositories import source as _source_repo
 from provisa.core.repositories import table as _table_repo
@@ -304,7 +305,8 @@ async def _seed_meta_domain(
                     "table_id": table_id,
                     "domain_id": "meta",
                     "column_name": col["column_name"],
-                    "visible_to": [],
+                    # REQ-2154: the catalog is read by every role built on Viewer.
+                    "visible_to": [VIEWER_ROLE],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] in pk_cols,
                     "description": _COL_DESC[tbl].get(col["column_name"]),
@@ -406,10 +408,7 @@ async def _seed_ops_domain(
                     "table_id": table_id,
                     "domain_id": "ops",
                     "column_name": col["column_name"],
-                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
-                    # means visible to NO role there, not "unrestricted" as elsewhere.
-                    # org_admin is the ops-domain steward (below) and must retain the
-                    # explicit grant or it loses its own steward access (REQ-1386).
+                    # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
                     "visible_to": ["org_admin"],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] in pk_cols,
@@ -459,10 +458,7 @@ async def _seed_ops_domain(
                     "table_id": table_id,
                     "domain_id": "ops",
                     "column_name": col["column_name"],
-                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
-                    # means visible to NO role there, not "unrestricted" as elsewhere.
-                    # org_admin is the ops-domain steward (below) and must retain the
-                    # explicit grant or it loses its own steward access (REQ-1386).
+                    # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
                     "visible_to": ["org_admin"],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] == "id",
@@ -488,9 +484,9 @@ async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386, RE
 
     The two ops seeds insert their columns once (``update_columns=[]``) so a later grant made
     through the admin UI survives a restart. That also means a column first written without the
-    steward grant keeps it forever, and in a lockdown domain that column is in no role's schema —
-    the report's ``ops.<table>`` reference then reaches the engine unrewritten. This adds the
-    stewards to any ops column missing them and touches nothing else, so REQ-1133 grants to other
+    steward grant keeps it forever, and a column granted to no role is in no role's schema
+    (REQ-2154) -- the report's ``ops.<table>`` reference then reaches the engine unrewritten. This
+    adds the stewards to any ops column missing them and touches nothing else, so grants to other
     roles are preserved.
 
     ``sandbox`` is included so its illustration of admin capabilities (REQ-1608) covers ops the
@@ -637,12 +633,8 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
                     "table_id": table_id,
                     "domain_id": "ops",
                     "column_name": col_name,
-                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
-                    # means visible to NO role, so a telemetry table seeded empty was in
-                    # no role's compilation context and its "ops"."<table>" reference was
-                    # never rewritten to a physical ref — the engine then rejected the
-                    # report with SCHEMA_NOT_FOUND on schema 'ops'. org_admin stewards ops
-                    # and holds the same grant the ops-domain views get (REQ-1386).
+                    # org_admin stewards ops and reads it by this grant, as the ops-domain
+                    # views are (REQ-1386); a column granted to no role is in no role's context.
                     "visible_to": ["org_admin"],
                     "data_type": pg_type,
                     "is_primary_key": is_pk,
@@ -1031,7 +1023,8 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
                     "table_id": table_id,
                     "domain_id": "meta",
                     "column_name": col["column_name"],
-                    "visible_to": [],
+                    # REQ-2154: the catalog is read by every role built on Viewer.
+                    "visible_to": [VIEWER_ROLE],
                     "data_type": col["data_type"],
                     # A view over the registry has no key of its own — one org appears once per
                     # org_admin — so nothing here is a primary key.

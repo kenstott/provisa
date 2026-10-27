@@ -328,6 +328,10 @@ async def _start_servers(_log: logging.Logger) -> None:
     from provisa.core.connection_loop import set_process_loop
 
     set_process_loop(asyncio.get_running_loop())
+    # REQ-1882: what every request awaits, on a timer, when PROVISA_TASK_DUMP_S asks for it.
+    from provisa.core.task_dump import start_from_env as _start_task_dump
+
+    _start_task_dump()
 
     if state.wire_proto:
         try:
@@ -979,11 +983,15 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                         index_elements=["id"],
                         update_columns=[],
                     )
+                from provisa.api.admin.read_rights import SERVICE_READER
+
+                # The boot's own seed: Provisa's identity, which shows nothing to a person.
                 await _upsert_tables_to_semantic_layer(
                     "graphql-demo",
                     "shelter",
                     tables,
                     _demo_pool,
+                    SERVICE_READER,
                 )
                 from provisa.api.admin.graphql_remote_router import (
                     _upsert_relationships_to_semantic_layer,

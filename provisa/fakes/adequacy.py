@@ -350,8 +350,22 @@ async def sensitive_columns_declared(conn: Any) -> list[dict]:
 
 
 async def run_org(state: Any, org_id: str, env: str | None = None) -> dict[str, int]:
+    """:func:`run_checks`, answered as how many checks passed, failed and did not run."""
+    return counts(await run_checks(state, org_id, env))
+
+
+def counts(rows: list[dict]) -> dict[str, int]:
+    """How many of the check ``rows`` passed, failed and did not run."""
+    tally = {PASSED: 0, FAILED: 0, NOT_RUN: 0}
+    for r in rows:
+        tally[r["status"]] += 1
+    return tally
+
+
+async def run_checks(state: Any, org_id: str, env: str | None = None) -> list[dict]:
     """Run every check on every sensitive column of ``org_id`` in ``env`` (both bound by the
-    caller; None: prod) and store the results under one run time. Returns how many checks passed, failed and did not run."""
+    caller; None: prod) and store the results under one run time. Returns each check's row
+    (``table_id``, ``column_name``, ``check_name``, ``status``...)."""
     import datetime as dt
 
     from sqlalchemy import insert, select
@@ -406,10 +420,7 @@ async def run_org(state: Any, org_id: str, env: str | None = None) -> dict[str, 
         if rows:
             await conn.execute_core(insert(fake_adequacy_checks), rows)
         await _record_findings(conn, rows, checked_at)
-    counts = {PASSED: 0, FAILED: 0, NOT_RUN: 0}
-    for r in rows:
-        counts[r["status"]] += 1
-    return counts
+    return rows
 
 
 async def _record_findings(conn: Any, rows: list[dict], at: Any) -> None:

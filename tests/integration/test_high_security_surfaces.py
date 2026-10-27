@@ -72,6 +72,9 @@ def _high_state() -> SimpleNamespace:
         server_cfg={},
         hostname="127.0.0.1",
         org_id="test",
+        # the bound org's settings and config, as every org runtime carries them (REQ-2078)
+        settings_overrides={},
+        config=None,
     )
 
 

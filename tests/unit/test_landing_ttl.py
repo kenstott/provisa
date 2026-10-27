@@ -63,6 +63,41 @@ def test_an_unset_ttl_is_the_next_one_set():
     assert mat.landing_ttl({**_TABLE, "cache_ttl": 45}, _state(source_ttl=120)) == 45
 
 
+def test_an_endpoints_ttl_is_the_last_one_asked():
+    assert mat.landing_ttl(_TABLE, _state(default=None), endpoint_ttl=90) == 90
+    assert mat.landing_ttl(_TABLE, _state(default=600), endpoint_ttl=90) == 600
+
+
+# -- a parameterized table keeps only for a TTL of its own (REQ-1986) ----------------------------
+
+_PARAMETER = {"column_name": "_nf_q", "native_filter_type": "query_param"}
+
+
+def _parameterized(**table):
+    return {**_TABLE, "columns": [{"column_name": "title"}, _PARAMETER], **table}
+
+
+@pytest.mark.parametrize(
+    "kind", ["path_param", "query_param", "graphql_arg", "grpc_input", "query_arg", "partition_key"]
+)
+def test_a_table_with_any_kind_of_parameter_is_parameterized(kind):
+    table = {**_TABLE, "columns": [{"column_name": "_nf_x", "native_filter_type": kind}]}
+    assert mat.is_parameterized(table)
+    assert not mat.is_parameterized({**_TABLE, "columns": [{"column_name": "title"}]})
+
+
+def test_a_parameterized_table_with_no_ttl_of_its_own_keeps_nothing():
+    """Not its source's TTL, not the organisation's default, not the endpoint's: read live per
+    statement and never reused."""
+    state = _state(source_ttl=120, default=300)
+    assert mat.landing_ttl(_parameterized(), state, endpoint_ttl=60) == 0
+
+
+def test_a_parameterized_table_with_a_ttl_of_its_own_keeps_for_it():
+    state = _state(source_ttl=120, default=300)
+    assert mat.landing_ttl(_parameterized(cache_ttl=45), state, endpoint_ttl=60) == 45
+
+
 # -- landing ----------------------------------------------------------------------------------
 
 
@@ -231,7 +266,8 @@ async def test_the_terminal_drops_the_scratch_tables_however_the_statement_ends(
 async def test_a_grpc_remote_tables_ttl_is_the_first_one_set(
     monkeypatch, engine_cache, registered, source_ttl, expected
 ):
-    """A missing TTL is not 300 by itself: it is the source's, else the default (REQ-2003)."""
+    """A missing TTL is not 300 by itself: it is the source's, else the default (REQ-2003). The
+    table declares no parameter, so the whole chain applies (REQ-1986)."""
     from provisa.api_source import engine_cache as ec
     from provisa.source_adapters import grpc_remote_adapter
 
@@ -245,7 +281,13 @@ async def test_a_grpc_remote_tables_ttl_is_the_first_one_set(
     monkeypatch.setattr(ec, "cache_table_name", lambda *_a: "grpc_tbl")
     monkeypatch.setattr(ec, "land_api_cache", AsyncMock())
     _threshold(monkeypatch, 1000)
-    reg = {"pb2": None, **({"cache_ttl": registered} if registered is not None else {})}
+    reg = {"pb2": None}
+    registration = {
+        "table_name": "s__m",
+        "source_id": "grpc_src",
+        "cache_ttl": registered,
+        "columns": [{"column_name": "id"}],
+    }
     query = SimpleNamespace(
         columns=[],
         full_method_path="/S/M",
@@ -256,6 +298,114 @@ async def test_a_grpc_remote_tables_ttl_is_the_first_one_set(
     state = _state(source_ttl=source_ttl, source="grpc_src")
     state.grpc_remote_sources = {}
     hot = SimpleNamespace(hold=lambda *_a, **_k: "held")
-    await mat._mat_grpc_remote_table("s__m", "grpc_src", reg, query, state, hot, 0, {}, {}, None)
+    inline: dict = {}
+    await mat._mat_grpc_remote_table(
+        "s__m", "grpc_src", reg, query, state, hot, 0, {}, inline, None, registration=registration
+    )
     assert fetched["ttl"] == expected
-    assert engine_cache["drops"] == [("grpc_tbl", expected)]
+    if expected == 0:  # read live for this statement: inlined, nothing landed or dropped
+        assert engine_cache["drops"] == [] and inline["s__m"].rows == [{"id": 1}]
+    else:
+        assert engine_cache["drops"] == [("grpc_tbl", expected)]
+
+
+@pytest.mark.parametrize(("own", "expected"), [(None, 0), (45, 45)])
+@pytest.mark.asyncio
+async def test_a_grpc_remote_table_with_arguments_keeps_only_for_its_own_ttl(
+    monkeypatch, engine_cache, own, expected
+):
+    """REQ-1986: a gRPC-remote table with arguments is read live per statement unless the table
+    sets its own TTL, whatever its source says."""
+    from provisa.api_source import engine_cache as ec
+    from provisa.source_adapters import grpc_remote_adapter
+
+    calls: list[int] = []
+
+    async def _fetch(**kw):
+        calls.append(kw["ttl"])
+        return [{"id": 1}]
+
+    monkeypatch.setattr(grpc_remote_adapter, "fetch", _fetch)
+    monkeypatch.setattr(ec, "cache_table_name", lambda *_a: "grpc_tbl")
+    monkeypatch.setattr(ec, "land_api_cache", AsyncMock())
+    _threshold(monkeypatch, 1000)
+    registration = {
+        "table_name": "s__m",
+        "source_id": "grpc_src",
+        "cache_ttl": own,
+        "columns": [{"column_name": "_nf_id", "native_filter_type": "grpc_input"}],
+    }
+    query = SimpleNamespace(
+        columns=[],
+        full_method_path="/S/M",
+        input_message="I",
+        output_message="O",
+        server_streaming=False,
+    )
+    state = _state(source_ttl=300, source="grpc_src")
+    state.grpc_remote_sources = {}
+    hot = SimpleNamespace(hold=lambda *_a, **_k: "held")
+    for _ in range(2):
+        engine_cache["known_live"] = bool(calls) and expected > 0
+        await mat._mat_grpc_remote_table(
+            "s__m",
+            "grpc_src",
+            {"pb2": None},
+            query,
+            state,
+            hot,
+            0,
+            {},
+            {},
+            None,
+            registration=registration,
+        )
+    if expected == 0:  # a call per statement, nothing kept
+        assert calls == [0, 0] and engine_cache["drops"] == []
+    else:  # kept for its own TTL, so the second statement reuses it
+        assert calls == [45] and engine_cache["drops"] == [("grpc_tbl", 45)]
+
+
+@pytest.mark.asyncio
+async def test_a_grpc_remote_tables_failed_landing_fails_the_read(monkeypatch, engine_cache):
+    """A landing that fails is raised, never logged and the statement rewritten to the cache
+    table it did not write (REQ-1661): no rewrite, no inline rows, no drop scheduled."""
+    from provisa.api_source import engine_cache as ec
+    from provisa.source_adapters import grpc_remote_adapter
+
+    async def _fetch(**_kw):
+        return [{"id": i} for i in range(5)]
+
+    monkeypatch.setattr(grpc_remote_adapter, "fetch", _fetch)
+    monkeypatch.setattr(ec, "cache_table_name", lambda *_a: "grpc_tbl")
+    monkeypatch.setattr(ec, "land_api_cache", AsyncMock(side_effect=OSError("store refused")))
+    _threshold(monkeypatch, 1000)
+    query = SimpleNamespace(
+        columns=[],
+        full_method_path="/S/M",
+        input_message="I",
+        output_message="O",
+        server_streaming=False,
+    )
+    state = _state(source="grpc_src")
+    state.grpc_remote_sources = {}
+    hot = SimpleNamespace(hold=lambda *_a, **_k: "held")
+    rewrites: dict = {}
+    inline: dict = {}
+    with pytest.raises(RuntimeError, match="gRPC remote landing failed for 's__m'") as raised:
+        await mat._mat_grpc_remote_table(
+            "s__m",
+            "grpc_src",
+            {"pb2": None},
+            query,
+            state,
+            hot,
+            0,
+            rewrites,
+            inline,
+            None,
+            registration={"table_name": "s__m", "source_id": "grpc_src", "columns": []},
+        )
+    assert isinstance(raised.value.__cause__, OSError)
+    assert rewrites == {} and inline == {}
+    assert engine_cache["drops"] == []

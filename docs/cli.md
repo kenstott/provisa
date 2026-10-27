@@ -3,7 +3,7 @@
 The `provisa` command is the single entry point for the pip-installed embedded tier. It starts the runtime, manages licenses, triggers metadata publishing, deploys models and controls the maintenance banner. You need no Docker, no Node and no external services.
 
 Install it with the `embedded` extra, which also pulls in the offline DuckDB extensions
-and the embedded PostgreSQL control plane:
+and the embedded PostgreSQL model store:
 
 ```bash
 pip install 'provisa[embedded]'
@@ -81,9 +81,9 @@ Set them to override the defaults that `load_profile("native", ...)` would other
 1. Platform check — aborts with a clear message on unsupported Python or missing pgserver.
 2. `--reset` (if requested) — drops the embedded PostgreSQL cluster; it rebuilds on the next step.
 3. Demo config (if `--demo`) — sets `PROVISA_CONFIG` and `PROVISA_DEMO_DIR`.
-4. Embedded environment — starts the PostgreSQL control plane, resolves its socket URL, and
+4. Embedded environment — starts the PostgreSQL model store, resolves its socket URL, and
    stages offline DuckDB extensions if `provisa-duckdb-ext` is installed.
-5. Schema drift check — scans the live control plane for missing columns. If any are found,
+5. Schema drift check — scans the live model store for missing columns. If any are found,
    prints a `--reset` hint and exits with code 1. V1 has no migrations; a column added in a
    newer release requires a reset.
 6. Both servers start concurrently. The ready announcer polls `GET /ready` (not `/health`, because the `/ready` endpoint confirms the store is attached and the engine is warm) and opens the browser when it returns 200.
@@ -104,7 +104,7 @@ provisa run --demo
 # Start on non-default ports, no browser
 provisa run --api-port 8080 --ui-port 4000 --no-browser
 
-# Upgrade: reset the control plane first, then start
+# Upgrade: reset the model store first, then start
 provisa run --reset
 
 # Point at an external Trino cluster instead of the embedded DuckDB engine
@@ -475,7 +475,7 @@ Maintenance notice: ON
 |---|---|
 | `provisa run` | Start the embedded API + UI |
 | `provisa run --demo` | Start with pet-store / shelter sample data |
-| `provisa run --reset` | Rebuild the control plane before starting |
+| `provisa run --reset` | Rebuild the model store before starting |
 | `provisa license apply <file>` | Install a license file offline |
 | `provisa license status` | Show machine ID and trial / license state |
 | `provisa metadata export` | Publish the metadata snapshot on demand |

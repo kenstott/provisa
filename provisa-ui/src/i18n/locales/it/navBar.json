@@ -75,6 +75,7 @@
     "sandboxExitLogOut": "Esci soltanto",
     "itemPython": "Python",
     "itemNotebook": "Notebook",
-    "itemContainerRegistries": "Registri di container"
+    "itemContainerRegistries": "Registri di container",
+    "itemCatalogs": "Cataloghi"
   }
 }

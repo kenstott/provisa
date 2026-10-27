@@ -155,15 +155,12 @@ def _dial(
     return conn
 
 
-def host_certificate(
-    address: str, port: int, pin: str, identity: Identity, timeout: float = 10.0
-) -> str:
-    """REQ-2100: the paired host's certificate (PEM), checked against its ``pin``: what an engine
-    attaching the host verifies it by (sslmode=verify-ca), as Provisa's own dials do by the pin."""
-    with _dial(address, port, pin, identity, timeout) as conn:
-        der = conn.getpeercert(binary_form=True)
-    assert der is not None  # _dial checked it against the pin
-    return ssl.DER_cert_to_PEM_cert(der)
+@dataclass(frozen=True)
+class Paired:
+    """A paired host: the fingerprint to pin it by, and its certificate (PEM)."""
+
+    pin: str
+    certificate: str
 
 
 def pair(
@@ -173,16 +170,20 @@ def pair(
     identity: Identity,
     duckdb: dict[str, int],
     timeout: float = 10.0,
-) -> str:
+) -> Paired:
     """Pair with the remote host at ``address:port`` using its pairing ``code``: it keeps
     ``identity``'s certificate as Provisa's, and ``duckdb``, the bounds of its DuckDB
-    (worker.duckdb_bounds), until a call gives others. The host's fingerprint, to pin."""
+    (worker.duckdb_bounds), until a call gives others. The host's fingerprint, to pin, and its
+    certificate, read on this dial: what an engine attaching the host verifies it by (REQ-2100),
+    so connecting dials no third time for it."""
     fingerprint, secret = parse_pairing_code(code)
     try:
         conn = _dial(address, port, fingerprint, None, timeout)
     except ConnectionError as exc:
         raise PairingRefused(str(exc)) from exc
     with conn:
+        der = conn.getpeercert(binary_form=True)
+        assert der is not None  # _dial checked it against the fingerprint
         conn.sendall(
             _frame(
                 {
@@ -197,7 +198,7 @@ def pair(
     if answer is None or answer.get("op") != "paired":
         said = (answer or {}).get("message", "it closed the connection")
         raise PairingRefused(f"remote host {address}:{port} refused the pairing: {said}")
-    return fingerprint
+    return Paired(pin=fingerprint, certificate=ssl.DER_cert_to_PEM_cert(der))
 
 
 class RemoteWorker(Worker):

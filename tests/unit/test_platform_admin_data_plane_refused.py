@@ -11,7 +11,7 @@
 """REQ-1327 / REQ-1337: platform_admin is the control plane only; org_admin owns its org's data.
 
 Every gate names a right, and a right is held by the role the seed gives it to. The roles here are
-the seed's own lists (``provisa.core.db._SEED_ROLES``), so a capability added to or removed from a
+the seed's own lists (``provisa.core.db.STANDARD_ROLE_RIGHTS``), so a capability added to or removed from a
 system role is tested as it ships rather than as a fixture remembers it.
 
 Three callers:
@@ -26,7 +26,6 @@ Three callers:
 from __future__ import annotations
 
 import types
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -34,7 +33,7 @@ from fastapi import HTTPException
 
 import provisa.api.app as appmod
 from provisa.api.errors import ApiError
-from provisa.core.db import _SEED_ROLES
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from provisa.security.rights import (
     DEPLOYMENT_GRANTER,
     Capability,
@@ -54,7 +53,7 @@ ROLES: dict[str, dict] = {
         # The seed (db.py, schema.sql): the control plane reaches no data domain.
         "domain_access": [] if role_id == "platform_admin" else ["*"],
     }
-    for role_id, caps in _SEED_ROLES
+    for role_id, caps in STANDARD_ROLE_RIGHTS.items()
 }
 # Roles an org might try to define for itself. None is seeded; each is the shape a refused
 # definition would have had, placed in the registry to show what its holder could NOT do with it.
@@ -117,10 +116,10 @@ def _seeded_registry(monkeypatch, serve_deployment_org):
 def test_the_seed_gives_platform_admin_the_two_platform_rights_and_nothing_else():
     assert set(ROLES["platform_admin"]["capabilities"]) == {"platform_settings", "cross_org"}
     assert ROLES["platform_admin"]["domain_access"] == []
-    sql = (Path(__file__).resolve().parents[2] / "provisa" / "core" / "schema.sql").read_text()
-    seed = sql[sql.index("'platform_admin',\n") :].split("ON CONFLICT", 1)[0]
-    assert "'[]'::jsonb" in seed and "'[\"*\"]'::jsonb" not in seed
-    assert "domain_access = '[]'::jsonb WHERE id = 'platform_admin'" in sql
+    # REQ-2155: the standard role's own definition reaches no domain.
+    from provisa.core.db import STANDARD_ROLES
+
+    assert STANDARD_ROLES["platform_admin"].domain_access == ()
     assert not {"platform_settings", "cross_org"} & set(ROLES["org_admin"]["capabilities"])
     for role_id, role in ROLES.items():
         if role_id not in ("retired_strings",):
@@ -430,7 +429,7 @@ def _role_rows(**extra: dict) -> list[dict]:
             "domain_access": role["domain_access"],
             "residency_values": [],  # REQ-1921
             "org_id": None,
-            "parent_role_id": None,
+            "parents": [],
         }
         for role_id, role in ROLES.items()
     ]
@@ -443,7 +442,7 @@ def _role_rows(**extra: dict) -> list[dict]:
                 "domain_access": ["*"],
                 "residency_values": [],  # REQ-1921
                 "org_id": "acme",
-                "parent_role_id": None,
+                "parents": [],
                 **fields,
             }
         )
@@ -476,7 +475,7 @@ async def test_an_org_administrator_cannot_create_such_a_role(
         description="Test role.",
         capabilities=capabilities,
         domain_access=["*"],
-        parent_role_id=parent,
+        parents=[parent] if parent else [],
     )
     with pytest.raises(ApiError) as err:
         await roles_router.create_role(body, _request(*ORG_ADMIN, org="acme"))
@@ -504,7 +503,9 @@ async def test_an_org_administrator_cannot_update_a_role_into_one(
 
     monkeypatch.setattr(db.conn, "execute_core", _execute_core)
     monkeypatch.setattr(roles_router, "_pool", lambda _request: db)
-    body = roles_router.UpdateRoleBody(capabilities=capabilities, parent_role_id=parent)
+    body = roles_router.UpdateRoleBody(
+        capabilities=capabilities, parents=[parent] if parent else None
+    )
     with pytest.raises(ApiError) as err:
         await roles_router.update_role("minted", body, _request(*ORG_ADMIN, org="acme"))
     assert (err.value.status_code, err.value.code) == (status, code)
@@ -540,7 +541,7 @@ async def test_the_graphql_surface_refuses_the_same_definitions(
             description="Test role.",
             capabilities=capabilities,
             domain_access=["*"],
-            parent_role_id=parent,
+            parents=[parent] if parent else [],
         ),
     )
     assert result.success is False
@@ -644,7 +645,7 @@ async def test_rest_create_refuses_a_role_with_no_domains(monkeypatch, parent):
         description="Test role.",
         capabilities=["usage"],
         domain_access=[],
-        parent_role_id=parent,
+        parents=[parent] if parent else [],
     )
     # BOOTSTRAP holds every right there is: the refusal is about the definition, not the caller.
     with pytest.raises(ApiError) as err:
@@ -661,10 +662,10 @@ async def test_rest_create_refuses_an_invalid_definition_for_what_it_is_on_an_ex
     """An id that exists and a definition that is refused: the definition is what is said."""
     from provisa.api.admin import roles_router
 
-    db = _Db(_role_rows())
+    db = _Db(_role_rows(minted={}))
     monkeypatch.setattr(roles_router, "_pool", lambda _request: db)
     body = roles_router.CreateRoleBody(
-        id="analyst", description="Test role.", capabilities=["usage"], domain_access=[]
+        id="minted", description="Test role.", capabilities=["usage"], domain_access=[]
     )
     with pytest.raises(ApiError) as err:
         await roles_router.create_role(body, _request(*BOOTSTRAP))
@@ -724,25 +725,17 @@ async def test_graphql_create_refuses_a_role_with_no_domains(monkeypatch):
     assert written == []
 
 
-def test_a_role_that_inherits_its_domains_is_not_refused():
+def test_a_role_must_list_its_own_domains():
+    """REQ-2155: reach is never inherited -- a child lists the domains its capabilities apply in,
+    whatever its parents reach."""
     from provisa.api.admin._platform_guard import role_definition_problem
 
     req = _request(*BOOTSTRAP)
-    # REQ-1677: a child's list is its own plus its parent chain's.
     assert (
-        role_definition_problem(
-            req,
-            ["usage"],
-            [],
-            role_id="junior",
-            domain_access=[],
-            inherited_domain_access=["sales"],
-        )
+        role_definition_problem(req, ["usage"], [], role_id="junior", domain_access=["sales"])
         is None
     )
-    problem = role_definition_problem(
-        req, ["usage"], [], role_id="junior", domain_access=[], inherited_domain_access=[]
-    )
+    problem = role_definition_problem(req, ["usage"], [], role_id="junior", domain_access=[])
     assert problem is not None and problem.code == "roles.domain_required"
 
 
@@ -795,7 +788,7 @@ def test_config_load_refuses_a_role_with_no_domains_by_name(role, fragment):
         ProvisaConfig.model_validate(_config([ok, role]))
 
 
-def test_config_load_accepts_listed_wildcard_and_inherited_domains():
+def test_config_load_accepts_listed_and_wildcard_domains():
     from provisa.core.models import ProvisaConfig
 
     config = ProvisaConfig.model_validate(
@@ -817,8 +810,8 @@ def test_config_load_accepts_listed_wildcard_and_inherited_domains():
                     "id": "junior",
                     "description": "Test role.",
                     "capabilities": [],
-                    "domain_access": [],
-                    "parent_role_id": "analyst",
+                    "domain_access": ["sales"],  # REQ-2155: its own, whatever its parent reaches
+                    "parents": ["analyst"],
                 },
             ]
         )
@@ -873,7 +866,7 @@ def org_runtime(monkeypatch):
 async def test_an_invitation_into_a_tenant_org_cannot_confer_a_platform_right(org_runtime, role_id):
     from provisa.api.admin.invites_router import resolve_invite_role
 
-    org_runtime(_role_rows(heir={"capabilities": ["usage"], "parent_role_id": "platform_admin"}))
+    org_runtime(_role_rows(heir={"capabilities": ["usage"], "parents": ["platform_admin"]}))
     # Refused for EVERY inviter, a platform administrator included: platform rights are conferred
     # in the root org only.
     for granter in (set(ROLES["org_admin"]["capabilities"]), DEPLOYMENT_GRANTER):
@@ -918,7 +911,7 @@ async def test_the_grant_itself_refuses_a_platform_right_nobody_holds(role_id):
     redemption, the bootstrap claim, seating an org's creator."""
     from provisa.core.org_membership import grant_org_role
 
-    db = _Db(_role_rows(heir={"capabilities": ["usage"], "parent_role_id": "platform_admin"}))
+    db = _Db(_role_rows(heir={"capabilities": ["usage"], "parents": ["platform_admin"]}))
     for granter in ((), {"user_management"}, set(ROLES["org_admin"]["capabilities"])):
         with pytest.raises(PlatformRoleGrantError):
             await grant_org_role(db, "u2", role_id, granter_capabilities=granter)

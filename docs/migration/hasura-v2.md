@@ -100,7 +100,7 @@ The command-line converter prints the report to stderr as `Carried as`, `Mapped 
 | **Admin role** | carried | `org_admin` | Holds every grant over every column and row, and is named on every imported column. |
 | **Object relationships** | carried | `relationships[]` with `cardinality: many-to-one` | Approved. The GraphQL field is the Hasura relationship name. |
 | **Array relationships** | carried | `relationships[]` with `cardinality: one-to-many` | Approved. The GraphQL field is the Hasura relationship name. |
-| **Inherited roles** (one role) | carried | `roles[].parent_role_id` | The role becomes the parent. |
+| **Inherited roles** (one role) | carried | `roles[].parents` | The role becomes the parent. |
 | **Inherited roles** (several roles) | mapped | A role holding the union of their grants | Provisa roles have one parent, so the union is written out on the role. |
 | **Computed fields** | redo | A view column | The export names the function, not its body. The report gives the `SELECT` to add. |
 | **Tracked functions** | carried, else redo | `functions[]` commands | The preview reads the signature from the database. Without it, add the function on the Commands page. |

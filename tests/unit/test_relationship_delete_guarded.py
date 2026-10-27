@@ -38,8 +38,16 @@ from provisa.core.schema_org import (
     sources,
     tag_assignments,
 )
+from tests.unit.gate_identity import serve_every_column
 
 JOIN = "SELECT o.id FROM orders o JOIN customers c ON o.customer_id = c.id"
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which dependents a caller may be told of is REQ-2152's own
+    tests (test_refusal_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 @pytest.fixture

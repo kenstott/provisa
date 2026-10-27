@@ -139,7 +139,8 @@ export function ViewDefinitionForm({
             // View output columns = the spec dimensions plus one column per metric.
             columns: [...selectedDims, ...selectedMetrics].map((n) => ({
               name: n,
-              visibleTo: ["*"],
+              // Registration grants read to the registrant and Viewer (REQ-2154).
+              visibleTo: [],
             })),
           },
           pagination: null,

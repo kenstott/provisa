@@ -1010,16 +1010,27 @@ class Mask(BaseModel):  # REQ-038, REQ-040, REQ-2059
         return self
 
 
-class MaskEntry(BaseModel):  # REQ-2059
+class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
     """One entry of a column's ordered mask list: the readers it is for (grant entries, as
-    ``visible_to`` takes them, composites included; ``"*"`` is everyone) and the mask they read
-    the column through, or none (``mask`` None: unmasked). A reader reads the column through the
-    first entry it holds; a reader holding none reads it unmasked."""
+    ``visible_to`` takes them, composites included) and the mask they read the column through, or
+    none (``mask`` None: unmasked). A reader reads the column through the first entry it holds; a
+    reader holding none reads it unmasked. An entry with no ``to`` (None) is for every other
+    reader: it is the list's last entry, at most one per list."""
 
-    to: list[str]
+    to: list[str] | None = None
     mask: Mask | None = None
     # REQ-2094: why this entry is what it is (provisa.judgments.why); optional.
     why: dict[str, Any] | None = None
+
+    @field_validator("to")
+    @classmethod
+    def _star_is_no_reader(cls, value: list[str] | None) -> list[str] | None:  # REQ-2153
+        if value is not None and "*" in value:
+            raise ValueError(
+                "'*' names no reader; the last entry of a mask list, with no 'to', is for every "
+                "other reader"
+            )
+        return value
 
 
 class ObjectField(BaseModel):
@@ -1072,7 +1083,7 @@ class Column(
     # relationship, not data (graphql_remote/relation_columns.py).
     gql_object_type: str | None = None
     gql_is_list: bool = False
-    scope: str = "domain"  # "domain" | "public" | "restricted" (core/column_scope.py, REQ-1959)
+    scope: str = "domain"  # "domain" | "listed" | "public" (core/column_scope.py, REQ-2153)
 
     @model_validator(mode="before")
     @classmethod
@@ -1083,6 +1094,18 @@ class Column(
                 "'write_grants' (role, operation, columns, rows, check, presets)"
             )
         return data
+
+    @model_validator(mode="after")
+    def _every_other_reader_is_last(self) -> "Column":  # REQ-2153
+        # The entry for every other reader matches any reader, so one before the end would leave
+        # every entry after it unreached.
+        open_ended = [i for i, e in enumerate(self.masks) if e.to is None]
+        if open_ended and open_ended != [len(self.masks) - 1]:
+            raise ValueError(
+                f"column {self.name!r}: the mask entry with no 'to' is for every other reader, "
+                "so it is the list's last entry, and the only one"
+            )
+        return self
 
     @model_validator(mode="after")
     def _embedding_is_not_masked(self) -> "Column":  # REQ-652
@@ -1373,7 +1396,8 @@ class Metric(BaseModel):  # REQ-1317
     # REQ-1319: definition text written for AI consumers; projected into MCP tool output,
     # GraphQL introspection docs, pg_description, and Ossie ai_context.
     ai_context: str | None = None
-    visible_to: list[str] = Field(default_factory=lambda: ["*"])
+    # REQ-1317: the roles that read the metric; none named is no role.
+    visible_to: list[str] = Field(default_factory=list)
     # REQ-1320: set when this metric was auto-registered from a fact spec's measure.
     from_fact: str | None = None
 
@@ -2012,7 +2036,9 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimit | None = None  # REQ-369
-    parent_role_id: str | None = None  # inherit capabilities + domain_access from parent
+    # REQ-2155: the roles this one inherits from, in order; its capabilities are the union of its
+    # own and every ancestor's (security.inheritance).
+    parents: list[str] = Field(default_factory=list)
     relationship_guard: bool = (
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
     )
@@ -2049,59 +2075,17 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
         return out
 
 
-def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
-    """Flatten inherited role hierarchy: merge parent capabilities + domain_access.
+def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042, REQ-2155
+    """Flatten the inherited role hierarchy: each role with its ancestors' capabilities and
+    domain_access unioned in, and each property (max_rows, session values) set by the nearest
+    ancestor that declares it -- the one resolution the runtime build applies
+    (security.inheritance.flatten_role_dicts). Refuses an inheritance cycle by name (REQ-1677).
 
     Returns new Role objects with inherited permissions merged in.
     """
-    by_id = {r.id: r for r in roles}
-    cache: dict[str, tuple[set[str], set[str], int | None, dict[str, str]]] = {}
-    # REQ-1677: a cycle would recurse forever; refuse it by name.
-    from provisa.security.inheritance import role_chain
+    from provisa.security.inheritance import flatten_role_dicts
 
-    parents = {r.id: r.parent_role_id for r in roles}
-    for r in roles:
-        role_chain(r.id, parents)
-
-    def _resolve(role_id: str) -> tuple[set[str], set[str], int | None, dict[str, str]]:
-        if role_id in cache:
-            return cache[role_id]
-        role = by_id[role_id]
-        caps = set(role.capabilities)
-        domains = set(role.domain_access)
-        max_rows = role.max_rows
-        session_vars = dict(role.session_vars)
-        if role.parent_role_id and role.parent_role_id in by_id:
-            p_caps, p_domains, p_max_rows, p_session_vars = _resolve(role.parent_role_id)
-            caps.update(p_caps)
-            domains.update(p_domains)
-            # Ceiling: child inherits parent's when unset; most restrictive wins when both set.
-            if max_rows is None:
-                max_rows = p_max_rows
-            elif p_max_rows is not None:
-                max_rows = min(max_rows, p_max_rows)
-            # REQ-1682: the ancestors' constants underneath, the role's own over them.
-            session_vars = {**p_session_vars, **session_vars}
-        cache[role_id] = (caps, domains, max_rows, session_vars)
-        return caps, domains, max_rows, session_vars
-
-    result: list[Role] = []
-    for r in roles:
-        caps, domains, max_rows, session_vars = _resolve(r.id)
-        result.append(
-            Role(
-                id=r.id,
-                description=r.description,
-                capabilities=sorted(caps),
-                domain_access=["*"] if "*" in domains else sorted(domains),
-                parent_role_id=r.parent_role_id,
-                relationship_guard=r.relationship_guard,
-                max_rows=max_rows,
-                rate_limit=r.rate_limit,
-                session_vars=session_vars,  # REQ-1682
-            )
-        )
-    return result
+    return [Role(**r) for r in flatten_role_dicts([r.model_dump() for r in roles])]
 
 
 class DerivedRole(BaseModel):  # REQ-2057, REQ-2078, REQ-2080
@@ -2640,11 +2624,38 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
         return value if value.strip() else DEFAULT_UI_ORIGIN
 
 
-class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
-    """One external catalog an org's governance metadata is published to.
+# The fields of a catalog connection: where the catalog is and how to sign in to it (REQ-2122).
+# Export and import both read a catalog through one connection, so these live on the connection,
+# and an export target names its catalog instead of holding them.
+_CATALOG_CONNECTION_FIELDS = (
+    "id",
+    "provider",
+    "endpoint",
+    "api_key",
+    "token",
+    "auth_mode",
+    "username",
+    "entra_tenant_id",
+    "entra_client_id",
+    "entra_client_secret",
+    "google_service_account_json",
+    "gcp_project",
+    "gcp_location",
+    "aws_region",
+    "datazone_domain_id",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "timeout_seconds",
+)
 
-    id: the target's name within the org, unique there; its catalog bindings are kept under it,
-        so two targets of one provider (two OpenMetadata servers) never share them (REQ-2118).
+
+class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
+    """What an export provider is built from: one catalog's connection with the export's own
+    settings for it (REQ-2122). Never stored: :meth:`CatalogConnection.export_target` builds it
+    from the stored catalog and the export's :class:`CatalogExport` for it.
+
+    id: the catalog's name within the org, unique there; its catalog bindings are kept under it,
+        so two catalogs of one provider (two OpenMetadata servers) never share them (REQ-2118).
     provider: which MetadataExport adapter backs the port — "openlineage", "openmetadata",
         "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
         "datahub", "atlan", "collibra", "snowflake_horizon", "dataplex", "purview" (the Data
@@ -2665,6 +2676,9 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         requests (REQ-2118).
     delta_share: whether a unity_catalog target also publishes each product as a Delta Share
         (REQ-2117).
+    domains: the domains whose tables and data products this catalog is published (REQ-2122).
+    role: the role the catalog is published as: it is sent exactly what that role reads
+        (REQ-2152, ruling Q1). None until the export names one, and then nothing is published to it.
     """
 
     id: str
@@ -2687,6 +2701,8 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
     aws_secret_access_key: SecretStr = SecretStr("")
     delta_share: bool = False
     timeout_seconds: int = 30
+    domains: list[str] = Field(default_factory=list)
+    role: str | None = None
 
     @field_validator("id")
     @classmethod
@@ -2697,58 +2713,142 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
 
     @model_validator(mode="after")
     def _validate_endpoint(self) -> "MetadataExportTarget":
-        # REQ-1068: a target with no endpoint cannot publish. Failing here names the setting;
-        # failing at publish time names a connection. REQ-1635: snowflake_horizon is
-        # engine-native — it opens its own connection off configured_engine_url() rather than a
-        # remote catalog's endpoint, so endpoint is not a setting this provider has.
-        # REQ-2118: datazone signs AWS requests to its region's own service address.
-        if (
-            self.provider not in ("snowflake_horizon", "datazone", "unity_catalog")
-            and not self.endpoint
-        ):
-            raise ValueError(f"metadata export target {self.id!r} has no endpoint")
-        # REQ-2118: a DataZone data product lives in a domain, owned by a project, in a region.
-        if self.provider == "datazone" and not (
-            self.aws_region and self.datazone_domain_id and self.datazone_project_id
-        ):
-            raise ValueError(
-                f"metadata export target {self.id!r} needs the AWS region, the DataZone domain "
-                "and the project that owns its data products"
-            )
-        # REQ-2118: Purview's Unified Catalog is reached with the tenant's Entra credentials.
-        if self.provider == "purview" and self.auth_mode != "entra":
-            raise ValueError(
-                f"metadata export target {self.id!r} signs in to Purview with Microsoft Entra"
-            )
-        # REQ-2118: a Dataplex data product lives in a project and a location.
-        if self.provider == "dataplex" and not (self.gcp_project and self.gcp_location):
-            raise ValueError(
-                f"metadata export target {self.id!r} needs the GCP project and location its "
-                "data products are kept in"
-            )
+        _check_catalog_connection(self)
         return self
 
 
-class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118
+def _check_catalog_connection(catalog: Any) -> None:  # REQ-1068, REQ-2118, REQ-2122
+    """Refuse a connection that cannot reach its catalog, naming the setting it lacks."""
+    # REQ-1068: a target with no endpoint cannot publish. Failing here names the setting;
+    # failing at publish time names a connection. REQ-1635: snowflake_horizon is
+    # engine-native — it opens its own connection off configured_engine_url() rather than a
+    # remote catalog's endpoint, so endpoint is not a setting this provider has.
+    # REQ-2118: datazone signs AWS requests to its region's own service address.
+    if (
+        catalog.provider not in ("snowflake_horizon", "datazone", "unity_catalog")
+        and not catalog.endpoint
+    ):
+        raise ValueError(f"catalog {catalog.id!r} has no endpoint")
+    # REQ-2118: DataZone's assets live in a domain, in a region.
+    if catalog.provider == "datazone" and not (catalog.aws_region and catalog.datazone_domain_id):
+        raise ValueError(f"catalog {catalog.id!r} needs the AWS region and the DataZone domain")
+    # REQ-2118: Purview's Unified Catalog is reached with the tenant's Entra credentials.
+    if catalog.provider == "purview" and catalog.auth_mode != "entra":
+        raise ValueError(f"catalog {catalog.id!r} signs in to Purview with Microsoft Entra")
+    # REQ-2118: a Dataplex data product lives in a project and a location.
+    if catalog.provider == "dataplex" and not (catalog.gcp_project and catalog.gcp_location):
+        raise ValueError(
+            f"catalog {catalog.id!r} needs the GCP project and location its data products are "
+            "kept in"
+        )
+
+
+class CatalogConnection(BaseModel):  # REQ-2122
+    """One external catalog an org connects to once, for export and import alike.
+
+    Its fields are :class:`MetadataExportTarget`'s connection fields (``_CATALOG_CONNECTION_FIELDS``),
+    each held as entered and resolved at use. ``domains`` are the domains that work with it: their
+    tables offer only their catalogs, and their tables and data products publish to them. A
+    connection serves at least one domain.
+    """
+
+    id: str
+    provider: str
+    endpoint: str = ""
+    api_key: SecretStr = SecretStr("")
+    token: SecretStr = SecretStr("")
+    auth_mode: str = "api_key"
+    username: str = ""
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""
+    entra_client_secret: SecretStr = SecretStr("")
+    google_service_account_json: SecretStr = SecretStr("")
+    gcp_project: str = ""
+    gcp_location: str = ""
+    aws_region: str = ""
+    datazone_domain_id: str = ""
+    aws_access_key_id: SecretStr = SecretStr("")
+    aws_secret_access_key: SecretStr = SecretStr("")
+    timeout_seconds: int = 30
+    domains: list[str]
+
+    @field_validator("id")
+    @classmethod
+    def _validate_id(cls, v: str) -> str:
+        if not _SAFE_ID_PATTERN.match(v):
+            raise ValueError(f"a catalog's id is a name like 'catalog-1', not {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CatalogConnection":
+        if not self.domains:
+            raise ValueError(f"catalog {self.id!r} is assigned to no domain")
+        _check_catalog_connection(self)
+        return self
+
+    def export_target(self, export: "CatalogExport") -> MetadataExportTarget:
+        """The export provider's settings for this catalog: its connection and ``export``."""
+        return MetadataExportTarget(
+            **{name: getattr(self, name) for name in _CATALOG_CONNECTION_FIELDS},
+            datazone_project_id=export.datazone_project_id,
+            delta_share=export.delta_share,
+            domains=list(self.domains),
+            role=export.role,
+        )
+
+
+class CatalogsConfig(BaseModel):  # REQ-2122
+    """The org's catalog connections, each held once (the Catalogs panel)."""
+
+    catalogs: list[CatalogConnection] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_ids(self) -> "CatalogsConfig":
+        ids = [c.id for c in self.catalogs]
+        repeated = sorted({i for i in ids if ids.count(i) > 1})
+        if repeated:
+            raise ValueError(f"catalogs named twice: {', '.join(repeated)}")
+        return self
+
+    def by_id(self) -> dict[str, CatalogConnection]:
+        return {c.id: c for c in self.catalogs}
+
+
+class CatalogExport(BaseModel):  # REQ-2118, REQ-2122
+    """The export to one catalog: the catalog it names, and its export settings alone.
+
+    datazone_project_id: the DataZone project that owns the org's data products (REQ-2118).
+    delta_share: whether a unity_catalog catalog also gets each product as a Delta Share
+        (REQ-2117).
+    role: the role the catalog is published as -- it is sent exactly what that role reads
+        (REQ-2152, ruling Q1); a publish refuses an export that names none.
+    """
+
+    catalog: str
+    datazone_project_id: str = ""
+    delta_share: bool = False
+    role: str | None = None
+
+
+class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118, REQ-2122
     """Outbound publication of governance metadata to external catalogs.
 
-    Per-org, premium-gated (REQ-1073). Outbound only — there is no ingest counterpart, by
-    design (REQ-1068): Provisa is the upstream, and an external catalog is never read back
-    as the source of truth.
+    Per-org, premium-gated (REQ-1073).
 
-    targets: every catalog the org publishes to; one publish reaches each (REQ-2118).
+    targets: the catalogs the org publishes to, each named by its id in the Catalogs panel with
+        its export settings; one publish reaches each (REQ-2118, REQ-2122).
     reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from
         dropped events (REQ-1072). Empty disables the reconcile and leaves only the
         event-driven path.
     """
 
     enabled: bool = False
-    targets: list[MetadataExportTarget] = Field(default_factory=list)
+    targets: list[CatalogExport] = Field(default_factory=list)
     reconcile_cron: str = "0 * * * *"
 
     @model_validator(mode="after")
     def _validate_targets(self) -> "MetadataExportConfig":
-        ids = [t.id for t in self.targets]
+        ids = [t.catalog for t in self.targets]
         repeated = sorted({i for i in ids if ids.count(i) > 1})
         if repeated:
             raise ValueError(f"metadata export targets named twice: {', '.join(repeated)}")
@@ -2756,6 +2856,27 @@ class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118
         if self.enabled and not self.targets:
             raise ValueError("metadata_export.enabled is true but no target is configured")
         return self
+
+    def export_targets(self, catalogs: CatalogsConfig) -> list[MetadataExportTarget]:
+        """Each target as its provider is built from: the named catalog with its export settings.
+        A target naming no catalog of the org is refused by name (REQ-2122)."""
+        known = catalogs.by_id()
+        missing = sorted(t.catalog for t in self.targets if t.catalog not in known)
+        if missing:
+            raise ValueError(
+                f"metadata export targets name no catalog of the org: {', '.join(missing)}"
+            )
+        targets = [known[t.catalog].export_target(t) for t in self.targets]
+        # REQ-2118: a DataZone data product is owned by a project, which only the export names.
+        unowned = sorted(
+            t.id for t in targets if t.provider == "datazone" and not t.datazone_project_id
+        )
+        if unowned:
+            raise ValueError(
+                f"the export to {', '.join(unowned)} needs the DataZone project that owns its "
+                "data products"
+            )
+        return targets
 
 
 class SubsystemTracesConfig(BaseModel):  # REQ-1432
@@ -3220,6 +3341,8 @@ class ProvisaConfig(BaseModel):
     row_materialize: RowMaterializeConfig = Field(default_factory=RowMaterializeConfig)  # REQ-1865
     observability: OtelConfig = Field(default_factory=OtelConfig)
     mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
+    # REQ-2122: the catalogs the org connects to once, for export and import.
+    catalogs: list[CatalogConnection] = Field(default_factory=list)
     metadata_export: MetadataExportConfig = Field(default_factory=MetadataExportConfig)  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
@@ -3338,19 +3461,21 @@ class ProvisaConfig(BaseModel):
 
         by_id = {r.id: r for r in self.roles}
         for role in self.roles:
-            # Walk the parent chain here rather than through flatten_roles: that refuses an
+            # Walk the ancestors here rather than through flatten_roles: that refuses an
             # inheritance cycle, which is its own rule with its own error (REQ-1677), raised
             # where the roles are flattened. A cycle simply ends this walk.
+            # REQ-2155: capabilities are inherited, reach is the role's own.
             capabilities: set[str] = set()
-            domains: set[str] = set()
             seen: set[str] = set()
-            current: Role | None = role
-            while current is not None and current.id not in seen:
+            pending: list[Role] = [role]
+            while pending:
+                current = pending.pop()
+                if current.id in seen:
+                    continue
                 seen.add(current.id)
                 capabilities.update(current.capabilities)
-                domains.update(current.domain_access)
-                current = by_id.get(current.parent_role_id) if current.parent_role_id else None
-            problem = role_domain_problem(role.id, capabilities, domains)
+                pending.extend(by_id[p] for p in current.parents if p in by_id)
+            problem = role_domain_problem(role.id, capabilities, set(role.domain_access))
             if problem is not None:
                 raise ValueError(problem)
         return self

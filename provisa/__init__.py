@@ -7,7 +7,3 @@
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
-
-# The semantic SQL keeps its null-on-failure casts at every rewrite (REQ-778): registered before
-# any statement is written.
-from provisa.transpiler import semantic_dialect as _semantic_dialect  # noqa: E402, F401

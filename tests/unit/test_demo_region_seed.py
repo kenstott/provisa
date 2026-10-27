@@ -17,6 +17,7 @@ here the stores are DuckDB files, through the same mover."""
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -63,11 +64,20 @@ def test_a_node_of_a_region_keeps_its_regions_tables_and_those_naming_none(monke
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("regional", "reaped"), [(True, ["sbxr00000000000a"]), (False, ["sbx0a"])])
-async def test_each_tier_reaps_its_own_sandboxes(monkeypatch, regional, reaped):
+@pytest.mark.parametrize(
+    ("regional", "here", "reaped"),
+    [
+        (True, "us", ["sbxrus00000000000a"]),
+        (True, "warehouse", ["sbxrwarehouse00000000000b"]),
+        (False, "us", ["sbx0a"]),
+    ],
+)
+async def test_each_node_reaps_its_own_sandboxes(monkeypatch, regional, here, reaped):
+    """The sandbox tier reaps its own; each node of the regions tier (REQ-2068), the sandboxes its
+    region minted, never another node's."""
     from provisa.api import demo_sandbox
 
-    rows = [("sbx0a",), ("sbxr00000000000a",)]
+    rows = [("sbx0a",), ("sbxrus00000000000a",), ("sbxrwarehouse00000000000b",)]
 
     class _Conn:
         async def execute_core(self, _stmt):
@@ -85,5 +95,90 @@ async def test_each_tier_reaps_its_own_sandboxes(monkeypatch, regional, reaped):
         lambda: SimpleNamespace(acquire=lambda: _Acquire()),
     )
     monkeypatch.setattr(demo_region_seed, "regional", lambda: regional)
+    monkeypatch.setattr(demo_region_seed, "here", lambda: here)
     monkeypatch.setattr(demo_sandbox.settings_registry, "value", lambda _k: 60)
     assert await demo_sandbox.expired(datetime.now(UTC) + timedelta(hours=1)) == reaped
+
+
+def _append_log(path, schema: str, name: str, rows: int) -> None:
+    """A bitemporal view's append log: its rows with the managed recorded-time and op columns."""
+    con = duckdb.connect(str(path))
+    con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    con.execute(
+        f'CREATE TABLE "{schema}"."{name}" AS SELECT range AS id, '
+        "now() AS sys_recorded_at, 'upsert' AS sys_op FROM range(?)",
+        [rows],
+    )
+    con.close()
+
+
+def test_a_regions_demo_s_setup_history_is_carried_in_its_home_region_s_seed(tmp_path):
+    """REQ-1162, REQ-2068: the setup builds a bitemporal view's history in its home region's store,
+    as the setup's org -- declared or inherited, its append log carries the managed recorded-time
+    column; its seeding node then builds the view once more, as the template's. The history the
+    bundle carries is the setup's: each append log the setup's org holds in a region replaces that
+    table in the region's seed, and the seed's record names it. A plain materialized view's table
+    is the seed's own."""
+    from provisa.api.demo_region_seed import carry_setup_history, seed_dir, views_schema
+
+    demo = tmp_path / "banking"
+    seed = seed_dir(demo, "warehouse")
+    seed.mkdir(parents=True)
+    region = tmp_path / "warehouse.duckdb"
+    _append_log(region, views_schema("default", "warehouse"), "mv_view_eod_totals", 30)
+    region_store = _store(region, views_schema("default", "warehouse"), mv_view_plain=9)
+    _store(seed / "store.duckdb", "views", mv_view_eod_totals=1, mv_view_plain=2)
+    (seed / "record.json").write_text(
+        json.dumps({"tables": [], "views": ["mv_view_eod_totals", "mv_view_plain"]})
+    )
+
+    carried = carry_setup_history("default", demo, {"warehouse": region_store})
+
+    assert carried == {"warehouse": ["mv_view_eod_totals"]}
+    assert held_rows(
+        f"duckdb:///{seed / 'store.duckdb'}", "views", ["mv_view_eod_totals", "mv_view_plain"]
+    ) == {"mv_view_eod_totals": 30, "mv_view_plain": 2}
+    assert json.loads((seed / "record.json").read_text())["views"] == [
+        "mv_view_eod_totals",
+        "mv_view_plain",
+    ]
+
+
+def test_a_region_the_setup_built_no_history_in_is_left_as_seeded(tmp_path):
+    from provisa.api.demo_region_seed import carry_setup_history, seed_dir, views_schema
+
+    demo = tmp_path / "banking"
+    seed = seed_dir(demo, "ledger")
+    seed.mkdir(parents=True)
+    region_store = _store(tmp_path / "ledger.duckdb", views_schema("default", "ledger"), x=1)
+    _store(seed / "store.duckdb", "views", mv_other=2)
+    (seed / "record.json").write_text(json.dumps({"tables": [], "views": ["mv_other"]}))
+
+    assert carry_setup_history("default", demo, {"ledger": region_store}) == {"ledger": []}
+    assert json.loads((seed / "record.json").read_text())["views"] == ["mv_other"]
+
+
+async def test_a_sandbox_on_the_regions_tier_runs_in_its_regions_store(monkeypatch):
+    """A regions demo's sandbox is built in the store its region names, where its replicas and
+    views were copied: built in its own folder's store instead, banking's end-of-day totals were
+    not there (CI run 40357864733: schema org_sbxrwarehouse..._rg_warehouse_mv_cache does not
+    exist). Off the regions tier it is built in its own folder's store."""
+    from provisa.api import app, demo_sandbox
+
+    built: list[tuple[str, str | None]] = []
+
+    async def build(org_id, *, storage_url=None, **_kw):
+        built.append((org_id, storage_url))
+        return SimpleNamespace()
+
+    lanes = {"sbxrwarehouse1": SimpleNamespace(materialize_url="postgresql://warehouse_store")}
+
+    async def lane_of(org_id, env):
+        assert env == "prod"
+        return lanes.get(org_id)
+
+    monkeypatch.setattr(app, "build_org_runtime", build)
+    monkeypatch.setattr(app, "_region_lane_of", lane_of)
+    await demo_sandbox._sandbox_runtime("sbxrwarehouse1")
+    await demo_sandbox._sandbox_runtime("sbxplain1")
+    assert built == [("sbxrwarehouse1", "postgresql://warehouse_store"), ("sbxplain1", None)]

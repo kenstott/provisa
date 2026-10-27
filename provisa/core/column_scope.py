@@ -8,26 +8,29 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A column's ``scope``: where it is served (REQ-1959).
+"""A column's ``scope``: how far beyond its table's domain it reaches (REQ-1959, REQ-2153).
 
-- ``domain``: within the domains a role reaches, to whom ``visible_to`` says — an empty list is
-  everyone.
-- ``public``: the same, and also to a role that does not reach the table's domain.
-- ``restricted``: only to whom ``visible_to`` names — an empty list is nobody.
+- ``domain``: outside the domain the column does not exist; within it, roles that reach the
+  domain read it as ``visible_to`` grants.
+- ``listed``: the same, and every role of the organisation sees the table's and the column's
+  names in the catalog, and nothing more.
+- ``public``: the same, and also served to a role that does not reach the table's domain.
+
+Who reads a column is decided by ``visible_to`` alone, and an empty list is no role (REQ-2154).
 
 Who is served a column is decided in :func:`provisa.security.rights.column_served`. This module
 holds the values and their validation, which every path that stores a column applies: the model
 file, the admin API and the repository.
 """
 
-# Requirements: REQ-1959
+# Requirements: REQ-1959, REQ-2153
 
 from __future__ import annotations
 
 SCOPE_DOMAIN = "domain"
+SCOPE_LISTED = "listed"
 SCOPE_PUBLIC = "public"
-SCOPE_RESTRICTED = "restricted"
-COLUMN_SCOPES: tuple[str, ...] = (SCOPE_DOMAIN, SCOPE_PUBLIC, SCOPE_RESTRICTED)
+COLUMN_SCOPES: tuple[str, ...] = (SCOPE_DOMAIN, SCOPE_LISTED, SCOPE_PUBLIC)
 
 
 class ColumnScopeInvalid(ValueError):

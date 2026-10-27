@@ -76,14 +76,17 @@ _DECLARED: dict[str, str] = {
     "timestamptz": "timestamptz",  # REQ-2050
     "text": "text",
     "varchar": "text",
+    "bytea": "bytea",
 }
+# The SERIAL types: a bigint column whose omitted value is the table's next (TempTable.serials).
+_SERIAL = frozenset({"serial", "smallserial", "bigserial"})
 _DECIMAL = re.compile(r"(?:decimal|numeric)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\Z")
 
 
 def _unsupported(name: str, kind: str) -> ValueError:
     return ValueError(
         f"temporary table column {name!r}: type {kind} is not supported. A column is one of "
-        f"{', '.join(sorted(set(_DECLARED)))}, or DECIMAL(precision, scale)"
+        f"{', '.join(sorted(set(_DECLARED) | _SERIAL))}, or DECIMAL(precision, scale)"
     )
 
 
@@ -95,6 +98,8 @@ def landed_type(name: str, declared: str) -> str:
     if decimal is not None:
         return f"numeric({int(decimal[1])},{int(decimal[2])})"
     base = spelled.split("(", 1)[0].strip()
+    if base in _SERIAL:
+        return "bigint"
     if base in ("decimal", "numeric"):
         raise ValueError(
             f"temporary table column {name!r}: give {declared} its precision and scale, as "
@@ -119,6 +124,7 @@ def _arrow(landed: str) -> Any:
         "timestamp": pa.timestamp("us"),
         "timestamptz": pa.timestamp("us", tz="UTC"),
         "text": pa.string(),
+        "bytea": pa.binary(),
     }[landed]
 
 
@@ -151,6 +157,31 @@ def inferred_type(name: str, values: list[Any]) -> str:
     raise _unsupported(name, str(kind))
 
 
+def _bytea(value: Any) -> Any:
+    """A bytea value given as text, read as PostgreSQL's bytea input reads it: ``\\x`` then hex
+    digits, else the text's own bytes with ``\\\\`` for one backslash and ``\\nnn`` an octal
+    byte."""
+    if not isinstance(value, str):
+        return value
+    if value.startswith("\\x"):
+        return bytes.fromhex(value[2:])
+    out = bytearray()
+    i = 0
+    while i < len(value):
+        if value[i] == "\\" and value[i + 1 : i + 2] == "\\":
+            out.append(0x5C)
+            i += 2
+        elif value[i] == "\\" and len(value) >= i + 4 and value[i + 1 : i + 4].isdigit():
+            out.append(int(value[i + 1 : i + 4], 8))
+            i += 4
+        elif value[i] == "\\":
+            raise ValueError(f"invalid input syntax for type bytea: {value!r}")
+        else:
+            out.extend(value[i].encode("utf-8"))
+            i += 1
+    return bytes(out)
+
+
 def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
     """``rows`` as one Arrow batch of ``columns``, each (name, landed type). A value that is not
     of its column's type fails here, naming the column: none is stored as another type."""
@@ -158,8 +189,11 @@ def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
 
     arrays = {}
     for i, (name, landed) in enumerate(columns):
+        values = [r[i] for r in rows]
+        if landed == "bytea":
+            values = [_bytea(v) for v in values]
         try:
-            arrays[name] = pa.array([r[i] for r in rows], _arrow(landed))
+            arrays[name] = pa.array(values, _arrow(landed))
         except (pa.ArrowInvalid, pa.ArrowTypeError) as exc:
             raise ValueError(
                 f"temporary table column {name!r} is {landed}; a value given for it is not: {exc}"
@@ -225,6 +259,14 @@ async def _land(state: Any, session: TempSession, name: str, batch: Any, columns
     session.stored = True
 
 
+def _next_serial(table: TempTable, column: str) -> int | None:
+    """The value an INSERT omitting ``column`` gives it: a SERIAL's next, else NULL."""
+    if column not in table.serials:
+        return None
+    table.serials[column] += 1
+    return table.serials[column]
+
+
 async def apply(
     action: Action, result: QueryResult, state: Any, role_id: str | None
 ) -> QueryResult:
@@ -244,8 +286,14 @@ async def apply(
         return QueryResult(rows=[], column_names=[], rowcount=0)
     if action.kind == "create":
         _within_tables(session, name)
+        serials: dict[str, int] = {}
         if action.columns is not None:
             columns = [(c, landed_type(c, declared)) for c, declared in action.columns]
+            serials = {
+                c: 0
+                for c, declared in action.columns
+                if declared.lower().split("(", 1)[0].strip() in _SERIAL
+            }
             rows: list[tuple] = []
         else:
             rows = list(result.rows)
@@ -255,7 +303,7 @@ async def apply(
             ]
         _within_rows(name, len(rows))
         await _land(state, session, name, _batch(columns, rows), columns)
-        session.tables[name] = TempTable(name, columns)
+        session.tables[name] = TempTable(name, columns, serials)
         session.generation += 1
         return QueryResult(rows=[], column_names=[], rowcount=len(rows))
     table = session.tables[name]
@@ -271,7 +319,10 @@ async def apply(
         _, held = await asyncio.to_thread(_system_rows, state, f"SELECT * FROM {at}", name)
         position = {c: i for i, c in enumerate(named)}
         added = [
-            tuple(r[position[c]] if c in position else None for c, _ in table.columns)
+            tuple(
+                r[position[c]] if c in position else _next_serial(table, c)
+                for c, _ in table.columns
+            )
             for r in result.rows
         ]
         _within_rows(name, len(held) + len(added))

@@ -89,6 +89,19 @@ class OpenedSandbox:
     token: str | None
 
 
+async def _sandbox_runtime(org_id: str) -> Any:
+    """Build a sandbox's runtime: on the regions sandbox tier, in its region's store (REQ-2068),
+    where its replicas and views were copied (demo_region_seed.copy_to_sandbox); elsewhere in the
+    store of its own folder."""
+    from provisa.api.app import _region_lane_of, build_org_runtime
+    from provisa.core.environments import PROD
+
+    bound = await _region_lane_of(org_id, PROD)
+    return await build_org_runtime(
+        org_id, storage_url=None if bound is None else bound.materialize_url
+    )
+
+
 def visitor_user_id(org_id: str) -> str:
     """The user minted for a visitor's sandbox: its own, and nobody else's."""
     return f"sandbox-visitor-{org_id}"
@@ -207,6 +220,19 @@ async def named_sandbox_of(user_id: str, demo: str) -> str | None:
     return row[0] if row is not None else None
 
 
+async def record_visitor_attributes(conn: Any, person: str, directory: Path) -> dict:
+    """Record the attributes demo ``directory`` declares for its visitor as the org's attributes for
+    ``person`` (REQ-2151), as an administrator records any member's, and return the org's
+    attributes by user -- what the sandbox's runtime resolves requests against. A derived role the
+    tour acts as (REQ-2057) is then held from an attribute, as for any member."""
+    from provisa.api.demo_templates import demo_visitor_attributes
+    from provisa.core.repositories import user_attribute as attr_repo
+
+    for attr_name, value in demo_visitor_attributes(directory).items():
+        await attr_repo.upsert(conn, person, attr_name, value)
+    return await attr_repo.org_by_user(conn)
+
+
 async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> OpenedSandbox:
     """Open a sandbox of the published demo ``name``: a visitor's (``user_id`` None, minted here)
     or a named one for the signed-in ``user_id``."""
@@ -262,7 +288,7 @@ async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> O
 @model_change.commits_itself  # REQ-1524: its first commit is written below, as org creation's is
 async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> str | None:
     from provisa.api.admin.orgs_router import _admin_pool, _pool, _refresh_root_registry_view
-    from provisa.api.app import _stop_org_servers, build_org_runtime, state
+    from provisa.api.app import _stop_org_servers, state
     from provisa.codesource import uploads
     from provisa.auth.pat import PersonalAccessTokenStore
     from provisa.core import org_files
@@ -327,7 +353,7 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
             await copy_views_to_sandbox(demo.template_org, org_id, views, demo.directory)
 
     async with _stage(org_id, demo.name, "its runtime"):
-        rt = await state.org_registry.rebuild(org_id, lambda oid: build_org_runtime(oid))
+        rt = await state.org_registry.rebuild(org_id, _sandbox_runtime)
     assert rt.model_db is not None
     async with _stage(org_id, demo.name, "its person's membership and roles"):
         if kind == VISITOR:
@@ -349,6 +375,11 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
             await grant_org_role(
                 rt.model_db, person, role_id, granter_capabilities=DEPLOYMENT_GRANTER
             )
+        if kind == VISITOR:
+            # REQ-2151: the attributes the demo's visitor carries, so a derived role its tour acts
+            # as is held from an attribute; the runtime resolves requests against them at once.
+            async with rt.model_db.acquire() as conn:
+                rt.user_attributes = await record_visitor_attributes(conn, person, demo.directory)
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
         ensure_repo(org_id)
         async with rt.model_db.acquire() as conn:
@@ -495,8 +526,7 @@ async def expired(now: datetime | None = None) -> list[str]:
     this tier's: the regions sandbox tier reaps its own (REQ-2068), whose stores the other cannot
     reach, and the other tier the rest."""
     from provisa.api.admin.orgs_router import _admin_pool
-    from provisa.api.demo_region_seed import regional
-    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
+    from provisa.api.sandbox_tier import is_this_nodes_sandbox
 
     at = now if now is not None else datetime.now(UTC)
     idle = timedelta(seconds=int(settings_registry.value("sandbox.idle_ttl")))
@@ -511,7 +541,7 @@ async def expired(now: datetime | None = None) -> list[str]:
                 .order_by(demo_sandboxes.c.last_active_at)
             )
         ).fetchall()
-    return [r[0] for r in rows if r[0].startswith(REGIONS_SANDBOX_PREFIX) == regional()]
+    return [r[0] for r in rows if is_this_nodes_sandbox(r[0])]
 
 
 async def last_active() -> datetime | None:
@@ -559,7 +589,8 @@ async def reap(org_id: str) -> None:
 
 def _release_mark() -> Path:
     """Where this tier records the Provisa release its open sandboxes were provisioned by: one
-    mark for the sandbox tier, one for the regions tier, which reaps its own (REQ-2068)."""
+    mark for the sandbox tier, one for each node of the regions tier, which reaps its own (REQ-2068;
+    each node has a data directory of its own)."""
     from provisa.api.demo_region_seed import regional
     from provisa.core.org_files import data_dir
 
@@ -572,9 +603,8 @@ async def reap_visitors_of_another_release() -> list[str]:
     its reads. Each is reaped; its tab opens a fresh one from the rebuilt template. A named
     sandbox, a signed-in person's, is kept. This release is then recorded. The sandboxes reaped."""
     from provisa.api.admin.orgs_router import _admin_pool
-    from provisa.api.demo_region_seed import regional
+    from provisa.api.sandbox_tier import is_this_nodes_sandbox
     from provisa.core.demo_bundles import running_provisa
-    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
 
     mark = _release_mark()
     running = running_provisa()
@@ -588,8 +618,8 @@ async def reap_visitors_of_another_release() -> list[str]:
         ).fetchall()
     reaped = []
     for (org_id,) in rows:
-        if org_id.startswith(REGIONS_SANDBOX_PREFIX) != regional():
-            continue  # the other tier's
+        if not is_this_nodes_sandbox(org_id):
+            continue  # another node's
         try:
             await reap(org_id)
         except Exception:  # allow-ble: one sandbox that cannot be removed must not keep the others; logged with its cause, and its idle expiry reaps it

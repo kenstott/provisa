@@ -313,6 +313,7 @@ def extract_directives(document: DocumentNode) -> QueryDirectives:  # REQ-277, R
 
 _COMMENT_RE = re.compile(r"--\s*@provisa\s+(.*)")
 _CYPHER_COMMENT_RE = re.compile(r"//\s*@provisa\s+(.*)")
+_SPARQL_COMMENT_RE = re.compile(r"#\s*@provisa\s+(.*)")
 _KV_RE = re.compile(r"(\w+)=(\S+)")
 
 
@@ -320,6 +321,12 @@ def extract_directives_from_cypher_comments(cypher: str) -> QueryDirectives:  # 
     """``// @provisa key=value`` comment lines on a Cypher statement — the same keys as the SQL
     form (:func:`extract_directives_from_sql_comments`), in Cypher's comment syntax."""
     return _directives_from_comments(cypher, _CYPHER_COMMENT_RE)
+
+
+def extract_directives_from_sparql_comments(sparql: str) -> QueryDirectives:  # REQ-544
+    """``# @provisa key=value`` comment lines on a SPARQL query -- the same keys as the SQL form
+    (:func:`extract_directives_from_sql_comments`), in SPARQL's comment syntax (REQ-2135)."""
+    return _directives_from_comments(sparql, _SPARQL_COMMENT_RE)
 
 
 def extract_directives_from_sql_comments(sql: str) -> QueryDirectives:  # REQ-279, REQ-281
@@ -465,8 +472,8 @@ def debug_trace_from_header(value: str | None) -> bool:  # REQ-1910
 def cache_hint_for(language: str, text: str) -> CacheHint:  # REQ-544
     """The opt-in written in a request's own query text: GraphQL ``@cached(ttl)`` (and its
     `-- @provisa` comment lines, merged as the HTTP endpoint merges them), Cypher ``// @provisa cache=true|cache_ttl=N``,
-    SQL ``-- @provisa cache=true|cache_ttl=N``. One parser per language, shared by every
-    transport that receives that language."""
+    SQL ``-- @provisa cache=true|cache_ttl=N``, SPARQL ``# @provisa cache=true|cache_ttl=N``. One
+    parser per language, shared by every transport that receives that language."""
     if language == "graphql":
         from graphql import parse
 
@@ -477,6 +484,8 @@ def cache_hint_for(language: str, text: str) -> CacheHint:  # REQ-544
         d = extract_directives_from_cypher_comments(text)
     elif language == "sql":
         d = extract_directives_from_sql_comments(text)
+    elif language == "sparql":
+        d = extract_directives_from_sparql_comments(text)
     else:
         raise ValueError(f"no response-cache hint syntax for language {language!r}")
     return CacheHint(opt_in=d.cache_opt_in, ttl=d.cache_ttl, debug_trace=d.debug_trace)

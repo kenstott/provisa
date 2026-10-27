@@ -31,6 +31,7 @@ from graphql import (
 
 from provisa.compiler.naming import apply_gql_name, domain_to_sql_name, mutation_style
 from provisa.compiler.type_map import JSONScalar
+from provisa.security.mutation_authz import command_assigned
 from provisa.compiler.schema_types import SchemaInput, _TableInfo  # noqa: F401  (annotations)
 
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
@@ -177,8 +178,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 the GraphQL return type and argument dict for one item.
         """
         for item in items:
-            visible_to = item.get("visible_to") or []
-            if visible_to and role_id not in visible_to:
+            if not command_assigned(item, role_id):  # REQ-2153: an empty list names no role
                 continue
             domain_id = item.get("domain_id", "")
             # REQ-1531: a command sits in a domain, and a role is shown the commands of the

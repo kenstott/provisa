@@ -16,6 +16,7 @@ description: >-
   customer, from which source, and when.
 screenshot: card.png
 published: true
+group: provision
 # The oldest Provisa this demo's bundle runs on (REQ-2049).
 requires_provisa: 0.1.0a489
 # The demo's video: its tagline names what the demo shows Provisa being.

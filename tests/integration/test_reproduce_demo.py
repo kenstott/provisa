@@ -128,15 +128,10 @@ def server(stack, tmp_path_factory):
         srv.stop_process()
 
 
-def _sql(server, sql: str, travel: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def _sql(server, sql: str, params: list[str] | None = None) -> list[dict[str, Any]]:
     headers = {"X-Provisa-Role": _ROLE}
-    if travel and travel.get("as_of"):
-        headers["X-Provisa-As-Of"] = travel["as_of"]
-    if travel and travel.get("as_recorded"):
-        headers["X-Provisa-As-Recorded"] = travel["as_recorded"]
-    resp = httpx.post(
-        f"{server.base_url}/data/sql", json={"sql": sql}, headers=headers, timeout=300
-    )
+    body = {"sql": sql, **({"params": params} if params else {})}
+    resp = httpx.post(f"{server.base_url}/data/sql", json=body, headers=headers, timeout=300)
     assert resp.status_code == 200, f"{sql}: HTTP {resp.status_code}: {resp.text}"
     return resp.json()["data"]["sql"]
 
@@ -160,7 +155,8 @@ _STEPS = {s["key"]: s for s in yaml.safe_load((_DEMO / "tour.yaml").read_text())
 @pytest.fixture(scope="module")
 def answers(server) -> dict[str, list[dict[str, Any]]]:
     """setup.yaml run as the bundle build runs it; then every reading step of the tour, in order,
-    under the time travel the steps before it set, as the tour runner runs it."""
+    as the tour runner runs it: a time an ``as_recorded_from`` step takes from an earlier answer
+    bound to the next statement's $1 (REQ-2083)."""
     subprocess.run(
         [sys.executable, str(_REPO / "scripts" / "run_demo_setup.py"), str(_DEMO)]
         + ["--url", server.base_url],
@@ -172,22 +168,21 @@ def answers(server) -> dict[str, list[dict[str, Any]]]:
     while len(_sql(server, refreshes)) < 2:
         assert time.monotonic() < deadline, "the two refreshes' records never landed"
         time.sleep(2)
-    travel: dict[str, str] = {}
+    bound: list[str] = []
     out: dict[str, list[dict[str, Any]]] = {}
     for key, step in _STEPS.items():
-        if "as_of" in step:
-            travel["as_of"] = step["as_of"]
         if "as_recorded_from" in step:
             taken = step["as_recorded_from"]
-            travel["as_recorded"] = str(out[taken["step"]][taken["row"]][taken["column"]])
+            bound = [str(out[taken["step"]][taken["row"]][taken["column"]])]
         if "sql" in step:
-            out[key] = _sql(server, step["sql"], dict(travel))
+            out[key] = _sql(server, step["sql"], bound)
+            bound = []
         if key == "reproduceAudit":
             # The as-recorded read just before is audited once the writer's batch lands.
             deadline = time.monotonic() + _AUDITED_S
             while not any(r["as_recorded"] for r in out[key]) and time.monotonic() < deadline:
                 time.sleep(1)
-                out[key] = _sql(server, step["sql"], dict(travel))
+                out[key] = _sql(server, step["sql"])
     return out
 
 

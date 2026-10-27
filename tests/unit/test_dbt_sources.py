@@ -40,7 +40,8 @@ from provisa.dbt.sources import (
 
 
 def _column(name: str, **more) -> Column:
-    return Column(name=name, visible_to=more.pop("visible_to", ["*"]), **more)
+    # REQ-2154: a column is read by the roles it names; these fixtures name both domain roles.
+    return Column(name=name, visible_to=more.pop("visible_to", ["analyst", "people"]), **more)
 
 
 def _config() -> ProvisaConfig:
@@ -53,8 +54,8 @@ def _config() -> ProvisaConfig:
                 id="junior",
                 description="Test role.",
                 capabilities=[],
-                domain_access=[],
-                parent_role_id="analyst",
+                domain_access=["sales"],  # REQ-2155: reach is the role's own
+                parents=["analyst"],
             ),
             Role(id="people", description="Test role.", capabilities=[], domain_access=["hr"]),
         ],

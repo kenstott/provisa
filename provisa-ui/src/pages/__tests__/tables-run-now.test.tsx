@@ -37,7 +37,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => {
       role: "admin",
       selectedRoles: ["admin"],
       // The org administrator's rights: no capability stands in for them (REQ-1327).
-      capabilities: actual.DEFAULT_ADMIN_ROLE.capabilities,
+      capabilities: actual.DEFAULT_ADMIN_ROLE.effectiveCapabilities,
       domainAccess: ["*"],
     }),
   };
@@ -93,6 +93,7 @@ function table(
     writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
+    timeTravel: null,
     dqDataset: null,
     qualityCheckers: [],
     apiEndpoint: null,
@@ -149,7 +150,9 @@ const SOURCES = [
   },
 ];
 const DOMAINS = [{ id: "sales", description: "Sales data" }];
-const ROLES = [{ id: "admin", capabilities: ["admin"], domainAccess: ["*"] }];
+const ROLES = [
+  { id: "admin", capabilities: ["admin"], effectiveCapabilities: ["admin"], domainAccess: ["*"] },
+];
 const forceRegen = vi.fn();
 
 // What the server reports of replica builds; null as for a caller who may not read them.

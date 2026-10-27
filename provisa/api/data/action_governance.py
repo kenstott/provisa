@@ -148,9 +148,10 @@ def _governance_context(
     action: dict, cols: list[dict], role_id: str, state: Any
 ) -> tuple[Any, ActionEnforcement]:
     from provisa.compiler.stage2 import GovernanceContext, resolve_row_cap
-    from provisa.security.inheritance import holds_grant
+    from provisa.security.inheritance import expand_grants
     from provisa.security.masking import resolve, validate_masking_rule
     from provisa.security.meta_role import reader_chain
+    from provisa.security.rights import column_served, reaches_domain
 
     name = action["name"]
     tid = synthetic_table_id(name)
@@ -163,13 +164,20 @@ def _governance_context(
     gov.table_map[rel] = tid
     gov.all_columns[tid] = [(c["name"], c.get("type") or "varchar") for c in cols]
 
+    # REQ-2152: a contract column is served by the one column rule (rights.column_served), read
+    # in the action's domain; its grant list is expanded down the role chains as the schema
+    # build expands a table column's. A column that declares no grant is the command's public
+    # shape (REQ-1679): it is read by the roles the command itself is assigned to (REQ-2153: a
+    # list names its roles). A contract column declares no scope, so the rule reads it as a
+    # domain column.
+    domain_id = action["domain_id"]
+    reaches = reaches_domain(role["domain_access"], domain_id)
     visible: set[str] = set()
     for c in cols:
-        granted = c.get("visible_to")
-        # A contract column that declares no visible_to is visible: the contract is the
-        # action's public shape, and an undeclared grant list restricts nothing (unlike a
-        # registered table's column, which is seeded with an explicit list).
-        if granted is None or holds_grant(role_id, granted, chains):
+        declared = c.get("visible_to")
+        column = {"visible_to": list(action["visible_to"] if declared is None else declared)}
+        expand_grants([column], chains)
+        if column_served({"id": role_id}, domain_id, column, reaches=reaches):
             visible.add(c["name"])
         else:
             enforcement.columns_excluded.append(c["name"])

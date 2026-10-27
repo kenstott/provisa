@@ -103,6 +103,12 @@ def table_columns(table_id: int, ctx: Any, column_types: dict) -> dict[str, str]
     from provisa.compiler.naming import apply_sql_name
 
     exposed_names = ctx.physical_to_sql
+    table = next((t for t in ctx.tables.values() if t.table_id == table_id), None)
+    nested = (
+        ctx.nested_columns.get((table.schema_name.lower(), table.table_name.lower()), {})
+        if table is not None
+        else {}
+    )
     out: dict[str, str] = {}
     for col in column_types.get(table_id, []):
         physical = col.column_name
@@ -111,11 +117,20 @@ def table_columns(table_id: int, ctx: Any, column_types: dict) -> dict[str, str]
         if (table_id, physical) in ctx.columns_outside_relation:
             continue  # registered, but the relation a statement reads does not hold it
         out[exposed_names.get((table_id, physical)) or apply_sql_name(physical)] = RegisteredType(
-            col.data_type
+            _described_type(col.data_type, nested.get(physical.lower()))
         )
     for virtual in ctx.virtual_columns.get(table_id, {}):
         out[virtual] = RegisteredType("varchar")
     return out
+
+
+def _described_type(data_type: str, nested: Any) -> str:
+    """A column's described type: its registered type, except that a column natively an array of
+    one primitive type, one level deep (REQ-1965), is that array (``integer[]``) -- the list
+    GraphQL types it as, and the array PostgreSQL itself describes."""
+    if nested is not None and nested.array_depth == 1 and nested.element_type:
+        return f"{nested.element_type}[]"
+    return data_type
 
 
 def _resolve_table(tbl: exp.Table, table_map: dict[str, int]) -> int | None:

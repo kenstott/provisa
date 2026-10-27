@@ -42,14 +42,20 @@ from provisa.core.models import Column, ProvisaConfig, Table
 
 
 def _mask_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
+    table: Table,
+    column: Column,
+    all_roles: tuple[str, ...],
+    chains: dict[str, list[str]],
+    org_id: str | None,
 ) -> list[GovernanceTag]:
     """One tag per entry of the column's mask list that masks (REQ-2059): the roles that read the
-    column through it are restricted by it, the roles that read it unmasked are exempt."""
+    column through it are restricted by it, the roles that read it unmasked are exempt. A role
+    reads through the first entry its chain holds (REQ-1677: it and its ancestors), as the build
+    resolves it (app_loaders._load_masking_rules)."""
     from provisa.security.masking import entry_for
 
     masks = [e.model_dump() for e in column.masks]
-    reads = {r: entry_for(masks, [r]) for r in all_roles}
+    reads = {r: entry_for(masks, chains[r]) for r in all_roles}
     exempt = tuple(sorted(r for r, i in reads.items() if i is None or masks[i]["mask"] is None))
     uri = column_uri(org_id, table, column.name, column.alias)
     return [
@@ -69,11 +75,15 @@ def _mask_tags(
 
 
 def _visibility_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
+    table: Table,
+    column: Column,
+    all_roles: tuple[str, ...],
+    served: frozenset[str],
+    org_id: str | None,
 ) -> list[GovernanceTag]:
-    # Membership is literal — provisa/security/visibility.py enforces ``role_id in visible_to``
-    # with no wildcard for columns. The tag says exactly what the engine does.
-    visible = set(column.visible_to)
+    # ``served``: the roles the engine serves the column to, by the one rule
+    # (``rights.served_roles``, REQ-2152). The tag says exactly what the engine does.
+    visible = set(served) & set(all_roles)  # the roster's: a role reaching no domain is none
     restricted = tuple(r for r in all_roles if r not in visible)
     if not restricted:
         return []
@@ -141,12 +151,36 @@ def build_governance_tags(
     config: ProvisaConfig, org_id: str | None
 ) -> list[GovernanceTag]:  # REQ-1071
     """Every enforcement fact in the config, as catalog tags."""
-    all_roles = tuple(sorted(role.id for role in config.roles))
+    from provisa.core.db import STANDARD_ROLES, standard_role_dicts
+    from provisa.security.inheritance import role_chains
+    from provisa.security.rights import served_roles
+
+    # The org's roles: the standard roles (REQ-2155), which a config may not declare, and the
+    # config's own. The tags name every one that reaches a domain -- a role reaching none (a
+    # control-plane role) is no data audience (REQ-1327).
+    standard = {
+        r["id"]: {**r, "domain_access": list(STANDARD_ROLES[r["id"]].domain_access)}
+        for r in standard_role_dicts()
+    }
+    definitions = {**standard, **{role.id: role.model_dump() for role in config.roles}}
+    all_roles = tuple(sorted(r for r, d in definitions.items() if d["domain_access"]))
+    # Every role's chain through the standard roles too: a grant or mask entry reaching a role
+    # through a standard ancestor is that role's (REQ-1677).
+    chains = role_chains(definitions.values())
     index = TableIndex(config.tables)
     tags: list[GovernanceTag] = []
     for table in config.tables:
         for column in table.columns:
-            tags.extend(_mask_tags(table, column, all_roles, org_id))
-            tags.extend(_visibility_tags(table, column, all_roles, org_id))
+            served = served_roles(
+                definitions,
+                chains,
+                table.domain_id,
+                {"visible_to": column.visible_to, "scope": column.scope},
+            )
+            # A mask applies only to a role the column is served to: one not served it reads
+            # nothing through the mask, and is named by the visibility tag instead.
+            readers = tuple(r for r in all_roles if r in served)
+            tags.extend(_mask_tags(table, column, readers, chains, org_id))
+            tags.extend(_visibility_tags(table, column, all_roles, served, org_id))
     tags.extend(_rls_tags(config, index, all_roles, org_id))
     return tags

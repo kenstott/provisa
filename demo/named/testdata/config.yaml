@@ -39,7 +39,8 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: shop_analyst
+  parents: [analyst]
   description: "Queries the shop's data."
   capabilities:
   - query_development
@@ -83,12 +84,12 @@ tables:
   table: customers
   description: Who has signed up, and where they live
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: 'The customer''s id', fake: "hash()", visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: 'The customer''s name', fake: "name()", visible_to: [org_admin, analyst]}
-  - {name: email, data_type: varchar, description: 'The customer''s email address', fake: "email()", visible_to: [org_admin, analyst]}
-  - {name: city, data_type: varchar, description: 'Where the customer lives', fake: "city()", visible_to: [org_admin, analyst]}
-  - {name: region, data_type: varchar, description: 'The customer''s sales region', synthetic_rule: "categories((North, South, East, West))", visible_to: [org_admin, analyst]}
-  - {name: joined_on, data_type: date, description: 'When the customer signed up', fake: "uniform(min='2024-01-01', max='2026-06-30')", visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: 'The customer''s id', fake: "hash()", visible_to: [data_steward, shop_analyst]}
+  - {name: name, data_type: varchar, description: 'The customer''s name', fake: "name()", visible_to: [data_steward, shop_analyst]}
+  - {name: email, data_type: varchar, description: 'The customer''s email address', fake: "email()", visible_to: [data_steward, shop_analyst]}
+  - {name: city, data_type: varchar, description: 'Where the customer lives', fake: "city()", visible_to: [data_steward, shop_analyst]}
+  - {name: region, data_type: varchar, description: 'The customer''s sales region', synthetic_rule: "categories((North, South, East, West))", visible_to: [data_steward, shop_analyst]}
+  - {name: joined_on, data_type: date, description: 'When the customer signed up', fake: "uniform(min='2024-01-01', max='2026-06-30')", visible_to: [data_steward, shop_analyst]}
 - source_id: shop-db
   domain_id: shop
   schema: public
@@ -96,12 +97,12 @@ tables:
   table: products
   description: What the shop sells
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: 'The product''s id', visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: 'The product''s name', visible_to: [org_admin, analyst]}
-  - {name: category, data_type: varchar, description: 'The product''s category', synthetic_rule: "categories((Books, Games, Garden, Kitchen))", visible_to: [org_admin, analyst]}
-  - {name: price, data_type: 'decimal(8,2)', description: 'The price in USD', visible_to: [org_admin, analyst]}
-  - {name: stock, data_type: integer, description: 'Units in stock', visible_to: [org_admin, analyst]}
-  - {name: description, data_type: varchar, description: 'The product''s description', visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: 'The product''s id', visible_to: [data_steward, shop_analyst]}
+  - {name: name, data_type: varchar, description: 'The product''s name', visible_to: [data_steward, shop_analyst]}
+  - {name: category, data_type: varchar, description: 'The product''s category', synthetic_rule: "categories((Books, Games, Garden, Kitchen))", visible_to: [data_steward, shop_analyst]}
+  - {name: price, data_type: 'decimal(8,2)', description: 'The price in USD', visible_to: [data_steward, shop_analyst]}
+  - {name: stock, data_type: integer, description: 'Units in stock', visible_to: [data_steward, shop_analyst]}
+  - {name: description, data_type: varchar, description: 'The product''s description', visible_to: [data_steward, shop_analyst]}
 - source_id: shop-db
   domain_id: shop
   schema: public
@@ -109,10 +110,10 @@ tables:
   table: orders
   description: Each order a customer placed
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: 'The order''s id', visible_to: [org_admin, analyst]}
-  - {name: customer_id, data_type: integer, description: 'The customer who placed it', fake: "hash()", visible_to: [org_admin, analyst]}
-  - {name: placed_at, data_type: timestamp, description: 'When it was placed', visible_to: [org_admin, analyst]}
-  - {name: status, data_type: varchar, description: 'placed, paid, shipped, delivered or cancelled', synthetic_rule: "categories((placed, paid, shipped, delivered, cancelled))", visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: 'The order''s id', visible_to: [data_steward, shop_analyst]}
+  - {name: customer_id, data_type: integer, description: 'The customer who placed it', fake: "hash()", visible_to: [data_steward, shop_analyst]}
+  - {name: placed_at, data_type: timestamp, description: 'When it was placed', visible_to: [data_steward, shop_analyst]}
+  - {name: status, data_type: varchar, description: 'placed, paid, shipped, delivered or cancelled', synthetic_rule: "categories((placed, paid, shipped, delivered, cancelled))", visible_to: [data_steward, shop_analyst]}
 - source_id: shop-db
   domain_id: shop
   schema: public
@@ -120,11 +121,11 @@ tables:
   table: order_items
   description: The lines of each order
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: 'The line''s id', visible_to: [org_admin, analyst]}
-  - {name: order_id, data_type: integer, description: 'The order the line is on', visible_to: [org_admin, analyst]}
-  - {name: product_id, data_type: integer, description: 'The product ordered', visible_to: [org_admin, analyst]}
-  - {name: quantity, data_type: integer, description: 'Units ordered', visible_to: [org_admin, analyst]}
-  - {name: unit_price, data_type: 'decimal(8,2)', description: 'The price of one unit when ordered', visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: 'The line''s id', visible_to: [data_steward, shop_analyst]}
+  - {name: order_id, data_type: integer, description: 'The order the line is on', visible_to: [data_steward, shop_analyst]}
+  - {name: product_id, data_type: integer, description: 'The product ordered', visible_to: [data_steward, shop_analyst]}
+  - {name: quantity, data_type: integer, description: 'Units ordered', visible_to: [data_steward, shop_analyst]}
+  - {name: unit_price, data_type: 'decimal(8,2)', description: 'The price of one unit when ordered', visible_to: [data_steward, shop_analyst]}
 # The customers' personal data is pii: a Test (fake) environment is refused while a pii column has
 # no fake, and every read of one is in the record (ops.pii_access).
 tag_assignments:
@@ -143,10 +144,10 @@ views:
   enable_group_by: true
   description: Sales by customer region and product category
   columns:
-  - {name: region, data_type: varchar, description: The customers' sales region, visible_to: [org_admin, analyst]}
-  - {name: category, data_type: varchar, description: The products' category, visible_to: [org_admin, analyst]}
-  - {name: orders, data_type: bigint, description: Orders with a line of the category, visible_to: [org_admin, analyst]}
-  - {name: revenue, data_type: decimal, description: What those lines came to in USD, visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, description: The customers' sales region, visible_to: [data_steward, shop_analyst]}
+  - {name: category, data_type: varchar, description: The products' category, visible_to: [data_steward, shop_analyst]}
+  - {name: orders, data_type: bigint, description: Orders with a line of the category, visible_to: [data_steward, shop_analyst]}
+  - {name: revenue, data_type: decimal, description: What those lines came to in USD, visible_to: [data_steward, shop_analyst]}
   sql: >-
     SELECT c.region, p.category, COUNT(DISTINCT o.id) AS orders,
     SUM(i.quantity * i.unit_price) AS revenue

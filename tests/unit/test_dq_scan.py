@@ -70,8 +70,8 @@ def plane(control_plane, monkeypatch):
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(
         appmod.state,
-        "contexts",
-        dq_contexts((1, "warehouse", "sales", "sales", "orders")),
+        "view_context",
+        dq_contexts((1, "warehouse", "sales", "sales", "orders"))["analyst"],
         raising=False,
     )
 

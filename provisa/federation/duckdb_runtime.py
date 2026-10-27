@@ -261,6 +261,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # #266: each attached view's columns named apart from their source fields, by its physical
         # name, as the attach walk gave them (native_backend._mongo_column_fields).
         self._column_fields: dict[str, list[tuple[str, str]]] = {}
+        # (catalog, schema, table) of an attached remote table's view -> its raw attach alias and
+        # its address there, for a read that goes to the remote itself (exact_numeric, REQ-2167).
+        self._remote_tables: dict[tuple[str, str, str], tuple[str, str, str]] = {}
         self._dbx_lock = threading.Lock()
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
         # REQ-1529: the ATTACH each raw alias was made with, so an environment reaching the same
@@ -364,6 +367,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._column_fields[phys] = fields
             renamed = "".join(f", {_quoted(field)} AS {_quoted(name)}" for field, name in fields)
             self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS SELECT *{renamed} FROM {remote}")
+            view = (self._catalog_of(source), source.schema_name, source.table_name)
+            self._remote_tables[view] = (raw_alias, remote_schema, source.table_name)
 
     def detach_source(self, source: Any) -> None:
         """Remove the live exposure of ``source``'s table from this engine: the view at its
@@ -507,6 +512,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def refresh_live_relations(self, sql: str) -> None:
         """REQ-1867: the same re-pointing for a statement this runtime does not run itself."""
         self._refresh_databricks_relations(sql)
+
+    def remote_table(self, view: tuple[str, str, str]) -> tuple[str, str, str] | None:
+        """The raw attach alias and remote address of the attached table ``view`` stands for, or
+        None when ``view`` is no attached remote table."""
+        return self._remote_tables.get(view)
 
     def _prepare_sql(self, duck_sql: str) -> str:
         """The per-statement preparation every execution path runs: in-place Databricks views
@@ -1136,6 +1146,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         )
         self._see_store_writes()
         return written
+
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` is landed, from the catalog of the store ``land_table`` writes:
+        an embedded DuckDB store's (through its broker, ``duckdb_tables()``), else the server
+        store's own (``store_writer``). Absent is False; a catalog that cannot be read raises."""
+        self.ensure_materialize_attached()
+        if self._store_is_duckdb():
+            return await self._land_guard.run(
+                lambda: table in self._store_broker.tables(schema),
+            )
+        return await store_writer.table_exists(self._store_dsn(), schema=schema, table=table)
 
     async def apply_change_group(self, group: list[Any]) -> None:
         """Apply a group of changes (``federation.change_group``) in one transaction: of the

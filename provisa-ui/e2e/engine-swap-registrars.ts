@@ -16,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { expect } from "./coverage";
+import { WAREHOUSE_SCHEMA } from "./cloud-warehouse";
 import type { Page } from "./coverage";
 import {
   E2E_MONGO_PORT,
@@ -575,7 +576,7 @@ export async function registerSnowflake(page: Page): Promise<Registration> {
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("snowflake");
   await page.getByLabel(/Account URL/).fill(process.env.SNOWFLAKE_ACCOUNT!);
-  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("PROVISA_UI_E2E");
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(WAREHOUSE_SCHEMA.toUpperCase());
   await page.getByLabel(/^Warehouse$/).fill(process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH");
   await page.getByRole("textbox", { name: "Authentication" }).click();
   await page.getByRole("option", { name: "Username / Password", exact: true }).click();
@@ -632,7 +633,7 @@ export async function registerFabric(page: Page): Promise<Registration> {
   await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
-  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
   await expectDiscoveredColumns(page, ["id"], 120000);
   await expectDiscoveredColumns(page, ["name"]);
   const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
@@ -676,7 +677,7 @@ export async function registerDatabricks(page: Page): Promise<Registration> {
   await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
-  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
   await expectDiscoveredColumns(page, ["id"], 120000);
   await expectDiscoveredColumns(page, ["name"]);
   const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
@@ -713,7 +714,7 @@ export async function registerBigquery(page: Page): Promise<Registration> {
   await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
-  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
   await expectDiscoveredColumns(page, ["id"], 120000);
   await expectDiscoveredColumns(page, ["name"]);
   const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);

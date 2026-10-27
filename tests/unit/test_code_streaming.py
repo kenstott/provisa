@@ -148,7 +148,7 @@ def worker(tmp_path):
             break
     assert pairing is not None and port, "the host did not start"
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS).pin
     started = remote.RemoteWorker(
         "shop-src", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity
     )

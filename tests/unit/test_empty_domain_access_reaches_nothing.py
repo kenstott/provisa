@@ -16,8 +16,9 @@ of a role's domain list, each showing the three cases side by side: ``[]`` reach
 (``naming.use_domains: false``) is the one exemption and is decided in one function, so each
 reader is also shown honouring it.
 
-A column's ``visible_to=[]`` is a different list with the opposite reading (visible to every
-role) and is unchanged; the tables here use it so that domain scope is the only thing deciding.
+A column's ``visible_to`` is a different list: the roles it names read the column, and an empty
+one is no role (REQ-2154). The tables here grant every test role, so that domain scope is the only
+thing deciding.
 
 A missing role is an error, never a default: every entry point that takes the acting role raises
 when it is not there.
@@ -69,9 +70,12 @@ def _role(domain_access: list[str], *capabilities: str) -> dict:
     }
 
 
+# Every role these tests act as: the tables grant them all, so domain scope alone decides.
+TEST_ROLES = ["r", "s", "a", "b", "newrole", "sales_reader", "finance_reader", "cataloguer"]
+
+
 def _tables() -> list[dict]:
-    """One table per domain. ``visible_to=[]`` (every role) on the data columns; ``ops`` is a
-    lockdown domain, so its column names the role explicitly."""
+    """One table per domain, its data column granted to every test role."""
     return [
         {
             "id": tid,
@@ -82,7 +86,7 @@ def _tables() -> list[dict]:
             "columns": [
                 {
                     "column_name": "id",
-                    "visible_to": ["r"] if tid == OPS else [],
+                    "visible_to": list(TEST_ROLES),
                     "native_filter_type": None,
                 }
             ],
@@ -172,8 +176,8 @@ def test_single_domain_mode_shows_every_table_whatever_the_list(single_domain):
     assert domains == set(DOMAIN_OF.values())
 
 
-def test_a_columns_empty_visible_to_still_means_every_role(multi_domain):
-    # The other list: visible_to=[] on a column is visible to every role that reaches the table.
+def test_a_columns_grant_decides_who_within_reach(multi_domain):
+    # The other list: a column's grant names who reads it within the table's domain.
     (info,) = [
         t for t in _build_visible_tables(_schema_input(_role(["sales"]))) if t.domain_id == "sales"
     ]

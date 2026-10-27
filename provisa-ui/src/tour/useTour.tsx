@@ -746,8 +746,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
               ? await answerValue(step.openQuery.from, actingRolesRef.current)
               : step.openQuery.text;
             if (cancelled) return;
+            // A bound value goes to the explorer as the next statement's values ($1).
+            const handed = step.openQuery.stateKey === "params" ? [text] : text;
             navigate(route, {
-              state: { [step.openQuery.stateKey]: text, autoRun: true },
+              state: { [step.openQuery.stateKey]: handed, autoRun: true },
             });
           }
           await nextPaint();

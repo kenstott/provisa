@@ -38,7 +38,8 @@ naming:
   domain_prefix: true
   rules: []
 roles:
-- id: analyst
+- id: insurance_analyst
+  parents: [analyst]
   description: "Queries the insurer's book and the public risk tables."
   capabilities:
   - query_development
@@ -75,23 +76,23 @@ tables:
   table: counties
   description: The counties the insurer writes policies in
   columns:
-  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, analyst]}
-  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, analyst]}
-  - {name: state_abbr, data_type: varchar, description: The county's state, visible_to: [org_admin, analyst]}
-  - {name: weight, data_type: integer, description: How much of the book the county carries relative to the others, visible_to: [org_admin]}
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [data_steward, insurance_analyst]}
+  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [data_steward, insurance_analyst]}
+  - {name: state_abbr, data_type: varchar, description: The county's state, visible_to: [data_steward, insurance_analyst]}
+  - {name: weight, data_type: integer, description: How much of the book the county carries relative to the others, visible_to: [data_steward]}
 - source_id: book
   domain_id: insurance
   schema: public
   table: policies
   description: The insurer's policies in force, one row a policy
   columns:
-  - {name: policy_id, data_type: integer, is_primary_key: true, description: The policy's number, visible_to: [org_admin, analyst]}
-  - {name: county_fips, data_type: varchar, description: The county the insured property is in, visible_to: [org_admin, analyst]}
-  - {name: line, data_type: varchar, description: 'The line of business: homeowners, commercial_property or farmowners', visible_to: [org_admin, analyst]}
-  - {name: insured_value, data_type: decimal, description: The total insured value (TIV) in USD, visible_to: [org_admin, analyst]}
-  - {name: premium, data_type: decimal, description: The annual premium in USD, visible_to: [org_admin]}
-  - {name: deductible, data_type: decimal, description: The per-occurrence deductible in USD, visible_to: [org_admin, analyst]}
-  - {name: inception, data_type: date, description: When the policy took effect, visible_to: [org_admin, analyst]}
+  - {name: policy_id, data_type: integer, is_primary_key: true, description: The policy's number, visible_to: [data_steward, insurance_analyst]}
+  - {name: county_fips, data_type: varchar, description: The county the insured property is in, visible_to: [data_steward, insurance_analyst]}
+  - {name: line, data_type: varchar, description: 'The line of business: homeowners, commercial_property or farmowners', visible_to: [data_steward, insurance_analyst]}
+  - {name: insured_value, data_type: decimal, description: The total insured value (TIV) in USD, visible_to: [data_steward, insurance_analyst]}
+  - {name: premium, data_type: decimal, description: The annual premium in USD, visible_to: [data_steward]}
+  - {name: deductible, data_type: decimal, description: The per-occurrence deductible in USD, visible_to: [data_steward, insurance_analyst]}
+  - {name: inception, data_type: date, description: When the policy took effect, visible_to: [data_steward, insurance_analyst]}
 - source_id: govdata
   domain_id: insurance
   schema: disasters
@@ -103,18 +104,18 @@ tables:
   description: FEMA's National Risk Index for each US county -- its all-hazard risk score and
     expected annual loss, the value of its buildings, and its earthquake risk
   columns:
-  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, analyst]}
-  - {name: state_abbr, data_type: varchar, description: The county's state, visible_to: [org_admin, analyst]}
-  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, analyst]}
-  - {name: population, data_type: integer, description: The county's population, visible_to: [org_admin, analyst]}
-  - {name: building_value_usd, data_type: double, description: The value of all the county's buildings in USD, visible_to: [org_admin, analyst]}
-  - {name: risk_score, data_type: double, description: FEMA's all-hazard risk index score, visible_to: [org_admin, analyst]}
-  - {name: risk_rating, data_type: varchar, description: 'FEMA''s all-hazard risk rating, from Very Low to Very High', visible_to: [org_admin, analyst]}
-  - {name: risk_national_pctl, data_type: double, description: The county's national percentile of all-hazard risk, visible_to: [org_admin, analyst]}
-  - {name: eal_score, data_type: double, description: FEMA's expected annual loss score across every hazard, visible_to: [org_admin, analyst]}
-  - {name: eal_rating, data_type: varchar, description: FEMA's expected annual loss rating across every hazard, visible_to: [org_admin, analyst]}
-  - {name: earthquake_risk_score, data_type: double, description: FEMA's earthquake risk index score, visible_to: [org_admin, analyst]}
-  - {name: earthquake_risk_rating, data_type: varchar, description: FEMA's earthquake risk rating, visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [data_steward, insurance_analyst]}
+  - {name: state_abbr, data_type: varchar, description: The county's state, visible_to: [data_steward, insurance_analyst]}
+  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [data_steward, insurance_analyst]}
+  - {name: population, data_type: integer, description: The county's population, visible_to: [data_steward, insurance_analyst]}
+  - {name: building_value_usd, data_type: double, description: The value of all the county's buildings in USD, visible_to: [data_steward, insurance_analyst]}
+  - {name: risk_score, data_type: double, description: FEMA's all-hazard risk index score, visible_to: [data_steward, insurance_analyst]}
+  - {name: risk_rating, data_type: varchar, description: 'FEMA''s all-hazard risk rating, from Very Low to Very High', visible_to: [data_steward, insurance_analyst]}
+  - {name: risk_national_pctl, data_type: double, description: The county's national percentile of all-hazard risk, visible_to: [data_steward, insurance_analyst]}
+  - {name: eal_score, data_type: double, description: FEMA's expected annual loss score across every hazard, visible_to: [data_steward, insurance_analyst]}
+  - {name: eal_rating, data_type: varchar, description: FEMA's expected annual loss rating across every hazard, visible_to: [data_steward, insurance_analyst]}
+  - {name: earthquake_risk_score, data_type: double, description: FEMA's earthquake risk index score, visible_to: [data_steward, insurance_analyst]}
+  - {name: earthquake_risk_rating, data_type: varchar, description: FEMA's earthquake risk rating, visible_to: [data_steward, insurance_analyst]}
 - source_id: govdata
   domain_id: insurance
   schema: disasters
@@ -122,11 +123,11 @@ tables:
   alias: wildfire_risk
   description: The US Forest Service's wildfire risk to each county's buildings
   columns:
-  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, analyst]}
-  - {name: total_buildings, data_type: bigint, description: The county's buildings, visible_to: [org_admin, analyst]}
-  - {name: buildings_fraction_direct_exposure, data_type: double, description: The share of its buildings a wildfire could reach directly, visible_to: [org_admin, analyst]}
-  - {name: buildings_fraction_indirect_exposure, data_type: double, description: The share of its buildings exposed to embers and spread, visible_to: [org_admin, analyst]}
-  - {name: risk_national_rank, data_type: double, description: The county's national rank of wildfire risk to homes as a percentile, visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [data_steward, insurance_analyst]}
+  - {name: total_buildings, data_type: bigint, description: The county's buildings, visible_to: [data_steward, insurance_analyst]}
+  - {name: buildings_fraction_direct_exposure, data_type: double, description: The share of its buildings a wildfire could reach directly, visible_to: [data_steward, insurance_analyst]}
+  - {name: buildings_fraction_indirect_exposure, data_type: double, description: The share of its buildings exposed to embers and spread, visible_to: [data_steward, insurance_analyst]}
+  - {name: risk_national_rank, data_type: double, description: The county's national rank of wildfire risk to homes as a percentile, visible_to: [data_steward, insurance_analyst]}
 - source_id: govdata
   domain_id: insurance
   schema: disasters
@@ -136,11 +137,11 @@ tables:
   enable_group_by: true
   description: NOAA's storm events by county and year -- how many and the property damage they did
   columns:
-  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [org_admin, analyst]}
-  - {name: year, data_type: integer, is_primary_key: true, description: The year the storms happened, visible_to: [org_admin, analyst]}
-  - {name: event_count, data_type: bigint, description: Storm events recorded in the county that year, visible_to: [org_admin, analyst]}
-  - {name: total_property_damage, data_type: double, description: The property damage they did in USD, visible_to: [org_admin, analyst]}
-  - {name: total_deaths, data_type: bigint, description: Deaths they caused, visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, is_primary_key: true, description: The county's 5-digit FIPS code, visible_to: [data_steward, insurance_analyst]}
+  - {name: year, data_type: integer, is_primary_key: true, description: The year the storms happened, visible_to: [data_steward, insurance_analyst]}
+  - {name: event_count, data_type: bigint, description: Storm events recorded in the county that year, visible_to: [data_steward, insurance_analyst]}
+  - {name: total_property_damage, data_type: double, description: The property damage they did in USD, visible_to: [data_steward, insurance_analyst]}
+  - {name: total_deaths, data_type: bigint, description: Deaths they caused, visible_to: [data_steward, insurance_analyst]}
 views:
 # The answer: each county the insurer writes in, its exposure (policies and TIV) beside its hazard
 # risk. Stored, and built again when its inputs change.
@@ -174,18 +175,18 @@ views:
     ) AS s ON s.county_fips = c.county_fips
     GROUP BY c.county_fips, c.county_name, c.state_abbr
   columns:
-  - {name: county_fips, data_type: varchar, description: The county's 5-digit FIPS code, visible_to: [org_admin, analyst]}
-  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, analyst]}
-  - {name: state_abbr, data_type: varchar, description: The county's state, visible_to: [org_admin, analyst]}
-  - {name: policies, data_type: bigint, description: The insurer's policies in the county, visible_to: [org_admin, analyst]}
-  - {name: tiv, data_type: decimal, description: Their total insured value (TIV) in USD, visible_to: [org_admin, analyst]}
-  - {name: share_of_building_value, data_type: double, description: TIV as a share of the value of all the county's buildings, visible_to: [org_admin, analyst]}
-  - {name: risk_score, data_type: double, description: FEMA's all-hazard risk index score, visible_to: [org_admin, analyst]}
-  - {name: risk_rating, data_type: varchar, description: FEMA's all-hazard risk rating, visible_to: [org_admin, analyst]}
-  - {name: risk_national_pctl, data_type: double, description: The county's national percentile of all-hazard risk, visible_to: [org_admin, analyst]}
-  - {name: eal_rating, data_type: varchar, description: FEMA's expected annual loss rating, visible_to: [org_admin, analyst]}
-  - {name: wildfire_direct_exposure, data_type: double, description: The share of its buildings a wildfire could reach directly, visible_to: [org_admin, analyst]}
-  - {name: storm_damage_5y, data_type: double, description: Storm property damage in the county since 2020 in USD, visible_to: [org_admin, analyst]}
+  - {name: county_fips, data_type: varchar, description: The county's 5-digit FIPS code, visible_to: [data_steward, insurance_analyst]}
+  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [data_steward, insurance_analyst]}
+  - {name: state_abbr, data_type: varchar, description: The county's state, visible_to: [data_steward, insurance_analyst]}
+  - {name: policies, data_type: bigint, description: The insurer's policies in the county, visible_to: [data_steward, insurance_analyst]}
+  - {name: tiv, data_type: decimal, description: Their total insured value (TIV) in USD, visible_to: [data_steward, insurance_analyst]}
+  - {name: share_of_building_value, data_type: double, description: TIV as a share of the value of all the county's buildings, visible_to: [data_steward, insurance_analyst]}
+  - {name: risk_score, data_type: double, description: FEMA's all-hazard risk index score, visible_to: [data_steward, insurance_analyst]}
+  - {name: risk_rating, data_type: varchar, description: FEMA's all-hazard risk rating, visible_to: [data_steward, insurance_analyst]}
+  - {name: risk_national_pctl, data_type: double, description: The county's national percentile of all-hazard risk, visible_to: [data_steward, insurance_analyst]}
+  - {name: eal_rating, data_type: varchar, description: FEMA's expected annual loss rating, visible_to: [data_steward, insurance_analyst]}
+  - {name: wildfire_direct_exposure, data_type: double, description: The share of its buildings a wildfire could reach directly, visible_to: [data_steward, insurance_analyst]}
+  - {name: storm_damage_5y, data_type: double, description: Storm property damage in the county since 2020 in USD, visible_to: [data_steward, insurance_analyst]}
 relationships:
 - {id: policy-to-county, alias: WRITTEN_IN, cardinality: many-to-one, source_table_id: policies, source_column: county_fips, target_table_id: counties, target_column: county_fips}
 - {id: county-to-hazard-risk, alias: RISK_OF, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: hazard_risk, target_column: county_fips}

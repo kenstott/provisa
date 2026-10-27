@@ -21,8 +21,6 @@ collection of rights within domains: the same rights under another name behave i
 
 from __future__ import annotations
 
-import os
-import re
 import types
 from typing import Any
 
@@ -33,7 +31,7 @@ import provisa.api.app as appmod
 from provisa.api.admin import actions_router, roles_router, schema_mutation
 from provisa.api.errors import ApiError
 from provisa.core.database import Database
-from provisa.core.db import _SEED_ROLES
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from provisa.core.schema_org import (
     data_products,
     domains,
@@ -43,6 +41,7 @@ from provisa.core.schema_org import (
     tags,
     tracked_functions,
 )
+from tests.unit.gate_identity import serve_every_column
 
 STEWARD_RIGHTS = [
     "access_config",
@@ -57,7 +56,14 @@ STEWARD_RIGHTS = [
     "query_development",
     "full_results",
     "view_governance",
+    "create_relationship",  # REQ-2155: meaning plus access -- relationships are meaning
 ]
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 def _roles(steward_id: str) -> dict[str, dict]:
@@ -195,8 +201,12 @@ def _request(*role_ids: str) -> Any:
     identity = types.SimpleNamespace(
         user_id="u1", roles=list(role_ids), acting_roles=list(role_ids)
     )
+    # The role the request acts as, as the auth middleware binds it: a set acts as its meta-role.
+    from provisa.security.meta_role import meta_role_id
+
+    acting = role_ids[0] if len(role_ids) == 1 else meta_role_id(list(role_ids))
     return types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=identity, active_org_id="acme")
+        state=types.SimpleNamespace(identity=identity, active_org_id="acme", role=acting)
     )
 
 
@@ -210,24 +220,13 @@ M = schema_mutation.Mutation
 # --- the seed ------------------------------------------------------------------------------------
 
 
-def _schema_sql_caps(role_id: str) -> set[str]:
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "provisa", "core", "schema.sql")
-    sql = open(path, encoding="utf-8").read()
-    match = re.search(rf"'{role_id}',\s*'(\[.*?\])'::jsonb,\s*'(\[.*?\])'::jsonb", sql, re.S)
-    assert match is not None, role_id
-    import json
-
-    return set(json.loads(match.group(1))) | {"__domains__:" + match.group(2)}
-
-
-def test_data_steward_is_seeded_with_the_governance_rights_in_both_seeds():
-    caps = set(dict(_SEED_ROLES)["data_steward"])
-    assert caps == set(STEWARD_RIGHTS)
-    assert _schema_sql_caps("data_steward") == caps | {'__domains__:["*"]'}
+def test_data_steward_holds_the_governance_rights():
+    """REQ-1944, REQ-2155: its own and its ancestors' (security_admin, analyst)."""
+    assert set(STANDARD_ROLE_RIGHTS["data_steward"]) == set(STEWARD_RIGHTS)
 
 
 def test_data_steward_holds_nothing_operational():
-    caps = set(dict(_SEED_ROLES)["data_steward"])
+    caps = set(STANDARD_ROLE_RIGHTS["data_steward"])
     for right in (
         "write",
         "source_registration",
@@ -437,7 +436,7 @@ def _column(table_input: Any, name: str) -> Any:
 def _mask_to_zero() -> list:
     from provisa.api.admin.types import MaskEntryInput, MaskSpecInput
 
-    return [MaskEntryInput(to=["*"], mask=MaskSpecInput(type="constant", value=0))]
+    return [MaskEntryInput(mask=MaskSpecInput(type="constant", value=0))]
 
 
 async def _stored(db: Database, table_id: int, column: str) -> dict:

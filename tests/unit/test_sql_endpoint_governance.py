@@ -132,8 +132,8 @@ async def sql_client(monkeypatch):
             "schema_name": "public",
             "table_name": "orders",
             "columns": [
-                {"column_name": "id", "data_type": "integer"},
-                {"column_name": "status", "data_type": "varchar"},
+                {"column_name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
+                {"column_name": "status", "data_type": "varchar", "visible_to": ["org_admin"]},
             ],
         }
     ]
@@ -238,8 +238,8 @@ class TestSQLGovernanceApplied:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [
-                    {"column_name": "id", "data_type": "integer"},
-                    {"column_name": "status", "data_type": "varchar"},
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
+                    {"column_name": "status", "data_type": "varchar", "visible_to": ["org_admin"]},
                 ],
             }
         ]
@@ -497,9 +497,9 @@ class TestMaskedColumnInPredicate:
                 "schema_name": "hr",
                 "table_name": "employees",
                 "columns": [
-                    {"column_name": "id", "data_type": "integer"},
-                    {"column_name": "name", "data_type": "varchar"},
-                    {"column_name": "ssn", "data_type": "varchar"},
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
+                    {"column_name": "name", "data_type": "varchar", "visible_to": ["org_admin"]},
+                    {"column_name": "ssn", "data_type": "varchar", "visible_to": ["org_admin"]},
                 ],
             }
         ]
@@ -599,6 +599,10 @@ def two_roles(sql_client, monkeypatch):
         "domain_access": ["*"],
     }
     state.roles["org_admin"]["domain_access"] = ["*"]
+    # REQ-2154: the analyst reads the table's columns only by a grant naming it.
+    for table in state.tables:
+        for column in table["columns"]:
+            column["visible_to"] = [*column["visible_to"], "analyst"]
     plans: list = []
 
     async def _route(exec_sql, governed_sql, gov_ctx, ctx, st, **kwargs):

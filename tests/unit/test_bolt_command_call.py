@@ -26,7 +26,7 @@ from provisa.cypher.command_call import CommandCallRefused
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
-def _state(visible_to=()):
+def _state(visible_to=("admin",)):
     return SimpleNamespace(
         roles={"admin": {"id": "admin", "capabilities": ["write"], "domain_access": ["*"]}},
         tracked_functions={

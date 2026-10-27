@@ -112,7 +112,8 @@ def build_function_mutations(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, RE
     # --- DB Functions ---
     for func in functions:
         # Role visibility check
-        if role_id and func.visible_to and role_id not in func.visible_to:
+        # REQ-2153: the function's list names the role; an empty list names none.
+        if role_id and role_id not in func.visible_to:
             continue
 
         # Resolve return type from registered table
@@ -132,7 +133,7 @@ def build_function_mutations(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, RE
 
     # --- Webhooks ---
     for wh in webhooks:
-        if role_id and wh.visible_to and role_id not in wh.visible_to:
+        if role_id and role_id not in wh.visible_to:
             continue
 
         # Resolve return type: table-backed or inline

@@ -12,7 +12,7 @@ import { test, expect } from "./coverage";
 import type { Page, Route } from "@playwright/test";
 
 /**
- * REQ-1074: the metadata-export admin page, driven end to end in a browser.
+ * REQ-1074, REQ-2122: the metadata-export admin page, driven end to end in a browser.
  *
  * The export endpoints are stubbed so the run does not depend on the e2e org holding the
  * premium entitlement (REQ-1073) or on a catalog being reachable from the test host. What the
@@ -30,27 +30,65 @@ const PREMIUM_STATE = {
   required_tier: "premium",
   providers: ["openlineage", "openmetadata"],
   beta_providers: [],
+  // REQ-2152: the roles a target may be published as.
+  publishable_roles: ["admin"],
   config: {
     enabled: true,
     reconcile_cron: "0 * * * *",
-    // REQ-2118: an org's targets, each with its own settings.
-    targets: [
-      {
-        id: "marquez",
-        provider: "openlineage",
-        endpoint: "http://marquez:5000",
-        auth_mode: "api_key",
-        username: "",
-        entra_tenant_id: "",
-        entra_client_id: "",
-        timeout_seconds: 30,
-        api_key_set: true,
-        token_set: false,
-        entra_client_secret_set: false,
-      },
-    ],
+    // REQ-2118, REQ-2122: an org's targets, each naming a catalog with its export settings, and
+    // the role it is published as (REQ-2152).
+    targets: [{ catalog: "marquez", datazone_project_id: "", delta_share: false, role: "admin" }],
   },
   last_publish: null,
+};
+
+/** The org's catalogs, as the Catalogs panel reports them (REQ-2122). */
+const CATALOGS = {
+  providers: ["datazone", "openlineage"],
+  catalogs: [
+    {
+      id: "marquez",
+      provider: "openlineage",
+      endpoint: "http://marquez:5000",
+      auth_mode: "api_key",
+      username: "",
+      entra_tenant_id: "",
+      entra_client_id: "",
+      gcp_project: "",
+      gcp_location: "",
+      aws_region: "",
+      datazone_domain_id: "",
+      timeout_seconds: 30,
+      domains: ["sales"],
+      api_key_set: true,
+      token_set: false,
+      entra_client_secret_set: false,
+      google_service_account_json_set: false,
+      aws_access_key_id_set: false,
+      aws_secret_access_key_set: false,
+    },
+    {
+      id: "datazone",
+      provider: "datazone",
+      endpoint: "",
+      auth_mode: "api_key",
+      username: "",
+      entra_tenant_id: "",
+      entra_client_id: "",
+      gcp_project: "",
+      gcp_location: "",
+      aws_region: "us-east-1",
+      datazone_domain_id: "dzd_1",
+      timeout_seconds: 30,
+      domains: ["sales"],
+      api_key_set: false,
+      token_set: false,
+      entra_client_secret_set: false,
+      google_service_account_json_set: false,
+      aws_access_key_id_set: true,
+      aws_secret_access_key_set: true,
+    },
+  ],
 };
 
 /** Capture of the PUT body, so the assertion is on what left the browser. */
@@ -78,6 +116,7 @@ async function stubExport(
     }
     return route.fulfill({ json: state });
   });
+  await page.route("**/admin/catalogs", (route: Route) => route.fulfill({ json: CATALOGS }));
   await page.route("**/admin/metadata-export/health", (route: Route) =>
     route.fulfill({
       json: extra.health ?? {
@@ -117,46 +156,42 @@ async function openTab(page: Page) {
   await page.goto("/admin/metadata-export");
   await expect(
     page
-      .getByTestId("metadata-export-endpoint-0")
+      .getByTestId("metadata-export-catalog-0")
       .or(page.getByTestId("metadata-export-not-entitled")),
   ).toBeVisible({ timeout: 60000 });
 }
 
-test("the nav reaches the tab and the tab shows the configured target", async ({ page }) => {
+test("the nav reaches the tab and the tab shows each target by its catalog", async ({ page }) => {
   await stubExport(page, PREMIUM_STATE, { body: null });
   await openTab(page);
 
-  await expect(page.getByTestId("metadata-export-endpoint-0")).toHaveValue("http://marquez:5000");
+  await expect(page.getByTestId("metadata-export-catalog-0")).toHaveValue("marquez · openlineage");
   await expect(page.getByTestId("metadata-export-reconcile-cron")).toHaveValue("0 * * * *");
 });
 
-test("editing the endpoint does not send back the stored credential", async ({ page }) => {
-  // The stored key is reported only as set, so the password field is empty. Sending that empty
-  // field would clear the credential, and the loss would only surface at the next publish.
+test("a target is added by picking a catalog, with the settings its provider needs", async ({
+  page,
+}) => {
+  // REQ-2122: the endpoint and credentials are the catalog's; a DataZone export names the project
+  // that owns its products, and nothing else is asked for.
   const sent: Sent = { body: null };
   await stubExport(page, PREMIUM_STATE, sent);
   await openTab(page);
 
-  await expect(page.getByTestId("metadata-export-api-key-0")).toHaveValue("");
-  await page.getByTestId("metadata-export-endpoint-0").fill("http://marquez:5001");
+  await page.getByTestId("metadata-export-add-target").click();
+  await page.getByTestId("metadata-export-catalog-1").click();
+  await page.getByRole("option", { name: "datazone · datazone" }).click();
+  await page.getByTestId("metadata-export-datazone-project-id-1").fill("prj_1");
+  // REQ-2152: a target is published as a role whose reads the saver holds.
+  await page.getByTestId("metadata-export-role-1").click();
+  await page.getByRole("option", { name: "admin" }).click();
   await page.getByTestId("metadata-export-save").click();
 
   await expect(page.getByTestId("metadata-export-saved")).toBeVisible();
-  const [target] = sent.body?.targets ?? [];
-  expect(target?.endpoint).toBe("http://marquez:5001");
-  expect(target && "api_key" in target).toBe(false);
-});
-
-test("a credential the administrator types is sent", async ({ page }) => {
-  const sent: Sent = { body: null };
-  await stubExport(page, PREMIUM_STATE, sent);
-  await openTab(page);
-
-  await page.getByTestId("metadata-export-api-key-0").fill("typed-key");
-  await page.getByTestId("metadata-export-save").click();
-
-  await expect(page.getByTestId("metadata-export-saved")).toBeVisible();
-  expect(sent.body?.targets?.[0]?.api_key).toBe("typed-key");
+  expect(sent.body?.targets).toEqual([
+    { catalog: "marquez", datazone_project_id: "", delta_share: false, role: "admin" },
+    { catalog: "datazone", datazone_project_id: "prj_1", delta_share: false, role: "admin" },
+  ]);
 });
 
 test("an org below the tier is told which plan opens the feature", async ({ page }) => {
@@ -166,7 +201,7 @@ test("an org below the tier is told which plan opens the feature", async ({ page
   await openTab(page);
 
   await expect(page.getByTestId("metadata-export-not-entitled")).toContainText("premium");
-  await expect(page.getByTestId("metadata-export-endpoint-0")).toHaveCount(0);
+  await expect(page.getByTestId("metadata-export-catalog-0")).toHaveCount(0);
 });
 
 test("a refused connection reports the reason the target gave", async ({ page }) => {

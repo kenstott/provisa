@@ -265,7 +265,15 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
             f"(mcp.role / PROVISA_MCP_ROLE: {', '.join(sorted(pinned))})",
         )
         raise refused
-    return resolve_requested_role(state, held, named)
+    from provisa.auth.derived_roles import unsecured_principal
+    from provisa.core.request_context import set_session_vars
+
+    # REQ-1952: unsecured, a declared derived role named beside a data role is that set's
+    # qualifier and binds its attribute, as the HTTP middleware, Flight and gRPC resolve it.
+    # Bound in this tool call's own context (its request thread, a copy of the call's).
+    role, session_vars = unsecured_principal(state, named)
+    set_session_vars(session_vars)
+    return role
 
 
 def switchable_roles(state: Any) -> set[str]:  # REQ-2082
@@ -326,10 +334,11 @@ async def _within_request(make_coro: Any, label: str) -> Any:
 
 def _redacted_error(exc: BaseException) -> RuntimeError | None:
     """The error to send in place of ``exc`` when redaction changes its text (REQ-2087); None
-    when nothing in it matched, and ``exc`` goes out as it is."""
-    from provisa.security.redaction import redact
+    when nothing in it matched, and ``exc`` goes out as it is. Told in the model's names too
+    (REQ-2152)."""
+    from provisa.api.engine_error_names import client_text
 
-    said = redact(str(exc))
+    said = client_text(str(exc))
     return None if said == str(exc) else RuntimeError(said)
 
 
@@ -474,7 +483,11 @@ def build_mcp_server(state: Any):
             identity = SimpleNamespace(
                 user_id=identity.user_id, roles=list(identity.roles), acting_roles=[resolved_role]
             )
-        return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org_id))
+        # The acting role too, as the HTTP middleware sets it: the catalog a tool reads and edits
+        # is that role's (REQ-2152, catalog_scope).
+        return SimpleNamespace(
+            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role)
+        )
 
     @_tool
     async def describe_role(role: str | None = None) -> dict:  # REQ-2082
@@ -502,15 +515,15 @@ def build_mcp_server(state: Any):
         return tools.list_commands(state, _role(role))
 
     @_tool
-    async def resolve(
+    async def _resolve(
         uri: str, as_of: str | None = None, as_recorded: str | None = None, role: str | None = None
     ) -> dict:
         """Dereference a semantic address (provisa://<org>/<domain>/tables/<table>/pk=<value>[/<column>]) to the governed value it names, optionally as of a point in time and as recorded at one. Physical addresses are refused."""
-        # REQ-1365: the one resolve function.
-        from provisa.api.data.resolve import resolve as _resolve
+        # REQ-1365: the one resolve function; the tool is named like the GraphQL field.
+        from provisa.api.data.resolve import resolve as resolve_address
         from provisa.core.request_context import require_current_org
 
-        return await _resolve(
+        return await resolve_address(
             state,
             _role(role),
             uri,

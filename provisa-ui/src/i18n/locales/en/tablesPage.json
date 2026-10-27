@@ -46,6 +46,8 @@
     "nextPage": "Next page",
     "firstPage": "First page",
     "lastPage": "Last page",
+    "listedElsewhere": "Listed in other domains",
+    "listedElsewhereHint": "Names other domains list. Ask that domain for access to read them.",
     "pageOf": "Page {{page}} / {{totalPages}}",
     "loadFailed": "Could not load registered tables: {{message}}",
     "editViewDefinitionTitle": "Edit view definition",

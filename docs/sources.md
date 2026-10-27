@@ -1001,7 +1001,7 @@ environment supplied it.
 
 ### Data Profiler
 
-A data profiler is a source that holds a name, a schedule and run defaults, and nothing else. It is never introspected. Tables of other sources are added to it, and each run measures them and writes its rows into the org's control plane, where they are read like any other source's tables. See [Test data](test-data.md) for creating a profiler and adding tables to it.
+A data profiler is a source that holds a name, a schedule and run defaults, and nothing else. It is never introspected. Tables of other sources are added to it, and each run measures them and writes its rows into the org's model store, where they are read like any other source's tables. See [Test data](test-data.md) for creating a profiler and adding tables to it.
 
 ### Data Quality Checkers
 

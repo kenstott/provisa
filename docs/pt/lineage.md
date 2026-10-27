@@ -222,10 +222,10 @@ A visão lê os registros de atualização em `"ops"."traces"` e responde em tod
 
 ## Uma view como estava, e como foi registrada {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Uma view que mapeia as colunas da sua fonte como `business_key`, `valid_time` e `recorded_time` guarda cada versão que já teve: cada atualização anexa, e nenhuma versão é reescrita, em nenhum armazenamento. Uma leitura simples responde o estado atual. Dois cabeçalhos de requisição leem o seu passado:
+Uma leitura simples responde o estado atual. Dois argumentos da view, escritos onde a instrução a nomeia, leem o seu passado:
 
-- `X-Provisa-As-Of` lê a view num momento ou num intervalo.
-- `X-Provisa-As-Recorded` lê a view como o Provisa a tinha registrado num momento. Versões registradas depois ficam de fora, de modo que uma correção registrada mais tarde não muda a reprodução do passado.
+- `as_of` lê a view em um momento, ou sobre um intervalo: `"reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00')`.
+- `as_recorded` a lê como a Provisa a tinha registrado em um momento. As versões registradas depois desse momento ficam de fora, de modo que uma correção registrada mais tarde não muda uma reprodução do passado.
 
 Em 30 de setembro e registrada em 1º de outubro dá o valor original; registrada em 5 de outubro dá a correção. O registro de auditoria de cada instrução guarda os dois tempos (`as_of`, `as_recorded`), para que um relatório possa ser reproduzido como foi produzido da primeira vez. [Views com histórico](configuration.md#views-with-history-time-travel) descreve as três declarações, com exemplos, e cada superfície que aceita os dois valores.
 

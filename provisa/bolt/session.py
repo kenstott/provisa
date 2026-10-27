@@ -1604,7 +1604,7 @@ async def _maybe_invoke_metric_call(
     metric = (getattr(app_state, "metrics", {}) or {}).get(name)
     # Visibility is part of existence for the caller — an invisible metric reads as unknown,
     # matching the pgwire catalog's visible_to gate (never leak that the name exists).
-    if metric is None or not ("*" in metric.visible_to or role_id in metric.visible_to):
+    if metric is None or role_id not in metric.visible_to:
         raise ValueError(f"Unknown metric: {name!r}")
 
     from provisa.compiler.metric_expand import metric_semantic_sql

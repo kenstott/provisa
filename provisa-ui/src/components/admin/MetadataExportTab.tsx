@@ -17,7 +17,6 @@ import {
   Checkbox,
   Group,
   Loader,
-  NumberInput,
   Paper,
   Select,
   Stack,
@@ -27,6 +26,7 @@ import {
   Title,
 } from "@mantine/core";
 import { Check, Trash2, TriangleAlert } from "lucide-react";
+import { fetchCatalogs, type CatalogConnection } from "../../api/catalogs";
 import {
   checkMetadataExport,
   fetchMetadataExport,
@@ -41,72 +41,26 @@ import { exportProviderName } from "../../lib/exportProviders";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
 // REQ-1074, REQ-2118: configure and operate the org's metadata export targets -- every catalog it
-// publishes to, two of one provider among them.
-//
-// Credentials are entered here and never read back (REQ-1074): the server reports each as
-// set/not-set, so an empty field means "leave the stored one alone" rather than "no secret". A
-// field is only sent when the administrator typed in it, which is what makes editing a target's
-// endpoint safe for its token.
+// publishes to, two of one provider among them. REQ-2122: a target names a catalog of the Catalogs
+// panel, which holds its address and credentials, and keeps only the export's own settings for it.
 
-/** Which credential fields each auth mode uses, so the form asks for exactly those. */
-const ENTRA_MODE = "entra";
-const BASIC_MODE = "basic";
-const GOOGLE_MODE = "google_service_account";
-
-const AUTH_MODES = [
-  { value: "api_key", label: "API key" },
-  { value: "bearer", label: "Bearer token" },
-  { value: BASIC_MODE, label: "Username and password (Apache Atlas)" },
-  { value: ENTRA_MODE, label: "Microsoft Entra (Purview)" },
-  { value: GOOGLE_MODE, label: "Google service account (Dataplex)" },
-];
-
-type SecretField =
-  | "api_key"
-  | "token"
-  | "entra_client_secret"
-  | "google_service_account_json"
-  | "aws_access_key_id"
-  | "aws_secret_access_key";
-
-/** A DataZone target signs AWS requests with its own keys: it has no endpoint or auth mode. */
+/** A DataZone catalog's export names the project that owns its data products. */
 const DATAZONE = "datazone";
-/** A Unity Catalog target publishes through the Databricks engine itself: no endpoint either. */
+/** A Unity Catalog catalog's export may also publish each product as a Delta Share. */
 const UNITY_CATALOG = "unity_catalog";
 
-/** A target being edited, with the credentials typed for it since the last save. */
-interface Row {
-  target: MetadataExportTarget;
-  secrets: Partial<Record<SecretField, string>>;
-}
-
 const blankTarget = (): MetadataExportTarget => ({
-  id: "",
-  provider: "",
-  endpoint: "",
-  auth_mode: "api_key",
-  username: "",
-  entra_tenant_id: "",
-  entra_client_id: "",
-  gcp_project: "",
-  gcp_location: "",
-  aws_region: "",
-  datazone_domain_id: "",
+  catalog: "",
   datazone_project_id: "",
   delta_share: false,
-  timeout_seconds: 30,
-  api_key_set: false,
-  token_set: false,
-  entra_client_secret_set: false,
-  google_service_account_json_set: false,
-  aws_access_key_id_set: false,
-  aws_secret_access_key_set: false,
+  role: null,
 });
 
 export function MetadataExportTab() {
   const { t } = useTranslation();
   const [s, setS] = useState<MetadataExportState | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<MetadataExportTarget[]>([]);
+  const [catalogs, setCatalogs] = useState<CatalogConnection[]>([]);
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
@@ -115,13 +69,14 @@ export function MetadataExportTab() {
 
   const load = (state: MetadataExportState) => {
     setS(state);
-    setRows(state.config.targets.map((target) => ({ target, secrets: {} })));
+    setRows(state.config.targets);
   };
 
   useEffect(() => {
-    fetchMetadataExport()
-      .then((state) => {
+    Promise.all([fetchMetadataExport(), fetchCatalogs()])
+      .then(([state, kept]) => {
         load(state);
+        setCatalogs(kept.catalogs);
         setPublish(state.last_publish);
       })
       .catch((e) => setError(String(e)));
@@ -130,11 +85,7 @@ export function MetadataExportTab() {
   const patch = (p: Partial<MetadataExportState["config"]>) =>
     setS((prev) => (prev ? { ...prev, config: { ...prev.config, ...p } } : prev));
   const patchRow = (i: number, p: Partial<MetadataExportTarget>) =>
-    setRows((prev) => prev.map((r, j) => (j === i ? { ...r, target: { ...r.target, ...p } } : r)));
-  const typeSecret = (i: number, field: SecretField, value: string) =>
-    setRows((prev) =>
-      prev.map((r, j) => (j === i ? { ...r, secrets: { ...r.secrets, [field]: value } } : r)),
-    );
+    setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...p } : r)));
 
   const save = async () => {
     if (!s) return;
@@ -145,26 +96,8 @@ export function MetadataExportTab() {
       await setMetadataExport({
         enabled: s.config.enabled,
         reconcile_cron: s.config.reconcile_cron,
-        targets: rows.map(({ target, secrets }) => ({
-          id: target.id,
-          provider: target.provider,
-          endpoint: target.endpoint,
-          auth_mode: target.auth_mode,
-          username: target.username,
-          entra_tenant_id: target.entra_tenant_id,
-          entra_client_id: target.entra_client_id,
-          gcp_project: target.gcp_project,
-          gcp_location: target.gcp_location,
-          aws_region: target.aws_region,
-          datazone_domain_id: target.datazone_domain_id,
-          datazone_project_id: target.datazone_project_id,
-          delta_share: target.delta_share,
-          timeout_seconds: target.timeout_seconds,
-          ...secrets,
-        })),
+        targets: rows,
       });
-      // Re-read rather than assume: the set/not-set flags now reflect what was persisted, and a
-      // typed secret is dropped from local state so it is not re-sent on the next save.
       load(await fetchMetadataExport());
       setMsg(t("metadataExportTab.saved"));
     } catch (e) {
@@ -230,31 +163,16 @@ export function MetadataExportTab() {
   const c = s.config;
   const betaProviders = new Set(s.beta_providers);
 
-  const targetForm = ({ target, secrets }: Row, i: number) => {
+  const targetForm = (target: MetadataExportTarget, i: number) => {
     // A target's test ids carry its place in the list, so two of one provider stay apart.
     const tid = (name: string) => `metadata-export-${name}-${i}`;
-    const secretField = (field: SecretField, label: string, isSet: boolean) => (
-      <FormField help={t("metadataExportTab.secretHelp")} size="medium">
-        <TextInput
-          label={label}
-          type="password"
-          data-testid={tid(field.replace(/_/g, "-"))}
-          placeholder={
-            isSet ? t("metadataExportTab.secretSet") : t("metadataExportTab.secretUnset")
-          }
-          value={secrets[field] ?? ""}
-          onChange={(e) => typeSecret(i, field, e.currentTarget.value)}
-        />
-      </FormField>
-    );
+    const provider = catalogs.find((k) => k.id === target.catalog)?.provider ?? "";
     return (
       <Paper key={i} withBorder p="sm" data-testid={tid("target")}>
         <Group justify="space-between" mb="xs">
           <Title order={6}>
-            {target.id || t("metadataExportTab.newTarget")}
-            {target.provider
-              ? ` · ${exportProviderName(target.provider, target.provider, t, betaProviders)}`
-              : ""}
+            {target.catalog || t("metadataExportTab.newTarget")}
+            {provider ? ` · ${exportProviderName(provider, provider, t, betaProviders)}` : ""}
           </Title>
           <Button
             variant="subtle"
@@ -268,27 +186,42 @@ export function MetadataExportTab() {
           </Button>
         </Group>
         <FormLayout>
-          <FormField help={t("metadataExportTab.targetIdHelp")} size="medium">
-            <TextInput
-              label={t("metadataExportTab.targetId")}
-              data-testid={tid("id")}
-              value={target.id}
-              onChange={(e) => patchRow(i, { id: e.currentTarget.value })}
-            />
-          </FormField>
-          <FormField size="medium">
+          <FormField help={t("metadataExportTab.catalogHelp")} size="medium">
             <Select
-              label={t("metadataExportTab.provider")}
-              data-testid={tid("provider")}
-              data={s.providers.map((p) => ({
-                value: p,
-                label: exportProviderName(p, p, t, betaProviders),
+              label={t("metadataExportTab.catalog")}
+              data-testid={tid("catalog")}
+              data={catalogs.map((k) => ({
+                value: k.id,
+                label: `${k.id} · ${exportProviderName(k.provider, k.provider, t, betaProviders)}`,
               }))}
-              value={target.provider || null}
-              onChange={(v) => patchRow(i, { provider: v ?? "" })}
+              value={target.catalog || null}
+              onChange={(v) => patchRow(i, { catalog: v ?? "" })}
             />
           </FormField>
-          {target.provider === UNITY_CATALOG ? (
+          {/* REQ-2152: a catalog is sent exactly what the role it is published as reads. */}
+          <FormField help={t("metadataExportTab.roleHelp")} size="medium">
+            <Select
+              label={t("metadataExportTab.role")}
+              data-testid={tid("role")}
+              // REQ-2152: only roles whose reads the caller holds; a role saved by someone else
+              // stays shown so the field says what the target is published as.
+              data={[...new Set([...s.publishable_roles, ...(target.role ? [target.role] : [])])]}
+              value={target.role}
+              onChange={(v) => patchRow(i, { role: v })}
+              required
+            />
+          </FormField>
+          {provider === DATAZONE && (
+            <FormField help={t("metadataExportTab.datazoneProjectIdHelp")} size="medium">
+              <TextInput
+                label={t("metadataExportTab.datazoneProjectId")}
+                data-testid={tid("datazone-project-id")}
+                value={target.datazone_project_id}
+                onChange={(e) => patchRow(i, { datazone_project_id: e.currentTarget.value })}
+              />
+            </FormField>
+          )}
+          {provider === UNITY_CATALOG && (
             <FormChecks>
               <FormField help={t("metadataExportTab.deltaShareHelp")} size="long">
                 <Checkbox
@@ -299,145 +232,7 @@ export function MetadataExportTab() {
                 />
               </FormField>
             </FormChecks>
-          ) : target.provider === DATAZONE ? (
-            <>
-              <FormField help={t("metadataExportTab.awsRegionHelp")} size="short">
-                <TextInput
-                  label={t("metadataExportTab.awsRegion")}
-                  data-testid={tid("aws-region")}
-                  value={target.aws_region}
-                  onChange={(e) => patchRow(i, { aws_region: e.currentTarget.value })}
-                />
-              </FormField>
-              <FormField help={t("metadataExportTab.datazoneDomainIdHelp")} size="medium">
-                <TextInput
-                  label={t("metadataExportTab.datazoneDomainId")}
-                  data-testid={tid("datazone-domain-id")}
-                  value={target.datazone_domain_id}
-                  onChange={(e) => patchRow(i, { datazone_domain_id: e.currentTarget.value })}
-                />
-              </FormField>
-              <FormField help={t("metadataExportTab.datazoneProjectIdHelp")} size="medium">
-                <TextInput
-                  label={t("metadataExportTab.datazoneProjectId")}
-                  data-testid={tid("datazone-project-id")}
-                  value={target.datazone_project_id}
-                  onChange={(e) => patchRow(i, { datazone_project_id: e.currentTarget.value })}
-                />
-              </FormField>
-              {secretField(
-                "aws_access_key_id",
-                t("metadataExportTab.awsAccessKeyId"),
-                target.aws_access_key_id_set,
-              )}
-              {secretField(
-                "aws_secret_access_key",
-                t("metadataExportTab.awsSecretAccessKey"),
-                target.aws_secret_access_key_set,
-              )}
-            </>
-          ) : (
-            <>
-              <FormField size="long">
-                <TextInput
-                  label={t("metadataExportTab.endpoint")}
-                  data-testid={tid("endpoint")}
-                  value={target.endpoint}
-                  onChange={(e) => patchRow(i, { endpoint: e.currentTarget.value })}
-                />
-              </FormField>
-              <FormField size="medium">
-                <Select
-                  label={t("metadataExportTab.authMode")}
-                  data-testid={tid("auth-mode")}
-                  data={AUTH_MODES}
-                  value={target.auth_mode}
-                  onChange={(v) => patchRow(i, { auth_mode: v ?? "api_key" })}
-                />
-              </FormField>
-              {target.provider === "dataplex" ? (
-                <>
-                  <FormField help={t("metadataExportTab.gcpProjectHelp")} size="medium">
-                    <TextInput
-                      label={t("metadataExportTab.gcpProject")}
-                      data-testid={tid("gcp-project")}
-                      value={target.gcp_project}
-                      onChange={(e) => patchRow(i, { gcp_project: e.currentTarget.value })}
-                    />
-                  </FormField>
-                  <FormField help={t("metadataExportTab.gcpLocationHelp")} size="short">
-                    <TextInput
-                      label={t("metadataExportTab.gcpLocation")}
-                      data-testid={tid("gcp-location")}
-                      value={target.gcp_location}
-                      onChange={(e) => patchRow(i, { gcp_location: e.currentTarget.value })}
-                    />
-                  </FormField>
-                </>
-              ) : null}
-              {target.auth_mode === GOOGLE_MODE ? (
-                secretField(
-                  "google_service_account_json",
-                  t("metadataExportTab.googleServiceAccountJson"),
-                  target.google_service_account_json_set,
-                )
-              ) : target.auth_mode === ENTRA_MODE ? (
-                <>
-                  <FormField size="medium">
-                    <TextInput
-                      label={t("metadataExportTab.entraTenantId")}
-                      data-testid={tid("entra-tenant-id")}
-                      value={target.entra_tenant_id}
-                      onChange={(e) => patchRow(i, { entra_tenant_id: e.currentTarget.value })}
-                    />
-                  </FormField>
-                  <FormField size="medium">
-                    <TextInput
-                      label={t("metadataExportTab.entraClientId")}
-                      data-testid={tid("entra-client-id")}
-                      value={target.entra_client_id}
-                      onChange={(e) => patchRow(i, { entra_client_id: e.currentTarget.value })}
-                    />
-                  </FormField>
-                  {secretField(
-                    "entra_client_secret",
-                    t("metadataExportTab.entraClientSecret"),
-                    target.entra_client_secret_set,
-                  )}
-                </>
-              ) : target.auth_mode === BASIC_MODE ? (
-                <>
-                  <FormField size="medium">
-                    <TextInput
-                      label={t("metadataExportTab.username")}
-                      data-testid={tid("username")}
-                      value={target.username}
-                      onChange={(e) => patchRow(i, { username: e.currentTarget.value })}
-                    />
-                  </FormField>
-                  {/* The password rides in the same `token` field the bearer mode uses — one stored
-                  secret per target, read by whichever mode is selected. */}
-                  {secretField("token", t("metadataExportTab.password"), target.token_set)}
-                </>
-              ) : (
-                secretField(
-                  target.auth_mode === "bearer" ? "token" : "api_key",
-                  target.auth_mode === "bearer"
-                    ? t("metadataExportTab.token")
-                    : t("metadataExportTab.apiKey"),
-                  target.auth_mode === "bearer" ? target.token_set : target.api_key_set,
-                )
-              )}
-            </>
           )}
-          <FormField size="short">
-            <NumberInput
-              label={t("metadataExportTab.timeout")}
-              data-testid={tid("timeout")}
-              value={target.timeout_seconds}
-              onChange={(v) => patchRow(i, { timeout_seconds: Number(v) || 0 })}
-            />
-          </FormField>
         </FormLayout>
       </Paper>
     );
@@ -480,7 +275,7 @@ export function MetadataExportTab() {
                 variant="default"
                 size="compact-sm"
                 data-testid="metadata-export-add-target"
-                onClick={() => setRows((prev) => [...prev, { target: blankTarget(), secrets: {} }])}
+                onClick={() => setRows((prev) => [...prev, blankTarget()])}
               >
                 {t("metadataExportTab.addTarget")}
               </Button>

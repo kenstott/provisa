@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 
 from provisa.core import model_change
 from provisa.core import settings_registry
-from provisa.core.env_copy import REPLACE, CopyReport, adopt_role_definition, copy_model
+from provisa.core.env_copy import REPLACE, CopyReport, copy_model
 from provisa.core.env_source_files import fork_file_sources
 from provisa.core.env_classes import landing_binding
 from provisa.core.env_store import forget_env, reserve_env
@@ -86,7 +86,6 @@ async def create_environment(
     mutation_handling: str,
     note: str,
     strip_identities: bool = True,
-    define_role_from: tuple[str, str] | None = None,
 ) -> CopyReport:
     """Reserve ``name``, provision it, and deploy ``from_env``'s model into it.
 
@@ -106,13 +105,6 @@ async def create_environment(
     off ``strip_identities``: pointing at any data source, prod's included, is an environment's own
     business, and only an environment that is going to be deleted needs its file-backed sources
     forked into copies that go with it.
-
-    ``define_role_from`` is ``(target, source)``: after the model lands, ``target``'s row in the NEW
-    environment takes ``source``'s capabilities and demonstrated list. REQ-1602's sandbox visitor is
-    the only caller -- it holds ``org_admin`` alongside its own role because the copied model's
-    column grants name that role and not ``sandbox``, and the withholding REQ-1597 describes is
-    applied to that name here. Inside the try, so a failure takes the half-made environment with it
-    rather than leaving a visitor holding an unrestricted ``org_admin``.
     """
     from provisa.core.org_provisioning import deprovision_org, provision_org
 
@@ -165,9 +157,6 @@ async def create_environment(
             # it pointed at the original. A stripped copy lands unbound (REQ-1491) with no path to
             # fork, so this is a no-op there without needing to ask.
             await fork_file_sources(model_db, org_id, name)
-        if define_role_from is not None:
-            _target, _source = define_role_from
-            await adopt_role_definition(model_db, org_id, name, target=_target, source=_source)
         # REQ-1602: the sandbox role reaching every ephemeral environment of the sandbox org is
         # already the copy above's job -- seed=True carries SEEDED_AT_CREATION tables (roles among
         # them) from from_env (always PROD for this caller), and PROD's own row is guaranteed

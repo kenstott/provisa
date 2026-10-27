@@ -40,6 +40,7 @@ naming:
   rules: []
 roles:
 - id: fan
+  parents: [viewer]
   description: Reads the World Cup domain's tables, views and graph.
   capabilities:
   - query_development
@@ -162,7 +163,7 @@ tables:
   - name: year
     data_type: integer
     visible_to: &id001
-    - org_admin
+    - data_steward
     - fan
     description: The year of the final
   - name: winners
@@ -616,7 +617,7 @@ tables:
     description: That member's three-letter FIFA code
   - name: _nf_name
     data_type: varchar
-    visible_to: []
+    visible_to: [viewer]
     native_filter_type: query_arg
     native_filter_required: true
     description: The name to match

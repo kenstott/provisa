@@ -88,7 +88,6 @@ async def _field(compiled, *, delivery=None, output_format="json", **over):
 
     args = dict(
         delivery=delivery,
-        as_of="TIMESTAMP '2026-01-01 00:00:00'",
         steward_hint="engine",
         query_session_props={"query_max_run_time": "1m"},
         cache_hint=_HINT,
@@ -111,7 +110,7 @@ async def test_the_field_asks_the_pipeline_with_what_the_request_carried(pipelin
     assert call["serve_cached"] is True  # an inline read may be answered from the cache
     assert call["buffered"] is True  # REQ-1224: inlined under the threshold, landed over it
     assert call["deliver"] is None
-    assert call["as_of"] == "TIMESTAMP '2026-01-01 00:00:00'"
+    assert "as_of" not in call  # a field's time is its relation's argument, in its SQL
     assert call["steward_hint"] == "engine"
     assert call["session_props"] == {"query_max_run_time": "1m"}
 

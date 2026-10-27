@@ -182,7 +182,7 @@ def run(order: list[Worker], rows: list, tag: str) -> None:
         'schemaName: "public", tableName: "customers", columns: ['
         '{name: "id", visibleTo: ["org_admin", "analyst"], dataType: "integer"}, '
         '{name: "name", visibleTo: ["org_admin", "analyst"], masks: [{to: ["org_admin"]}, '
-        '{to: ["*"], mask: {type: "constant", value: "MASKED"}}], dataType: "varchar"}]}) '
+        '{mask: {type: "constant", value: "MASKED"}}], dataType: "varchar"}]}) '
         "{ success message } }"
     )
     print(f"[{tag}] updateTable(mask) -> {json.dumps(res)[:200]}")

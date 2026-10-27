@@ -45,6 +45,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,8 @@ TRANSPORTS: dict[str, tuple[str, str | None]] = {
     "rest": ("GET /data/rest/{domain}/{table}", "x-provisa-cache: true header"),
     "jsonapi": ("GET /data/jsonapi/{domain}/{table}", "x-provisa-cache: true header"),
     "mcp": ("MCP tools/call run_sql, Streamable HTTP", "-- @provisa cache=true"),
+    # The SPARQL 1.1 Protocol endpoint: no route hint exists there.
+    "sparql": ("POST /data/sparql, SPARQL 1.1 Protocol", "# @provisa cache=true"),
 }
 
 DEFAULT_STEPS = (1, 16, 64, 256)
@@ -218,6 +221,51 @@ class CypherHttpClient(_HttpClient):
     def rows(self, query: Query, role: str) -> Answer:
         body = self._send(query, role)
         return list(body["columns"]), body["rows"], None
+
+
+_XSD = "http://www.w3.org/2001/XMLSchema#"
+_XSD_INTEGERS = {f"{_XSD}{t}" for t in ("integer", "int", "long", "short", "byte")}
+
+
+def _sparql_value(term: Mapping[str, Any] | None) -> Any:
+    """A SPARQL JSON result term as the value it is: a typed literal by its datatype, an unbound
+    variable as None."""
+    if term is None:
+        return None
+    value, datatype = term["value"], term.get("datatype")
+    if datatype in _XSD_INTEGERS:
+        return int(value)
+    if datatype == f"{_XSD}decimal":
+        return Decimal(value)
+    if datatype in (f"{_XSD}double", f"{_XSD}float"):
+        return float(value)
+    if datatype == f"{_XSD}boolean":
+        return value == "true"
+    return value
+
+
+class SparqlHttpClient(_HttpClient):
+    """POST /data/sparql as an RDF client sends it: the query as a form field, the answer asked
+    for as SPARQL JSON results (REQ-2135)."""
+
+    def _send(self, query: Query, role: str) -> tuple[dict[str, Any], bool | None]:
+        resp = self._http.post(
+            "/data/sparql",
+            data={"query": query.sparql},
+            headers=self._headers(role, {"Accept": "application/sparql-results+json"}),
+        )
+        resp.raise_for_status()
+        return resp.json(), self._hit(resp)
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        body, hit = self._send(query, role)
+        return len(body["results"]["bindings"]), len(body["head"]["vars"]), hit
+
+    def rows(self, query: Query, role: str) -> Answer:
+        body, hit = self._send(query, role)
+        names = list(body["head"]["vars"])
+        rows = [{n: _sparql_value(b.get(n)) for n in names} for b in body["results"]["bindings"]]
+        return names, rows, hit
 
 
 class McpClient:
@@ -580,6 +628,7 @@ CLIENTS: dict[str, Any] = {
     "rest": RestClient,
     "jsonapi": JsonApiClient,
     "mcp": McpClient,
+    "sparql": SparqlHttpClient,
 }
 
 
@@ -591,6 +640,15 @@ CLIENTS: dict[str, Any] = {
 def _brief(exc: BaseException) -> str:
     """An error as one short line (a gRPC error carries its whole debug context)."""
     return f"{type(exc).__name__}: {' '.join(str(exc).split())[:140]}"
+
+
+def _request_text(query: Query) -> str:
+    """The request as the transport sends it, to name the one a first error answered."""
+    for f in dataclasses.fields(query)[3:]:
+        value = getattr(query, f.name)
+        if value is not None:
+            return value if isinstance(value, str) else json.dumps(value, default=str)
+    return query.id
 
 
 def _cpu_seconds() -> float:
@@ -793,6 +851,7 @@ def _client_process(
     renderer = request_render.Renderer(ep.setup)
     errors = [0] * threads
     first_error: list[str] = []
+    first_error_request: list[str] = []
     open_loop = ep.setup.load.mode == "open_loop"
     lag = [0.0] * threads  # open loop: the most any request was sent after its scheduled time
     connected = threading.Barrier(threads + 1)
@@ -807,16 +866,20 @@ def _client_process(
         gen = request_mix.RequestGenerator(
             ep.setup, transport, f"{transport}/{index}/{i}", cacheable=opt_in
         )
+        # the connection is open and the statement is prepared / cached: the request no knob
+        # applies to, with the opt-in if any request carries it
+        warm_ups = [
+            (renderer.render(w), w.role) for w in _warmup_specs(gen, ep.setup, transport, opt_in)
+        ]
         try:
-            # the connection is open and the statement is prepared / cached: the request no knob
-            # applies to, with the opt-in if any request carries it
-            for warm in _warmup_specs(gen, ep.setup, transport, opt_in):
-                client.call(renderer.render(warm), warm.role)
+            for warm_query, warm_role in warm_ups:
+                client.call(warm_query, warm_role)
         except Exception as exc:  # noqa: BLE001 - a refused warm-up is the server's answer at
             # this concurrency (a stream cap, say): counted like any other failed request.
             errors[i] += 1
             if not first_error:
                 first_error.append(_brief(exc))
+                first_error_request.append(f"warm-up: {_request_text(warm_query)}")
         try:
             connected.wait()
         except threading.BrokenBarrierError:
@@ -849,6 +912,7 @@ def _client_process(
                     errors[i] += 1
                     if not first_error:
                         first_error.append(_brief(exc))
+                        first_error_request.append(_request_text(query))
                     continue
                 # an open loop's latency runs from the scheduled arrival: the wait behind a slow
                 # answer is part of what a request that arrived on time experienced
@@ -867,6 +931,7 @@ def _client_process(
                 errors[i] += 1
                 if not first_error:
                     first_error.append(_brief(exc))
+                    first_error_request.append(_request_text(query))
                 continue
             mine.append((time.perf_counter() - t0, spec, hit, rows, cols))
         client.close()
@@ -889,6 +954,7 @@ def _client_process(
             "records": [x for per in records for x in per],
             "errors": sum(errors),
             "first_error": first_error[0] if first_error else None,
+            "first_error_request": first_error_request[0] if first_error_request else None,
             "cpu_s": _cpu_seconds() - cpu0,
             "max_lag_s": max(lag) if open_loop else None,
         }
@@ -1056,13 +1122,15 @@ def run_step(
     summary = summarize_requests(all_records, window_s)
     requests = summary["requests"]
     client_cpu = [r["cpu_s"] / window_s for r in results]
+    failed = next((r for r in results if r["first_error"]), None)
     step: dict[str, Any] = {
         "concurrency": concurrency,
         "client_processes": n_procs,
         "window_s": window_s,
         **summary,
         "errors": sum(r["errors"] for r in results),
-        "first_error": next((r["first_error"] for r in results if r["first_error"]), None),
+        "first_error": failed["first_error"] if failed else None,
+        "first_error_request": failed["first_error_request"] if failed else None,
         "client_cpu_cores": round(sum(client_cpu), 2),
         "client_cpu_max_core": round(max(client_cpu), 2),
         "client_limited": max(client_cpu) >= _CLIENT_SATURATED,
@@ -1231,6 +1299,8 @@ def summary_line(report: dict) -> str:
         text = f"c={step['concurrency']}: {step['req_per_s']:.0f}/s p50={step['p50_ms']}ms p99={step['p99_ms']}ms"
         if step["errors"]:
             text += f" errors={step['errors']} ({step['first_error']})"
+            if step["first_error_request"]:
+                text += f" first failing request: {' '.join(step['first_error_request'].split())}"
         if step["hit_ratio"] is not None:
             text += f" hit={step['hit_ratio']:.2f}"
         if report["cached"] and report["cache_probability"] not in (0, 1):

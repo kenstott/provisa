@@ -47,6 +47,7 @@ naming:
 roles:
 # The bank's credit risk team: every facility, the bank's capital and the groups.
 - id: risk
+  parents: [viewer]
   description: "The bank's credit risk team: every facility, the bank's capital and the groups its borrowers belong to."
   capabilities:
   - query_development
@@ -80,10 +81,10 @@ tables:
   table: counterparties
   description: Each borrower the bank lends to (fictional)
   columns:
-  - {name: borrower_id, data_type: varchar, is_primary_key: true, description: "The bank's id for the borrower", visible_to: [org_admin, risk]}
-  - {name: name, data_type: varchar, description: The borrower's name, visible_to: [org_admin, risk]}
-  - {name: sector, data_type: varchar, description: The bank's sector for it, visible_to: [org_admin, risk]}
-  - {name: relationship_manager, data_type: varchar, description: The banker who looks after it, visible_to: [org_admin, risk]}
+  - {name: borrower_id, data_type: varchar, is_primary_key: true, description: "The bank's id for the borrower", visible_to: [data_steward, risk]}
+  - {name: name, data_type: varchar, description: The borrower's name, visible_to: [data_steward, risk]}
+  - {name: sector, data_type: varchar, description: The bank's sector for it, visible_to: [data_steward, risk]}
+  - {name: relationship_manager, data_type: varchar, description: The banker who looks after it, visible_to: [data_steward, risk]}
 - source_id: bank
   domain_id: groupexposure
   schema: public
@@ -91,28 +92,28 @@ tables:
   description: The company that owns each borrower, as the bank records it by LEI -- none for an
     independent borrower, two for a joint venture
   columns:
-  - {name: borrower_id, data_type: varchar, is_primary_key: true, description: The borrower, visible_to: [org_admin, risk]}
-  - {name: owner_lei, data_type: varchar, is_primary_key: true, description: "The owner's Legal Entity Identifier", visible_to: [org_admin, risk]}
+  - {name: borrower_id, data_type: varchar, is_primary_key: true, description: The borrower, visible_to: [data_steward, risk]}
+  - {name: owner_lei, data_type: varchar, is_primary_key: true, description: "The owner's Legal Entity Identifier", visible_to: [data_steward, risk]}
 - source_id: bank
   domain_id: groupexposure
   schema: public
   table: facilities
   description: Each facility lent to a borrower -- term loans, revolving credit and guarantees
   columns:
-  - {name: facility_id, data_type: integer, is_primary_key: true, description: "The facility's number", visible_to: [org_admin, risk]}
-  - {name: borrower_id, data_type: varchar, description: The borrower it was lent to, visible_to: [org_admin, risk]}
-  - {name: product, data_type: varchar, description: 'What it is: a term loan, a revolving credit facility or a bank guarantee', visible_to: [org_admin, risk]}
-  - {name: committed_eur, data_type: decimal, description: What the bank has committed in EUR -- the exposure the limit counts, visible_to: [org_admin, risk]}
-  - {name: drawn_eur, data_type: decimal, description: What the borrower has drawn of it in EUR, visible_to: [org_admin, risk]}
-  - {name: maturity, data_type: date, description: When it ends, visible_to: [org_admin, risk]}
+  - {name: facility_id, data_type: integer, is_primary_key: true, description: "The facility's number", visible_to: [data_steward, risk]}
+  - {name: borrower_id, data_type: varchar, description: The borrower it was lent to, visible_to: [data_steward, risk]}
+  - {name: product, data_type: varchar, description: 'What it is: a term loan, a revolving credit facility or a bank guarantee', visible_to: [data_steward, risk]}
+  - {name: committed_eur, data_type: decimal, description: What the bank has committed in EUR -- the exposure the limit counts, visible_to: [data_steward, risk]}
+  - {name: drawn_eur, data_type: decimal, description: What the borrower has drawn of it in EUR, visible_to: [data_steward, risk]}
+  - {name: maturity, data_type: date, description: When it ends, visible_to: [data_steward, risk]}
 - source_id: bank
   domain_id: groupexposure
   schema: public
   table: capital
   description: "The bank's Tier 1 capital, the base of its large-exposure limit"
   columns:
-  - {name: as_of, data_type: date, is_primary_key: true, description: The quarter end it was measured at, visible_to: [org_admin, risk]}
-  - {name: tier1_eur, data_type: decimal, description: Tier 1 capital in EUR, visible_to: [org_admin, risk]}
+  - {name: as_of, data_type: date, is_primary_key: true, description: The quarter end it was measured at, visible_to: [data_steward, risk]}
+  - {name: tier1_eur, data_type: decimal, description: Tier 1 capital in EUR, visible_to: [data_steward, risk]}
 - source_id: wikidata
   domain_id: groupexposure
   schema: wikidata
@@ -142,11 +143,11 @@ tables:
     }
     GROUP BY ?lei ?entity
   columns:
-  - {name: lei, data_type: varchar, is_primary_key: true, description: "The company's LEI (Wikidata P1278)", visible_to: [org_admin, risk]}
-  - {name: entity, data_type: varchar, description: "Its Wikidata entity's IRI", visible_to: [org_admin, risk]}
-  - {name: name, data_type: varchar, description: "Its name on Wikidata", visible_to: [org_admin, risk]}
-  - {name: country, data_type: varchar, description: Its country (P17), visible_to: [org_admin, risk]}
-  - {name: industry, data_type: varchar, description: 'Its industries (P452), comma-separated', visible_to: [org_admin, risk]}
+  - {name: lei, data_type: varchar, is_primary_key: true, description: "The company's LEI (Wikidata P1278)", visible_to: [data_steward, risk]}
+  - {name: entity, data_type: varchar, description: "Its Wikidata entity's IRI", visible_to: [data_steward, risk]}
+  - {name: name, data_type: varchar, description: "Its name on Wikidata", visible_to: [data_steward, risk]}
+  - {name: country, data_type: varchar, description: Its country (P17), visible_to: [data_steward, risk]}
+  - {name: industry, data_type: varchar, description: 'Its industries (P452), comma-separated', visible_to: [data_steward, risk]}
 - source_id: wikidata
   domain_id: groupexposure
   schema: wikidata
@@ -172,9 +173,9 @@ tables:
       }
     }
   columns:
-  - {name: lei, data_type: varchar, is_primary_key: true, description: "The owner's LEI", visible_to: [org_admin, risk]}
-  - {name: group_entity, data_type: varchar, description: "The group's Wikidata entity's IRI", visible_to: [org_admin, risk]}
-  - {name: group_name, data_type: varchar, description: "The group's name on Wikidata", visible_to: [org_admin, risk]}
+  - {name: lei, data_type: varchar, is_primary_key: true, description: "The owner's LEI", visible_to: [data_steward, risk]}
+  - {name: group_entity, data_type: varchar, description: "The group's Wikidata entity's IRI", visible_to: [data_steward, risk]}
+  - {name: group_name, data_type: varchar, description: "The group's name on Wikidata", visible_to: [data_steward, risk]}
 views:
 # The answer: each group's committed exposure against 25% of the bank's Tier 1 capital.
 - id: group_exposure
@@ -197,13 +198,13 @@ views:
     LEFT JOIN "groupexposure"."owner_group" AS g ON g.lei = o.owner_lei
     GROUP BY COALESCE(g.group_name, c.name), g.group_entity
   columns:
-  - {name: group_name, data_type: varchar, description: "The group's name on Wikidata, or the borrower's own when nothing owns it", visible_to: [org_admin, risk]}
-  - {name: group_entity, data_type: varchar, description: "The group's Wikidata entity; empty for a borrower nothing owns", visible_to: [org_admin, risk]}
-  - {name: borrowers, data_type: bigint, description: "The group's borrowers the bank lends to", visible_to: [org_admin, risk]}
-  - {name: committed_eur, data_type: decimal, description: What the bank has committed to them in EUR, visible_to: [org_admin, risk]}
-  - {name: drawn_eur, data_type: decimal, description: What they have drawn in EUR, visible_to: [org_admin, risk]}
-  - {name: pct_of_tier1, data_type: decimal, description: 'The committed exposure as a percentage of Tier 1 capital', visible_to: [org_admin, risk]}
-  - {name: over_limit, data_type: boolean, description: Whether it is over the 25% large-exposure limit, visible_to: [org_admin, risk]}
+  - {name: group_name, data_type: varchar, description: "The group's name on Wikidata, or the borrower's own when nothing owns it", visible_to: [data_steward, risk]}
+  - {name: group_entity, data_type: varchar, description: "The group's Wikidata entity; empty for a borrower nothing owns", visible_to: [data_steward, risk]}
+  - {name: borrowers, data_type: bigint, description: "The group's borrowers the bank lends to", visible_to: [data_steward, risk]}
+  - {name: committed_eur, data_type: decimal, description: What the bank has committed to them in EUR, visible_to: [data_steward, risk]}
+  - {name: drawn_eur, data_type: decimal, description: What they have drawn in EUR, visible_to: [data_steward, risk]}
+  - {name: pct_of_tier1, data_type: decimal, description: 'The committed exposure as a percentage of Tier 1 capital', visible_to: [data_steward, risk]}
+  - {name: over_limit, data_type: boolean, description: Whether it is over the 25% large-exposure limit, visible_to: [data_steward, risk]}
 # What the bank sees alone: each borrower's own exposure. None is near the limit.
 - id: borrower_exposure
   domain_id: groupexposure
@@ -218,11 +219,11 @@ views:
     JOIN "groupexposure"."counterparties" AS c ON c.borrower_id = f.borrower_id
     GROUP BY c.borrower_id, c.name, c.sector
   columns:
-  - {name: borrower_id, data_type: varchar, description: "The bank's id for the borrower", visible_to: [org_admin, risk]}
-  - {name: name, data_type: varchar, description: The borrower's name, visible_to: [org_admin, risk]}
-  - {name: sector, data_type: varchar, description: The bank's sector for it, visible_to: [org_admin, risk]}
-  - {name: committed_eur, data_type: decimal, description: What the bank has committed to it in EUR, visible_to: [org_admin, risk]}
-  - {name: pct_of_tier1, data_type: decimal, description: 'That exposure as a percentage of Tier 1 capital', visible_to: [org_admin, risk]}
+  - {name: borrower_id, data_type: varchar, description: "The bank's id for the borrower", visible_to: [data_steward, risk]}
+  - {name: name, data_type: varchar, description: The borrower's name, visible_to: [data_steward, risk]}
+  - {name: sector, data_type: varchar, description: The bank's sector for it, visible_to: [data_steward, risk]}
+  - {name: committed_eur, data_type: decimal, description: What the bank has committed to it in EUR, visible_to: [data_steward, risk]}
+  - {name: pct_of_tier1, data_type: decimal, description: 'That exposure as a percentage of Tier 1 capital', visible_to: [data_steward, risk]}
 relationships:
 - {id: facility-to-counterparty, alias: LENT_TO, cardinality: many-to-one, source_table_id: facilities, source_column: borrower_id, target_table_id: counterparties, target_column: borrower_id}
 - {id: owner-to-counterparty, alias: OWNS, cardinality: many-to-one, source_table_id: owners, source_column: borrower_id, target_table_id: counterparties, target_column: borrower_id}

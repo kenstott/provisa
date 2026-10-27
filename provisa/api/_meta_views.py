@@ -818,12 +818,33 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
         CREATE OR REPLACE VIEW roles_meta AS
-        SELECT id, parent_role_id, org_id,
+        SELECT id, org_id,
                capabilities,
                tenant_id,
                'meta' AS domain_id,
                description
         FROM roles
+    """,
+    # REQ-2153: the names of every listed column, for the catalog of a reader outside its domain --
+    # names only, by construction; what a reader reaches is in registered_tables/table_columns.
+    "listed_names": """
+        CREATE OR REPLACE VIEW listed_names AS
+        SELECT CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS id,
+               rt.domain_id AS listed_domain, rt.table_name, tc.column_name,
+               'meta' AS domain_id
+        FROM table_columns tc
+        JOIN registered_tables rt ON rt.id = tc.table_id
+        WHERE tc.scope = 'listed' AND NOT rt.draft
+    """,
+    # REQ-2155: a role's parents, one row per (role, parent), in declared order.
+    "roles_parents": """
+        CREATE OR REPLACE VIEW roles_parents AS
+        SELECT r.id || ':' || p.parent_role_id AS id,
+               r.id AS role_id, p.parent_role_id, p.position::int AS position,
+               'meta' AS domain_id
+        FROM roles r
+        CROSS JOIN LATERAL jsonb_array_elements_text(r.parents)
+            WITH ORDINALITY AS p(parent_role_id, position)
     """,
     "roles_domain_access": """
         CREATE OR REPLACE VIEW roles_domain_access AS

@@ -272,3 +272,33 @@ def test_the_demo_s_test_cases_are_its_own_and_the_list_of_demos():
         collected[2],
         collected[3],
     ]
+
+
+def _demo_yaml(tmp_path: Path, **fields) -> Path:
+    home = tmp_path / "zoo"
+    home.mkdir()
+    (home / "demo.yaml").write_text(yaml.safe_dump(fields))
+    return home
+
+
+def test_a_published_demo_in_regions_must_be_one_the_regions_tier_serves(tmp_path):
+    # A demo in regions is served by the regions sandbox tier, which the UI server routes to only
+    # for the demos PROVISA_SANDBOX_REGIONS_DEMOS names; one not named there opens on the plain
+    # tier, which has no region nodes.
+    home = _demo_yaml(tmp_path, published=True, regions={"visitor": "us", "headless": ["eu"]})
+    assert check_demo.check_regions("zoo", home, listed=frozenset({"retail"})) == [
+        "demo.yaml: in regions, but not one PROVISA_SANDBOX_REGIONS_DEMOS names "
+        "(packaging/linux/first-launch.sh)"
+    ]
+    assert check_demo.check_regions("zoo", home, listed=frozenset({"retail", "zoo"})) == []
+
+
+def test_an_unpublished_or_single_region_demo_needs_no_entry(tmp_path):
+    unpublished = _demo_yaml(tmp_path, published=False, regions={"visitor": "us"})
+    assert check_demo.check_regions("zoo", unpublished, listed=frozenset()) == []
+    (unpublished / "demo.yaml").write_text(yaml.safe_dump({"published": True}))
+    assert check_demo.check_regions("zoo", unpublished, listed=frozenset()) == []
+
+
+def test_the_deployed_regions_demos_are_read_from_the_install():
+    assert "retail" in check_demo.regions_demos()

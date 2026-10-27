@@ -257,3 +257,25 @@ async def test_a_connection_written_with_references_reaches_the_checker_resolved
         target_table="sales.orders",
     )
     assert sent["connection"]["port"] == "6543"
+
+
+async def test_each_checker_run_is_logged_with_its_time_and_exit_code(
+    monkeypatch, tmp_path, caplog
+):
+    """A dry run that never answered left nothing in the server log to say where its time went;
+    each worker run now names its checker, how long it took and how it exited."""
+    from provisa.core import org_files
+    from provisa.dq import runner
+
+    monkeypatch.setattr(org_files, "mkdtemp", lambda prefix: str(tmp_path / "w"))
+    (tmp_path / "w").mkdir()
+    monkeypatch.setattr(
+        runner,
+        "build_command",
+        lambda path: [sys.executable, "-c", "print('{\"checks\": []}')"],
+    )
+    with caplog.at_level("WARNING", logger="provisa.dq.runner"):
+        envelope = await runner._run_worker({"checker": "great_expectations"}, timeout=60)
+    assert envelope == {"checks": []}
+    line = next(r.getMessage() for r in caplog.records if r.name == "provisa.dq.runner")
+    assert "great_expectations" in line and "exit 0" in line and "s" in line.split("exit")[0]

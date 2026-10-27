@@ -462,11 +462,12 @@ def _variables_or_400(
     field_name: str,
     where: dict[str, dict[str, Any]],
     params: dict[str, Any],
+    travel: dict[str, str] | None = None,
 ) -> RequestVariables:
-    """The request's filter and parameters as variables of ``field_name`` (REQ-1986); a filter or
-    parameter the field does not take is answered with a 400."""
+    """The request's filter, parameters and time travel as variables of ``field_name`` (REQ-1986,
+    REQ-1163); one the field does not take is answered with a 400."""
     try:
-        return request_variables(schema, field_name, where, params)
+        return request_variables(schema, field_name, where, params, travel)
     except RequestRefused as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -510,32 +511,29 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         return HTMLResponse(content=swagger_ui_html(theme))
 
-    @rest_router.get("/resolve")
+    @rest_router.get("/_resolve")
     async def rest_resolve_endpoint(  # pyright: ignore[reportUnusedFunction]  # REQ-1365
         request: Request,
         uri: str = Query(...),
         as_of: str | None = Query(None),
         as_recorded: str | None = Query(None),
     ):
-        """Dereference a semantic address: the REST form of the GraphQL ``resolve`` field
-        (REQ-1929). ``as_of`` and ``as_recorded`` may also arrive as the ``X-Provisa-As-Of`` and
-        ``X-Provisa-As-Recorded`` headers."""
+        """Dereference a semantic address: the REST form of the GraphQL ``_resolve`` field
+        (REQ-1929), under the same name and with the same arguments."""
         from provisa.api.data.resolve import AddressError, AddressNotFound, resolve
         from provisa.core.request_context import require_current_org
 
         role_id = getattr(request.state, "role", None)
         if not role_id:
             raise HTTPException(status_code=401, detail="authenticated role required")
-        point = as_of or request.headers.get("x-provisa-as-of")
-        recorded = as_recorded or request.headers.get("x-provisa-as-recorded")
         try:
             result = await resolve(
                 state,
                 role_id,
                 uri,
                 org_id=require_current_org(),
-                as_of=point,
-                as_recorded=recorded,
+                as_of=as_of,
+                as_recorded=as_recorded,
             )
         except AddressNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -553,6 +551,9 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         limit: int | None = Query(None, ge=1),
         offset: int | None = Query(None, ge=0),
         fields: str | None = Query(None),
+        # REQ-1163: the field's time-travel arguments, under the same names.
+        as_of: str | None = Query(None),
+        as_recorded: str | None = Query(None),
     ):
         auth_role = getattr(request.state, "role", None)
         if not auth_role:
@@ -657,7 +658,10 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                     detail=f"No selectable fields for table {table!r}",
                 )
 
-            variables = _variables_or_400(schema, table, where, params)
+            travel = {
+                k: v for k, v in (("as_of", as_of), ("as_recorded", as_recorded)) if v is not None
+            }
+            variables = _variables_or_400(schema, table, where, params, travel)
             gql_query = _build_graphql_query(
                 table,
                 selected_fields,

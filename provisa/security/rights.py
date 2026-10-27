@@ -50,7 +50,6 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     APPROVE_VIEW = "approve_view"
     FULL_RESULTS = "full_results"  # bypass sampling mode
     USAGE = "usage"
-    READ_RESTRICTED = "read_restricted"
     APPROVE_RELATIONSHIP = "approve_relationship"
     CREATE_VIEW = "create_view"
     COLUMN_GRANT = "column_grant"
@@ -85,6 +84,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # REQ-1573: be served by an environment other than prod — the right the org-routing middleware
     # checks when a request names one. Held by org_admin and developer; an analyst works in prod.
     ENVIRONMENT_SWITCH = "environment_switch"
+    # REQ-2155: manage the environments the caller owns (created_by) -- create one, becoming its
+    # owner, and delete one it owns; ENVIRONMENT_MANAGEMENT manages any.
+    ENVIRONMENT_OWNED_MANAGEMENT = "environment_owned_management"
     # REQ-1942: change an environment's data choices -- its data mode, its sources' bindings,
     # read-only or read-write, its synthetic settings -- including creating it reading real data.
     # Held by org_admin alone: a developer switching an environment to Test (fake) with no fakes
@@ -114,6 +116,14 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # is catalog curation, on the same footing as TABLE_REGISTRATION — org_admin only.
     DATA_PRODUCT_READ = "data_product_read"
     DATA_PRODUCT_RW = "data_product_rw"
+    # REQ-2155: edit a data product whose owner_role is a role the caller holds (an ancestor
+    # included) -- the data product owner's right; DATA_PRODUCT_RW edits any product.
+    DATA_PRODUCT_OWNED_RW = "data_product_owned_rw"
+    # REQ-2155: data quality's own rights, so managing checks no longer needs TABLE_REGISTRATION.
+    # DQ_READ reads check definitions and results; DQ_RW manages checks, expectations and
+    # promises (REQ-2157).
+    DQ_READ = "dq_read"
+    DQ_RW = "dq_rw"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
     # The right the wire surfaces read off a role's list by name. A member here so that the
@@ -318,14 +328,10 @@ def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
 
 # --- which columns a role is served (REQ-039, REQ-1133, REQ-1959) --------------------------------
 
-from provisa.core.column_scope import SCOPE_DOMAIN, SCOPE_PUBLIC, SCOPE_RESTRICTED  # noqa: E402
+from provisa.core.column_scope import SCOPE_PUBLIC  # noqa: E402
 
-# Domains where an empty ``visible_to`` means NO role rather than every role: their columns need
-# an explicit grant (REQ-1133), and nothing in them is served across domains.
-LOCKDOWN_DOMAINS: frozenset[str] = frozenset({"ops"})
-
-# A column's ``scope`` (core/column_scope.py): ``domain`` is served within the domains a role
-# reaches, ``public`` also outside them, ``restricted`` only to whom ``visible_to`` names.
+# A column's ``scope`` (core/column_scope.py): ``domain`` and ``listed`` are served within the
+# domains a role reaches, ``public`` also outside them. ``listed`` adds only names in the catalog.
 
 
 def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: bool) -> bool:
@@ -335,31 +341,41 @@ def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: b
     ``reaches``: whether the role reaches the table's domain, as the caller decides it (a domain
     it lists, ``*``, or the catalog domain every role may traverse).
 
-    The column's own grant comes first: ``visible_to`` names the role, or ``*``, or is empty —
-    which is everyone, except in a lockdown domain and on a ``restricted`` column, where an empty
-    list is nobody. Within reach that is all. Outside reach a column is served only when it is
-    ``public``: publishing removes the domain condition for that column and nothing else — its
-    grant, masks, row rules and limits apply as they do within the domain. A parameter column of
-    an API table (``native_filter_type``) is an argument, not data, and publishes nothing; a
-    lockdown domain's columns are never served across domains.
+    The column's own grant comes first, and it is the only thing that says who: ``visible_to``
+    names the role (a grant to an ancestor is folded down to its descendants when roles load,
+    security.inheritance.expand_grants), and an empty list is no role (REQ-2154). Within reach
+    that is all. Outside reach a column is served only when it is ``public``: publishing removes
+    the domain condition for that column and nothing else -- its grant, masks, row rules and
+    limits apply as they do within the domain. A ``listed`` column is served as a ``domain`` one:
+    its names in the catalog are not data. A parameter column of an API table
+    (``native_filter_type``) is an argument, not data, and publishes nothing.
     """
-    granted_to = column.get("visible_to") or []
-    # A column dict synthesized for a table registered without columns carries no scope: the
-    # model's default for a column, ``domain`` (core/models.py Column.scope).
-    scope = column.get("scope") or SCOPE_DOMAIN
-    named = ALL_DOMAINS in granted_to or role["id"] in granted_to
-    if scope == SCOPE_RESTRICTED or domain_id in LOCKDOWN_DOMAINS:
-        granted = named
-    else:
-        granted = named or not granted_to
-    if not granted:
+    if role["id"] not in (column.get("visible_to") or ()):
         return False
     if reaches:
         return True
-    return (
-        scope == SCOPE_PUBLIC
-        and domain_id not in LOCKDOWN_DOMAINS
-        and not column.get("native_filter_type")
+    return column.get("scope") == SCOPE_PUBLIC and not column.get("native_filter_type")
+
+
+def served_roles(  # REQ-2152
+    roles: dict[str, dict], chains: dict[str, list[str]], domain_id: str, column: dict
+) -> frozenset[str]:
+    """The roles of ``roles`` (id → definition) a column of a table in ``domain_id`` is served to,
+    by :func:`column_served`: its stored grant expanded down ``chains`` as the schema build
+    expands it (``inheritance.expand_grants``), each role's reach its own ``domain_access``."""
+    from provisa.security.inheritance import expand_grants
+
+    granted = {**column, "visible_to": list(column.get("visible_to") or [])}
+    expand_grants([granted], chains)
+    return frozenset(
+        role_id
+        for role_id, definition in roles.items()
+        if column_served(
+            {"id": role_id},
+            domain_id,
+            granted,
+            reaches=reaches_domain(definition["domain_access"], domain_id),
+        )
     )
 
 
@@ -610,6 +626,9 @@ GOVERNANCE_META_ROWS: dict[str, str] = {
 # terms its row is about. A row is read only when each of those terms is readable to the caller
 # by the glossary's own rule (provisa.core.glossary.readable_term): a term with no domains, an
 # enterprise ("*") term, or one sharing a domain with the caller.
+#: REQ-2153: the meta view of listed names; a reader sees those of domains it does not reach.
+LISTED_NAMES_VIEW = "listed_names"
+
 GLOSSARY_SCOPED_META_VIEWS: dict[str, tuple[str, ...]] = {
     "glossary_terms_meta": ("term_domains",),
     "glossary_term_refs_meta": ("term_domains",),

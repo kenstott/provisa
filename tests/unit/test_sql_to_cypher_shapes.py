@@ -350,7 +350,7 @@ def meta():
             "domain_id": "meta",
             "schema_name": "public",
             "table_name": name,
-            "columns": [{"column_name": c, "visible_to": []} for c, _ in cols],
+            "columns": [{"column_name": c, "visible_to": ["admin"]} for c, _ in cols],
             "write_ops": [],
             "write_returns_rows": False,
             "write_refused_forms": [],

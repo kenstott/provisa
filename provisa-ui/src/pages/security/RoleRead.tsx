@@ -44,9 +44,19 @@ export function RoleRead({ role: r }: { role: Role }) {
           },
           {
             label: t("securityPage.parentRole"),
-            value: r.parentRoleId,
+            value: list(r.parents),
             testId: `role-parent-${r.id}`,
           },
+          // REQ-2155: Provisa's own, extended with child roles and never edited. Said only of one.
+          ...(r.standard
+            ? [
+                {
+                  label: t("securityPage.standardRole"),
+                  value: t("securityPage.standardRoleNote"),
+                  testId: `role-standard-${r.id}`,
+                },
+              ]
+            : []),
           {
             // REQ-1682: the role's own constant session values, one to a line.
             label: t("roleSessionValues.label"),

@@ -10,11 +10,12 @@
 
 """A sales steward governs sales and nothing else (REQ-1944), against a real org schema.
 
-The org schema is built by the real ``init_schema`` so schema.sql's seed runs; the sales steward is
-a COPY of the seeded data_steward -- its rights, with domain_access narrowed to sales. (Not a child
-of it: a child inherits its parent's every-domain reach.) It then masks a sales column, writes a
-sales row rule and creates a sales data product, and each of those acts on a finance object is
-refused naming finance.
+The org schema is built by the real ``init_schema`` so the standard roles are written; the sales
+steward is a child of the standard data_steward reaching sales alone (REQ-2155: a role's reach is
+its own, never inherited). It then masks a sales column, writes a
+sales row rule and creates a sales data product. The row rule and the data product on finance are
+refused naming finance; the finance mask is refused earlier, the steward being served none of the
+finance table's columns (REQ-2152).
 """
 
 # Requirements: REQ-1944, REQ-1943, REQ-1531
@@ -41,6 +42,7 @@ _PG_PORT = os.environ.get("PG_PORT", "5432")
 _ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ORG_ID = "req1944"
+_READERS = ["data_steward", "sales_steward"]
 _SCHEMA = f"org_{_ORG_ID}"
 _SCHEMA_SQL = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "provisa", "core", "schema.sql")
@@ -63,6 +65,7 @@ async def plane(monkeypatch):
     from provisa.core.models import Column, ProvisaConfig, Table
     from provisa.core.repositories import role as role_repo
     from provisa.core.repositories import table as table_repo
+    from provisa.security.inheritance import flatten_role_dicts
 
     ids: dict[str, int] = {}
     async with db.acquire() as conn:
@@ -78,30 +81,36 @@ async def plane(monkeypatch):
                     schema_name="public",
                     table_name=table_name,
                     governance="pre-approved",
+                    # Read by both stewards: a save names only columns its role reads
+                    # (REQ-2152), and an empty grant is no role (REQ-2153).
                     columns=[
-                        Column(name="id", visible_to=[], data_type="integer"),
-                        Column(name="amount", visible_to=[], data_type="integer"),
+                        Column(name="id", visible_to=list(_READERS), data_type="integer"),
+                        Column(name="amount", visible_to=list(_READERS), data_type="integer"),
                     ],
                 ),
             )
         seeded = (
             await conn.execute_core(
-                select(roles.c.capabilities, roles.c.domain_access).where(
-                    roles.c.id == "data_steward"
-                )
+                select(roles.c.domain_access).where(roles.c.id == "data_steward")
             )
         ).one()
-        # The seeded steward reaches every domain; the sales steward is its copy for sales.
-        assert list(seeded[1]) == ["*"]
+        # The standard steward reaches every domain; the sales steward is its child for sales.
+        assert list(seeded[0]) == ["*"]
         await conn.execute_core(
             insert(roles).values(
-                id="sales_steward", capabilities=list(seeded[0]), domain_access=["sales"]
+                id="sales_steward",
+                capabilities=[],
+                parents=["data_steward"],
+                domain_access=["sales"],
             )
         )
-        loaded = {r["id"]: r for r in await role_repo.list_all(conn)}
+        # As the build registers them: each with its ancestors' rights folded in.
+        loaded = {r["id"]: r for r in flatten_role_dicts(await role_repo.list_all(conn))}
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
+    # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
     monkeypatch.setattr(
         appmod.state,
         "config",
@@ -129,8 +138,9 @@ async def plane(monkeypatch):
 
 def _info(role_id: str) -> Any:
     identity = types.SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
+    # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
     request = types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID)
+        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID, role=role_id)
     )
     return types.SimpleNamespace(context={"request": request})
 
@@ -141,7 +151,7 @@ async def _masked(table_id: int) -> Any:
 
     edited = table_input(await read_table(table_id))
     column = next(c for c in edited.columns if c.name == "amount")
-    column.masks = [MaskEntryInput(to=["*"], mask=MaskSpecInput(type="constant", value=0))]
+    column.masks = [MaskEntryInput(mask=MaskSpecInput(type="constant", value=0))]
     return edited
 
 
@@ -154,8 +164,10 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
 
     saved = await m.update_table(steward, await _masked(plane.ids["orders"]))
     assert saved.success is True, saved.message
-    refused = await m.update_table(steward, await _masked(plane.ids["invoices"]))
-    assert refused.success is False and "'finance'" in refused.message
+    # REQ-2152: finance is outside the steward's reach, so it is served none of invoices'
+    # columns, and a save naming them is refused before any domain question is asked.
+    with pytest.raises(PermissionError, match="only the columns the acting role can read"):
+        await m.update_table(steward, await _masked(plane.ids["invoices"]))
     async with plane.db.acquire() as conn:
         orders = {c["column_name"]: c for c in await load_columns(conn, plane.ids["orders"])}
         invoices = {c["column_name"]: c for c in await load_columns(conn, plane.ids["invoices"])}
@@ -165,7 +177,6 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
     assert set(why) == {"decided_by", "decided_at", "evidence"}, why
     assert orders["amount"]["masks"] == [
         {
-            "to": ["*"],
             "mask": {
                 "type": "constant",
                 "pattern": None,

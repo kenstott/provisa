@@ -28,7 +28,8 @@ const role = (id: string, detailsHidden = false) => ({
   capabilities: [],
   demonstrated: [],
   domain_access: ["sales"],
-  parentRoleId: null,
+  parents: [],
+  standard: false,
   detailsHidden,
 });
 const ROLES = [role("analyst"), role("steward"), role("locked", true)];

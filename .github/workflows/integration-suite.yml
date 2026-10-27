@@ -99,6 +99,7 @@ jobs:
     # Passed by name; nothing is inherited.
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
       SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
       ASKAMERICA_API_KEY: ${{ secrets.ASKAMERICA_API_KEY }}

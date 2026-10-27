@@ -54,7 +54,12 @@ class ErrorRedactionMiddleware:
             assert start is not None
             body = b"".join(chunks)
             if not message.get("more_body", False):
-                body = _redacted(body)
+                # The org the request acted in, as the auth middleware bound it on its state.
+                body = _redacted(
+                    body,
+                    (scope.get("state") or {}).get("active_org_id"),
+                    json_body=_is_json(start),
+                )
             headers = [
                 (k, v) for k, v in start.get("headers", []) if k.lower() != b"content-length"
             ]
@@ -73,11 +78,42 @@ class ErrorRedactionMiddleware:
         await self.app(scope, receive, _send)
 
 
-def _redacted(body: bytes) -> bytes:
-    from provisa.security.redaction import redact
+def _is_json(start: dict) -> bool:
+    """Whether the response ``start`` begins carries a JSON body, by its content type."""
+    for key, value in start.get("headers", []):
+        if key.lower() == b"content-type":
+            return value.split(b";")[0].strip().lower() == b"application/json"
+    return False
+
+
+def _told(value: Any, org_id: str | None) -> Any:
+    """Each string in a decoded JSON value as a client is told it, the value's shape kept."""
+    from provisa.api.engine_error_names import client_text
+
+    if isinstance(value, str):
+        return client_text(value, org_id)
+    if isinstance(value, list):
+        return [_told(v, org_id) for v in value]
+    if isinstance(value, dict):
+        return {k: _told(v, org_id) for k, v in value.items()}
+    return value
+
+
+def _redacted(body: bytes, org_id: str | None, *, json_body: bool) -> bytes:
+    """``body`` as a client is told it. A JSON body has each of its strings rewritten and is
+    written again as JSON: rewritten as text, a name the model quotes would end the string it is
+    written into, and the body would no longer be JSON."""
+    import json
+
+    from provisa.api.engine_error_names import client_text
 
     try:
         text = body.decode("utf-8")
     except UnicodeDecodeError:
         return body  # not text: an error body is text, and a binary one carries no message
-    return redact(text).encode("utf-8")
+    if json_body:
+        # As Starlette's JSONResponse writes a body.
+        return json.dumps(
+            _told(json.loads(text), org_id), ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+    return client_text(text, org_id).encode("utf-8")

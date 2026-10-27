@@ -143,8 +143,9 @@ async def store_effective_names(conn: "Connection", ids: list[str] | None = None
     """Derive and store the effective names of the relationships ``ids`` (every one when None),
     in the naming convention now in force. Called where a relationship is saved and by every schema
     build, which follows each save, configuration load and change of naming convention. A row
-    whose stored names are already these is not written: a worker reloading another's change
-    builds outside any model change scope, where a model write is refused (REQ-1524)."""
+    whose stored names are already these is not written, and with none to write no change is
+    opened: a worker reloading another's change builds outside any model change scope. Names that
+    do differ are written inside one (REQ-1524)."""
     from provisa.compiler.naming import active_gql_convention
 
     from sqlalchemy import select, update
@@ -174,6 +175,7 @@ async def store_effective_names(conn: "Connection", ids: list[str] | None = None
     if ids is not None:
         query = query.where(relationships.c.id.in_(ids))
     rows = [r._mapping for r in (await conn.execute_core(query)).fetchall()]
+    respelled: list[tuple[str, str | None, str | None]] = []
     for r in rows:
         cypher_type = effective_cypher_type(
             alias=r["alias"],
@@ -192,11 +194,19 @@ async def store_effective_names(conn: "Connection", ids: list[str] | None = None
             via_table_name=r["via_table_name"],
             cypher_alias=r["alias"],
         )
-        if (r["cypher_type"], r["graphql_field"]) == (cypher_type, graphql_field):
-            # A reload that finds them unstored retries until the writing worker has stored them.
-            continue
-        await conn.execute_core(
-            update(relationships)
-            .where(relationships.c.id == r["id"])
-            .values(cypher_type=cypher_type, graphql_field=graphql_field)
-        )
+        if (r["cypher_type"], r["graphql_field"]) != (cypher_type, graphql_field):
+            respelled.append((r["id"], cypher_type, graphql_field))
+    if not respelled:
+        return
+    # REQ-1524: a model write is part of a change. A save or a load writing these is that change
+    # (the scope joins it); a build that finds them in another naming convention -- after the
+    # convention changed -- writes them as a change of its own, never outside one.
+    from provisa.core import model_change
+
+    async with model_change.scope("relationship names follow the naming convention"):
+        for rel_id, cypher_type, graphql_field in respelled:
+            await conn.execute_core(
+                update(relationships)
+                .where(relationships.c.id == rel_id)
+                .values(cypher_type=cypher_type, graphql_field=graphql_field)
+            )

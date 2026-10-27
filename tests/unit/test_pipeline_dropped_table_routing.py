@@ -234,6 +234,8 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
     single live (pooled) source — never leave it on Route.API against the unmaterialized API
     source (which _execute_plan has no branch for and would misroute to state.tenant_db,
     raising "no such table")."""
+    from provisa.api.data.materialization import statement_scratch
+
     ctx = _openapi_ctx()
     rls = RLSContext.empty()
     gov_ctx = build_governance_context(
@@ -256,15 +258,25 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
         patch("provisa.api_source.engine_cache.create_and_insert"),
         patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
     ):
-        exec_sql, decision, default_source, optimized, sources, _opts = await _optimize_and_route(
-            "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
-            "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
-            gov_ctx,
-            ctx,
-            state,
-            table_ids=(TABLE_ID,),
-            nf_args={"petId": "1"},
-        )
+        # Planned as every statement is, in its own scope (REQ-1986: a parameterized table's
+        # live read is this statement's).
+        with statement_scratch():
+            (
+                exec_sql,
+                decision,
+                default_source,
+                optimized,
+                sources,
+                _opts,
+            ) = await _optimize_and_route(
+                "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
+                "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
+                gov_ctx,
+                ctx,
+                state,
+                table_ids=(TABLE_ID,),
+                nf_args={"petId": "1"},
+            )
 
     assert m_handle.await_args.args[1] == {"petId": "1"}
     # Its only source inlined as rows, it is the engine's: never a direct read of the tenant's

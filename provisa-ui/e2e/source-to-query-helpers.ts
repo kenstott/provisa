@@ -92,12 +92,16 @@ export async function submitSourceAndExpectListed(page: Page, sourceId: string) 
   await expect(page.locator(".data-table td").filter({ hasText: sourceId })).toBeVisible({
     timeout: 60000,
   });
+  // The row is listed as soon as the create returns, before the settings saved with it (cache,
+  // Replicate, region...) -- each of which rebuilds the model. The create is done when the new
+  // source opens in edit; a step that navigates before then waits behind those rebuilds (run
+  // 40227062159: the next page's tables query outlasted its 15 s).
+  const save = page.getByTestId("sources-edit-submit");
+  await expect(save).toBeVisible({ timeout: 60000 });
   const seconds = askedCacheTtl.get(page);
   if (seconds === undefined) return;
   askedCacheTtl.delete(page);
   // The new source is selected and its detail is open in edit, everything else at defaults.
-  const save = page.getByTestId("sources-edit-submit");
-  await expect(save).toBeVisible({ timeout: 60000 });
   // The edit form is in sections; the cache TTL is on the Load and timeliness one.
   await page.getByTestId("source-section-load").click();
   await page.getByTestId("cache-ttl-input").fill(String(seconds));

@@ -303,6 +303,7 @@ class TestOrgScopedCacheLocation:
                 endpoint=endpoint,
                 params={},
                 engine=_FakeEngine(),
+                ttl=300,
                 org_id="acme",
             )
 
@@ -315,7 +316,7 @@ class TestOrgScopedCacheLocation:
 
         captured_loc = {}
 
-        def fake_table_exists(_conn, loc, _tbl, ttl=None):  # noqa: ARG001
+        async def fake_table_exists(_engine, loc, _tbl, ttl=None):  # noqa: ARG001
             captured_loc["loc"] = loc
             return True
 
@@ -330,7 +331,7 @@ class TestOrgScopedCacheLocation:
             "provisa.api_source.router_integration.table_exists", side_effect=fake_table_exists
         ):
             await handle_api_query(
-                endpoint=endpoint, params={}, engine=_FakeEngine(), org_id="myorg"
+                endpoint=endpoint, params={}, engine=_FakeEngine(), ttl=300, org_id="myorg"
             )
 
         assert captured_loc["loc"].schema == "org_myorg_api_cache"

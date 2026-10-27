@@ -1692,25 +1692,17 @@
         "title": "一天的總數",
         "description": "10 月 1 日現在的樣子。按分行、產品和貨幣，可以看到流入、流出和淨額。透過 pgwire 連接的 BI 工具執行的正是這條 SQL。"
       },
-      "bankingAsReported": {
-        "title": "日終時呈報的樣子",
-        "description": "記錄於現在設為 10 月 1 日的日終。BI 工具在其 pgwire 工作階段中用 SET provisa.as_recorded 做同樣的事。記錄於按 updated_at 篩選交易，按每天的日終篩選每日總數，所以你看到的是銀行當晚呈報的數字。"
-      },
       "bankingReported": {
         "title": "當時呈報了甚麼",
-        "description": "按 10 月 1 日日終呈報的 10 月 1 日和 2 日企業業務總數。倫敦的 GBP 總數仍包含後來被沖銷的那筆付款。10 月 2 日當時還未日終，所以沒有數字。"
-      },
-      "bankingAsRestated": {
-        "title": "之後更正的樣子",
-        "description": "記錄於移到 10 月 12 日的日終，即三十天中的最後一天。到那時，10 月 6 日輸入的沖銷和 10 月 7 日輸入的遲到交易都已記錄。"
+        "description": "按 10 月 1 日日終呈報的 10 月 1 日和 2 日企業業務總數：視圖的 as_recorded 參數按當時的記錄讀取它們，透過 pgwire 連接的 BI 工具用 SET provisa.as_recorded 做同樣的事。倫敦的 GBP 總數仍包含後來被沖銷的那筆付款。10 月 2 日當時還未日終，所以沒有數字。"
       },
       "bankingRestated": {
         "title": "現在的結果",
-        "description": "同一條 SQL。倫敦 10 月 1 日的總數不再包含被沖銷的付款，愛丁堡 10 月 2 日的 USD 總數現在包含了遲到的交易。每次日終呈報的版本與更正後的版本並存，recorded_at 顯示每個版本的記錄時間。"
+        "description": "同一條 SQL，as_recorded 設為 10 月 12 日日終，即三十天中的最後一天。倫敦 10 月 1 日的總數不再包含被沖銷的付款，愛丁堡 10 月 2 日的 USD 總數現在包含了遲到的交易。每次日終呈報的版本與更正後的版本並存，recorded_at 顯示每個版本的記錄時間。"
       },
       "bankingAsOpsSql": {
         "title": "回到營運身份",
-        "description": "瀏覽器現在以營運身份執行，仍然記錄於 10 月 12 日的日終。"
+        "description": "瀏覽器現在以營運身份執行。"
       },
       "bankingPostings": {
         "title": "總數背後的過賬",

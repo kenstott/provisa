@@ -17,6 +17,9 @@ worker is the remote host, dialled again with backoff when it stops answering.""
 
 from __future__ import annotations
 
+import hashlib
+import ssl
+
 import os
 import subprocess
 import sys
@@ -242,6 +245,25 @@ async def test_connecting_the_host_switches_the_source_to_built_mode(host, wired
     assert remote_host["exports"] == ["orders", "summary", "tags"]
     assert manifest_from_json(remote_host["manifest"]) == _MANIFEST
     assert wired["saved"] == built
+
+
+async def test_connecting_dials_the_host_to_pair_and_to_check_and_no_more(host, wired, monkeypatch):
+    # An engine attaching the host verifies it by its certificate (REQ-2100): it is read on the
+    # pairing dial, so the source is not dialled a third time for it.
+    port, pairing, hashed = host
+    wired["give"](hashed)
+    dials = []
+    dial = remote._dial
+
+    def counted(*args, **kwargs):
+        dials.append(args[:2])
+        return dial(*args, **kwargs)
+
+    monkeypatch.setattr(remote, "_dial", counted)
+    built = await remote_sources.connect(None, "shop", "127.0.0.1", port, pairing)
+    der = ssl.PEM_cert_to_DER_cert(built["remote"]["certificate"])
+    assert hashlib.sha256(der).hexdigest() == built["remote"]["pin"]
+    assert len(dials) == 2
 
 
 async def test_a_host_running_other_code_is_refused_naming_both_hashes(host, wired):

@@ -120,6 +120,12 @@ class EngineBackend:
 
         return transpile(pg_sql, self.dialect)
 
+    def exact_reads(self, state: Any, physical_sql: str) -> str:
+        """``physical_sql`` with each read an engine would round at its source made exact there
+        (REQ-2167). An engine whose reads keep a source's values as they are changes nothing."""
+        del state
+        return physical_sql
+
     @property
     def has_otel_catalog(self) -> bool:
         """Whether the engine exposes the ``otel`` telemetry catalog (``otel.signals.*``).
@@ -449,6 +455,18 @@ class EngineBackend:
                             table.delete().where(and_(*[table.c[k] == v for k, v in match.items()]))
                         )
                     await apply_cdc(conn, table, changes.pk_columns, changes.events)
+
+    async def landed_table_exists(self, state: Any, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed (REQ-318). Base default: the materialization
+        store's own catalog, through the store's connection -- where the base write face lands
+        (``store_writer``). Absent is False; a catalog that cannot be read raises, never read as
+        absent."""
+        del state
+        from provisa.federation import store_writer
+
+        return await store_writer.table_exists(
+            self.engine.materialize_store(), schema=schema, table=table
+        )
 
     async def analyze_landed_table(
         self, state: Any, *, catalog: str | None, schema: str, table: str

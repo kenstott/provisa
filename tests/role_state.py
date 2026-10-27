@@ -50,6 +50,11 @@ class RoleState(SimpleNamespace):
         attrs.setdefault("meta_qualifiers", {})
         # As the real state of a generation no request has acted as a set of roles in yet.
         attrs.setdefault("meta_roles", {})
+        if "org_registry" not in attrs:
+            # As the real state: it always holds a registry, empty until an org's runtime is built.
+            from provisa.api.org_runtime import OrgRegistry
+
+            attrs["org_registry"] = OrgRegistry()
         super().__init__(surfaces=surfaces, **attrs)
         for name, values in parts.items():
             set_part(self, _PARTS[name], values)
@@ -57,6 +62,10 @@ class RoleState(SimpleNamespace):
     def __getattr__(self, name: str) -> Any:
         if name in _PARTS:
             return SurfacePart(self, _PARTS[name])
+        if name == "view_context":
+            # Not given: the model-wide context the real build makes beside the roles' ones,
+            # which compiles every table any role's context names.
+            return model_context_of(self)
         raise AttributeError(name)
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -64,6 +73,20 @@ class RoleState(SimpleNamespace):
             set_part(self, _PARTS[name], value)
         else:
             super().__setattr__(name, value)
+
+
+def model_context_of(state: Any) -> Any:
+    """The model-wide context the real build makes (state.view_context) for a stand-in given only
+    its roles' contexts: every table any of them compiles."""
+    tables: dict = {}
+    table_map: dict = {}
+    for held in getattr(state, "surfaces", {}).values():
+        ctx = getattr(held, "context", None)
+        if ctx is None:
+            continue
+        tables.update(getattr(ctx, "tables", {}) or {})
+        table_map.update(getattr(ctx, "table_map", {}) or {})
+    return SimpleNamespace(tables=tables, table_map=table_map)
 
 
 def _surfaces_from(state: Any) -> dict[str, RoleSurface]:
@@ -88,6 +111,8 @@ def with_surfaces(state: Any) -> Any:
     if isinstance(state, Mock):
         # Every mock instance has a class of its own, so this reaches no other mock.
         type(state).surfaces = property(_surfaces_from)
+        if "view_context" not in vars(state):
+            type(state).view_context = property(model_context_of)
     else:
         state.surfaces = _surfaces_from(state)
     return state

@@ -307,22 +307,20 @@ def apply_mask_to_value(rule: MaskingRule, value, data_type: str):  # REQ-040, R
 # REQ-2059: a column's ordered mask list
 # --------------------------------------------------------------------------- #
 
-#: A mask entry for every reader. It matches any reader, so entries after it are never reached.
-EVERYONE = "*"
 
-
-def holds_mask_entry(to: list[str], chain: list[str]) -> bool:
+def holds_mask_entry(to: list[str] | None, chain: list[str]) -> bool:
     """Whether a reader whose roles (each with its ancestors, and the derived roles it acts with)
-    are ``chain`` holds a mask entry granted ``to``: everyone, or any of its grant entries
-    (composites included, REQ-2058)."""
+    are ``chain`` holds a mask entry granted ``to``: any of its grant entries (composites
+    included, REQ-2058), or every reader for the list's last entry with no ``to`` (REQ-2153)."""
     from provisa.security.inheritance import holds_entry
 
-    return EVERYONE in to or any(holds_entry(e, chain) for e in to)
+    return to is None or any(holds_entry(e, chain) for e in to)
 
 
 def entry_for(masks: list[dict], chain: list[str]) -> int | None:
     """The index of the first entry of ``masks`` the reader holds, or None when it holds none."""
-    return next((i for i, e in enumerate(masks) if holds_mask_entry(e["to"], chain)), None)
+    # An entry with no "to" is the one for every other reader (REQ-2153).
+    return next((i for i, e in enumerate(masks) if holds_mask_entry(e.get("to"), chain)), None)
 
 
 def rule_of(mask: dict) -> MaskingRule:
@@ -381,15 +379,18 @@ def masks_report(masks: list[dict], chain_of: Any, roles: list[str] | None = Non
 
     unreachable = []
     for i, entry in enumerate(masks):
-        firsts = [
-            entry_for(masks, chain(() if grant == EVERYONE else grant_parts(grant)))
-            for grant in entry["to"]
-        ]
+        # The entry for every other reader is first held by a reader with no role of the list.
+        grants = entry.get("to")
+        firsts = (
+            [entry_for(masks, [])]
+            if grants is None
+            else [entry_for(masks, chain(grant_parts(grant))) for grant in grants]
+        )
         if i not in firsts:
             covers = [j for j in firsts if j is not None]
             unreachable.append({"entry": i, "covered_by": min(covers) if covers else None})
     return {
         "unreachable": unreachable,
-        "unlisted_unmasked": bool(masks) and not any(EVERYONE in e["to"] for e in masks),
+        "unlisted_unmasked": bool(masks) and not any(e.get("to") is None for e in masks),
         "applies": None if roles is None else entry_for(masks, chain(roles)),
     }

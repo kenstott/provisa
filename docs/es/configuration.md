@@ -952,25 +952,35 @@ Leída tal como estaba registrada el 3 de octubre, la operación muestra la cant
 
 Una versión rige desde su momento hasta el de la siguiente versión. Un borrado surte efecto cuando Provisa lo registra.
 
-**Lectura.** Una lectura simple responde la versión de cada clave vigente ahora. La cabecera `X-Provisa-As-Of` lee en un momento, o sobre un rango dado como intervalo ISO 8601 `start/end`:
+**Lectura.** Una lectura simple responde la versión de cada clave vigente ahora. Para leer otro momento, dé a la relación su propio argumento `as_of` donde la sentencia la nombra, un instante o un rango dado como intervalo ISO 8601 `start/end`:
 
-```
-X-Provisa-As-Of: 2026-03-01T00:00:00
-X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
-```
-
-Un momento responde la versión de cada clave vigente entonces. Un rango responde cada versión vigente en algún momento dentro de él, una fila por versión.
-
-**Según lo registrado.** Una corrección registrada después cambia lo que una vista dice del pasado: la versión vigente el 30 de septiembre es la corregida una vez registrada la corrección. Para leer la vista tal como Provisa la tenía registrada en un momento, antes de cualquier corrección posterior, añada `X-Provisa-As-Recorded`, un instante ISO 8601:
-
-```
-X-Provisa-As-Of: 2026-09-30T12:00:00
-X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-03-01T00:00:00') AS e
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-01-01T00:00:00/2026-04-01T00:00:00') AS e
 ```
 
-Toda versión registrada después de ese momento queda fuera, y el as-of elige entonces la versión vigente en su propio momento. Con `X-Provisa-As-Recorded` solo, la lectura responde con la versión de cada clave vigente según lo registrado entonces. Admite un momento, no un rango; un rango o un valor mal formado se rechaza con HTTP 400 (`data.invalid_as_recorded`).
+Un instante responde la versión de cada clave vigente entonces. Un rango responde cada versión vigente en algún momento dentro de él, una fila por versión.
 
-Los dos momentos llegan también a Provisa sin las cabeceras. El momento as-of es el argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), el parámetro de consulta REST `as_of` y la opción `as_of` de un ticket de Arrow Flight, y un rango pasado a `resolve` responde con las `versions` de la fila en lugar de su `row`. El momento as-recorded es el argumento `as_recorded` de `resolve`, el parámetro de consulta REST `as_recorded` y la opción `as_recorded` de un ticket de Arrow Flight. El registro de auditoría de cada instrucción guarda los dos momentos con que leyó, `as_of` y `as_recorded`. Los derechos, las máscaras y las reglas de fila se aplican como en cualquier lectura. Un valor as-of mal formado, o un rango cuyo final no es posterior a su inicio, se rechaza con HTTP 400 (`data.invalid_as_of`).
+**Tal como se registró.** Una corrección registrada después cambia lo que una vista dice del pasado: la versión vigente el 30 de septiembre es la corregida una vez registrada la corrección. Para leer la vista tal como Provisa la había registrado en un momento, antes de cualquier corrección posterior, añada `as_recorded`, un instante ISO 8601:
+
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_recorded => '2026-10-01T00:00:00') AS e
+```
+
+Toda versión registrada después de ese momento queda fuera, y el as-of elige entonces la versión vigente en su propio momento. Con `as_recorded` solo, la lectura responde la versión de cada clave vigente según lo registrado entonces. Toma un instante, no un rango.
+
+**Dónde van los argumentos.** Cada referencia lleva su propio momento, así que una sentencia puede leer una vista en dos momentos mediante dos referencias, y una referencia sin argumentos lee el estado actual. Un momento también puede ser un valor vinculado, `(as_recorded => $1)`, con el valor enviado en los `params` de la solicitud. Solo una relación que conserva sus versiones toma los argumentos: una tabla o vista con historial, y una tabla Iceberg o Delta, que viaja por sus snapshots y por eso toma solo `as_recorded` (el snapshot vigente en ese momento). Cualquier otra relación, un momento mal formado, un rango dado a `as_recorded` o `as_of` sobre una tabla Iceberg o Delta se rechaza con HTTP 400, nombrando la relación.
+
+Los mismos dos nombres son los argumentos del campo de la relación en GraphQL, en campos raíz y en un campo de relación cuyo destino conserva sus versiones, así que dos alias pueden leer una vista en dos momentos:
+
+```graphql
+{
+  reported: view_eod_totals(as_recorded: "2026-10-01T17:00:00") { branch net_movement }
+  restated: view_eod_totals(as_recorded: "2026-10-12T17:00:00") { branch net_movement }
+}
+```
+
+REST los toma como los parámetros de consulta `as_of` y `as_recorded` del endpoint de la tabla, y la herramienta MCP `describe_table` indica qué argumentos toma una tabla. El campo `_resolve` (GraphQL, REST y MCP) también toma `as_of` y `as_recorded`, y un rango dado a él responde las `versions` de la fila en lugar de su `row`; igual la llamada gRPC `Resolve`. Un ticket de Arrow Flight los toma como sus opciones `as_of` y `as_recorded`, y una sesión pgwire fija un valor por defecto para las sentencias que ejecuta con `SET provisa.as_of` y `SET provisa.as_recorded`, que los argumentos propios de una referencia anulan. Los selectores «As of» y «As recorded at» del explorador SQL escriben los argumentos en la sentencia. El registro de auditoría de cada sentencia guarda el momento en que leyó, `as_of` y `as_recorded`, cuando leyó en un solo momento. Los permisos, las máscaras y las reglas de fila se aplican como en cualquier lectura.
 
 Toda vista con historial responde tres columnas más, concedidas como lo está su columna de hora de origen (si no, su primera columna de clave):
 

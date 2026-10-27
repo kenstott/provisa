@@ -11,7 +11,7 @@
 import { test, expect } from "./coverage";
 
 /**
- * REQ-1838/1839: a real Anthropic turn through the DOCKED ChatPanel (useMcpChat.ts's streamOnce),
+ * REQ-1838/1839: a real live-model turn through the DOCKED ChatPanel (useMcpChat.ts's streamOnce),
  * not the /explore page — McpExplorePage.tsx has its OWN separate fetch/reader implementation, so
  * a bug in useMcpChat.ts's SSE consumption would NOT be caught by exercising /explore instead.
  *
@@ -23,10 +23,9 @@ import { test, expect } from "./coverage";
  * polls the rendered message text over time and asserts it actually grows well past a first
  * fragment and reaches a substantial final length — the exact way that bug would fail.
  *
- * Needs a live ANTHROPIC_API_KEY (repo-root .env, loaded by playwright.config.ts; the ui-e2e-core
- * workflow passes the repo secret) and fails by name without one — mcp_chat defaults to the
- * anthropic vendor/claude-opus-4-8 model with no AI Models configuration needed (see
- * _resolve_vendor/_resolve_model's own defaults), so this test only needs the key.
+ * Needs a live OPENROUTER_API_KEY (repo-root .env, loaded by playwright.config.ts; the ui-e2e-core
+ * workflow passes the repo secret) and fails by name without one: the e2e config chooses Haiku
+ * through OpenRouter for mcp_chat (e2e/liveModel.ts), so this test only needs the key.
  */
 
 test.describe("ChatPanel streaming does not freeze mid-reply", () => {
@@ -38,12 +37,12 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
   // skipping them: a skip here hid that the CI lane never passed the key, and the spec never ran.
   test.beforeEach(() => {
     expect(
-      process.env.ANTHROPIC_API_KEY,
-      "ANTHROPIC_API_KEY is not set: repo-root .env locally; ui-e2e-core.yml passes the repo secret",
+      process.env.OPENROUTER_API_KEY,
+      "OPENROUTER_API_KEY is not set: repo-root .env locally; ui-e2e-core.yml passes the repo secret",
     ).toBeTruthy();
   });
 
-  test("a real multi-round Anthropic turn keeps growing until it finishes, not stuck on the first word", async ({
+  test("a real multi-round turn keeps growing until it finishes, not stuck on the first word", async ({
     page,
   }) => {
     await page.goto("/sources");

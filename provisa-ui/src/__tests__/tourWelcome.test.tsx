@@ -46,7 +46,9 @@ vi.mock("../context/pollyState", async (importOriginal) => ({
 // every right the tour's steps name — the whole tour is on the itinerary and nothing is dropped.
 vi.mock("../context/AuthContext", async () => {
   const { TOUR_STEPS } = await import("../tour/tourSteps");
-  const capabilities = [...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : [])))];
+  const capabilities = [
+    ...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : []))),
+  ];
   return { useAuth: () => ({ loading: false, capabilities }) };
 });
 

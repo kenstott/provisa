@@ -6,7 +6,7 @@ Feature: REQ-1368 — Data Catalog Integration
     Given the published documentation set
     When a reader looks for how to publish metadata to an external catalog
     Then the metadata export page is reachable from the Security and Governance navigation
-    And the page states that publication is outbound only
+    And the page states that metadata is published to a domain's catalogs and that only table descriptions are read back from them
     And the page names every registered export provider
     And the page documents each configuration setting the export config accepts
     And the page describes the sync model the scheduler actually runs

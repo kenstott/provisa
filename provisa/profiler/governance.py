@@ -91,7 +91,8 @@ INVOLVED_KINDS = frozenset(
 class ColumnRule:
     physical: str
     exposed: str  # the column as the profile names it (as the org admin reads it)
-    visible_to: frozenset[str]
+    # The roles the column is served to, by the one rule (``rights.served_roles``, REQ-2152).
+    served_to: frozenset[str]
     masks: tuple[dict, ...]  # REQ-2059: the column's ordered mask list
     pii: bool
     # The many-to-one relationship a parent table's column is reached through (named
@@ -99,7 +100,7 @@ class ColumnRule:
     relationship: str | None = None
 
     def seen_by(self, roles: frozenset[str]) -> bool:
-        return bool(self.visible_to & roles)
+        return bool(self.served_to & roles)
 
     def restricted_for(self, roles: frozenset[str]) -> bool:
         """Masked to a reader holding ``roles``, or tagged pii."""
@@ -123,18 +124,25 @@ async def column_rules(conn: Any, state: Any, table_id: int) -> list[ColumnRule]
 async def _table_rules(
     conn: Any, state: Any, table_id: int, relationship: str | None
 ) -> list[ColumnRule]:
+    from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import table_columns as tc
     from provisa.profiler.run import PROFILE_ROLE, column_tags
+    from provisa.security.rights import served_roles
 
     ctx = state.contexts.get(PROFILE_ROLE)
     if ctx is None:
         raise ValueError(f"no compiled schema for role {PROFILE_ROLE!r}")
     tags = await column_tags(conn, table_id)
+    domain_id = (
+        await conn.execute_core(select(rt.c.domain_id).where(rt.c.id == table_id))
+    ).scalar_one()
     result = await conn.execute_core(
-        select(tc.c.column_name, tc.c.visible_to, tc.c.masks).where(tc.c.table_id == table_id)
+        select(tc.c.column_name, tc.c.visible_to, tc.c.scope, tc.c.masks).where(
+            tc.c.table_id == table_id
+        )
     )
     rules = []
-    for name, visible_to, masks in result.fetchall():
+    for name, visible_to, scope, masks in result.fetchall():
         exposed = ctx.physical_to_sql.get((table_id, name))
         if exposed is None:
             continue  # the org admin cannot read it, so no profile describes it
@@ -142,7 +150,12 @@ async def _table_rules(
             ColumnRule(
                 physical=name,
                 exposed=exposed if relationship is None else f"{relationship}.{exposed}",
-                visible_to=frozenset(visible_to),
+                served_to=served_roles(
+                    state.roles,
+                    state.role_chains,
+                    domain_id,
+                    {"column_name": name, "visible_to": visible_to, "scope": scope},
+                ),
                 masks=tuple(masks),
                 pii="pii" in tags.get(name, set()),
                 relationship=relationship,
@@ -224,10 +237,10 @@ def _involved_filter(kind: str, rules: list[ColumnRule], role: str) -> str | Non
 
 def _prefill_masks(readers: list[str], restricted: set[str]) -> list[dict]:
     """A value field's mask list (REQ-2059): unmasked to the readers it is not restricted for,
-    then NULL to everyone else."""
+    then NULL to every other reader (the last entry, with no ``to``, REQ-2153)."""
     open_to = [r for r in readers if r not in restricted]
     return ([{"to": open_to, "mask": None}] if open_to else []) + [
-        {"to": ["*"], "mask": {"type": "constant", "value": None}}
+        {"to": None, "mask": {"type": "constant", "value": None}}
     ]
 
 
@@ -248,7 +261,7 @@ def prefill(kind: str, fields: list[str], rules: list[ColumnRule]) -> dict:
     kinds and value-bearing rows, only of those it sees unmasked and untagged.
     """
     own = [r for r in rules if r.relationship is None]
-    readers = sorted(set().union(*(r.visible_to for r in own)) if own else set())
+    readers = sorted(set().union(*(r.served_to for r in own)) if own else set())
     restricted_readers = {
         role
         for role in readers

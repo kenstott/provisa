@@ -16,6 +16,8 @@ rather than from the raw config.
 
 from __future__ import annotations
 
+import dataclasses
+
 import io
 from datetime import UTC, datetime
 
@@ -86,14 +88,14 @@ def _config() -> ProvisaConfig:
     )
 
 
-def _rows() -> dict[str, list[list]]:
+def _rows(withheld: frozenset[str] = frozenset()) -> dict[str, list[list]]:
     config = _config()
     # REQ-1592: the report is a steward's view of the WHOLE registered model, so it projects with
     # the export filter off — exactly as provisa/api/admin/report_router.py does.
     snapshot = build_snapshot(
         config, org_id=ORG, dialect="postgres", contexts={}, data_products_only=False
     )
-    return wb.sheet_rows(snapshot, config, org_id=ORG)
+    return wb.sheet_rows(snapshot, config, org_id=ORG, withheld_definitions=withheld)
 
 
 def _header(**kwargs) -> wb.ReportHeader:
@@ -214,3 +216,164 @@ def test_there_is_no_reader_the_workbook_is_never_an_edit_path():
 @pytest.mark.parametrize("sheet", wb.OBJECT_SHEETS)
 def test_every_sheet_has_a_declared_header(sheet: str):
     assert sheet in wb.HEADERS
+
+
+async def test_the_workbook_shows_only_what_its_caller_reads(monkeypatch):
+    """REQ-2152: the right that opens the workbook does not widen it. Its tables and columns
+    are the caller's served ones, and its metrics those granted to the caller's role."""
+    import types
+
+    from provisa.api.admin import report_router
+    from provisa.api.admin.catalog_scope import CatalogScope
+    from provisa.api.metadata_export.model import (
+        AssetKind,
+        AssetRef,
+        ColumnAsset,
+        MetadataSnapshot,
+        TableAsset,
+    )
+    from provisa.core.models import Metric, ProvisaConfig
+
+    def _table(name: str, columns: list[str]) -> TableAsset:
+        return TableAsset(
+            ref=AssetRef(kind=AssetKind.TABLE, parts=("pg", "public", name)),
+            name=name,
+            source_id="pg",
+            domain_id="sales",
+            description="",
+            columns=[
+                ColumnAsset(
+                    ref=AssetRef(kind=AssetKind.COLUMN, parts=("pg", "public", name, c)),
+                    name=c,
+                    data_type="int",
+                    description="",
+                )
+                for c in columns
+            ],
+        )
+
+    snapshot = MetadataSnapshot(
+        org_id="acme", tables=[_table("orders", ["id", "secret"]), _table("payroll", ["salary"])]
+    )
+    config = ProvisaConfig(
+        sources=[],
+        domains=[],
+        tables=[],
+        roles=[],
+        metrics=[
+            Metric(name="open", expression="COUNT(*)", visible_to=["analyst"]),
+            Metric(name="hr_only", expression="COUNT(*)", visible_to=["hr"]),
+        ],
+    )
+    scope = CatalogScope(
+        whole=False,
+        reach=None,
+        served={1: {"id"}},
+        governance=False,
+        role="analyst",
+        compiled=frozenset({1, 2}),
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+
+    async def _reader(state, served_of):
+        ids = {"orders": 1, "payroll": 2}
+        return lambda table: served_of(ids[table.name])
+
+    monkeypatch.setattr("provisa.api.metadata_export.publishing.snapshot_reader", _reader)
+    monkeypatch.setattr("provisa.api.app.state.contexts", {"analyst": object()}, raising=False)
+
+    class _Model:
+        """The org's model store: the registered tables' ids (both compiled, so the scope
+        answers each)."""
+
+        def acquire(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def execute_core(self, stmt):  # noqa: ARG002
+            rows = [types.SimpleNamespace(id=1), types.SimpleNamespace(id=2)]
+            return types.SimpleNamespace(fetchall=lambda: rows)
+
+    monkeypatch.setattr("provisa.api.app.state.model_db", _Model(), raising=False)
+    narrowed, narrowed_config = await report_router._as_served(
+        types.SimpleNamespace(state=types.SimpleNamespace()), snapshot, config
+    )
+    assert [(t.name, [c.name for c in t.columns]) for t in narrowed.tables] == [("orders", ["id"])]
+    assert [m.name for m in narrowed_config.metrics] == ["open"]
+
+    # payroll saved since the last build: judged by its stored grants, as the catalog answers it.
+    saved_since = dataclasses.replace(scope, compiled=frozenset({1}))
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: saved_since)
+
+    async def _stored(conn, caller, table_id):  # noqa: ARG001
+        return {"salary"} if table_id == 2 else caller.served.get(table_id, set())
+
+    monkeypatch.setattr("provisa.api.admin.read_rights.served_columns_of", _stored)
+    narrowed, _ = await report_router._as_served(
+        types.SimpleNamespace(state=types.SimpleNamespace()), snapshot, config
+    )
+    assert [(t.name, [c.name for c in t.columns]) for t in narrowed.tables] == [
+        ("orders", ["id"]),
+        ("payroll", ["salary"]),
+    ]
+
+
+def test_a_withheld_view_is_listed_with_a_blank_definition():
+    """REQ-2152 (Q7): a view's definition names the columns of the tables it reads; for a
+    reader not served all of them the view is listed, its definition blank."""
+    rows = _rows()
+    views = rows[wb.VIEWS]
+    assert views, "the fixture model has a view"
+    uri = views[0][0]
+    withheld = next(r for r in _rows(frozenset({uri}))[wb.VIEWS] if r[0] == uri)
+    assert withheld[5] == "" and views[0][5] != ""
+
+
+async def test_a_view_reading_a_table_its_caller_is_not_served_all_of_is_withheld(monkeypatch):
+    """REQ-2152 (Q7): the rule the audited text follows -- a definition is shown only to a
+    caller served every column of each table it reads."""
+    import types
+
+    import provisa.api.app as appmod
+    from provisa.api.admin import report_router
+    from provisa.api.admin.catalog_scope import CatalogScope
+    from provisa.api.metadata_export.refs import table_uri
+
+    open_view = _table("open_totals", view_sql="SELECT SUM(id) FROM orders")
+    held_view = _table("pay_totals", view_sql="SELECT SUM(salary) FROM payroll")
+    config = ProvisaConfig(sources=[], domains=[], tables=[open_view, held_view], roles=[])
+    scope = CatalogScope(
+        whole=False, reach=None, served={}, governance=False, role="r", compiled=frozenset()
+    )
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", lambda info: scope)
+    monkeypatch.setattr(
+        appmod.state,
+        "tables",
+        [{"id": 1, "table_name": "orders"}, {"id": 2, "table_name": "payroll"}],
+        raising=False,
+    )
+
+    class _Conn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+    monkeypatch.setattr(
+        appmod.state, "model_db", types.SimpleNamespace(acquire=lambda: _Conn()), raising=False
+    )
+
+    async def _all_of_orders(conn, scope, table_id):
+        return table_id == 1
+
+    monkeypatch.setattr("provisa.api.admin.read_rights.serves_every_column", _all_of_orders)
+    withheld = await report_router._withheld_definitions(
+        types.SimpleNamespace(state=types.SimpleNamespace()), config, ORG
+    )
+    assert withheld == frozenset({table_uri(ORG, held_view)})
