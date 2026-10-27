@@ -547,7 +547,7 @@
       "invalid_regex": "{{expression}} のパターン \"{{pattern}}\" は有効な正規表現ではありません: {{reason}}。=~ には正規表現を指定します (例: \".*{{word}}.*\")。または CONTAINS \"{{word}}\" を使用してください。",
       "unknown_label": "ラベル :{{label}} はありません。登録済みのラベル: {{suggestions}}。",
       "no_labels": "ラベル :{{label}} はありません: このロールが読めるテーブルはありません。",
-      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。登録済みのタイプ: {{suggestions}}。",
+      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。最も近い登録済みのタイプ: {{suggestions}}。",
       "no_relationship_types": "リレーションシップタイプ {{types}} はありません: このロールがたどれるリレーションシップはありません。",
       "type_mismatch": "{{expression}} では、{{value}} を型 {{property_type}} の {{property}} と比較できません。{{fix}}",
       "aggregate_in_where": "WHERE では集約 {{aggregate}} を使えません: WHERE はグループ化の前に行を絞り込みます。WITH で集約してから絞り込んでください。",

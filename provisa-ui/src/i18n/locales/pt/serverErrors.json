@@ -547,7 +547,7 @@
       "invalid_regex": "O padrão \"{{pattern}}\" em {{expression}} não é uma expressão regular válida: {{reason}}. =~ espera uma expressão regular, p. ex. \".*{{word}}.*\", ou use CONTAINS \"{{word}}\".",
       "unknown_label": "Não existe o rótulo :{{label}}. Rótulos registrados: {{suggestions}}.",
       "no_labels": "Não existe o rótulo :{{label}}: este papel não pode ler nenhuma tabela.",
-      "unknown_relationship_type": "Não existe o tipo de relacionamento {{types}}. Tipos registrados: {{suggestions}}.",
+      "unknown_relationship_type": "Não existe o tipo de relacionamento {{types}}. Tipos registrados mais próximos: {{suggestions}}.",
       "no_relationship_types": "Não existe o tipo de relacionamento {{types}}: este papel não pode percorrer nenhum relacionamento.",
       "type_mismatch": "Em {{expression}}, {{value}} não pode ser comparado com {{property}}, do tipo {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE não pode usar o agregado {{aggregate}}: WHERE filtra linhas antes de agrupá-las. Agregue em um WITH e filtre depois.",

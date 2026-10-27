@@ -547,7 +547,7 @@
       "invalid_regex": "Шаблон \"{{pattern}}\" в {{expression}} не является допустимым регулярным выражением: {{reason}}. =~ принимает регулярное выражение, например \".*{{word}}.*\", или используйте CONTAINS \"{{word}}\".",
       "unknown_label": "Метки :{{label}} нет. Зарегистрированные метки: {{suggestions}}.",
       "no_labels": "Метки :{{label}} нет: эта роль не может читать ни одной таблицы.",
-      "unknown_relationship_type": "Типа связи {{types}} нет. Зарегистрированные типы: {{suggestions}}.",
+      "unknown_relationship_type": "Типа связи {{types}} нет. Ближайшие зарегистрированные типы: {{suggestions}}.",
       "no_relationship_types": "Типа связи {{types}} нет: эта роль не может проходить ни по одной связи.",
       "type_mismatch": "В {{expression}} значение {{value}} нельзя сравнить с {{property}} типа {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE не может использовать агрегат {{aggregate}}: WHERE фильтрует строки до группировки. Выполните агрегацию в WITH и фильтруйте после него.",

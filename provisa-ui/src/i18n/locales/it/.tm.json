@@ -4253,7 +4253,7 @@
   "it/serverErrors.json::serverErrors.schema.calendar_deleted": "calendar '{{calendar}}' deleted",
   "it/serverErrors.json::serverErrors.schema.calendar_in_use": "calendar '{{calendar}}' is in use by {{count}} materialized view(s) — clear their snapshot schedule before deleting",
   "it/serverErrors.json::serverErrors.schema.calendar_not_found": "calendar '{{calendar}}' not found",
-  "it/serverErrors.json::serverErrors.schema.calendar_saved": "calendar '{{calendar}}' {{version}} saved",
+  "it/serverErrors.json::serverErrors.schema.calendar_saved": "calendar '{{calendar}}' v{{version}} saved",
   "it/serverErrors.json::serverErrors.schema.change_signal_no_receiver": "Provisa does not receive the {{signal}} change signal from a {{type}} source, so a table of source '{{source}}' would never be refreshed by it. Capture the source with Debezium and use debezium.",
   "it/serverErrors.json::serverErrors.schema.change_signal_no_topic": "Table '{{table}}' of source '{{source}}' is on the kafka change signal but names no topic in its live.kafka.topic, so nothing would refresh it.",
   "it/serverErrors.json::serverErrors.schema.change_signal_not_honoured": "A {{type}} source cannot yet be checked for changes, so the {{signal}} change signal would never be asked. Use ttl for source '{{source}}'.",
@@ -8146,5 +8146,12 @@
   "it/serverErrors.json::serverErrors.data.graphql_body_not_json": "The request body is not JSON: {{error}}",
   "it/serverErrors.json::serverErrors.data.graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
   "it/serverErrors.json::serverErrors.data.graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
-  "it/serverErrors.json::serverErrors.data.graphql_mutation_over_get": "A mutation is sent with POST, never GET."
+  "it/serverErrors.json::serverErrors.data.graphql_mutation_over_get": "A mutation is sent with POST, never GET.",
+  "it/serverErrors.json::serverErrors.schema.relationship_column_beyond_reads": "A relationship can join only on columns your role can read.",
+  "it/metadataExportTab.json::metadataExportTab.role": "Publish as role",
+  "it/metadataExportTab.json::metadataExportTab.roleHelp": "The catalog is sent only what this role can read.",
+  "it/sqlEditorPanel.json::sqlEditorPanel.boundParams": "Bound to the next run: {{values}}",
+  "it/sqlCanvasTableCard.json::sqlCanvasTableCard.allColumns": "All columns ({{selected}} of {{total}})",
+  "it/sqlCanvasTableCard.json::sqlCanvasTableCard.unjoined": "{{tables}} isn't joined to the other tables",
+  "it/sqlCanvasTableCard.json::sqlCanvasTableCard.joinsUnavailable": "The joins this role may write could not be read: {{reason}}"
 }

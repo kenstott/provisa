@@ -18,8 +18,7 @@
  *
  * Kept out of the page component so the pattern it writes can be read back in a test.
  */
-import { tableLabel as dbTableLabel, cypherRelType } from "../naming";
-import type { Relationship } from "../types/admin";
+import type { SchemaRel } from "../components/graph/graph-schema-types";
 
 export interface DropExpansion {
   /** The rewritten query, before any native-filter WHERE clause is spliced in. */
@@ -56,48 +55,40 @@ export function withExpansion(
 export function buildDropExpansion(
   query: string,
   compoundLabel: string,
-  adminRels: Relationship[],
-  labelToTableLabel: Record<string, string>,
+  schemaRels: SchemaRel[],
 ): DropExpansion {
-  const droppedTableName = labelToTableLabel[compoundLabel] ?? compoundLabel;
+  // The table part of the dropped label (Shelter:Assignments -> Assignments), for variable names.
+  const droppedTableName = compoundLabel.split(":").pop() ?? compoundLabel;
 
-  // Map each declared Cypher label → its query variable by parsing the MATCH
-  // clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch that
+  // Map each label the query declares, as written (a compound label whole), to its variable, by
+  // parsing the MATCH clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch that
   // returned no rows still declares its label and must remain matchable.
   const varByLabel: Record<string, string> = {};
   for (const m of query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*\)/g)) {
     const [, varName, labels] = m;
-    labels.split(":").forEach((l) => {
-      varByLabel[l] = varName;
-    });
+    varByLabel[labels] = varName;
   }
 
-  // Find a relationship whose one endpoint is the dropped table and whose other
-  // endpoint is a label already declared in the query. Comparison is exact: the
-  // dropped label and dbTableLabel(table_name) are both produced by the same
-  // label-derivation function on registered_tables.table_name.
-  // REQ-1586: collect EVERY relationship type that reaches the dropped table from a label the
-  // query already declares, not just the first. One junction table backs several types at once
-  // (a discriminator column names each edge), so stopping at the first match would draw KIND_OF
-  // and quietly hide RELATED_TO between the very same two tables.
+  // The relationship types are the server's, from the acting role's label map
+  // (/data/graph-schema, the sidebar's Relationship Types): only a type it registers between the
+  // dropped label and one the query declares is written, so the translator never meets a type it
+  // does not know (REQ-1586). Every type that reaches the dropped label from that node is
+  // collected, not just the first: one junction table backs several types between the same two
+  // labels, and stopping at the first would hide the rest.
   let sourceVar: string | undefined;
   const relAliases: string[] = [];
-  for (const r of adminRels) {
-    if (r.disableCypher) continue;
-    const srcLabel = dbTableLabel(r.sourceTableName);
-    const tgtLabel = r.targetTableName ? dbTableLabel(r.targetTableName) : null;
+  for (const r of schemaRels) {
     // dropped node is the relationship target; existing query node is the source
-    const asTarget = tgtLabel === droppedTableName && varByLabel[srcLabel];
+    const asTarget = r.target === compoundLabel && varByLabel[r.source];
     // dropped node is the relationship source; existing query node is the target
-    const asSource = srcLabel === droppedTableName && tgtLabel && varByLabel[tgtLabel];
+    const asSource = r.source === compoundLabel && varByLabel[r.target];
     if (!asTarget && !asSource) continue;
-    const anchor = asTarget ? varByLabel[srcLabel] : varByLabel[tgtLabel as string];
-    // Every hop hangs off one anchor variable — the first one found. A second relationship
-    // reaching the dropped table from a DIFFERENT existing node is a different question.
+    const anchor = asTarget ? varByLabel[r.source] : varByLabel[r.target];
+    // Every hop hangs off one anchor variable — the first one found. A type reaching the dropped
+    // label from a DIFFERENT existing node is a different question.
     if (sourceVar === undefined) sourceVar = anchor;
     else if (anchor !== sourceVar) continue;
-    const relType = cypherRelType(r);
-    if (relType && !relAliases.includes(relType)) relAliases.push(relType);
+    if (!relAliases.includes(r.type)) relAliases.push(r.type);
   }
   if (!sourceVar) {
     // No known relationship — fall back to first MATCH variable

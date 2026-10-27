@@ -11,12 +11,20 @@
 // REQ-1322: role-aware schema browser groups + metric-driven canvas semantic SQL.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "../../test-utils/render";
+import { render, screen, fireEvent, waitFor } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { SchemaBrowser } from "../sql/SchemaBrowser";
 import { JoinCanvas } from "../sql/JoinCanvas";
 import { groupModelingTables, buildSemanticMetricSql } from "../sql/sqlHelpers";
 import type { Metric, RegisteredTable, Relationship, TableColumn } from "../../types/admin";
+
+// The canvas draws the joins the server approves for the acting role (GET /data/sql/approved-joins).
+const approvedJoins = vi.hoisted(() => vi.fn());
+vi.mock("../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/admin")>()),
+  fetchApprovedJoins: approvedJoins,
+}));
+approvedJoins.mockResolvedValue([]);
 
 function makeCol(overrides: Partial<TableColumn> = {}): TableColumn {
   return {
@@ -139,6 +147,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     viaTypeColumn: null,
     viaTypeValue: null,
     viaLabelSource: null,
+    cypherType: null,
     parameters: [],
     ...overrides,
   };
@@ -325,7 +334,11 @@ describe("JoinCanvas join removal", () => {
     });
   }
 
-  it("draws one join for a relationship registered both ways, and removing it clears the diagram", () => {
+  it("draws the one join the server approves for the pair, and removing it clears the diagram", async () => {
+    // The server lists each approved pair once, however many ways the relationship is registered.
+    approvedJoins.mockResolvedValueOnce([
+      { fromTableId: 1, fromColumn: "customer_id", toTableId: 2, toColumn: "id" },
+    ]);
     render(
       <JoinCanvas
         tables={[ordersT, customersT]}
@@ -334,6 +347,8 @@ describe("JoinCanvas join removal", () => {
         onGenerateSql={vi.fn()}
       />,
     );
+    await waitFor(() => expect(approvedJoins).toHaveBeenCalled());
+    await Promise.resolve();
     dropTable("customers", 100);
     dropTable("orders", 500);
     const id = "orders__customer_id__customers__id";

@@ -605,6 +605,7 @@ query RelationshipsQuery {
     graphqlAlias
     physicalName
     computedCypherAlias
+    cypherType
     autoSuggested
     disableCypher
     sameEntity
@@ -641,6 +642,7 @@ query AllRelationshipsQuery {
     graphqlAlias
     physicalName
     computedCypherAlias
+    cypherType
     autoSuggested
     disableCypher
     sameEntity

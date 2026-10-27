@@ -547,7 +547,7 @@
       "invalid_regex": "{{expression}} में पैटर्न \"{{pattern}}\" मान्य रेगुलर एक्सप्रेशन नहीं है: {{reason}}। =~ एक रेगुलर एक्सप्रेशन लेता है, जैसे \".*{{word}}.*\", या CONTAINS \"{{word}}\" का उपयोग करें।",
       "unknown_label": ":{{label}} नाम का कोई लेबल नहीं है। पंजीकृत लेबल: {{suggestions}}।",
       "no_labels": ":{{label}} नाम का कोई लेबल नहीं है: यह भूमिका कोई तालिका नहीं पढ़ सकती।",
-      "unknown_relationship_type": "{{types}} नाम का कोई संबंध प्रकार नहीं है। पंजीकृत प्रकार: {{suggestions}}।",
+      "unknown_relationship_type": "{{types}} नाम का कोई संबंध प्रकार नहीं है। निकटतम पंजीकृत प्रकार: {{suggestions}}।",
       "no_relationship_types": "{{types}} नाम का कोई संबंध प्रकार नहीं है: यह भूमिका किसी संबंध पर नहीं चल सकती।",
       "type_mismatch": "{{expression}} में, {{value}} की तुलना {{property}} से नहीं की जा सकती, जिसका प्रकार {{property_type}} है। {{fix}}",
       "aggregate_in_where": "WHERE एग्रीगेट {{aggregate}} का उपयोग नहीं कर सकता: WHERE पंक्तियों को समूहित होने से पहले फ़िल्टर करता है। WITH में एग्रीगेट करें और उसके बाद फ़िल्टर करें।",

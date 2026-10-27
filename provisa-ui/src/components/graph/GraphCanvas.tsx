@@ -71,7 +71,6 @@ export function GraphCanvas({
   clusterLevel,
   requestedView,
   hullSvgRef,
-  isExpanded,
   note,
   highlight = null,
   onClearHighlight,
@@ -450,7 +449,8 @@ export function GraphCanvas({
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
-      userZoomingEnabled: false,
+      // The wheel over a graph zooms it, centred at the pointer, in a frame collapsed or expanded.
+      userZoomingEnabled: true,
       /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
          cytoscape() returns the library's own Core type; we cast through any to our local CyInstance shim which models only the subset of the API this component uses */
     }) as any as CyInstance;
@@ -585,6 +585,16 @@ export function GraphCanvas({
   // whatever pixel size it was born with, clipping or floating in dead space as the window resizes
   // or the panel it sits in reflows. Watches the container directly rather than re-subscribing per
   // cy instance: containerRef's DOM node outlives every rebuild the effect above performs.
+  // The wheel over the canvas is the graph's (cytoscape zooms on it): it never also scrolls the
+  // page or the results under it. Non-passive, so the default can be cancelled.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const keep = (e: WheelEvent) => e.preventDefault();
+    el.addEventListener("wheel", keep, { passive: false });
+    return () => el.removeEventListener("wheel", keep);
+  }, []);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -787,11 +797,6 @@ export function GraphCanvas({
       });
     });
   }, [relLineOverrides]);
-
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- userZoomingEnabled is a runtime cytoscape method not present on the typed Core surface
-    (cyRef.current as any)?.userZoomingEnabled(!!isExpanded);
-  }, [isExpanded]);
 
   // An Overview pill's highlight (CanvasProps.highlight): its label's nodes, or its type's edges and
   // their ends, stand out; everything else dims. Re-applied as the drawing changes.

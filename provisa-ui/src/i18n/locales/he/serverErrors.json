@@ -547,7 +547,7 @@
       "invalid_regex": "התבנית \"{{pattern}}\" ב-{{expression}} אינה ביטוי רגולרי תקין: {{reason}}. =~ מקבל ביטוי רגולרי, למשל \".*{{word}}.*\", או השתמשו ב-CONTAINS \"{{word}}\".",
       "unknown_label": "אין תווית :{{label}}. תוויות רשומות: {{suggestions}}.",
       "no_labels": "אין תווית :{{label}}: תפקיד זה אינו יכול לקרוא אף טבלה.",
-      "unknown_relationship_type": "אין סוג קשר {{types}}. סוגים רשומים: {{suggestions}}.",
+      "unknown_relationship_type": "אין סוג קשר {{types}}. הסוגים הרשומים הקרובים ביותר: {{suggestions}}.",
       "no_relationship_types": "אין סוג קשר {{types}}: תפקיד זה אינו יכול לעבור על אף קשר.",
       "type_mismatch": "ב-{{expression}}, לא ניתן להשוות את {{value}} ל-{{property}}, שסוגו {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE אינו יכול להשתמש בצבירה {{aggregate}}: WHERE מסנן שורות לפני שהן מקובצות. בצעו צבירה ב-WITH וסננו אחריו.",

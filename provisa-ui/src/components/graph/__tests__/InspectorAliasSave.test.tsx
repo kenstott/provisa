@@ -29,7 +29,12 @@ const edge: GEdge = {
   startNode: from,
   endNode: to,
 };
-const rel = { id: 7, alias: "PLACED_BY", graphqlAlias: null } as unknown as Relationship;
+const rel = {
+  id: 7,
+  alias: "PLACED_BY",
+  graphqlAlias: null,
+  cypherType: "PLACED_BY",
+} as unknown as Relationship;
 
 function open(onSaveEdgeAlias: (id: number, cql: string, gql: string) => Promise<string | null>) {
   render(

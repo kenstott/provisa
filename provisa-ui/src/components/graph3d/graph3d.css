@@ -124,3 +124,11 @@
 .g3d-placeholder {
   color: var(--mantine-color-placeholder);
 }
+
+/* A summary select's closed text stays on its one line (SummaryMultiSelect). */
+.g3d-summary {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,6 +1,0 @@
-{
-  "sqlModelingCanvasTableCard": {
-    "removeTable": "Remove {{tableName}} from canvas",
-    "connectColumn": "Start relationship from {{columnName}}"
-  }
-}

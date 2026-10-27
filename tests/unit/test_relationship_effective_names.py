@@ -226,3 +226,35 @@ async def test_names_a_change_of_convention_respells_are_written_in_a_model_chan
         assert len(flushed) == 1
     finally:
         naming.configure()
+
+
+async def test_the_admin_api_names_every_edge_by_the_type_cypher_serves(control_plane):
+    """REQ-1586: every client reads an edge's Cypher type from the admin API's cypher_type, the
+    stored type the label map serves; none derives it (an aliased edge, an unaliased one and a
+    junction-backed one alike)."""
+    from provisa.api.admin._row_mappers import _rel_from_row
+
+    db = await _plane(control_plane)
+    async with db.acquire() as conn:
+        rows = {
+            r.id: dict(r._mapping)
+            for r in (
+                await conn.execute_core(
+                    select(
+                        relationships,
+                        registered_tables.c.table_name.label("target_table_name"),
+                    ).select_from(
+                        relationships.join(
+                            registered_tables,
+                            registered_tables.c.id == relationships.c.target_table_id,
+                        )
+                    )
+                )
+            ).fetchall()
+        }
+    for rel_id, expected in (
+        ("orders-to-customer", "PLACED_BY"),
+        ("customer-to-orders", "HAS_ORDER"),
+        ("order-links", "REPLACES"),
+    ):
+        assert _rel_from_row(rows[rel_id]).cypher_type == expected

@@ -496,6 +496,7 @@ export function Sidebar({
                                 className={`graph-label-pill${highlightedLabel === compoundLabel ? " graph-label-pill--highlight" : ""}`}
                                 style={{ background: color }}
                                 draggable
+                                data-testid={`graph-label-${compoundLabel}`}
                                 onDragStart={(e) =>
                                   e.dataTransfer.setData("text/x-provisa-label", compoundLabel)
                                 }

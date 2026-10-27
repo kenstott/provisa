@@ -10,65 +10,20 @@
 
 import { describe, it, expect } from "vitest";
 import { buildDropExpansion } from "../pages/graph-drop";
-import type { Relationship } from "../types/admin";
+import type { SchemaRel } from "../components/graph/graph-schema-types";
 
-function rel(over: Partial<Relationship>): Relationship {
-  return {
-    id: 1,
-    sourceTableId: 1,
-    targetTableId: 2,
-    sourceTableName: "glossary_term",
-    sourceDomainId: "meta",
-    targetTableName: "glossary_term",
-    sourceColumn: "id",
-    targetColumn: "id",
-    cardinality: "many-to-many",
-    materialize: false,
-    refreshInterval: 0,
-    targetFunctionName: null,
-    functionArg: null,
-    alias: null,
-    graphqlAlias: null,
-    physicalName: null,
-    computedCypherAlias: null,
-    autoSuggested: false,
-    disableCypher: false,
-    sameEntity: false,
-    viaTableId: null,
-    viaTableName: null,
-    viaSourceColumn: null,
-    viaTargetColumn: null,
-    viaTypeColumn: null,
-    viaTypeValue: null,
-    viaLabelSource: null,
-    parameters: [],
-    ...over,
-  };
+/** A relationship type as /data/graph-schema answers it for the acting role (its label map). */
+function rt(type: string, source = "GlossaryTerm", target = "GlossaryTerm"): SchemaRel {
+  return { type, source, target, properties: [] };
 }
-
-function junction(id: number, typeValue: string): Relationship {
-  return rel({
-    id,
-    viaTableId: 99,
-    viaTableName: "glossary_term_edges",
-    viaSourceColumn: "from_term_id",
-    viaTargetColumn: "to_term_id",
-    viaTypeColumn: "rel_type",
-    viaTypeValue: typeValue,
-    viaLabelSource: "column",
-  });
-}
-
-const L2T = { GlossaryTerm: "GlossaryTerm" };
 
 describe("REQ-1586 buildDropExpansion", () => {
   it("expands one hop per relationship type the junction backs", () => {
-    const out = buildDropExpansion(
-      "MATCH (t:GlossaryTerm) RETURN t",
-      "GlossaryTerm",
-      [junction(1, "kind_of"), junction(2, "related_to"), junction(3, "part_of")],
-      L2T,
-    );
+    const out = buildDropExpansion("MATCH (t:GlossaryTerm) RETURN t", "GlossaryTerm", [
+      rt("KIND_OF"),
+      rt("RELATED_TO"),
+      rt("PART_OF"),
+    ]);
     expect(out.query).toContain("OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-");
     expect(out.query).toContain(":RELATED_TO]-");
     expect(out.query).toContain(":PART_OF]-");
@@ -78,47 +33,52 @@ describe("REQ-1586 buildDropExpansion", () => {
   });
 
   it("never writes type alternation, which a single hop cannot resolve", () => {
-    const out = buildDropExpansion(
-      "MATCH (t:GlossaryTerm) RETURN t",
-      "GlossaryTerm",
-      [junction(1, "kind_of"), junction(2, "related_to")],
-      L2T,
-    );
+    const out = buildDropExpansion("MATCH (t:GlossaryTerm) RETURN t", "GlossaryTerm", [
+      rt("KIND_OF"),
+      rt("RELATED_TO"),
+    ]);
     expect(out.query).not.toContain("|");
   });
 
-  it("skips a relationship the steward hid from Cypher", () => {
-    const out = buildDropExpansion(
-      "MATCH (t:GlossaryTerm) RETURN t",
-      "GlossaryTerm",
-      [junction(1, "kind_of"), { ...junction(2, "related_to"), disableCypher: true }],
-      L2T,
-    );
+  it("writes only the types the role's label map holds (one hidden from Cypher is not there)", () => {
+    const out = buildDropExpansion("MATCH (t:GlossaryTerm) RETURN t", "GlossaryTerm", [
+      rt("KIND_OF"),
+    ]);
     expect(out.query).toContain(":KIND_OF]-");
     expect(out.query).not.toContain(":RELATED_TO]-");
     expect(out.targetVars).toHaveLength(1);
   });
 
   it("falls back to a bare node pattern when nothing on the surface reaches it", () => {
-    const out = buildDropExpansion("MATCH (x:Other) RETURN x", "GlossaryTerm", [], L2T);
+    const out = buildDropExpansion("MATCH (x:Other) RETURN x", "GlossaryTerm", []);
     expect(out.query).toContain("OPTIONAL MATCH (mGlossaryTerm:GlossaryTerm)");
     expect(out.query).not.toContain("]-");
   });
 
-  it("keeps an FK/PK edge on its ordinary alias", () => {
-    const out = buildDropExpansion(
-      "MATCH (t:GlossaryTerm) RETURN t",
-      "GlossaryTerm",
-      [rel({ alias: "sees_also" })],
-      L2T,
-    );
+  it("keeps an FK/PK edge under the type the server names it", () => {
+    const out = buildDropExpansion("MATCH (t:GlossaryTerm) RETURN t", "GlossaryTerm", [
+      rt("SEES_ALSO"),
+    ]);
     expect(out.query).toContain(":SEES_ALSO]-");
+  });
+
+  it("names only the types the server registers between the two labels, either way round", () => {
+    // The maintainer's case: Shelter:Employees drawn, Shelter:Assignments dropped. The role's label
+    // map holds IS_EMPLOYEE from assignments to employees; a type between other labels is no hop.
+    const out = buildDropExpansion("MATCH (n:Shelter:Employees) RETURN n", "Shelter:Assignments", [
+      rt("IS_EMPLOYEE", "Shelter:Assignments", "Shelter:Employees"),
+      rt("PETS_OF_BREED", "Shelter:AnimalBreeds", "PetStore:Pets"),
+    ]);
+    expect(out.query).toContain(
+      "OPTIONAL MATCH (n)-[rAssignments:IS_EMPLOYEE]-(mAssignments:Shelter:Assignments)",
+    );
+    expect([...out.query.matchAll(/:([A-Z_]+)\]-/g)].map((m) => m[1])).toEqual(["IS_EMPLOYEE"]);
+    expect(out.targetVars).toEqual(["mAssignments"]);
   });
 });
 
 describe("a drop keeps the result's own paging", () => {
-  const drop = (query: string) =>
-    buildDropExpansion(query, "GlossaryTerm", [junction(1, "kind_of")], L2T).query;
+  const drop = (query: string) => buildDropExpansion(query, "GlossaryTerm", [rt("KIND_OF")]).query;
 
   it("keeps a LIMIT after the widened RETURN", () => {
     expect(drop("MATCH (t:GlossaryTerm) RETURN t LIMIT 25")).toBe(

@@ -630,6 +630,8 @@ export interface Relationship {
   // by the naming authority; the client must never transliterate graphqlAlias itself.
   physicalName: string | null;
   computedCypherAlias: string | null;
+  // REQ-351, REQ-1586: the Cypher type the server serves this edge as; never derived here.
+  cypherType: string | null;
   autoSuggested: boolean;
   disableCypher: boolean;
   /** REQ-2141: the rows it joins are the same entity (two tables one term grounds, keys 1:1). */
