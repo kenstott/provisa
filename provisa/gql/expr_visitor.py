@@ -413,6 +413,20 @@ class ExprLowering:
             if mistake is not None:
                 raise mistake
 
+    def _value_kind(self, node: CypherExpr) -> str | None:
+        """A value's kind as the statement writes it -- "number", "text" or "boolean" -- where it
+        is known when the query is read, else None."""
+        if isinstance(node, Paren):
+            return self._value_kind(node.inner)
+        if isinstance(node, Literal):
+            return {"number": "number", "string": "text", "boolean": "boolean"}.get(node.kind)
+        if isinstance(node, Binary) and node.op in ("-", "*", "/", "%", "^"):
+            left, right = self._value_kind(node.left), self._value_kind(node.right)
+            return "number" if left == right == "number" else None
+        if self._ctx.is_text(node):
+            return "text"
+        return None
+
     def _lower_Binary(self, node: Binary) -> exp.Expression:
         op = node.op
         if op in _BINARY_CMP:
@@ -420,6 +434,15 @@ class ExprLowering:
             if same is not None:
                 return same
             self._refuse_mismatched_comparison(node)
+            left_kind, right_kind = self._value_kind(node.left), self._value_kind(node.right)
+            if left_kind and right_kind and left_kind != right_kind:
+                # Values of two kinds ('1' and 1) are never equal and have no order (openCypher):
+                # never the engine's implicit cast of one to the other.
+                if op == "=":
+                    return exp.false()
+                if op in ("<>", "!="):
+                    return exp.true()
+                return exp.Null()
         left = self.lower(node.left)
         right = self.lower(node.right)
         # SQL binds IS NULL looser than a comparison, Cypher tighter: a = b IS NULL is a = (b IS NULL).
