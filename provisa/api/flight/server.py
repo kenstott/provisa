@@ -288,6 +288,19 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     return _call
 
 
+async def _affected(sql: str, role_id: str, state: Any) -> int:  # REQ-2175
+    """``sql`` governed as ``role_id`` and run through the one pipeline: the count it affected, as
+    pgwire's command tag reads it (``server._write_tag``)."""
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire import _pipeline
+
+    result = await _pipeline.govern_batch_final_plan_with_fn(sql, role_id, state, deliver=None)
+    if not isinstance(result, QueryResult):
+        _pipeline.require_governed_plan(result)  # REQ-1176: verified before the engine executes
+        result = await _pipeline._execute_plan(result, state)
+    return result.rowcount if result.rowcount is not None else len(result.rows)
+
+
 def _command_name(command: Any, raw: bytes) -> str:  # REQ-2175
     """What a Flight SQL request Provisa does not serve is called, for its NOT_IMPLEMENTED."""
     if command is not None:
@@ -878,20 +891,57 @@ class ProvisaFlightServer(
 
     def _flightsql_put(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # the RPC's, unused: binding reads no caller
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         reader: flight.MetadataRecordBatchReader,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         writer: flight.FlightMetadataWriter,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> None:
-        """DoPut of a prepared statement's parameter rows (REQ-2175): answered the handle with
-        them bound, which the client uses from then on (the statement holds no server state)."""
+        """DoPut of a Flight SQL command (REQ-2175). A statement update, or a prepared one with
+        its parameter rows (one execution each), is run as the caller (:meth:`_run_update`) and
+        answered its affected count. A prepared query's parameter rows are answered the handle
+        with them bound, which the client uses from then on (the statement holds no server
+        state)."""
         command = flightsql.unpack(descriptor.command)
+        if isinstance(command, flightsql.pb.CommandStatementUpdate):
+            count = self._run_update(context, [command.query])
+            writer.write(pa.py_buffer(flightsql.update_result(count)))
+            return
+        if isinstance(command, flightsql.pb.CommandPreparedStatementUpdate):
+            query, bound = flightsql.read_prepared_handle(command.prepared_statement_handle)
+            rows = reader.read_all()
+            parameters = rows if rows.num_columns else bound
+            count = self._run_update(context, flightsql.bound_statements(query, parameters))
+            writer.write(pa.py_buffer(flightsql.update_result(count)))
+            return
         if not isinstance(command, flightsql.pb.CommandPreparedStatementQuery):
             raise NotImplementedError(f"Flight SQL {_command_name(command, descriptor.command)}")
         query, _ = flightsql.read_prepared_handle(command.prepared_statement_handle)
         handle = flightsql.prepared_handle(query, reader.read_all())
         result = flightsql.pb.DoPutPreparedStatementResult(prepared_statement_handle=handle)
         writer.write(pa.py_buffer(result.SerializeToString()))
+
+    def _run_update(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        statements: list[str],
+    ) -> int:
+        """The affected count of ``statements``, each governed as the caller the call's headers
+        name and run through the one pipeline (:func:`_affected`), as pgwire runs a write."""
+        request = self._caller_request(context, statements[0])
+
+        def _update() -> int:
+            if not request.get("role"):
+                raise _flight_error("role is required")
+            role_id = str(request["role"])
+            try:
+                return sum(
+                    self._run_on_loop(_affected(statement, role_id, self._state))
+                    for statement in statements
+                )
+            except (PermissionError, ValueError) as exc:
+                raise _flight_error(str(exc), exc) from exc
+
+        return _run_rpc(lambda: self._as_ticket_caller(request, _update))
 
     def _flightsql_action(
         self,

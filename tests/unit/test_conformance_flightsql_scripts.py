@@ -223,3 +223,31 @@ def test_a_group_missing_its_kinds_fields_is_refused(tmp_path, monkeypatch, entr
     monkeypatch.setattr(by_design, "RULES", tmp_path)
     with pytest.raises(ValueError, match=match):
         by_design.groups("x")
+
+
+class _Columns:
+    """A PostgreSQL connection that answers every catalog read with ``columns``."""
+
+    def __init__(self, columns: list[tuple[str, str]]):
+        self.columns = columns
+
+    def execute(self, *_args):
+        return self
+
+    def fetchall(self) -> list[tuple[str, str]]:
+        return self.columns
+
+
+def test_a_statement_tests_table_is_declared_writable_by_the_job_user():
+    """The statement tests write their tables: each is seeded empty and granted org_admin's
+    insert, update and delete of every column; a type case's table is only read."""
+    assert sorted(fixtures.WRITTEN_TABLES) == ["sample_table", "test_rows_affected"]
+    conn = _Columns([("id", "integer"), ("value", "text")])
+    written = fixtures._model_table(conn, "sample_table", written=True)
+    assert written["write_grants"] == [
+        {"role": "org_admin", "operation": "insert", "columns": ["id", "value"]},
+        {"role": "org_admin", "operation": "update", "columns": ["id", "value"]},
+        {"role": "org_admin", "operation": "delete"},
+    ]
+    assert [c["name"] for c in written["columns"]] == ["id", "value"]
+    assert "write_grants" not in fixtures._model_table(conn, "test_int32")

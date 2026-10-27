@@ -30,6 +30,15 @@
     no-op, as the model holds every table.
   case: "TestConnection::test_get_objects_(table|column)_"
 
+- kind: adapted
+  group: Statement tests' tables
+  became: >-
+    sample_table (id INTEGER, value TEXT) and test_rows_affected (id INTEGER) are seeded empty in
+    the job's PostgreSQL and declared in the fixture model, writable by org_admin; each test's
+    CREATE TABLE is replaced by DELETE FROM the table, which leaves it empty as the CREATE did,
+    and its writes run through the governed pipeline.
+  case: "TestStatement::test_(execute_schema_noalias|parameter_null_typed|rows_affected)\\["
+
 - kind: client
   group: Bind before Prepare
   client: adbc-driver-flightsql 1.12.0 (the Go driver)

@@ -18,7 +18,9 @@ case's own query reads it. Where cases share a table name with different content
 ``test_timestamp`` precisions), each case's table is named for the case (``test_<case>``) and the
 case's query is overridden to read it (``queries/type/select/<case>.sql``, checked in and checked
 here). Where a setup is not PostgreSQL (``BLOB``, ``X'..'``), it is written in PostgreSQL's
-equivalent. The get_objects tests' table, which they would ingest, is ``getobjects_fixture``.
+equivalent. The get_objects tests' table, which they would ingest, is ``getobjects_fixture``; the
+statement tests' tables, which they would create and write, are seeded empty and writable
+(``WRITTEN_TABLES``).
 
 What each adapted case's setup became is stated in by_design/flight-sql.yaml, for the page.
 
@@ -47,6 +49,14 @@ OVERRIDES = HERE / "queries" / "type" / "select"
 GET_OBJECTS_TABLE = "getobjects_fixture"
 GET_OBJECTS_SETUP = f"""CREATE TABLE {GET_OBJECTS_TABLE} (ints INTEGER, strs TEXT);
 INSERT INTO {GET_OBJECTS_TABLE} (ints, strs) VALUES (1, NULL), (NULL, 'foo'), (42, 'spam');"""
+
+#: The statement tests' tables, which they would create empty and then write: seeded empty and
+#: writable by org_admin. The tests' CREATE TABLE is replaced by emptying the table
+#: (tests/provisa.py's query_override), as a rerun starts from the empty table the CREATE made.
+WRITTEN_TABLES = {
+    "sample_table": "CREATE TABLE sample_table (id INTEGER, value TEXT);",
+    "test_rows_affected": "CREATE TABLE test_rows_affected (id INTEGER);",
+}
 
 _PART = re.compile(r"^// part: (\w+)\s*$", re.M)
 _CREATE = re.compile(r"CREATE TABLE\s+(\w+)", re.I)
@@ -129,9 +139,9 @@ def _columns(conn, table: str) -> list[tuple[str, str]]:
     ).fetchall()
 
 
-def _model_table(conn, table: str) -> dict:
+def _model_table(conn, table: str, *, written: bool = False) -> dict:
     """``table`` as the model registers it: every column typed as registration types a
-    PostgreSQL column, visible to org_admin."""
+    PostgreSQL column, visible to org_admin; ``written``, writable by org_admin too."""
     from pgwire_catalog_types import registered_typing
 
     columns = []
@@ -140,7 +150,7 @@ def _model_table(conn, table: str) -> dict:
         if typing["data_type"] == "numeric":
             raise ValueError(f"{table}.{name}: an unsized numeric; size it in the setup")
         columns.append({"name": name, **typing, "visible_to": ["org_admin"]})
-    return {
+    entry = {
         "source_id": "conformance-pg",
         "schema": SCHEMA,
         "table": table,
@@ -148,6 +158,14 @@ def _model_table(conn, table: str) -> dict:
         "domain_id": SCHEMA,
         "columns": columns,
     }
+    if written:
+        names = [c["name"] for c in columns]
+        entry["write_grants"] = [
+            {"role": "org_admin", "operation": "insert", "columns": names},
+            {"role": "org_admin", "operation": "update", "columns": names},
+            {"role": "org_admin", "operation": "delete"},
+        ]
+    return entry
 
 
 def seed(validation: Path, pg_dsn: str, out: Path) -> None:
@@ -158,6 +176,7 @@ def seed(validation: Path, pg_dsn: str, out: Path) -> None:
     check_overrides(found)
     setups = [(c.adapted_table, c.adapted_setup) for c in found]
     setups.append((GET_OBJECTS_TABLE, GET_OBJECTS_SETUP))
+    setups.extend(WRITTEN_TABLES.items())
     tables = []
     with psycopg.connect(pg_dsn, autocommit=True) as conn:
         conn.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
@@ -165,7 +184,7 @@ def seed(validation: Path, pg_dsn: str, out: Path) -> None:
         for table, setup in setups:
             conn.execute(f"DROP TABLE IF EXISTS {SCHEMA}.{table}")
             conn.execute(setup)
-            tables.append(_model_table(conn, table))
+            tables.append(_model_table(conn, table, written=table in WRITTEN_TABLES))
     out.write_text(yaml.safe_dump(tables, sort_keys=False))
     print(f"seeded {len(tables)} fixture tables into {SCHEMA}; wrote {out}")
 

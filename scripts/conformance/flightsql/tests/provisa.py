@@ -41,6 +41,10 @@ class ProvisaQuirks(model.DriverQuirks):
         statement_bind_test_mode="select",
         statement_execute_schema=True,
         statement_prepare=True,
+        # An update is answered its affected count. The statement tests' CREATE TABLE is replaced
+        # by emptying the seeded table (query_override), which affects none.
+        statement_rows_affected=True,
+        statement_rows_affected_ddl=True,
         current_catalog=model.FromEnv("PROVISA_FLIGHT_CATALOG"),
         current_schema=model.FromEnv("PROVISA_FLIGHT_SCHEMA"),
     )
@@ -61,6 +65,16 @@ class ProvisaQuirks(model.DriverQuirks):
 
     def bind_parameter(self, index: int) -> str:
         return f"${index}"
+
+    #: The statement tests' CREATE TABLE, as each is adapted: its seeded empty table emptied
+    #: (fixtures.WRITTEN_TABLES).
+    _ADAPTED = {
+        "TestStatement.sample_table": "DELETE FROM sample_table",
+        "TestStatement.test_rows_affected.create_table": "DELETE FROM test_rows_affected",
+    }
+
+    def query_override(self, context: str, default: str) -> str:
+        return self._ADAPTED.get(context, default)
 
     def try_drop_table(self, cursor, **_table) -> None:  # noqa: ARG002  # the suite's signature
         """Nothing to drop: the fixture model holds every table the suite reads, and a query
