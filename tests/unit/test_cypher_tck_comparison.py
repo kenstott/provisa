@@ -122,3 +122,16 @@ def test_a_comparison_of_floats_no_division_makes_is_not_guarded():
     # A column's own float is compared as its source holds it: the comparison may still go there.
     sql_ast, _, _ = cypher_to_sql(parse_cypher("RETURN 1.5 > 1.0 AS a"), _EMPTY, {})
     assert "IS_NAN" not in sql_ast.sql(dialect="postgres").upper()
+
+
+@pytest.mark.parametrize(
+    ("query", "row"),
+    [
+        # Literals6: a string's escapes, \\uXXXX among them.
+        ("RETURN '\\u01FF' AS a", ("\u01ff",)),
+        ("RETURN 'a\\\\b\\'c' AS a", ("a\\b'c",)),
+        ('RETURN \'tab\\there\' AS a, "q\\"d" AS b', ("tab\there", 'q"d')),
+    ],
+)
+def test_a_string_reads_its_escapes(query, row):
+    assert _row(query) == row

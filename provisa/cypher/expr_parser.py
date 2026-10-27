@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import re
 import sys
 from typing import Any, cast
 
@@ -138,8 +139,29 @@ def _mk_number(t: pp.ParseResults) -> Literal:
 _number = pp.Regex(
     r"0[xX][0-9A-Fa-f]+|0o[0-7]+|(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?"
 ).set_parse_action(_mk_number)
-_sstring = pp.QuotedString("'", esc_char="\\", unquote_results=True)
-_dstring = pp.QuotedString('"', esc_char="\\", unquote_results=True)
+#: A Cypher string's escapes: \\\\ \\' \\" \\b \\f \\n \\r \\t, \\uXXXX and \\UXXXXXXXX.
+_ESCAPE = re.compile(r"\\(u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)", re.DOTALL)
+_ESCAPED = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+
+
+def _unescaped(text: str) -> str:
+    """A string literal's text between its quotes, its escapes read as Cypher reads them."""
+
+    def one(m: re.Match[str]) -> str:
+        code = m.group(1)
+        if code[0] in "uU" and len(code) > 1:
+            return chr(int(code[1:], 16))
+        return _ESCAPED.get(code, code)
+
+    return _ESCAPE.sub(one, text)
+
+
+_sstring = pp.QuotedString("'", esc_char="\\", unquote_results=False).set_parse_action(
+    lambda t: _unescaped(str(t[0])[1:-1])
+)
+_dstring = pp.QuotedString('"', esc_char="\\", unquote_results=False).set_parse_action(
+    lambda t: _unescaped(str(t[0])[1:-1])
+)
 _string = (_sstring | _dstring).set_parse_action(lambda t: Literal(t[0], "string"))
 _true = pp.CaselessKeyword("TRUE").set_parse_action(lambda: Literal(True, "boolean"))
 _false = pp.CaselessKeyword("FALSE").set_parse_action(lambda: Literal(False, "boolean"))
