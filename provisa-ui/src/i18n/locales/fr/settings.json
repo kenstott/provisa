@@ -144,10 +144,6 @@
         "label": "Threads de requête par worker",
         "help": "Le nombre maximal de requêtes qu'un processus worker exécute à la fois ; les suivantes attendent un thread libre. Redémarrage requis car la limite est fixée au démarrage du worker."
       },
-      "workers": {
-        "label": "Processus worker",
-        "help": "Le nombre de processus worker que le serveur exécute. Redémarrage requis car les processus sont lancés par le lanceur."
-      },
       "stream_threads": {
         "label": "Threads de streaming par worker",
         "help": "Le nombre maximal de réponses en streaming et de WebSockets ouverts qu'un processus worker garde à la fois, abonnements compris. Chacun attend son client au lieu d'occuper un cœur, il est donc compté à part des threads de requête."
@@ -211,10 +207,6 @@
       "mode": {
         "label": "Mode de sécurité",
         "help": "Standard, ou haute sécurité, où les endpoints de données refusent tout client incapable de déchiffrer lui-même les résultats et où les listeners pgwire, Bolt et MCP ne sont pas démarrés. Redémarrage requis car il détermine les listeners démarrés ; confirmation demandée car il coupe l'accès aux clients ordinaires."
-      },
-      "multitenancy": {
-        "label": "Multilocation",
-        "help": "Indique si le déploiement dessert plusieurs organisations, chacune n'administrant que ses propres données. Redémarrage requis car les attributions de rôles sont définies au démarrage ; confirmation demandée car cela change qui peut administrer le déploiement."
       },
       "superuser": {
         "username": {
@@ -286,10 +278,6 @@
         "label": "Port Airport",
         "help": "Le port sur lequel le service Airport Flight écoute ; 0 le désactive. Redémarrage requis ; confirmation demandée car cela ouvre ou ferme un listener."
       },
-      "port": {
-        "label": "Port de l'API HTTP",
-        "help": "Le port sur lequel l'API HTTP écoute. Redémarrage requis ; confirmation demandée car l'interface et chaque client doivent suivre un changement."
-      },
       "public_url": {
         "label": "Adresse publique",
         "help": "L'adresse sous laquelle ce déploiement est connu, par exemple https://data.example.com. L'IRI de chaque sujet en SPARQL et dans les exports RDF commence par elle ; elle doit donc rester la même tant que ces IRI sont utilisées. Si elle n'est pas définie, une requête qui renvoie l'IRI d'un sujet est refusée."
@@ -335,14 +323,6 @@
       "bolt_key": {
         "label": "Clé privée TLS Bolt",
         "help": "La clé privée du certificat propre au listener Bolt. Redémarrage requis ; confirmation demandée."
-      },
-      "http_cert": {
-        "label": "Certificat TLS de l'API HTTP",
-        "help": "Le fichier de certificat que présente l'API HTTP. Redémarrage requis ; confirmation demandée."
-      },
-      "http_key": {
-        "label": "Clé privée TLS de l'API HTTP",
-        "help": "La clé privée du certificat de l'API HTTP. Redémarrage requis ; confirmation demandée."
       }
     },
     "cache": {
@@ -463,8 +443,6 @@
         "help": "La gravité minimale des enregistrements de journal exportés avec la télémétrie."
       },
       "subsystem_traces": {
-        "label": "Traces des sous-systèmes",
-        "help": "Les sous-systèmes internes qui écrivent leurs propres traces.",
         "http_api": {
           "label": "Traces des sous-systèmes : API HTTP",
           "help": "Requêtes traitées par l'API de la plateforme. Redémarrage requis."
@@ -529,22 +507,6 @@
       "s3_endpoint": {
         "label": "Adresse du magasin de télémétrie",
         "help": "Le magasin d'objets dans lequel la télémétrie stockée est écrite."
-      },
-      "s3_bucket": {
-        "label": "Bucket du magasin de télémétrie",
-        "help": "Le bucket dans lequel la télémétrie stockée est écrite."
-      },
-      "s3_region": {
-        "label": "Région du magasin de télémétrie",
-        "help": "La région du magasin d'objets de télémétrie."
-      },
-      "s3_access_key": {
-        "label": "Clé d'accès du magasin de télémétrie",
-        "help": "La clé d'accès du magasin d'objets de télémétrie. Secret."
-      },
-      "s3_secret_key": {
-        "label": "Clé secrète du magasin de télémétrie",
-        "help": "La clé secrète du magasin d'objets de télémétrie. Secret."
       },
       "support_endpoint": {
         "label": "Endpoint de télémétrie du support",
@@ -641,108 +603,6 @@
       "egress_allowlist": {
         "label": "Liste d'autorisation de sortie des fonctions hébergées",
         "help": "Les hôtes qu'une fonction hébergée peut appeler ; tout le reste est refusé. Confirmation demandée car chaque entrée ouvre un chemin sortant."
-      }
-    },
-    "cdc": {
-      "consumer_group_id": {
-        "label": "Groupe de consommateurs CDC",
-        "help": "Le nom que ce déploiement utilise lorsqu'il lit des événements de changement depuis un broker de messages."
-      }
-    },
-    "graphql_remote": {
-      "max_object_depth": {
-        "label": "Profondeur d'objet GraphQL distant",
-        "help": "La profondeur à laquelle les objets imbriqués d'une source GraphQL distante sont suivis."
-      },
-      "max_list_depth": {
-        "label": "Profondeur de liste GraphQL distant",
-        "help": "La profondeur à laquelle les listes imbriquées d'une source GraphQL distante sont suivies."
-      },
-      "max_list_items": {
-        "label": "Éléments de liste GraphQL distant",
-        "help": "Le nombre maximal d'éléments lus dans une liste d'une source GraphQL distante."
-      },
-      "max_rows": {
-        "label": "Lignes par lecture GraphQL distant",
-        "help": "Le nombre maximal de lignes que prend une lecture d'une table paginée GraphQL distante."
-      }
-    },
-    "provisioning": {
-      "engine_namespace": {
-        "label": "Namespace du moteur",
-        "help": "Le namespace Kubernetes dans lequel les clusters de moteur sont créés."
-      },
-      "engine_cluster_mode": {
-        "label": "Mode de cluster du moteur",
-        "help": "Le type de cluster Kubernetes sur lequel les moteurs sont provisionnés."
-      },
-      "engine_cpu": {
-        "label": "CPU du moteur",
-        "help": "Le CPU alloué à chaque moteur provisionné."
-      },
-      "engine_shard": {
-        "label": "Shard du moteur",
-        "help": "Le shard du moteur auquel ce nœud appartient."
-      },
-      "engine_otlp_endpoint": {
-        "label": "Endpoint de télémétrie du moteur",
-        "help": "La destination où les moteurs provisionnés envoient leur propre télémétrie."
-      },
-      "engine_control_plane_host": {
-        "label": "Hôte du plan de contrôle du moteur",
-        "help": "L'adresse que les moteurs utilisent pour joindre la base de données du plan de contrôle, lorsqu'elle diffère de celle qu'utilise ce serveur."
-      },
-      "engine_control_plane_port": {
-        "label": "Port du plan de contrôle du moteur",
-        "help": "Le port que les moteurs utilisent pour joindre la base de données du plan de contrôle."
-      },
-      "engine_lakehouse_metastore_host": {
-        "label": "Hôte du métastore lakehouse",
-        "help": "L'adresse du métastore lakehouse qu'utilisent les moteurs."
-      },
-      "engine_lakehouse_metastore_port": {
-        "label": "Port du métastore lakehouse",
-        "help": "Le port du métastore lakehouse qu'utilisent les moteurs."
-      },
-      "engine_otel_s3_endpoint": {
-        "label": "Adresse du magasin de télémétrie du moteur",
-        "help": "L'adresse du magasin d'objets de télémétrie telle que les moteurs l'atteignent."
-      },
-      "isolated_engine_image": {
-        "label": "Image du moteur dédié",
-        "help": "L'image de conteneur utilisée pour le moteur dédié d'une organisation."
-      },
-      "isolated_engine_network": {
-        "label": "Réseau du moteur dédié",
-        "help": "Le réseau de conteneurs auquel un moteur dédié est rattaché."
-      },
-      "isolated_engine_memory": {
-        "label": "Mémoire du moteur dédié",
-        "help": "La mémoire allouée à un moteur dédié."
-      },
-      "isolated_engine_host_template": {
-        "label": "Modèle d'hôte du moteur dédié",
-        "help": "Le modèle à partir duquel le nom d'hôte d'un moteur dédié est construit."
-      },
-      "isolated_engine_port": {
-        "label": "Port du moteur dédié",
-        "help": "Le port sur lequel un moteur dédié écoute."
-      },
-      "isolated_engine_ready_timeout": {
-        "label": "Délai de disponibilité du moteur dédié",
-        "help": "Durée d'attente de la disponibilité d'un moteur dédié."
-      },
-      "isolated_engine_docker_socket": {
-        "label": "Socket Docker du moteur dédié",
-        "help": "Le socket Docker utilisé pour démarrer les moteurs dédiés."
-      },
-      "zaychik_cpu": {
-        "label": "CPU de la passerelle de requêtes",
-        "help": "Le CPU alloué à la passerelle de requêtes du moteur."
-      },
-      "zaychik_memory": {
-        "label": "Mémoire de la passerelle de requêtes",
-        "help": "La mémoire allouée à la passerelle de requêtes du moteur."
       }
     },
     "readonlyReasons": {
