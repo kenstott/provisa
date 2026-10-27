@@ -136,7 +136,7 @@ jobs:
           cd "$RUNNER_TEMP/driver/tests"
           leak="integration/mixed/test_async_cancellation.py::test_async_cancellation_does_not_leak"
           "$RUNNER_TEMP/driver-venv/bin/python" -m pytest integration -p no:cacheprovider \
-            --timeout="$DRIVER_TEST_TIMEOUT_S" --deselect "$leak" \
+            --timeout="$DRIVER_TEST_TIMEOUT_S" -k "not test_async_cancellation_does_not_leak" \
             --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q || true
           # The cancellation leak test on its own: hung where no signal reaches it (its event loop
           # waiting on a socket), the thread method dumps every thread's stack and ends this call
