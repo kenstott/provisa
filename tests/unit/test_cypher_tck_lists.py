@@ -65,6 +65,12 @@ def _rows(query: str) -> list[tuple]:
             [(True,)],
         ),
         ("RETURN 1 + 2 AS a", [(3,)]),
+        # List11 [3]: a function inside collect() is lowered too.
+        (
+            "WITH [1, 2] AS list, true AS e"
+            " RETURN collect(CASE WHEN e THEN size(list) = 0 ELSE size(list) > 0 END) AS c",
+            [([False],)],
+        ),
         # reverse() of a list is its items last to first; of a string, its characters.
         (
             "RETURN reverse([1, 2, 3]) AS a, reverse('abc') AS b, reverse([]) AS c",

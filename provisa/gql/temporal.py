@@ -75,6 +75,8 @@ DURATION_FUNCTIONS = frozenset(
 _DAYS_PER_MONTH = Fraction("30.436875")
 _SECONDS_PER_DAY = 86400
 _MICROS = 1_000_000
+#: A zone written as an offset, +hh:mm[:ss] (_named_zone's form of one).
+_OFFSET = re.compile(r"[+-]\d{2}:\d{2}(?::\d{2})?")
 
 
 # --------------------------------------------------------------------------- kinds
@@ -202,6 +204,61 @@ def duration_of_text(text: str) -> tuple[int, int, int]:
     if m.groupdict().get("sign") == "-":
         entries = {k: -v for k, v in entries.items()}
     return duration_of_map(entries)
+
+
+#: ISO-8601's PnYnMnWnDTnHnMnS as the engine reads it: group 1 the sign of the whole, then each
+#: component's signed, possibly fractional, number (_ISO's, numbered).
+_ISO_GROUPS = (
+    r"^([-+]?)P(?:([-+]?[0-9.]+)Y)?(?:([-+]?[0-9.]+)M)?(?:([-+]?[0-9.]+)W)?"
+    r"(?:([-+]?[0-9.]+)D)?(?:T(?:([-+]?[0-9.]+)H)?(?:([-+]?[0-9.]+)M)?(?:([-+]?[0-9.]+)S)?)?$"
+)
+_ISO_COMPONENTS = ("years", "months", "weeks", "days", "hours", "minutes", "seconds")
+
+
+def duration_of_computed_text(text: exp.Expression) -> exp.Expression:
+    """duration(s) of a string the query computes (toString(d)): ISO-8601's PnYnMnWnDTnHnMnS
+    read by the engine, each component signed and possibly fractional -- an engine's own interval
+    cast reads neither a negative part (P5M-14D) nor ISO's seconds (PT1.999S). Text in no ISO form
+    is the engine's interval cast, which refuses it. The text is computed once, named in a
+    subquery, and read by each component."""
+    computed = text
+    text = exp.column("_iso")
+
+    def group(n: int) -> exp.Expression:
+        return exp.Anonymous(
+            this="regexp_replace",
+            expressions=[
+                text.copy(),
+                exp.Literal.string(_ISO_GROUPS),
+                exp.Literal.string(f"\\{n}"),
+            ],
+        )
+
+    negative = exp.EQ(this=group(1), expression=exp.Literal.string("-"))
+    sign = exp.Case(
+        ifs=[exp.If(this=negative, true=exp.Literal.number(-1))], default=exp.Literal.number(1)
+    )
+    parts: dict[str, exp.Expression] = {}
+    for n, name in enumerate(_ISO_COMPONENTS, start=2):
+        number = exp.TryCast(
+            this=exp.Nullif(this=group(n), expression=exp.Literal.string("")),
+            to=exp.DataType.build("DOUBLE"),
+        )
+        # A component the text does not write is none of that unit (ISO-8601).
+        value = exp.Coalesce(this=number, expressions=[exp.Literal.number(0)])
+        value = exp.Mul(this=sign.copy(), expression=value)
+        if name == "seconds":
+            # As microseconds: an engine multiplies an interval by a whole number only.
+            parts["microseconds"] = exp.Mul(this=value, expression=exp.Literal.number(_MICROS))
+        else:
+            parts[name] = value
+    iso = exp.RegexpLike(this=text.copy(), expression=exp.Literal.string(_ISO_GROUPS))
+    parsed = exp.Case(
+        ifs=[exp.If(this=iso, true=duration_of_parts(parts))],
+        default=exp.Cast(this=text.copy(), to=exp.DataType.build("INTERVAL")),
+    )
+    named = exp.select(exp.alias_(computed, "_iso")).subquery("_iso_text")
+    return exp.Subquery(this=exp.select(parsed).from_(named))
 
 
 def interval(months: int, days: int, micros: int) -> exp.Expression:
@@ -441,7 +498,7 @@ def duration_function(
                     *duration_of_map({k: Fraction(str(v.value)) for k, v in given.entries})  # type: ignore[union-attr]
                 )
             return duration_of_parts({k: lower(v) for k, v in given.entries})
-        return exp.Cast(this=lower(given), to=exp.DataType.build("INTERVAL"))
+        return duration_of_computed_text(lower(given))
     args = [lower(a) for a in written]
     if len(args) != 2 or None in kinds or DURATION in kinds:
         raise CypherTranslateError(f"{name}() takes two temporal values")
@@ -1438,6 +1495,11 @@ def truncated(
     if not entries:
         if kind == DATETIME:
             return zoned(cut, zone)
+        if kind == TIME and zone is not None and _OFFSET.fullmatch(zone):
+            # A time keeps its value's offset: the wall clock cut, at that offset.
+            local = exp.Cast(this=cut, to=exp.DataType.build("TIME"))
+            text = exp.DPipe(this=_text(local), expression=exp.Literal.string(zone))
+            return exp.Cast(this=text, to=exp.DataType.build(SQL_TYPES[TIME]))
         return exp.Cast(this=cut, to=exp.DataType.build(SQL_TYPES[kind]))
     return composed_value(kind, entries, {}, lower, base=cut, base_kind=LOCALDATETIME, zone=zone)
 
