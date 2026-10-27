@@ -88056,7 +88056,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     division by zero (error, null, or IEEE infinity for floating operands), comparison across types (false
     vs a type error) and + on strings (concatenation vs undefined). The back end renders each option once
     per engine dialect, so every surface lowering to the IR gets its language''s semantics through one back
-    end.'
+    end. (Amended 2026-10-27, A LANGUAGE IS A CONFIG APPLIED TO THE AST:) Maintainer 2026-10-27: every reasonable
+    design choice a language makes that can be parameterized works this way. A front end lowers to the neutral
+    IR AST without choosing semantics; a language config, data that names the language''s choice for each
+    parameterized operation (casts, division, division by zero, cross-type comparison, string +, null ordering
+    and the like), is applied to that AST by one pass, producing the resolved AST the back end renders.
+    Cypher and SPARQL each have a config; a further language is a further config, not new compiler code.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
