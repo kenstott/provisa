@@ -1771,6 +1771,42 @@
       "groupexposureRest": {
         "title": "Hetzelfde antwoord via REST",
         "description": "De view is ook een REST-endpoint, hier gegroepeerd op of een concern boven de grens zit en op de server opgeteld, klaar voor een risicorapport of een spreadsheet."
+      },
+      "agentdataScenario": {
+        "title": "Geef een agent je data",
+        "description": "Een retailer wil een AI-agent op zijn orderdata, beperkt tot wat de persoon voor wie hij handelt mag zien. De agent bereikt de data via de MCP-server van Provisa. De MCP-verkenner, zo meteen, toont precies wat zo'n externe agent ziet. Polly is daarentegen de assistent voor het werken in Provisa zelf. Dit is de orderdatabase van de retailer, live gelezen."
+      },
+      "agentdataCustomers": {
+        "title": "Wie welke klanten mag zien",
+        "description": "De klantentabel draagt de regels: een supportmedewerker West leest alleen de klanten in het westen en hun orders, met gemaskeerde e-mailadressen en zonder prijzen. De BI-analist leest elke regio en wat de orders opbrachten, maar geen enkel e-mailadres."
+      },
+      "agentdataSupportRole": {
+        "title": "Handelen als supportmedewerker West",
+        "description": "De agent handelt als de rol in de kopregel. Volgende kiest de supportmedewerker West, zodat elke toolaanroep van de agent als die rol draait."
+      },
+      "agentdataSupportAsks": {
+        "title": "De vraag van de supportmedewerker",
+        "description": "De agent vindt de tabellen, schrijft SQL en voert het uit met MCP-tools, die tijdens het draaien worden getoond. Alleen de klanten in het westen komen terug, en hun e-mailadressen komen gemaskeerd binnen: meer krijgt de rol niet."
+      },
+      "agentdataExplain": {
+        "title": "Wat er echt draaide",
+        "description": "De run_sql-aanroep van de agent, geopend: de opdracht die hij stuurde, en dan de opdracht die voor zijn rol draaide. Provisa voegde het rijfilter West en de e-mailmaskering toe. De agent schreef geen van beide en hoort er nooit over."
+      },
+      "agentdataOutOfReach": {
+        "title": "Een vraag buiten bereik",
+        "description": "Gevraagd wat de orders van elke klant opbrachten, vindt de agent geen prijzen in de tabellen die zijn rol mag lezen, en zegt dat. Hij kan niet om de rol heen: bij elke toolaanroep gelden dezelfde regels."
+      },
+      "agentdataAnalystRole": {
+        "title": "Nu als BI-analist",
+        "description": "Volgende zet de kopregel op de BI-analist. De agent is dezelfde; de rol is anders."
+      },
+      "agentdataAnalystAsks": {
+        "title": "Dezelfde vraag, een andere rol",
+        "description": "Dezelfde vraag als analist: elke regio komt terug, er is helemaal geen e-mailkolom en de omzetweergave staat tussen zijn tabellen. Andere tabellen, rijen en kolommen, van dezelfde agent en dezelfde server."
+      },
+      "agentdataConnect": {
+        "title": "Je eigen agent, dezelfde server",
+        "description": "Dit is de server die de agent van de verkenner gebruikte. Plak deze configuratie in Claude Desktop, of richt een willekeurige MCP-client op de URL, en je eigen agent krijgt dezelfde beheerde tools, gebonden aan dezelfde regels."
       }
     },
     "status": {
@@ -1891,6 +1927,10 @@
       "groupexposure": {
         "title": "Groepsblootstelling via Wikidata",
         "summary": "Bij welke concerns gaat een bank over haar grens voor grote blootstellingen? Haar leningenportefeuille, via de LEI van de eigenaar van elke kredietnemer en SPARQL gekoppeld aan de ketens van moederorganisaties in Wikidata, brengt elke kredietnemer onder bij zijn concern. De bank en haar kredietnemers zijn verzonnen; de concerns zijn echt."
+      },
+      "agentdata": {
+        "title": "Geef een agent je data",
+        "summary": "Kan een AI-agent de orderdata van een retailer krijgen en beperkt worden tot wat zijn gebruiker mag zien? De MCP-verkenner toont de agent als supportmedewerker en als analist: andere rijen en kolommen, gemaskeerde e-mails en de beheerde SQL achter elk antwoord."
       }
     }
   }

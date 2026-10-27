@@ -89231,3 +89231,67 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And GraphQL types ip as IPAddress
 
     And a SQL filter ip = ''10.0.0.1'' compares it as text'
+- id: REQ-2172
+  status: in-progress
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'A capability demo, "Give an agent your data": can an AI agent be given a retailer''s order data and held
+    to what the person it acts for may see? Its data is the storefront demo''s order database (customers, orders, order
+    lines), reused as the demo''s own Postgres. Its surface is the MCP explorer, the developer''s view of exactly what an
+    outside agent sees over Provisa''s MCP server, its agent answering live (the sandbox''s model through OpenRouter). Two
+    roles: a West support agent reads the West''s customers and their orders, email addresses masked, and no order line;
+    the BI analyst reads every region, no email address, and a view of what each customer''s orders came to. Its tour:
+    the scenario, saying the explorer is the outside agent''s view and Polly the assistant for working in Provisa; the
+    customers table and its rules; as the support agent, a question about its region''s recent customers and how to
+    reach them (tool calls shown as they run, West rows only, emails masked); the explain of that answer''s run_sql call,
+    the statement the agent sent beside the statement that ran for the role, the row filter and mask governance added;
+    a question out of its reach (what each customer''s orders came to), which the agent declines; the analyst asking
+    the same question (other tables, rows and columns); and the Connect Claude Desktop panel, the same server for the
+    visitor''s own agent. The explorer gains what the tour needs: a run_sql call''s badge opens its explain
+    (/data/sql/explain as the explorer''s role), and three tour step kinds -- mcp (a question handed to the explorer,
+    awaited until answered), mcp_explain (the last run_sql call''s explain) and mcp_connect (the panel opened). On the
+    site''s demos page it is the "Give an agent your data" problem class.'
+  use_case: 'A developer deciding whether to put an AI agent on company data sees the agent held to its user''s role:
+    another region''s rows and masked columns never reach it, and each answer shows the governed SQL that ran.'
+  scenario: 'Given the agentdata demo started from its bundle
+
+
+    When a visitor walks its tour as the West support agent
+
+
+    Then the agent''s answer holds only West customers with masked email addresses
+
+
+    And the explain of its run_sql call shows the statement that ran with the West row filter and the email mask
+
+
+    And as the analyst the same question returns every region and no email column'
+  related_reqs:
+  - REQ-1008
+  - REQ-1103
+  - REQ-2006
+  - REQ-2010
+  - REQ-2082
+  notes: 'Lead (2026-10-25, maintainer approved): a named demo built with the new-named-demo skill on the MCP explorer,
+    reusing existing data; five-step story. Lead (2026-10-26): explain comes straight after the support agent''s first
+    question, where it shows the filter and mask governance added.'
+  code:
+  - demo/named/agentdata/config.yaml
+  - demo/named/agentdata/tour.yaml
+  - provisa-ui/src/pages/McpExplorePage.tsx
+  - provisa-ui/src/tour/demoTour.ts
+  - scripts/gen-site-demos.mjs
+  tests:
+  - tests/unit/test_named_demo_tour.py
+  - provisa-ui/src/__tests__/McpExploreExplain.test.tsx
+  - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
+  - tests/integration/test_agentdata_demo.py
+  stakeholders:
+  - app-developer
+  - compliance
+  docs:
+  - named-demos.md

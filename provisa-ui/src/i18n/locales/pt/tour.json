@@ -1771,6 +1771,42 @@
       "groupexposureRest": {
         "title": "A mesma resposta por REST",
         "description": "A vista também é um endpoint REST, aqui agrupada por o grupo ultrapassar ou não o limite e somada no servidor, pronta para um relatório de risco ou uma folha de cálculo."
+      },
+      "agentdataScenario": {
+        "title": "Dê seus dados a um agente",
+        "description": "Um varejista quer um agente de IA sobre seus dados de pedidos, limitado ao que a pessoa para quem ele age pode ver. O agente chega aos dados pelo servidor MCP do Provisa. O explorador MCP, a seguir, mostra exatamente o que um agente externo assim vê. A Polly, por outro lado, é a assistente para trabalhar no próprio Provisa. Este é o banco de pedidos do varejista, lido ao vivo."
+      },
+      "agentdataCustomers": {
+        "title": "Quem pode ver quais clientes",
+        "description": "A tabela de clientes carrega as regras: um atendente de suporte do Oeste lê só os clientes do Oeste e seus pedidos, com os e-mails mascarados e sem preços. O analista de BI lê todas as regiões e o valor dos pedidos, mas nenhum endereço de e-mail."
+      },
+      "agentdataSupportRole": {
+        "title": "Agir como atendente de suporte do Oeste",
+        "description": "O agente age com a função do cabeçalho. Próximo escolhe o atendente de suporte do Oeste, então cada chamada de ferramenta do agente roda com essa função."
+      },
+      "agentdataSupportAsks": {
+        "title": "A pergunta do atendente de suporte",
+        "description": "O agente encontra as tabelas, escreve SQL e o executa com ferramentas MCP, mostradas enquanto rodam. Só voltam os clientes do Oeste, e seus e-mails chegam mascarados: é tudo o que a função recebe."
+      },
+      "agentdataExplain": {
+        "title": "O que realmente rodou",
+        "description": "A chamada run_sql do agente, aberta: a instrução que ele enviou e depois a instrução que rodou para a sua função. O Provisa acrescentou o filtro de linhas do Oeste e a máscara de e-mail. O agente não escreveu nenhum dos dois e nunca é informado deles."
+      },
+      "agentdataOutOfReach": {
+        "title": "Uma pergunta fora de alcance",
+        "description": "Perguntado quanto somaram os pedidos de cada cliente, o agente não encontra preços entre as tabelas que sua função pode ler, e diz isso. Ele não consegue contornar a função: as mesmas regras valem em cada chamada de ferramenta."
+      },
+      "agentdataAnalystRole": {
+        "title": "Agora como analista de BI",
+        "description": "Próximo muda o cabeçalho para o analista de BI. O agente é o mesmo; a função é outra."
+      },
+      "agentdataAnalystAsks": {
+        "title": "A mesma pergunta, outra função",
+        "description": "A mesma pergunta como analista: voltam todas as regiões, não há nenhuma coluna de e-mail e a visão de receita está entre suas tabelas. Outras tabelas, linhas e colunas, do mesmo agente e do mesmo servidor."
+      },
+      "agentdataConnect": {
+        "title": "Seu próprio agente, o mesmo servidor",
+        "description": "Este é o servidor que o agente do explorador usou. Cole esta configuração no Claude Desktop, ou aponte qualquer cliente MCP para a URL, e seu próprio agente recebe as mesmas ferramentas governadas, sujeitas às mesmas regras."
       }
     },
     "status": {
@@ -1891,6 +1927,10 @@
       "groupexposure": {
         "title": "Exposição por grupo via Wikidata",
         "summary": "Perante que grupos empresariais um banco ultrapassa o seu limite de grandes exposições? A sua carteira de empréstimos, ligada pelo LEI do dono de cada mutuário às cadeias de organizações-mãe do Wikidata via SPARQL, atribui cada mutuário ao seu grupo. O banco e os seus mutuários são fictícios; os grupos são reais."
+      },
+      "agentdata": {
+        "title": "Dê seus dados a um agente",
+        "summary": "Dá para entregar a um agente de IA os dados de pedidos de um varejista e limitá-lo ao que seu usuário pode ver? O explorador MCP mostra o agente como atendente de suporte e como analista: outras linhas e colunas, e-mails mascarados e o SQL governado por trás de cada resposta."
       }
     }
   }

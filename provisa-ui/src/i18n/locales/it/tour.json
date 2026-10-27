@@ -1771,6 +1771,42 @@
       "groupexposureRest": {
         "title": "La stessa risposta via REST",
         "description": "La vista è anche un endpoint REST, qui raggruppato in base al superamento del limite e sommato sul server, pronto per un report sui rischi o un foglio di calcolo."
+      },
+      "agentdataScenario": {
+        "title": "Dai i tuoi dati a un agente",
+        "description": "Un rivenditore vuole un agente di IA sui suoi dati degli ordini, limitato a ciò che può vedere la persona per cui agisce. L'agente raggiunge i dati tramite il server MCP di Provisa. L'esploratore MCP, tra poco, mostra esattamente ciò che vede un agente esterno di questo tipo. Polly, invece, è l'assistente per lavorare in Provisa stesso. Questo è il database degli ordini del rivenditore, letto dal vivo."
+      },
+      "agentdataCustomers": {
+        "title": "Chi può vedere quali clienti",
+        "description": "La tabella dei clienti porta le regole: un addetto al supporto Ovest legge solo i clienti dell'Ovest e i loro ordini, con gli indirizzi email mascherati e senza prezzi. L'analista BI legge ogni regione e l'importo degli ordini, ma nessun indirizzo email."
+      },
+      "agentdataSupportRole": {
+        "title": "Agire come addetto al supporto Ovest",
+        "description": "L'agente agisce con il ruolo nell'intestazione. Avanti sceglie l'addetto al supporto Ovest, così ogni chiamata a uno strumento dell'agente gira con quel ruolo."
+      },
+      "agentdataSupportAsks": {
+        "title": "La domanda dell'addetto al supporto",
+        "description": "L'agente trova le tabelle, scrive SQL e lo esegue con strumenti MCP, mostrati mentre girano. Tornano solo i clienti dell'Ovest, e i loro indirizzi email arrivano mascherati: è tutto ciò che il ruolo riceve."
+      },
+      "agentdataExplain": {
+        "title": "Cosa è stato eseguito davvero",
+        "description": "La chiamata run_sql dell'agente, aperta: l'istruzione che ha inviato, poi l'istruzione eseguita per il suo ruolo. Provisa ha aggiunto il filtro di riga Ovest e il mascheramento dell'email. L'agente non ha scritto né l'uno né l'altro, e non ne viene mai informato."
+      },
+      "agentdataOutOfReach": {
+        "title": "Una domanda fuori portata",
+        "description": "Alla domanda su quanto sono costati gli ordini di ogni cliente, l'agente non trova prezzi tra le tabelle che il suo ruolo può leggere, e lo dice. Non può aggirare il ruolo: le stesse regole valgono a ogni chiamata a uno strumento."
+      },
+      "agentdataAnalystRole": {
+        "title": "Ora come analista BI",
+        "description": "Avanti passa l'intestazione all'analista BI. L'agente è lo stesso; il ruolo è un altro."
+      },
+      "agentdataAnalystAsks": {
+        "title": "La stessa domanda, un altro ruolo",
+        "description": "La stessa domanda come analista: tornano tutte le regioni, non c'è alcuna colonna email e la vista dei ricavi è tra le sue tabelle. Altre tabelle, righe e colonne, dallo stesso agente e dallo stesso server."
+      },
+      "agentdataConnect": {
+        "title": "Il tuo agente, lo stesso server",
+        "description": "Questo è il server usato dall'agente dell'esploratore. Incolla questa configurazione in Claude Desktop, o punta qualsiasi client MCP all'URL, e il tuo agente ottiene gli stessi strumenti governati, soggetti alle stesse regole."
       }
     },
     "status": {
@@ -1891,6 +1927,10 @@
       "groupexposure": {
         "title": "Esposizione per gruppo tramite Wikidata",
         "summary": "Verso quali gruppi societari una banca supera il proprio limite alle grandi esposizioni? Il suo portafoglio prestiti, collegato tramite il LEI del proprietario di ogni debitore alle catene di organizzazioni controllanti di Wikidata via SPARQL, riconduce ogni debitore al suo gruppo. La banca e i suoi debitori sono inventati; i gruppi sono reali."
+      },
+      "agentdata": {
+        "title": "Dai i tuoi dati a un agente",
+        "summary": "Si possono dare a un agente di IA i dati degli ordini di un rivenditore, limitandolo a ciò che il suo utente può vedere? L'esploratore MCP mostra l'agente come addetto al supporto e come analista: altre righe e colonne, email mascherate e l'SQL governato dietro ogni risposta."
       }
     }
   }

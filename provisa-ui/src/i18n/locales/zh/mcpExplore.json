@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} 正在运行。",
     "toolDoneTooltip": "{{name}} 已完成，结果已返回给助手。",
     "toolErrorTooltip": "{{name}} 失败。助手已收到该错误，可能会改用其他参数重试。",
-    "roleNoteHelpTitle": "本会话所使用的角色"
+    "roleNoteHelpTitle": "本会话所使用的角色",
+    "toolExplainTooltip": "{{name}} 已完成。点击查看它发送的语句和实际运行的语句。",
+    "explainTitle": "智能体的查询运行了什么",
+    "explainSent": "智能体发送的语句",
+    "explainRan": "实际运行的语句,已按 {{role}} 治理"
   }
 }

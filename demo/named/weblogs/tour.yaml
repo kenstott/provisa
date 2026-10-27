@@ -39,6 +39,11 @@
 #                 environment switcher on Next, so the steps after it read that environment
 #   notebook      true: the demo's notebook.ipynb, its cells added to the Notebook tab's open notebook
 #                 and run in the visitor's browser (REQ-2084), on /notebook
+#   mcp           a question for the MCP explorer's agent (REQ-2172), on /explore: answered live,
+#                 as the header's role, its tool calls shown as they run
+#   mcp_explain   true: the explain of the last run_sql call the explorer's agent made -- the
+#                 statement it sent and the one that ran, governed for the role -- after an mcp step
+#   mcp_connect   true: the explorer's Connect Claude Desktop panel, opened
 #   polly         a question for Polly (REQ-2012): answered once when the demo's bundle is
 #                 built, and shown with that stored answer in the Polly panel; nothing is asked
 #                 live. A demo with no stored answer leaves the step out. The question is one of

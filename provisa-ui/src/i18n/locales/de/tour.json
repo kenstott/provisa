@@ -1771,6 +1771,42 @@
       "groupexposureRest": {
         "title": "Dieselbe Antwort über REST",
         "description": "Die View ist auch ein REST-Endpunkt, hier danach gruppiert, ob ein Konzern über der Grenze liegt, und auf dem Server summiert, bereit für einen Risikobericht oder eine Tabellenkalkulation."
+      },
+      "agentdataScenario": {
+        "title": "Geben Sie einem Agenten Ihre Daten",
+        "description": "Ein Händler möchte einen KI-Agenten auf seine Bestelldaten ansetzen, beschränkt auf das, was die Person sehen darf, für die er handelt. Der Agent erreicht die Daten über den MCP-Server von Provisa. Der MCP-Explorer, der gleich folgt, zeigt genau, was ein solcher externer Agent sieht. Polly dagegen ist der Assistent für die Arbeit in Provisa selbst. Dies ist die Bestelldatenbank des Händlers, live gelesen."
+      },
+      "agentdataCustomers": {
+        "title": "Wer welche Kunden sehen darf",
+        "description": "Die Kundentabelle trägt die Regeln: Ein Support-Mitarbeiter West liest nur die Kunden des Westens und ihre Bestellungen, mit maskierten E-Mail-Adressen und ohne Preise. Der BI-Analyst liest jede Region und den Wert der Bestellungen, aber keine E-Mail-Adresse."
+      },
+      "agentdataSupportRole": {
+        "title": "Als Support-Mitarbeiter West handeln",
+        "description": "Der Agent handelt als die Rolle in der Kopfzeile. Weiter wählt den Support-Mitarbeiter West, sodass jeder Tool-Aufruf des Agenten als diese Rolle läuft."
+      },
+      "agentdataSupportAsks": {
+        "title": "Die Frage des Support-Mitarbeiters",
+        "description": "Der Agent findet die Tabellen, schreibt SQL und führt es über MCP-Tools aus, die beim Laufen angezeigt werden. Nur die Kunden des Westens kommen zurück, und ihre E-Mail-Adressen kommen maskiert an: Mehr bekommt die Rolle nicht."
+      },
+      "agentdataExplain": {
+        "title": "Was tatsächlich lief",
+        "description": "Der run_sql-Aufruf des Agenten, geöffnet: die Anweisung, die er gesendet hat, dann die Anweisung, die für seine Rolle lief. Provisa hat den Zeilenfilter West und die E-Mail-Maskierung hinzugefügt. Der Agent hat keines von beiden geschrieben und erfährt nie davon."
+      },
+      "agentdataOutOfReach": {
+        "title": "Eine Frage außer Reichweite",
+        "description": "Gefragt, was die Bestellungen jedes Kunden ergaben, findet der Agent unter den Tabellen, die seine Rolle lesen darf, keine Preise und sagt das. Er kann die Rolle nicht umgehen: Bei jedem Tool-Aufruf gelten dieselben Regeln."
+      },
+      "agentdataAnalystRole": {
+        "title": "Jetzt als BI-Analyst",
+        "description": "Weiter schaltet die Kopfzeile auf den BI-Analysten um. Der Agent ist derselbe, die Rolle eine andere."
+      },
+      "agentdataAnalystAsks": {
+        "title": "Dieselbe Frage, eine andere Rolle",
+        "description": "Dieselbe Frage als Analyst: Jede Region kommt zurück, es gibt überhaupt keine E-Mail-Spalte, und die Umsatzsicht ist unter seinen Tabellen. Andere Tabellen, Zeilen und Spalten, vom selben Agenten und demselben Server."
+      },
+      "agentdataConnect": {
+        "title": "Ihr eigener Agent, derselbe Server",
+        "description": "Dies ist der Server, den der Agent des Explorers verwendet hat. Fügen Sie diese Konfiguration in Claude Desktop ein oder richten Sie einen beliebigen MCP-Client auf die URL, und Ihr eigener Agent erhält dieselben geregelten Tools, an dieselben Regeln gebunden."
       }
     },
     "status": {
@@ -1891,6 +1927,10 @@
       "groupexposure": {
         "title": "Gruppenexposure über Wikidata",
         "summary": "Bei welchen Konzernen überschreitet eine Bank ihre Großkreditgrenze? Ihr Kreditbuch, über den LEI des Eigentümers jedes Kreditnehmers per SPARQL mit den Ketten übergeordneter Organisationen in Wikidata verknüpft, ordnet jeden Kreditnehmer seinem Konzern zu. Die Bank und ihre Kreditnehmer sind erfunden; die Konzerne sind echt."
+      },
+      "agentdata": {
+        "title": "Geben Sie einem Agenten Ihre Daten",
+        "summary": "Kann ein KI-Agent die Bestelldaten eines Händlers bekommen und auf das beschränkt werden, was sein Benutzer sehen darf? Der MCP-Explorer zeigt den Agenten als Support-Mitarbeiter und als Analyst: andere Zeilen und Spalten, maskierte E-Mails und das geregelte SQL hinter jeder Antwort."
       }
     }
   }
