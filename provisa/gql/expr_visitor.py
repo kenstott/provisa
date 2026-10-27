@@ -275,6 +275,11 @@ def _written_value(node: CypherExpr) -> object:
     if isinstance(node, MapLiteral):
         entries = {k: _written_value(v) for k, v in node.entries}
         return _UNKNOWN if any(v is _UNKNOWN for v in entries.values()) else entries
+    if isinstance(node, Index):
+        items, at = _written_value(node.obj), _written_value(node.index)
+        if isinstance(items, list) and isinstance(at, int) and not isinstance(at, bool):
+            return items[at] if -len(items) <= at < len(items) else None
+        return _UNKNOWN
     if isinstance(node, Binary) and node.op in ("=", "<>", "!=", "IN", "<", "<=", ">", ">="):
         return _folded_equality(node)
     if isinstance(node, Binary) and node.op == "+":
@@ -369,6 +374,23 @@ def _folded_equality(node: Binary) -> object:
     return not same
 
 
+def _written(value: object) -> CypherExpr:
+    """A value written wholly in the statement (_written_value) as the literal that writes it."""
+    if value is None:
+        return Literal(None, "null")
+    if isinstance(value, bool):
+        return Literal(value, "boolean")
+    if isinstance(value, (int, float)):
+        return Literal(value, "number")
+    if isinstance(value, str):
+        return Literal(value, "string")
+    if isinstance(value, list):
+        return ListLiteral(items=[_written(v) for v in value])
+    if isinstance(value, dict):
+        return MapLiteral(entries=[(k, _written(v)) for k, v in value.items()])
+    raise CypherTranslateError(f"{value!r} is no value a statement writes")
+
+
 def _reversed_list(items: exp.Expression) -> exp.Expression:
     """A list's items last to first, in the engine functions the IR names (DuckDB's reverse takes
     a string alone): each index from the last down to 1, read. An empty list is itself, as Trino's
@@ -409,7 +431,9 @@ def _literal_kind(item: CypherExpr) -> str | None:
             return "float"
         return "string"
     if isinstance(item, ListLiteral):
-        return "list"
+        # A list of its items' type: [1] and ['a'] are lists of two types; [] is a list of any.
+        inner = {k for k in map(_literal_kind, item.items) if k is not None}
+        return f"list<{inner.pop() if len(inner) == 1 else ('mixed' if inner else '')}>"
     if isinstance(item, MapLiteral):
         return "map"
     return None
@@ -419,7 +443,10 @@ def _mixed_literal_kinds(items: list[CypherExpr]) -> bool:
     """Whether a list literal's items are literals of more than one type."""
     if not all(isinstance(i, (Literal, ListLiteral, MapLiteral)) for i in items):
         return False
-    return len({k for k in map(_literal_kind, items) if k is not None}) > 1
+    kinds = {k for k in map(_literal_kind, items) if k is not None}
+    if "list<>" in kinds and any(k.startswith("list<") and k != "list<>" for k in kinds):
+        kinds.discard("list<>")
+    return len(kinds) > 1 or "list<mixed>" in kinds
 
 
 class ExprLowering:
@@ -547,6 +574,12 @@ class ExprLowering:
         folded = _folded_equality(node)
         if folded is not _UNKNOWN:
             return {True: exp.true(), False: exp.false(), None: exp.Null()}[folded]
+        if op == "+":
+            built = _written_value(node)
+            if isinstance(built, list):
+                # A list the statement writes wholly ([1] + (2 IN [3]) + 4) is that list literal:
+                # of several types, each item its JSON, never one coerced to another's type.
+                return self._lower_ListLiteral(cast(ListLiteral, _written(built)))
         if op in _BINARY_CMP:
             same = self._same_element(node)
             if same is not None:
@@ -700,6 +733,9 @@ class ExprLowering:
         # `x IN a + b`), bracketed as the comparison it is in SQL.
         if isinstance(raw_right, ListLiteral):
             return exp.In(this=left, expressions=[self.lower(i) for i in raw_right.items])
+        if isinstance(right.unnest(), exp.Array) and right.unnest().expressions:
+            # A list the statement writes wholly once read ([3] + [4]): its items, as a tuple.
+            return exp.In(this=left, expressions=list(right.unnest().expressions))
         if isinstance(right.unnest(), exp.Binary):
             member = exp.EQ(this=left, expression=exp.Any(this=exp.Paren(this=right.unnest())))
             return exp.Paren(this=member)

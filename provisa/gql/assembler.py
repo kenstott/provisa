@@ -164,6 +164,11 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         return _json_maps(col, value)
     if kind == GraphVarKind.JSON_LIST:
         return _json_list(col, value)
+    if kind == GraphVarKind.JSON_VALUE:
+        try:
+            return json.loads(value) if isinstance(value, str) else value
+        except json.JSONDecodeError as exc:
+            raise CypherAssemblyError(f"Malformed JSON in column {col!r}: {exc}") from exc
     if kind == GraphVarKind.DURATION:  # REQ-2173
         from provisa.gql.temporal import Duration
 

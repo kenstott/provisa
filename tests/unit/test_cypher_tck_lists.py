@@ -22,6 +22,8 @@ import duckdb
 import pytest
 
 from provisa.cypher.parser import parse_cypher
+from provisa.gql.assembler import assemble_rows, take_cut
+from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.label_map import CypherLabelMap
 from provisa.gql.translator import cypher_to_sql
 from provisa.transpiler.transpile import transpile_to_duckdb
@@ -89,3 +91,33 @@ def _rows(query: str) -> list[tuple]:
 )
 def test_a_list_plus_an_element_appends_it(query, rows):
     assert _rows(query) == rows
+
+
+def _answer(query: str) -> list[dict]:
+    """The rows as the endpoint answers them: graph rewrites, then each value decoded."""
+    sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    sql = apply_graph_rewrites(sql_ast, graph_vars, _EMPTY)
+    cur = duckdb.sql(transpile_to_duckdb(sql.sql(dialect="postgres")))
+    names = [d[0] for d in cur.description]
+    return assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)
+
+
+@pytest.mark.parametrize(
+    ("query", "row"),
+    [
+        # Precedence3 [1]-[5]: a list of several types built from lists answers its values.
+        (
+            "RETURN [[1], [2, 3], [4, 5]] + [5, [6, 7], [8, 9], 10][3] AS a,"
+            " ([[1], [2, 3], [4, 5]] + [5, [6, 7], [8, 9], 10])[3] AS c",
+            {"a": [[1], [2, 3], [4, 5], 10], "c": 5},
+        ),
+        (
+            "RETURN ([[1], [2, 3], [4, 5]] + [5, [6, 7], [8, 9], 10])[2] AS c",
+            {"c": [4, 5]},
+        ),
+        ("RETURN [1] + (2 IN [3]) + 4 AS c", {"c": [1, False, 4]}),
+        ("RETURN [[1, 2, 3], ['a']] AS l", {"l": [[1, 2, 3], ["a"]]}),
+    ],
+)
+def test_a_list_of_several_types_answers_its_values(query, row):
+    assert _answer(query) == [row]
