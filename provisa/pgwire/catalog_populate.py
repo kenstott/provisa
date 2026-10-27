@@ -24,6 +24,7 @@ import time
 
 from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
+from provisa.pgwire.catalog_pg17_tables import populate_client_relations
 from provisa.pgwire.function_catalog import populate_functions
 from provisa.pgwire.catalog_columns_data import _SYSTEM_TABLE_COLUMNS
 from provisa.pgwire.catalog_data import (
@@ -1004,5 +1005,6 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _populate_pg_settings(db)
     _populate_pg_tables_and_am(db, idx)
     _populate_is_constraints(db, constraint_rows, idx)
+    populate_client_relations(db)  # REQ-2167
 
     return db

@@ -86,6 +86,7 @@ class BVType(enum.Enum):
     BIT = 59
     VARBIT = 60
     TSVECTOR = 61
+    NAMEARRAY = 62
 
 
 class RawDataRowBytes(bytes):

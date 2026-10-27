@@ -19,6 +19,7 @@ through ``typeinfo()`` / ``pg_type_rows()`` so all OID resolution flows one path
 from __future__ import annotations
 
 from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
+from provisa.pgwire.catalog_pg17_tables import CLIENT_RELATIONS, served_table
 from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
 from provisa.pgwire.ext_surfaces import surface_pg_type_rows, surface_typeinfo
 
@@ -527,6 +528,9 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("information_schema", "enabled_roles"): "_is_enabled_roles",
     ("information_schema", "applicable_roles"): "_is_applicable_roles",
 }
+
+# REQ-2167: the PostgreSQL 17-shaped relations clients browse with (catalog_pg17_tables).
+_TABLE_MAP.update({key: served_table(*key) for key in CLIENT_RELATIONS})
 
 _CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
 

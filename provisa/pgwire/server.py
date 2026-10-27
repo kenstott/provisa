@@ -558,6 +558,8 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "INT2VECTOR": BVType.INT2VECTOR,
     "ACLITEM[]": BVType.ACLITEMARRAY,
     '"CHAR"[]': BVType.CHARARRAY,
+    "NAME[]": BVType.NAMEARRAY,
+    "_NAME": BVType.NAMEARRAY,
     "INET": BVType.INET,
     "PG_LSN": BVType.PG_LSN,
     # REQ-2171: a subtyped column, described as its subtype, is sent as its PostgreSQL type.
@@ -618,7 +620,7 @@ _WIRE_FAMILIES = (
     ),
     frozenset({BVType.REAL, BVType.FLOAT}),
     frozenset({BVType.TEXT, BVType.INET, BVType.PG_LSN}),
-    frozenset({BVType.STRINGARRAY, BVType.ACLITEMARRAY, BVType.CHARARRAY}),
+    frozenset({BVType.STRINGARRAY, BVType.ACLITEMARRAY, BVType.CHARARRAY, BVType.NAMEARRAY}),
     frozenset(
         {
             BVType.SMALLINTARRAY,

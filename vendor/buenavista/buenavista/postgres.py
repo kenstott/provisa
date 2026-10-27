@@ -756,6 +756,7 @@ BVTYPE_TO_PGTYPE.update(
             _no_binary_aclitem,
         ),
         BVType.CHARARRAY: _array_entry(BVType.TEXT, 1002, element_oid=18),
+        BVType.NAMEARRAY: _array_entry(BVType.TEXT, 1003, element_oid=19),
         BVType.PG_LSN: (3220, _lsn_text, _lsn_binary),
     }
 )
