@@ -286,11 +286,60 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
-    return _null_order_as_key(
-        _rewrite_list_functions_for_duckdb(
-            _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+    return _lengths_for_duckdb(
+        _null_order_as_key(
+            _rewrite_list_functions_for_duckdb(
+                _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+            )
         )
     )
+
+
+def _lengths_for_duckdb(sql: str) -> str:
+    """PostgreSQL's ``length`` and ``octet_length`` of a bytea, a text or a list as DuckDB computes
+    them. DuckDB's ``length`` takes no BLOB and its ``octet_length`` no VARCHAR, and which the
+    argument is is known only once DuckDB binds it -- every branch of a CASE is bound whatever
+    the argument -- so each is a CASE on ``typeof`` (folded at bind) whose branches read the
+    argument through TRY_CAST: a BLOB's byte count, a list's elements, a text's characters
+    (``length``) or bytes (``strlen``)."""
+    upper = sql.upper()
+    if "LENGTH(" not in upper:
+        return sql
+    tree = sqlglot.parse_one(sql, read="duckdb")
+
+    def _try_cast(arg: exp.Expression, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.TryCast(this=arg.copy(), to=exp.DataType.build(to, dialect="duckdb"))
+
+    def _of(arg: exp.Expression, text_fn: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        kind = exp.Anonymous(this="typeof", expressions=[arg.copy()])
+        branches = [
+            exp.If(
+                this=exp.EQ(this=kind, expression=exp.Literal.string("BLOB")),
+                true=exp.Anonymous(this="octet_length", expressions=[_try_cast(arg, "BLOB")]),
+            )
+        ]
+        if text_fn == "length":
+            branches.append(
+                exp.If(
+                    this=exp.Like(this=kind.copy(), expression=exp.Literal.string("%[]")),
+                    true=exp.Anonymous(this="len", expressions=[_try_cast(arg, "VARCHAR[]")]),
+                )
+            )
+        text_len = exp.Anonymous(this=text_fn, expressions=[_try_cast(arg, "VARCHAR")])
+        return exp.Case(ifs=branches, default=text_len)
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if isinstance(node, exp.Length) and node.this is not None:
+            return _of(node.this.transform(_transform), "length")
+        if (
+            isinstance(node, exp.Anonymous)
+            and node.name.lower() == "octet_length"
+            and len(node.expressions) == 1
+        ):
+            return _of(node.expressions[0].transform(_transform), "strlen")
+        return node
+
+    return tree.transform(_transform).sql(dialect="duckdb")
 
 
 #: The targets whose LIKE has no escape character unless one is written (PostgreSQL's is a

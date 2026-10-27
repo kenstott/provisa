@@ -1907,18 +1907,26 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             buf.write_string(value)
         buf.write_bytes(b"\x00")
         out = buf.get_value()
-        self.wfile.write(struct.pack("!ci", ServerResponse.ERROR_RESPONSE, len(out) + 4))
-        self.wfile.write(out)
+        # One write: a deadline's raise lands between Python bytecodes, never inside the one
+        # call, so a message is sent whole or not at all.
+        self.wfile.write(struct.pack("!ci", ServerResponse.ERROR_RESPONSE, len(out) + 4) + out)
         self.wfile.flush()
 
-    def _send_pg_notice(self, message: str, detail: str | None = None) -> None:
+    def _send_pg_notice(
+        self,
+        message: str,
+        detail: str | None = None,
+        *,
+        severity: str = "NOTICE",
+        sqlstate: str = "01000",  # SQLSTATE warning class
+    ) -> None:
         """Send a NoticeResponse (a non-fatal, out-of-band message) — never touches result rows.
         ``detail`` goes in the Detail field."""
         buf = BVBuffer()
         fields = [
-            (b"S", "NOTICE"),
-            (b"V", "NOTICE"),
-            (b"C", "01000"),  # SQLSTATE warning class
+            (b"S", severity),
+            (b"V", severity),
+            (b"C", sqlstate),
             (b"M", message),
         ]
         if detail is not None:
@@ -1928,8 +1936,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             buf.write_string(value)
         buf.write_bytes(b"\x00")
         out = buf.get_value()
-        self.wfile.write(struct.pack("!ci", ServerResponse.NOTICE_RESPONSE, len(out) + 4))
-        self.wfile.write(out)
+        # One write: a deadline's raise lands between Python bytecodes, never inside the one
+        # call, so a message is sent whole or not at all.
+        self.wfile.write(struct.pack("!ci", ServerResponse.NOTICE_RESPONSE, len(out) + 4) + out)
         self.wfile.flush()
 
     def handle_post_auth(self, ctx):  # type: ignore[override]
@@ -2699,20 +2708,58 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self._send_pg_error("ERROR", "58000", str(exc))
             ctx.mark_error()
 
+    def _run_do_block(self, ctx: BVContext, stmt: str) -> None:
+        """A DO block of RAISE statements (``do_block``): each RAISE below EXCEPTION sent as a
+        notice at its level (SQLSTATE 00000, as PL/pgSQL raises it), an EXCEPTION as the error
+        that ends the block (P0001)."""
+        from provisa.compiler.definitions import NotAvailableHere
+        from provisa.pgwire.do_block import raised
+
+        try:
+            for r in raised(stmt):
+                if r.level == "EXCEPTION":
+                    self._send_pg_error("ERROR", "P0001", r.message)
+                    ctx.mark_error()
+                    return
+                self._send_pg_notice(r.message, severity=r.level, sqlstate="00000")
+        except NotAvailableHere as exc:
+            self._send_pg_error("ERROR", "0A000", str(exc))
+            ctx.mark_error()
+            return
+        except ValueError as exc:
+            self._send_pg_error("ERROR", "P0001", str(exc))
+            ctx.mark_error()
+            return
+        self.send_command_complete("DO\x00")
+
     def _process_query_stmts(self, ctx: BVContext, stmts: list[str]) -> None:
         for stmt in stmts:
+            from provisa.pgwire.do_block import is_do_block
+
+            if is_do_block(stmt):
+                self._run_do_block(ctx, stmt)
+                if ctx.has_error:
+                    break
+                continue
             if _COPY_RE.match(stmt):
+                from provisa.compiler.definitions import NotAvailableHere
                 from provisa.pgwire.copy_handler import CopyHandler
 
                 try:
                     ctx.session.bind_role()  # type: ignore[attr-defined]
-                    nrows = CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
+                    # As every statement of the session: its org and its temporary tables bound.
+                    nrows = cast(ProvisaSession, ctx.session)._with_org(
+                        lambda: CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
+                    )
                     self.send_command_complete(f"COPY {nrows}\x00")
                 except PermissionError as exc:
                     self._send_pg_error("ERROR", "42501", str(exc))
                     ctx.mark_error()
-                except Exception as exc:
+                except NotAvailableHere as exc:
                     self._send_pg_error("ERROR", "0A000", str(exc))
+                    ctx.mark_error()
+                except Exception as exc:
+                    self._send_pg_error("ERROR", _sqlstate_of(exc), str(exc))
                     ctx.mark_error()
                 break
             # A statement that defines a relation (CREATE TABLE [AS], CREATE VIEW, ALTER, DROP …)

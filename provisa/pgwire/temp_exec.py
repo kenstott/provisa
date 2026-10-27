@@ -77,6 +77,9 @@ _DECLARED: dict[str, str] = {
     "text": "text",
     "varchar": "text",
     "bytea": "bytea",
+    "uuid": "uuid",
+    "json": "json",
+    "jsonb": "json",
 }
 # The SERIAL types: a bigint column whose omitted value is the table's next (TempTable.serials).
 _SERIAL = frozenset({"serial", "smallserial", "bigserial"})
@@ -101,10 +104,9 @@ def landed_type(name: str, declared: str) -> str:
     if base in _SERIAL:
         return "bigint"
     if base in ("decimal", "numeric"):
-        raise ValueError(
-            f"temporary table column {name!r}: give {declared} its precision and scale, as "
-            f"DECIMAL(precision, scale)"
-        )
+        # A numeric with no precision: sized from its values each time the table lands
+        # (_landed_decimal), as PostgreSQL holds each value at its own scale.
+        return "numeric"
     if base not in _DECLARED:
         raise _unsupported(name, declared)
     return _DECLARED[base]
@@ -125,6 +127,8 @@ def _arrow(landed: str) -> Any:
         "timestamptz": pa.timestamp("us", tz="UTC"),
         "text": pa.string(),
         "bytea": pa.binary(),
+        "uuid": pa.string(),
+        "json": pa.string(),
     }[landed]
 
 
@@ -182,6 +186,50 @@ def _bytea(value: Any) -> Any:
     return bytes(out)
 
 
+# The precision an unsized numeric lands with: the widest every store holds exactly.
+_UNSIZED_PRECISION = 38
+
+
+def _landed_decimal(values: list[Any]) -> str:
+    """The decimal an unsized numeric column lands as: precision 38, the largest scale among
+    ``values``. A value with more digits than 38 is refused by the batch, never rounded."""
+    scales = [-v.as_tuple().exponent for v in values if v is not None]
+    return f"numeric({_UNSIZED_PRECISION},{max([0, *scales])})"
+
+
+def _as_landed(name: str, landed: str, value: Any) -> Any:
+    """``value`` as its column's landed type holds it: a value given as text (a string literal in
+    the statement) read by the type, a UUID by its text, a JSON document by its text."""
+    import json
+    import uuid
+
+    if value is None:
+        return None
+    if landed == "uuid":
+        return str(value if isinstance(value, uuid.UUID) else uuid.UUID(str(value)))
+    if landed == "json":
+        return value if isinstance(value, str) else json.dumps(value)
+    if isinstance(value, str) and landed != "text":
+        try:
+            return _from_copy_text(name, landed, value)
+        except ValueError as exc:
+            raise ValueError(
+                f"temporary table column {name!r} is {landed}; a value given for it is not: "
+                f"{exc.__cause__ or exc}"
+            ) from exc
+    from decimal import ROUND_HALF_UP, Decimal
+
+    if landed == "numeric" or _DECIMAL.match(landed):
+        return value if isinstance(value, Decimal) else Decimal(str(value))
+    # PostgreSQL's assignment casts of a number into the column's type: a numeric literal into a
+    # double, and into an integer rounded half away from zero.
+    if landed == "double" and isinstance(value, (Decimal, int)) and not isinstance(value, bool):
+        return float(value)
+    if landed == "bigint" and isinstance(value, (Decimal, float)):
+        return int(Decimal(str(value)).to_integral_value(ROUND_HALF_UP))
+    return value
+
+
 def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
     """``rows`` as one Arrow batch of ``columns``, each (name, landed type). A value that is not
     of its column's type fails here, naming the column: none is stored as another type."""
@@ -189,9 +237,9 @@ def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
 
     arrays = {}
     for i, (name, landed) in enumerate(columns):
-        values = [r[i] for r in rows]
-        if landed == "bytea":
-            values = [_bytea(v) for v in values]
+        values = [_as_landed(name, landed, r[i]) for r in rows]
+        if landed == "numeric":
+            landed = _landed_decimal(values)
         try:
             arrays[name] = pa.array(values, _arrow(landed))
         except (pa.ArrowInvalid, pa.ArrowTypeError) as exc:
@@ -235,6 +283,13 @@ async def _land(state: Any, session: TempSession, name: str, batch: Any, columns
     from provisa.federation.residency import LandingArgs
     from provisa.synthetic.run import _LandedRows
 
+    # An unsized numeric lands as the decimal its batch holds (_landed_decimal).
+    columns = [
+        (c, f"numeric({batch.schema.field(c).type.precision},{batch.schema.field(c).type.scale})")
+        if landed == "numeric"
+        else (c, landed)
+        for c, landed in columns
+    ]
     backend = state.federation_engine.engine.backend
     party = StoreReadingEngine(backend, state)
     target = backend.replica_target(
@@ -350,3 +405,110 @@ async def end(session: TempSession, state: Any) -> None:
         await note_ended(state, session, schema)
     session.tables.clear()
     session.stored = False
+
+
+# --- COPY FROM STDIN into a session's temporary table (REQ-615) ----------------------------------
+
+_TRUE_TEXT = frozenset({"t", "true", "y", "yes", "on", "1"})
+_FALSE_TEXT = frozenset({"f", "false", "n", "no", "off", "0"})
+_PG_EPOCH = (
+    946684800  # 2000-01-01 00:00:00 UTC in Unix seconds: COPY binary dates and times count from it
+)
+
+
+def _from_copy_text(name: str, landed: str, text: str | None) -> Any:
+    """A COPY text or csv field of column ``name`` as the value its landed type holds."""
+    import datetime
+    from decimal import Decimal, InvalidOperation
+
+    if text is None:
+        return None
+    try:
+        if landed == "bigint":
+            return int(text)
+        if landed == "double":
+            return float(text)
+        if landed == "boolean":
+            word = text.strip().lower()
+            if word in _TRUE_TEXT or word in _FALSE_TEXT:
+                return word in _TRUE_TEXT
+            raise ValueError(text)
+        if landed == "date":
+            return datetime.date.fromisoformat(text)
+        if landed in ("timestamp", "timestamptz"):
+            return datetime.datetime.fromisoformat(text)
+        if landed == "bytea":
+            return _bytea(text)
+        if landed == "numeric" or _DECIMAL.match(landed):
+            return Decimal(text)
+    except (ValueError, InvalidOperation) as exc:
+        raise ValueError(f"COPY: column {name!r} is {landed}; {text!r} is not one: {exc}") from exc
+    return text
+
+
+def _from_copy_binary(name: str, landed: str, raw: bytes | None) -> Any:
+    """A COPY binary field of column ``name`` -- PostgreSQL's send form of the type the client
+    wrote it as -- as the value its landed type holds."""
+    import datetime
+    import struct
+
+    if raw is None:
+        return None
+    if landed == "bigint" and len(raw) in (2, 4, 8):
+        return int.from_bytes(raw, "big", signed=True)
+    if landed == "double" and len(raw) in (4, 8):
+        return struct.unpack("!f" if len(raw) == 4 else "!d", raw)[0]
+    if landed == "boolean" and len(raw) == 1:
+        return raw != b"\x00"
+    if landed == "text":
+        return raw.decode("utf-8")
+    if landed == "bytea":
+        return raw
+    if landed == "date" and len(raw) == 4:
+        days = int.from_bytes(raw, "big", signed=True)
+        return datetime.date(2000, 1, 1) + datetime.timedelta(days=days)
+    if landed in ("timestamp", "timestamptz") and len(raw) == 8:
+        micros = int.from_bytes(raw, "big", signed=True)
+        tz = datetime.timezone.utc if landed == "timestamptz" else None
+        return datetime.datetime(2000, 1, 1, tzinfo=tz) + datetime.timedelta(microseconds=micros)
+    raise ValueError(
+        f"COPY: column {name!r} is {landed}; a {len(raw)}-byte binary field is not one COPY "
+        "binary reads into it"
+    )
+
+
+async def copy_into(
+    session: TempSession,
+    name: str,
+    columns: list[str] | None,
+    rows: list[list],
+    state: Any,
+    *,
+    binary: bool,
+) -> int:
+    """Land ``rows`` -- COPY fields, text or binary -- into the session's temporary table
+    ``name``: each named column (every column when ``columns`` is None) takes its field, a
+    SERIAL left out its next value. A row of the wrong width or a field its column's type does
+    not read is refused; nothing is landed then. The count of rows landed."""
+    table = session.tables[name]
+    landed_of = dict(table.columns)
+    named = columns if columns is not None else [c for c, _ in table.columns]
+    unknown = [c for c in named if c not in landed_of]
+    if unknown:
+        raise ValueError(f"COPY {name}: no column {unknown[0]!r}")
+    convert = _from_copy_binary if binary else _from_copy_text
+    typed: list[dict[str, Any]] = []
+    for row in rows:
+        if len(row) != len(named):
+            raise ValueError(
+                f"COPY {name}: a row has {len(row)} field(s), {len(named)} column(s) are copied"
+            )
+        typed.append({c: convert(c, landed_of[c], v) for c, v in zip(named, row, strict=True)})
+    at = await _store_address(state, session, name)
+    _, held = await asyncio.to_thread(_system_rows, state, f"SELECT * FROM {at}", name)
+    added = [
+        tuple(r[c] if c in r else _next_serial(table, c) for c, _ in table.columns) for r in typed
+    ]
+    _within_rows(name, len(held) + len(added))
+    await _land(state, session, name, _batch(table.columns, [*held, *added]), table.columns)
+    return len(added)

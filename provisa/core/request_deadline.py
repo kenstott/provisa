@@ -339,9 +339,14 @@ class Deadline:
             self._ended = reason
             self.expires = time.monotonic()
             self._cancelled = True
+            in_statement = bool(self._cancels)
         self._fire()
-        # ... and the request's own thread is raised in, by the watchdog, as at an expiry.
-        _watchdog.watch(self, at=self.expires)
+        # ... and the request's own thread is raised in, by the watchdog, after the same grace an
+        # expiry gives (_at_expiry): a statement in flight ends through its driver's cancel and
+        # the request answers it the clean way. Raised at once, the raise landed while that
+        # answer was being written, and the client read half a message (pgspec Cancel).
+        grace = _CANCEL_GRACE_S if in_statement else _EXPIRY_GRACE_S
+        _watchdog.watch(self, at=self.expires + grace)
         return True
 
     @contextlib.contextmanager

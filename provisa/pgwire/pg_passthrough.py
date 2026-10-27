@@ -454,6 +454,10 @@ class PassthroughCursor:
         self._expected_column_count = len(prepared.column_names)
         self._started = False
         self._done = False  # the connection has been handed back
+        # Whether a row has been handed on, and whether the statement was prepared again on this
+        # run (once at most: see fetch).
+        self._handed_on = False
+        self._prepared_again = False
 
     def fetch(self, limit: int) -> list[bytes]:
         """Return up to ``limit`` complete, wire-framed DataRow messages, or ``[]`` once the
@@ -471,6 +475,7 @@ class PassthroughCursor:
                 )
             rows: list[bytes] = []
             failure: str | None = None
+            stale = False
             while len(rows) < limit:
                 tag, payload = exchange.read_message()
                 if tag == b"D":  # DataRow — the whole point: forward unmodified
@@ -487,13 +492,23 @@ class PassthroughCursor:
                     failure = _parse_error_response(payload)
                     if _error_sqlstate(payload) in _STALE_STATEMENT_STATES:
                         self._borrowed.statements.pop(self._sql, None)
+                        stale = True
                 elif tag == b"Z":  # ReadyForQuery — the exchange is complete, the connection idle
+                    if stale and not rows and not self._handed_on and not self._prepared_again:
+                        # The statement kept prepared here was deallocated behind this module:
+                        # the connection's driver runs DEALLOCATE ALL after a ROLLBACK (psycopg
+                        # does), which a failed stream on the same pooled connection issues.
+                        # Nothing was handed on, so it is prepared again and run once more.
+                        self._run_again()
+                        failure, stale = None, False
+                        continue
                     self._done = True
                     exchange.release(discard=False)
                     if failure is not None:
                         raise PassthroughFailure(failure)
                     return rows
                 # BindComplete, CommandComplete, EmptyQueryResponse, Notice, ParameterStatus.
+            self._handed_on = self._handed_on or bool(rows)
             return rows
         except _ConnectionLost:
             self._done = True
@@ -507,6 +522,23 @@ class PassthroughCursor:
                 self._done = True
                 exchange.release(discard=True)
             raise
+
+    def _run_again(self) -> None:
+        """Prepare the statement again on this (idle) connection and send its run once more. The
+        client was told the statement's columns already, so a statement that now describes other
+        columns is refused rather than run."""
+        self._prepared_again = True
+        before = (self._prepared.column_names, self._prepared.type_oids)
+        prepared = _prepare(self._exchange, self._borrowed, self._sql)
+        if (prepared.column_names, prepared.type_oids) != before:
+            self._exchange.sync()
+            raise _ConnectionLost(
+                "the statement's columns changed at its source since the client was told them"
+            )
+        self._prepared = prepared
+        self._exchange.send(
+            _build_bind(prepared.name, self._params, self._result_formats) + _EXECUTE_ALL + _SYNC
+        )
 
     def close(self) -> None:
         """Release the connection. Safe to call more than once. A result that was never started
