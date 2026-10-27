@@ -302,7 +302,7 @@ def test_each_case_the_suite_skips_is_named_with_its_reason(tmp_path):
         '<testsuites><testsuite name="pytest">'
         '<testcase classname="tests.test_connection.TestConnection" name="test_ok[p]"/>'
         '<testcase classname="tests.test_connection.TestConnection" '
-        'name="test_set_current_catalog[p]">'
+        'name="test_an_unclaimed_feature[p]">'
         '<skipped type="pytest.skip" message="not implemented">skip</skipped></testcase>'
         '<testcase classname="tests.test_statement.TestStatement" name="test_transaction_toggle[p]">'
         '<skipped type="pytest.skip" message="Driver does not support transactions">s</skipped>'
@@ -313,7 +313,7 @@ def test_each_case_the_suite_skips_is_named_with_its_reason(tmp_path):
     assert doc["skipped_cases"] == [
         {
             "feature": "tests.test_connection.TestConnection",
-            "scenario": "test_set_current_catalog[p]",
+            "scenario": "test_an_unclaimed_feature[p]",
             "reason": "not implemented",
         },
         {
