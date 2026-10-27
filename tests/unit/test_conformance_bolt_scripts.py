@@ -118,7 +118,8 @@ def test_an_example_that_changed_fails_the_adaptation_by_name(tmp_path):
             "test_async_cancellation_does_not_leak",
             {"adapted"},
         ),
-        ("tests.integration.test_readme", "test_should_run_readme", {"design"}),
+        # MERGE is MATCH then CREATE (REQ-2176): a failure until it lands, never by design.
+        ("tests.integration.test_readme", "test_should_run_readme", set()),
         ("tests.integration.examples.test_service_unavailable_example", "test_example", set()),
     ],
 )

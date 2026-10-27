@@ -35,12 +35,6 @@
     driver's behaviour.
   case: "test_async_cancellation::test_async_cancellation_does_not_leak$"
 
-- group: MERGE
-  requirement: REQ-818
-  decision: '"Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected."'
-  # The README's own example is three MERGEs: what it shows, not its setup.
-  case: "test_readme::test_should_run_readme$"
-
 - group: Digits below the microsecond
   requirement: REQ-2173
   decision: >-
