@@ -10,14 +10,21 @@
 
 """Cypher write statement parser and SQL translator.
 
-Supports three write patterns:
+Supports four write patterns:
 
-- ``CREATE (n:Label {props})``  →  ``INSERT INTO catalog.schema.table (cols) VALUES (vals)``
+- ``CREATE (n:Label {props}) [SET n.prop = val, ...] [RETURN ...]``
+  →  ``INSERT INTO catalog.schema.table (cols) VALUES (vals)``; with a RETURN, ``RETURNING`` the
+  node's key, and the RETURN answered by a read of the node created (:func:`returned`)
 - ``MATCH (n:Label) WHERE ... DELETE n``  →  ``DELETE FROM catalog.schema.table WHERE ...``
 - ``MATCH (n:Label) WHERE ... SET n.prop = val, ...``
   →  ``UPDATE catalog.schema.table SET col = val, ... WHERE ...``
+- ``MATCH (a:A {...}) MATCH (b:B {...}) CREATE (a)-[:T {props}]->(b)``, T a relationship a
+  registered junction backs (REQ-665, amended 2026-10-27)  →  a read of each matched node's keys
+  (:meth:`WriteTranslator.matched_reads`), then ``INSERT INTO junction (keys, attrs) VALUES ...`` (:meth:`relate`)
 
-Requirements: REQ-666, REQ-667, REQ-668, REQ-670
+:func:`written` runs a write in that order over the surface's own read and write.
+
+Requirements: REQ-665, REQ-666, REQ-667, REQ-668, REQ-670
 """
 
 from __future__ import annotations
@@ -27,7 +34,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from provisa.compiler.sql_literals import sql_literal
-from provisa.gql.label_map import CypherLabelMap, NodeMapping
+from provisa.compiler.sql_types import key_list
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
 
 # ---------------------------------------------------------------------------
@@ -47,10 +55,19 @@ _PARAM_REF_RE = re.compile(r"\$([A-Za-z_]\w*)")
 
 
 @dataclass
+class MatchedNode:
+    """A node a relationship write's leading MATCH binds: its variable, label and property map."""
+
+    variable: str
+    label: str
+    props: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class WriteAST:
     """Minimal AST for a Cypher write statement."""
 
-    kind: str  # "create" | "delete" | "update"
+    kind: str  # "create" | "delete" | "update" | "relate"
     label: str  # Cypher label, e.g. "Person"
     variable: str  # node variable, e.g. "n"
     props: dict[str, Any] = field(default_factory=dict)  # CREATE props
@@ -58,6 +75,12 @@ class WriteAST:
     # DELETE/UPDATE: the MATCH node's inline property map, each an equality the rows must meet.
     match_props: dict[str, Any] = field(default_factory=dict)
     set_assignments: list[tuple[str, Any]] = field(default_factory=list)  # UPDATE assignments
+    # CREATE: the RETURN's items as written, answered by a read of the node created; "" for none.
+    returns: str = ""
+    # "relate": the nodes the leading MATCH binds, and the relationship's two ends among them
+    # (``variable`` the start, ``end`` the end); ``label`` is the relationship type.
+    matched: list[MatchedNode] = field(default_factory=list)
+    end: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -75,10 +98,23 @@ _IDENT = r"[A-Za-z_]\w*"
 _LABEL_PART = r"[A-Za-z_]\w*"
 _LABEL = rf"{_LABEL_PART}(?::{_LABEL_PART})*"  # Label or Label:Label2
 
-# CREATE (n:Label {key: val, ...})
+# CREATE ([n]:Label [{key: val, ...}]) [SET n.key = val, ...] [RETURN ...]
 _CREATE_RE = re.compile(
-    rf"CREATE{_WS}\({_OWS}({_IDENT}){_OWS}:({_LABEL}){_OWS}(\{{[^}}]*\}}){_OWS}\){_OWS}$",
+    rf"CREATE{_WS}\({_OWS}({_IDENT})?{_OWS}:({_LABEL}){_OWS}(\{{[^}}]*\}})?{_OWS}\)"
+    rf"(?:{_WS}SET{_WS}(.+?))?(?:{_WS}RETURN{_WS}(.+?))?{_OWS}$",
     re.IGNORECASE | re.DOTALL,
+)
+
+# <leading MATCHes> CREATE (a)-[:T [{key: val, ...}]]->(b), or (a)<-[:T]-(b)
+_RELATE_RE = re.compile(
+    rf"(MATCH{_WS}.+?){_WS}CREATE{_WS}\({_OWS}({_IDENT}){_OWS}\){_OWS}(<)?-{_OWS}\[{_OWS}"
+    rf"(?:{_IDENT})?{_OWS}:{_OWS}({_IDENT}){_OWS}(\{{[^}}]*\}})?{_OWS}\]{_OWS}-(>)?{_OWS}"
+    rf"\({_OWS}({_IDENT}){_OWS}\){_OWS}$",
+    re.IGNORECASE | re.DOTALL,
+)
+# One node of a leading MATCH: (n:Label [{key: val, ...}])
+_MATCHED_NODE_RE = re.compile(
+    rf"\({_OWS}({_IDENT}){_OWS}:({_LABEL}){_OWS}(\{{[^}}]*\}})?{_OWS}\)", re.DOTALL
 )
 
 # The node a DELETE or SET matches, with an optional inline property map, then an optional WHERE:
@@ -217,12 +253,53 @@ def _parse_set_assignments(set_text: str, variable: str) -> list[tuple[str, Any]
     return assignments
 
 
-#: The forms a Cypher write takes: each writes rows of one registered table (a node label).
+#: The forms a Cypher write takes: each writes rows of one registered table (a node label, or a
+#: registered junction a relationship type names).
 WRITE_FORMS = (
-    "CREATE (n:Label {key: value}); "
+    "CREATE (n:Label {key: value}) [SET n.key = value] [RETURN ...]; "
     "MATCH (n:Label {key: value}) [WHERE ...] SET n.key = value; "
-    "MATCH (n:Label {key: value}) [WHERE ...] DELETE n"
+    "MATCH (n:Label {key: value}) [WHERE ...] DELETE n; "
+    "MATCH (a:Label {key: value}) MATCH (b:Label {key: value}) CREATE (a)-[:TYPE {key: value}]->(b)"
 )
+
+
+def _parse_relate(m: re.Match) -> WriteAST:
+    """A relationship CREATE between nodes its leading MATCH binds (REQ-665, amended
+    2026-10-27): the leading clauses are MATCHes of labelled nodes with property maps and
+    nothing else, and both ends are nodes they bind -- a relationship write never creates its
+    ends."""
+    lead, left, inbound, rel_type, props, outbound, right = m.groups()
+    if bool(inbound) == bool(outbound):
+        raise CypherWriteParseError(
+            "a relationship CREATE names its direction: (a)-[:TYPE]->(b) or (a)<-[:TYPE]-(b)"
+        )
+    matched = [
+        MatchedNode(v, label, _parse_props(mp) if mp else {})
+        for v, label, mp in _MATCHED_NODE_RE.findall(lead)
+    ]
+    rest = re.sub(r"\bMATCH\b|,|\s", "", _MATCHED_NODE_RE.sub("", lead), flags=re.IGNORECASE)
+    if rest:
+        raise CypherWriteParseError(
+            f"a relationship CREATE's leading clauses are MATCHes of labelled nodes, each with a "
+            f"property map: {lead.strip()!r} is not. A Cypher write takes one of these forms: "
+            f"{WRITE_FORMS}"
+        )
+    bound = [n.variable for n in matched]
+    for variable in (left, right):
+        if bound.count(variable) != 1:
+            raise CypherWriteParseError(
+                f"a relationship CREATE joins two nodes its MATCH binds once each; {variable!r} "
+                "is not one: a relationship write never creates its end nodes"
+            )
+    start, end = (right, left) if inbound else (left, right)
+    return WriteAST(
+        kind="relate",
+        label=rel_type,
+        variable=start,
+        end=end,
+        props=_parse_props(props) if props else {},
+        matched=matched,
+    )
 
 
 def parse_cypher_write(query: str) -> WriteAST:
@@ -246,18 +323,6 @@ def parse_cypher_write(query: str) -> WriteAST:
     # pipeline's own words, before any write pattern is tried.
     refuse_cypher_definition(query)
 
-    # REQ-665: relationships are derived from foreign-key joins, not stored edges,
-    # so they cannot be written. Any relationship pattern (`-[...]->`, `<-[...]-`,
-    # or a bare `--` edge) in a write statement is a hard error at translation time.
-    if re.search(r"-\s*\[|\]\s*-|\)\s*<?-{1,2}>?\s*\(", query):
-        raise CypherWriteParseError(
-            "Cypher write patterns cannot target relationships. Relationships are "
-            "derived from foreign-key joins in the semantic layer, not stored edges; "
-            "CREATE, SET, and DELETE may only write node (table) rows. To mutate the "
-            "underlying rows, call the GraphQL mutation — it is also exposed as a UDF "
-            "invocable via SQL function-call syntax."
-        )
-
     # REQ-818: only CREATE/DELETE/SET are supported as direct table writes.
     # MERGE, DETACH DELETE, and REMOVE are non-direct write patterns and must be
     # rejected at parse time with a precise error. This guard runs before the
@@ -273,12 +338,43 @@ def parse_cypher_write(query: str) -> WriteAST:
                 "also exposed as a UDF invocable via SQL function-call syntax."
             )
 
+    # REQ-665 (amended 2026-10-27): a relationship a registered junction backs is a row of that
+    # junction, written by a CREATE between two nodes the statement matches.
+    m = _RELATE_RE.match(query)
+    if m:
+        return _parse_relate(m)
+
+    # REQ-665: any other relationship pattern (`-[...]->`, `<-[...]-`, or a bare `--` edge) in a
+    # write statement is a hard error at translation time.
+    if re.search(r"-\s*\[|\]\s*-|\)\s*<?-{1,2}>?\s*\(", query):
+        raise CypherWriteParseError(
+            "Cypher write patterns cannot target relationships. Relationships are "
+            "derived from foreign-key joins in the semantic layer, not stored edges; "
+            "CREATE, SET, and DELETE may only write node (table) rows. To mutate the "
+            "underlying rows, call the GraphQL mutation — it is also exposed as a UDF "
+            "invocable via SQL function-call syntax."
+        )
+
     m = _CREATE_RE.match(query)
     if m:
-        variable = m.group(1)
-        label = m.group(2)
-        props = _parse_props(m.group(3))
-        return WriteAST(kind="create", label=label, variable=variable, props=props)
+        variable, label, props_text, set_text, returns = m.groups()
+        variable = variable or ""  # a node created with no variable: nothing else names it
+        props = _parse_props(props_text) if props_text else {}
+        # A SET on the node the statement creates gives it that property, as its map would.
+        props.update(_parse_set_assignments(set_text, variable) if set_text else [])
+        if not props:
+            # A row of nothing is no write: the node created is given a property, by its map or a SET.
+            raise CypherWriteParseError(
+                f"This write is in a form Provisa does not read: {query!r}: the node it creates "
+                f"has no property. A Cypher write takes one of these forms: {WRITE_FORMS}"
+            )
+        return WriteAST(
+            kind="create",
+            label=label,
+            variable=variable,
+            props=props,
+            returns=(returns or "").strip(),
+        )
 
     m = _DELETE_RE.match(query)
     if m:
@@ -470,6 +566,11 @@ class WriteTranslator:
             return self._translate_delete(ast)
         if ast.kind == "update":
             return self._translate_update(ast)
+        if ast.kind == "relate":
+            raise CypherWriteParseError(
+                "a relationship CREATE is written from its matched nodes' keys: "
+                "matched_reads, pairs, then relate"
+            )
         raise CypherWriteParseError(f"Unknown WriteAST kind: {ast.kind!r}")
 
     def _translate_create(self, ast: WriteAST) -> str:
@@ -484,7 +585,128 @@ class WriteTranslator:
             raise CypherWriteParseError("CREATE statement has no properties")
         cols_sql = ", ".join(cols)
         vals_sql = ", ".join(vals)
-        return f"INSERT INTO {table} ({cols_sql}) VALUES ({vals_sql})"
+        insert = f"INSERT INTO {table} ({cols_sql}) VALUES ({vals_sql})"
+        if not ast.returns:
+            return insert
+        # The RETURN is answered by a read of the node created, found by its key (returned).
+        from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
+
+        key = node_key(None, mapping).sql(dialect="postgres")
+        return f"{insert} RETURNING {key} AS {_q(NODE_KEY_PROPERTY)}"
+
+    def _junction_of(self, ast: WriteAST) -> tuple[RelationshipMapping, NodeMapping, NodeMapping]:
+        """The registered junction relationship a relationship CREATE writes, and its two ends'
+        nodes: refused by name unless the type is registered between those two labels and a
+        junction backs it (REQ-665, amended 2026-10-27)."""
+        labels = {n.variable: n.label for n in ast.matched}
+        start = self._resolve_mapping(labels[ast.variable])
+        end = self._resolve_mapping(labels[ast.end])
+        declared = [
+            *self._label_map.aliases.get(ast.label, []),
+            *(
+                [self._label_map.relationships[ast.label]]
+                if ast.label in self._label_map.relationships
+                else []
+            ),
+        ]
+        if not declared:
+            raise CypherWriteParseError(
+                f"relationship type {ast.label} is not registered: a write adds a relationship "
+                "the model declares, never a new type"
+            )
+        names = ({start.type_name, start.label}, {end.type_name, end.label})
+        between = [r for r in declared if r.source_label in names[0] and r.target_label in names[1]]
+        if not between:
+            raise CypherWriteParseError(
+                f"relationship type {ast.label} is not registered from {start.label} to {end.label}"
+            )
+        rel = between[0]
+        if rel.via is None:
+            raise CypherWriteParseError(
+                f"relationship type {ast.label} is derived from a foreign key, not stored in a "
+                "junction table, so Cypher does not write it: write the row's key column instead"
+            )
+        return rel, start, end
+
+    def _end_keys(self, ast: WriteAST, variable: str) -> list[str]:
+        """The key properties a matched node gives the junction row: the start's source key and
+        the end's target key, each in the junction's key order (both, for a node related to
+        itself)."""
+        rel, start, end = self._junction_of(ast)
+        keys = []
+        if variable == ast.variable:
+            keys += [start.property_of(c) for c in key_list(rel.join_source_column)]
+        if variable == ast.end:
+            keys += [end.property_of(c) for c in key_list(rel.join_target_column)]
+        return keys
+
+    def matched_reads(self, ast: WriteAST, provided: dict[str, Any]) -> list[tuple[str, dict]]:
+        """One read per node the leading MATCH binds -- the nodes the role reads that its pattern
+        matches, each giving the keys it gives the junction row (any other, its ``_id``). Read
+        apart, as the MATCH of unrelated patterns is every combination of their nodes
+        (:meth:`pairs`)."""
+        from provisa.gql.select_builder import NODE_KEY_PROPERTY
+
+        reads = []
+        for i, n in enumerate(ast.matched):
+            names = {k: f"{_KEY_PARAM}{i}_{k}" for k in n.props}
+            pattern = (
+                f"({n.variable}:{n.label} {{"
+                + ", ".join(f"{k}: ${p}" for k, p in names.items())
+                + "})"
+                if names
+                else f"({n.variable}:{n.label})"
+            )
+            keys = self._end_keys(ast, n.variable) or [NODE_KEY_PROPERTY]
+            items = ", ".join(f"{n.variable}.{k}" for k in keys)
+            params = {
+                p: (provided[v.name] if isinstance(v, CypherParam) else v)
+                for p, v in zip(names.values(), n.props.values(), strict=True)
+            }
+            reads.append((f"MATCH {pattern} RETURN {items}", {**provided, **params}))
+        return reads
+
+    def pairs(self, ast: WriteAST, answers: list[list[list[Any]]]) -> list[list[Any]]:
+        """Each junction row's keys, start's then end's: one per combination of the matched
+        nodes (``answers``, the rows of :meth:`matched_reads`, in its order)."""
+        import itertools
+
+        rel, _start, _end = self._junction_of(ast)
+        at = {n.variable: i for i, n in enumerate(ast.matched)}
+        # The start's row opens with its source key; the end's holds its target key after it, the
+        # start's, when a node is related to itself.
+        width = len(key_list(rel.join_source_column))
+        skip = width if ast.variable == ast.end else 0
+        return [
+            [*combo[at[ast.variable]][:width], *combo[at[ast.end]][skip:]]
+            for combo in itertools.product(*answers)
+        ]
+
+    def relate(self, ast: WriteAST, keys: list[list[Any]]) -> str | None:
+        """The junction rows a relationship CREATE writes, one per pair of matched nodes
+        (``keys``, as :meth:`pairs` gives them); None when the MATCH bound none."""
+        rel, _start, _end = self._junction_of(ast)
+        via = rel.via
+        assert via is not None  # _junction_of refuses a relationship no junction backs
+        if not keys:
+            return None
+        cols = [*via.source_columns, *via.target_columns]
+        constant: list[str] = []
+        if via.type_column:
+            cols.append(via.type_column)
+            constant.append(
+                _write_value(via.type_value if via.type_value is not None else rel.rel_type)
+            )
+        for prop, val in ast.props.items():
+            if prop not in via.attributes:
+                raise CypherWriteParseError(f"{ast.label} has no property {prop}")
+            cols.append(via.attributes[prop])
+            constant.append(_write_value(val))
+        table = ".".join(_q(p) for p in (via.catalog_name, via.schema_name, via.table_name) if p)
+        rows = ", ".join(
+            "(" + ", ".join([*(_write_value(k) for k in row), *constant]) + ")" for row in keys
+        )
+        return f"INSERT INTO {table} ({', '.join(_q(c) for c in cols)}) VALUES {rows}"
 
     def _matched_sql(self, ast: WriteAST, mapping: NodeMapping) -> str:
         """The rows a DELETE or UPDATE writes: each inline property as an equality, as a read
@@ -513,6 +735,50 @@ class WriteTranslator:
             raise CypherWriteParseError("UPDATE statement has no SET assignments")
         set_sql = ", ".join(set_parts)
         return f"UPDATE {table} SET {set_sql} WHERE {self._matched_sql(ast, mapping)}"
+
+
+#: The read parameters a write's own reads bind (matched nodes' properties, a created node's key).
+_KEY_PARAM = "provisa_write_"
+
+
+def returned(ast: WriteAST, columns: list[str], rows: list[list[Any]]) -> tuple[str, dict]:
+    """The read answering a CREATE's RETURN: the node created, matched by the key its INSERT
+    returned (``columns``/``rows``), and the RETURN as written -- read as every read is, so a
+    node, ``id(n)`` and an expression over them answer as they would to a MATCH."""
+    from provisa.gql.select_builder import NODE_KEY_PROPERTY
+
+    if len(rows) != 1:
+        raise CypherWriteParseError(f"a CREATE wrote {len(rows)} rows, where it writes one")
+    key = rows[0][columns.index(NODE_KEY_PROPERTY)]
+    param = f"{_KEY_PARAM}key"
+    return (
+        f"MATCH ({ast.variable}:{ast.label} {{{NODE_KEY_PROPERTY}: ${param}}}) RETURN {ast.returns}",
+        {param: key},
+    )
+
+
+async def written(
+    ast: WriteAST,
+    translator: "WriteTranslator",
+    provided: dict[str, Any],
+    read: Any,
+    write: Any,
+) -> tuple[list[str], list[list[Any]]]:
+    """Run the write ``ast``: its read of the nodes a relationship joins, its write, and the read
+    answering its RETURN. ``read(cypher, params)`` and ``write(sql, bound)`` are the surface's
+    own, each answering (columns, rows) through the one pipeline."""
+    if ast.kind == "relate":
+        answers = [(await read(q, p))[1] for q, p in translator.matched_reads(ast, provided)]
+        sql = translator.relate(ast, translator.pairs(ast, answers))
+        if sql is None:
+            return [], []
+    else:
+        sql = translator.translate(ast)
+    columns, rows = await write(*bind_write_params(sql, provided))
+    if ast.returns:
+        cypher, params = returned(ast, columns, rows)
+        return await read(cypher, {**provided, **params})
+    return columns, rows
 
 
 def bind_write_params(sql: str, provided: dict[str, Any]) -> tuple[str, list[Any]]:

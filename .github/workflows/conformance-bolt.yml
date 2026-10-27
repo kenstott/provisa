@@ -92,11 +92,27 @@ jobs:
           cd "$RUNNER_TEMP/driver" && "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --group test -e . \
             "pytest-timeout==$PYTEST_TIMEOUT_VERSION"
 
+      # REQ-2167 (setup that creates objects is adapted, not excluded): the examples' labels and
+      # relationship types, seeded into the PostgreSQL service and declared in the model, and
+      # their setup and cleanup adapted to them (scripts/conformance/bolt/fixtures.py, adapt.py).
+      - name: Seed the examples' graph and adapt their setup
+        run: |
+          .venv/bin/python scripts/conformance/bolt/fixtures.py seed \
+            --tables "$RUNNER_TEMP/bolt-tables.yaml" --relationships "$RUNNER_TEMP/bolt-relationships.yaml" \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+          .venv/bin/python scripts/conformance/bolt/adapt.py "$RUNNER_TEMP/driver/tests/integration"
+
       # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
-      # its token in CONFORMANCE_AUTHORIZATION.
+      # its token in CONFORMANCE_AUTHORIZATION. The driver signs in once per connection, and its
+      # cancellation test opens a connection per cancelled read: the job user's password is stored
+      # at the minimum bcrypt cost.
       - name: Start the Provisa instance
         id: start
         uses: ./.github/actions/conformance-instance
+        with:
+          extra-tables: ${{ runner.temp }}/bolt-tables.yaml
+          extra-relationships: ${{ runner.temp }}/bolt-relationships.yaml
+          password-cost: "4"
 
 
       - name: Run the driver's integration tests
@@ -118,14 +134,26 @@ jobs:
           done
           # The driver's own test package, run from inside it (its tests/conftest.py applies).
           cd "$RUNNER_TEMP/driver/tests"
+          leak="integration/mixed/test_async_cancellation.py::test_async_cancellation_does_not_leak"
           "$RUNNER_TEMP/driver-venv/bin/python" -m pytest integration -p no:cacheprovider \
-            --timeout="$DRIVER_TEST_TIMEOUT_S" --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q
+            --timeout="$DRIVER_TEST_TIMEOUT_S" --deselect "$leak" \
+            --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q || true
+          # The cancellation leak test on its own: hung where no signal reaches it (its event loop
+          # waiting on a socket), the thread method dumps every thread's stack and ends this call
+          # only, before it writes its junit file -- so that case alone is written failed.
+          "$RUNNER_TEMP/driver-venv/bin/python" -m pytest "$leak" -p no:cacheprovider \
+            --timeout="$DRIVER_TEST_TIMEOUT_S" --timeout-method=thread \
+            --junitxml="$RUNNER_TEMP/bolt-junit-leak.xml" -q || true
+          if [ ! -f "$RUNNER_TEMP/bolt-junit-leak.xml" ]; then
+            printf '%s\n' '<testsuites><testsuite name="pytest"><testcase classname="tests.integration.mixed.test_async_cancellation" name="test_async_cancellation_does_not_leak"><failure message="Timeout: the test hung; every thread'"'"'s stack is in this step'"'"'s log"/></testcase></testsuite></testsuites>' \
+              > "$RUNNER_TEMP/bolt-junit-leak.xml"
+          fi
 
       - name: Summarise
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          .venv/bin/python scripts/conformance/junit_summary.py "$RUNNER_TEMP/bolt-junit.xml" \
+          .venv/bin/python scripts/conformance/junit_summary.py "$RUNNER_TEMP/bolt-junit.xml,$RUNNER_TEMP/bolt-junit-leak.xml" \
             bolt "neo4j-python-driver integration tests" "$DRIVER_VERSION" "tests/integration" \
             "$RUNNER_TEMP/report/conformance-bolt.json" "$RUNNER_TEMP/report/conformance-bolt.md"
           cat "$RUNNER_TEMP/report/conformance-bolt.md" >> "$GITHUB_STEP_SUMMARY"

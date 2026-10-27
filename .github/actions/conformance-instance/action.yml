@@ -17,6 +17,19 @@ inputs:
       scripts/conformance/flightsql/fixtures.py). Empty for none.
     required: false
     default: ""
+  extra-relationships:
+    description: >-
+      The relationships between a job's own fixture tables: a YAML list of model relationship
+      entries (the Bolt job's, from scripts/conformance/bolt/fixtures.py). Empty for none.
+    required: false
+    default: ""
+  password-cost:
+    description: >-
+      The bcrypt cost the job user's password is stored at, when not the server's own: a job whose
+      suite signs in once per connection, many times over, stores it at the minimum (4). Empty for
+      the server's.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -38,6 +51,7 @@ runs:
         mkdir -p "$home"
         extra=()
         if [ -n "${{ inputs.extra-tables }}" ]; then extra=(--extra-tables "${{ inputs.extra-tables }}"); fi
+        if [ -n "${{ inputs.extra-relationships }}" ]; then extra+=(--extra-relationships "${{ inputs.extra-relationships }}"); fi
         .venv/bin/python scripts/conformance/pgwire_catalog_types.py config \
           --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT" \
           --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
@@ -100,6 +114,21 @@ runs:
           "http://127.0.0.1:$PROVISA_API_PORT/admin/users/")
         if [ "${status:0:1}" != "2" ]; then
           echo "::error::POST /admin/users answered $status"; cat "$home/user-response.txt"; tail -n 200 "$home/server.log"; exit 1
+        fi
+        # The job user's password re-stored at the job's bcrypt cost: checkpw takes its cost from
+        # the stored hash, so a suite signing in once per connection is not paced by it.
+        if [ -n "${{ inputs.password-cost }}" ]; then
+          .venv/bin/python - "$home/password-cost.sql" "${{ inputs.password-cost }}" <<'PY'
+        import os, sys, bcrypt
+        digest = bcrypt.hashpw(os.environ["CONFORMANCE_PASSWORD"].encode(), bcrypt.gensalt(rounds=int(sys.argv[2]))).decode()
+        user = os.environ["CONFORMANCE_USER"].replace("'", "''")
+        open(sys.argv[1], "w").write(
+            "\\set ON_ERROR_STOP on\n"
+            f"DO $$ BEGIN UPDATE local_users SET password_hash = '{digest}' WHERE username = '{user}'; "
+            "IF NOT FOUND THEN RAISE EXCEPTION 'no job user to re-store'; END IF; END $$;\n"
+        )
+        PY
+          .venv/bin/python -m provisa.core.control_plane_pg apply "$home/control-pg" --file "$home/password-cost.sql"
         fi
         # The job user's session token, presented by every runner (HTTP, Flight, ...).
         status=$(curl -s -o "$home/login-response.txt" -w '%{http_code}' \
