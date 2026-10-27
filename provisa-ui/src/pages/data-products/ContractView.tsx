@@ -15,6 +15,7 @@
 import { useTranslation } from "react-i18next";
 import { Badge, Group, List, Stack, Table, Text } from "@mantine/core";
 import type { DataContract } from "../../types/admin";
+import { ListCell } from "../../components/list/ListCell";
 
 function slaText(property: string, value: unknown, unit?: string | null): string {
   const shown = value === null || value === undefined ? "" : String(value);
@@ -79,8 +80,13 @@ export function ContractView({ contract }: { contract: DataContract }) {
         <Table.Tbody>
           {contract.columns.map((c) => (
             <Table.Tr key={c.name}>
-              <Table.Td ff="monospace">{c.name}</Table.Td>
-              <Table.Td ff="monospace">{c.type}</Table.Td>
+              {/* A column and its type are single values: one line, cut with an ellipsis. */}
+              <Table.Td ff="monospace">
+                <ListCell text={c.name} />
+              </Table.Td>
+              <Table.Td ff="monospace">
+                <ListCell text={c.type} oneLine />
+              </Table.Td>
               <Table.Td>{c.required ? t("dataProductsTab.contract.yes") : ""}</Table.Td>
             </Table.Tr>
           ))}
