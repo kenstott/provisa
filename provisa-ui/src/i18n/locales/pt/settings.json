@@ -147,6 +147,14 @@
       "workers": {
         "label": "Processos worker",
         "help": "Quantos processos worker o servidor executa. Requer reinicialização, pois os processos são iniciados pelo launcher."
+      },
+      "stream_threads": {
+        "label": "Threads de streaming por worker",
+        "help": "O máximo de respostas em streaming e WebSockets abertos que um processo worker mantém ao mesmo tempo, incluindo assinaturas. Cada um aguarda seu cliente em vez de ocupar um núcleo, por isso é contado à parte das threads de solicitação."
+      },
+      "control_request_threads": {
+        "label": "Threads de controle por worker",
+        "help": "Threads que cada processo worker reserva para verificações de integridade e para a API de administração e login, para que um tráfego intenso de dados não deixe um worker inacessível ao seu orquestrador ou aos seus administradores."
       }
     },
     "kaggle": {
@@ -185,6 +193,18 @@
       "spool_max_bytes": {
         "label": "Limite de disco para o spool de réplicas",
         "help": "O máximo de espaço em disco que este nó usa para guardar a resposta de uma origem em um arquivo temporário enquanto sua réplica é compilada. Aplica-se a origens que respondem com um único documento e não podem ser lidas por um cursor. Uma compilação que ultrapassaria o limite falha; nada é truncado."
+      },
+      "hot_threshold": {
+        "label": "Limite de tabela movimentada",
+        "help": "Quantas instruções governadas uma tabela precisa receber dentro da janela de tabela movimentada antes de ser replicada, para que as leituras seguintes venham da sua réplica."
+      },
+      "hot_interval": {
+        "label": "Janela de tabela movimentada",
+        "help": "O período em que as instruções de uma tabela são contadas em relação ao limite de tabela movimentada."
+      },
+      "hot_max_rows": {
+        "label": "Limite de tamanho de tabela movimentada",
+        "help": "Uma tabela movimentada com mais linhas do que este valor não é replicada; continua sendo lida ao vivo."
       }
     },
     "security": {
@@ -444,7 +464,35 @@
       },
       "subsystem_traces": {
         "label": "Rastreamentos de subsistemas",
-        "help": "Quais subsistemas internos gravam seus próprios rastreamentos."
+        "help": "Quais subsistemas internos gravam seus próprios rastreamentos.",
+        "http_api": {
+          "label": "Traces de subsistemas: API HTTP",
+          "help": "Requisições atendidas pela API da plataforma. Requer reinicialização."
+        },
+        "outbound_http": {
+          "label": "Traces de subsistemas: Chamadas HTTP de saída",
+          "help": "Requisições que a plataforma faz a fontes REST e GraphQL. Requer reinicialização."
+        },
+        "catalog_database": {
+          "label": "Traces de subsistemas: Banco de dados do catálogo",
+          "help": "Leituras e gravações de metadados. Desativado por padrão: cada consulta ao catálogo é uma delas, e elas soterram os traces de consulta. Requer reinicialização."
+        },
+        "result_cache": {
+          "label": "Traces de subsistemas: Cache de resultados",
+          "help": "Leituras e gravações no cache. Requer reinicialização."
+        },
+        "document_sources": {
+          "label": "Traces de subsistemas: Fontes de documentos",
+          "help": "Consultas a repositórios de documentos. Requer reinicialização."
+        },
+        "search_sources": {
+          "label": "Traces de subsistemas: Fontes de busca",
+          "help": "Consultas a índices de busca. Requer reinicialização."
+        },
+        "grpc_services": {
+          "label": "Traces de subsistemas: Serviços gRPC",
+          "help": "A superfície de consulta gRPC, de entrada e de saída. Requer reinicialização."
+        }
       },
       "compact_cron": {
         "label": "Agenda de compactação",
@@ -869,6 +917,10 @@
       "leak_rate_threshold": {
         "label": "Limite da taxa de vazamento dos valores fictícios",
         "help": "A fração dos valores amostrados de uma coluna sensível que o valor fictício pode deixar igual ao valor real antes que a verificação da taxa de vazamento o marque como inadequado. 0 reprova um valor fictício que deixa qualquer valor inalterado."
+      },
+      "key": {
+        "label": "Chave de valores fictícios",
+        "help": "O segredo do qual cada valor fictício é derivado, o mesmo em todos os nós e regiões. É criado na primeira inicialização da plataforma. Alterá-lo altera todos os valores fictícios; protegido, e requer reinicialização."
       }
     },
     "commands": {
@@ -899,6 +951,36 @@
       "duckdb_threads": {
         "label": "Threads do DuckDB da fonte de código",
         "help": "As threads em que o DuckDB de uma fonte de código responde às suas instruções."
+      }
+    },
+    "config": {
+      "reload_interval": {
+        "label": "Intervalo de recarga das configurações",
+        "help": "Com que frequência cada worker verifica se o modelo ou uma configuração mudou e, se sim, o recarrega. Uma alteração feita em um worker chega aos demais dentro desse tempo."
+      }
+    },
+    "hot_tables": {
+      "auto_threshold": {
+        "label": "Limite de tamanho de tabelas quentes",
+        "help": "Uma tabela com no máximo este número de linhas é mantida inteira no cache quente (Redis) e lida a partir dele. Requer reinicialização."
+      },
+      "max_rows": {
+        "label": "Teto de linhas de tabelas quentes",
+        "help": "O máximo de linhas que o cache quente mantém para uma tabela. Sem valor, vale o limite de tamanho de tabelas quentes. Requer reinicialização."
+      },
+      "max_bytes": {
+        "label": "Teto de bytes de tabelas quentes",
+        "help": "O máximo de bytes que o cache quente mantém para uma tabela; uma tabela maior é lida ao vivo. Requer reinicialização."
+      },
+      "refresh_interval": {
+        "label": "Intervalo de atualização de tabelas quentes",
+        "help": "Com que frequência as tabelas do cache quente são recarregadas da sua fonte. Sem valor, vale a duração padrão das exibições materializadas. Requer reinicialização."
+      }
+    },
+    "materialized_views": {
+      "default_ttl": {
+        "label": "Duração padrão das exibições materializadas",
+        "help": "Por quanto tempo uma exibição materializada é usada antes de ser atualizada, quando não define uma duração própria. Requer reinicialização."
       }
     }
   }

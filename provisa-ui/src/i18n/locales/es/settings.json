@@ -147,6 +147,14 @@
       "workers": {
         "label": "Procesos worker",
         "help": "Cuántos procesos worker ejecuta el servidor. Requiere reinicio porque el lanzador inicia los procesos."
+      },
+      "stream_threads": {
+        "label": "Hilos de streaming por worker",
+        "help": "El máximo de respuestas en streaming y WebSockets abiertos que mantiene a la vez un proceso worker, suscripciones incluidas. Cada uno espera a su cliente en lugar de ocupar un núcleo, por eso se cuenta aparte de los hilos de solicitud."
+      },
+      "control_request_threads": {
+        "label": "Hilos de control por worker",
+        "help": "Hilos que cada proceso worker reserva para las comprobaciones de estado y la API de administración e inicio de sesión, para que el tráfico de datos intenso no deje un worker inaccesible para su orquestador o sus administradores."
       }
     },
     "kaggle": {
@@ -185,6 +193,18 @@
       "spool_max_bytes": {
         "label": "Límite de disco para el almacenamiento temporal de réplicas",
         "help": "El máximo espacio en disco que este nodo usa para guardar la respuesta de un origen en un archivo temporal mientras se compila su réplica. Se aplica a los orígenes que responden con un único documento y no pueden leerse mediante un cursor. Una compilación que superaría el límite falla; no se trunca nada."
+      },
+      "hot_threshold": {
+        "label": "Umbral de tabla activa",
+        "help": "Cuántas sentencias gobernadas debe recibir una tabla dentro de la ventana de tabla activa antes de replicarse, para que las lecturas posteriores vengan de su réplica."
+      },
+      "hot_interval": {
+        "label": "Ventana de tabla activa",
+        "help": "El período durante el cual las sentencias de una tabla se cuentan frente al umbral de tabla activa."
+      },
+      "hot_max_rows": {
+        "label": "Límite de tamaño de tabla activa",
+        "help": "Una tabla activa con más filas que este valor no se replica; se sigue leyendo en vivo."
       }
     },
     "security": {
@@ -444,7 +464,35 @@
       },
       "subsystem_traces": {
         "label": "Trazas de subsistemas",
-        "help": "Qué subsistemas internos escriben sus propias trazas."
+        "help": "Qué subsistemas internos escriben sus propias trazas.",
+        "http_api": {
+          "label": "Trazas de subsistemas: API HTTP",
+          "help": "Solicitudes atendidas por la API de la plataforma. Requiere reinicio."
+        },
+        "outbound_http": {
+          "label": "Trazas de subsistemas: Llamadas HTTP salientes",
+          "help": "Solicitudes que la plataforma hace a fuentes REST y GraphQL. Requiere reinicio."
+        },
+        "catalog_database": {
+          "label": "Trazas de subsistemas: Base de datos del catálogo",
+          "help": "Lecturas y escrituras de metadatos. Desactivado de forma predeterminada: cada consulta al catálogo es una, y sepultan las trazas de consulta. Requiere reinicio."
+        },
+        "result_cache": {
+          "label": "Trazas de subsistemas: Caché de resultados",
+          "help": "Lecturas y escrituras en la caché. Requiere reinicio."
+        },
+        "document_sources": {
+          "label": "Trazas de subsistemas: Fuentes documentales",
+          "help": "Consultas contra almacenes de documentos. Requiere reinicio."
+        },
+        "search_sources": {
+          "label": "Trazas de subsistemas: Fuentes de búsqueda",
+          "help": "Consultas contra índices de búsqueda. Requiere reinicio."
+        },
+        "grpc_services": {
+          "label": "Trazas de subsistemas: Servicios gRPC",
+          "help": "La superficie de consulta gRPC, entrante y saliente. Requiere reinicio."
+        }
       },
       "compact_cron": {
         "label": "Programación de compactación",
@@ -869,6 +917,10 @@
       "leak_rate_threshold": {
         "label": "Umbral de tasa de fuga de los valores ficticios",
         "help": "La proporción de los valores de muestra de una columna sensible que su valor ficticio puede dejar igual al valor real antes de que la comprobación de tasa de fuga lo marque como inadecuado. 0 hace fallar un valor ficticio que deja cualquier valor sin cambiar."
+      },
+      "key": {
+        "label": "Clave de valores ficticios",
+        "help": "El secreto del que se deriva cada valor ficticio, el mismo en todos los nodos y regiones. Se crea en el primer arranque de la plataforma. Cambiarlo cambia todos los valores ficticios; protegido, y requiere reinicio."
       }
     },
     "commands": {
@@ -899,6 +951,36 @@
       "duckdb_threads": {
         "label": "Hilos de DuckDB de la fuente de código",
         "help": "Los hilos en los que la DuckDB de una fuente de código responde sus sentencias."
+      }
+    },
+    "config": {
+      "reload_interval": {
+        "label": "Intervalo de recarga de la configuración",
+        "help": "Con qué frecuencia cada worker comprueba si el modelo o un ajuste ha cambiado y, en ese caso, lo recarga. Un cambio hecho en un worker llega a los demás dentro de este tiempo."
+      }
+    },
+    "hot_tables": {
+      "auto_threshold": {
+        "label": "Límite de tamaño de tablas calientes",
+        "help": "Una tabla con no más filas que este valor se guarda completa en la caché caliente (Redis) y se lee desde allí. Requiere reinicio."
+      },
+      "max_rows": {
+        "label": "Máximo de filas de tablas calientes",
+        "help": "El máximo de filas que la caché caliente guarda para una tabla. Sin valor, se usa el límite de tamaño de tablas calientes. Requiere reinicio."
+      },
+      "max_bytes": {
+        "label": "Máximo de bytes de tablas calientes",
+        "help": "El máximo de bytes que la caché caliente guarda para una tabla; una tabla mayor se lee en vivo. Requiere reinicio."
+      },
+      "refresh_interval": {
+        "label": "Intervalo de actualización de tablas calientes",
+        "help": "Con qué frecuencia las tablas de la caché caliente se recargan desde su origen. Sin valor, se usa la duración predeterminada de las vistas materializadas. Requiere reinicio."
+      }
+    },
+    "materialized_views": {
+      "default_ttl": {
+        "label": "Duración predeterminada de las vistas materializadas",
+        "help": "Cuánto tiempo se usa una vista materializada antes de actualizarse, cuando no fija una duración propia. Requiere reinicio."
       }
     }
   }
