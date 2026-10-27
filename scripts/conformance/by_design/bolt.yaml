@@ -1,8 +1,45 @@
 # The Neo4j Python driver's integration tests Provisa fails by design (REQ-2167, amended
 # 2026-10-27): each group quotes the rule of the requirement that excludes it.
 # scripts/conformance/by_design.py. An example that creates its nodes only as setup is adapted
-# over the fixture model, not excluded; until it is, it counts as a failure. The examples' DETACH
-# DELETE is their cleanup, not their subject, so it is adapted too.
+# over the fixture model (scripts/conformance/bolt/fixtures.py, adapt.py), not excluded: it runs
+# and counts, marked on the page with what its setup became. The examples' DETACH DELETE is their
+# cleanup, not their subject, so it is adapted too.
+
+- kind: adapted
+  group: The examples' graph
+  became: >-
+    The labels and relationship types the examples create are declared in the job's fixture
+    model, writable by the job's role: Person, Company and Greeting, KNOWS (Person to Person) and
+    WORKS_FOR (Person to Company), each relationship a junction table. The companies the examples
+    employ people at as already there (Wayne Enterprises, LexCorp, Neo4j) are seeded.
+  case: "examples\\.test_(autocommit_transaction|hello_world|pass_bookmarks|read_write_transaction|result_consume|result_retain|session|transaction_function|transaction_metadata_config|transaction_timeout_config)_example::"
+
+- kind: adapted
+  group: DETACH DELETE cleanup
+  became: >-
+    MATCH (_) DETACH DELETE _ is MATCH (_:Person) WHERE _.id IS NOT NULL DELETE _: the examples
+    write no other node, and a person's relationships are junction rows that cascade with it.
+  case: "examples\\.test_(autocommit_transaction|pass_bookmarks|read_write_transaction|result_consume|result_retain|session|transaction_function|transaction_metadata_config|transaction_timeout_config)_example::"
+
+- kind: adapted
+  group: MERGE in an empty graph
+  became: >-
+    Each example empties the graph first, so its MERGE of a relationship can only create it: it
+    is CREATE. result_retain's MERGE of a company the fixture seeds is its MATCH.
+  case: "examples\\.test_(pass_bookmarks|result_retain)_example::"
+
+- kind: adapted
+  group: Sign-in cost
+  became: >-
+    The test user's password is hashed at the minimum bcrypt cost; reconnect-per-cancel is the
+    driver's behaviour.
+  case: "test_async_cancellation::test_async_cancellation_does_not_leak$"
+
+- group: MERGE
+  requirement: REQ-818
+  decision: '"Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected."'
+  # The README's own example is three MERGEs: what it shows, not its setup.
+  case: "test_readme::test_should_run_readme$"
 
 - group: Digits below the microsecond
   requirement: REQ-2173

@@ -362,15 +362,25 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     }
 
 
-def write_config(path: Path, pg_port: int, pg_dsn: str, extra_tables: Path | None = None) -> None:
+def write_config(
+    path: Path,
+    pg_port: int,
+    pg_dsn: str,
+    extra_tables: Path | None = None,
+    extra_relationships: Path | None = None,
+) -> None:
     """The model, with a job's own fixture tables (``extra_tables``, a YAML list of model table
     entries a job seeded into the same PostgreSQL, e.g. scripts/conformance/flightsql/fixtures.py)
-    registered beside ``types_fixture``."""
+    registered beside ``types_fixture``, and the relationships between them
+    (``extra_relationships``, a YAML list of model relationship entries, e.g.
+    scripts/conformance/bolt/fixtures.py)."""
     import yaml
 
     config = provisa_config(pg_port, pg_dsn)
     if extra_tables is not None:
         config["tables"].extend(yaml.safe_load(extra_tables.read_text()))
+    if extra_relationships is not None:
+        config["relationships"] = yaml.safe_load(extra_relationships.read_text())
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(config, sort_keys=False))
     print(f"wrote {path}")
@@ -713,6 +723,7 @@ def main(argv: list[str]) -> int:
     c.add_argument("--pg-port", required=True, type=int)
     c.add_argument("--pg", required=True, help="the job's PostgreSQL: unsized numerics' scale")
     c.add_argument("--extra-tables", type=Path, help="a job's own seeded fixture tables (YAML)")
+    c.add_argument("--extra-relationships", type=Path, help="the relationships between them (YAML)")
     p = sub.add_parser("probe")
     p.add_argument("--pg", required=True)
     p.add_argument("--provisa", required=True)
@@ -722,7 +733,7 @@ def main(argv: list[str]) -> int:
     if args.command == "seed":
         seed(args.pg)
     elif args.command == "config":
-        write_config(args.out, args.pg_port, args.pg, args.extra_tables)
+        write_config(args.out, args.pg_port, args.pg, args.extra_tables, args.extra_relationships)
     else:
         probe(args.pg, args.provisa, args.out_json, args.out_md)
     return 0
