@@ -362,6 +362,12 @@ def parse_cypher_write(query: str) -> WriteAST:
         props = _parse_props(props_text) if props_text else {}
         # A SET on the node the statement creates gives it that property, as its map would.
         props.update(_parse_set_assignments(set_text, variable) if set_text else [])
+        if not props:
+            # A row of nothing is no write: the node created is given a property, by its map or a SET.
+            raise CypherWriteParseError(
+                f"This write is in a form Provisa does not read: {query!r}: the node it creates "
+                f"has no property. A Cypher write takes one of these forms: {WRITE_FORMS}"
+            )
         return WriteAST(
             kind="create",
             label=label,
