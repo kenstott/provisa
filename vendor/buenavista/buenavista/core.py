@@ -50,6 +50,9 @@ class BVType(enum.Enum):
     DECIMALARRAY = 28
     # An unsigned 4-byte integer (oid, xid): its binary form is not int4's past 2**31.
     OID = 29
+    # A function's or a type's oid, whose text form is its name (the server supplies the names).
+    REGPROC = 30
+    REGTYPE = 31
 
 
 class RawDataRowBytes(bytes):

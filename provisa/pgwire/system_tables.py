@@ -35,7 +35,7 @@ def _populate_empty_system_tables(db) -> None:
     db.execute("""CREATE TABLE _pg_proc (
         oid INTEGER, proname VARCHAR, pronamespace INTEGER, proowner INTEGER,
         prolang INTEGER, procost REAL, prorows REAL, provariadic INTEGER,
-        prosupport VARCHAR, prokind VARCHAR, prosecdef BOOLEAN, proleakproof BOOLEAN,
+        prosupport INTEGER, prokind VARCHAR, prosecdef BOOLEAN, proleakproof BOOLEAN,
         proisstrict BOOLEAN, proretset BOOLEAN, provolatile VARCHAR, proparallel VARCHAR,
         pronargs SMALLINT, pronargdefaults SMALLINT, prorettype INTEGER,
         proargtypes INTEGER[], proallargtypes INTEGER[], proargmodes VARCHAR[],
