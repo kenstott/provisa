@@ -108,13 +108,15 @@ SQL_INFO_SCHEMA = pa.schema(
 )
 
 
-def _server_info() -> dict[int, str | bool]:
-    """What Provisa answers of SqlInfo: the server's name and versions, and that it takes SQL."""
+def _server_info() -> dict[int, str | bool | int]:
+    """What Provisa answers of SqlInfo: the server's name and versions, that it takes SQL, and
+    that it takes transactions -- acknowledged, holding none (REQ-883)."""
     return {
         pb.FLIGHT_SQL_SERVER_NAME: "Provisa",
         pb.FLIGHT_SQL_SERVER_VERSION: importlib.metadata.version("provisa"),
         pb.FLIGHT_SQL_SERVER_ARROW_VERSION: pa.__version__,
         pb.FLIGHT_SQL_SERVER_SQL: True,
+        pb.FLIGHT_SQL_SERVER_TRANSACTION: pb.SQL_SUPPORTED_TRANSACTION_TRANSACTION,
     }
 
 
@@ -125,6 +127,7 @@ def sql_info_table(command: pb.CommandGetSqlInfo) -> pa.Table:
     names: list[int] = []
     strings: list[str] = []
     bools: list[bool] = []
+    ints: list[int] = []
     type_ids: list[int] = []
     offsets: list[int] = []
     for name in asked:
@@ -136,6 +139,10 @@ def sql_info_table(command: pb.CommandGetSqlInfo) -> pa.Table:
             type_ids.append(1)
             offsets.append(len(bools))
             bools.append(value)
+        elif isinstance(value, int):
+            type_ids.append(3)  # int32_bitmask: an enum value, as FLIGHT_SQL_SERVER_TRANSACTION is
+            offsets.append(len(ints))
+            ints.append(value)
         else:
             type_ids.append(0)
             offsets.append(len(strings))
@@ -145,7 +152,7 @@ def sql_info_table(command: pb.CommandGetSqlInfo) -> pa.Table:
         pa.array(strings, pa.utf8()),
         pa.array(bools, pa.bool_()),
         pa.array([], pa.int64()),
-        pa.array([], pa.int32()),
+        pa.array(ints, pa.int32()),
         pa.array([], pa.list_(pa.utf8())),
         pa.array([], union_type.field(5).type),
     ]
@@ -286,3 +293,13 @@ def session_options(catalog: str, schema: str) -> bytes:
         }
     )
     return result.SerializeToString()
+
+
+#: The one transaction id Provisa answers BeginTransaction with: a transaction holds nothing
+#: (REQ-883), so every one is the same.
+NO_OP_TRANSACTION = b"provisa-no-op"
+
+
+def transaction_begun() -> bytes:
+    """BeginTransaction's answer: the id of a transaction that holds nothing (REQ-883)."""
+    return pack(pb.ActionBeginTransactionResult(transaction_id=NO_OP_TRANSACTION))

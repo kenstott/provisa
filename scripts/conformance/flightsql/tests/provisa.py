@@ -43,6 +43,8 @@ class ProvisaQuirks(model.DriverQuirks):
         statement_prepare=True,
         # An update is answered its affected count. The statement tests' CREATE TABLE is replaced
         # by emptying the seeded table (query_override), which affects none.
+        # Transaction control is acknowledged and holds no transaction (REQ-883).
+        connection_transactions=True,
         statement_rows_affected=True,
         statement_rows_affected_ddl=True,
         current_catalog=model.FromEnv("PROVISA_FLIGHT_CATALOG"),

@@ -384,7 +384,9 @@ def _parse_limit_value(value: int | bool | None) -> int | None:
 _HEALTHCHECK_ACTION = "healthcheck"
 
 # The Flight SQL actions the endpoint serves (REQ-2175).
-_FLIGHT_SQL_ACTIONS = frozenset({"CreatePreparedStatement", "ClosePreparedStatement"})
+_FLIGHT_SQL_ACTIONS = frozenset(
+    {"CreatePreparedStatement", "ClosePreparedStatement", "BeginTransaction", "EndTransaction"}
+)
 # Flight's session options action (Flight.proto), which a Flight SQL client reads its current
 # catalog and schema by (REQ-2175).
 _GET_SESSION_OPTIONS = "GetSessionOptions"
@@ -952,7 +954,8 @@ class ProvisaFlightServer(
         action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> list[flight.Result]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """A Flight SQL action (REQ-2175): create a prepared statement, answered its stateless
-        handle and its described schema; close one, which holds nothing to release."""
+        handle and its described schema; close one, which holds nothing to release; begin and
+        end a transaction, which holds nothing (REQ-883)."""
         body = action.body.to_pybytes() if action.body else b""
         request = flightsql.unpack(body)
         if isinstance(request, flightsql.pb.ActionCreatePreparedStatementRequest):
@@ -961,6 +964,16 @@ class ProvisaFlightServer(
             return [flight.Result(result)]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(request, flightsql.pb.ActionClosePreparedStatementRequest):
             flightsql.read_prepared_handle(request.prepared_statement_handle)
+            return []
+        # REQ-883 (amended 2026-10-27): transaction control is a no-op on every surface. A
+        # transaction is acknowledged and holds nothing; each write is applied as it runs.
+        if isinstance(request, flightsql.pb.ActionBeginTransactionRequest):
+            return [flight.Result(flightsql.transaction_begun())]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(request, flightsql.pb.ActionEndTransactionRequest):
+            if request.transaction_id != flightsql.NO_OP_TRANSACTION:
+                raise _flight_error(
+                    f"no transaction {request.transaction_id.decode('utf-8', 'replace')!r}"
+                )
             return []
         raise NotImplementedError(f"Flight SQL action {action.type}")
 
