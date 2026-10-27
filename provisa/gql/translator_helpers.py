@@ -769,3 +769,51 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         start_plus_1 = exp.Add(this=args[1], expression=exp.Literal.number(1))
         return exp.Anonymous(this="substr", expressions=[args[0], start_plus_1, *args[2:]])
     return node
+
+
+def _json_valued(e: exp.Expression) -> str | None:
+    """ "list" for a list of JSON-encoded values, "value" for one value read from one (its JSON),
+    else None."""
+    while isinstance(e, (exp.Alias, exp.Paren)):
+        e = e.this
+    called = str(e.this).upper() if isinstance(e, exp.Anonymous) else None
+    if isinstance(e, exp.Array):
+        return (
+            "list"
+            if e.expressions
+            and all(
+                isinstance(x, exp.Anonymous) and str(x.this).upper() == "TO_JSON"
+                for x in e.expressions
+            )
+            else None
+        )
+    if called in ("ARRAY_APPEND", "SLICE") and e.expressions:
+        return "list" if _json_valued(e.expressions[0]) == "list" else None
+    if called == "ARRAY_PREPEND" and len(e.expressions) == 2:
+        return "list" if _json_valued(e.expressions[1]) == "list" else None
+    if called == "ELEMENT_AT" and e.expressions:
+        return "value" if _json_valued(e.expressions[0]) == "list" else None
+    if called == "TRANSFORM" and e.expressions:
+        # reverse() of a list: its items read back in turn (expr_visitor._reversed_list).
+        return _json_valued(e.expressions[0]) if _reads_items(e) else None
+    if isinstance(e, (exp.Add, exp.DPipe)):
+        sides = {_json_valued(e.this), _json_valued(e.expression)}
+        return "list" if "list" in sides else None
+    if isinstance(e, exp.Case):
+        results = [i.args["true"] for i in e.args.get("ifs") or []] + [e.args.get("default")]
+        found = {_json_valued(r) for r in results if r is not None}
+        return "list" if found == {"list"} or ("list" in found and None not in found) else None
+    return None
+
+
+def _reads_items(e: exp.Expression) -> bool:
+    """Whether a TRANSFORM over indexes reads a list's items (reverse()): its lambda is an
+    ELEMENT_AT of a list of JSON-encoded values."""
+    if len(e.expressions) != 2 or not isinstance(e.expressions[1], exp.Lambda):
+        return False
+    body = e.expressions[1].this
+    return (
+        isinstance(body, exp.Anonymous)
+        and str(body.this).upper() == "ELEMENT_AT"
+        and _json_valued(body.expressions[0]) == "list"
+    )

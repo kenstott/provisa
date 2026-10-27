@@ -50,7 +50,30 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     result = _rewrite_json_arrayagg_for_trino(result)
     result = _rewrite_empty_json_list_for_trino(result)
     result = _rewrite_regex_backreferences_for_trino(result)
+    result = _rewrite_json_size_for_trino(result)
     return _rewrite_to_json_for_trino(result)
+
+
+def _rewrite_json_size_for_trino(sql: str) -> str:
+    """json_size(x), a JSON value's size (expr_visitor): a list's items, else a string's
+    characters, as Trino reads them."""
+    if "JSON_SIZE" not in sql.upper():
+        return sql
+    tree = sqlglot.parse_one(sql, read="trino")
+
+    def _sized(node: exp.Expr) -> exp.Expr:
+        if not (isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_SIZE"):
+            return node
+        (value,) = node.expressions
+        items = exp.Anonymous(this="json_array_length", expressions=[value.copy()])
+        text = exp.Anonymous(
+            this="json_extract_scalar", expressions=[value.copy(), exp.Literal.string("$")]
+        )
+        return exp.Coalesce(
+            this=items, expressions=[exp.Anonymous(this="length", expressions=[text])]
+        )
+
+    return tree.transform(_sized).sql(dialect="trino")
 
 
 _BACKREFERENCE = re.compile(r"\\(\d)")
@@ -472,7 +495,16 @@ def _null_order_as_key(sql: str) -> str:
 #: A Cypher read's list functions as the IR names them (gql/expr_visitor, Trino's names) whose
 #: DuckDB function differs in name or arguments.
 _DUCKDB_LIST_FUNCTIONS = frozenset(
-    {"ELEMENT_AT", "SLICE", "CARDINALITY", "ANY_MATCH", "ALL_MATCH", "NONE_MATCH", "SEQUENCE"}
+    {
+        "ELEMENT_AT",
+        "SLICE",
+        "CARDINALITY",
+        "ANY_MATCH",
+        "ALL_MATCH",
+        "NONE_MATCH",
+        "SEQUENCE",
+        "JSON_SIZE",
+    }
 )
 
 
@@ -534,6 +566,25 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
             return _fn("len", *args)
         if name == "SEQUENCE":
             return _fn("generate_series", *args)
+        if name == "JSON_SIZE":
+            # A JSON value's size: a list's items, a string's characters (expr_visitor).
+            (value,) = args
+            kind = _fn("json_type", value.copy())
+            return exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.EQ(this=kind, expression=exp.Literal.string("ARRAY")),
+                        true=_fn("json_array_length", value.copy()),
+                    ),
+                    exp.If(
+                        this=exp.EQ(this=kind.copy(), expression=exp.Literal.string("VARCHAR")),
+                        true=_fn(
+                            "length",
+                            _fn("json_extract_string", value.copy(), exp.Literal.string("$")),
+                        ),
+                    ),
+                ]
+            )
         if name == "ALL_MATCH":
             # A false decides it; otherwise a null leaves it null.
             decided = exp.Not(

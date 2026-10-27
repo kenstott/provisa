@@ -501,3 +501,11 @@ def test_an_empty_array_a_coalesce_falls_back_to_is_typed_by_postgres():
     assert transpile(pg, "postgres") == (
         "SELECT COALESCE(ARRAY_AGG(x) FILTER(WHERE NOT x IS NULL), '{}') FROM t"
     )
+
+
+def test_a_json_value_s_size_is_read_by_trino():
+    # json_size(x), the size of an item of a list of several types (expr_visitor): a list's
+    # items, else a string's characters.
+    assert transpile_to_trino("SELECT json_size(x) FROM t") == (
+        "SELECT COALESCE(JSON_ARRAY_LENGTH(x), LENGTH(JSON_EXTRACT_SCALAR(x, '$'))) FROM t"
+    )
