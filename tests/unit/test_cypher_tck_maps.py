@@ -55,6 +55,9 @@ def _rows(query: str, params: dict | None = None) -> list[tuple]:
         ("WITH {name: 'Mats', nome: 'Pontus'} AS map RETURN map['name'] AS result", [("Mats",)]),
         ("WITH {null: 'Mats', NULL: 'Pontus'} AS map RETURN map['null'] AS result", [("Mats",)]),
         ("RETURN {a: 1}['a'] AS a, {a: 1}['b'] AS b", [(1, None)]),
+        # Graph9 [4]: properties() of a map is the map.
+        ("RETURN keys(properties({name: 'Popeye', level: 9001})) AS k", [(["name", "level"],)]),
+        ("RETURN properties(null) AS p", [(None,)]),
     ],
 )
 def test_a_map_answers_its_keys_and_its_values(query, rows):

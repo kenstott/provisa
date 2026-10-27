@@ -606,6 +606,13 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if node.name.lower() == "properties" and len(node.args) == 1:
+            given = node.args[0]
+            # properties() of a map is the map itself; of null, null.
+            if isinstance(given, MapLiteral):
+                return self.lower(given)
+            if isinstance(given, Literal) and given.kind == "null":
+                return exp.Null()
         if node.name.lower() == "keys" and len(node.args) == 1:
             given = node.args[0]
             if isinstance(given, MapLiteral):
