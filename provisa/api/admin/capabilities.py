@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from provisa.auth.models import AuthIdentity
 from provisa.security.rights import (
@@ -53,6 +53,12 @@ def acting_role_of(info: "strawberry.types.Info") -> str:  # REQ-2154
         if isinstance(info.context, dict)
         else getattr(info.context, "request", None)
     )
+    return acting_role_of_request(request)
+
+
+def acting_role_of_request(request: Any) -> str:  # REQ-2154
+    """The role an admin HTTP request acts as (``request.state.role``, bound by the auth
+    middleware): what a registration's default grant names."""
     role = getattr(getattr(request, "state", None), "role", None)
     if not role:
         raise RuntimeError(

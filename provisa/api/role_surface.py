@@ -69,6 +69,20 @@ class RoleSurfaceUnbuilt(RuntimeError):
         super().__init__(f"the data surface of role {role_id!r} could not be built: {cause}")
 
 
+class RoleServedNothing(PermissionError):
+    """A role served no table (REQ-2154: no column of any table is granted to it): every read
+    of the role is refused naming it -- the caller's refusal, never a build failure."""
+
+    code = "data.role_served_nothing"
+
+    def __init__(self, role_id: str) -> None:
+        self.role_id = role_id
+        self.params = {"role_id": role_id}
+        super().__init__(
+            f"Role {role_id!r} is served no tables: no column of any table is granted to it"
+        )
+
+
 class LazySurface:
     """A role's surface, built the first time it is read and held after: one build, however
     many requests ask at once. A failed build is held too, and raised to every reader; a build a
@@ -81,7 +95,7 @@ class LazySurface:
         self._build = build
         self._lock = threading.Lock()
         self._surface: RoleSurface | None = None
-        self._failure: RoleSurfaceUnbuilt | None = None
+        self._failure: RoleSurfaceUnbuilt | RoleServedNothing | None = None
 
     @property
     def built(self) -> bool:
@@ -89,6 +103,8 @@ class LazySurface:
 
     def resolve(self) -> RoleSurface:
         from provisa.core.request_deadline import DeadlinePassed, RequestTimedOut
+        from provisa.core.runtime_gone import RuntimeNotBuilt
+        from provisa.compiler.schema_gen import NoTablesServed
 
         with self._lock:
             if self._surface is not None:
@@ -99,6 +115,14 @@ class LazySurface:
                 self._surface = self._build()
             except (DeadlinePassed, RequestTimedOut):
                 raise  # the reader's time ran out, not the role's build: the next one builds
+            except NoTablesServed:
+                self._failure = RoleServedNothing(self.role_id)
+                raise self._failure from None
+            except RuntimeNotBuilt:
+                # The runtime it was registered for is gone (a change of an environment's data,
+                # an engine wake): the role's build did not fail, so nothing is held; the reader
+                # is refused, or a detached pass left to the next runtime (runtime_gone).
+                raise
             except Exception as exc:
                 self._failure = RoleSurfaceUnbuilt(self.role_id, exc)
                 log.error("%s", self._failure, exc_info=exc)

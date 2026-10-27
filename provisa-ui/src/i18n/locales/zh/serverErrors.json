@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "表 '{{table}}' 没有已注册的 gRPC 查询",
       "no_mutation_fields": "未找到变更字段",
       "no_proto_for_role": "角色 '{{role_id}}' 没有 proto：它没有数据面，因为它未覆盖任何域，或仅拥有控制平面权限",
+      "role_served_nothing": "角色 '{{role_id}}' 未获提供任何表：未授予其任何表的任何列",
       "no_query_field_for_proto_type": "角色 '{{role_id}}' 下没有 proto 类型 '{{type_name}}' 的查询字段",
       "no_query_fields": "未找到查询字段",
       "no_role": "没有角色 '{{role_id}}'",

@@ -153,3 +153,20 @@ async def test_an_approval_denial_keeps_its_code_and_reason():
         "code": "data.approval_denied",
         "params": {"reason": "outside hours"},
     }
+
+
+async def test_a_role_served_no_table_is_answered_403_naming_it():
+    # REQ-2154: a role no column is granted to is refused naming it, never a 500.
+    import json
+
+    from provisa.api.app import create_app
+    from provisa.api.role_surface import RoleServedNothing
+
+    handler = create_app().exception_handlers[PermissionError]
+    resp = await handler(types.SimpleNamespace(), RoleServedNothing("loose"))
+    assert resp.status_code == 403
+    assert json.loads(resp.body) == {
+        "detail": "Role 'loose' is served no tables: no column of any table is granted to it",
+        "code": "data.role_served_nothing",
+        "params": {"role_id": "loose"},
+    }

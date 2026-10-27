@@ -93,6 +93,7 @@
       "no_grpc_query_for_table": "Nenhuma consulta gRPC registrada para a tabela '{{table}}'",
       "no_mutation_fields": "Nenhum campo de mutação encontrado",
       "no_proto_for_role": "A função '{{role_id}}' não tem proto: nenhuma superfície de dados lhe é fornecida, porque não alcança nenhum domínio ou possui apenas direitos do plano de controle",
+      "role_served_nothing": "A função '{{role_id}}' não recebe nenhuma tabela: nenhuma coluna de nenhuma tabela lhe foi concedida",
       "no_query_field_for_proto_type": "Nenhum campo de consulta para o tipo proto '{{type_name}}' na função '{{role_id}}'",
       "no_query_fields": "Nenhum campo de consulta encontrado",
       "no_role": "Função '{{role_id}}' inexistente",

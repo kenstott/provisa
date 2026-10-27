@@ -281,7 +281,13 @@ def test_sql_governance_serves_what_it_served_within_reach(tables, role):
         visible = gov.visible_columns[table["id"]]
         got = {c["column_name"] for c in table["columns"]} if visible is None else set(visible)
         if "*" in reach or table["domain_id"] in reach:
-            assert got == _old_sql_visible(role, table), table["table_name"]
+            expected = _old_sql_visible(role, table)
+            # By intent: a parameter column is an argument, served with the table's data to a
+            # role served any of it (REQ-1614, REQ-1986), as the schema build serves it.
+            parameters = {c["column_name"] for c in table["columns"] if c.get("native_filter_type")}
+            if expected - parameters:
+                expected |= parameters
+            assert got == expected, table["table_name"]
         else:
             # The one place the old copies disagreed on a role's own answer: SQL governance
             # judged a column by its grant alone, the schema build required reach. The rule

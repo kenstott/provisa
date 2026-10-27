@@ -307,6 +307,8 @@ def jdbc_client_get_columns(shared_data):
 
     table_id = 1
     table_name = "orders"
+    # The role the metadata is read as, which the columns are granted to (REQ-2154).
+    role_id = os.getenv("PROVISA_TEST_ROLE", "analyst")
     _col_defs = [
         ("id", "bigint", False),
         ("customer_name", "varchar", True),
@@ -325,7 +327,7 @@ def jdbc_client_get_columns(shared_data):
             "write_refused_forms": [],
             "governance": "pre-app",
             "columns": [
-                {"column_name": name, "visible_to": [], "native_filter_type": None}
+                {"column_name": name, "visible_to": [role_id], "native_filter_type": None}
                 for name, _dtype, _nullable in _col_defs
             ],
         }
@@ -338,7 +340,7 @@ def jdbc_client_get_columns(shared_data):
     shared_data["table_name"] = table_name
     shared_data["tables"] = tables
     shared_data["column_types"] = column_types
-    shared_data["role_id"] = os.getenv("PROVISA_TEST_ROLE", "analyst")
+    shared_data["role_id"] = role_id
     assert shared_data["table_name"] == "orders"
 
 

@@ -974,6 +974,17 @@ def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
     }
 
 
+class NoTablesServed(ValueError):
+    """A role no column of any table is served to (REQ-2154: a grant names its roles): it has no
+    schema to build, which is the role's state, not a failure of the build."""
+
+    def __init__(self, role_id: str) -> None:
+        self.role_id = role_id
+        super().__init__(
+            f"No tables visible to role {role_id!r}. Check domain_access and column visibility."
+        )
+
+
 def generate_schema(
     si: SchemaInput,
 ) -> (
@@ -988,10 +999,7 @@ def generate_schema(
     """
     tables = _build_visible_tables(si)
     if not tables:
-        raise ValueError(
-            f"No tables visible to role {si.role['id']!r}. "
-            f"Check domain_access and column visibility."
-        )
+        raise NoTablesServed(si.role["id"])
 
     domain_alias_map = _build_domain_alias_map(si.domains)
     _assign_names(

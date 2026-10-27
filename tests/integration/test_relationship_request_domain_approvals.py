@@ -54,6 +54,15 @@ _ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provis
 
 _ORG_ID = "req1948"
 _SCHEMA = f"org_{_ORG_ID}"
+# Every role the plane seeds reads the tables' columns: a grant names its roles (REQ-2154).
+_READERS = [
+    "sales_reader",
+    "sales_modeler",
+    "finance_modeler",
+    "hr_modeler",
+    "org_modeler",
+    "sales_builder",
+]
 _SCHEMA_SQL = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "provisa", "core", "schema.sql")
 )
@@ -149,8 +158,8 @@ async def plane(monkeypatch):
                     schema_name="public",
                     table_name=table_name,
                     columns=[
-                        Column(name="id", visible_to=[], data_type="integer"),
-                        Column(name="ref_id", visible_to=[], data_type="integer"),
+                        Column(name="id", visible_to=_READERS, data_type="integer"),
+                        Column(name="ref_id", visible_to=_READERS, data_type="integer"),
                     ],
                 ),
             )
