@@ -292,3 +292,39 @@ def test_a_statement_tests_table_is_declared_writable_by_the_job_user():
     ]
     assert [c["name"] for c in written["columns"]] == ["id", "value"]
     assert "write_grants" not in fixtures._model_table(conn, "test_int32")
+
+
+def test_each_case_the_suite_skips_is_named_with_its_reason(tmp_path):
+    """A skipped case is counted apart and listed on the page by name, with the reason the suite
+    gave, so what it did not run can be decided case by case."""
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        '<testcase classname="tests.test_connection.TestConnection" name="test_ok[p]"/>'
+        '<testcase classname="tests.test_connection.TestConnection" '
+        'name="test_set_current_catalog[p]">'
+        '<skipped type="pytest.skip" message="not implemented">skip</skipped></testcase>'
+        '<testcase classname="tests.test_statement.TestStatement" name="test_transaction_toggle[p]">'
+        '<skipped type="pytest.skip" message="Driver does not support transactions">s</skipped>'
+        "</testcase></testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
+    assert (doc["ran"], doc["skipped"]) == (1, 2)
+    assert doc["skipped_cases"] == [
+        {
+            "feature": "tests.test_connection.TestConnection",
+            "scenario": "test_set_current_catalog[p]",
+            "reason": "not implemented",
+        },
+        {
+            "feature": "tests.test_statement.TestStatement",
+            "scenario": "test_transaction_toggle[p]",
+            "reason": "Driver does not support transactions",
+        },
+    ]
+    _, _, _, cases = fill_docs.read(doc)
+    assert "## Skipped by the suite" in cases
+    assert (
+        "| tests.test_statement.TestStatement | test_transaction_toggle[p] | Driver does not "
+        "support transactions |" in cases
+    )

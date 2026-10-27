@@ -37,11 +37,19 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         for path in junit.split(",")
         for case in ET.parse(path).getroot().iter("testcase")  # nosec B314 -- see above
     ]
-    skipped, outcomes = 0, []
+    skipped: list[dict] = []
+    outcomes: list[dict] = []
     for case in cases:
         outcome = next((c for c in case if c.tag in ("failure", "error", "skipped")), None)
         if outcome is not None and outcome.tag == "skipped":
-            skipped += 1
+            # Named with the suite's reason, so what it did not run is decided case by case.
+            skipped.append(
+                {
+                    "feature": case.get("classname", ""),
+                    "scenario": case.get("name", ""),
+                    "reason": (outcome.get("message") or outcome.text or "").strip()[:300],
+                }
+            )
             continue
         message = (
             []
@@ -75,11 +83,12 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         "suite": suite,
         "version": version,
         "tests": tests,
-        "total": ran + skipped,
+        "total": ran + len(skipped),
         "ran": ran,
         "passed": passed,
         "failed": len(failures),
-        "skipped": skipped,
+        "skipped": len(skipped),
+        "skipped_cases": skipped,
         "not_runnable": sum(g["count"] for g in excluded),
         "by_design": excluded,
         "client_not_sent": sum(g["count"] for g in unsent),

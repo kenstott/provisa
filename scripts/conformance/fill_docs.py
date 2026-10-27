@@ -100,6 +100,21 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
                 ]
             )
         )
+    if artifact.get("skipped_cases"):
+        sections.append(
+            "\n".join(
+                [
+                    "## Skipped by the suite",
+                    "",
+                    "| Test | Case | Reason |",
+                    "| --- | --- | --- |",
+                    *(
+                        f"| {c['feature']} | {c['scenario']} | {c['reason'].replace('|', '/')} |"
+                        for c in artifact["skipped_cases"]
+                    ),
+                ]
+            )
+        )
     if "adapted" in artifact:
         sections.append(
             "\n".join(["## Adapted cases", "", *by_design.adapted_lines(artifact["adapted"])])
