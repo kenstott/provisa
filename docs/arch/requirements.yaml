@@ -89962,7 +89962,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     about model terms (the ontology is governed through its own admin path, never written by a query). The
     existing SPARQL compiler is unchanged; an extension classifies each update as governed or session, and
     reads union session triples beside the governed answer only where the session has matches. With server.public_url
-    unset, model IRIs cannot be recognized and such writes are refused by name, as reads are.'
+    unset, model IRIs cannot be recognized and such writes are refused by name, as reads are. (Amended 2026-10-27,
+    A MIXED CREATE SPLITS:) Maintainer 2026-10-27: a single CREATE whose parts classify differently is not
+    refused; each part takes its own path. A node naming exactly one model table is a governed row write,
+    a node with free labels (or ambiguous labels) is a session node, and a relationship is governed only
+    when it is a registered junction between governed endpoints (REQ-665), otherwise a session relationship
+    (a session relationship may end on a model node). Example: CREATE (c:Customer {id: 42}), (n:Note {text:
+    ''call back''}), (c)-[:ABOUT]->(n) writes the Customer row to its source and the Note and ABOUT to the
+    session. Statements are not atomic across the two paths (transactions are a no-op by design), so the
+    outcome equals running the parts as separate statements.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
