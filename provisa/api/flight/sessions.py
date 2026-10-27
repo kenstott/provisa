@@ -26,7 +26,10 @@ from __future__ import annotations
 import secrets
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
+
+from provisa.compiler.temp_tables import TempSession
 
 #: The cookie Flight names a session by.
 COOKIE = "arrow_flight_session_id"
@@ -52,17 +55,25 @@ class ForeignSession(PermissionError):
 
 
 @dataclass
-class _Session:
+class Session:
+    """One Flight session: who began it, the options it set, and its temporary tables (REQ-615),
+    which end with it."""
+
     owner: Owner
     options: dict[str, str] = field(default_factory=dict)
+    temp: TempSession = field(default_factory=TempSession)
 
 
 class SessionStore:
-    """The sessions of one worker, oldest first, at most ``limit``."""
+    """The sessions of one worker, oldest first, at most ``limit``. ``ended`` is told of each
+    session that ends -- closed, or pushed out by newer ones -- outside the store's lock."""
 
-    def __init__(self, limit: int = SESSION_LIMIT) -> None:
+    def __init__(
+        self, limit: int = SESSION_LIMIT, ended: Callable[[Session], None] | None = None
+    ) -> None:
         self._limit = limit
-        self._sessions: OrderedDict[str, _Session] = OrderedDict()
+        self._ended = ended
+        self._sessions: OrderedDict[str, Session] = OrderedDict()
         self._lock = threading.Lock()
 
     def __len__(self) -> int:
@@ -71,7 +82,7 @@ class SessionStore:
     def ids(self) -> list[str]:
         return list(self._sessions)
 
-    def _held(self, session_id: str | None, owner: Owner) -> _Session | None:
+    def _held(self, session_id: str | None, owner: Owner) -> Session | None:
         session = self._sessions.get(session_id) if session_id else None
         if session is None:
             return None
@@ -80,27 +91,45 @@ class SessionStore:
         self._sessions.move_to_end(session_id)  # type: ignore[arg-type]  # held: not None
         return session
 
-    def options(self, session_id: str | None, owner: Owner) -> dict[str, str] | None:
-        """The options of ``session_id``, or None when the store holds no such session."""
+    def _end(self, sessions: list[Session]) -> None:
+        if self._ended is not None:
+            for session in sessions:
+                self._ended(session)
+
+    def held(self, session_id: str | None, owner: Owner) -> Session | None:
+        """``session_id``'s session, or None when the store holds no such session."""
+        with self._lock:
+            return self._held(session_id, owner)
+
+    def begin(self, session_id: str, owner: Owner) -> Session:
+        """``session_id``'s session, begun as ``owner``'s when the store holds no such session."""
+        evicted: list[Session] = []
         with self._lock:
             session = self._held(session_id, owner)
-            return None if session is None else dict(session.options)
+            if session is None:
+                session = self._sessions[session_id] = Session(owner)
+                while len(self._sessions) > self._limit:
+                    evicted.append(self._sessions.popitem(last=False)[1])
+        self._end(evicted)
+        return session
+
+    def options(self, session_id: str | None, owner: Owner) -> dict[str, str] | None:
+        """The options of ``session_id``, or None when the store holds no such session."""
+        session = self.held(session_id, owner)
+        return None if session is None else dict(session.options)
 
     def update(self, session_id: str, owner: Owner, options: dict[str, str]) -> None:
         """Set ``options`` on ``session_id``, beginning it as ``owner``'s when the store holds no
         such session."""
-        with self._lock:
-            session = self._held(session_id, owner)
-            if session is None:
-                session = self._sessions[session_id] = _Session(owner)
-                while len(self._sessions) > self._limit:
-                    self._sessions.popitem(last=False)
-            session.options.update(options)
+        self.begin(session_id, owner).options.update(options)
 
     def close(self, session_id: str | None, owner: Owner) -> bool:
         """End ``session_id``; whether the store held it."""
         with self._lock:
-            if self._held(session_id, owner) is None:
-                return False
-            del self._sessions[session_id]  # type: ignore[arg-type]  # held: not None
-            return True
+            session = self._held(session_id, owner)
+            if session is not None:
+                del self._sessions[session_id]  # type: ignore[arg-type]  # held: not None
+        if session is None:
+            return False
+        self._end([session])
+        return True

@@ -106,8 +106,11 @@ def test_flight_binds_a_principal_for_every_do_get():
     )
     source = inspect.getsource(flight_server.ProvisaFlightServer._as_ticket_caller)
     assert "identity.user_id if identity is not None else ANONYMOUS_USER" in source
-    assert source.count("return body()") == 1
-    before = source[: source.index("return body()")]
+    # The body runs once, inside the scope, in the caller's Flight session (REQ-2175).
+    runs = "return self._in_flight_session(request, body)"
+    assert source.count(runs) == 1
+    assert "body()" not in source.replace(runs, "")
+    before = source[: source.index(runs)]
     assert before.rstrip().endswith('with audit_identity_scope(user_id, "flight"):')
 
 

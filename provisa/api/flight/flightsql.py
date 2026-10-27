@@ -235,6 +235,53 @@ def bound_statement(query: str, parameters: pa.Table | None) -> str:
     return "\nUNION ALL\n".join(f"({statement})" for statement in statements)
 
 
+def _temporary_type(arrow: pa.DataType) -> str:
+    """The PostgreSQL type an ingested column of ``arrow`` is declared as in a temporary table."""
+    if pa.types.is_boolean(arrow):
+        return "boolean"
+    if pa.types.is_int8(arrow) or pa.types.is_int16(arrow) or pa.types.is_uint8(arrow):
+        return "smallint"
+    if pa.types.is_int32(arrow) or pa.types.is_uint16(arrow):
+        return "integer"
+    if pa.types.is_integer(arrow):
+        return "bigint"
+    if pa.types.is_float16(arrow) or pa.types.is_float32(arrow):
+        return "real"
+    if pa.types.is_floating(arrow):
+        return "double precision"
+    if pa.types.is_decimal(arrow):
+        return f"numeric({arrow.precision},{arrow.scale})"
+    if pa.types.is_date(arrow):
+        return "date"
+    if pa.types.is_time(arrow):
+        return "time"
+    if pa.types.is_timestamp(arrow):
+        return "timestamptz" if arrow.tz is not None else "timestamp"
+    if (
+        pa.types.is_string(arrow)
+        or pa.types.is_large_string(arrow)
+        or pa.types.is_string_view(arrow)
+        or pa.types.is_dictionary(arrow)
+    ):
+        return "text"
+    if (
+        pa.types.is_binary(arrow)
+        or pa.types.is_large_binary(arrow)
+        or pa.types.is_binary_view(arrow)
+        or pa.types.is_fixed_size_binary(arrow)
+    ):
+        return "bytea"
+    raise ValueError(f"a column of {arrow} has no temporary-table type")
+
+
+def temporary_columns(schema: pa.Schema) -> list[tuple[str, str]]:
+    """The columns of a temporary table created by an ingest of ``schema``: each declared as its
+    Arrow type's PostgreSQL type and landed as the temporary tables land it."""
+    from provisa.pgwire.temp_exec import landed_type
+
+    return [(f.name, landed_type(f.name, _temporary_type(f.type))) for f in schema]
+
+
 #: The rows one INSERT of an ingest writes.
 INGEST_BATCH_ROWS = 500
 
