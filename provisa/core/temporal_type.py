@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A timestamp column's fractional-second precision, as the model records it (REQ-1961).
+"""A timestamp or time column's fractional-second precision, as the model records it (REQ-1961).
 
 As a numeric's size is (``core.numeric_type``), the declaration lives in the column's stored
 type, in one spelling -- ``timestamp(p)`` or ``timestamptz(p)`` -- written by
@@ -44,6 +44,24 @@ def sized_timestamp(source_spelling: str) -> str | None:
         return None
     base = "timestamptz" if sized.group(2).lower() == "with" else "timestamp"
     return f"{base}({sized.group(1)})"
+
+
+_TIME_SIZED = re.compile(r"^\s*time\s*\(\s*(\d)\s*\)\s*$", re.IGNORECASE)
+_TIME_SOURCE = re.compile(r"^\s*time\s*\(\s*(\d)\s*\)\s*without\s+time\s+zone\s*$", re.IGNORECASE)
+
+
+def time_precision(registered: str) -> int | None:
+    """The fractional-second digits a stored ``time(p)`` declares; None for any other type, a
+    time declaring none among them (REQ-1961, amended 2026-10-27)."""
+    sized = _TIME_SIZED.match(registered)
+    return int(sized.group(1)) if sized else None
+
+
+def sized_time(source_spelling: str) -> str | None:
+    """The stored type of a PostgreSQL time column spelled ``source_spelling`` (as format_type
+    prints it) that declares its precision; None for one that declares none."""
+    sized = _TIME_SOURCE.match(source_spelling)
+    return f"time({sized.group(1)})" if sized else None
 
 
 def timestamp_unit(precision: int | None) -> str:

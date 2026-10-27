@@ -235,7 +235,7 @@ def registered_typing(pg_type: str) -> dict[str, Any]:
     ``data_type`` first."""
     from provisa.core.ir_types import column_typing, subtype_of, to_ir
     from provisa.core.numeric_type import numeric_size_of
-    from provisa.core.temporal_type import sized_timestamp
+    from provisa.core.temporal_type import sized_time, sized_timestamp
 
     subtype = subtype_of(pg_type, "postgresql")
     if subtype is not None:
@@ -251,9 +251,9 @@ def registered_typing(pg_type: str) -> dict[str, Any]:
         }
     if numeric_size_of(typing.data_type) is not None:
         return {"data_type": typing.data_type}
-    sized = sized_timestamp(pg_type)
+    sized = sized_timestamp(pg_type) or sized_time(pg_type)
     if sized is not None:
-        return {"data_type": sized}  # a timestamp keeps its declared precision (REQ-1961)
+        return {"data_type": sized}  # a timestamp or time keeps its declared precision (REQ-1961)
     return {"data_type": to_ir(pg_type)}
 
 

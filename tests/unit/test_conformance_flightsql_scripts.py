@@ -196,7 +196,7 @@ def test_the_flight_sql_page_marks_adapted_cases_and_counts_unsent_ones_apart(tm
     assert (doc["ran"], doc["passed"], doc["failed"]) == (4, 2, 2)
     assert (doc["not_runnable"], doc["client_not_sent"]) == (1, 2)
     assert [(g["group"], g["requirement"], g["count"]) for g in doc["by_design"]] == [
-        ("Timestamps beyond microseconds", "REQ-1961", 1)
+        ("Times and timestamps beyond microseconds", "REQ-1961", 1)
     ]
     refused, dropped = doc["not_sent_by_client"]
     assert (refused["group"], refused["count"]) == ("Bind with no Prepare", 1)
@@ -230,7 +230,7 @@ def test_the_flight_sql_page_marks_adapted_cases_and_counts_unsent_ones_apart(tm
     assert "## Not sent by the client" in cases
     assert "| Group | Count | Client | What it does | Evidence | Workaround |" in cases
     assert "| Bind before Prepare | 1 | adbc-driver-flightsql 1.12.0 (the Go driver) |" in cases
-    assert "| Timestamps beyond microseconds | 1 |" in cases
+    assert "| Times and timestamps beyond microseconds | 1 |" in cases
     assert "## Adapted cases" in cases
     assert "<summary>Timestamp cases' tables (0 of 2 passed)</summary>" in cases
     assert "Setup became: The ten precisions" in cases
