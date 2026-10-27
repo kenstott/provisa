@@ -26555,3 +26555,15 @@ The canonical IR has type aliases. An alias is declared once in the IR vocabular
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2174 · Profile Runs Terrain View {#REQ-2174}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Every 3D stage (BaseScene: the graph explorer, the inline product graph, the Ontology View and the profile graphs) shows the most information it can from where it looks. After its layout settles, and whenever the data or layout changes, the stage computes a best view: the principal axes of the node positions give a first direction (looking along the axis of least spread), refined by scoring evenly spread candidate directions on the projected scene for hidden nodes, crossing edges, the smallest on-screen gap between nodes and overlapping labels. Looseness is set against that view: node and label sizes are scaled so the smallest on-screen gap is at least a label's width, and the layout is re-run only where sizing cannot meet it. When turning pauses on idle ([REQ-2123](#REQ-2123)), the camera eases to the best view instead of stopping where it was; an active turn rotates about the axis that keeps the most-spread plane facing the viewer. Under prefers-reduced-motion the stage opens at the best view with no easing. Where no view can show a dense part without overlap, the stage does not hide it: filtering and focus on a selected node's neighbourhood remain the way to read it.
+
+**Code:** —
+
+**Tests:** —
