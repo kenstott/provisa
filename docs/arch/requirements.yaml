@@ -90142,7 +90142,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     columns with widened types and its arms (the anchor tables and the tagged model types). A write that
     adds or removes a label updates them; the overlay reads them and computes nothing per statement. No
     separate cache, no version and no invalidation; a read while the session holds ephemeral objects still
-    bypasses the kept-translation cache.'
+    bypasses the kept-translation cache. (Amended 2026-10-27, SESSION GRAPHS ARE INDEXED AND COUNTED:) Maintainer
+    2026-10-27: the session graph is indexed as a graph store''s would be, so very large session graphs
+    traverse well. Its relationship table is indexed on from_id, on to_id and on type, node_labels on (label,
+    node_id), and each anchor table on its node id; these are temporary objects beside the session''s temporary
+    tables, created with them. The lookup tables keep counts per label, per relationship type and per (type,
+    source label, target label), maintained at write time, so the compiler starts a traversal from its more
+    selective end. The benefit is engine dependent (largest on a PostgreSQL engine; DuckDB''s hash joins
+    gain mainly on selective hops). Model data keeps its source''s own indexes: none is created at a source.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
