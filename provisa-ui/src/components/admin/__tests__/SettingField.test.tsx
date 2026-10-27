@@ -713,9 +713,10 @@ describe("network settings grouped by transport", () => {
     expect(networkTransport(mk({ key: "server.flight_compression" }))).toBe("flight");
   });
 
-  it("puts each transport in its own expandable panel, collapsed at first", () => {
+  it("puts each transport in its own expandable panel; only General and HTTP starts open", () => {
     card();
-    for (const g of ["general", "grpc", "flight"]) {
+    expect(toggle("general")).toHaveAttribute("aria-expanded", "true");
+    for (const g of ["grpc", "flight"]) {
       expect(toggle(g)).toHaveAttribute("aria-expanded", "false");
     }
     expect(toggle("grpc")).toHaveTextContent("gRPC");
@@ -805,9 +806,10 @@ describe("SettingsCatalogPanel", () => {
     const field = screen.getByTestId("setting-server.public_url");
     expect(general).toContainElement(field);
     expect(field).toBeEnabled();
-    expect(screen.getByTestId("settings-group-general-toggle")).toHaveTextContent(
-      "General and HTTP",
-    );
+    const generalToggle = screen.getByTestId("settings-group-general-toggle");
+    expect(generalToggle).toHaveTextContent("General and HTTP");
+    // Open at first: the field is not behind a second fold.
+    expect(generalToggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByTestId("catalog-card-network")).toHaveTextContent("Network and TLS");
     expect(within(general).getByText("Public address")).toBeInTheDocument();
   });
