@@ -25,16 +25,23 @@ export interface Spring {
 /** Fruchterman–Reingold in three dimensions from a golden-spiral start; deterministic, so the same
  * graph always lands the same way. Positions are scaled to fit ``radius``. ``attraction`` (1 the
  * usual spacing) draws the nodes together above 1 and apart below: it shortens the springs' rest
- * length and the charge's reach, and the whole lands within ``radius / attraction``. */
+ * length and the charge's reach, and the whole lands within ``radius / attraction``. ``flat`` lays
+ * it out in the z = 0 plane (a 2D view, REQ-2174), from a golden-angle disc. */
 export function forceLayout(
   ids: string[],
   springs: Spring[],
   radius = LAYOUT_RADIUS,
   attraction = 1,
+  flat = false,
 ): Map<string, [number, number, number]> {
   const n = ids.length;
   const index = new Map(ids.map((id, i) => [id, i]));
   const p = ids.map((_, i) => {
+    if (flat) {
+      const r = Math.sqrt((i + 0.5) / n) * radius;
+      const phi = i * Math.PI * (3 - Math.sqrt(5));
+      return [Math.cos(phi) * r, Math.sin(phi) * r, 0];
+    }
     const y = n === 1 ? 0 : 1 - (2 * i) / (n - 1);
     const r = Math.sqrt(1 - y * y);
     const phi = i * Math.PI * (3 - Math.sqrt(5));
@@ -92,7 +99,7 @@ export function forceLayout(
       const step = Math.min(len, temp);
       p[i][0] += (d[i][0] / len) * step;
       p[i][1] += (d[i][1] / len) * step;
-      p[i][2] += (d[i][2] / len) * step;
+      p[i][2] += flat ? 0 : (d[i][2] / len) * step;
     }
     temp *= 0.985;
   }

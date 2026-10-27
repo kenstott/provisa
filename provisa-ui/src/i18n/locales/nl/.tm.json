@@ -8203,5 +8203,8 @@
   "nl/adminPage.json::adminPage.apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role and every entity it fetches is governed as this role: its row rules, masks and visibility.",
   "nl/serverErrors.json::serverErrors.settings.federation_unknown_field": "Not a federation setting: {{fields}}",
   "nl/serverErrors.json::serverErrors.settings.federation_invalid": "Invalid federation setting: {{error}}",
-  "nl/serverErrors.json::serverErrors.settings.federation_role_unknown": "Federation role '{{role}}' is not a role of this organization"
+  "nl/serverErrors.json::serverErrors.settings.federation_role_unknown": "Federation role '{{role}}' is not a role of this organization",
+  "nl/graph3d.json::graph3d.dimension": "2D or 3D",
+  "nl/graph3d.json::graph3d.view2d": "2D",
+  "nl/graph3d.json::graph3d.view3d": "3D"
 }

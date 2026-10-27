@@ -52,6 +52,7 @@ import {
 } from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
+import { DimensionToggle } from "./DimensionToggle";
 import { kindKey } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
 import { nodeHref } from "./nodeHref";
@@ -145,6 +146,8 @@ export function GraphExplorer({
     rotate: false as boolean,
     attraction: 1 as number,
     grid: true as boolean,
+    // REQ-2174: drawn in 2D, laid out flat through a face-on camera.
+    flat: false as boolean,
     // null: every domain, every edge type (or the preset's own), so a new one is drawn too.
     domains: null as string[] | null,
     edgeTypes: null as string[] | null,
@@ -171,6 +174,7 @@ export function GraphExplorer({
   const rotate = saved.rotate as boolean;
   const attraction = Math.min(ATTRACTION_MAX, Math.max(ATTRACTION_MIN, saved.attraction as number));
   const grid = saved.grid as boolean;
+  const flat = saved.flat as boolean;
   const [focus, setFocus] = useState<string[]>(initialFocus ? [initialFocus] : []);
   const savedDomains = saved.domains as string[] | null;
   const savedTypes = saved.edgeTypes as string[] | null;
@@ -224,6 +228,7 @@ export function GraphExplorer({
   const setRotate = (on: boolean) => save("rotate", on);
   const setAttraction = (v: number) => save("attraction", v);
   const setGrid = (on: boolean) => save("grid", on);
+  const setFlat = (on: boolean) => save("flat", on);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [frame, setFrame] = useState(0);
   const [picked, setSelected] = useState<string | null>(initialFocus);
@@ -320,8 +325,8 @@ export function GraphExplorer({
   }, [data, on, filters, narrowed, query, expanded, scope, orphans, search]);
   const layout = presetOf(preset).layout;
   const at = useMemo(
-    () => layoutGraph(shown, layout, zero, attraction),
-    [shown, layout, zero, attraction],
+    () => layoutGraph(shown, layout, zero, attraction, flat),
+    [shown, layout, zero, attraction, flat],
   );
   const focusable = useMemo(
     () =>
@@ -355,7 +360,7 @@ export function GraphExplorer({
     graph: shown,
     at,
     frame,
-    frontal: layout !== "force",
+    flat,
     selected,
     setSelected: select,
     hover,
@@ -376,9 +381,13 @@ export function GraphExplorer({
           aria-label={t("graph3d.preset")}
           data-testid={`${testId}-preset`}
         />
-        <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>
-          {t("profile3d.rotate")}
-        </Chip>
+        <DimensionToggle flat={flat} onChange={setFlat} testId={testId} />
+        {/* A 2D graph never turns. */}
+        {!flat && (
+          <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>
+            {t("profile3d.rotate")}
+          </Chip>
+        )}
         <GridToggle value={grid} onChange={setGrid} testId={testId} />
         <Button
           size="xs"

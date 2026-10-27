@@ -612,6 +612,8 @@ export function layoutGraph(
   zero: string[],
   /** How close a force layout draws the nodes (1 the usual spacing); other layouts are fixed. */
   attraction = 1,
+  /** Every node in the z = 0 plane: the graph's 2D view (REQ-2174). A tree is flat already. */
+  flat = false,
 ): Map<string, [number, number, number]> {
   const ids = g.nodes.map((n) => n.id);
   const radius = Math.max(6, Math.cbrt(ids.length) * 3);
@@ -622,6 +624,7 @@ export function layoutGraph(
       g.edges.map((e) => ({ a: e.a, b: e.b, strength: PULL[e.kind] })),
       radius,
       attraction,
+      flat,
     );
   }
   const lane = lanesFrom(
@@ -637,13 +640,29 @@ export function layoutGraph(
   const all = [...lanes.keys()];
   const mid = (Math.min(...all) + Math.max(...all)) / 2;
   const out = new Map<string, [number, number, number]>();
+  const rowsOf = (members: string[]) => Math.ceil(Math.sqrt(members.length));
+  // Flat, a lane's columns sit side by side within it, so each lane starts past the one before.
+  const start = new Map<number, number>();
+  let x = 0;
+  for (const l of [...all].sort((a, b) => a - b)) {
+    start.set(l, x);
+    const members = lanes.get(l) as string[];
+    x += (Math.ceil(members.length / rowsOf(members)) - 1) * 2 + LANE_GAP;
+  }
+  const centre = (x - LANE_GAP) / 2;
   for (const [l, members] of lanes) {
     members.sort();
-    const rows = Math.ceil(Math.sqrt(members.length));
+    const rows = rowsOf(members);
     members.forEach((id, i) => {
       const r = i % rows;
       const c = Math.floor(i / rows);
-      out.set(id, [(l - mid) * LANE_GAP, (r - (rows - 1) / 2) * 2, c * 2]);
+      const y = (r - (rows - 1) / 2) * 2;
+      out.set(
+        id,
+        flat
+          ? [(start.get(l) as number) + c * 2 - centre, y, 0]
+          : [(l - mid) * LANE_GAP, y, c * 2],
+      );
     });
   }
   return out;
