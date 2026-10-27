@@ -382,3 +382,37 @@ def test_the_available_extensions_are_the_installed_ones(monkeypatch):
     assert [tuple(r) for r in answer(pgadmin, "testrole", _state()).rows] == [
         ("vector", "0.8.0", ["0.8.0"], ["pg_catalog"], [False], [False])
     ]
+
+
+def test_every_postgresql_17_relation_is_served_with_its_columns():
+    from provisa.pgwire.catalog_data import _TABLE_MAP, UNQUERIED_RELATIONS
+    from provisa.pgwire.catalog_pg17 import RELATIONS
+
+    assert set(RELATIONS) <= set(_TABLE_MAP)
+    for schema, relation in UNQUERIED_RELATIONS:
+        served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
+        assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
+
+
+def test_pg_shadow_never_gives_a_password():
+    state = _state()
+    state.roles = {"analyst": {"id": "analyst"}}
+    rows = answer("SELECT usename, passwd FROM pg_catalog.pg_shadow", "testrole", state).rows
+    assert rows and [password for _, password in rows] == [None] * len(rows)
+
+
+def test_the_sql_conformance_tables_hold_postgresqls_rows():
+    from provisa.pgwire.catalog_pg17 import STATIC_ROWS
+
+    for table, rows in STATIC_ROWS.items():
+        served = answer(f"SELECT count(*) FROM information_schema.{table}", "testrole", _state())
+        assert served.rows == [(len(rows),)], table
+
+
+def test_a_regtype_array_is_written_as_type_names():
+    from buenavista.core import BVType
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    oid, text, binary = BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY]
+    assert oid == 2211 and text([23, 25]) == "{integer,text}"
+    assert binary([23]) == struct.pack("!iiiii", 1, 0, 2206, 1, 1) + struct.pack("!iI", 4, 23)
