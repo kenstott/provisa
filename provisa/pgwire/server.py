@@ -506,6 +506,7 @@ _ARRAY_OF: dict[BVType, BVType] = {
     BVType.BOOL: BVType.BOOLARRAY,
     BVType.DECIMAL: BVType.DECIMALARRAY,
     BVType.TEXT: BVType.STRINGARRAY,
+    BVType.OID: BVType.OIDARRAY,
 }
 
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
@@ -553,6 +554,8 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
     "REGPROC": BVType.REGPROC,
     "REGTYPE": BVType.REGTYPE,
+    "OIDVECTOR": BVType.OIDVECTOR,
+    "INT2VECTOR": BVType.INT2VECTOR,
     # REQ-2171: a subtyped column, described as its subtype, is sent as its PostgreSQL type.
     **{name.upper(): BVType[name.upper()] for name in SUBTYPES},
     "BIT VARYING": BVType.VARBIT,
@@ -610,6 +613,16 @@ _WIRE_FAMILIES = (
         {BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID, BVType.REGPROC, BVType.REGTYPE}
     ),
     frozenset({BVType.REAL, BVType.FLOAT}),
+    frozenset(
+        {
+            BVType.SMALLINTARRAY,
+            BVType.INTEGERARRAY,
+            BVType.BIGINTARRAY,
+            BVType.OIDARRAY,
+            BVType.OIDVECTOR,
+            BVType.INT2VECTOR,
+        }
+    ),
 )
 
 
@@ -647,7 +660,7 @@ _register_reg_types()
 
 def same_wire_form(declared: str, served: str) -> bool:  # REQ-2167
     """Whether a value served as type ``served`` is sent correctly as type ``declared``: the
-    same wire type, or integers (or floats) of another width."""
+    same wire type, or integers (or floats, or integer lists) of another width or kind."""
     a, b = _sql_type_to_bvtype(declared), _sql_type_to_bvtype(served)
     return a == b or any(a in family and b in family for family in _WIRE_FAMILIES)
 

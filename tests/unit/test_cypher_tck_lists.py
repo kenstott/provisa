@@ -65,6 +65,16 @@ def _rows(query: str) -> list[tuple]:
             [(True,)],
         ),
         ("RETURN 1 + 2 AS a", [(3,)]),
+        # Aggregation8 [3], [4]: collect() skips nulls, and collects nothing as [].
+        ("UNWIND [null, 1, null] AS x RETURN collect(DISTINCT x) AS c", [([1],)]),
+        ("UNWIND [null, 1, null] AS x RETURN collect(x) AS c", [([1],)]),
+        ("UNWIND [null, null] AS x RETURN collect(x) AS c", [([],)]),
+        # List11 [3]: a function inside collect() is lowered too.
+        (
+            "WITH [1, 2] AS list, true AS e"
+            " RETURN collect(CASE WHEN e THEN size(list) = 0 ELSE size(list) > 0 END) AS c",
+            [([False],)],
+        ),
         # reverse() of a list is its items last to first; of a string, its characters.
         (
             "RETURN reverse([1, 2, 3]) AS a, reverse('abc') AS b, reverse([]) AS c",

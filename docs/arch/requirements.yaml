@@ -8829,6 +8829,7 @@
   - tests/unit/test_cypher_tck_maps.py
   - tests/unit/test_cypher_tck_precedence.py
   - tests/unit/test_cypher_tck_quantifiers.py
+  - tests/unit/test_cypher_tck_temporal.py
   - tests/unit/test_sql_to_cypher.py
   - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01
@@ -37648,7 +37649,42 @@
   feature: approvals-and-limits-query-limits
   priority: MUST
   type: constraint
-  description: 'Per-role query limits complement per-role request-rate limits (REQ-369). [SUPERSEDED by the amendment below, 2026-10-02 -- max_query_depth and max_query_nodes measured a GraphQL document, so they held on GraphQL requests only; they are retired. max_query_time_ms is unchanged. Kept here for history; do not implement against it.] Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_time_ms) complement per-role request-rate limits (REQ-369). Enforced at the GraphQL→IR compile boundary; over-limit requests return HTTP 413. Limits persist on the roles table and are configurable via admin API. [END SUPERSEDED BLOCK] (Amended 2026-10-02, ONE SCORE AT THE SEMANTIC LAYER) The query complexity guard is measured on the semantic statement -- the form a request takes on every surface once it is parsed and before it is governed -- so one limit holds for GraphQL, SQL, Cypher, pgwire, Arrow Flight, gRPC, JSON:API and MCP alike, by one measure. A statement''s complexity is one score, the sum of the relations it reads, its joins, the columns it projects (a star counting as the columns the role may see of what it stands for) and the query blocks nested inside it; a reference to a common table expression is not a relation read again. A relation fetched from a remote API on each read (an OpenAPI, remote GraphQL or remote gRPC source) counts for ten, since every read spends a budget the remote sets and every reader of that source shares. The limit is a number on the role, max_query_complexity, beside its other limits. The org sets a ceiling for every role, limits.max_query_complexity, that a role may tighten and not loosen: the smaller of the two that are set applies; neither is set as shipped, and a role under no limit is not measured. A statement over the limit is refused before it is governed or run, with its score, the limit, whose limit it is and what the statement asked for; the refusal is recorded as a policy denial; HTTP surfaces answer 413 and the others answer in their own error shape with the same message. A Hasura node_limit is imported as max_query_complexity; a Hasura depth_limit has no counterpart, since a deeper query is a statement with more relations and joins.'
+  description: 'Per-role query limits complement per-role request-rate limits (REQ-369). [SUPERSEDED by
+    the amendment below, 2026-10-02 -- max_query_depth and max_query_nodes measured a GraphQL document,
+    so they held on GraphQL requests only; they are retired. max_query_time_ms is unchanged. Kept here for
+    history; do not implement against it.] Per-role query complexity limits (max_query_depth, max_query_nodes,
+    max_query_time_ms) complement per-role request-rate limits (REQ-369). Enforced at the GraphQL→IR compile
+    boundary; over-limit requests return HTTP 413. Limits persist on the roles table and are configurable
+    via admin API. [END SUPERSEDED BLOCK] (Amended 2026-10-02, ONE SCORE AT THE SEMANTIC LAYER) The query
+    complexity guard is measured on the semantic statement -- the form a request takes on every surface
+    once it is parsed and before it is governed -- so one limit holds for GraphQL, SQL, Cypher, pgwire,
+    Arrow Flight, gRPC, JSON:API and MCP alike, by one measure. A statement''s complexity is one score,
+    the sum of the relations it reads, its joins, the columns it projects (a star counting as the columns
+    the role may see of what it stands for) and the query blocks nested inside it; a reference to a common
+    table expression is not a relation read again. A relation fetched from a remote API on each read (an
+    OpenAPI, remote GraphQL or remote gRPC source) counts for ten, since every read spends a budget the
+    remote sets and every reader of that source shares. The limit is a number on the role, max_query_complexity,
+    beside its other limits. The org sets a ceiling for every role, limits.max_query_complexity, that a
+    role may tighten and not loosen: the smaller of the two that are set applies; neither is set as shipped,
+    and a role under no limit is not measured. A statement over the limit is refused before it is governed
+    or run, with its score, the limit, whose limit it is and what the statement asked for; the refusal is
+    recorded as a policy denial; HTTP surfaces answer 413 and the others answer in their own error shape
+    with the same message. A Hasura node_limit is imported as max_query_complexity; a Hasura depth_limit
+    has no counterpart, since a deeper query is a statement with more relations and joins. (Amended 2026-10-27,
+    LLM TOKEN BUDGETS ARE THE ROLE''S:) Maintainer 2026-10-27: a role''s limits include LLM spend, in tokens
+    or USD (priced by polly.model_prices, REQ-2012): a per-call cap (the most one Polly turn or LLM service
+    call may use, checked against that call''s own usage) and a pooled period budget (daily or monthly),
+    one counter per org and role like the request-rate bucket, debited after each call and refusing by name
+    once spent. A user acting with several roles is held to the most generous. There is no per-user metering:
+    an operator who wants a person''s own budget gives that person a role of their own. Both limits are
+    set on the role''s form. (Amended 2026-10-27, BUDGETS ARE ROLLING WINDOWS COUNTED IN THE CONTROL PLANE:)
+    Maintainer 2026-10-27: an LLM budget never resets. A role may set any of four rolling windows, an hour,
+    a day, a week and a month, each a limit in tokens or USD; a call is refused by name when any window
+    that is set is full, the refusal naming the window and when its oldest spend expires. The per-call cap
+    stays beside them. Usage is kept per org and role as per-minute buckets (an hour), per-hour buckets
+    (a week) and per-day buckets (31 days), every window a sum over them. The counters live in the control-plane
+    PostgreSQL, so budgets hold on every deployment, with or without Redis. The role''s page shows each
+    window''s use and when room frees up. This replaces the daily-or-monthly period stated above.'
   use_case: Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing
     request-rate limiting. Provides Hasura api_limits parity.
   code:
@@ -88003,16 +88039,33 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     written as the operator setting so it shows in Deployment settings and can be changed there. SPARQL,
     the vocabulary panel and RDF export then work on a fresh local start. It is an install step, not a read-time
     fallback: a hosted or cluster deployment still sets it deliberately, and with it unset SPARQL still
-    refuses by name. The refusal names the exact field and the address to put in it.
-    (Amended 2026-10-27, THE SPARQL TAB EXPORTS IN SPARQL''S OWN FORMATS:) Each tab of the graph
-    visualizer offers its own language''s exports: the Neo4j export (Cypher CREATE) stays in the
-    Cypher tab only. The SPARQL tab''s export writes a graph answer (a CONSTRUCT''s triples) as RDF,
-    Turtle by default, or N-Triples or JSON-LD, and a SELECT''s rows as SPARQL Results JSON, CSV or
-    TSV (an ASK''s answer as SPARQL Results JSON). The export asks the endpoint the frame''s query
-    again in the chosen format, so the endpoint''s one writer writes it, with IRIs on
-    server.public_url as SPARQL answers them; the endpoint answers a CONSTRUCT as JSON-LD
-    (application/ld+json) as well as Turtle and N-Triples. The newest answer is exported, or the
-    one chosen.'
+    refuses by name. The refusal names the exact field and the address to put in it. (Amended 2026-10-27,
+    THE SPARQL TAB EXPORTS IN SPARQL''S OWN FORMATS:) Each tab of the graph visualizer offers its own language''s
+    exports: the Neo4j export (Cypher CREATE) stays in the Cypher tab only. The SPARQL tab''s export writes
+    a graph answer (a CONSTRUCT''s triples) as RDF, Turtle by default, or N-Triples or JSON-LD, and a SELECT''s
+    rows as SPARQL Results JSON, CSV or TSV (an ASK''s answer as SPARQL Results JSON). The export asks the
+    endpoint the frame''s query again in the chosen format, so the endpoint''s one writer writes it, with
+    IRIs on server.public_url as SPARQL answers them; the endpoint answers a CONSTRUCT as JSON-LD (application/ld+json)
+    as well as Turtle and N-Triples. The newest answer is exported, or the one chosen. (Amended 2026-10-27,
+    THE IR STATES SEMANTICS; EACH LANGUAGE PICKS:) Maintainer 2026-10-27: where query languages differ in
+    an operation''s semantics, the graph IR has one operation whose options state the semantics, and each
+    front end lowers to the options its language defines; no front end composes another language''s functions
+    to fake its own rules. Casts: one ToInteger (and its siblings) with how a number is cut (toward zero),
+    how a string is read (lenient: ''2.9'' is 2, as Cypher; lexical: only an integer''s own form, as XPath/SPARQL)
+    and what a failure gives (null). Likewise division (integer division truncating vs a decimal quotient),
+    division by zero (error, null, or IEEE infinity for floating operands), comparison across types (false
+    vs a type error) and + on strings (concatenation vs undefined). The back end renders each option once
+    per engine dialect, so every surface lowering to the IR gets its language''s semantics through one back
+    end. (Amended 2026-10-27, A LANGUAGE IS A CONFIG APPLIED TO THE AST:) Maintainer 2026-10-27: every reasonable
+    design choice a language makes that can be parameterized works this way. A front end lowers to the neutral
+    IR AST without choosing semantics; a language config, data that names the language''s choice for each
+    parameterized operation (casts, division, division by zero, cross-type comparison, string +, null ordering
+    and the like), is applied to that AST by one pass, producing the resolved AST the back end renders.
+    Cypher and SPARQL each have a config; a further language is a further config, not new compiler code.
+    (Amended 2026-10-27, THE LANGUAGE CONFIG IS A DIRECTION:) Maintainer 2026-10-27: the language-config
+    pass is the direction, not a project to build now. New parameterized operations are built as one IR
+    operation with a semantics option; an existing rule moves to that shape when it is next touched; the
+    per-language config and its pass come when enough options have gathered to warrant them.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -89795,7 +89848,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     View and the Product map) offers a 2D/3D toggle. In 2D the same stage lays the graph out flat and locks
     a face-on orthographic camera with pan and zoom and no turning; selection, expansion and the detail
     panel work the same. Each graph remembers the choice per user. The label-spacing rule above applies
-    in 2D as in 3D.'
+    in 2D as in 3D. (Amended 2026-10-27, A LAYERED LAYOUT WHERE EDGES HAVE DIRECTION:) Maintainer 2026-10-27:
+    every network graph can be laid out in layers. Each edge kind is one of three classes: RANKS (one end
+    above the other: term KIND_OF, PART_OF and VALID_VALUE_OF; domain to table; product to member table;
+    table to column; term to the columns bound to it; a command, check or profile under its table), FLOWS
+    (one end before the other: lineage, column lineage, term DERIVED_FROM and REPLACES) or LATERAL (neither:
+    term RELATED_TO, SYNONYM_OF, PREFERRED_TERM_FOR, TRANSLATION_OF and ANTONYM_OF; a relationship between
+    tables; a tag). A layered layout places each node one level below the deepest node ranking or flowing
+    into it, every parent kept (a node with two parents sits under both, not under one), orders each level
+    by sweeps that cut crossings, and ignores an edge that closes a cycle; ranks run top-down and flows
+    left-to-right. Lateral edges are drawn as arcs laid over the rank and flow edges and never move a node.
+    When a view opens, the layout is layered if its drawn rank and flow edges are all of one class and form
+    no cycle, else force; a Force/Layered control lets the reader override it, Layered disabled where a
+    cycle makes it impossible. A layered layout is flat in 3D as the tree is. It extends today''s tree layout
+    (the Taxonomy preset becomes a layered view) and holds in both the 2D and 3D views.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles

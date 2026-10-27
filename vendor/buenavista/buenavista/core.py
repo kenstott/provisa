@@ -53,31 +53,35 @@ class BVType(enum.Enum):
     # A function's or a type's oid, whose text form is its name (the server supplies the names).
     REGPROC = 30
     REGTYPE = 31
+    # oid[], and PostgreSQL's catalog vectors: written as space-separated text, sent as arrays.
+    OIDARRAY = 32
+    OIDVECTOR = 33
+    INT2VECTOR = 34
     # Provisa's IR subtypes (REQ-2171), each sent as its PostgreSQL type (oid is OID above).
-    INET = 32
-    CIDR = 33
-    MACADDR = 34
-    XML = 35
-    POINT = 36
-    MONEY = 37
-    MACADDR8 = 38
-    LINE = 39
-    LSEG = 40
-    BOX = 41
-    PATH = 42
-    POLYGON = 43
-    CIRCLE = 44
-    GEOMETRY = 45
-    GEOGRAPHY = 46
-    INT4RANGE = 47
-    INT8RANGE = 48
-    NUMRANGE = 49
-    TSRANGE = 50
-    TSTZRANGE = 51
-    DATERANGE = 52
-    BIT = 53
-    VARBIT = 54
-    TSVECTOR = 55
+    INET = 35
+    CIDR = 36
+    MACADDR = 37
+    XML = 38
+    POINT = 39
+    MONEY = 40
+    MACADDR8 = 41
+    LINE = 42
+    LSEG = 43
+    BOX = 44
+    PATH = 45
+    POLYGON = 46
+    CIRCLE = 47
+    GEOMETRY = 48
+    GEOGRAPHY = 49
+    INT4RANGE = 50
+    INT8RANGE = 51
+    NUMRANGE = 52
+    TSRANGE = 53
+    TSTZRANGE = 54
+    DATERANGE = 55
+    BIT = 56
+    VARBIT = 57
+    TSVECTOR = 58
 
 
 class RawDataRowBytes(bytes):

@@ -15,6 +15,8 @@ Supports PG SQL → Trino, and PG SQL → any target dialect for direct executio
 
 # Requirements: REQ-066, REQ-068, REQ-229
 
+import re
+
 import sqlglot
 
 from provisa.transpiler.native_json import resolve_native_json
@@ -47,7 +49,25 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     result = _rewrite_json_build_object_for_trino(result)
     result = _rewrite_json_arrayagg_for_trino(result)
     result = _rewrite_empty_json_list_for_trino(result)
+    result = _rewrite_regex_backreferences_for_trino(result)
     return _rewrite_to_json_for_trino(result)
+
+
+_BACKREFERENCE = re.compile(r"\\(\d)")
+
+
+def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
+    """A regexp_replace's replacement names a captured group as PostgreSQL writes it, \\1;
+    Trino's writes it $1."""
+    if "REGEXP_REPLACE" not in sql.upper() or "\\" not in sql:
+        return sql
+    tree = sqlglot.parse_one(sql, read="trino")
+    for node in tree.find_all(exp.RegexpReplace):
+        replacement = node.args.get("replacement")
+        if isinstance(replacement, exp.Literal) and replacement.is_string:
+            written = _BACKREFERENCE.sub(r"$\1", replacement.this)
+            node.set("replacement", exp.Literal.string(written))
+    return tree.sql(dialect="trino")
 
 
 def _rewrite_empty_json_list_for_trino(sql: str) -> str:
@@ -650,6 +670,20 @@ def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     return tree.transform(_lowered)
 
 
+def postgres_empty_arrays(tree: exp.Expr) -> exp.Expr:
+    """``tree`` for a PostgreSQL server, which types no empty ARRAY[]: one a COALESCE falls back to
+    (collect() of nothing) is '{}', which PostgreSQL reads as the other argument's array type."""
+
+    def _typed(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Coalesce):
+            for i, arg in enumerate(node.expressions):
+                if isinstance(arg, exp.Array) and not arg.expressions:
+                    node.expressions[i] = exp.Literal.string("{}")
+        return node
+
+    return tree.transform(_typed)
+
+
 def postgres_array_filters(tree: exp.Expr) -> exp.Expr:  # REQ-778
     """``tree`` for a PostgreSQL server, which has no FILTER: each filtered list (the semantic SQL
     keeps ``FILTER(l, y -> p)``, ``semantic_dialect``) is ``ARRAY(SELECT y FROM UNNEST(l) AS
@@ -785,6 +819,10 @@ def transpile(
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
         lowered = postgres_array_filters(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and "ARRAY[]" in pg_sql.upper():
+        lowered = postgres_empty_arrays(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():

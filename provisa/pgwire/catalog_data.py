@@ -18,7 +18,7 @@ through ``typeinfo()`` / ``pg_type_rows()`` so all OID resolution flows one path
 
 from __future__ import annotations
 
-from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
 from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
 from provisa.pgwire.ext_surfaces import surface_pg_type_rows, surface_typeinfo
 
@@ -533,16 +533,28 @@ _CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
 _NAMESPACE_OIDS = {"pg_catalog": 11, "information_schema": 12}
 
 
-def _with_base_types(oids: set[int]) -> set[int]:
-    bases = {TYPES[oid][6] for oid in oids if TYPES[oid][6]}
-    return oids | bases if bases <= oids else _with_base_types(oids | bases)
+def _array_element(oid: int) -> int:
+    """An array type's element type (oidvector's and int2vector's too); 0 for any other type."""
+    _ns, _name, _len, _kind, category, *_, element, _delim, _fmt = TYPES[oid]
+    return element if category == "A" else 0
 
 
-# REQ-2167: the types a catalog column is described with (catalog_types), and the types they are
-# domains over, listed as PostgreSQL 17 records them, so a client that looks a described OID up
-# in pg_type (or asyncpg's type introspection) finds it.
+def _with_underlying_types(oids: set[int]) -> set[int]:
+    """The types, with the types they are domains over and arrays of."""
+    under = {TYPES[oid][6] for oid in oids} | {_array_element(oid) for oid in oids}
+    under.discard(0)
+    return oids if under <= oids else _with_underlying_types(oids | under)
+
+
+# REQ-2167: every type a PostgreSQL 17 catalog column has, and the types under them, listed as
+# PostgreSQL 17 records them, so a client that looks up the type of a catalog column it was sent
+# (in pg_type, or by asyncpg's type introspection) finds it.
 _DESCRIBED_TYPE_OIDS = sorted(
-    _with_base_types(set(CATALOG_TYPE_OIDS.values())) - {row[0] for row in _PG_TYPE_ROWS}
+    _with_underlying_types(
+        {oid for columns in RELATIONS.values() for _, _, oid in columns}
+        | set(CATALOG_TYPE_OIDS.values())
+    )
+    - {row[0] for row in _PG_TYPE_ROWS}
 )
 for _oid in _DESCRIBED_TYPE_OIDS:
     _ns, _name, _len, _kind, _category, _notnull, _base, _byval, _align, _storage, *_ = TYPES[_oid]
@@ -550,7 +562,12 @@ for _oid in _DESCRIBED_TYPE_OIDS:
         (_oid, _name, _NAMESPACE_OIDS[_ns], _len, _kind, _category, _notnull, _base, _byval)
         + (_align, _storage)
     )
-    _TYPEINFO.setdefault(_oid, (_ns, _name, _kind, _base or None, None, None, None))
+    _element = _array_element(_oid)
+    _TYPEINFO.setdefault(
+        _oid,
+        (_ns, _name, _kind, _base or None, _element or None, TYPES[_oid][11] if _element else None)
+        + (None,),
+    )
 
 
 def typeinfo() -> dict[int, tuple]:

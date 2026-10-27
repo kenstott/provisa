@@ -139,6 +139,9 @@ _STORED_AS_POSTGRESQL_DOES = frozenset(
         "smallint[]",
         "regproc",
         "regtype",
+        "oid[]",
+        "oidvector",
+        "int2vector",
     }
 )
 
@@ -180,3 +183,23 @@ def test_a_regproc_is_its_function_name_as_text_and_its_oid_as_binary():
     assert _wire("SELECT typinput FROM pg_catalog.pg_type WHERE oid = 23") == [
         (REGPROC, "-", (0).to_bytes(4, "big"))
     ]
+
+
+def test_an_oid_array_and_the_vectors_are_written_as_postgresql_writes_them():
+    from buenavista.core import BVType
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    def header(element_oid: int, n: int) -> bytes:
+        return struct.pack("!iiiii", 1, 0, element_oid, n, 1)
+
+    oid_array, oidvector, int2vector = (
+        BVTYPE_TO_PGTYPE[BVType.OIDARRAY],
+        BVTYPE_TO_PGTYPE[BVType.OIDVECTOR],
+        BVTYPE_TO_PGTYPE[BVType.INT2VECTOR],
+    )
+    assert oid_array[0] == 1028 and oid_array[1]([16, 3000000000]) == "{16,3000000000}"
+    assert oid_array[2]([16]) == header(26, 1) + struct.pack("!iI", 4, 16)
+    assert oidvector[0] == 30 and oidvector[1]([23, 25]) == "23 25"
+    assert oidvector[2]([23]) == header(26, 1) + struct.pack("!iI", 4, 23)
+    assert int2vector[0] == 22 and int2vector[1]([1, 3]) == "1 3"
+    assert int2vector[2]([1]) == header(21, 1) + struct.pack("!ih", 2, 1)

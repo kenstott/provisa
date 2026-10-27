@@ -75,6 +75,8 @@ DURATION_FUNCTIONS = frozenset(
 _DAYS_PER_MONTH = Fraction("30.436875")
 _SECONDS_PER_DAY = 86400
 _MICROS = 1_000_000
+#: A zone written as an offset, +hh:mm[:ss] (_named_zone's form of one).
+_OFFSET = re.compile(r"[+-]\d{2}:\d{2}(?::\d{2})?")
 
 
 # --------------------------------------------------------------------------- kinds
@@ -204,6 +206,61 @@ def duration_of_text(text: str) -> tuple[int, int, int]:
     return duration_of_map(entries)
 
 
+#: ISO-8601's PnYnMnWnDTnHnMnS as the engine reads it: group 1 the sign of the whole, then each
+#: component's signed, possibly fractional, number (_ISO's, numbered).
+_ISO_GROUPS = (
+    r"^([-+]?)P(?:([-+]?[0-9.]+)Y)?(?:([-+]?[0-9.]+)M)?(?:([-+]?[0-9.]+)W)?"
+    r"(?:([-+]?[0-9.]+)D)?(?:T(?:([-+]?[0-9.]+)H)?(?:([-+]?[0-9.]+)M)?(?:([-+]?[0-9.]+)S)?)?$"
+)
+_ISO_COMPONENTS = ("years", "months", "weeks", "days", "hours", "minutes", "seconds")
+
+
+def duration_of_computed_text(text: exp.Expression) -> exp.Expression:
+    """duration(s) of a string the query computes (toString(d)): ISO-8601's PnYnMnWnDTnHnMnS
+    read by the engine, each component signed and possibly fractional -- an engine's own interval
+    cast reads neither a negative part (P5M-14D) nor ISO's seconds (PT1.999S). Text in no ISO form
+    is the engine's interval cast, which refuses it. The text is computed once, named in a
+    subquery, and read by each component."""
+    computed = text
+    text = exp.column("_iso")
+
+    def group(n: int) -> exp.Expression:
+        return exp.Anonymous(
+            this="regexp_replace",
+            expressions=[
+                text.copy(),
+                exp.Literal.string(_ISO_GROUPS),
+                exp.Literal.string(f"\\{n}"),
+            ],
+        )
+
+    negative = exp.EQ(this=group(1), expression=exp.Literal.string("-"))
+    sign = exp.Case(
+        ifs=[exp.If(this=negative, true=exp.Literal.number(-1))], default=exp.Literal.number(1)
+    )
+    parts: dict[str, exp.Expression] = {}
+    for n, name in enumerate(_ISO_COMPONENTS, start=2):
+        number = exp.TryCast(
+            this=exp.Nullif(this=group(n), expression=exp.Literal.string("")),
+            to=exp.DataType.build("DOUBLE"),
+        )
+        # A component the text does not write is none of that unit (ISO-8601).
+        value = exp.Coalesce(this=number, expressions=[exp.Literal.number(0)])
+        value = exp.Mul(this=sign.copy(), expression=value)
+        if name == "seconds":
+            # As microseconds: an engine multiplies an interval by a whole number only.
+            parts["microseconds"] = exp.Mul(this=value, expression=exp.Literal.number(_MICROS))
+        else:
+            parts[name] = value
+    iso = exp.RegexpLike(this=text.copy(), expression=exp.Literal.string(_ISO_GROUPS))
+    parsed = exp.Case(
+        ifs=[exp.If(this=iso, true=duration_of_parts(parts))],
+        default=exp.Cast(this=text.copy(), to=exp.DataType.build("INTERVAL")),
+    )
+    named = exp.select(exp.alias_(computed, "_iso")).subquery("_iso_text")
+    return exp.Subquery(this=exp.select(parsed).from_(named))
+
+
 def interval(months: int, days: int, micros: int) -> exp.Expression:
     """The engine's interval of a duration's three parts."""
     text = f"{months} months {days} days {micros} microseconds"
@@ -289,7 +346,10 @@ def returned(value: exp.Expression) -> exp.Expression:
     A null duration leaves as null."""
     if isinstance(value, exp.Null):
         return value
-    return exp.Array(expressions=list(parts(value)))
+    if isinstance(value, (exp.Column, exp.Literal, exp.Parameter)):
+        return exp.Array(expressions=list(parts(value)))
+    # A computed duration is computed once, each part read from it.
+    return _let(value, [], exp.Array(expressions=list(parts(_c("_dv")))))
 
 
 def _trunc_div(a: int, b: int) -> int:
@@ -441,7 +501,7 @@ def duration_function(
                     *duration_of_map({k: Fraction(str(v.value)) for k, v in given.entries})  # type: ignore[union-attr]
                 )
             return duration_of_parts({k: lower(v) for k, v in given.entries})
-        return exp.Cast(this=lower(given), to=exp.DataType.build("INTERVAL"))
+        return duration_of_computed_text(lower(given))
     args = [lower(a) for a in written]
     if len(args) != 2 or None in kinds or DURATION in kinds:
         raise CypherTranslateError(f"{name}() takes two temporal values")
@@ -707,45 +767,66 @@ def _part_text(value: exp.Expression, suffix: str) -> exp.Expression:
     )
 
 
+def _let(
+    value: exp.Expression, steps: list[dict[str, exp.Expression]], result: exp.Expression
+) -> exp.Expression:
+    """``result`` over ``value`` named ``_dv`` and each step's columns named in turn, every one
+    computed once: a scalar subquery of derived tables, each step reading the one before it. A
+    value read several times is not written several times."""
+    current = exp.select(exp.alias_(value, "_dv"))
+    for n, step in enumerate(steps):
+        named = [exp.alias_(e, name) for name, e in step.items()]
+        current = exp.select(exp.Star(), *named).from_(current.subquery(f"_ds{n}"))
+    return exp.Subquery(this=exp.select(result).from_(current.subquery("_dsz")))
+
+
+def _c(name: str) -> exp.Expression:
+    return exp.column(name)
+
+
 def iso_text(value: exp.Expression) -> exp.Expression:
     """toString(d) of a duration: :func:`iso_duration`'s text, built by the engine."""
-    months, days, micros = parts(value)
-    years = _int_div(months, 12)
-    month_rest = exp.Sub(
-        this=months.copy(), expression=exp.Mul(this=years.copy(), expression=exp.Literal.number(12))
-    )
-    hours = _int_div(micros, 3600 * _MICROS)
-    rest = exp.Sub(
-        this=micros.copy(),
-        expression=exp.Mul(this=hours.copy(), expression=exp.Literal.number(3600 * _MICROS)),
-    )
-    minutes = _int_div(rest, 60 * _MICROS)
-    rest = exp.Paren(
-        this=exp.Sub(
-            this=exp.Paren(this=rest.copy()),
-            expression=exp.Mul(this=minutes.copy(), expression=exp.Literal.number(60 * _MICROS)),
-        )
-    )
-    whole = _int_div(rest, _MICROS)
-    fraction = exp.Anonymous(
-        this="ABS",
-        expressions=[
-            exp.Sub(
-                this=rest.copy(),
-                expression=exp.Mul(this=whole.copy(), expression=exp.Literal.number(_MICROS)),
+    months, days, micros = parts(_c("_dv"))
+    hour, minute, second = 3600 * _MICROS, 60 * _MICROS, _MICROS
+    steps: list[dict[str, exp.Expression]] = [
+        {"_dmo": months, "_ddd": days, "_dus": micros},
+        {"_dy": _int_div(_c("_dmo"), 12), "_dh": _int_div(_c("_dus"), hour)},
+        {
+            "_dmr": exp.Sub(
+                this=_c("_dmo"),
+                expression=exp.Mul(this=_c("_dy"), expression=exp.Literal.number(12)),
+            ),
+            "_dr1": exp.Sub(
+                this=_c("_dus"),
+                expression=exp.Mul(this=_c("_dh"), expression=exp.Literal.number(hour)),
+            ),
+        },
+        {"_dmi": _int_div(_c("_dr1"), minute)},
+        {
+            "_dr": exp.Sub(
+                this=_c("_dr1"),
+                expression=exp.Mul(this=_c("_dmi"), expression=exp.Literal.number(minute)),
             )
-        ],
-    )
+        },
+        {"_dw": _int_div(_c("_dr"), second)},
+        {
+            "_df": exp.Anonymous(
+                this="ABS",
+                expressions=[
+                    exp.Sub(
+                        this=_c("_dr"),
+                        expression=exp.Mul(this=_c("_dw"), expression=exp.Literal.number(second)),
+                    )
+                ],
+            )
+        },
+    ]
     digits = exp.Anonymous(
         this="RTRIM",
         expressions=[
             exp.Anonymous(
                 this="LPAD",
-                expressions=[
-                    _text(fraction.copy()),
-                    exp.Literal.number(6),
-                    exp.Literal.string("0"),
-                ],
+                expressions=[_text(_c("_df")), exp.Literal.number(6), exp.Literal.string("0")],
             ),
             exp.Literal.string("0"),
         ],
@@ -754,8 +835,8 @@ def iso_text(value: exp.Expression) -> exp.Expression:
         ifs=[
             exp.If(
                 this=exp.And(
-                    this=exp.LT(this=rest.copy(), expression=exp.Literal.number(0)),
-                    expression=exp.EQ(this=whole.copy(), expression=exp.Literal.number(0)),
+                    this=exp.LT(this=_c("_dr"), expression=exp.Literal.number(0)),
+                    expression=exp.EQ(this=_c("_dw"), expression=exp.Literal.number(0)),
                 ),
                 true=exp.Literal.string("-"),
             )
@@ -765,53 +846,65 @@ def iso_text(value: exp.Expression) -> exp.Expression:
     seconds = exp.Case(
         ifs=[
             exp.If(
-                this=exp.EQ(this=rest.copy(), expression=exp.Literal.number(0)),
+                this=exp.EQ(this=_c("_dr"), expression=exp.Literal.number(0)),
                 true=exp.Literal.string(""),
             ),
             exp.If(
-                this=exp.EQ(this=fraction.copy(), expression=exp.Literal.number(0)),
-                true=exp.DPipe(this=_text(whole.copy()), expression=exp.Literal.string("S")),
+                this=exp.EQ(this=_c("_df"), expression=exp.Literal.number(0)),
+                true=exp.DPipe(this=_text(_c("_dw")), expression=exp.Literal.string("S")),
             ),
         ],
         default=exp.DPipe(
             this=exp.DPipe(
-                this=exp.DPipe(this=sign, expression=_text(whole.copy())),
+                this=exp.DPipe(this=sign, expression=_text(_c("_dw"))),
                 expression=exp.DPipe(this=exp.Literal.string("."), expression=digits),
             ),
             expression=exp.Literal.string("S"),
         ),
     )
-    time = exp.DPipe(
-        this=exp.DPipe(this=_part_text(hours, "H"), expression=_part_text(minutes, "M")),
-        expression=seconds,
-    )
-    date = exp.DPipe(
-        this=exp.DPipe(
-            this=_part_text(years, "Y"), expression=_part_text(exp.Paren(this=month_rest), "M")
-        ),
-        expression=_part_text(days, "D"),
+    steps.append(
+        {
+            "_dtm": exp.DPipe(
+                this=exp.DPipe(
+                    this=_part_text(_c("_dh"), "H"), expression=_part_text(_c("_dmi"), "M")
+                ),
+                expression=seconds,
+            ),
+            "_ddt": exp.DPipe(
+                this=exp.DPipe(
+                    this=_part_text(_c("_dy"), "Y"), expression=_part_text(_c("_dmr"), "M")
+                ),
+                expression=_part_text(_c("_ddd"), "D"),
+            ),
+        }
     )
     with_time = exp.Case(
         ifs=[
             exp.If(
-                this=exp.EQ(this=time.copy(), expression=exp.Literal.string("")),
+                this=exp.EQ(this=_c("_dtm"), expression=exp.Literal.string("")),
                 true=exp.Literal.string(""),
             )
         ],
-        default=exp.DPipe(this=exp.Literal.string("T"), expression=time),
+        default=exp.DPipe(this=exp.Literal.string("T"), expression=_c("_dtm")),
     )
-    text = exp.DPipe(
-        this=exp.DPipe(this=exp.Literal.string("P"), expression=date), expression=with_time
+    steps.append(
+        {
+            "_dtx": exp.DPipe(
+                this=exp.DPipe(this=exp.Literal.string("P"), expression=_c("_ddt")),
+                expression=with_time,
+            )
+        }
     )
-    return exp.Case(
+    result = exp.Case(
         ifs=[
             exp.If(
-                this=exp.EQ(this=text.copy(), expression=exp.Literal.string("P")),
+                this=exp.EQ(this=_c("_dtx"), expression=exp.Literal.string("P")),
                 true=exp.Literal.string("PT0S"),
             )
         ],
-        default=text,
+        default=_c("_dtx"),
     )
+    return _let(value, steps, result)
 
 
 def equality(op: str, left: exp.Expression, right: exp.Expression) -> exp.Expression:
@@ -1438,6 +1531,11 @@ def truncated(
     if not entries:
         if kind == DATETIME:
             return zoned(cut, zone)
+        if kind == TIME and zone is not None and _OFFSET.fullmatch(zone):
+            # A time keeps its value's offset: the wall clock cut, at that offset.
+            local = exp.Cast(this=cut, to=exp.DataType.build("TIME"))
+            text = exp.DPipe(this=_text(local), expression=exp.Literal.string(zone))
+            return exp.Cast(this=text, to=exp.DataType.build(SQL_TYPES[TIME]))
         return exp.Cast(this=cut, to=exp.DataType.build(SQL_TYPES[kind]))
     return composed_value(kind, entries, {}, lower, base=cut, base_kind=LOCALDATETIME, zone=zone)
 
