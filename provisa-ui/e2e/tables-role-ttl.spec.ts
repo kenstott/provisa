@@ -42,9 +42,6 @@ async function save(page: Page) {
 }
 
 test("a table's role TTL list persists after reload", async ({ page }) => {
-  // Three full loads of /tables: each took 12-15 s on the loaded CI runner (load 14-16, run
-  // 40434830192).
-  test.setTimeout(180000);
   await openPetsEditor(page);
   const field = page.getByTestId("role-ttl-field");
   // An attempt cut short (a timeout before its cleanup) leaves its row on the shared demo table:

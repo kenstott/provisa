@@ -106,9 +106,7 @@ for (const c of CHECKERS) {
       .getByRole("searchbox", { name: /Filter by source, domain, or table/ })
       .fill(relation);
     const badge = page.getByTestId(`tables-checker-${relation}`);
-    // A registration took 13 s and the list's refetch after it 6 s on the loaded CI runner (load
-    // 14-16, run 40434830192).
-    await expect(badge).toBeVisible({ timeout: 60000 });
+    await expect(badge).toBeVisible({ timeout: 20000 });
     await expect(badge).toHaveText(c.checker);
   });
 }
