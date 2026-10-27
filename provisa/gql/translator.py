@@ -463,6 +463,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
         # which m.key reads (#287)
         self._map_vars: dict[str, dict[str, int]] = {}
+        # The columns a WITH carries a map literal's key in whose value is itself a map literal
+        # ({name: {name2: 'baz'}}): a key of it is read from its JSON-encoded values.
+        self._map_key_maps: set[str] = set()
         # REQ-2173: a variable a WITH or UNWIND binds to a temporal value -> its kind (temporal.py)
         self._temporal_kinds: dict[str, str] = {}
         # REQ-2173: a variable bound to a time or date time a query names a zone for -> the zone
@@ -1391,6 +1394,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if not isinstance(expr, MapLiteral):
             return []
         self._map_vars[alias] = {key: n for n, (key, _value) in enumerate(expr.entries)}
+        self._map_key_maps |= {
+            map_key_column(alias, n)
+            for n, (_key, value) in enumerate(expr.entries)
+            if isinstance(value, MapLiteral)
+        }
         return [
             exp.alias_(self._lower_expr(value), map_key_column(alias, n), quoted=True)
             for n, (_key, value) in enumerate(expr.entries)

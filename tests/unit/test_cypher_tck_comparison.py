@@ -98,3 +98,27 @@ def test_to_integer_cuts_toward_zero(query, row):
 )
 def test_values_of_another_kind_match_nothing(query, row):
     assert _row(query) == row
+
+
+@pytest.mark.parametrize(
+    ("query", "row"),
+    [
+        # Comparison1 [8], Comparison2 [5]: NaN is equal to nothing, itself included, and has no
+        # order (DuckDB reads it as equal to itself and the largest value).
+        ("RETURN 0.0 / 0.0 = 0.0 / 0.0 AS a, 0.0 / 0.0 <> 0.0 / 0.0 AS b", (False, True)),
+        (
+            "RETURN 0.0 / 0.0 > 1 AS a, 0.0 / 0.0 >= 1 AS b, 0.0 / 0.0 < 1 AS c, 0.0 / 0.0 <= 1 AS d",
+            (False, False, False, False),
+        ),
+        ("RETURN 0.0 / 0.0 >= 0.0 / 0.0 AS a, 1.0 / 2.0 < 1 AS b", (False, True)),
+        ("RETURN null > 0.0 / 0.0 AS a", (None,)),
+    ],
+)
+def test_nan_is_equal_to_nothing_and_has_no_order(query, row):
+    assert _row(query) == row
+
+
+def test_a_comparison_of_floats_no_division_makes_is_not_guarded():
+    # A column's own float is compared as its source holds it: the comparison may still go there.
+    sql_ast, _, _ = cypher_to_sql(parse_cypher("RETURN 1.5 > 1.0 AS a"), _EMPTY, {})
+    assert "IS_NAN" not in sql_ast.sql(dialect="postgres").upper()

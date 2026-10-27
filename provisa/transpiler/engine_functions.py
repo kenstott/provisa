@@ -44,12 +44,13 @@ _NAMED = frozenset(
         "sequence",  # Cypher's range(start, end[, step])
         "json_size",  # size() of an item of a list of several types (expr_visitor)
         "json_order_key",  # its place in openCypher's order (expr_visitor)
+        "is_nan",  # a float comparison's NaN guard (expr_visitor)
     }
 )
 #: A statement naming none of them is not parsed: the check is on every direct route.
 _MENTIONED = re.compile(
     r"\b(map|element_at|filter|transform|any_match|all_match|none_match|reduce|slice|sequence"
-    r"|json_size|json_order_key)\s*\(",
+    r"|json_size|json_order_key|is_nan)\s*\(",
     re.IGNORECASE,
 )
 
