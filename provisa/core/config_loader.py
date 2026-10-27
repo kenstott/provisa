@@ -1522,11 +1522,7 @@ def _validate_watermark_columns(config) -> None:  # REQ-924, REQ-925
             )
         if col.data_type is None:
             continue  # type not yet resolved (deferred introspection); re-checked at selection
-        try:
-            ir = to_ir(col.data_type)
-        except ValueError:
-            ir = None
-        if ir not in _MONOTONIC_WATERMARK_IR:
+        if to_ir(col.data_type) not in _MONOTONIC_WATERMARK_IR:
             raise ValueError(
                 f"Table {table.table_name!r}: watermark_column {watermark!r} has type "
                 f"{col.data_type!r} which is not monotonic non-decreasing; a watermark must be a "

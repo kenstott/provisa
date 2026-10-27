@@ -52,6 +52,8 @@ class ColumnMetadata:
     column_name: str
     data_type: str
     is_nullable: bool
+    # REQ-2171: the subtype the column was registered as; data_type is its base.
+    subtype: str | None = None
 
 
 def introspect_table_columns(  # REQ-008, REQ-393
@@ -155,6 +157,7 @@ def introspect_tables(  # REQ-008, REQ-393, REQ-421
                 column_name=c["column_name"],
                 data_type=(c["data_type"] or "varchar").lower(),
                 is_nullable=not c.get("is_primary_key", False),
+                subtype=c.get("subtype"),
             )
             for c in table["columns"]
         ]

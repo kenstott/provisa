@@ -708,6 +708,8 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     computed_gql_alias: str  # REQ-1634: this column's field name in the compiled GraphQL schema
     description: str | None
     data_type: str | None = None
+    # REQ-2171: the subtype the column was registered as; data_type is its base.
+    subtype: str | None = None
     native_filter_type: str | None = None
     # Whether the source requires a value for this parameter; None where it is not recorded.
     native_filter_required: bool | None = None
@@ -856,6 +858,9 @@ class AvailableColumnType:  # REQ-533
     name: str
     data_type: str
     comment: str | None
+    # REQ-2171: the subtype the column registers as, shown with its base (data_type); sent back
+    # with the column it describes.
+    subtype: str | None = None
     native_filter_type: str | None = None
     # Whether the source requires a value for this parameter; None where it is not recorded.
     native_filter_required: bool | None = None
@@ -1189,6 +1194,8 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     # a manually-defined column (a non-SQL source the engine can't introspect); the landing write
     # face maps IR → the store's physical type. Null when the type is filled by introspection.
     data_type: str | None = None
+    # REQ-2171: the subtype of data_type the column registers as, when it has one.
+    subtype: str | None = None
     # REQ-1739: dot-notation JSON extraction path (e.g. "payload.order_id") for an `ingest` push
     # source's per-column mapping. Mirrors the core Column model's own `path` field
     # (provisa/core/models.py) and provisa/ingest/router.py's `_extract_row`, which already reads

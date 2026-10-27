@@ -4157,6 +4157,21 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 params={"view": _loop.loop[0], "loop": _loop.loop},
                             )
                         )
+                    except table_repo.SubtypeRefused as _sub:
+                        # REQ-2171: a subtype is saved only with the base it is a subtype of.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_sub),
+                                code="schema.subtype_invalid",
+                                params={
+                                    "table": _sub.table_name,
+                                    "column": _sub.column,
+                                    "declared": _sub.declared,
+                                    "type": _sub.data_type,
+                                },
+                            )
+                        )
                     except table_repo.NumericSizeRefused as _size:
                         # REQ-1961: a size no numeric can have is not saved; the column is named.
                         raise TableSaveRefused(

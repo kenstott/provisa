@@ -230,12 +230,16 @@ def registered_typing(pg_type: str) -> dict[str, Any]:
     """How a PostgreSQL source column of ``pg_type`` registers, decided as registration decides
     it (provisa/api/admin/introspect.py ``_pg_column_typing``): an array by ``column_typing``
     (JSON with its depth, element type and native spelling, REQ-1965), a sized decimal or a
-    timestamp declaring its precision keeping it (REQ-1961), any other scalar by ``to_ir``. The column fields, ``data_type`` first. Raises
-    ValueError for a type registration refuses."""
-    from provisa.core.ir_types import column_typing, to_ir
+    timestamp declaring its precision keeping it (REQ-1961), a subtype as itself (REQ-2171: money
+    is not sampled as an unsized numeric), any other scalar by ``to_ir``. The column fields,
+    ``data_type`` first."""
+    from provisa.core.ir_types import column_typing, subtype_of, to_ir
     from provisa.core.numeric_type import numeric_size_of
     from provisa.core.temporal_type import sized_timestamp
 
+    subtype = subtype_of(pg_type, "postgresql")
+    if subtype is not None:
+        return {"data_type": subtype}
     typing = column_typing(pg_type, "postgresql")
     if typing.native_type:
         return {
@@ -279,23 +283,16 @@ def _sized_numeric(pg_dsn: str, column: str) -> dict[str, Any]:
     return {"data_type": typing.data_type}
 
 
-def registrable_columns(
-    pg_dsn: str,
-) -> tuple[list[tuple[str, str, dict[str, Any]]], dict[str, str]]:
-    """The fixture's columns as ``[(column, pg type, registered column fields)]``, and those
-    registration refuses, each with why. A refused column stays in PostgreSQL's fixture but not in
-    the model: the type report names it rather than the boot failing on it."""
+def registrable_columns(pg_dsn: str) -> list[tuple[str, str, dict[str, Any]]]:
+    """The fixture's columns as ``[(column, pg type, registered column fields)]``. Every column
+    registers (REQ-2171: a type that fits no IR type is text)."""
     registered: list[tuple[str, str, dict[str, Any]]] = []
-    refused: dict[str, str] = {}
     for name, typ, _ in FIXTURE:
-        try:
-            typing = registered_typing(typ)
-            if typing["data_type"] == "numeric":
-                typing = _sized_numeric(pg_dsn, name)
-            registered.append((name, typ, typing))
-        except ValueError as exc:
-            refused[name] = str(exc).split(":")[0]
-    return registered, refused
+        typing = registered_typing(typ)
+        if typing["data_type"] == "numeric":
+            typing = _sized_numeric(pg_dsn, name)
+        registered.append((name, typ, typing))
+    return registered
 
 
 def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
@@ -310,7 +307,7 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     column whose type registration refuses is left out of the model and named in the report.
     pgspec needs nothing here: every table it touches it creates itself as a session temporary
     table."""
-    registered, _refused = registrable_columns(pg_dsn)
+    registered = registrable_columns(pg_dsn)
     return {
         "federation_engine": "duckdb",
         "auth": {
@@ -590,21 +587,10 @@ def type_conversions(pg: Server, provisa: Server, names: dict[int, str]) -> dict
         server.run("SET DateStyle TO 'ISO, MDY'")
         server.run("SET IntervalStyle TO 'postgres'")
         server.run("SET extra_float_digits TO 1")
-    registered, refused = registrable_columns(pg.dsn)
-    model_type = {col: typing["data_type"] for col, _, typing in registered}
+    model_type = {col: typing["data_type"] for col, _, typing in registrable_columns(pg.dsn)}
     fixture = []
     for col, typ, _ in FIXTURE:
         sql = f"SELECT {col} FROM {FIXTURE_SCHEMA}.{FIXTURE_TABLE}"
-        if col in refused:
-            fixture.append(
-                {
-                    "statement": sql,
-                    "column": col,
-                    "declared": typ,
-                    "differences": [f"not registrable as a source column: {refused[col]}"],
-                }
-            )
-            continue
         fixture.append(
             _compare_statement(pg, provisa, sql, names)
             | {"column": col, "declared": typ, "registered_as": model_type[col]}

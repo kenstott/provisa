@@ -29,7 +29,7 @@ import { ProfileRunsButton } from "./ProfileRunsButton";
 import { PanelActions } from "../../components/list/SplitPane";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
-import { toIrType } from "../../irTypes";
+import { shownType } from "../../irTypes";
 import { TableSectionTabs } from "./TableSectionTabs";
 import { WriteGrantsPanel } from "./WriteGrantsPanel";
 import { useTableSection, type TableSection } from "./tableSections";
@@ -592,7 +592,7 @@ export function TableReadView({
                               },
                               {
                                 label: t("tableEditForm.dataTypeHeader"),
-                                value: c.dataType ? toIrType(c.dataType) : "",
+                                value: shownType(c.dataType, c.subtype),
                               },
                               { label: t("tableReadView.colPk"), value: c.isPrimaryKey ? "✓" : "" },
                               {
@@ -666,9 +666,7 @@ export function TableReadView({
                         )}
                         {tab === "type" && (
                           <>
-                            <Table.Td ff="monospace">
-                              {c.dataType ? toIrType(c.dataType) : ""}
-                            </Table.Td>
+                            <Table.Td ff="monospace">{shownType(c.dataType, c.subtype)}</Table.Td>
                             <Table.Td ta="center">
                               {c.isPrimaryKey && (
                                 <Text span c="blue">

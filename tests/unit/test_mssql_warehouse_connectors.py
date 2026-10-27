@@ -74,8 +74,8 @@ def test_tsql_type_mapping():
     # 0 and 6 must be specified" — verified live, 2026-09-21); explicit precision is now required.
     assert _tsql_type("timestamptz") == "DATETIME2(6)"  # native spelling normalizes via to_ir
     assert _tsql_type("time") == "TIME(6)"
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        _tsql_type("geography")
+    # REQ-2171: a type naming none of the IR's lands as text.
+    assert _tsql_type("hierarchyid") == _tsql_type("text")
 
 
 def test_fabric_and_synapse_in_engine_registry():

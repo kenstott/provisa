@@ -47,6 +47,7 @@ def _build_column_models(columns: list) -> list:
             alias=c.alias,
             description=c.description,
             data_type=getattr(c, "data_type", None),
+            subtype=getattr(c, "subtype", None),  # REQ-2171
             path=getattr(c, "path", None),
             native_filter_type=c.native_filter_type,
             native_filter_required=c.native_filter_required,
@@ -621,6 +622,7 @@ async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None
     by its preview -- asked, Elasticsearch looked up an index of the table's name and failed 404."""
     from provisa.api.admin.introspect import SourceNotListable
     from provisa.api.admin.types import MutationResult
+    from provisa.core.ir_types import base_type
     from provisa.core.repositories.table import stored_column_types
 
     if input.query_template:
@@ -636,7 +638,8 @@ async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None
         # REQ-424: an embedding column stays the native array a similarity search reads, end to
         # end -- registration, landing, lowering and index; REQ-1965's JSON rule is for the rest
         and not c.embedding
-        and (stored.get(c.name) or "").lower() != (c.data_type or "").lower()
+        # REQ-2171: a subtype is stored as its base
+        and (stored.get(c.name) or "").lower() != base_type(c.data_type or "").lower()
     ]
     if not unsettled:
         return None

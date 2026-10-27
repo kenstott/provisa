@@ -1394,7 +1394,13 @@ def _pg_column_typing(
     registering an unmappable column. Its two markers are resolved here: ``ARRAY`` from the
     array type's own spelling, and ``USER-DEFINED`` as a composite (JSON, REQ-1965) or as an enum
     or domain (text)."""
-    from provisa.core.ir_types import ColumnTyping, column_typing, composite_typing, to_ir
+    from provisa.core.ir_types import (
+        ColumnTyping,
+        column_typing,
+        composite_typing,
+        subtype_of,
+        to_ir,
+    )
     from provisa.core.temporal_type import sized_timestamp
 
     if data_type == _PG_ARRAY:
@@ -1402,12 +1408,16 @@ def _pg_column_typing(
     if data_type == _PG_USER_DEFINED:
         if typtype == "c":
             return composite_typing(formatted or udt_name, kind)
-        return ColumnTyping("text")
+        # REQ-2171: an extension's type that is a subtype (PostGIS geometry and geography).
+        return ColumnTyping(subtype_of(udt_name, kind) or "text")
     if data_type == "numeric" and formatted and formatted != "numeric":
         return ColumnTyping(formatted)  # a sized decimal keeps its size (REQ-1961)
     sized = sized_timestamp(formatted) if formatted else None
     if sized is not None:
         return ColumnTyping(sized)  # a timestamp keeps its declared precision (REQ-1961)
+    subtype = subtype_of(data_type, kind)
+    if subtype is not None:
+        return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
     return ColumnTyping(to_ir(data_type))
 
 

@@ -1243,6 +1243,9 @@ class Column(
     # Whose spelling native_type is: the source's kind, or the engine's when the engine listed
     # the column. A value is cast into the native type only on that platform.
     native_platform: str | None = None
+    # REQ-2171: the subtype of data_type the column registers as (inet, money, ...). A data_type
+    # that names a subtype is stored as its base carrying it.
+    subtype: str | None = None
     # REQ-1494: the column's kind of fake, as the operator writes it ("categories((a, b))",
     # "bool(.8)", "email()"), and whether it is stable -- the same on every engine. Checked against
     # the rest of the table by provisa.fakes.checks.check_table.

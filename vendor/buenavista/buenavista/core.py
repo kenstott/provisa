@@ -62,6 +62,30 @@ class BVType(enum.Enum):
     CHARARRAY = 36
     INET = 37
     PG_LSN = 38
+    # Provisa's IR subtypes (REQ-2171), each sent as its PostgreSQL type (oid and inet are above).
+    CIDR = 39
+    MACADDR = 40
+    XML = 41
+    POINT = 42
+    MONEY = 43
+    MACADDR8 = 44
+    LINE = 45
+    LSEG = 46
+    BOX = 47
+    PATH = 48
+    POLYGON = 49
+    CIRCLE = 50
+    GEOMETRY = 51
+    GEOGRAPHY = 52
+    INT4RANGE = 53
+    INT8RANGE = 54
+    NUMRANGE = 55
+    TSRANGE = 56
+    TSTZRANGE = 57
+    DATERANGE = 58
+    BIT = 59
+    VARBIT = 60
+    TSVECTOR = 61
 
 
 class RawDataRowBytes(bytes):

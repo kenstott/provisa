@@ -63,6 +63,7 @@ from provisa.otel_compat import HeldRequestSpan
 from provisa.executor.redirect import COMMAND_NOT_REDIRECTED as _COMMAND_NOT_REDIRECTED
 from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
 from provisa.executor.result import ResultStream
+from provisa.core.ir_types import SUBTYPES
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
@@ -559,6 +560,9 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     '"CHAR"[]': BVType.CHARARRAY,
     "INET": BVType.INET,
     "PG_LSN": BVType.PG_LSN,
+    # REQ-2171: a subtyped column, described as its subtype, is sent as its PostgreSQL type.
+    **{name.upper(): BVType[name.upper()] for name in SUBTYPES},
+    "BIT VARYING": BVType.VARBIT,
 }
 _INT_TYPES = {
     "INTEGER",
@@ -804,6 +808,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         original_sql: str = "",
         shape: list[Tuple[str, str]] | None = None,
         plan: Any = None,
+        read_shape: list[Tuple[str, str]] | None = None,
     ):
         super().__init__()
         # Held so close() can release it (server-side cursor / pooled source connection): when a
@@ -874,6 +879,17 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             ]
         else:
             self._types = [_infer_bvtype(self._head or [], i) for i in range(len(self._cols))]
+        if read_shape is not None:
+            # REQ-2171: a column the read's shape types as a subtype is sent as its PostgreSQL type.
+            if len(read_shape) != len(self._cols):
+                raise RuntimeError(
+                    f"the statement's shape has {len(read_shape)} result column(s) "
+                    f"{[n for n, _ in read_shape]} but its execution returned {len(self._cols)} "
+                    f"{list(self._cols)}"
+                )
+            for i, (_name, declared) in enumerate(read_shape):
+                if declared in SUBTYPES:
+                    self._types[i] = _sql_type_to_bvtype(declared)
 
     def has_results(self) -> bool:
         return len(self._cols) > 0
@@ -1736,8 +1752,16 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # is not recorded again.
         self._finalize_audit(governed, 200, defer_to_drain=True)
         try:
+            plan = governed if isinstance(governed, _Plan) else None
             return ProvisaQueryResult(
-                result, stripped, shape, plan=governed if isinstance(governed, _Plan) else None
+                result,
+                stripped,
+                shape,
+                plan=plan,
+                # REQ-2171: an undescribed statement's subtyped columns keep their PostgreSQL type.
+                read_shape=plan.result_shape.subtyped()
+                if shape is None and plan is not None and plan.result_shape is not None
+                else None,
             )
         except Exception:
             log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)

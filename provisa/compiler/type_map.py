@@ -270,14 +270,11 @@ def column_type_to_graphql(column_type: str) -> GraphQLScalarType | GraphQLList:
     raise ValueError(f"Unmapped the engine type: {column_type!r}")
 
 
-def _canonical(column_type: str) -> str | None:
-    """The type vocabulary's name for ``column_type``, or None when it has none."""
+def _canonical(column_type: str) -> str:
+    """The type vocabulary's name for ``column_type`` (REQ-2171: text when it names none)."""
     from provisa.core.ir_types import to_ir
 
-    try:
-        return to_ir(column_type)
-    except ValueError:
-        return None  # not in the vocabulary either: the caller refuses it by name
+    return to_ir(column_type)
 
 
 # --- Filter input types (shared across all schemas) ---

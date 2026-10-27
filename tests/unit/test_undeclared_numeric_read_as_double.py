@@ -183,7 +183,7 @@ def test_the_shape_of_the_governed_statement_says_double_precision():
 
     columns = {
         1: [
-            SimpleNamespace(column_name=name, data_type=declared)
+            SimpleNamespace(column_name=name, data_type=declared, subtype=None)
             for name, declared in _gov().all_columns[1]
         ]
     }

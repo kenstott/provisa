@@ -618,6 +618,8 @@ export interface TableMetadata {
 export interface ColumnMetadata {
   name: string;
   dataType: string;
+  /** REQ-2171: the subtype the column registers as; dataType is its base. */
+  subtype?: string | null;
   comment: string | null;
   nativeFilterType: string | null;
   /** Whether the source requires a value for this parameter; null where it is not recorded. */

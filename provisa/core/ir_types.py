@@ -110,6 +110,115 @@ _IR_TO_SA: dict[str, Any] = {
     "vector": Embedding,
 }
 
+
+@dataclass(frozen=True)
+class Subtype:  # REQ-2171
+    """An IR type that is a subtype of another: ``base`` is the IR type it is stored and computed
+    as, ``pg_oid`` the PostgreSQL type pgwire and its catalog report it as. A type mapping with no
+    entry for a subtype maps it as its base."""
+
+    base: str
+    pg_oid: int
+
+
+# REQ-2171: the subtypes, each declared once: one per distinct PostgreSQL type the IR's base
+# types would hide. A subtype's name is its PostgreSQL type name; its values are held in
+# PostgreSQL's own text form on a text base.
+SUBTYPES: dict[str, Subtype] = {
+    "inet": Subtype("text", 869),
+    "cidr": Subtype("text", 650),
+    "macaddr": Subtype("text", 829),
+    "macaddr8": Subtype("text", 774),
+    "xml": Subtype("text", 142),
+    "oid": Subtype("bigint", 26),
+    # Sized so every source's money is held exactly: PostgreSQL's (int64 cents, 17 integer
+    # digits) and SQL Server's (int64 ten-thousandths, 4 decimals).
+    "money": Subtype("numeric(21,4)", 790),
+    # PostgreSQL's built-in shapes.
+    "point": Subtype("text", 600),
+    "line": Subtype("text", 628),
+    "lseg": Subtype("text", 601),
+    "box": Subtype("text", 603),
+    "path": Subtype("text", 602),
+    "polygon": Subtype("text", 604),
+    "circle": Subtype("text", 718),
+    # PostGIS's planar and geodetic types, in WKT. PostGIS has no fixed type OID (the extension
+    # assigns one at install), so these are Provisa's own, in the private range pgwire's PostGIS
+    # surface declares them in.
+    "geometry": Subtype("text", 8310),
+    "geography": Subtype("text", 8311),
+    # The range types, in PostgreSQL's range text form ("[1,10)").
+    "int4range": Subtype("text", 3904),
+    "int8range": Subtype("text", 3926),
+    "numrange": Subtype("text", 3906),
+    "tsrange": Subtype("text", 3908),
+    "tstzrange": Subtype("text", 3910),
+    "daterange": Subtype("text", 3912),
+    # Bit strings, in PostgreSQL's text form ("0101").
+    "bit": Subtype("text", 1560),
+    "varbit": Subtype("text", 1562),
+    "tsvector": Subtype("text", 3614),
+}
+
+# REQ-2171: a spelling of a subtype that is not its name, on any platform.
+_SUBTYPE_SPELLINGS: dict[str, str] = {"bit varying": "varbit"}
+
+# MySQL's spatial types are PostGIS's planar geometry, whichever shape a column declares.
+_MYSQL_SPATIAL = {
+    name: "geometry"
+    for name in (
+        "geometry",
+        "point",
+        "linestring",
+        "polygon",
+        "multipoint",
+        "multilinestring",
+        "multipolygon",
+        "geometrycollection",
+        "geomcollection",
+    )
+}
+
+# REQ-2171: a native spelling equivalent to a subtype, per source platform. A subtype's own name
+# (PostgreSQL's, which CockroachDB, YugabyteDB, DuckDB and SQL Server share where they have the
+# type) needs no entry.
+_PLATFORM_SUBTYPES: dict[str, dict[str, str]] = {
+    "trino": {"ipaddress": "inet"},
+    "clickhouse": {"ipv4": "inet", "ipv6": "inet"},
+    "sqlserver": {"money": "money", "smallmoney": "money", "xml": "xml"},
+    "oracle": {"xmltype": "xml"},
+    **{kind: _MYSQL_SPATIAL for kind in ("mysql", "mariadb", "tidb", "singlestore")},
+}
+
+
+def subtype_of(native_type: str, platform: str | None = None) -> str | None:
+    """The subtype a native spelling registers as (REQ-2171), or None when it has none. A
+    platform's own meaning of a spelling (SQL Server's ``bit`` is a boolean) is never a
+    subtype's."""
+    name = type_name(native_type)
+    if platform:
+        kind = platform.split("+", 1)[0]
+        own = _PLATFORM_SUBTYPES.get(kind, {}).get(name)
+        if own is not None:
+            return own
+        if name in _PLATFORM_ALIASES.get(kind, {}):
+            return None
+    return subtype_named(name)
+
+
+def subtype_named(type_spelling: str) -> str | None:
+    """The subtype ``type_spelling`` names, in any of its spellings (REQ-2171), or None."""
+    name = type_name(type_spelling)
+    name = _SUBTYPE_SPELLINGS.get(name, name)
+    return name if name in SUBTYPES else None
+
+
+def base_type(type_spelling: str) -> str:
+    """A subtype's base type (REQ-2171); any other type is its own."""
+    named = subtype_named(type_spelling)
+    return SUBTYPES[named].base if named is not None else type_spelling
+
+
 # Native / dialect spelling → canonical IR name. Everything a source or reflection reports maps
 # through here to ONE canonical IR name (e.g. ``varchar``/``character varying`` → ``text``).
 _ALIASES: dict[str, str] = {
@@ -161,7 +270,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "json": "json",  # REQ-980
         "timestamp with time zone": "timestamptz",
         "time with time zone": "time",
-        "ipaddress": "text",
         "uuid": "uuid",
     },
     # REQ-1981: Amazon Athena's catalog spells a column's type as Hive DDL does; a composite
@@ -178,8 +286,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "bit": "boolean",
         "tinyint": "smallint",
         "int": "integer",
-        "money": "numeric",
-        "smallmoney": "numeric",
         "datetime": "timestamp",
         "datetime2": "timestamp",
         "smalldatetime": "timestamp",
@@ -191,7 +297,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "varbinary": "bytea",
         "image": "bytea",
         "uniqueidentifier": "uuid",
-        "xml": "text",
     },
     "duckdb": {
         "tinyint": "smallint",
@@ -229,7 +334,11 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
     },
     # REQ-2050: MySQL's TIMESTAMP is an instant (stored in UTC, read in the session's zone, which
     # the driver sets to UTC); its DATETIME is a civil date and time.
-    **{kind: {"timestamp": "timestamptz"} for kind in ("mysql", "mariadb", "tidb", "singlestore")},
+    # REQ-2171: a YEAR is a four-digit integer.
+    **{
+        kind: {"timestamp": "timestamptz", "year": "integer"}
+        for kind in ("mysql", "mariadb", "tidb", "singlestore")
+    },
     "bigquery": {
         "int64": "bigint",
         "float64": "double",
@@ -263,7 +372,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "long": "text",
         "rowid": "text",
         "urowid": "text",
-        "xmltype": "text",
         "blob": "bytea",
         "raw": "bytea",
         "long raw": "bytea",
@@ -450,24 +558,30 @@ def to_ir(native_type: str, platform: str | None = None) -> str:
     ``platform`` (a dialect name — trino, sqlserver, duckdb, postgresql, mysql, …) selects a
     per-platform translator whose spellings take precedence; without it, only the generic aliases
     apply. Strips a length/precision qualifier (``varchar(255)`` → ``varchar``) and lowercases.
-    Raises on an unknown type — never a silent ``varchar`` default: a landed column's type must be
-    known at design time, and an unmapped type is a vocabulary gap to close, not to paper over.
-    A native array, struct or map, in any spelling, is ``json`` (REQ-1965)."""
+    A native array, struct or map, in any spelling, is ``json`` (REQ-1965). REQ-2171: every type
+    maps onto the vocabulary; one that names no type of it is ``text``, its values held in the
+    source's own text form."""
+    named = _named_ir(native_type, platform)
+    return named if named is not None else "text"
+
+
+def _named_ir(native_type: str, platform: str | None) -> str | None:
+    """The IR type ``native_type`` names, or None when it names none of the vocabulary."""
     if parse_native_type(native_type).nested:
         return "json"
+    subtype = subtype_of(native_type, platform)
+    if subtype is not None:
+        return to_ir(SUBTYPES[subtype].base)  # REQ-2171: a subtype is its base to the IR
     base = type_name(native_type)
     canon: str | None = None
     if platform:
         canon = _PLATFORM_ALIASES.get(platform.split("+", 1)[0], {}).get(base)
     if canon is None:
         canon = _ALIASES.get(base, base)
-    if canon not in _IR_TO_SA:
-        raise ValueError(
-            f"unknown SQL type {native_type!r}"
-            f"{f' for platform {platform!r}' if platform else ''}: not in the IR vocabulary "
-            f"{sorted(IR_TYPES)} (add it to ir_types if a source legitimately produces it)"
-        )
-    return canon
+    if canon in _IR_TO_SA:
+        return canon
+    # A platform alias may name a sized type (Cassandra's varint is numeric(38,0)).
+    return type_name(canon) if type_name(canon) in _IR_TO_SA else None
 
 
 # The source kinds whose array type records no dimensions (PostgreSQL: "declaring the array size
@@ -524,7 +638,7 @@ def _array_of_a_primitive(shape: NativeType, platform: str | None) -> tuple[int,
     if not is_ir_type(node.spelling, platform):
         # REQ-1965: registering a natively nested column is never an error, and only an array
         # whose innermost element is a semantic SQL type has a depth above 0. An element with no
-        # semantic type (a ClickHouse IPv4, a PostGIS geometry) leaves the column plain JSON:
+        # semantic type (a ClickHouse Nothing) leaves the column plain JSON:
         # the whole value and the untyped operations work, nothing inside is typed.
         return None
     if platform and platform.split("+", 1)[0] in _ONE_LEVEL_ARRAY_PLATFORMS:
@@ -544,6 +658,9 @@ def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping
     spelling = native_type.strip().lower()
     shape = parse_native_type(spelling)
     if not shape.nested:
+        subtype = subtype_of(spelling, platform)
+        if subtype is not None:
+            return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
         own = _PLATFORM_ALIASES.get(platform.split("+", 1)[0], {}) if platform else {}
         # By the spelling's name, its size aside (Oracle's varchar2(64), interval day(2) to
         # second(6)) -- but a decimal keeps its size, which is its type (REQ-1961).
@@ -551,6 +668,8 @@ def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping
 
         if spelling.split("(", 1)[0].strip() in DECIMAL_NAMES:
             return ColumnTyping(spelling)
+        if not is_ir_type(spelling, platform):
+            return ColumnTyping("text")  # REQ-2171: a type naming none of the IR's is text
         return ColumnTyping(own.get(spelling) or own.get(type_name(spelling)) or spelling)
     read_from = platform.split("+", 1)[0] if platform else None
     typed = _array_of_a_primitive(shape, platform)
@@ -575,12 +694,9 @@ def composite_typing(native_type: str, platform: str) -> ColumnTyping:
 
 
 def is_ir_type(name: str, platform: str | None = None) -> bool:
-    """Whether ``name`` is a resolvable IR type (canonical, a generic alias, or platform-specific)."""
-    try:
-        to_ir(name, platform)
-        return True
-    except ValueError:
-        return False
+    """Whether ``name`` names a type of the IR vocabulary (canonical, a generic alias, a
+    platform's own spelling or a subtype), rather than being text because it names none."""
+    return _named_ir(name, platform) is not None
 
 
 def indexed_string_length() -> int:
@@ -622,6 +738,7 @@ def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     session_only = _session_only_sqlalchemy(type_name)
     if session_only is not None:
         return session_only
+    type_name = base_type(type_name)  # REQ-2171: a subtype is stored as its base
     sa_type = _IR_TO_SA[to_ir(type_name)]
     if sa_type is Numeric:
         # A decimal named with its precision and scale lands with them: an unqualified NUMERIC is

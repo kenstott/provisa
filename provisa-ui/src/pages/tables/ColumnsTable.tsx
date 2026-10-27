@@ -18,7 +18,7 @@ import { Button, Checkbox, Select, Table, Text, TextInput } from "@mantine/core"
 import { MultiSelect } from "../../components/MultiSelect";
 import { useTranslation } from "react-i18next";
 
-import { toIrType } from "../../irTypes";
+import { shownType, toIrType } from "../../irTypes";
 import { NumericSizeInputs } from "./NumericSizeInputs";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
@@ -69,7 +69,7 @@ export function ColumnsTable({
       : []),
     {
       label: t("registerTableForm.colHeaderDataType"),
-      value: col.dataType ? toIrType(col.dataType) : "",
+      value: shownType(col.dataType, col.subtype),
     },
     {
       label: t("registerTableForm.colHeaderPk"),
@@ -191,6 +191,17 @@ export function ColumnsTable({
                           allowDeselect={false}
                           data-testid={`register-table-col-datatype-${col.name}`}
                         />
+                        {col.subtype && (
+                          // REQ-2171: the subtype the column registers as, beside its base.
+                          <Text
+                            size="xs"
+                            ff="monospace"
+                            c="dimmed"
+                            data-testid={`register-table-col-subtype-${col.name}`}
+                          >
+                            {shownType(col.dataType, col.subtype)}
+                          </Text>
+                        )}
                         {col.dataType && toIrType(col.dataType) === "numeric" && (
                           <NumericSizeInputs
                             key={col.name}

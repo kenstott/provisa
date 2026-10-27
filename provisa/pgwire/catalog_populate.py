@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import time
 
+from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
 from provisa.pgwire.function_catalog import populate_functions
 from provisa.pgwire.catalog_columns_data import _SYSTEM_TABLE_COLUMNS
@@ -97,6 +98,7 @@ def _physical_to_pg_name(column_type: str) -> str:
         "array": "ARRAY",
         "varbinary": "bytea",
         "uuid": "uuid",
+        **{name: name for name in SUBTYPES},  # REQ-2171: a subtype is its PostgreSQL type
     }.get(t, "text")
 
 
@@ -124,6 +126,7 @@ def _physical_to_pg_oid(column_type: str) -> int:
         "array": 2277,
         "varbinary": 17,
         "uuid": 2950,
+        **{name: s.pg_oid for name, s in SUBTYPES.items()},  # REQ-2171
     }.get(t, 25)
 
 
@@ -206,7 +209,9 @@ def _build_catalog_index(
             if (tm.table_id, phys) in ctx.columns_outside_relation:
                 continue  # registered, but the relation a statement reads does not hold it
             exposed = _p2s.get((tm.table_id, phys)) or apply_sql_name(phys)
-            idx.all_cols.append((toid, exposed, col.data_type, col.is_nullable, i))
+            # REQ-2171: a subtyped column is listed as its subtype's PostgreSQL type.
+            listed_type = col.subtype or col.data_type
+            idx.all_cols.append((toid, exposed, listed_type, col.is_nullable, i))
             idx.col_attnum[(toid, exposed)] = i
             idx.attnum_to_col[(toid, i)] = exposed
 

@@ -34,7 +34,7 @@ CQL_TYPE_TO_IR = {
     "decimal": "DECIMAL",
     "double": "DOUBLE",
     "float": "REAL",
-    "inet": "VARCHAR",
+    "inet": "inet",  # REQ-2171
     "int": "INTEGER",
     "smallint": "SMALLINT",
     "text": "VARCHAR",
@@ -44,7 +44,9 @@ CQL_TYPE_TO_IR = {
     "tinyint": "smallint",
     "uuid": "UUID",
     "varchar": "VARCHAR",
-    "varint": "BIGINT",
+    # REQ-2171: an arbitrary-precision integer, held exactly to 38 digits.
+    "varint": "numeric(38,0)",
+    "duration": "interval",
     "list": "VARCHAR",
     "map": "VARCHAR",
     "set": "VARCHAR",
@@ -132,9 +134,8 @@ def discover_schema(keyspace_metadata: dict) -> list[dict]:  # REQ-252
         cql_type = col["type"]
         # Strip collection wrappers like list<text> -> list
         base_type = cql_type.split("<")[0].strip()
-        if base_type not in CQL_TYPE_TO_IR:
-            raise ValueError(f"unmapped CQL type: {cql_type}")
-        column_type = CQL_TYPE_TO_IR[base_type]
+        # REQ-2171: a CQL type naming none of the IR's is text, in the source's text form.
+        column_type = CQL_TYPE_TO_IR.get(base_type, "text")
 
         col_def = {
             "name": col["name"],

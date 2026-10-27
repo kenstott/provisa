@@ -326,13 +326,13 @@ async def test_mv_columns_introspected_and_node_registered(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_mv_with_unmapped_output_type_skipped(monkeypatch):
+async def test_mv_with_an_output_type_naming_no_ir_type_is_wired(monkeypatch):
     build_through_a_stand_in_pipeline(monkeypatch)
-    # an unmapped output type is an IR vocabulary gap → the MV is skipped (not silently defaulted).
+    # REQ-2171: every type maps onto the IR; an output type naming none of it is text.
     n = await wire_event_loop(
-        _Sched(), state=_state_with_mv(column_types=["date", "geometry"]), log=_LOG
+        _Sched(), state=_state_with_mv(column_types=["date", "hierarchyid"]), log=_LOG
     )
-    assert n == 0  # no node — its columns did not resolve to IR
+    assert n == 1  # the one MV node
 
 
 @pytest.mark.asyncio

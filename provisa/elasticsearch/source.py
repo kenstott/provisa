@@ -58,7 +58,7 @@ ES_TYPE_TO_IR = {
     "semantic_text": "VARCHAR",
     "token_count": "INTEGER",
     # Identifiers / misc scalars
-    "ip": "VARCHAR",
+    "ip": "inet",  # REQ-2171
     "version": "VARCHAR",
     # Objects / relational (rendered as JSON text)
     "object": "VARCHAR",
@@ -67,18 +67,19 @@ ES_TYPE_TO_IR = {
     "join": "VARCHAR",
     "passthrough": "VARCHAR",
     "alias": "VARCHAR",
-    # Range types
-    "integer_range": "VARCHAR",
-    "long_range": "VARCHAR",
-    "float_range": "VARCHAR",
-    "double_range": "VARCHAR",
-    "date_range": "VARCHAR",
+    # Range types: PostgreSQL's (REQ-2171). An ip_range has no PostgreSQL range type.
+    "integer_range": "int4range",
+    "long_range": "int8range",
+    "float_range": "numrange",
+    "double_range": "numrange",
+    "date_range": "tstzrange",  # an Elasticsearch date is an instant
     "ip_range": "VARCHAR",
-    # Spatial
-    "geo_point": "VARCHAR",
-    "geo_shape": "VARCHAR",
-    "point": "VARCHAR",
-    "shape": "VARCHAR",
+    # Spatial (REQ-2171): geo_* are geodetic, PostGIS geography; point and shape are cartesian,
+    # PostGIS geometry.
+    "geo_point": "geography",
+    "geo_shape": "geography",
+    "point": "geometry",
+    "shape": "geometry",
     # Vector / ranking
     "dense_vector": "VARCHAR",
     "sparse_vector": "VARCHAR",
@@ -224,9 +225,8 @@ def _flatten_mapping(properties: dict, prefix: str, columns: list[dict]) -> None
         if "type" not in field_def:
             raise ValueError(f"ES field {full_path!r} has neither 'type' nor 'properties'")
         es_type = field_def["type"]
-        if es_type not in ES_TYPE_TO_IR:
-            raise ValueError(f"unmapped ES type: {es_type}")
-        column_type = ES_TYPE_TO_IR[es_type]
+        # REQ-2171: a field type naming none of the IR's is text, in the source's text form.
+        column_type = ES_TYPE_TO_IR.get(es_type, "text")
         columns.append(
             {
                 "name": full_path.replace(".", "_"),

@@ -128,6 +128,7 @@ def _make_col(name, dtype, nullable, _ordinal=0):
     c.column_name = name
     c.data_type = dtype
     c.is_nullable = nullable
+    c.subtype = None  # REQ-2171
     return c
 
 

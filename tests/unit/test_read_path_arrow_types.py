@@ -584,7 +584,7 @@ def test_the_arrow_type_of_a_registered_type(registered, arrow_type):
     assert column_arrow_type(registered) == arrow_type
 
 
-@pytest.mark.parametrize("registered", [None, "", "USER-DEFINED", "geometry"])
+@pytest.mark.parametrize("registered", [None, "", "USER-DEFINED", "hierarchyid"])
 def test_a_type_neither_vocabulary_names_has_no_arrow_type_of_its_own(registered):
     from provisa.core.catalog_types import column_arrow_type
 

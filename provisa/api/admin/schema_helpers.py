@@ -389,6 +389,7 @@ async def _fetch_table_with_columns(
             or apply_gql_name(r["column_name"], row.get("gql_naming_convention")),
             description=r.get("description"),
             data_type=r.get("data_type"),
+            subtype=r.get("subtype"),  # REQ-2171
             native_filter_type=r.get("native_filter_type"),
             native_filter_required=native_filter_required(
                 r.get("native_filter_required"), r.get("native_filter_type"), _source_type

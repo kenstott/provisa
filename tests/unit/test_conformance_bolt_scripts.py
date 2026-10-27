@@ -66,7 +66,7 @@ def test_a_persons_relationships_cascade_with_it_and_the_named_companies_are_see
 
 
 def test_the_model_carries_a_jobs_relationships(tmp_path, monkeypatch):
-    monkeypatch.setattr(pgwire_catalog_types, "registrable_columns", lambda dsn: ([], []))
+    monkeypatch.setattr(pgwire_catalog_types, "registrable_columns", lambda dsn: [])
     tables, rels = tmp_path / "t.yaml", tmp_path / "r.yaml"
     tables.write_text(yaml.safe_dump(fixtures.tables()))
     rels.write_text(yaml.safe_dump(fixtures.relationships()))
