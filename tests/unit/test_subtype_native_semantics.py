@@ -194,8 +194,11 @@ def test_trinos_inet_emulation_orders_by_family_network_mask_then_address():
     """Run on Trino in the engine lane; here, its shape: the key and containment are built from
     Trino's own address functions, never from the text."""
     written = transpile(_marked("h.ip <<= '10.0.0.0/8'", " ORDER BY h.ip"), "trino")
-    assert "IP_SUBNET_MIN(IP_PREFIX(CAST(SPLIT_PART(h.ip, '/', 1) AS IPADDRESS)" in written
-    assert "CONTAINS(IP_PREFIX(CAST(SPLIT_PART('10.0.0.0/8', '/', 1) AS IPADDRESS)" in written
+    # Trino 481 has no prefix function: the network is the address's 128 bits, each 64-bit half
+    # masked, from its IPADDRESS's bytes.
+    assert "IP_PREFIX" not in written and "IP_SUBNET_MIN" not in written
+    assert "FROM_BIG_ENDIAN_64(SUBSTR(CAST(CAST(SPLIT_PART(h.ip, '/', 1) AS IPADDRESS)" in written
+    assert "BITWISE_AND(" in written and "BITWISE_LEFT_SHIFT(CAST(-1 AS BIGINT)" in written
 
 
 # --- the registered subtype reaches the physical statement --------------------------------------

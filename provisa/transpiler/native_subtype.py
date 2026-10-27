@@ -463,9 +463,64 @@ def _hex(address: exp.Expr) -> exp.Expr:
     return _call("TO_HEX", exp.Cast(this=address, to=exp.DataType.build("VARBINARY")))
 
 
-def _network(text: exp.Expr) -> exp.Expr:
-    """The inet's network: its address with the bits past its mask cleared."""
-    return _call("IP_SUBNET_MIN", _call("IP_PREFIX", _host(text), _masklen(text)))
+def _half_mask(bits: exp.Expr, low: bool) -> exp.Expr:
+    """The mask of one 64-bit half of a 128-bit address for a ``bits``-long prefix, as a BIGINT."""
+    start = 64 if low else 0
+    all_ones = exp.Cast(this=exp.Literal.number(-1), to=exp.DataType.build("BIGINT"))
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.GTE(this=bits.copy(), expression=exp.Literal.number(start + 64)),
+                true=all_ones.copy(),
+            ),
+            exp.If(
+                this=exp.LTE(this=bits.copy(), expression=exp.Literal.number(start)),
+                true=exp.Cast(this=exp.Literal.number(0), to=exp.DataType.build("BIGINT")),
+            ),
+        ],
+        default=_call(
+            "BITWISE_LEFT_SHIFT",
+            all_ones,
+            exp.Sub(this=exp.Literal.number(start + 64), expression=bits.copy()),
+        ),
+    )
+
+
+def _network_hex(text: exp.Expr, bits: exp.Expr) -> exp.Expr:
+    """The address of ``text`` with every bit past the first ``bits`` (of 128) cleared, as
+    fixed-width hex: each 64-bit half masked (Trino 481 has no prefix function of its own)."""
+    address = exp.Cast(this=_host(text), to=exp.DataType.build("VARBINARY"))
+
+    def half(low: bool) -> exp.Expr:
+        value = _call(
+            "FROM_BIG_ENDIAN_64",
+            _call(
+                "SUBSTR",
+                address.copy(),
+                exp.Literal.number(9 if low else 1),
+                exp.Literal.number(8),
+            ),
+        )
+        masked = _call("BITWISE_AND", value, _half_mask(bits, low))
+        return _call("TO_HEX", _call("TO_BIG_ENDIAN_64", masked))
+
+    return exp.DPipe(this=half(False), expression=half(True))
+
+
+def _prefix_bits(text: exp.Expr) -> exp.Expr:
+    """``text``'s mask length in the 128 bits Trino holds every address in."""
+    return exp.Add(
+        this=_masklen(text),
+        expression=exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.EQ(this=_family(text), expression=exp.Literal.string("4")),
+                    true=exp.Literal.number(96),
+                )
+            ],
+            default=exp.Literal.number(0),
+        ),
+    )
 
 
 def _inet_key(text: exp.Expr) -> exp.Expr:
@@ -481,7 +536,7 @@ def _inet_key(text: exp.Expr) -> exp.Expr:
     )
     return exp.DPipe(
         this=exp.DPipe(
-            this=exp.DPipe(this=_family(text), expression=_hex(_network(text))),
+            this=exp.DPipe(this=_family(text), expression=_network_hex(text, _prefix_bits(text))),
             expression=mask,
         ),
         expression=_hex(_host(text)),
@@ -489,9 +544,12 @@ def _inet_key(text: exp.Expr) -> exp.Expr:
 
 
 def _within(inner: exp.Expr, outer: exp.Expr, strict: bool) -> exp.Expr:
-    """``inner <<= outer`` (``<<`` when ``strict``): the outer network holds the inner one."""
+    """``inner <<= outer`` (``<<`` when ``strict``): of one family, the inner mask no shorter
+    (longer, when ``strict``), and the inner address within the outer network -- equal to it
+    under the outer mask."""
     longer = (exp.GT if strict else exp.GTE)(this=_masklen(inner), expression=_masklen(outer))
-    held = _call("CONTAINS", _call("IP_PREFIX", _host(outer), _masklen(outer)), _host(inner))
+    bits = _prefix_bits(outer)
+    held = exp.EQ(this=_network_hex(inner, bits), expression=_network_hex(outer, bits.copy()))
     return _and(exp.EQ(this=_family(inner), expression=_family(outer)), longer, held)
 
 

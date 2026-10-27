@@ -85,6 +85,7 @@ def _registered(source_id: str, schema_name: str, table_name: str) -> dict:
                 "data_type": "bigint",
                 "is_primary_key": True,
                 "native_filter_type": None,
+                "subtype": None,  # REQ-2171: fetch_tables carries each column's
             }
         ],
     }
