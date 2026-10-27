@@ -92,6 +92,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
   // ---------- public ----------
 
   setData(columns: TerrainColumn[], order: string[], resetCamera: boolean) {
+    this.invalidate();
     this.columns = columns;
     this.order = order;
     this.rebuild();
@@ -99,6 +100,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
   }
 
   setOptions(options: TerrainOptions) {
+    this.invalidate();
     const rebuild = options.mode !== this.options.mode || options.log !== this.options.log;
     this.options = options;
     if (rebuild) this.rebuild();
@@ -108,6 +110,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
   /** ``order`` is the columns drawn, in the order drawn: a reorder slides the ridges into place;
    * a column taken out or put back rebuilds the rest side by side, the camera where it was. */
   setOrder(order: string[]) {
+    this.invalidate();
     const same = order.length === this.order.length && order.every((n) => this.order.includes(n));
     this.order = order;
     if (!same) {
@@ -118,6 +121,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
   }
 
   setSelected(name: string | null) {
+    this.invalidate();
     this.selected = name;
     for (const g of this.groups) g.label.classList.toggle("is-selected", g.column.name === name);
     // A column left out of the terrain can still be the one inspected; it has no ridge to mark.
@@ -125,6 +129,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
   }
 
   setHover(h: TerrainHover | null) {
+    this.invalidate();
     if (h?.column === this.hover?.column && h?.bin === this.hover?.bin) return;
     this.hover = h;
     if (this.hoverMesh) {
@@ -160,6 +165,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
   }
 
   resetView(instant = false) {
+    this.invalidate();
     const X = this.order.length * S;
     let dist = Math.max(X, D) * 1.25;
     if (this.aspect < 1.1) dist *= (1.55 / Math.max(this.aspect, 0.5)) * 0.75;
@@ -172,6 +178,7 @@ export class TerrainScene extends BaseScene<TerrainHover> {
   }
 
   focus(name: string) {
+    this.invalidate();
     const tgt = new THREE.Vector3(this.xOf(name), 1.1, 0.4);
     this.flyTo(tgt.clone().add(new THREE.Vector3(3.2, 3.6, 7.6)), tgt, false);
   }
@@ -203,6 +210,11 @@ export class TerrainScene extends BaseScene<TerrainHover> {
       column: g.column.name,
       bin: Math.min(B - 1, Math.max(0, Math.floor(((D / 2 - local.z) / D) * B))),
     };
+  }
+
+  /** A reordered column still sliding to its place. */
+  protected animating(): boolean {
+    return this.groups.some((g) => Math.abs(g.targetX - g.group.position.x) > 1e-3);
   }
 
   protected onFrame() {
