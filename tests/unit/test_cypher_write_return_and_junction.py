@@ -154,47 +154,54 @@ def test_a_create_without_return_returns_nothing_read():
 
 
 def test_a_relationship_is_a_junction_row_between_the_nodes_matched():
-    surface = _Surface(reads=[(["a.id", "b.id"], [[1, 2]])], wrote=([], []))
+    surface = _Surface(reads=[(["a.id"], [[1]]), (["b.id"], [[2], [3]])], wrote=([], []))
     _run(
-        "MATCH (a:Person {name: $a}) MATCH (b:Person {name: $b}) CREATE (a)-[:KNOWS {since: 2020}]->(b)",
+        "MATCH (a:Person {name: $a}) MATCH (b:Person {name: $b}) "
+        "CREATE (a)-[:KNOWS {since: 2020}]->(b)",
         {"a": "Alice", "b": "Bob"},
         surface,
     )
-    assert surface.read_calls == [
-        (
-            "MATCH (a:Person {name: $provisa_write_0_name}), (b:Person {name: $provisa_write_1_name}) "
-            "RETURN a.id, b.id",
-            {
-                "a": "Alice",
-                "b": "Bob",
-                "provisa_write_0_name": "Alice",
-                "provisa_write_1_name": "Bob",
-            },
-        )
+    # Each node read apart: unrelated patterns are every combination of their nodes.
+    assert [q for q, _ in surface.read_calls] == [
+        "MATCH (a:Person {name: $provisa_write_0_name}) RETURN a.id",
+        "MATCH (b:Person {name: $provisa_write_1_name}) RETURN b.id",
     ]
+    assert surface.read_calls[1][1]["provisa_write_1_name"] == "Bob"
     assert surface.write_calls == [
-        ('INSERT INTO "conformance"."knows" ("from_id", "to_id", "since") VALUES (1, 2, 2020)', [])
+        (
+            'INSERT INTO "conformance"."knows" ("from_id", "to_id", "since") '
+            "VALUES (1, 2, 2020), (1, 3, 2020)",
+            [],
+        )
     ]
 
 
 def test_an_inbound_relationship_starts_at_its_far_node():
-    surface = _Surface(reads=[(["p.id", "c.id"], [[3, 9]])], wrote=([], []))
+    surface = _Surface(reads=[(["c.id"], [[9]]), (["p.id"], [[3]])], wrote=([], []))
     _run(
         "MATCH (c:Company {name: 'Acme'}), (p:Person {name: 'Alice'}) CREATE (c)<-[:WORKS_FOR]-(p)",
         {},
         surface,
-    )
-    assert surface.read_calls[0][0] == (
-        "MATCH (c:Company {name: $provisa_write_0_name}), (p:Person {name: $provisa_write_1_name}) "
-        "RETURN p.id, c.id"
     )
     assert surface.write_calls == [
         ('INSERT INTO "conformance"."works_for" ("from_id", "to_id") VALUES (3, 9)', [])
     ]
 
 
+def test_a_node_related_to_itself_gives_both_keys():
+    surface = _Surface(reads=[(["a.id", "a.id"], [[4, 4]])], wrote=([], []))
+    _run("MATCH (a:Person {name: 'x'}) CREATE (a)-[:KNOWS]->(a)", {}, surface)
+    assert (
+        surface.read_calls[0][0]
+        == "MATCH (a:Person {name: $provisa_write_0_name}) RETURN a.id, a.id"
+    )
+    assert surface.write_calls == [
+        ('INSERT INTO "conformance"."knows" ("from_id", "to_id") VALUES (4, 4)', [])
+    ]
+
+
 def test_no_matched_nodes_write_no_row():
-    surface = _Surface(reads=[(["a.id", "b.id"], [])], wrote=([], []))
+    surface = _Surface(reads=[(["a.id"], []), (["b.id"], [[2]])], wrote=([], []))
     result = _run(
         "MATCH (a:Person {name: 'x'}), (b:Person {name: 'y'}) CREATE (a)-[:KNOWS]->(b)", {}, surface
     )
@@ -225,7 +232,7 @@ def test_no_matched_nodes_write_no_row():
 )
 def test_a_relationship_the_model_does_not_store_in_a_junction_is_refused_by_name(query, refusal):
     with pytest.raises(CypherWriteParseError, match=refusal):
-        _run(query, {}, _Surface(reads=[(["a.id", "b.id"], [[1, 2]])], wrote=([], [])))
+        _run(query, {}, _Surface(reads=[(["a.id"], [[1]]), (["b.id"], [[2]])], wrote=([], [])))
 
 
 @pytest.mark.parametrize(

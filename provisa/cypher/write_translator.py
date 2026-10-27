@@ -19,8 +19,8 @@ Supports four write patterns:
 - ``MATCH (n:Label) WHERE ... SET n.prop = val, ...``
   →  ``UPDATE catalog.schema.table SET col = val, ... WHERE ...``
 - ``MATCH (a:A {...}) MATCH (b:B {...}) CREATE (a)-[:T {props}]->(b)``, T a relationship a
-  registered junction backs (REQ-665, amended 2026-10-27)  →  a read of the matched nodes' keys
-  (:func:`matched_keys`), then ``INSERT INTO junction (keys, attrs) VALUES ...`` (:meth:`relate`)
+  registered junction backs (REQ-665, amended 2026-10-27)  →  a read of each matched node's keys
+  (:meth:`WriteTranslator.matched_reads`), then ``INSERT INTO junction (keys, attrs) VALUES ...`` (:meth:`relate`)
 
 :func:`written` runs a write in that order over the surface's own read and write.
 
@@ -563,7 +563,7 @@ class WriteTranslator:
         if ast.kind == "relate":
             raise CypherWriteParseError(
                 "a relationship CREATE is written from its matched nodes' keys: "
-                "matched_keys, then relate"
+                "matched_reads, pairs, then relate"
             )
         raise CypherWriteParseError(f"Unknown WriteAST kind: {ast.kind!r}")
 
@@ -622,42 +622,63 @@ class WriteTranslator:
             )
         return rel, start, end
 
-    def matched_keys(self, ast: WriteAST) -> str:
-        """The read giving, for each pair of nodes a relationship CREATE joins, the two ends' key
-        columns, start's then end's, in the junction's key order: the nodes the role reads that
-        its leading MATCH binds."""
+    def _end_keys(self, ast: WriteAST, variable: str) -> list[str]:
+        """The key properties a matched node gives the junction row: the start's source key and
+        the end's target key, each in the junction's key order (both, for a node related to
+        itself)."""
         rel, start, end = self._junction_of(ast)
-        patterns = ", ".join(
-            f"({n.variable}:{n.label}"
-            + (
-                " {" + ", ".join(f"{k}: ${_KEY_PARAM}{i}_{k}" for k in n.props) + "}"
-                if n.props
-                else ""
-            )
-            + ")"
-            for i, n in enumerate(ast.matched)
-        )
-        items = [
-            f"{var}.{nm.property_of(col)}"
-            for var, nm, cols in (
-                (ast.variable, start, key_list(rel.join_source_column)),
-                (ast.end, end, key_list(rel.join_target_column)),
-            )
-            for col in cols
-        ]
-        return f"MATCH {patterns} RETURN {', '.join(items)}"
+        keys = []
+        if variable == ast.variable:
+            keys += [start.property_of(c) for c in key_list(rel.join_source_column)]
+        if variable == ast.end:
+            keys += [end.property_of(c) for c in key_list(rel.join_target_column)]
+        return keys
 
-    def matched_params(self, ast: WriteAST, provided: dict[str, Any]) -> dict[str, Any]:
-        """The parameters of :meth:`matched_keys`: each matched node's property values."""
-        return {
-            f"{_KEY_PARAM}{i}_{k}": (provided[v.name] if isinstance(v, CypherParam) else v)
-            for i, n in enumerate(ast.matched)
-            for k, v in n.props.items()
-        }
+    def matched_reads(self, ast: WriteAST, provided: dict[str, Any]) -> list[tuple[str, dict]]:
+        """One read per node the leading MATCH binds -- the nodes the role reads that its pattern
+        matches, each giving the keys it gives the junction row (any other, its ``_id``). Read
+        apart, as the MATCH of unrelated patterns is every combination of their nodes
+        (:meth:`pairs`)."""
+        from provisa.gql.select_builder import NODE_KEY_PROPERTY
+
+        reads = []
+        for i, n in enumerate(ast.matched):
+            names = {k: f"{_KEY_PARAM}{i}_{k}" for k in n.props}
+            pattern = (
+                f"({n.variable}:{n.label} {{"
+                + ", ".join(f"{k}: ${p}" for k, p in names.items())
+                + "})"
+                if names
+                else f"({n.variable}:{n.label})"
+            )
+            keys = self._end_keys(ast, n.variable) or [NODE_KEY_PROPERTY]
+            items = ", ".join(f"{n.variable}.{k}" for k in keys)
+            params = {
+                p: (provided[v.name] if isinstance(v, CypherParam) else v)
+                for p, v in zip(names.values(), n.props.values(), strict=True)
+            }
+            reads.append((f"MATCH {pattern} RETURN {items}", {**provided, **params}))
+        return reads
+
+    def pairs(self, ast: WriteAST, answers: list[list[list[Any]]]) -> list[list[Any]]:
+        """Each junction row's keys, start's then end's: one per combination of the matched
+        nodes (``answers``, the rows of :meth:`matched_reads`, in its order)."""
+        import itertools
+
+        rel, _start, _end = self._junction_of(ast)
+        at = {n.variable: i for i, n in enumerate(ast.matched)}
+        # The start's row opens with its source key; the end's holds its target key after it, the
+        # start's, when a node is related to itself.
+        width = len(key_list(rel.join_source_column))
+        skip = width if ast.variable == ast.end else 0
+        return [
+            [*combo[at[ast.variable]][:width], *combo[at[ast.end]][skip:]]
+            for combo in itertools.product(*answers)
+        ]
 
     def relate(self, ast: WriteAST, keys: list[list[Any]]) -> str | None:
         """The junction rows a relationship CREATE writes, one per pair of matched nodes
-        (``keys``, as :meth:`matched_keys` reads them); None when the MATCH bound none."""
+        (``keys``, as :meth:`pairs` gives them); None when the MATCH bound none."""
         rel, _start, _end = self._junction_of(ast)
         via = rel.via
         assert via is not None  # _junction_of refuses a relationship no junction backs
@@ -741,10 +762,8 @@ async def written(
     answering its RETURN. ``read(cypher, params)`` and ``write(sql, bound)`` are the surface's
     own, each answering (columns, rows) through the one pipeline."""
     if ast.kind == "relate":
-        _cols, keys = await read(
-            translator.matched_keys(ast), {**provided, **translator.matched_params(ast, provided)}
-        )
-        sql = translator.relate(ast, keys)
+        answers = [(await read(q, p))[1] for q, p in translator.matched_reads(ast, provided)]
+        sql = translator.relate(ast, translator.pairs(ast, answers))
         if sql is None:
             return [], []
     else:
