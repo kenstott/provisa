@@ -582,7 +582,7 @@ class TestProtoEndpoint:
         }
         app_mod.state.schema_build_cache = {
             "tables": [
-                {"id": 1, "domain_id": "pet_store", "name": "pets"},
+                {"id": 1, "domain_id": "pet_store", "name": "pets", "source_id": "pg"},
             ],
             "relationships": [],
             "column_types": {},
@@ -615,7 +615,7 @@ class TestProtoEndpoint:
             "domain_access": ["*"],
         }
         app_mod.state.schema_build_cache = {
-            "tables": [{"id": 1, "domain_id": "pet_store", "name": "pets"}],
+            "tables": [{"id": 1, "domain_id": "pet_store", "name": "pets", "source_id": "pg"}],
             "relationships": [],
             "column_types": {},
             "naming_rules": {},
@@ -641,8 +641,8 @@ class TestProtoEndpoint:
 
     _CACHE = {
         "tables": [
-            {"id": 1, "domain_id": "sales", "name": "orders"},
-            {"id": 2, "domain_id": "finance", "name": "ledger"},
+            {"id": 1, "domain_id": "sales", "name": "orders", "source_id": "pg"},
+            {"id": 2, "domain_id": "finance", "name": "ledger", "source_id": "pg"},
         ],
         "relationships": [],
         "column_types": {},

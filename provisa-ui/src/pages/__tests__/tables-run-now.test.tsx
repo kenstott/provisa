@@ -93,6 +93,7 @@ function table(
     writeGrants: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
+    timeTravel: null,
     dqDataset: null,
     qualityCheckers: [],
     apiEndpoint: null,

@@ -215,7 +215,6 @@ async def test_a_graphql_field_is_refused_before_its_cache_and_its_route(plannin
             "analyst",
             "json",
             delivery=None,
-            as_of=None,
             steward_hint=None,
             query_session_props=None,
             cache_hint=CacheHint(opt_in=True, ttl=None, debug_trace=False),

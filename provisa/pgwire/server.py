@@ -117,9 +117,9 @@ _REDIRECT_SET_RE = re.compile(
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.redirect(?:_format)?))\s*;?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
-# REQ-2110: a session's time travel, read on every statement it runs as a request's
-# X-Provisa-As-Of / X-Provisa-As-Recorded are on the HTTP transports: SET provisa.as_of /
-# provisa.as_recorded, RESET either, or SET either TO DEFAULT.
+# REQ-2110: a session's time travel, the default every statement it runs reads at where a
+# reference says no time of its own (REQ-1163): SET provisa.as_of / provisa.as_recorded, RESET
+# either, or SET either TO DEFAULT.
 _TIME_TRAVEL_SET_RE = re.compile(
     r"^\s*(?:SET\s+(?:SESSION\s+)?(?P<key>provisa\.as_(?:of|recorded))\s*(?:=|\s+TO\s+)\s*"
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.as_(?:of|recorded)))\s*;?\s*$",

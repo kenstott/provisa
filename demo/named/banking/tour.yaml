@@ -89,20 +89,16 @@ steps:
     WHERE e.business_date = DATE '2026-10-01'
     ORDER BY e.net_movement
     LIMIT 20
-- key: bankingAsReported
-  as_recorded: "2026-10-01T17:00:00"
 - key: bankingReported
   sql: >-
     SELECT e.business_date, e.branch, e.product, e.currency, e.net_movement, e.recorded_at
-    FROM "banking"."view_eod_totals" AS e
+    FROM "banking"."view_eod_totals"(as_recorded => '2026-10-01T17:00:00') AS e
     WHERE e.business_date IN (DATE '2026-10-01', DATE '2026-10-02') AND e.product = 'corporate'
     ORDER BY e.business_date, e.branch, e.currency
-- key: bankingAsRestated
-  as_recorded: "2026-10-12T17:00:00"
 - key: bankingRestated
   sql: >-
     SELECT e.business_date, e.branch, e.product, e.currency, e.net_movement, e.recorded_at
-    FROM "banking"."view_eod_totals" AS e
+    FROM "banking"."view_eod_totals"(as_recorded => '2026-10-12T17:00:00') AS e
     WHERE e.business_date IN (DATE '2026-10-01', DATE '2026-10-02') AND e.product = 'corporate'
     ORDER BY e.business_date, e.branch, e.currency
 # The postings behind one total, under the ledger's rules and masks.

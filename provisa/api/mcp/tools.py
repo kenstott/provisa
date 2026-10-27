@@ -256,6 +256,26 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
         ],
         "foreign_keys": _foreign_keys(state, role, schema, table),
         "unique_constraints": _unique_constraints(state, role, schema, table),  # REQ-1093
+        "time_travel": _time_travel(state, role, schema, table),  # REQ-1163
+    }
+
+
+def _time_travel(state: Any, role: str, schema: str, table: str) -> dict | None:
+    """REQ-1163: how the table travels in time, for an agent writing a read of it: the arguments
+    its reference takes in SQL (``"schema"."table"(as_recorded => '2026-10-01T17:00:00')``) and in
+    GraphQL; None when it keeps no versions."""
+    from provisa.mv.time_travel import relation_kinds
+
+    meta = _find_role_table(state.contexts[role], schema, table)
+    if meta is None:
+        return None
+    rows = [r for r in getattr(state, "tables", None) or [] if r["id"] == meta.table_id]
+    kind = relation_kinds(state, rows).get(meta.table_id)
+    if kind is None:
+        return None
+    return {
+        "kind": kind,
+        "arguments": ["as_of", "as_recorded"] if kind == "bitemporal" else ["as_recorded"],
     }
 
 

@@ -242,7 +242,7 @@ def test_every_roles_graphql_schema_offers_resolve():
     from tests.unit.test_sql_gen_aggregate import _fact_schema_and_ctx
 
     schema, _ = _fact_schema_and_ctx()
-    field = schema.query_type.fields["resolve"]
+    field = schema.query_type.fields["_resolve"]
     assert set(field.args) == {"uri", "as_of", "as_recorded"}
     assert str(field.args["uri"].type) == "String!"
 
@@ -250,7 +250,7 @@ def test_every_roles_graphql_schema_offers_resolve():
 def test_resolve_selections_split_a_document():
     from graphql import parse
 
-    document = parse('{ a: resolve(uri: "provisa://x") orders { id } }')
+    document = parse('{ a: _resolve(uri: "provisa://x") orders { id } }')
     found, others = resolve_mod.resolve_selections(document)
     assert [s.alias.value for s in found] == ["a"]
     assert others == ["orders"]
@@ -264,10 +264,8 @@ def resolved(monkeypatch, bind_org):
     """``resolve`` replaced by a recorder; the request bound to org acme."""
     calls: list[dict] = []
 
-    async def _resolve(
-        state, role_id, uri, *, org_id, as_of=None, as_recorded=None, as_of_literal=None
-    ):
-        calls.append({"role": role_id, "uri": uri, "org": org_id, "as_of": as_of_literal})
+    async def _resolve(state, role_id, uri, *, org_id, as_of=None, as_recorded=None):
+        calls.append({"role": role_id, "uri": uri, "org": org_id, "as_of": as_of})
         return {"uri": uri, "row": {"amount": 1}}
 
     monkeypatch.setattr(resolve_mod, "resolve", _resolve)
@@ -275,14 +273,16 @@ def resolved(monkeypatch, bind_org):
     return calls
 
 
-async def test_the_graphql_field_answers_with_the_bound_org_and_the_request_as_of(resolved):
+async def test_the_graphql_field_answers_with_the_bound_org_at_its_own_as_of(resolved):
     import json
 
     from graphql import parse
 
     from provisa.api.data.endpoint import _handle_query
 
-    document = parse('{ a: resolve(uri: "provisa://acme/sales/tables/orders/pk=7") }')
+    document = parse(
+        '{ a: _resolve(uri: "provisa://acme/sales/tables/orders/pk=7", as_of: "2026-01-01") }'
+    )
     response = await _handle_query(
         document,
         None,
@@ -290,7 +290,6 @@ async def test_the_graphql_field_answers_with_the_bound_org_and_the_request_as_o
         None,
         {"id": "analyst"},
         role_id="analyst",
-        as_of="TIMESTAMP '2026-01-01 00:00:00'",
         cache_ttl=None,
         cache_opt_in=False,
         debug_trace=None,
@@ -303,7 +302,7 @@ async def test_the_graphql_field_answers_with_the_bound_org_and_the_request_as_o
             "role": "analyst",
             "uri": "provisa://acme/sales/tables/orders/pk=7",
             "org": "acme",
-            "as_of": "TIMESTAMP '2026-01-01 00:00:00'",
+            "as_of": "2026-01-01",
         }
     ]
 
@@ -314,7 +313,7 @@ async def test_resolve_mixed_with_another_root_field_is_refused(resolved):
     from provisa.api.data.endpoint import _handle_query
     from provisa.api.errors import ApiError
 
-    document = parse('{ resolve(uri: "provisa://x") orders { id } }')
+    document = parse('{ _resolve(uri: "provisa://x") orders { id } }')
     with pytest.raises(ApiError) as refused:
         await _handle_query(
             document,
@@ -331,7 +330,7 @@ async def test_resolve_mixed_with_another_root_field_is_refused(resolved):
     assert resolved == []
 
 
-def test_rest_answers_with_the_bound_org_and_the_as_of_header(resolved):
+def test_rest_answers_under_the_graphql_name_with_the_bound_org(resolved):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -352,7 +351,7 @@ def test_rest_answers_with_the_bound_org_and_the_as_of_header(resolved):
     app.include_router(create_rest_router(_state()))
     uri = "provisa://acme/sales/tables/orders/pk=7"
     response = TestClient(app).get(
-        "/data/rest/resolve", params={"uri": uri}, headers={"x-provisa-as-of": "2026-01-01"}
+        "/data/rest/_resolve", params={"uri": uri, "as_of": "2026-01-01"}
     )
     assert response.status_code == 200, response.text
     assert response.json() == {"uri": uri, "row": {"amount": 1}}
@@ -368,7 +367,7 @@ async def test_the_mcp_tool_answers_with_the_bound_org(resolved, monkeypatch):
     token = server._request_role.set("analyst")  # what the bearer token resolves to
     try:
         content = await server.build_mcp_server(_make_state()).call_tool(
-            "resolve", {"uri": "provisa://acme/sales/tables/orders/pk=7"}
+            "_resolve", {"uri": "provisa://acme/sales/tables/orders/pk=7"}
         )
     finally:
         server._request_role.reset(token)

@@ -71,7 +71,6 @@ from provisa.api.data.endpoint_helpers import (
     _inject_warnings_into_response,
     _parse_accept,
     _record_per_source_stats,
-    request_time_travel,
 )
 from provisa.federation.engine_wake import ensure_engine_awake
 from provisa.compiler.complexity import ComplexityLimitExceeded
@@ -233,8 +232,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     x_provisa_redirect_format: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
     x_provisa_normalized: str | None = Header(None),
-    x_provisa_as_of: str | None = Header(None),  # REQ-1163: read bitemporal MVs as of this time
-    x_provisa_as_recorded: str | None = Header(None),  # REQ-1163: as Provisa had recorded them then
     x_provisa_trace: str | None = Header(None),  # REQ-1910: "debug" asks for a debug trace
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
@@ -301,9 +298,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     # result. A normalized read needs the document itself, so it is not offered the plan path.
     from provisa.api.data.graphql_plan import PlanRequest
 
-    # REQ-1163: the request's time travel, both axes validated (400 on malformed) -- before the
-    # plan lookup, whose key it is part of.
-    _as_of = request_time_travel(x_provisa_as_of, x_provisa_as_recorded)
     plan_request = PlanRequest(
         state,
         role_id=role_id,
@@ -311,7 +305,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         schema=schema,
         query=request.query,
         variables=request.variables,
-        as_of=_as_of,
         eligible=(x_provisa_normalized or "").lower() != "true",
     )
     plan = plan_request.cached()
@@ -455,7 +448,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
                         force_redirect=force_redirect,
                         redirect_threshold=effective_threshold,
                         redirect_format=redirect_format,
-                        as_of=_as_of,  # REQ-1163
                         steward_hint=steward_hint,
                         query_session_props=directives.to_session_props(),
                         cache_ttl=cache_hint.ttl,
@@ -580,7 +572,6 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     output_format,
     *,
     delivery,
-    as_of: str | None,
     steward_hint: str | None,
     query_session_props: dict | None,
     cache_hint,
@@ -600,7 +591,6 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
         "state": state,
         "cache_hint": cache_hint,
         "serve_cached": delivery is None,
-        "as_of": as_of,
         "steward_hint": steward_hint,
         "session_props": query_session_props,
     }
@@ -682,7 +672,6 @@ async def _handle_query(
     force_redirect=False,
     redirect_threshold=None,
     redirect_format=None,
-    as_of: str | None = None,  # REQ-1163: validated as-of SQL timestamp literal (or None)
     steward_hint: str | None = None,
     query_session_props: dict | None = None,
     cache_ttl: int | None,
@@ -722,7 +711,7 @@ async def _handle_query(
     if plan is not None:
         prepared = plan.prepared_copies()
     else:
-        # REQ-1365: resolve(uri, as_of) dereferences a semantic address through the one pipeline.
+        # REQ-1365: _resolve(uri, as_of, as_recorded) dereferences a semantic address through the one pipeline.
         from provisa.api.data.resolve import (
             AddressError,
             AddressNotFound,
@@ -737,7 +726,7 @@ async def _handle_query(
                 raise ApiError(
                     400,
                     "data.mixed_resolve_and_other_fields",
-                    "resolve cannot be combined with other root fields in one operation",
+                    "_resolve cannot be combined with other root fields in one operation",
                 )
             try:
                 resolved = await execute_resolve_fields(
@@ -746,7 +735,6 @@ async def _handle_query(
                     role_id,
                     variables,
                     org_id=require_current_org(),
-                    as_of=as_of,
                 )
             except AddressNotFound as exc:
                 raise ApiError(404, "data.address_not_found", str(exc), reason=str(exc)) from exc
@@ -797,7 +785,6 @@ async def _handle_query(
     )
     _field_args = {
         "delivery": delivery,
-        "as_of": as_of,
         "steward_hint": steward_hint,
         "query_session_props": query_session_props,
         "cache_hint": _cache_hint,

@@ -494,6 +494,22 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         return await summarize_table_policy(self)
 
     @strawberry.field
+    def time_travel(self) -> str | None:  # REQ-1163
+        """How the relation travels in time: "bitemporal" (it takes as_of and as_recorded),
+        "snapshot" (an Iceberg or Delta table: as_recorded alone), or null (it keeps no versions).
+        The SQL explorer's time pickers write the arguments on exactly these relations."""
+        from provisa.api.app import state
+        from provisa.mv.time_travel import relation_kinds
+
+        row = {
+            "id": self.id,
+            "source_id": self.source_id,
+            "table_name": self.table_name,
+            "view_sql": self.view_sql,
+        }
+        return relation_kinds(state, [row]).get(self.id)
+
+    @strawberry.field
     def graphql_field_name(self) -> str | None:  # REQ-1634: GraphQL Queries panel
         """This table's root query field name in the compiled data-plane GraphQL schema, so the
         Data Product GraphQL Queries panel can build a runnable example query without duplicating

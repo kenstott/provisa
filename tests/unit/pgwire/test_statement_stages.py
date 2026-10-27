@@ -27,6 +27,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from provisa.executor.result import QueryResult as EngineResult
+from provisa.mv.time_travel import Travel
 
 
 def _governed(stamp: str, generation=("boot", 3)):
@@ -45,6 +46,7 @@ def _governed(stamp: str, generation=("boot", 3)):
         governed_semantic="SELECT 1",
         schema_generation=generation,
         stamp=stamp,
+        travel=Travel(),
     )
 
 

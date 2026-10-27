@@ -33,8 +33,9 @@
     "createView": "+ Vista",
     "requestView": "Solicitar vista",
     "asOfLabel": "A fecha de",
-    "asOfHint": "Leer las vistas con historial tal como estaban en ese momento",
+    "asOfHint": "Escribe as_of en cada relación que guarda versiones: leerla tal como estaba en este momento",
     "asRecordedLabel": "Registrado al",
-    "asRecordedHint": "Leer las vistas con historial como Provisa las registró entonces, antes de correcciones"
+    "asRecordedHint": "Escribe as_recorded en cada relación que guarda versiones: leerla tal como Provisa la había registrado entonces, antes de correcciones posteriores",
+    "boundParams": "Vinculado a la próxima ejecución: {{values}}"
   }
 }

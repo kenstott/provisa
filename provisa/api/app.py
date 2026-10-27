@@ -773,9 +773,9 @@ class AppState:
 
     @property
     def bitemporal_view_reads(self) -> dict:
-        """REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a
-        request-level as-of (X-Provisa-As-Of) can overlay an as-of reconstruction over each one's
-        append log."""
+        """REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a reference
+        read at a time (its own as_of / as_recorded, or the session's) is read as of that time
+        from its append log."""
         return self._active_runtime().bitemporal_view_reads
 
     @bitemporal_view_reads.setter

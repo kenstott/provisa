@@ -6333,25 +6333,33 @@
   feature: connector-catalog-files-and-lake
   priority: SHOULD
   type: behavioral
-  description: Iceberg and Delta Lake sources support time-travel queries via an optional `as_of` argument
-    on root query fields (snapshot ID, version number, or ISO 8601 timestamp). The compiler translates
-    `as_of` to Trino `FOR TIMESTAMP AS OF` / `FOR VERSION AS OF` syntax. Time-travel is read-only and
-    only available on source types whose Trino connector supports it. Queries against non-time-travel-capable
-    sources that supply `as_of` are rejected at compile time.
+  description: '[SUPERSEDED by REQ-1163, 2026-10-26 -- an Iceberg or Delta table travels under the one time-travel
+    argument every relation that keeps versions takes. Kept here for history; do not implement against it.]
+    Iceberg and Delta Lake sources support time-travel queries via an optional `as_of` argument on root query
+    fields (snapshot ID, version number, or ISO 8601 timestamp). The compiler translates `as_of` to Trino `FOR
+    TIMESTAMP AS OF` / `FOR VERSION AS OF` syntax. Time-travel is read-only and only available on source types
+    whose Trino connector supports it. Queries against non-time-travel-capable sources that supply `as_of` are
+    rejected at compile time. [END SUPERSEDED BLOCK] (Amended 2026-10-26, ONE WAY TO TIME-TRAVEL:) An Iceberg
+    or Delta table travels by its snapshots under REQ-1163''s arguments, written where the statement names it:
+    a snapshot is a commit time, which is recorded time, so as_recorded selects the snapshot current then (SQL
+    "lake"."events"(as_recorded => ''2024-01-15T12:00:00''), the GraphQL field''s as_recorded argument, REST''s
+    ?as_recorded=), read with the engine''s FOR TIMESTAMP AS OF. as_of applies only where a valid time is mapped
+    and is refused by name on such a table; there is no other syntax or parameter, and no version number.'
   use_case: Time-travel queries let consumers audit historical snapshots of Iceberg and Delta tables without
     separate table copies.
   code:
-  - provisa/compiler/sql_gen.py
+  - provisa/mv/time_travel.py
+  - provisa/compiler/schema_gen.py
   tests:
   - tests/unit/test_time_travel.py
   - tests/integration/test_registration_governance_integration.py
   since: 2026-01
-  scenario: 'Given an Iceberg source with an as_of argument supplied at query time
+  scenario: 'Given an Iceberg table read with as_recorded at query time
 
-    When the compiler processes the query
+    When the statement is routed to the engine
 
-    Then FOR TIMESTAMP AS OF / FOR VERSION AS OF syntax is emitted; non-capable sources with as_of are
-    rejected
+    Then the snapshot current at that time is read (FOR TIMESTAMP AS OF), as_of is refused by name, and a table
+    that keeps no versions refuses both
 
     '
   integration_test: required
@@ -36988,51 +36996,63 @@
   type: behavioral
   since: 2026-07
   description: 'A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers
-    get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized
-    view''s inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over
-    the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed
-    state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta),
-    never the raw log. [SUPERSEDED by REQ-1163, 2026-10-25 -- time travel is an argument on each bitemporal
-    view, not a request header (amendment 2026-10-26). Kept here for history; do not implement against it.]
-    (2) Time travel: a request-level `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal
-    by parse_as_of; malformed → HTTP 400) applies to the whole query: [END SUPERSEDED BLOCK] _prepare_compiled
-    overlays each bitemporal view''s expansion entry with an as-of reconstruction over its append log (as_of_view_map
-    + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every substrate. [SUPERSEDED
-    by REQ-1163, 2026-10-25 -- the arguments are in the schema, where they apply. Kept here for history;
-    do not implement against it.] A whole-query as-of context (like a bitemporal system time) rather than
-    a per-field arg keeps it out of the GraphQL schema. [END SUPERSEDED BLOCK] Analogous to REQ-372 (`as_of`
-    for Iceberg/Delta SOURCES). [SUPERSEDED by REQ-2109, 2026-10-20 -- as_of filters valid time and as_recorded
-    filters recorded time; all three declarations are required. Kept here for history; do not implement
-    against it.] Amended 2026-10-16 (maintainer): the clock of time travel is the SOURCE''s time, not Provisa''s
-    load time. A bitemporal table or view declares its source-time column (the source''s own change timestamp
-    such as updated_at, or the commit timestamp a CDC landing carries); X-Provisa-As-Of and its range (REQ-2064)
-    measure against that time, so "as of last Tuesday" means as of last Tuesday in the source. Provisa''s
-    own recorded (load) time is kept beside it as the audit answer to when Provisa knew, and is not the
-    default clock. Declaring a source-time column is optional: a view that declares none uses Provisa''s
-    load time as its clock (maintainer 2026-10-16), and the docs and the view''s editor state the implication:
-    versions are then ordered and read as of when Provisa landed each change, which depends on refresh timing,
-    not when it happened in the source. [END SUPERSEDED BLOCK] Amended 2026-10-17 (maintainer): a SECOND
-    axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one ISO 8601 point, validated by
-    parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded) reads each bitemporal
-    view as Provisa had recorded it then: its append log is cut to rows recorded at or before that time
-    before any version span is drawn, then the as-of picks the version in force at its time. So a correction
-    recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the original;
-    as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical
-    value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query
-    endpoints'' headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight
-    ticket option as_recorded. The audit row records both (query_audit_log.as_of, as_recorded). The SQL
-    explorer offers both pickers and a demo tour can set each (step kinds as_of, as_recorded). (Amended
-    2026-10-20, VALID TIME AND RECORDED TIME, REQ-2109:) as_of means valid_time <= X: the latest version
-    per business_key among rows whose valid time is at or before X. as_recorded means what was known at
-    Y: only versions whose recorded_time is at or before Y. Every surface that takes them (the GraphQL and
-    SQL headers, Flight options, the gRPC and MCP resolve arguments, and a pgwire session''s SET provisa.as_of
-    / provisa.as_recorded, REQ-2110) applies the same meaning. (Amended 2026-10-25, TIME TRAVEL IS AN ARGUMENT
-    OF THE VIEW:) Time travel is written where it applies: each bitemporal view''s GraphQL field takes optional
-    as_of (valid time) and as_recorded (recorded time) arguments, validated as before, and only bitemporal
-    views have them. REST and MCP carry the same arguments through their generation from the schema (REQ-1929),
-    and Cypher and SPARQL use the same names. Arguments are per field, so one GraphQL request may read a
-    view at two times through aliases. The X-Provisa-As-Of request header is removed; there is one way to
-    say it.'
+    get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized view''s
+    inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over the physical
+    append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed state (latest
+    batch for snapshot; latest-version-per-business-key window dropping tombstones for delta), never the raw
+    log. [SUPERSEDED by REQ-1163, 2026-10-25 -- time travel is an argument on each bitemporal view, not a request
+    header (amendment 2026-10-26). Kept here for history; do not implement against it.] (2) Time travel: a request-level
+    `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400)
+    applies to the whole query: [END SUPERSEDED BLOCK] _prepare_compiled overlays each bitemporal view''s expansion
+    entry with an as-of reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical
+    consumer-facing as-of semantics across every substrate. [SUPERSEDED by REQ-1163, 2026-10-25 -- the arguments
+    are in the schema, where they apply. Kept here for history; do not implement against it.] A whole-query
+    as-of context (like a bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema.
+    [END SUPERSEDED BLOCK] Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES). [SUPERSEDED by REQ-2109,
+    2026-10-20 -- as_of filters valid time and as_recorded filters recorded time; all three declarations are
+    required. Kept here for history; do not implement against it.] Amended 2026-10-16 (maintainer): the clock
+    of time travel is the SOURCE''s time, not Provisa''s load time. A bitemporal table or view declares its
+    source-time column (the source''s own change timestamp such as updated_at, or the commit timestamp a CDC
+    landing carries); X-Provisa-As-Of and its range (REQ-2064) measure against that time, so "as of last Tuesday"
+    means as of last Tuesday in the source. Provisa''s own recorded (load) time is kept beside it as the audit
+    answer to when Provisa knew, and is not the default clock. Declaring a source-time column is optional: a
+    view that declares none uses Provisa''s load time as its clock (maintainer 2026-10-16), and the docs and
+    the view''s editor state the implication: versions are then ordered and read as of when Provisa landed each
+    change, which depends on refresh timing, not when it happened in the source. [END SUPERSEDED BLOCK] Amended
+    2026-10-17 (maintainer): a SECOND axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one
+    ISO 8601 point, validated by parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded)
+    reads each bitemporal view as Provisa had recorded it then: its append log is cut to rows recorded at or
+    before that time before any version span is drawn, then the as-of picks the version in force at its time.
+    So a correction recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the
+    original; as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical
+    value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query endpoints''
+    headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight ticket option as_recorded.
+    The audit row records both (query_audit_log.as_of, as_recorded). The SQL explorer offers both pickers and
+    a demo tour can set each (step kinds as_of, as_recorded). (Amended 2026-10-20, VALID TIME AND RECORDED TIME,
+    REQ-2109:) as_of means valid_time <= X: the latest version per business_key among rows whose valid time
+    is at or before X. as_recorded means what was known at Y: only versions whose recorded_time is at or before
+    Y. Every surface that takes them (the GraphQL and SQL headers, Flight options, the gRPC and MCP resolve
+    arguments, and a pgwire session''s SET provisa.as_of / provisa.as_recorded, REQ-2110) applies the same meaning.
+    (Amended 2026-10-25, TIME TRAVEL IS AN ARGUMENT OF THE VIEW:) Time travel is written where it applies: each
+    bitemporal view''s GraphQL field takes optional as_of (valid time) and as_recorded (recorded time) arguments,
+    validated as before, and only bitemporal views have them. REST and MCP carry the same arguments through
+    their generation from the schema (REQ-1929), and Cypher and SPARQL use the same names. Arguments are per
+    field, so one GraphQL request may read a view at two times through aliases. The X-Provisa-As-Of request
+    header is removed; there is one way to say it. (Amended 2026-10-26, THE ARGUMENTS EVERYWHERE:) The arguments
+    are on every relation that keeps versions: a bitemporal table or view (REQ-2109: business_key, valid_time
+    and recorded_time mapped, a table read from its captured version log included) and an Iceberg or Delta table
+    (REQ-372, as_recorded alone); any other relation refuses them by name. In SQL they are the call form SQL
+    has for a relation in FROM (docs/commands.md): "banking"."view_eod_totals"(as_recorded => ''2026-10-02T17:00:00'',
+    as_of => ''...'') AS e, so two references read two times; a plain reference reads current state. A value
+    may be a bound $n, written into the statement before it is governed and validated as a written one. The
+    GraphQL arguments are on root fields and on relationship fields whose target keeps versions; the compiler
+    writes them in the SQL call form, and the pipeline lifts each reference''s time by its alias before governance
+    (provisa.mv.time_travel). The X-Provisa-As-Recorded header is removed with X-Provisa-As-Of; a pgwire session''s
+    SET provisa.as_of / provisa.as_recorded stays as the session''s default (a BI tool cannot write per-relation
+    arguments) and a reference''s own arguments override it; Flight, gRPC and MCP per-call arguments stay. The
+    SQL explorer''s pickers write the arguments into the statement. The audit row''s as_of and as_recorded record
+    the one time a statement reads at, and none when it reads at several (its text names each). Cypher and SPARQL
+    follow in a later change.'
   use_case: Without routing reads through reconstruction a bitemporal MV read would surface all historical
     versions instead of current state. Current-by-default makes bitemporal MVs usable; the X-Provisa-As-Of
     header adds opt-in, whole-query time travel.
@@ -85414,7 +85434,18 @@ And a role its token does not hold is not listed'
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'A named demo''s tour step can take its "as recorded at" time from data instead of a literal: as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its statement returns. When the step runs, the tour runner runs that statement again as it ran (the run-as role and the time travel the steps before it set) and sets the SQL explorer''s as-recorded picker to that value; a refused statement or a missing value fails the step by name. The tour test checks the step names an earlier sql step, a valid row and a returned column, on the SQL explorer. It is a tour feature only: how Provisa stamps recording time does not change, and no recording time can be chosen, so a demo of transaction time cannot forge it.'
+  description: 'A named demo''s tour step can take its "as recorded at" time from data instead of a literal:
+    as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its
+    statement returns. When the step runs, the tour runner runs that statement again as it ran (the run-as role
+    and the time travel the steps before it set) and sets the SQL explorer''s as-recorded picker to that value;
+    a refused statement or a missing value fails the step by name. The tour test checks the step names an earlier
+    sql step, a valid row and a returned column, on the SQL explorer. It is a tour feature only: how Provisa
+    stamps recording time does not change, and no recording time can be chosen, so a demo of transaction time
+    cannot forge it. (Amended 2026-10-26, A BOUND VALUE:) Time travel is the relation''s argument in the statement
+    (REQ-1163), so the as_of and as_recorded step kinds that set the explorer''s pickers are removed: a tour
+    writes a literal time in its SQL. as_recorded_from stays: it binds the value it takes to the next statement''s
+    $1, which names it as a relation''s argument ((as_recorded => $1)); the page sends it as that statement''s
+    params, and the tour warm-up does the same.'
   use_case: 'The reproduce demo reads its report as recorded when it was filed, at a time Provisa stamped during the demo''s own setup.'
   scenario: 'Given a tour whose refreshes step returns two refresh records
 

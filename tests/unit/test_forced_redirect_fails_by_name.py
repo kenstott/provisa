@@ -40,7 +40,6 @@ def _field_through(monkeypatch, *, materialize, failure):
         "analyst",
         "json",
         delivery=materialize,
-        as_of=None,
         steward_hint=None,
         query_session_props=None,
         cache_hint=NO_CACHE_HINT,

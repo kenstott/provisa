@@ -119,13 +119,10 @@ def _close(org_id: str) -> None:
         engine.dispose()
 
 
-def _sql(tier, sandbox: dict, sql: str, travel: dict[str, str]) -> list[dict[str, Any]]:
+def _sql(tier, sandbox: dict, sql: str, params: list[str]) -> list[dict[str, Any]]:
     headers = {"Authorization": f"Bearer {sandbox['token']}", "x-org-provisa": sandbox["org_id"]}
-    if travel.get("as_of"):
-        headers["X-Provisa-As-Of"] = travel["as_of"]
-    if travel.get("as_recorded"):
-        headers["X-Provisa-As-Recorded"] = travel["as_recorded"]
-    resp = httpx.post(f"{tier.base_url}/data/sql", json={"sql": sql}, headers=headers, timeout=300)
+    body = {"sql": sql, **({"params": params} if params else {})}
+    resp = httpx.post(f"{tier.base_url}/data/sql", json=body, headers=headers, timeout=300)
     assert resp.status_code == 200, f"{sql}: HTTP {resp.status_code}: {resp.text}"
     return resp.json()["data"]["sql"]
 
@@ -149,16 +146,16 @@ def answers(tmp_path_factory, registry) -> dict[str, list[dict[str, Any]]]:
     try:
         sandbox = _open(tier)
         try:
-            travel: dict[str, str] = {}
+            # A time an as_recorded_from step takes is bound to the next statement's $1.
+            bound: list[str] = []
             out: dict[str, list[dict[str, Any]]] = {}
             for step in _STEPS:
-                if "as_of" in step:
-                    travel["as_of"] = step["as_of"]
                 if "as_recorded_from" in step:
                     taken = step["as_recorded_from"]
-                    travel["as_recorded"] = str(out[taken["step"]][taken["row"]][taken["column"]])
+                    bound = [str(out[taken["step"]][taken["row"]][taken["column"]])]
                 if "sql" in step:
-                    out[step["key"]] = _sql(tier, sandbox, step["sql"], dict(travel))
+                    out[step["key"]] = _sql(tier, sandbox, step["sql"], bound)
+                    bound = []
             return out
         finally:
             _close(sandbox["org_id"])

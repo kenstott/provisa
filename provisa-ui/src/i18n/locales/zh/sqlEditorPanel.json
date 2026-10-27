@@ -33,8 +33,9 @@
     "createView": "+ 视图",
     "requestView": "请求视图",
     "asOfLabel": "截至",
-    "asOfHint": "按此时刻的状态读取保留历史的视图",
+    "asOfHint": "在每个保留版本的关系上写入 as_of：按此时的状态读取",
     "asRecordedLabel": "记录于",
-    "asRecordedHint": "按 Provisa 当时的记录读取保留历史的视图，不含之后的更正"
+    "asRecordedHint": "在每个保留版本的关系上写入 as_recorded：按 Provisa 当时的记录读取，早于之后的更正",
+    "boundParams": "绑定到下次运行：{{values}}"
   }
 }
