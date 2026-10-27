@@ -26,7 +26,7 @@ from provisa.gql.expr_ast import Variable
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
 
-from provisa.gql.mistakes import aggregate_misuse, undefined_variable
+from provisa.gql.mistakes import aggregate_misuse, undefined_variable, variable_misuse
 from provisa.gql.translator_types import CypherMistake
 from provisa.gql.ir import (
     NodePattern,
@@ -1210,7 +1210,8 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
     checked as part of the whole, never on its own."""
     ast = _parse_statement(query)
     # With the role's label map, an unbound name that is a bound variable's property is offered.
-    for mistake in (undefined_variable(ast, label_map), aggregate_misuse(ast)):
+    mistakes = (undefined_variable(ast, label_map), variable_misuse(ast), aggregate_misuse(ast))
+    for mistake in mistakes:
         if mistake is not None:
             raise CypherParseMistake(mistake.code, str(mistake), **mistake.params)
     return ast

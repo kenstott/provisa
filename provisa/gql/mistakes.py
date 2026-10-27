@@ -23,6 +23,7 @@ from provisa.gql.expr_ast import (
     Binary,
     CypherExpr,
     FunctionCall,
+    ListComprehension,
     Literal,
     Parameter,
     Property,
@@ -32,7 +33,15 @@ from provisa.gql.expr_ast import (
 from provisa.gql.group_by import AGGREGATES
 from provisa.gql.translator_types import CypherMistake
 
-from provisa.gql.ir import CypherAST, MatchStep, NodePattern, UnwindClause, WithClause
+from provisa.gql.ir import (
+    CypherAST,
+    MatchStep,
+    NodePattern,
+    PathFunction,
+    PathPattern,
+    UnwindClause,
+    WithClause,
+)
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
@@ -412,6 +421,22 @@ def aggregate_misuse(ast: CypherAST) -> CypherMistake | None:
     items = [i for w in ast.with_clauses for i in w.items]
     items += ast.return_clause.items if ast.return_clause is not None else []
     for item in items:
+        for comprehension in walk(item.expression):
+            if not isinstance(comprehension, ListComprehension):
+                continue
+            inside = [comprehension.predicate, comprehension.projection]
+            found = [c for part in inside for c in _aggregates(part)]
+            if found:
+                call = _call_text(found[0])
+                return CypherMistake(
+                    "cypher.aggregate_in_list",
+                    f"[{comprehension.var} IN ... | {call}] aggregates inside a list comprehension, "
+                    "which reads one list at a time. Aggregate in a WITH first and use its result "
+                    "in the list.",
+                    variable=comprehension.var,
+                    aggregate=call,
+                )
+    for item in items:
         for call in _aggregates(item.expression):
             for arg in call.args:
                 nested = _aggregates(arg)
@@ -426,3 +451,74 @@ def aggregate_misuse(ast: CypherAST) -> CypherMistake | None:
                         inner=inner,
                     )
     return None
+
+
+def _kind_conflict(variable: str, kinds: tuple[str, str]) -> CypherMistake:
+    if "path" in kinds:
+        return CypherMistake(
+            "cypher.path_variable_reused",
+            f"{variable} names the path and a node or relationship in it: a variable names one "
+            "thing. Give each its own variable.",
+            variable=variable,
+        )
+    return CypherMistake(
+        "cypher.node_and_relationship",
+        f"{variable} names both a node and a relationship: a variable names one thing. Give each "
+        "its own variable.",
+        variable=variable,
+    )
+
+
+def _length_of_entity(expressions: list[CypherExpr], kinds: dict[str, str]) -> CypherMistake | None:
+    for expr in expressions:
+        for call in walk(expr):
+            if not (isinstance(call, FunctionCall) and call.name.lower() == "length"):
+                continue
+            arg = call.args[0] if len(call.args) == 1 else None
+            if isinstance(arg, Variable) and kinds.get(arg.name) in ("node", "relationship"):
+                return CypherMistake(
+                    "cypher.length_of_entity",
+                    f"length({arg.name}) takes a path, and {arg.name} is a node or relationship. "
+                    "Bind a path, MATCH p = ..., and take length(p).",
+                    variable=arg.name,
+                )
+    return None
+
+
+def variable_misuse(ast: CypherAST) -> CypherMistake | None:
+    """The refusal of a variable used as two things -- a node and a relationship, or a path and a
+    part of it -- or of length() taken of a node or relationship. What a variable names is read from
+    the MATCH patterns since the last WITH, which projects a fresh set."""
+    kinds: dict[str, str] = {}
+    for step in ast.pipeline:
+        if isinstance(step, WithClause):
+            found = _length_of_entity([i.expression for i in step.items], kinds)
+            if found is not None:
+                return found
+            kinds = {}
+            continue
+        if not isinstance(step, MatchStep):
+            continue
+        for clause in step.matches:
+            pattern = clause.pattern
+            if isinstance(pattern, PathFunction):
+                pattern = pattern.pattern
+            if not isinstance(pattern, PathPattern):
+                continue
+            named = [(n.variable, "node") for n in pattern.nodes]
+            named += [(r.variable, "relationship") for r in pattern.rels]
+            if clause.variable is not None:
+                named.append((clause.variable, "path"))
+            for variable, kind in named:
+                if variable is None:
+                    continue
+                bound = kinds.setdefault(variable, kind)
+                if bound != kind:
+                    return _kind_conflict(variable, (bound, kind))
+                if kind == "path":
+                    continue
+                if variable == clause.variable:
+                    return _kind_conflict(variable, (kind, "path"))
+    if ast.return_clause is None:
+        return None
+    return _length_of_entity([i.expression for i in ast.return_clause.items], kinds)

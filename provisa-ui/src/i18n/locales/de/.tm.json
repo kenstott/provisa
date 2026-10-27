@@ -8165,5 +8165,9 @@
   "de/serverErrors.json::serverErrors.cypher.try_cast_needs_postgres_16": "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 or later on this engine.",
   "de/serverErrors.json::serverErrors.statement.list_at_ceiling": "A list holds the maximum of {{limit}} entries the row limit allows for this read ({{kind}}); it may have more.",
   "de/commandFormFields.json::commandFormFields.argDefault": "Default of argument {{name}}",
-  "de/commandFormFields.json::commandFormFields.argDefaultPlaceholder": "Default (leave empty if required)"
+  "de/commandFormFields.json::commandFormFields.argDefaultPlaceholder": "Default (leave empty if required)",
+  "de/serverErrors.json::serverErrors.cypher.node_and_relationship": "{{variable}} names both a node and a relationship: a variable names one thing. Give each its own variable.",
+  "de/serverErrors.json::serverErrors.cypher.path_variable_reused": "{{variable}} names the path and a node or relationship in it: a variable names one thing. Give each its own variable.",
+  "de/serverErrors.json::serverErrors.cypher.aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] aggregates inside a list comprehension, which reads one list at a time. Aggregate in a WITH first and use its result in the list.",
+  "de/serverErrors.json::serverErrors.cypher.length_of_entity": "length({{variable}}) takes a path, and {{variable}} is a node or relationship. Bind a path, MATCH p = ..., and take length(p)."
 }
