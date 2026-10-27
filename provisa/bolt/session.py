@@ -1858,8 +1858,8 @@ async def _execute_write_cypher(
     from provisa.cypher.write_translator import (
         CypherWriteParseError,
         WriteTranslator,
-        bind_write_params,
         parse_cypher_write,
+        written,
     )
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
@@ -1870,16 +1870,22 @@ async def _execute_write_cypher(
 
     label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
     translator = WriteTranslator(label_map)
+
+    async def _read(query: str, params: dict) -> tuple[list[str], list[list[Any]]]:
+        columns, rows, _ = await _execute_cypher(query, params, role_id, include_ops=include_ops)
+        return columns, rows
+
+    async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]]]:
+        plan = await _govern_and_route_compiled(
+            sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT, sdl_joins=False
+        )
+        result = await _execute_plan(plan)
+        return result.column_names, [list(row) for row in result.rows]
+
     try:
         # The run's parameters are bound into the statement ($name → $k): the admission and the
-        # source see the values, never their names.
-        sql, bound = bind_write_params(translator.translate(write_ast), parameters)
+        # source see the values, never their names. A relationship's ends and a RETURN are read
+        # as every read is (written).
+        return await written(write_ast, translator, parameters, _read, _write)
     except CypherParamError as exc:
         raise ValueError(str(exc)) from exc
-
-    plan = await _govern_and_route_compiled(
-        sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT, sdl_joins=False
-    )
-    result = await _execute_plan(plan)
-    rows = [list(row) for row in result.rows]
-    return result.column_names, rows

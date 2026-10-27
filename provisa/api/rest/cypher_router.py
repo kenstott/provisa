@@ -28,6 +28,7 @@ from provisa.api.role_surface import role_surface
 # Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-392, REQ-398
 
 
+import json
 import logging
 import time as _time
 from typing import TYPE_CHECKING, Any, Literal
@@ -624,8 +625,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     from provisa.cypher.write_translator import (  # noqa: PLC0415
         CypherWriteParseError as _CWPE,
         WriteTranslator as _WT,
-        bind_write_params,
         parse_cypher_write as _pwc,
+        written,
     )
     from provisa.cypher.params import CypherParamError  # noqa: PLC0415
 
@@ -649,37 +650,59 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
                 503, "data.no_schema_for_role", f"No schema for role '{_role_id}'", role_id=_role_id
             )
         _label_map = _build_label_map(_ctx, _role_id, state)
-        try:
-            # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
-            # admission's new-row check and the source see the values, never their names.
-            _write_sql, _write_params = bind_write_params(
-                _WT(_label_map).translate(_write_ast), body.params
-            )
-        except (_CWPE, CypherParamError) as exc:
-            return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
+        _answered: list[Response] = []
 
-        # ONE write path: the translated statement goes through the pipeline every other surface's
-        # write goes through (Bolt's Cypher writes included) — its admission (the write right and
-        # the role's write grant, REQ-2074), its lowering to the source's own
-        # addressing and dialect, and its execution. This route used to check, address and run
-        # the statement itself.
-        try:
-            _plan = await _govern_write(
-                _write_sql,
+        class _ReadRefused(Exception):
+            """A read the write made was answered by an error: the write's answer too."""
+
+        async def _read(query: str, params: dict) -> tuple[list[str], list[list[Any]]]:
+            # A relationship's ends and a RETURN are read as this route reads any query.
+            response = await cypher_query(
+                CypherRequest(query=query, params=params), request, None, x_provisa_stats
+            )
+            _answered.append(response)
+            if response.status_code != 200:
+                raise _ReadRefused
+            content = json.loads(bytes(response.body))
+            columns = content["columns"]
+            rows = [[r[c] for c in columns] if isinstance(r, dict) else r for r in content["rows"]]
+            return columns, rows
+
+        _wrote: list[QueryResult] = []
+
+        async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]]]:
+            # ONE write path: the translated statement goes through the pipeline every other
+            # surface's write goes through (Bolt's Cypher writes included) — its admission (the
+            # write right and the role's write grant, REQ-2074), its lowering to the source's own
+            # addressing and dialect, and its execution.
+            plan = await _govern_write(
+                sql,
                 _role_id,
-                exec_params=_write_params or None,
+                exec_params=bound or None,
                 state=state,
                 cache_hint=_NO_CACHE,
                 sdl_joins=False,
             )
-            _result = await _execute_write_plan(_plan, state)
+            _wrote.append(await _execute_write_plan(plan, state))
+            return _wrote[-1].column_names, [list(row) for row in _wrote[-1].rows]
+
+        try:
+            # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
+            # admission's new-row check and the source see the values, never their names.
+            await written(_write_ast, _WT(_label_map), body.params, _read, _write)
+        except (_CWPE, CypherParamError) as exc:
+            return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
+        except _ReadRefused:
+            return _answered[-1]
         except PermissionError as exc:
             return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
         except (ApiError, ReadRefused):
             raise  # REQ-1350: a refusal by name is answered by the app's handler for it
         except Exception as exc:  # allow-ble: request boundary — a source or driver error of any type is this write's outcome, answered as an error response
             return cypher_error(500, "cypher.write_failed", f"Write failed: {exc}", error=str(exc))
-        affected = _result.rowcount if _result.rowcount is not None else len(_result.rows)
+        if _write_ast.returns:
+            return _answered[-1]  # the RETURN, read of the node the write created
+        affected = sum(r.rowcount if r.rowcount is not None else len(r.rows) for r in _wrote)
 
         # The steps after a write (cache, views, change events, sinks, hot copy) ran at the
         # pipeline's terminal (pgwire._pipeline._after_write), as on every surface.
