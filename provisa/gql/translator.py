@@ -408,7 +408,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             from_clause, joins = self._build_unwind_joins(unwinds, has_from=False)
             assert from_clause is not None
         else:
-            raise CypherTranslateError("Pipeline segment has no data source")
+            # A WITH that reads no pattern (WITH 1 AS x): one row, read from no table.
+            from_clause, joins = None, []
 
         select_exprs = self._build_with_select_items(with_clause.items)
         where_expr = self._build_where(stage_where)
@@ -417,7 +418,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 where_expr, _optional_vars(all_matches), joins
             )
 
-        stage_query = exp.select(*select_exprs).from_(from_clause)
+        stage_query = exp.select(*select_exprs)
+        if from_clause is not None:
+            stage_query = stage_query.from_(from_clause)
         for join in joins:
             stage_query = stage_query.join(
                 join["table"], on=join["on"], join_type=join["join_type"]
@@ -481,7 +484,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         final_match_steps: list,
         final_unwinds: list,
         cte_defs: list[tuple[str, exp.Expression]],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "WhereClause | None"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> tuple[exp.Expression | None, list[dict], list[MatchClause], "WhereClause | None"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/joins for the final segment.
 
         Returns (from_clause, joins, all_matches, stage_where).
@@ -515,7 +518,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 _, uw_joins = self._build_unwind_joins(final_unwinds, has_from=True)
                 joins = list(joins) + uw_joins
         else:
-            raise CypherTranslateError("Query has no data source")
+            # A statement that reads no pattern (RETURN 1 + 1): one row, read from no table.
+            return None, [], [], stage_where
 
         return from_clause, joins, all_matches, stage_where
 
@@ -550,13 +554,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _build_main_query(
         self,
-        from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        from_clause: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: list[dict],
         where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         select_exprs: list["exp.Expr"],
     ) -> "exp.Select":
-        """Assemble the main SELECT query from components."""
-        query = exp.select(*select_exprs).from_(from_clause)
+        """Assemble the main SELECT query from components. ``from_clause`` is None for a statement
+        that reads no pattern: a SELECT with no FROM."""
+        query = exp.select(*select_exprs)
+        if from_clause is not None:
+            query = query.from_(from_clause)
         if self._ast.return_clause and self._ast.return_clause.distinct:
             query = query.distinct()
         for join in joins:
@@ -606,7 +613,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _construct_union(
         self,
-        from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        from_clause: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: list[dict],
         where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         selects: list[list["exp.Expr"]],
@@ -616,7 +623,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         result: exp.Select | exp.Union | None = None
         for select_exprs in selects:
             query = self._build_main_query(
-                from_clause.copy(),
+                from_clause.copy() if from_clause is not None else None,
                 [{**j, "table": j["table"].copy(), "on": j["on"].copy()} for j in joins],
                 where_expr.copy() if where_expr is not None else None,
                 select_exprs,
