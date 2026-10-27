@@ -40,6 +40,14 @@ async def client():
             yield c
 
 
+def _refused_by_validation(resp) -> None:
+    """A field the role's schema does not have: the document does not validate, answered with its
+    errors and no data -- 200 under application/json (REQ-2167, GraphQL over HTTP)."""
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["errors"] and "data" not in body, body
+
+
 class TestColumnVisibility:
     async def test_admin_sees_amount(self, client):
         resp = await client.post(
@@ -60,7 +68,7 @@ class TestColumnVisibility:
             headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         # amount is not in analyst's schema — GraphQL validation rejects it
-        assert resp.status_code == 400
+        _refused_by_validation(resp)
 
     async def test_analyst_sees_visible_fields_on_customers(self, client):
         """Analyst can query customers with visible columns (no RLS on customers)."""
@@ -82,7 +90,8 @@ class TestColumnVisibility:
             json={"query": "{ sa__orders { id product_id } }"},
             headers={"x-provisa-role": "sales_analytics_analyst"},
         )
-        assert resp.status_code == 400  # product_id not in analyst schema
+        # product_id not in analyst schema
+        _refused_by_validation(resp)
 
 
 _SESSION_REGION = {"x-provisa-session-user_region": "us-east"}
@@ -191,4 +200,4 @@ class TestDomainAccess:
             headers={"x-provisa-role": "sales_analytics_analyst"},
         )
         # products is in product-catalog domain — not in analyst's schema
-        assert resp.status_code == 400
+        _refused_by_validation(resp)

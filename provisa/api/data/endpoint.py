@@ -379,7 +379,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         try:
             document = parse_query(schema, request.query, request.variables, ctx=ctx)
         except GraphQLValidationError as e:
-            raise GraphQLDocumentError([str(err) for err in e.errors]) from e
+            raise GraphQLDocumentError([err.message for err in e.errors]) from e
         except GraphQLSyntaxError as e:
             raise GraphQLDocumentError([e.message]) from e
         # REQ-2167: a mutation is never executed over GET.
