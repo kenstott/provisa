@@ -134,8 +134,11 @@ jobs:
           done
           # The driver's own test package, run from inside it (its tests/conftest.py applies).
           cd "$RUNNER_TEMP/driver/tests"
+          # --timeout-method=thread: a test hung where no signal reaches it (an event loop waiting on
+          # a socket) has every thread's stack dumped and the run ended, not the step's limit run out.
           "$RUNNER_TEMP/driver-venv/bin/python" -m pytest integration -p no:cacheprovider \
-            --timeout="$DRIVER_TEST_TIMEOUT_S" --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q
+            --timeout="$DRIVER_TEST_TIMEOUT_S" --timeout-method=thread \
+            --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q
 
       - name: Summarise
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
