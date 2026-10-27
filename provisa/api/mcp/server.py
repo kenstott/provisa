@@ -961,13 +961,13 @@ def build_mcp_server(state: Any):
         limitations: str = "",
         usage: str = "",
         version: str | None = None,
-        status: str | None = None,
         sla: str | None = None,
         support: str | None = None,
         role: str | None = None,
     ) -> dict:
         """Create or replace a data product by id — an id that already exists is overwritten in
-        full. `domain_id` must be a real, existing domain."""
+        full. `domain_id` must be a real, existing domain. Its status is kept (a new product is
+        a draft); the publish/deprecate/retire/restore tools change it."""
         resolved = _role(role)
         return await tools.create_data_product(
             state,
@@ -982,7 +982,6 @@ def build_mcp_server(state: Any):
             limitations=limitations,
             usage=usage,
             version=version,
-            status=status,
             sla=sla,
             support=support,
         )
@@ -992,6 +991,64 @@ def build_mcp_server(state: Any):
         """Delete a data product by id. Irreversible."""
         resolved = _role(role)
         return await tools.delete_data_product(state, resolved, _capability_request(resolved), id)
+
+    @_tool
+    async def publish_data_product(id: str, role: str | None = None) -> dict:
+        """Publish a draft data product: it goes live."""
+        resolved = _role(role)
+        return await tools.change_data_product_status(
+            state, resolved, _capability_request(resolved), id, "publish", {}
+        )
+
+    @_tool
+    async def deprecate_data_product(
+        id: str, reason: str, retire_on: str | None = None, role: str | None = None
+    ) -> dict:
+        """Deprecate a live data product, with a reason and an optional planned retirement date
+        (ISO). It stays in service until then, and is retired on that date."""
+        resolved = _role(role)
+        return await tools.change_data_product_status(
+            state,
+            resolved,
+            _capability_request(resolved),
+            id,
+            "deprecate",
+            {"reason": reason, "retire_on": retire_on},
+        )
+
+    @_tool
+    async def retire_data_product(
+        id: str, reason: str, successor: str | None = None, role: str | None = None
+    ) -> dict:
+        """Retire a live or deprecated data product, with a reason. Its member tables, views and
+        commands move to ``successor`` (a data product of the same domain), required when it has
+        any."""
+        resolved = _role(role)
+        return await tools.change_data_product_status(
+            state,
+            resolved,
+            _capability_request(resolved),
+            id,
+            "retire",
+            {"reason": reason, "successor": successor},
+        )
+
+    @_tool
+    async def restore_data_product(id: str, role: str | None = None) -> dict:
+        """Restore a deprecated data product (back to live) or a retired one (back to a draft;
+        the members that moved stay with its successor)."""
+        resolved = _role(role)
+        return await tools.change_data_product_status(
+            state, resolved, _capability_request(resolved), id, "restore", {}
+        )
+
+    @_tool
+    async def list_data_product_findings(role: str | None = None) -> list[dict]:
+        """What a curator should look at in the data products, each product with its findings."""
+        resolved = _role(role)
+        return await tools.list_data_product_findings(
+            state, resolved, _capability_request(resolved)
+        )
 
     @_tool
     async def upsert_metric(

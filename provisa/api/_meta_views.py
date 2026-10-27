@@ -794,7 +794,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "data_products": """
         CREATE OR REPLACE VIEW data_products_meta AS
         SELECT id, domain_id, name, owner_role, team_role, purpose, limitations, usage,
-               version, status, sla, support, support_contact, publish, custom_properties
+               version, status, status_reason, retire_on, successor_id, sla, support,
+               support_contact, custom_properties
         FROM data_products
     """,
     "table_columns": """

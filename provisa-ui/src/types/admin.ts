@@ -11,6 +11,7 @@
 /** Types matching provisa/api/admin/types.py */
 
 import type { MaskEntry } from "../lib/masks";
+import type { LifecycleStatus } from "../components/lifecycle/StatusBadge";
 
 // REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
 export interface SourceCdcConfig {
@@ -104,9 +105,18 @@ export interface DataProduct {
   limitations: string;
   usage: string;
   version?: string | null;
-  status?: string | null;
+  // REQ-1634 STATUS: changed only by its actions (publish, deprecate, retire, restore).
+  status: LifecycleStatus;
+  /** Why it was deprecated or retired. */
+  statusReason?: string | null;
+  /** A deprecated product's planned retirement, an ISO date. */
+  retireOn?: string | null;
+  /** The product a retired one's members moved to. */
+  successorId?: string | null;
   sla?: string | null;
   support?: string | null;
+  /** The support contact (email or URL) a catalog listing requires. */
+  supportContact?: string | null;
   customProperties: Record<string, unknown>;
 }
 

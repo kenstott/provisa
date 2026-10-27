@@ -177,4 +177,6 @@ def test_every_ddl_reference_to_data_products_is_declared_in_the_metadata():
 def test_a_copy_inserts_data_products_before_every_table_that_names_one():
     order = [t.name for t in org_metadata.sorted_tables if t.name in ec.CARRIED]
     for table, _ in _ddl_data_product_refs():
+        if table == "data_products":
+            continue  # a retired product's successor: a reference within the table, not an order
         assert order.index("data_products") < order.index(table), table

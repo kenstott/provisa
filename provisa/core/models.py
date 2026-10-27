@@ -529,7 +529,11 @@ class Domain(BaseModel):  # REQ-471, REQ-609
         return data
 
 
-class DataProduct(BaseModel):  # REQ-1634, REQ-1660
+#: A data product's lifecycle (REQ-1634 STATUS): every state is asserted by an action.
+DATA_PRODUCT_STATUSES = ("draft", "live", "deprecated", "retired")
+
+
+class DataProduct(BaseModel):  # REQ-1634
     id: str
     domain_id: str  # required FK — a data product has exactly one owning domain
     name: str
@@ -541,7 +545,13 @@ class DataProduct(BaseModel):  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
+    # REQ-1634 STATUS: draft until published (live); deprecated stays in service until retired.
+    # ``status_reason`` is why it was deprecated or retired; ``retire_on`` the planned retirement
+    # of a deprecated product; ``successor`` the product its members moved to on retirement.
+    status: Literal["draft", "live", "deprecated", "retired"] = "draft"
+    status_reason: str | None = None
+    retire_on: date | None = None
+    successor: str | None = None
     # Prose, not structured: a product spans multiple member tables and a structured SLA
     # can't unambiguously say which member it describes.
     sla: str | None = None
@@ -550,10 +560,17 @@ class DataProduct(BaseModel):  # REQ-1634, REQ-1660
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
     # product this can be derived from (owner_role is a role name, not a contact address).
     support_contact: str | None = None
-    # REQ-1635: Horizon Catalog organization listings default to DRAFT (PUBLISH = FALSE) so a new
-    # listing doesn't surface org-wide before it's reviewed; set true to publish it immediately.
-    publish: bool = False
     custom_properties: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _status_fields_fit(self) -> "DataProduct":
+        if self.status in ("deprecated", "retired") and not (self.status_reason or "").strip():
+            raise ValueError(f"a {self.status} data product states its reason (status_reason)")
+        if self.retire_on is not None and self.status != "deprecated":
+            raise ValueError("retire_on is the planned retirement of a deprecated data product")
+        if self.successor is not None and self.status != "retired":
+            raise ValueError("successor is the data product a retired one's members moved to")
+        return self
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
@@ -880,7 +897,7 @@ class TagAssignment(BaseModel):  # REQ-1377
     relationship_id: str | None = None
     # Commands (tracked functions/webhooks) are identified by their registered name.
     command_name: str | None = None
-    product_id: str | None = None  # REQ-1660: explicit data-product-level tag
+    product_id: str | None = None  # REQ-1634: explicit data-product-level tag
     # Why this tag is on this object; required for 'deprecated' (system semantic).
     reason: str | None = None
     # ISO date the assignment stops being intended — for 'deprecated', the planned removal

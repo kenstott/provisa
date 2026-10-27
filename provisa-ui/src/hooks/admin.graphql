@@ -187,6 +187,7 @@ query DataProductsQuery {
     status
     sla
     support
+    supportContact
     customProperties
   }
 }
@@ -972,6 +973,44 @@ mutation UpdateDataProduct($input: DataProductInput!) {
 mutation DeleteDataProduct($id: String!) {
   deleteDataProduct(id: $id) {
     ...MutationResult
+  }
+}
+
+# REQ-1634 STATUS: a data product's lifecycle, one mutation per action.
+mutation PublishDataProduct($id: String!) {
+  publishDataProduct(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation DeprecateDataProduct($id: String!, $reason: String!, $retireOn: Date) {
+  deprecateDataProduct(id: $id, reason: $reason, retireOn: $retireOn) {
+    ...MutationResult
+  }
+}
+
+mutation RetireDataProduct($id: String!, $reason: String!, $successor: String) {
+  retireDataProduct(id: $id, reason: $reason, successor: $successor) {
+    ...MutationResult
+  }
+}
+
+mutation RestoreDataProduct($id: String!) {
+  restoreDataProduct(id: $id) {
+    ...MutationResult
+  }
+}
+
+# REQ-2146: what a curator should look at in the data products, by product.
+query DataProductFindingsQuery {
+  dataProductFindings {
+    productId
+    findings {
+      kind
+      code
+      message
+      params
+    }
   }
 }
 

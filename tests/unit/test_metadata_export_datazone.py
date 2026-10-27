@@ -78,7 +78,7 @@ def _target() -> MetadataExportTarget:
     )
 
 
-def _snapshot():
+def _snapshot(*, status="draft", members=True):
     config = ProvisaConfig(
         sources=[
             Source(
@@ -99,7 +99,7 @@ def _snapshot():
                 schema_name="public",
                 table_name="orders",
                 description="Orders placed",
-                product_id="sales_360",
+                product_id="sales_360" if members else None,
                 cache_ttl=3600,
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
@@ -113,6 +113,8 @@ def _snapshot():
                 purpose="Every sale",
                 usage="Join on customer_id",
                 version="1.2.0",
+                status=status,
+                status_reason="Replaced." if status in ("deprecated", "retired") else None,
             )
         ],
         roles=[],
@@ -218,6 +220,7 @@ def test_the_forms_carry_the_members_and_the_products_fields():
         "purpose": "Every sale",
         "usage": "Join on customer_id",
         "version": "1.2.0",
+        "status": "draft",
     }
 
 
@@ -724,3 +727,37 @@ async def test_the_isa_update_keeps_a_stewards_classifies_and_foreign_parent(stu
     result = await export.publish(_glossary_snapshot())
     assert result.ok, result.errors
     stubbed.assert_no_pending_responses()
+
+
+async def test_a_retired_product_is_revised_retired_with_no_assets(stubbed):
+    """REQ-1634 STATUS: retired, its members went to its successor; its revision carries the
+    retired status and no items (DataZone takes none rather than an empty list), and is
+    published so the listing says so."""
+    snapshot = _snapshot(status="retired", members=False)
+    (product,) = snapshot.data_products
+    assert product.members == ()
+    _types_exist(stubbed)
+    stubbed.add_response(
+        "create_data_product_revision",
+        _product("dp-1", "3"),
+        {
+            **SCOPE,
+            "identifier": "dp-1",
+            "name": "Sales 360",
+            "description": "Every sale",
+            "formsInput": [
+                {
+                    "formName": PRODUCT_FORM,
+                    "typeIdentifier": PRODUCT_FORM,
+                    "typeRevision": "4",
+                    "content": json.dumps(product_form(product)),
+                }
+            ],
+        },
+    )
+    _listing(stubbed, "dp-1", "DATA_PRODUCT", "3")
+    exporter = metadata_export(_target())
+    exporter.stored_bindings = {product.semantic_uri: ("dp-1", "Sales 360")}
+    result = await exporter.publish(snapshot)
+    assert result.ok, result.errors
+    assert json.loads(json.dumps(product_form(product)))["status"] == "retired"

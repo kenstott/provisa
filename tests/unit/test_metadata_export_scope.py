@@ -223,3 +223,23 @@ def test_a_role_is_published_every_domain_it_reaches_empty_ones_included():
 
     reached = for_role(_snapshot(), _nothing, lambda domain_id: domain_id == "finance")
     assert reached.tables == [] and [d.id for d in reached.domains] == ["finance"]
+
+
+def test_a_retired_product_the_role_reaches_is_published_to_be_withdrawn():
+    """REQ-1634 STATUS: a retired product's members went to its successor, so it has none the role
+    reads; it is still sent where the role reaches its domain, so a catalog withdraws it."""
+    from dataclasses import replace
+
+    from provisa.api.metadata_export.scope import for_role
+
+    snapshot = _snapshot()
+    retired = replace(snapshot.data_products[1], members=(), status="retired")
+    snapshot = replace(snapshot, data_products=[snapshot.data_products[0], retired])
+
+    def _nothing(table: TableAsset) -> set[str] | None:
+        return set()
+
+    reached = for_role(snapshot, _nothing, lambda domain_id: domain_id == "finance")
+    assert [p.id for p in reached.data_products] == ["books"]
+    unreached = for_role(snapshot, _nothing, lambda domain_id: False)
+    assert unreached.data_products == []

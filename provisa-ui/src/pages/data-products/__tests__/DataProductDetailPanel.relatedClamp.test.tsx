@@ -15,6 +15,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
+import { lifecycleProps } from "./lifecycleProps";
 import type { CoreEdge } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
@@ -76,6 +77,7 @@ function panel() {
       inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }
