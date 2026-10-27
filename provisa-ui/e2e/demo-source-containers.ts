@@ -49,6 +49,9 @@ export const DEMO_SOURCE_ENV: Record<string, string> = {
   PROVISA_DEMO_REDIS_PORT: String(E2E_REDIS_PORT),
   PROVISA_DEMO_CASSANDRA_PORT: String(E2E_CASSANDRA_PORT),
   PROVISA_DEMO_SPARQL_PORT: String(E2E_SPARQL_PORT),
+  // The image's default is a fixed 4 GB heap, for an in-memory graph of a few thousand triples:
+  // the provisioning lane's runner (16 GB) ran out of memory with every demo source up (run 40115205350).
+  PROVISA_DEMO_SPARQL_JAVA_OPTIONS: "-Xmx512m -Xms128m",
   PROVISA_DEMO_PROMETHEUS_PORT: String(E2E_PROMETHEUS_PORT),
   PROVISA_DEMO_CHINOOK_PORT: String(E2E_CHINOOK_PORT),
   PROVISA_DEMO_SPLUNK_PORT: String(E2E_SPLUNK_PORT),

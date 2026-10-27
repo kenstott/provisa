@@ -335,11 +335,10 @@ def append_logs(dsn: str, schema: str) -> list[str]:
     """The bitemporal views' append logs ``schema`` holds in the store ``dsn``: its tables carrying
     the managed recorded-time column every append log has (mv.bitemporal BitemporalSpec
     .system_column), declared or inherited alike."""
-    import duckdb
-
+    from provisa.core import engine_memory
     from provisa.mv.bitemporal import BitemporalSpec
 
-    con = duckdb.connect()
+    con = engine_memory.connect()
     try:
         _attach(con, "logs_src", dsn, read_only=True)
         return [

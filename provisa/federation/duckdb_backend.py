@@ -187,7 +187,7 @@ def parses(sql: str) -> bool:
     nothing. One connection per thread, kept for the thread's later checks."""
     conn = getattr(_PARSER, "conn", None)
     if conn is None:
-        conn = _PARSER.conn = duckdb.connect()
+        conn = _PARSER.conn = engine_memory.connect()
     try:
         conn.extract_statements(sql)
     except duckdb.ParserException:

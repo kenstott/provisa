@@ -179,12 +179,10 @@ on:
         required: false
       AZURE_TENANT_ID:
         required: false
-      # Live APIs the core UI lane's specs call: AskAmerica/govdata, Kaggle, OpenRouter, Stripe.
+      # Live APIs the core UI lane's specs call: AskAmerica/govdata, Kaggle, Stripe.
       FREE_ASKAMERICA_KEY:
         required: false
       KAGGLE_API_TOKEN:
-        required: false
-      OPENROUTER_API_KEY:
         required: false
       STRIPE_API_KEY:
         required: false
@@ -362,7 +360,6 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
           SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}

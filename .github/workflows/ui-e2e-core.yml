@@ -78,8 +78,6 @@ on:
         required: false
       KAGGLE_API_TOKEN:
         required: false
-      OPENROUTER_API_KEY:
-        required: false
       SNOWFLAKE_ACCOUNT:
         required: false
       SNOWFLAKE_PASSWORD:
@@ -206,7 +204,6 @@ jobs:
       # OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox (source-to-query-stripe).
       FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
   # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
