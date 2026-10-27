@@ -40,6 +40,7 @@ const VIEW: RoleEffective = {
     { right: "export", from: ["dq_lead"] },
     { right: "read", from: ["viewer"] },
   ],
+  data: [],
 };
 
 const asked = vi.hoisted(() => ({ roles: [] as string[] }));

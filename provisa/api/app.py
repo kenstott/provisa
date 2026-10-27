@@ -4812,6 +4812,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.roles_router import router as roles_router
 
     app.include_router(roles_router)
+    from provisa.api.admin.table_access_router import router as table_access_router  # REQ-2162
+
+    app.include_router(table_access_router)
     from provisa.api.admin.derived_roles_router import router as derived_roles_router
 
     app.include_router(derived_roles_router)  # REQ-2057
