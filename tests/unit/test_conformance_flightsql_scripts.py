@@ -363,3 +363,50 @@ def test_a_skip_a_group_names_is_counted_in_that_group(tmp_path, monkeypatch):
     assert [(g["group"], g["count"]) for g in doc["by_design"]] == [("Transactions", 1)]
     assert [(g["group"], g["count"]) for g in doc["not_sent_by_client"]] == [("No statistics", 1)]
     assert (doc["not_runnable"], doc["client_not_sent"], doc["total"]) == (1, 1, 2)
+
+
+@pytest.mark.parametrize(
+    ("arrow_format", "declared"),
+    [
+        ("l", "bigint"),
+        ("vu", "text"),
+        ("w:15", "bytea"),
+        ("d:10,2", "numeric(10,2)"),
+        ("ttm", "time(3)"),
+        ("tss:", "timestamp(0)"),
+        ("tsn:", "timestamp(6)"),  # PostgreSQL holds six digits at most
+        ("tsm:Asia/Tokyo", "timestamptz(3)"),
+    ],
+)
+def test_an_ingested_column_is_declared_as_its_postgresql_type(arrow_format, declared):
+    assert fixtures.ingest_type(arrow_format) == declared
+
+
+def test_each_ingest_test_has_the_table_it_would_create(tmp_path):
+    """From the suite's ingest cases: test_create's table for every case, the other tests' for
+    the cases they run on, and none for a type the model cannot declare."""
+    cases = tmp_path / "adbc_drivers_validation/queries/ingest"
+    cases.mkdir(parents=True)
+
+    def case(name: str, value: str) -> None:
+        schema = {
+            "format": "+s",
+            "children": [{"name": "idx", "format": "l"}, {"name": "value", "format": value}],
+        }
+        (cases / f"{name}.txtcase").write_text(
+            f"// part: input_schema\n\n{json.dumps(schema)}\n\n// part: input\n\n{{}}\n"
+        )
+
+    for name, value in (
+        ("string", "u"),
+        ("large_string", "U"),
+        ("binary", "z"),
+        ("decimal_scale_negative", "d:2,-2"),
+    ):
+        case(name, value)
+    tables = fixtures.ingest_tables(tmp_path)
+    assert tables["test_ingest_create_large_string"] == [("idx", "bigint"), ("value", "text")]
+    assert tables["test_ingest_long_values_binary"] == [("idx", "bigint"), ("value", "bytea")]
+    assert "test_ingest_create_decimal_scale_negative" not in tables
+    assert {"test_ingest_append_string", "test_ingest_temporary_string"} <= set(tables)
+    assert len(tables["test_ingest_many_columns"]) == 100

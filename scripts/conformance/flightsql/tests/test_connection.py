@@ -12,8 +12,6 @@
 
 # Requirements: REQ-2167
 
-import copy
-
 import adbc_drivers_validation.tests.connection
 import pytest
 from adbc_drivers_validation import model
@@ -21,21 +19,10 @@ from adbc_drivers_validation.tests.connection import TestConnection as _SuiteCon
 
 from . import provisa
 
-#: The fixture model's schema: its domain, where every table the job declares is listed.
-FIXTURE_SCHEMA = "conformance"
+FIXTURE_SCHEMA = provisa.FIXTURE_SCHEMA
+_in_fixture_schema = provisa.in_fixture_schema
 #: The columns every model table carries besides its own (fixtures.LINK_COLUMNS).
 LINK_COLUMNS = ("_name_", "_domain_")
-
-
-def _in_fixture_schema(driver: model.DriverQuirks) -> model.DriverQuirks:
-    """``driver`` with the fixture's schema as the one a test looks for the fixture table in: the
-    suite's would be in the current schema (public); a model's tables are in their domains'."""
-    features = driver.features.model_copy()
-    # The suite's DriverFeatures answers current_schema from this private attribute.
-    features._current_schema = FIXTURE_SCHEMA
-    adapted = copy.copy(driver)
-    adapted.features = features
-    return adapted
 
 
 def _columns(objects: list[dict]) -> list[tuple]:
