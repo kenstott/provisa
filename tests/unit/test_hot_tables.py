@@ -620,7 +620,10 @@ def _recording_runtime(engine_key: str, rows=((1, "a"),), columns=("id", "name")
     from provisa.federation.engine import build_engine
     from provisa.federation.runtime import EngineRuntime
 
-    runtime = EngineRuntime(build_engine(engine_key), SimpleNamespace())
+    # A state with no registered table: no read is made exact at its source (exact_numeric).
+    runtime = EngineRuntime(
+        build_engine(engine_key), SimpleNamespace(schema_build_cache={"tables": []})
+    )
     sent: list[str] = []
 
     async def _execute_engine(sql, *_a, **_k):
