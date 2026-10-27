@@ -350,3 +350,19 @@ async def test_each_step_is_a_read_of_the_governed_statement_run_in_order(monkey
     assert admitted == [("analyst", "enrich")]
     assert [n for n, _, _ in landed] == dropped == [step.table]
     assert answer.rows == [(7, 3)]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH c AS (SELECT id, enrich(note) FROM t) INSERT INTO x SELECT * FROM c",
+        "INSERT INTO x WITH c AS (SELECT id, enrich(note) FROM t) SELECT * FROM c",
+    ],
+)
+def test_an_insert_whose_cte_holds_a_transform_is_refused_saying_so(sql):
+    from provisa.codesource.columns import ColumnTransformRefused
+
+    assert stage(sql, TRANSFORMS, lambda command, name: None) is None
+    with pytest.raises(ColumnTransformRefused, match="INSERT ... SELECT") as refused:
+        fold(sql, TRANSFORMS, lambda command, name: None)
+    assert "common table expression" in str(refused.value)
