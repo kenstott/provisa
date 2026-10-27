@@ -25,7 +25,8 @@ this, so the two set a demo up alike.
 A bundled demo runs only its environment steps where it runs (``--environments-only``): the other
 steps ran when its bundle was built and what they wrote is in its stores' dumps, but an
 environment is a branch of the model in the control plane, which every start of the demo builds
-anew.
+anew. Its profile runs, kept in the control plane too, are the build's, carried in the bundle and
+loaded in place of its profile steps (REQ-2052).
 
 Once per control plane: the demo's name is added to the operator setting ``demo.setup_completed``
 when every step has succeeded, and a demo already listed there is not set up again. The first step
@@ -49,6 +50,8 @@ import httpx
 import yaml
 
 SETTING = "demo.setup_completed"
+#: Where a bundled demo's server loads the profile runs its bundle carries (REQ-2052).
+CARRIED_RUNS = "/admin/profilers/carried-runs"
 _ROLE = {"X-Provisa-Role": "org_admin"}
 _TIMEOUT = 1800.0
 
@@ -172,6 +175,11 @@ def run_step(client: httpx.Client, step: dict) -> str:
         query = f"mutation {{ {field}{f' {{ {selection} }}' if selection else ''} }}"
         data = _ok(client.post("/data/graphql", json={"query": query}), step)
         return f"command {step['command']}: {data[field]}"
+    if "carried_runs" in step:
+        response = client.post(CARRIED_RUNS)
+        if response.status_code != 200:
+            raise StepFailed(step, f"HTTP {response.status_code}: {response.text}")
+        return f"profile runs carried in the bundle: {', '.join(response.json()['loaded'])}"
     if "profile" in step:
         profiler = step["profile"]
         response = client.post(f"/admin/profilers/{profiler}/run")
@@ -241,9 +249,14 @@ def run(
 ) -> int:
     listed = steps(demo_dir)
     if environments_only:
-        # A Test (synthetic) environment is generated from prod's profile runs: the profile steps
-        # run with them.
-        listed = [step for step in listed if "environment" in step or "profile" in step]
+        # REQ-2052 (A FIRST RUN IS SEEDED): the profile runs are the bundle build's, carried in the
+        # bundle and loaded once, before its environments, as its hosted template loads
+        # them: the first run and the drift run setup measured, not two runs of the data as setup
+        # left it. A Test (synthetic) environment is generated from them.
+        profiles = any("profile" in step for step in listed)
+        listed = [step for step in listed if "environment" in step]
+        if profiles:
+            listed.insert(0, {"carried_runs": True})
     if not listed:
         return 0
     name = demo_dir.resolve().name

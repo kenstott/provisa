@@ -132,3 +132,19 @@ async def load_runs(conn: Any, path: Path) -> list[str]:
             await conn.execute_core_many(relation.insert(), rows)
         loaded.append(relation.name)
     return loaded
+
+
+async def load_bundle_runs(conn: Any, directory: Path | None) -> list[str]:
+    """Load the profile runs the bundle of the demo this server was started as carries
+    (``directory``, :func:`provisa.core.demo.started_demo_directory`) into the org ``conn`` is
+    scoped to: a bundle started on its own server has the runs its build measured, as its hosted
+    template has (REQ-2052, A FIRST RUN IS SEEDED). Refused by name when the server was started as
+    no named demo or the bundle carries none."""
+    if directory is None:
+        raise ValueError(
+            "this server was started as no named demo: there are no carried profile runs"
+        )
+    path = results_path(directory)
+    if not path.is_file():
+        raise ValueError(f"the bundle carries no profile runs ({path.name}): rebuild it")
+    return await load_runs(conn, path)

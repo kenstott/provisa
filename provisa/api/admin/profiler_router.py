@@ -12,6 +12,7 @@
 
 * ``GET  /admin/profilers`` — the profiler sources with their schedules, for Add to Profiler.
 * ``POST /admin/profilers/{source_id}/run`` — profile every member now.
+* ``POST /admin/profilers/carried-runs`` — load the runs a started demo's bundle carries (REQ-2052).
 * ``GET  /admin/profilers/{source_id}/catalog`` — the result relations it produces per member, each
   with the grants, masks and row rules the registration form starts from (the curation step; with
   no registration no reader sees a profile).
@@ -94,6 +95,21 @@ async def run_profiler(request: Request, source_id: str) -> list[dict]:
         return await run_source(state, source_id)
     except ValueError as exc:
         raise ApiError(404, "profile.not_a_profiler", str(exc), source=source_id) from exc
+
+
+@router.post("/profilers/carried-runs")
+async def load_carried_runs(request: Request) -> dict:
+    """REQ-2052: load the profile runs the bundle of the demo this server was started as carries,
+    as its hosted template loads them (a bundled demo's setup calls this in place of profiling)."""
+    require_capability_request(request, "source_registration")
+    from provisa.core.demo import started_demo_directory
+    from provisa.profiler.carry import load_bundle_runs
+
+    async with _db().acquire() as conn:
+        try:
+            return {"loaded": await load_bundle_runs(conn, started_demo_directory())}
+        except ValueError as exc:
+            raise ApiError(409, "profile.carried_runs_refused", str(exc)) from exc
 
 
 @router.get("/profilers/{source_id}/catalog")
