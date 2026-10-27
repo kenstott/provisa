@@ -16,6 +16,8 @@ terms -- so each query is checked by what it returns."""
 
 import dataclasses
 
+import math
+
 import duckdb
 import pytest
 
@@ -629,3 +631,39 @@ def test_a_filter_naming_what_an_inner_optional_binds_is_refused():
             f"SELECT ?n WHERE {{ ?s a <{PERSON}> ; p:name ?n . OPTIONAL {{ ?s rel:WORKS_AT ?c . "
             f"?c a <{COMPANY}> OPTIONAL {{ ?c c:name ?cn }} FILTER(?cn = 'Acme') }} }}",
         )
+
+
+@pytest.mark.parametrize(
+    ("divisor", "quotient"),
+    [("10", 4.1), ('"10"^^xsd:integer', 4.1), ("10.0", 4.1), ("0", None), ("0.0", None)],
+)
+def test_an_integer_or_decimal_division_is_a_decimal_and_by_zero_an_error(con, divisor, quotient):
+    # op:numeric-divide: 41 / 10 is 4.1, not Cypher's 4; by a zero integer or decimal it raises,
+    # leaving the BIND unbound and the FILTER false.
+    rows = _answer(
+        con, f"SELECT ?x WHERE {{ ?s p:name 'Ann' ; p:age ?a BIND(?a / {divisor} AS ?x) }}"
+    )
+    assert [r["x"] for r in rows] == [quotient]
+    kept = _answer(con, f"SELECT ?n WHERE {{ ?s p:name ?n ; p:age ?a FILTER(?a / {divisor} > 0) }}")
+    assert sorted(r["n"] for r in kept) == ([] if quotient is None else ["Ann", "Bo", "Cy"])
+
+
+@pytest.mark.parametrize(
+    ("expression", "quotient"),
+    [
+        ("?a / 0.0e0", math.inf),
+        ("-?a / 0.0e0", -math.inf),
+        ("xsd:double(?a) / 0", math.inf),
+        ("?a / 10.0e0", 4.1),
+    ],
+)
+def test_a_float_or_double_division_by_zero_is_infinity(con, expression, quotient):
+    rows = _answer(
+        con, f"SELECT ?x WHERE {{ ?s p:name 'Ann' ; p:age ?a BIND({expression} AS ?x) }}"
+    )
+    assert [r["x"] for r in rows] == [quotient]
+
+
+def test_a_double_zero_divided_by_zero_is_nan(con):
+    rows = _answer(con, "SELECT ?x WHERE { ?s p:name 'Ann' BIND(0.0e0 / 0.0e0 AS ?x) }")
+    assert len(rows) == 1 and math.isnan(rows[0]["x"])
