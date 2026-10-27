@@ -237,16 +237,15 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
     assert table.table_name == m.FIXTURE_TABLE == table.alias
     assert all(c.visible_to == ["org_admin"] for c in table.columns)
     # REQ-1426: an untyped column cannot be persisted (run 40358436057 failed its boot on it).
-    # Each registrable column is typed as registration types the PostgreSQL column it reads; a
-    # type registration refuses is left out of the model, never registered unmappable.
+    # Each column is typed as registration types the PostgreSQL column it reads.
     from provisa.compiler.type_map import column_type_to_graphql
 
-    registered, refused = m.registrable_columns("host=127.0.0.1 port=55432")
+    registered = m.registrable_columns("host=127.0.0.1 port=55432")
     typed = {n: typing["data_type"] for n, _, typing in registered}
     assert [(c.name, c.data_type) for c in table.columns] == list(typed.items())
     for column in table.columns:
         column_type_to_graphql(column.data_type)  # every registered type maps
-    assert set(typed) | set(refused) == {n for n, _, _ in m.FIXTURE}
+    assert set(typed) == {n for n, _, _ in m.FIXTURE}  # REQ-2171: every column registers
     assert typed["c_numeric_10_2"] == "numeric(10,2)"
     assert typed["c_numeric"] == "numeric(38,4)" and "c_numeric" in sampled
     # REQ-1965: an array of one primitive type registers as JSON with its element type.

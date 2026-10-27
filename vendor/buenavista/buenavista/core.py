@@ -48,32 +48,36 @@ class BVType(enum.Enum):
     REALARRAY = 26
     BOOLARRAY = 27
     DECIMALARRAY = 28
-    # Provisa's IR subtypes (REQ-2171), each sent as its PostgreSQL type.
-    INET = 29
-    CIDR = 30
-    MACADDR = 31
-    XML = 32
-    POINT = 33
-    OID = 34
-    MONEY = 35
-    MACADDR8 = 36
-    LINE = 37
-    LSEG = 38
-    BOX = 39
-    PATH = 40
-    POLYGON = 41
-    CIRCLE = 42
-    GEOMETRY = 43
-    GEOGRAPHY = 44
-    INT4RANGE = 45
-    INT8RANGE = 46
-    NUMRANGE = 47
-    TSRANGE = 48
-    TSTZRANGE = 49
-    DATERANGE = 50
-    BIT = 51
-    VARBIT = 52
-    TSVECTOR = 53
+    # An unsigned 4-byte integer (oid, xid): its binary form is not int4's past 2**31.
+    OID = 29
+    # A function's or a type's oid, whose text form is its name (the server supplies the names).
+    REGPROC = 30
+    REGTYPE = 31
+    # Provisa's IR subtypes (REQ-2171), each sent as its PostgreSQL type (oid is OID above).
+    INET = 32
+    CIDR = 33
+    MACADDR = 34
+    XML = 35
+    POINT = 36
+    MONEY = 37
+    MACADDR8 = 38
+    LINE = 39
+    LSEG = 40
+    BOX = 41
+    PATH = 42
+    POLYGON = 43
+    CIRCLE = 44
+    GEOMETRY = 45
+    GEOGRAPHY = 46
+    INT4RANGE = 47
+    INT8RANGE = 48
+    NUMRANGE = 49
+    TSRANGE = 50
+    TSTZRANGE = 51
+    DATERANGE = 52
+    BIT = 53
+    VARBIT = 54
+    TSVECTOR = 55
 
 
 class RawDataRowBytes(bytes):
@@ -104,6 +108,12 @@ class QueryResult:
 
     def column(self, index: int) -> Tuple[str, BVType]:
         raise NotImplementedError
+
+    def column_type_oid(self, index: int) -> Optional[int]:
+        """The type OID the column is described with, when it is not its BVType's own (a
+        PostgreSQL type sent in its base type's wire form, such as name as text); None for the
+        BVType's."""
+        return None
 
     def rows(self) -> Iterator[List]:
         raise NotImplementedError

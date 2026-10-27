@@ -8824,6 +8824,11 @@
   - tests/unit/test_cypher_graph_fns.py
   - tests/unit/test_cypher_parser.py
   - tests/unit/test_cypher_translator.py
+  - tests/unit/test_cypher_tck_comparison.py
+  - tests/unit/test_cypher_tck_lists.py
+  - tests/unit/test_cypher_tck_maps.py
+  - tests/unit/test_cypher_tck_precedence.py
+  - tests/unit/test_cypher_tck_quantifiers.py
   - tests/unit/test_sql_to_cypher.py
   - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01
@@ -15005,8 +15010,13 @@
   type: behavioral
   description: 'The catalog intercept layer handles scalar expression queries: `current_user` / `session_user`
     → authenticated `role_id`; `current_database()` → `"provisa"`; `current_schema()` → `"public"`; `version()`
-    → `"PostgreSQL 14.0 on Provisa"`; `pg_backend_pid()` → `0`; `current_setting(...)` → value from a
-    fixed settings table; `SHOW <setting>` → value from the same settings table.'
+    → `"PostgreSQL 14.0 on Provisa"`; `pg_backend_pid()` → `0`; `current_setting(...)` → value from a fixed
+    settings table; `SHOW <setting>` → value from the same settings table. (Amended 2026-10-27, THE CATALOG
+    IS THE SERVED DATABASE:) Maintainer 2026-10-27: every catalog a client sees is the served database,
+    as in PostgreSQL where information_schema.table_catalog always equals current_database(): under multi-tenancy
+    the org the client named (database name or TLS hostname), single-tenant "provisa". pgwire''s information_schema,
+    pg_tables and schemata, and Flight SQL''s GetSessionOptions, GetCatalogs and GetObjects all report that
+    one name; no surface lists a hard-coded "provisa" while current_database() answers the org.'
   use_case: Scalar expression intercepts prevent JDBC drivers and ORMs from failing on startup queries
     that probe server identity and settings.
   code:
@@ -24925,17 +24935,22 @@
   type: behavioral
   description: 'Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements
     execute as direct table writes through the same write pipeline as GraphQL and SQL mutations, [SUPERSEDED
-    by REQ-1925, 2026-10-03 -- the row filter is applied by the one write admission and the hooks are
-    its one after-write step. Kept here for history; do not implement against it.] with RLS injection,
-    dialect transpilation, and all post-mutation hooks (response cache invalidation, MV stale marking,
-    Kafka change events, Kafka sink triggers, hot-table reload — absorbs REQ-798) [END SUPERSEDED BLOCK].
-    Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected. All writes are governed
-    by table/view write rights like any other write. This supersedes REQ-346 (read-only constraint), which
-    is now inaccurate. (Amended 2026-10-03, CYPHER WRITES PASS THE ONE WRITE ADMISSION AND BIND THEIR
-    PARAMETERS:) A Cypher write is translated and then admitted by the one write admission (REQ-1925),
-    which applies the role''s row filter to the translated write and runs the one after-write step. A Cypher definition (CREATE, DROP or ALTER of an index, a constraint or another object) is refused before lowering (REQ-1926). Cypher has no TRUNCATE; a statement opening with TRUNCATE is not Cypher and fails to parse (amended 2026-10-19). A Cypher write binds its parameters:
-    `$name` is a bound value and never literal text, and a statement that names a parameter the request
-    did not supply is refused with an error naming it.'
+    by REQ-1925, 2026-10-03 -- the row filter is applied by the one write admission and the hooks are its
+    one after-write step. Kept here for history; do not implement against it.] with RLS injection, dialect
+    transpilation, and all post-mutation hooks (response cache invalidation, MV stale marking, Kafka change
+    events, Kafka sink triggers, hot-table reload — absorbs REQ-798) [END SUPERSEDED BLOCK]. [SUPERSEDED
+    by REQ-2176, 2026-10-27 -- MERGE is MATCH then CREATE, DETACH DELETE is governed when every part is
+    an exact target, and SET/REMOVE of labels write session label rows; all lower through the graph IR.
+    Kept here for history; do not implement against it.] Non-direct write patterns (MERGE, DETACH, REMOVE)
+    are unsupported and rejected. [END SUPERSEDED BLOCK] All writes are governed by table/view write rights
+    like any other write. This supersedes REQ-346 (read-only constraint), which is now inaccurate. (Amended
+    2026-10-03, CYPHER WRITES PASS THE ONE WRITE ADMISSION AND BIND THEIR PARAMETERS:) A Cypher write is
+    translated and then admitted by the one write admission (REQ-1925), which applies the role''s row filter
+    to the translated write and runs the one after-write step. A Cypher definition (CREATE, DROP or ALTER
+    of an index, a constraint or another object) is refused before lowering (REQ-1926). Cypher has no TRUNCATE;
+    a statement opening with TRUNCATE is not Cypher and fails to parse (amended 2026-10-19). A Cypher write
+    binds its parameters: `$name` is a bound value and never literal text, and a statement that names a
+    parameter the request did not supply is refused with an error naming it.'
   use_case: Write support enables graph users to mutate data via Cypher while maintaining governance consistency
     with SQL and GraphQL mutations.
   code:
@@ -27948,42 +27963,48 @@
   type: behavioral
   target: 2026-Q4
   description: 'Provisa''s pgwire server must satisfy the capability set that DuckDB''s `postgres` extension
-    exercises when attaching Provisa via `ATTACH ... AS x (TYPE postgres)`, enabling DuckDB federation
-    engines and external DuckDB clients to mount a governed Provisa instance with RLS/masking intact.
-    Concrete capabilities enumerated: (1) libpq connection + auth handshake; (2) catalog introspection
-    queries for schemas/tables/ columns/types/PKs over pg_namespace, pg_class, pg_attribute, pg_type,
-    pg_index, pg_constraint with correct atttypmod and pg_type OIDs; (3) bulk read via `COPY (SELECT ...)
-    TO STDOUT (FORMAT binary)` with real PostgreSQL binary COPY wire encoding per column type; (4) transaction-control
-    statements (`BEGIN`/`COMMIT`/`ROLLBACK`, incl. `SET TRANSACTION READ ONLY` / `REPEATABLE READ`) accepted as no-ops. NO real snapshot isolation is provided or needed; (5) single-stream scan ONLY. Snapshot
-    export, server-side cursors, and ctid-range parallelism are explicit NON-GOALS, validated empirically
-    against DuckDB in the sibling pgwire-calcite project (PGW-004 / PGW-023): DuckDB''s ctid parallelism
-    splits a table by physical page range, but Provisa exposes no physical row address, so honoring a
-    ctid range would force a `ROW_NUMBER() OVER (ORDER BY ...)` partition that scans+sorts the whole table per stream, strictly worse than one stream. The server reports relpages/reltuples ~ 0 in pg_class
-    so DuckDB never elects parallelism and reads a single correct binary-COPY stream. Server version >=
-    14 (DuckDB''s gate) is already met (server_version ''14.0.provisa''). DONE (2026-07) capability (3): BINARY COPY output: COPY ... TO STDOUT (FORMAT binary) now emits a real PostgreSQL binary COPY stream
-    (provisa/pgwire/copy_handler.py): the 11-byte PGCOPY signature + flags + header-extension, per-row
-    int16 field count with length-prefixed per-field bodies (int32 -1 for NULL), and the int16 -1 trailer.
-    Per-column encoding is selected from the column''s advertised type (Arrow schema on the Trino Flight
-    bulk path; DuckDB type strings via QueryResult.column_types on the direct path) — bool/int2/int4/int8/float4/float8/bytea
-    encode to their PG binary representations, everything else to UTF-8 text matching the text OID — and
-    the CopyOutResponse overall-format flag is set to 1 (binary). Capabilities (1) libpq handshake and
-    (2) catalog introspection are served by the existing pgwire server + catalog; (4) transaction-control
-    statements are accepted as no-ops by the txn-tag path. DONE (2026-07) the COPY parser now accepts
-    DuckDB''s actual `(FORMAT "binary")` syntax — optional WITH and a quoted format word — which the older
-    regex rejected (all three COPY regexes in provisa/pgwire/copy_handler.py); and a live end-to-end DuckDB
-    1.5.3 `ATTACH ... TYPE postgres` test drives all five capabilities against a running server (tests/integration/test_duckdb_attach_pgwire.py):
-    ATTACH + catalog discovery, binary-COPY row/type/NULL round-trip, transaction no-ops via postgres_execute,
-    and relpages=0 single-stream. Capability (5) is confirmed a non-goal, not remaining work. COMPLETE.
-
-    (Amended 2026-09-25, CASE-INSENSITIVE TYPE MATCHING:) `_sql_type_to_bvtype` (provisa/pgwire/server.py)
-    now upper-cases its input before matching against `_TYPE_TO_BVTYPE`/`_INT_TYPES`, which are keyed
-    uppercase. Confirmed live: an asyncpg-based DIRECT-route client reports PostgreSQL type names lowercase
-    (`"int4"`, via asyncpg''s own `Type.name`), which the case-sensitive lookup missed entirely. The column fell through to the `BVType.TEXT` default, and when that same client requested BINARY wire
-    format for the column (asyncpg''s normal behavior for a type it recognizes), `send_data_rows`''s TEXT
-    binary-format converter (`lambda r: r.encode("utf-8")`) crashed on the raw `int` value (`AttributeError:
-    ''int'' object has no attribute ''encode''`). psycopg2 never surfaced this: it requests TEXT wire
-    format by default, and TEXT''s own text-format converter is plain `str`, tolerant of any Python type,
-    so the underlying mistyping was invisible until a binary-preferring client exercised the DIRECT route.'
+    exercises when attaching Provisa via `ATTACH ... AS x (TYPE postgres)`, enabling DuckDB federation engines
+    and external DuckDB clients to mount a governed Provisa instance with RLS/masking intact. Concrete capabilities
+    enumerated: (1) libpq connection + auth handshake; (2) catalog introspection queries for schemas/tables/
+    columns/types/PKs over pg_namespace, pg_class, pg_attribute, pg_type, pg_index, pg_constraint with correct
+    atttypmod and pg_type OIDs; (3) bulk read via `COPY (SELECT ...) TO STDOUT (FORMAT binary)` with real
+    PostgreSQL binary COPY wire encoding per column type; (4) transaction-control statements (`BEGIN`/`COMMIT`/`ROLLBACK`,
+    incl. `SET TRANSACTION READ ONLY` / `REPEATABLE READ`) accepted as no-ops. NO real snapshot isolation
+    is provided or needed; (5) single-stream scan ONLY. Snapshot export, server-side cursors, and ctid-range
+    parallelism are explicit NON-GOALS, validated empirically against DuckDB in the sibling pgwire-calcite
+    project (PGW-004 / PGW-023): DuckDB''s ctid parallelism splits a table by physical page range, but Provisa
+    exposes no physical row address, so honoring a ctid range would force a `ROW_NUMBER() OVER (ORDER BY
+    ...)` partition that scans+sorts the whole table per stream, strictly worse than one stream. The server
+    reports relpages/reltuples ~ 0 in pg_class so DuckDB never elects parallelism and reads a single correct
+    binary-COPY stream. Server version >= 14 (DuckDB''s gate) is already met (server_version ''14.0.provisa'').
+    DONE (2026-07) capability (3): BINARY COPY output: COPY ... TO STDOUT (FORMAT binary) now emits a real
+    PostgreSQL binary COPY stream (provisa/pgwire/copy_handler.py): the 11-byte PGCOPY signature + flags
+    + header-extension, per-row int16 field count with length-prefixed per-field bodies (int32 -1 for NULL),
+    and the int16 -1 trailer. Per-column encoding is selected from the column''s advertised type (Arrow
+    schema on the Trino Flight bulk path; DuckDB type strings via QueryResult.column_types on the direct
+    path) — bool/int2/int4/int8/float4/float8/bytea encode to their PG binary representations, everything
+    else to UTF-8 text matching the text OID — and the CopyOutResponse overall-format flag is set to 1 (binary).
+    Capabilities (1) libpq handshake and (2) catalog introspection are served by the existing pgwire server
+    + catalog; (4) transaction-control statements are accepted as no-ops by the txn-tag path. DONE (2026-07)
+    the COPY parser now accepts DuckDB''s actual `(FORMAT "binary")` syntax — optional WITH and a quoted
+    format word — which the older regex rejected (all three COPY regexes in provisa/pgwire/copy_handler.py);
+    and a live end-to-end DuckDB 1.5.3 `ATTACH ... TYPE postgres` test drives all five capabilities against
+    a running server (tests/integration/test_duckdb_attach_pgwire.py): ATTACH + catalog discovery, binary-COPY
+    row/type/NULL round-trip, transaction no-ops via postgres_execute, and relpages=0 single-stream. Capability
+    (5) is confirmed a non-goal, not remaining work. COMPLETE. (Amended 2026-09-25, CASE-INSENSITIVE TYPE
+    MATCHING:) `_sql_type_to_bvtype` (provisa/pgwire/server.py) now upper-cases its input before matching
+    against `_TYPE_TO_BVTYPE`/`_INT_TYPES`, which are keyed uppercase. Confirmed live: an asyncpg-based
+    DIRECT-route client reports PostgreSQL type names lowercase (`"int4"`, via asyncpg''s own `Type.name`),
+    which the case-sensitive lookup missed entirely. The column fell through to the `BVType.TEXT` default,
+    and when that same client requested BINARY wire format for the column (asyncpg''s normal behavior for
+    a type it recognizes), `send_data_rows`''s TEXT binary-format converter (`lambda r: r.encode("utf-8")`)
+    crashed on the raw `int` value (`AttributeError: ''int'' object has no attribute ''encode''`). psycopg2
+    never surfaced this: it requests TEXT wire format by default, and TEXT''s own text-format converter
+    is plain `str`, tolerant of any Python type, so the underlying mistyping was invisible until a binary-preferring
+    client exercised the DIRECT route. (Amended 2026-10-27, TRANSACTIONS ARE A NO-OP ON EVERY SURFACE:)
+    Maintainer 2026-10-07 (settled): transaction control is a no-op on every surface, not only pgwire: SQL
+    BEGIN/START TRANSACTION/COMMIT/ROLLBACK/SAVEPOINT/RELEASE, Flight SQL''s transaction actions and Bolt''s
+    BEGIN/COMMIT/ROLLBACK are acknowledged and hold no transaction; each write is applied as it runs.'
   use_case: Lets DuckDB (as the REQ-825 federation engine or any external DuckDB/BI client) mount a governed
     Provisa instance via `ATTACH ... TYPE postgres` and query it with RLS/masking intact, completing the
     develop-on-DuckDB story where DuckDB reaches Provisa itself the same way it reaches any Postgres.
@@ -80834,8 +80855,9 @@
   feature: source-registration-introspection
   priority: MUST
   type: behavioral
-  description: 'The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine introspects it -- from the precision and scale each engine reports for the column, not from how that engine happens to print the type name -- and stores them with the column; the column editor shows them and lets the registrar set or clear them. A numeric column with a recorded precision and scale is an exact decimal of that precision and scale on every read path, on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating point on every read path and in every listing, the same for an empty result as for a full one, and is documented as approximate. A column''s type is never sized from the rows a read happens to return. The type a catalog lists for a column is the type a read of that column returns. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a numeric column''s precision and scale have one stored spelling, numeric(p,s), written and read in one place, taken at registration from the precision and scale the engine reports, and a size no numeric can have (precision 1 to 76, scale 0 to the precision) is refused with a code naming the column; the column editor sets or clears them beside the type; a read types each registered column as its registered type on pgwire''s row stream, Flight''s buffered answers, an Airport scan and an engine''s Arrow stream, a value that is not that type is a read refusal with a code, and only a result column that is a registered column is typed by the model; a numeric with no recorded size is cast to double precision by its source inside the governed statement, so its type depends on no row; the type a catalog lists is the type a read returns. Verified on a running server over Flight and pgwire (the catalog, rows, no rows and a computed column). Not yet verified surface by surface: GraphQL, gRPC, REST, JSON:API and Bolt.'
+  description: 'The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine introspects it -- from the precision and scale each engine reports for the column, not from how that engine happens to print the type name -- and stores them with the column; the column editor shows them and lets the registrar set or clear them. A numeric column with a recorded precision and scale is an exact decimal of that precision and scale on every read path, on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating point on every read path and in every listing, the same for an empty result as for a full one, and is documented as approximate. A column''s type is never sized from the rows a read happens to return. The type a catalog lists for a column is the type a read of that column returns. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a numeric column''s precision and scale have one stored spelling, numeric(p,s), written and read in one place, taken at registration from the precision and scale the engine reports, and a size no numeric can have (precision 1 to 76, scale 0 to the precision) is refused with a code naming the column; the column editor sets or clears them beside the type; a read types each registered column as its registered type on pgwire''s row stream, Flight''s buffered answers, an Airport scan and an engine''s Arrow stream, a value that is not that type is a read refusal with a code, and only a result column that is a registered column is typed by the model; a numeric with no recorded size is cast to double precision by its source inside the governed statement, so its type depends on no row; the type a catalog lists is the type a read returns. Verified on a running server over Flight and pgwire (the catalog, rows, no rows and a computed column). Not yet verified surface by surface: GraphQL, gRPC, REST, JSON:API and Bolt. (Amended 2026-10-27, TIMESTAMP PRECISION:) The model records a timestamp column''s fractional-second precision the same way: a PostgreSQL column declaring one (TIMESTAMP(p), with or without time zone) registers as timestamp(p) or timestamptz(p), and is read and listed in Arrow at the coarsest unit that holds p -- seconds for 0, milliseconds to 3, microseconds to 6, nanoseconds beyond -- on every read path, by the same one rule as a numeric''s size. A timestamp declaring none is six digits, microseconds. It is still a timestamp everywhere a column''s kind is asked.'
   code:
+  - provisa/core/temporal_type.py
   - provisa/core/numeric_type.py
   - provisa/core/catalog_types.py
   - provisa/core/ir_types.py
@@ -80850,6 +80872,7 @@
   - provisa-ui/src/pages/tables/NumericSizeInputs.tsx
   tests:
   - tests/unit/test_numeric_type.py
+  - tests/unit/test_timestamp_precision.py
   - tests/unit/test_read_path_arrow_types.py
   - tests/unit/test_undeclared_numeric_read_as_double.py
   - provisa-ui/src/pages/tables/__tests__/NumericSizeInputs.test.tsx
@@ -89592,7 +89615,43 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     natively, so it still pushes down (e.g. normalising both sides of an inet equality with the engine''s
     own string functions, or ordering by an engine-native sortable expression), the engine driver uses it,
     and the case is not an anomaly. Only what has no straightforward pushdown rewrite is listed as a known
-    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used.'
+    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used. (Amended 2026-10-27,
+    WHICH TYPES ARE SUBTYPES:) Maintainer 2026-10-27: a subtype exists so a client sees a type the base
+    would hide, and pgwire is the surface that reports it, so there is one subtype per distinct PostgreSQL
+    type and every other source''s type maps onto one of those or onto a base. The UI shows a column''s
+    subtype with its base. Added subtypes: geometry (planar, WKT text: MySQL geometry/point/linestring/polygon,
+    SQL Server geometry) and geography (geodetic: SQL Server geography, Elasticsearch geo_shape and geo_point);
+    PostgreSQL''s built-in shapes line, lseg, box, path, polygon and circle (beside point), each in PostgreSQL''s
+    own text form; the range types int4range, int8range, numrange, tsrange, tstzrange and daterange (Elasticsearch
+    integer_range/long_range map to int4range/int8range, float_range/double_range to numrange, date_range
+    to tstzrange); macaddr8; bit and varbit; tsvector. Not subtypes: Cassandra duration is interval, Cassandra
+    varint is decimal(38,0), MySQL year is integer, Elasticsearch ip_range and SQL Server hierarchyid stay
+    on text (no PostgreSQL equivalent with a fixed type). (Amended 2026-10-27, PG CONVENTIONS:) Maintainer
+    2026-10-27: IR types and subtypes follow PostgreSQL''s conventions (PostGIS for geometry and geography).
+    The test for a new subtype: it is a PostgreSQL type the IR does not already hold; a source type that
+    names a concept PostgreSQL already has maps onto that type and never becomes a subtype of its own. (Amended
+    2026-10-27, NO TYPE LEFT UNMAPPED:) Maintainer 2026-10-27: every source type maps onto an IR type or
+    subtype; a type that fits none becomes text (varchar), holding the source''s own text form. Registration
+    never fails on an unknown source type. A native array, struct or map stays json (REQ-1965), which is
+    PostgreSQL''s convention for them. (Amended 2026-10-27, SUBTYPES KEEP NATIVE SEMANTICS:) Maintainer
+    2026-10-27: a subtype keeps its native semantics wherever the serving engine has the type. When a sort,
+    filter, join or operator touches a subtyped column, the dialect layer casts it to the engine''s native
+    type (PostgreSQL/DuckDB inet, Trino ipaddress, the engine''s spatial and range types, and so on) so
+    ordering and the type''s operators (inet containment, range overlap and containment, spatial predicates)
+    behave as on the source; the model and storage stay on the base. Where the engine has no native equivalent,
+    the column keeps its base type''s semantics and an operator that only the native type defines is refused
+    by name, never evaluated over the text form. A source type that maps to text (no IR type or subtype)
+    has text semantics by design: its platform features are not available. (Amended 2026-10-27, WHEN THE
+    ENGINE LACKS THE TYPE:) Maintainer 2026-10-27: when a sort, filter, join or operator touches a subtyped
+    column, the compiler takes the first of these that applies: (1) the serving engine has the native type:
+    cast to it; (2) the operation touches only one source''s columns and that source has the native type:
+    it runs at the source and the engine federates the result; (3) the subtype declares a portable emulation
+    for the engine''s dialect (inet: family, fixed-width hex address and mask length as the ordering key,
+    containment as a range test on it; macaddr: fixed-width hex; ranges: bounds and their inclusivity give
+    overlap and containment), checked against the native answer in tests; (4) otherwise the operation is
+    refused by name (spatial predicates with neither native support nor pushdown, for instance), never evaluated
+    over the text form. Each subtype declares its native type per engine, whether it pushes down, and its
+    emulation if one exists.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -89986,7 +90045,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (a session relationship may end on a model node). Example: CREATE (c:Customer {id: 42}), (n:Note {text:
     ''call back''}), (c)-[:ABOUT]->(n) writes the Customer row to its source and the Note and ABOUT to the
     session. Statements are not atomic across the two paths (transactions are a no-op by design), so the
-    outcome equals running the parts as separate statements.'
+    outcome equals running the parts as separate statements. (Amended 2026-10-27, WRITES LOWER THROUGH THE
+    GRAPH IR:) Maintainer 2026-10-27: graph writes lower through the graph IR (REQ-2135) before MERGE, DETACH
+    DELETE and SPARQL Update are built. The IR gains write clauses (CREATE, SET, REMOVE, DELETE, MERGE);
+    the Cypher parser accepts them and SPARQL INSERT/DELETE DATA lower to them; one classifier over the
+    IR decides governed vs session for every language, and the governed writer takes IR input in place of
+    the regex translator. Reads need no IR change.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

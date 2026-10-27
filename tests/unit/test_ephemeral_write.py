@@ -40,7 +40,7 @@ def written(monkeypatch):
     return held
 
 
-def _run(statement: str, answer: list[dict[str, Any]], session=None, **params):
+def _run(statement: str, answer: list[dict[str, Any]], session=None, governed=None, **params):
     asked: list[str] = []
 
     async def read(query: str, values: dict[str, Any]) -> list[dict[str, Any]]:
@@ -48,8 +48,14 @@ def _run(statement: str, answer: list[dict[str, Any]], session=None, **params):
         assert values == params
         return answer
 
+    async def governed_write(query: str, values: dict[str, Any]) -> None:
+        assert governed is not None, query
+        governed.append((query, values))
+
     made = asyncio.run(
-        write.create(statement, params, _model(), session or TempSession(), None, read)
+        write.create(
+            statement, params, _model(), session or TempSession(), None, read, governed_write
+        )
     )
     return made, asked
 
@@ -120,3 +126,45 @@ def test_the_governed_write_and_a_read_are_left_to_their_own_path(written, state
 def test_a_relationship_from_a_value_that_is_no_node_is_refused(written):
     with pytest.raises(CypherParseError, match="is a node"):
         _run("UNWIND [1] AS p CREATE (p)-[:R]->(:X)", [{"_v_p": 1}])
+
+
+def test_a_mixed_create_writes_its_governed_row_and_its_session_parts(written):
+    governed: list[tuple[str, dict[str, Any]]] = []
+    made, _ = _run(
+        "CREATE (c:Person {id: 42}), (n:Note {text: 'x'}), (c)-[:ABOUT]->(n)",
+        [{"_n0_id": 42, "_n1_text": "x"}],
+        governed=governed,
+    )
+    assert governed == [("CREATE (n:Person {id: $id})", {"id": 42})]
+    [w] = written
+    assert [(n.anchor, n.labels, n.properties) for n in w.nodes] == [
+        ("cypher__anchor__Note", ("Note",), {"text": "x"})
+    ]
+    # The session relationship ends on the model node the governed write made.
+    assert [(r.rel_type, r.from_id, r.to_id, r.from_labels) for r in w.rels] == [
+        ("ABOUT", "Person|42", "e:1", ("Person",))
+    ]
+    assert made == write.Created(nodes=2, relationships=1, labels=2)
+
+
+def test_a_governed_row_a_session_relationship_ends_on_names_its_key(written):
+    with pytest.raises(CypherParseError, match="names its id"):
+        _run(
+            "CREATE (c:Person {name: 'x'}), (c)-[:ABOUT]->(:Note)",
+            [{"_n0_name": "x"}],
+            governed=[],
+        )
+
+
+def test_a_model_relationship_of_a_split_goes_to_the_governed_path(written):
+    governed: list[tuple[str, dict[str, Any]]] = []
+    person = {"id": 4, "label": "Person", "properties": {"_id": 7, "id": 7}}
+    _run(
+        "MATCH (a:Person), (b:Person) CREATE (a)-[:KNOWS]->(b), (a)-[:LIKES]->(b)",
+        [{"_v_a": person, "_v_b": person}],
+        governed=governed,
+    )
+    assert governed == [("MATCH (a:Person), (b:Person) CREATE (a)-[:KNOWS]->(b)", {})]
+    assert [(r.rel_type, r.from_id, r.to_id) for r in written[0].rels] == [
+        ("LIKES", "Person|7", "Person|7")
+    ]

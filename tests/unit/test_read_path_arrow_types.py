@@ -193,9 +193,10 @@ def test_values_that_cannot_be_read_as_the_registered_type_are_refused_naming_th
 
 
 def test_a_column_the_shape_does_not_type_keeps_the_type_its_values_give_it():
-    """No registered type by that name, or JSON (REQ-1965: a JSON column's read form is its
-    reader's): read off the values, as without a shape."""
+    """No registered type by that name, a type neither vocabulary names, or JSON (REQ-1965: a
+    JSON column's read form is its reader's): read off the values, as without a shape."""
     shape = [
+        ("i", RegisteredType("USER-DEFINED")),
         ("t", RegisteredType("json")),
         ("ok", RegisteredType("boolean")),
     ]  # "b" is not in it
@@ -583,18 +584,11 @@ def test_the_arrow_type_of_a_registered_type(registered, arrow_type):
     assert column_arrow_type(registered) == arrow_type
 
 
-@pytest.mark.parametrize("registered", [None, ""])
-def test_a_column_with_no_registered_type_has_no_arrow_type_of_its_own(registered):
+@pytest.mark.parametrize("registered", [None, "", "USER-DEFINED", "hierarchyid"])
+def test_a_type_neither_vocabulary_names_has_no_arrow_type_of_its_own(registered):
     from provisa.core.catalog_types import column_arrow_type
 
     assert column_arrow_type(registered) is None
-
-
-@pytest.mark.parametrize("registered", ["USER-DEFINED", "hierarchyid"])
-def test_a_type_naming_no_ir_type_is_read_as_text(registered):
-    from provisa.core.catalog_types import column_arrow_type
-
-    assert column_arrow_type(registered) == pa.string()  # REQ-2171
 
 
 def test_flights_direct_stream_is_typed_by_the_plans_result_shape():

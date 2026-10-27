@@ -97,8 +97,10 @@ class _Table:
 
 @dataclass(frozen=True)
 class RoleCatalog:
-    """A role's catalog: its tables, their columns in order, and its key constraints."""
+    """A role's catalog: its tables, their columns in order, and its key constraints, under the
+    served database, the one catalog every SQL surface lists (REQ-588)."""
 
+    database: str
     tables: list[_Table]
     columns: dict[int, list[tuple[str, str]]]  # table oid → (column, registered type), in order
     constraints: list[tuple]  # pg_constraint rows (pgwire.catalog_constraints)
@@ -121,7 +123,9 @@ def role_catalog(state: Any, role_id: str) -> RoleCatalog:
     columns: dict[int, list[tuple[str, str]]] = {}
     for toid, name, column_type, _, ordinal in sorted(idx.all_cols, key=lambda c: (c[0], c[4])):
         columns.setdefault(toid, []).append((name, column_type))
-    return RoleCatalog(tables, columns, catalog_constraint_rows(ctx, idx), dict(idx.attnum_to_col))
+    return RoleCatalog(
+        idx.database, tables, columns, catalog_constraint_rows(ctx, idx), dict(idx.attnum_to_col)
+    )
 
 
 @cache
@@ -147,19 +151,21 @@ def _optional(command: Any, field: str) -> str | None:
 
 
 def catalogs(catalog: RoleCatalog) -> pa.Table:
-    names = sorted({t.catalog for t in catalog.tables})
+    names = sorted({t.catalog for t in catalog.tables} | {catalog.database})
     return pa.Table.from_pydict({"catalog_name": names}, schema=CATALOGS_SCHEMA)
 
 
 def db_schemas(catalog: RoleCatalog, command: pb.CommandGetDbSchemas) -> pa.Table:
+    """The schemas of the role's tables, and the current schema, which pgwire lists too."""
+    from provisa.pgwire.catalog import CURRENT_SCHEMA
+
     want_catalog = _optional(command, "catalog")
     pattern = _optional(command, "db_schema_filter_pattern")
+    listed = {(t.catalog, t.schema) for t in catalog.tables} | {(catalog.database, CURRENT_SCHEMA)}
     rows = sorted(
-        {
-            (t.catalog, t.schema)
-            for t in catalog.tables
-            if (want_catalog is None or t.catalog == want_catalog) and _matches(t.schema, pattern)
-        }
+        (c, s)
+        for c, s in listed
+        if (want_catalog is None or c == want_catalog) and _matches(s, pattern)
     )
     return pa.Table.from_pylist(
         [{"catalog_name": c, "db_schema_name": s} for c, s in rows], schema=DB_SCHEMAS_SCHEMA

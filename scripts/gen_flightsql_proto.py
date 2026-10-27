@@ -8,11 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Generate the Python bindings of Arrow's FlightSql.proto (REQ-2175).
+"""Generate the Python bindings of Arrow's FlightSql.proto and Flight.proto (REQ-2175).
 
-provisa/proto/FlightSql.proto is Apache Arrow's format/FlightSql.proto (Apache-2.0)
-at the pyarrow release Provisa pins; FlightSql_pb2.py beside it is generated from it with
-grpcio-tools and checked in. tests/unit/test_flightsql_proto_generated.py fails when the checked-in
+provisa/proto/FlightSql.proto and Flight.proto are Apache Arrow's format/FlightSql.proto and
+format/Flight.proto (Apache-2.0) at the pyarrow release Provisa pins; the ``_pb2.py`` beside each
+is generated from it with grpcio-tools and checked in. Flight.proto's are for its session option
+messages, which pyarrow's Python API does not expose. tests/unit/test_flightsql_proto_generated.py fails when the checked-in
 bindings are not what this generates.
 
     PYTHONPATH=. .venv/bin/python3 scripts/gen_flightsql_proto.py
@@ -27,44 +28,44 @@ from pathlib import Path
 from grpc_tools import protoc
 
 PROTO_DIR = Path(__file__).resolve().parents[1] / "provisa/proto"
-PROTO = PROTO_DIR / "FlightSql.proto"
-OUT = PROTO_DIR / "FlightSql_pb2.py"
-# The type stub protoc writes beside it, for the type checker (the module builds its classes at run
-# time, so their names are not otherwise visible).
-STUB = PROTO_DIR / "FlightSql_pb2.pyi"
+#: Each proto, as its bindings and the type stub protoc writes beside them, for the type checker
+#: (the modules build their classes at run time, so their names are not otherwise visible).
+PROTOS = ("FlightSql.proto", "Flight.proto")
 
 
 # The file header the repository's canary stamp completes (scripts/canary_stamp.py adds its
 # ``# Canary:`` line after the first); the check ignores that line.
-HEADER = """\
-# Copyright (c) 2026 Kenneth Stott
-#
-# Generated from FlightSql.proto (Apache Arrow, Apache-2.0) by scripts/gen_flightsql_proto.py.
-
-"""
+def _header(proto: str) -> str:
+    return (
+        "# Copyright (c) 2026 Kenneth Stott\n#\n"
+        f"# Generated from {proto} (Apache Arrow, Apache-2.0) by scripts/gen_flightsql_proto.py.\n\n"
+    )
 
 
 def render() -> dict[Path, str]:
-    """The bindings and their stub, as grpcio-tools generates them from FlightSql.proto, under
-    the file header."""
+    """Each proto's bindings and their stub, as grpcio-tools generates them, under the file
+    header."""
     include = str(resources.files("grpc_tools") / "_proto")
-    with tempfile.TemporaryDirectory() as out:
-        code = protoc.main(
-            [
-                "grpc_tools.protoc",
-                f"-I{PROTO_DIR}",
-                f"-I{include}",
-                f"--python_out={out}",
-                f"--pyi_out={out}",
-                PROTO.name,
-            ]
-        )
-        if code != 0:
-            raise RuntimeError(f"protoc failed on {PROTO} with exit code {code}")
-        return {
-            path: HEADER + (Path(out) / path.name).read_text(encoding="utf-8")
-            for path in (OUT, STUB)
-        }
+    out: dict[Path, str] = {}
+    for proto in PROTOS:
+        stem = proto.removesuffix(".proto")
+        with tempfile.TemporaryDirectory() as tmp:
+            code = protoc.main(
+                [
+                    "grpc_tools.protoc",
+                    f"-I{PROTO_DIR}",
+                    f"-I{include}",
+                    f"--python_out={tmp}",
+                    f"--pyi_out={tmp}",
+                    proto,
+                ]
+            )
+            if code != 0:
+                raise RuntimeError(f"protoc failed on {PROTO_DIR / proto} with exit code {code}")
+            for name in (f"{stem}_pb2.py", f"{stem}_pb2.pyi"):
+                text = (Path(tmp) / name).read_text(encoding="utf-8")
+                out[PROTO_DIR / name] = _header(proto) + text
+    return out
 
 
 if __name__ == "__main__":

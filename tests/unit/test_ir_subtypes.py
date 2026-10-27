@@ -307,7 +307,7 @@ _HOSTS = {
 def test_the_catalog_lists_a_subtyped_column_as_the_subtype():
     from provisa.pgwire.catalog_populate import _build_catalog_index
 
-    idx = _build_catalog_index(_catalog_ctx(), _HOSTS)
+    idx = _build_catalog_index(_catalog_ctx(), _HOSTS, database="provisa")
     assert [(c[1], c[2]) for c in idx.all_cols] == [
         ("id", "integer"),
         ("ip", "inet"),

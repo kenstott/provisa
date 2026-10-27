@@ -12,8 +12,10 @@
 
 The governing rule: a governed model write needs an exact, unambiguous target -- one model table
 (and for a relationship one registered junction) -- and nothing else. A CREATE of a node naming
-exactly one model table and no free label is the governed write it is today; any other CREATE
-(a free label, no label, or two model tables) makes an ephemeral node carrying every label given. A label resolves as the model's (a
+exactly one model table and no free label is a governed row write; any other node (a free label,
+no label, or two model tables) is an ephemeral node carrying every label given. A CREATE of
+governed parts alone is the governed write it is today; one mixing both splits, each part on its
+own path, as the parts written as statements of their own would be. A label resolves as the model's (a
 ``Domain:Table`` pair, or a table label) before the session's; a domain label otherwise is
 refused, since domains are sealed.
 
@@ -112,22 +114,34 @@ class Created:
     labels: Labels
     anchor: str | None
 
+    @property
+    def governed(self) -> bool:
+        """Whether it is a governed row: it names one model table and nothing else."""
+        return self.labels.exact
+
 
 @dataclass(frozen=True)
 class CreateKind:
-    """Whether a CREATE is the governed model write or ephemeral, and each node it makes."""
+    """Whether a CREATE is wholly the governed model write, each node it makes, and whether
+    each of its relationships is governed. A CREATE that is not wholly governed splits: each
+    governed part takes the governed path, the rest the session's."""
 
     governed: bool
     created: tuple[Created, ...]
+    rels_governed: tuple[bool, ...] = ()
 
 
 def classify_create(
     pattern: CreatePattern, bound: set[str], label_map: Any, graph: Graph
 ) -> CreateKind:
     """The governing rule for a CREATE's ``pattern`` (``bound``: the variables its leading
-    clauses bind, which it reaches back to rather than creates)."""
+    clauses bind, which it reaches back to rather than creates). A relationship is governed when
+    it is the model's (a registered junction's row, REQ-665) between governed ends: a node the
+    statement matched, or a governed row it makes."""
     created: list[Created] = []
     named: set[str] = set(bound)
+    made: dict[str, Created] = {}
+    ends: list[bool] = []
     for i, node in enumerate(pattern.nodes):
         if node.variable is not None and node.variable in named:
             if node.labels or node.properties:
@@ -135,34 +149,22 @@ def classify_create(
                     f"Variable `{node.variable}` already declared: a CREATE cannot give it "
                     f"labels or properties"
                 )
+            ends.append(made[node.variable].governed if node.variable in made else True)
             continue
         if node.variable is not None:
             named.add(node.variable)
         labels = resolve(node.labels, label_map)
-        created.append(Created(i, labels, _anchor(labels, graph)))
-    exact = [c.labels.exact for c in created]
-    model_types = [_model_type(label_map, r.rel_type) for r in pattern.rels]
-    if not created:
-        # Relationships between nodes the statement matched: each a registered junction's row
-        # (REQ-665), or each the session's.
-        if all(model_types):
-            return CreateKind(True, ())
-        if any(model_types):
-            raise CypherParseError(
-                "A CREATE writes model relationships or session relationships, not both: "
-                + ", ".join(r.rel_type for r, m in zip(pattern.rels, model_types) if m)
-                + " are the model's; write them in a statement of their own"
-            )
-        return CreateKind(False, ())
-    if any(exact) and not all(exact):
-        raise CypherParseError(
-            "A CREATE makes model rows or session nodes, not both: "
-            + ", ".join(
-                ":" + ":".join(c.labels.written) for c, e in zip(created, exact, strict=True) if e
-            )
-            + " name one model table each; write them in a statement of their own"
-        )
-    return CreateKind(all(exact), tuple(created))
+        c = Created(i, labels, _anchor(labels, graph))
+        created.append(c)
+        if node.variable is not None:
+            made[node.variable] = c
+        ends.append(c.governed)
+    rels = tuple(
+        _model_type(label_map, r.rel_type) and ends[r.source] and ends[r.target]
+        for r in pattern.rels
+    )
+    governed = all(c.governed for c in created) and all(rels)
+    return CreateKind(governed, tuple(created), rels)
 
 
 def _model_type(label_map: Any, rel_type: str) -> bool:

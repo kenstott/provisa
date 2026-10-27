@@ -581,6 +581,7 @@ BVTYPE_TO_PGTYPE = {
     BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
     BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
     BVType.INTEGER: (23, str, lambda r: r.to_bytes(4, "big", signed=True)),
+    BVType.OID: (26, str, lambda r: r.to_bytes(4, "big", signed=False)),
     BVType.INTERVAL: (
         1186,
         _interval_text,
@@ -610,7 +611,6 @@ BVTYPE_TO_PGTYPE = {
     BVType.MACADDR: (829, str, _macaddr_binary),
     BVType.XML: (142, str, lambda r: str(r).encode("utf-8")),
     BVType.POINT: (600, _point_text, lambda r: struct.pack("!dd", *_point_parts(r))),
-    BVType.OID: (26, str, lambda r: struct.pack("!I", int(r))),
     BVType.MONEY: (790, _money_text, lambda r: struct.pack("!q", _money_cents(r))),
     BVType.MACADDR8: (774, str, _macaddr8_binary),
     BVType.LINE: (628, str, _shape_binary(3)),
@@ -1255,7 +1255,9 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         buf = BVBuffer()
         for i in range(query_result.column_count()):
             name, bvtype = query_result.column(i)
-            oid = BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)[0]
+            oid = query_result.column_type_oid(i)
+            if oid is None:
+                oid = BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)[0]
             buf.write_string(name)
             fmt = query_result.result_format[i] if query_result.result_format else 0
             buf.write_bytes(struct.pack("!ihihih", 0, 0, oid, 0, -1, fmt))

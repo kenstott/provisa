@@ -306,8 +306,10 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
     """What PostgreSQL says, said on DuckDB where the two differ. A division or remainder by zero
     is PostgreSQL's error: DuckDB answers infinity or NULL, so each divisor is read through a CASE
     that raises PostgreSQL's message on zero (a nonzero literal divisor is left as it is; any
-    other is evaluated twice). And a set-returning function aliased in FROM with no column list
-    names its one column by the alias, as PostgreSQL's does: DuckDB names the row by it."""
+    other is evaluated twice). An integer divided by an integer is an integer, truncated toward
+    zero: DuckDB's ``/`` answers a DOUBLE, its ``//`` PostgreSQL's ``/`` (a non-integer operand
+    divides exactly). And a set-returning function aliased in FROM with no column list names its
+    one column by the alias, as PostgreSQL's does: DuckDB names the row by it."""
     tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _guarded(divisor: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
@@ -337,7 +339,11 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
                 node.set("columns", [node.this.copy()])
         return node
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    tree = tree.transform(_transform)
+    # After the transform, which does not revisit what a replaced node holds (a / (b / c)).
+    for div in list(tree.find_all(exp.Div)):
+        div.replace(exp.IntDiv(this=div.this, expression=div.expression))
+    return tree.sql(dialect="duckdb")
 
 
 def _lengths_for_duckdb(sql: str) -> str:
@@ -450,13 +456,33 @@ _DUCKDB_LIST_FUNCTIONS = frozenset(
 )
 
 
+def _three_valued(
+    values: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    decided: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    then: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    otherwise: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """A quantifier over predicate ``values`` as Trino's any_match / all_match answer it: ``then``
+    where ``decided``, null where a value is null (DuckDB's list_bool_or and list_bool_and skip
+    them), else ``otherwise``."""
+    has_null = exp.LT(
+        this=exp.Anonymous(this="list_count", expressions=[values.copy()]),
+        expression=exp.Anonymous(this="len", expressions=[values.copy()]),
+    )
+    return exp.Case(
+        ifs=[exp.If(this=decided, true=then), exp.If(this=has_null, true=exp.Null())],
+        default=otherwise,
+    )
+
+
 def _rewrite_list_functions_for_duckdb(sql: str) -> str:
     """A Cypher read's list functions as DuckDB computes them: a list index ``element_at(l, i)``
     (1-based, negative from the end) is ``list_extract`` and a map key ``element_at(m, 'k')``
     ``map_extract_value`` (DuckDB's element_at is a map's alone, and answers a list of the
     value); ``slice(l, start, length)`` is ``list_slice(l, start, start + length - 1)``; a list's
     ``cardinality`` is ``len``; ``any_match`` / ``all_match`` / ``none_match`` are the list's
-    predicate values or'd or and'd (on an empty list any is false, all and none true);
+    predicate values or'd or and'd, three-valued as Trino's (on an empty list any is false, all
+    and none true; a null value with no deciding one answers null);
     ``sequence`` is ``generate_series`` (both inclusive)."""
     if not any(name in sql.upper() for name in _DUCKDB_LIST_FUNCTIONS):
         return sql
@@ -488,19 +514,20 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
             return _fn("len", *args)
         if name == "SEQUENCE":
             return _fn("generate_series", *args)
-        if name == "ANY_MATCH":
-            return exp.Coalesce(
-                this=_fn("list_bool_or", _predicates(args)), expressions=[exp.false()]
-            )
         if name == "ALL_MATCH":
-            return exp.Coalesce(
-                this=_fn("list_bool_and", _predicates(args)), expressions=[exp.true()]
+            # A false decides it; otherwise a null leaves it null.
+            decided = exp.Not(
+                this=exp.Coalesce(
+                    this=_fn("list_bool_and", _predicates(args)), expressions=[exp.true()]
+                )
             )
-        return exp.Not(
-            this=exp.Coalesce(
-                this=_fn("list_bool_or", _predicates(args)), expressions=[exp.false()]
-            )
+            return _three_valued(_predicates(args), decided, exp.false(), exp.true())
+        # A true decides any (none is its negation); otherwise a null leaves it null.
+        decided = exp.Coalesce(
+            this=_fn("list_bool_or", _predicates(args)), expressions=[exp.false()]
         )
+        found = _three_valued(_predicates(args), decided, exp.true(), exp.false())
+        return found if name == "ANY_MATCH" else exp.Not(this=exp.Paren(this=found))
 
     return tree.transform(_transform).sql(dialect="duckdb")
 

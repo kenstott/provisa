@@ -412,6 +412,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._temporal_zones: dict[str, str] = {}
         # A variable a WITH or UNWIND binds to a string (size() of it counts its characters)
         self._text_vars: set[str] = set()
+        # A variable a WITH or UNWIND binds to a list (+ appends to it)
+        self._list_vars: set[str] = set()
         # REQ-2173: a $param a client gives a temporal value -> its kind, and the zone it names
         self._param_kinds: dict[str, str] = {}
         self._param_zones: dict[str, str] = {}
@@ -1108,6 +1110,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._temporal_zones[uw.variable] = zone
             if self._temporal_context().holds_text_items(uw.expression):
                 self._text_vars.add(uw.variable)
+            if self._temporal_context().holds_list_items(uw.expression):
+                self._list_vars.add(uw.variable)
             if not has_from and from_expr is None:
                 from_expr = unnest
                 has_from = True
@@ -1416,6 +1420,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         kinds: dict[str, str] = {}
         zones: dict[str, str] = {}
         texts: set[str] = set()
+        lists: set[str] = set()
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
         for item in items:
@@ -1424,6 +1429,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             )
             if name and self._temporal_context().is_text(item.expression):
                 texts.add(name)
+            if name and self._temporal_context().is_list(item.expression):
+                lists.add(name)
             found = self._temporal_context().temporal_kind(item.expression)
             if name and found is not None:
                 kinds[name] = found
@@ -1452,6 +1459,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._temporal_kinds = kinds
         self._temporal_zones = zones
         self._text_vars = texts
+        self._list_vars = lists
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
         """Return (type_name_key, domain_label). Raises on ambiguity.

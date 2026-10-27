@@ -126,7 +126,9 @@ jobs:
           PROVISA_FLIGHT_URI: grpc://127.0.0.1:${{ env.PROVISA_FLIGHT_PORT }}
           PROVISA_ROLE: org_admin
           PROVISA_FLIGHT_CATALOG: provisa
-          PROVISA_FLIGHT_SCHEMA: conformance
+          # The session's current schema, as pgwire's current_schema() answers it; the fixture
+          # tables are in the conformance domain's schema.
+          PROVISA_FLIGHT_SCHEMA: public
         run: |
           for _ in $(seq 1 60); do
             (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_FLIGHT_PORT") 2>/dev/null && break

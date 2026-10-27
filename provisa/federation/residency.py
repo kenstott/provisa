@@ -58,8 +58,8 @@ def resolve_landing_args(
     landed table's DDL is engine-independent (the store write face maps IR → SQLAlchemy). ``platform``
     is the federation engine's dialect (its stored types are engine-normalized, e.g. Trino
     ``varbinary``/``row(...)`` that the generic aliases don't cover). A column with no resolved type
-    is an error (introspection fills it at startup); an unmapped native type is an IR vocabulary gap
-    and raises — never a silent default."""
+    is an error (introspection fills it at startup). REQ-2171: a type that fits no IR type lands
+    as text."""
     from provisa.core.ir_types import to_ir
 
     live = table.live

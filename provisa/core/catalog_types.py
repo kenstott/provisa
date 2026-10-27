@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-from provisa.core.ir_types import to_ir
+from provisa.core.ir_types import is_ir_type, to_ir
 from provisa.core.numeric_type import numeric_arrow_type, numeric_size
+from provisa.core.temporal_type import timestamp_precision, timestamp_unit
 
 # the engine type -> Arrow type mapping
 _ARROW_TYPE_MAP: dict[str, pa.DataType] = {
@@ -111,14 +112,19 @@ def _physical_type_to_arrow(column_type: str) -> pa.DataType:
     if _is_numeric(text):
         return numeric_arrow_type(text)
     base = text.partition("(")[0].strip()
+    precision = timestamp_precision(text)
+    if precision is not None:
+        # A timestamp declaring its precision is read at the unit that holds it (REQ-1961).
+        zone = "UTC" if base == "timestamptz" else None
+        return pa.timestamp(timestamp_unit(precision), tz=zone)
     # Parameterized scalars: varchar(20) -> varchar.
     if base in _ARROW_TYPE_MAP:
         return _ARROW_TYPE_MAP[base]
     # Any other spelling an engine or a source reports (``character varying``, ``int4``,
-    # ``timestamp without time zone``): the product's one type vocabulary names it.
-    canonical = to_ir(text)
-    if canonical in _IR_ARROW:
-        return _IR_ARROW[canonical]
+    # ``timestamp without time zone``): the product's one type vocabulary names it. A spelling it
+    # does not name is text to the vocabulary (REQ-2171), and the catalog says so.
+    if is_ir_type(text) and to_ir(text) in _IR_ARROW:
+        return _IR_ARROW[to_ir(text)]
     raise KeyError(f"Unmapped engine type: {column_type!r}")
 
 

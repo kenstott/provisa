@@ -23,6 +23,12 @@ Two steps around the governed compiler, which is not changed:
    (their model table joined to node_labels, governed likewise). Columns are unioned by name: a
    column a part lacks reads NULL, and two parts' types widen to one.
 
+A node matched by no label, or by a domain, is drawn from a union of every type's relation (the
+compiler's own); :func:`expand` reads such a union once per node, by ``__graph_id``, the first
+arm to hold a node giving its row -- a model type's arms come before the session's labels'. The
+session's unlabeled nodes are the relation of the label ``""``, which no statement can write, so
+only a match of any node reads it.
+
 A node of such a relation has ``__node_id`` (a model node's key, so its identity in an answer is
 what it is without the session; an ephemeral node's id) and ``__graph_id`` (``Label|key`` or the
 ephemeral id), which the session's relationships join on.
@@ -63,11 +69,14 @@ def involved(session: TempSession | None) -> bool:
 
 def _view_keys(graph: store.Graph) -> set[str]:
     """The labels (as the session holds them) with session matches: each label an ephemeral
-    node carries or a tag gives, and each label a session relationship's end is read by."""
+    node carries or a tag gives, each label a session relationship's end is read by, and ``""``
+    when the session holds a node with no label."""
     keys = set(graph.labels)
     for _, source, target in graph.rel_pairs:
         keys.update((source, target))
     keys.discard("")
+    if "" in graph.label_anchors:
+        keys.add("")
     return keys
 
 
@@ -145,7 +154,7 @@ def overlay(model: Any, session: TempSession) -> Any:
     relationships = dict(model.relationships)
     aliases = {k: list(v) for k, v in model.aliases.items()}
     for rel_type, source, target in sorted(graph.rel_pairs):
-        if source not in nodes or target not in nodes:
+        if "" in (source, target) or source not in nodes or target not in nodes:
             continue  # an end with no label: read by a match of any node (not yet overlaid)
         columns = session.tables[store.rel_table(rel_type)].columns
         mapping = RelationshipMapping(
@@ -244,13 +253,23 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
             continue  # a model label's own rows are all read already
         tagged_nm = model.nodes[type_name]
         parts.append(tagged(model_rows(tagged_nm, "_t"), node_identity("_t", tagged_nm)))
+
+    def unlabeled(rows: exp.Select, node_id: exp.Expression) -> exp.Select:
+        held_labels = (
+            exp.select(_col(store.NODE_ID, "_l"))
+            .from_(exp.alias_(exp.to_table(store.NODE_LABELS, quoted=True), "_l"))
+            .where(exp.EQ(this=_col(store.NODE_ID, "_l"), expression=node_id))
+        )
+        return rows.where(exp.Not(this=exp.Exists(this=held_labels)))
+
     for anchor in sorted(graph.label_anchors.get(key, set())):
         anchor_columns = {name for name, _ in session.tables[anchor].columns}
         values = {a: _col(a, "_a") for a, _ in columns if a in anchor_columns}
         rows = select(values, _col(store.NODE_ID, "_a"), _col(store.NODE_ID, "_a")).from_(
             exp.alias_(exp.to_table(anchor, quoted=True), "_a")
         )
-        parts.append(tagged(rows, _col(store.NODE_ID, "_a")))
+        node_id = _col(store.NODE_ID, "_a")
+        parts.append(unlabeled(rows, node_id) if key == "" else tagged(rows, node_id))
     union: exp.Expression = parts[0]
     for part in parts[1:]:
         union = exp.Union(this=union, expression=part, distinct=False)
@@ -277,8 +296,78 @@ def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
     )
 
 
+_ARM = "__arm"
+_RANK = "__rank"
+
+
+def _union_arms(body: exp.Expression) -> list[exp.Select] | None:
+    """The arms of a node union (the compiler's union of every type's relation a node matched
+    by no label or a domain is drawn from): each a select of ``__label``, ``__id``, ... from one
+    relation. None for anything else."""
+    arms: list[exp.Expression] = []
+    while isinstance(body, exp.Union) and not body.args.get("distinct"):
+        arms.insert(0, body.expression)
+        body = body.this
+    arms.insert(0, body)
+    for arm in arms:
+        if not isinstance(arm, exp.Select) or arm.named_selects[:2] != ["__label", "__id"]:
+            return None
+        source = arm.args.get("from_")
+        if arm.args.get("joins") or source is None or not isinstance(source.this, exp.Table):
+            return None
+    return arms  # pyright: ignore[reportReturnType]
+
+
+def _arm_table(arm: exp.Select) -> exp.Table:
+    """The one relation a node union's arm (:func:`_union_arms`) reads."""
+    source = arm.args["from_"]
+    assert isinstance(source.this, exp.Table)
+    return source.this
+
+
+def _session_arm(arm: exp.Select) -> bool:
+    return _arm_table(arm).catalog == SESSION_CATALOG
+
+
+def _once_per_node(sub: exp.Subquery, arms: list[exp.Select]) -> None:
+    """``sub``'s node union read once per node: by ``__graph_id`` (a model arm's ``__id``, its
+    graph identity), the first arm holding it giving the row."""
+    names = arms[0].named_selects
+    for i, arm in enumerate(arms):
+        table = _arm_table(arm)
+        graph_id = (
+            _col(GRAPH_ID, table.alias or table.name)
+            if _session_arm(arm)
+            else arm.selects[1].this.copy()
+        )
+        arm.select(
+            exp.alias_(graph_id, GRAPH_ID, quoted=True),
+            exp.alias_(exp.Literal.number(i), _ARM, quoted=True),
+            copy=False,
+        )
+    rank = exp.Window(
+        this=exp.RowNumber(),
+        partition_by=[_col(GRAPH_ID)],
+        order=exp.Order(expressions=[exp.Ordered(this=_col(_ARM))]),
+    )
+    ranked = exp.select(*(_col(n) for n in names), exp.alias_(rank, _RANK, quoted=True)).from_(
+        exp.alias_(exp.Subquery(this=sub.this.copy()), "_u")
+    )
+    once = (
+        exp.select(*(_col(n) for n in names))
+        .from_(exp.alias_(exp.Subquery(this=ranked), "_d"))
+        .where(exp.EQ(this=_col(_RANK), expression=exp.Literal.number(1)))
+    )
+    sub.set("this", once)
+
+
 def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession) -> exp.Expression:
-    """``sql`` (compiled over ``overlaid``) with each session relation replaced by its rows."""
+    """``sql`` (compiled over ``overlaid``) with each session relation replaced by its rows, and
+    each node union reading one read once per node."""
+    for sub in list(sql.find_all(exp.Subquery)):
+        arms = _union_arms(sub.this)
+        if arms is not None and any(_session_arm(arm) for arm in arms):
+            _once_per_node(sub, arms)
     graph = store.graph(session)
     by_name = {_node_relation(key): key for key in _view_keys(graph) if key in overlaid.nodes}
     types = {_rel_relation(t): t for t in graph.types}

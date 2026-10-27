@@ -67,7 +67,7 @@ def test_the_rule_names_each_registered_tables_reference_columns_by_id():
 
 
 def test_the_catalog_lists_only_the_columns_the_relation_holds():
-    idx = _build_catalog_index(_ctx(), _column_types())
+    idx = _build_catalog_index(_ctx(), _column_types(), database="provisa")
     toid = idx.table_id_to_oid[PETS]
     assert [c[1] for c in idx.all_cols if c[0] == toid] == _HELD
 

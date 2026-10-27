@@ -270,12 +270,13 @@ class TestAnswerPgCatalog:
         )
         assert result.rows == [] or all(r[0] is None for r in result.rows)
 
-    def test_pg_constraint_column_types_include_integerarray(self):
+    def test_pg_constraint_column_types_include_smallintarray(self):
         """answer() must return column_types for pg_constraint even when 0 rows.
 
         DBeaver's Statement Describe step runs the constraint query with a fake
         conrelid (no rows returned). ProvisaQueryResult must still send the
-        correct OID (1007, int4[]) for conkey/confkey rather than OID 25 (text).
+        correct OID (1005, int2[], as PostgreSQL declares them) for conkey/confkey rather than
+        OID 25 (text).
         This requires column_types to carry DuckDB's schema-level type info.
         """
         state = self._state_with_table()
@@ -288,15 +289,15 @@ class TestAnswerPgCatalog:
         col_idx = {n: i for i, n in enumerate(result.column_names)}
         assert "conkey" in col_idx, f"conkey missing from columns: {result.column_names}"
         assert "confkey" in col_idx, f"confkey missing from columns: {result.column_names}"
-        assert result.column_types[col_idx["conkey"]] == "INTEGER[]", (
-            f"conkey must be INTEGER[], got {result.column_types[col_idx['conkey']]}"
+        assert result.column_types[col_idx["conkey"]] == "smallint[]", (
+            f"conkey must be smallint[], got {result.column_types[col_idx['conkey']]}"
         )
-        assert result.column_types[col_idx["confkey"]] == "INTEGER[]", (
-            f"confkey must be INTEGER[], got {result.column_types[col_idx['confkey']]}"
+        assert result.column_types[col_idx["confkey"]] == "smallint[]", (
+            f"confkey must be smallint[], got {result.column_types[col_idx['confkey']]}"
         )
 
     def test_provisaqueryresult_uses_column_types_for_empty_rows(self):
-        """ProvisaQueryResult must emit INTEGERARRAY for conkey even with 0 rows."""
+        """ProvisaQueryResult must emit SMALLINTARRAY (int2[]) for conkey even with 0 rows."""
         from buenavista.core import BVType
         from provisa.pgwire.server import ProvisaQueryResult
 
@@ -311,7 +312,7 @@ class TestAnswerPgCatalog:
         col_idx = {result.column_names[i]: i for i in range(len(result.column_names))}
         assert "conkey" in col_idx, f"conkey missing: {result.column_names}"
         _, bvtype = qr.column(col_idx["conkey"])
-        assert bvtype == BVType.INTEGERARRAY, f"Expected INTEGERARRAY for conkey, got {bvtype}"
+        assert bvtype == BVType.SMALLINTARRAY, f"Expected SMALLINTARRAY for conkey, got {bvtype}"
 
 
 def _make_pet_store_state() -> Any:

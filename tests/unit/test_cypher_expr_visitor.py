@@ -36,6 +36,9 @@ class _FakeCtx:
     def resolve_parameter(self, name):
         return exp.Placeholder(this=name)
 
+    def parameter_value(self, name):
+        raise KeyError(name)
+
     def temporal_kind(self, expr):
         return None  # no temporal values in scope here
 
@@ -43,6 +46,9 @@ class _FakeCtx:
         return None
 
     def is_text(self, expr):
+        return False
+
+    def is_list(self, expr):
         return False
 
     def resolve_function(self, name, args, *, distinct):
@@ -129,8 +135,10 @@ class TestListFunctions:
         assert "ALL_MATCH(" in _sql("all(x IN n.l WHERE x > 0)").upper()
 
     def test_quantifier_single(self):
+        # Three-valued: a second true is false, otherwise a null predicate value answers null.
         out = _sql("single(x IN n.l WHERE x > 0)").upper()
-        assert "CARDINALITY(FILTER(" in out and out.endswith("= 1")
+        assert out.startswith("CASE WHEN CARDINALITY(FILTER(") and "> 1 THEN FALSE" in out
+        assert "ANY_MATCH(" in out and "IS NULL) THEN NULL" in out and out.endswith("= 1 END")
 
     def test_reduce(self):
         out = _sql("reduce(s = 0, x IN n.nums | s + x)").upper()

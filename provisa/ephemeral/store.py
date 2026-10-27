@@ -93,7 +93,7 @@ class Graph:
 
     @property
     def empty(self) -> bool:
-        return not (self.labels or self.types or self.anchors)
+        return not (self.node_keys or self.labels or self.types)
 
 
 _KEY = "cypher"

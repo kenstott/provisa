@@ -44,6 +44,7 @@ import jwt
 
 from buenavista.core import BVType, Connection, QueryResult as BVQueryResult, Session
 from buenavista.postgres import (
+    BVTYPE_TO_PGTYPE,
     BVBuffer,
     BVContext,
     BuenaVistaHandler,
@@ -543,6 +544,15 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "BLOB": BVType.BYTES,
     "BYTEA": BVType.BYTES,
     "INTERVAL": BVType.INTERVAL,
+    # PostgreSQL's unsigned 4-byte integers, and information_schema's domains over integer and
+    # timestamp with time zone
+    # (REQ-2167: a catalog column is described with the type PostgreSQL declares for it).
+    "OID": BVType.OID,
+    "XID": BVType.OID,
+    "INFORMATION_SCHEMA.CARDINAL_NUMBER": BVType.INTEGER,
+    "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
+    "REGPROC": BVType.REGPROC,
+    "REGTYPE": BVType.REGTYPE,
     # REQ-2171: a subtyped column, described as its subtype, is sent as its PostgreSQL type.
     **{name.upper(): BVType[name.upper()] for name in SUBTYPES},
     "BIT VARYING": BVType.VARBIT,
@@ -593,6 +603,66 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
         array = None if element.endswith("[]") else _ARRAY_OF.get(_sql_type_to_bvtype(element))
         return array or BVType.JSON  # any other list type: its Python list value encodes as JSON
     return BVType.TEXT
+
+
+_WIRE_FAMILIES = (
+    frozenset(
+        {BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID, BVType.REGPROC, BVType.REGTYPE}
+    ),
+    frozenset({BVType.REAL, BVType.FLOAT}),
+)
+
+
+def _reg_text(names: dict[int, str]) -> Callable[[Any], str]:  # REQ-2167
+    """A reg* type's text form, as regprocout / regtypeout write it: the object's name, "-" for
+    0, and the number itself for an oid that names no object. A value already in its text form
+    (a source's own reg* column, read as text) is that text."""
+
+    def text(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        if value == 0:
+            return "-"
+        return names[value] if value in names else str(value)
+
+    return text
+
+
+def _reg_binary(value: Any) -> bytes:
+    if isinstance(value, str):
+        raise TypeError(f"a reg* value read as its text form {value!r} has no binary form here")
+    return value.to_bytes(4, "big", signed=False)
+
+
+def _register_reg_types() -> None:
+    from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
+
+    type_names = {oid: entry[-1] for oid, entry in TYPES.items()}
+    BVTYPE_TO_PGTYPE[BVType.REGPROC] = (24, _reg_text(PROC_NAMES), _reg_binary)
+    BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _reg_binary)
+
+
+_register_reg_types()
+
+
+def same_wire_form(declared: str, served: str) -> bool:  # REQ-2167
+    """Whether a value served as type ``served`` is sent correctly as type ``declared``: the
+    same wire type, or integers (or floats) of another width."""
+    a, b = _sql_type_to_bvtype(declared), _sql_type_to_bvtype(served)
+    return a == b or any(a in family and b in family for family in _WIRE_FAMILIES)
+
+
+def _type_oid(type_str: str | None) -> int | None:  # REQ-2167
+    """The OID of a PostgreSQL type sent in its base type's wire form (name as text, an
+    information_schema domain as its base); None for a type described by its own BVType."""
+    from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
+
+    return CATALOG_TYPE_OIDS.get(type_str.lower()) if type_str else None
+
+
+def _described_oid(type_str: str) -> int:
+    oid = _type_oid(type_str)
+    return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(type_str)][0] if oid is None else oid
 
 
 def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
@@ -684,6 +754,9 @@ class _StatementDescription(BVQueryResult):  # REQ-589
     def column(self, index: int) -> Tuple[str, BVType]:
         return (self.statement_shape[index][0], self._types[index])
 
+    def column_type_oid(self, index: int) -> int | None:
+        return _type_oid(self.statement_shape[index][1])
+
     def rows(self) -> Iterator[list]:
         return iter(())
 
@@ -747,6 +820,9 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         self._pending: list | None = None
         self._pending_pos: int = 0
         ctypes = engine_result.column_types
+        self._type_oids: list[int | None] = (
+            [_type_oid(t) for t in ctypes] if ctypes else [None] * len(self._cols)
+        )
         # (column index, coercer) for each column whose rows must be brought to the described type.
         self._coerce: list[Tuple[int, Callable[[Any], Any]]] = []
         if shape is not None:
@@ -763,6 +839,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
                 )
             self._cols = [name for name, _ in shape]
             self._types = [_sql_type_to_bvtype(t) for _, t in shape]
+            self._type_oids = [_type_oid(t) for _, t in shape]
             for i, described in enumerate(self._types):
                 actual = ctypes[i] if ctypes and i < len(ctypes) else None
                 if actual is not None and _sql_type_to_bvtype(actual) == described:
@@ -802,6 +879,9 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
 
     def column(self, index: int) -> Tuple[str, BVType]:
         return (self._cols[index], self._types[index])
+
+    def column_type_oid(self, index: int) -> int | None:
+        return self._type_oids[index]
 
     def rows(self) -> Iterator[list]:
         # send_data_rows (vendor/buenavista) calls .rows() fresh on EVERY Execute message of a
@@ -1434,17 +1514,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # normal operation.
         _t_govern1 = time.perf_counter()
 
-        from buenavista.postgres import BVTYPE_TO_PGTYPE
-
         from provisa.transpiler.router import Route
 
         # The type OIDs the client was told at Describe (None when the statement was not described)
         # — a raw-DataRow passthrough forwards the source's bytes only where they have that layout.
-        described_oids = (
-            [BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(t)][0] for _, t in shape]
-            if shape is not None
-            else None
-        )
+        described_oids = [_described_oid(t) for _, t in shape] if shape is not None else None
 
         from provisa.pgwire._pipeline import serve_stream_through_cache
 

@@ -29,6 +29,7 @@ import pyarrow.flight as flight
 from google.protobuf import any_pb2
 from google.protobuf.message import DecodeError, Message
 
+from provisa.proto import Flight_pb2 as flight_pb
 from provisa.proto import FlightSql_pb2 as pb
 
 _TYPE_PREFIX = "type.googleapis.com/arrow.flight.protocol.sql."
@@ -198,28 +199,38 @@ def read_prepared_handle(handle: bytes) -> tuple[str, pa.Table | None]:
     return query, pa.ipc.open_stream(body).read_all()
 
 
-def bound_statement(query: str, parameters: pa.Table | None) -> str:
-    """``query`` with its ``$N`` placeholders written as the bound values' SQL literals, as pgwire
-    writes a bound statement's before governing it. Each parameter row is one execution; several
-    are answered as one statement, their results in turn (UNION ALL)."""
+def bound_statements(query: str, parameters: pa.Table | None) -> list[str]:
+    """``query`` once per parameter row, its ``$N`` placeholders written as that row's SQL
+    literals, as pgwire writes a bound statement's before governing it; ``query`` itself when
+    nothing is bound."""
     from provisa.compiler.params import substitute_positional_placeholders
     from provisa.compiler.sql_literals import sql_literal
 
     if parameters is None or parameters.num_columns == 0:
-        return query
-    rows = parameters.to_pylist()
+        return [query]
     names = parameters.column_names
-    statements = [
+    return [
         substitute_positional_placeholders(
             query,
             [row[name] for name in names],
             lambda i, row=row: sql_literal(row[names[i - 1]], "postgres"),
         )
-        for row in rows
+        for row in parameters.to_pylist()
     ]
+
+
+def bound_statement(query: str, parameters: pa.Table | None) -> str:
+    """``query`` with its parameters bound (:func:`bound_statements`). Each parameter row is one
+    execution; several are answered as one statement, their results in turn (UNION ALL)."""
+    statements = bound_statements(query, parameters)
     if len(statements) == 1:
         return statements[0]
     return "\nUNION ALL\n".join(f"({statement})" for statement in statements)
+
+
+def update_result(count: int) -> bytes:
+    """An update's answer: DoPut's metadata, its affected count."""
+    return pb.DoPutUpdateResult(record_count=count).SerializeToString()
 
 
 def described_schema(shape: list[tuple[str, str]]) -> pa.Schema | None:
@@ -262,3 +273,16 @@ def prepared_info(
     ticket = pack(pb.CommandPreparedStatementQuery(prepared_statement_handle=handle))
     endpoint = flight.FlightEndpoint(ticket, [])  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     return flight.FlightInfo(None, descriptor, [endpoint], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+
+def session_options(catalog: str, schema: str) -> bytes:
+    """GetSessionOptions' answer: the session's current ``catalog`` and ``schema``, under the
+    option names the ADBC Flight SQL driver reads them by."""
+    value = flight_pb.SessionOptionValue
+    result = flight_pb.GetSessionOptionsResult(
+        session_options={
+            "catalog": value(string_value=catalog),
+            "schema": value(string_value=schema),
+        }
+    )
+    return result.SerializeToString()
