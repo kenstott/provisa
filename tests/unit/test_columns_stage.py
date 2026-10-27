@@ -265,57 +265,49 @@ def test_staged_the_statement_answers_as_written_enriching_only_the_rows_it_can_
 # -- run by the pipeline --------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_each_step_is_a_read_of_the_governed_statement_run_in_order(monkeypatch):
-    """The join's other side, then the CTE restricted to its keys and folded, then the statement
-    reading the landed table: each a read of the governed statement, under its role; the role's
-    row filter (``o.tenant``) in the governed statement is in the key read; the tables end with
-    the statement."""
+async def _staged_run(monkeypatch, governed_sql: str, answers, *, params=None, embed=False):
+    """``governed_sql`` run staged by the pipeline, its routing, execution and landing stood in for:
+    ``answers(sql)`` answers each read. What each read was routed with, what was landed and
+    dropped, what was admitted, and the statement's answer."""
     import dataclasses
     from types import SimpleNamespace
 
     from provisa.compiler import temp_tables
-    from provisa.executor.result import QueryResult
     from provisa.pgwire import _pipeline
 
-    governed_sql = (
-        "WITH c AS (SELECT id, enrich(note) FROM t WHERE t.tenant = 'a') "
-        "SELECT c.id, c.score FROM c JOIN orders AS o ON c.id = o.customer_id "
-        "WHERE o.total > 100 AND o.tenant = 'a'"
-    )
     staged = stage(governed_sql, TRANSFORMS, lambda command, name: None)
     assert staged is not None
-    (step,) = staged.stages
     governed = SimpleNamespace(
-        role_id="analyst", governed_semantic=governed_sql, parsed=None, memo={}, table_ids=(1, 2)
+        role_id="analyst",
+        governed_semantic=governed_sql,
+        parsed=None,
+        memo={},
+        table_ids=(1, 2),
+        comment_params=None,
+        gov_ctx=SimpleNamespace(
+            table_map={"t": 1},
+            all_columns={1: [("id", "integer"), ("note", "varchar"), ("region", "varchar")]},
+        ),
     )
     monkeypatch.setattr(
         dataclasses, "replace", lambda g, **kw: SimpleNamespace(**{**vars(g), **kw})
     )
-    reads: list = []
+    out = SimpleNamespace(reads=[], params=[], landed=[], dropped=[], admitted=[], staged=staged)
 
     async def route(g, *, params, as_of):
-        reads.append(g)
+        out.reads.append(g)
+        out.params.append(params)
         return SimpleNamespace(audit="kept", governed=g)
 
     async def execute(part, _state):
-        sql = part.governed.governed_semantic
-        if sql.startswith("SELECT DISTINCT"):
-            return QueryResult(rows=[(7,), (9,)], column_names=["customer_id"])
-        if step.table in sql:
-            return QueryResult(rows=[(7, 3)], column_names=["id", "score"])
-        return QueryResult(
-            rows=[(7, "xxx"), (9, "x")], column_names=["id", "__provisa_columns_0_0"]
-        )
-
-    admitted, landed, dropped = [], [], []
+        return answers(part.governed.governed_semantic)
 
     async def reland(_state, _session, name, columns, rows):
-        landed.append((name, columns, rows))
+        out.landed.append((name, columns, rows))
         _session.tables[name] = None
 
     async def drop(_store, _schema, name):
-        dropped.append(name)
+        out.dropped.append(name)
 
     monkeypatch.setattr(_pipeline, "route_governed", route)
     monkeypatch.setattr(_pipeline, "_execute_plan_bound", execute)
@@ -324,29 +316,188 @@ async def test_each_step_is_a_read_of_the_governed_statement_run_in_order(monkey
     monkeypatch.setattr("provisa.federation.temp_address.schema_of", lambda session: "s")
     monkeypatch.setattr(
         "provisa.api.data.action_exec.admit_command",
-        lambda command, state, role, name: admitted.append((role, name)),
+        lambda command, state, role, name: out.admitted.append((role, name)),
     )
+    if embed:
+        from provisa.vector import embed_fn
+
+        async def fold(sql, _registry, _provider):
+            folded = re.sub(r"embed\(c\.note\)", "c.note AS __e", sql, flags=re.IGNORECASE)
+            return SimpleNamespace(sql=folded, rows=[0])
+
+        async def registry(_state):
+            return None
+
+        monkeypatch.setattr(embed_fn, "fold", fold)
+        monkeypatch.setattr(_pipeline, "vector_registry", registry)
     state = SimpleNamespace(
         column_transforms=TRANSFORMS,
         federation_engine=SimpleNamespace(
             engine=SimpleNamespace(materialize_store=lambda: "store")
         ),
     )
-    plan = _pipeline._staged_plan(governed, staged, params=None, as_of=None, audit=None)
+    plan = _pipeline._staged_plan(governed, staged, params=params, as_of=None, audit=None)
     token = temp_tables.bind(temp_tables.TempSession())
     try:
-        answer = await _pipeline._run_staged(plan, state)
+        out.answer = await _pipeline._run_staged(plan, state)
     finally:
         temp_tables.unbind(token)
-    key_read, body_read, outer_read = (r.governed_semantic for r in reads)
+    return out
+
+
+JOINED = (
+    "WITH c AS (SELECT id, enrich(note) FROM t WHERE t.tenant = 'a') "
+    "SELECT c.id, c.score FROM c JOIN orders AS o ON c.id = o.customer_id "
+    "WHERE o.total > 100 AND o.tenant = 'a'"
+)
+
+
+def _joined_answers(keys):
+    from provisa.executor.result import QueryResult
+
+    def answers(sql):
+        if sql.startswith("SELECT DISTINCT"):
+            return QueryResult(rows=[(k,) for k in keys], column_names=["customer_id"])
+        if "__provisa_stage_" in sql:
+            return QueryResult(rows=[(7, 3)], column_names=["id", "score"])
+        return QueryResult(rows=[(k, len(str(k))) for k in keys], column_names=["id", "score"])
+
+    return answers
+
+
+@pytest.mark.asyncio
+async def test_each_step_is_a_read_of_the_governed_statement_run_in_order(monkeypatch):
+    """The join's other side, then the CTE restricted to its keys and folded, then the statement
+    reading the landed table: each a read of the governed statement, under its role; the role's
+    row filter (``o.tenant``) in the governed statement is in the key read; the tables end with
+    the statement."""
+    run = await _staged_run(monkeypatch, JOINED, _joined_answers([7, 9]))
+    (step,) = run.staged.stages
+    key_read, body_read, outer_read = (r.governed_semantic for r in run.reads)
     assert (
         key_read
         == "SELECT DISTINCT o.customer_id FROM orders AS o WHERE o.total > 100 AND o.tenant = 'a'"
     )
     assert "t.tenant = 'a'" in body_read and "id IN (7, 9)" in body_read
-    assert "__provisa_columns_0_0" in body_read and "columns" in reads[1].memo  # folded
+    assert "__provisa_columns_0_0" in body_read and "columns" in run.reads[1].memo  # folded
     assert step.table in outer_read and "enrich" not in outer_read.lower()
-    assert all(r.role_id == "analyst" for r in reads)
-    assert admitted == [("analyst", "enrich")]
-    assert [n for n, _, _ in landed] == dropped == [step.table]
-    assert answer.rows == [(7, 3)]
+    assert all(r.role_id == "analyst" for r in run.reads)
+    assert run.admitted == [("analyst", "enrich")]
+    assert [n for n, _, _ in run.landed] == run.dropped == [step.table]
+    assert run.answer.rows == [(7, 3)]
+
+
+@pytest.mark.asyncio
+async def test_a_stage_is_landed_typed_by_the_model_and_an_empty_one_as_an_empty_table(monkeypatch):
+    run = await _staged_run(monkeypatch, JOINED, _joined_answers([]))
+    ((_name, columns, rows),) = run.landed
+    # id as its table declares it, score as the transform does: landed as their landed types.
+    assert (columns, rows) == ([("id", "bigint"), ("score", "bigint")], [])
+    assert "FALSE" in run.reads[1].governed_semantic  # no key: no row of the CTE is read
+
+
+@pytest.mark.asyncio
+async def test_each_read_is_given_the_parameters_it_names_renumbered(monkeypatch):
+    from provisa.executor.result import QueryResult
+
+    sql = (
+        "WITH c AS (SELECT id, enrich(note) FROM t WHERE t.region = $2) "
+        "SELECT id, score FROM c WHERE c.score > $1"
+    )
+    run = await _staged_run(
+        monkeypatch,
+        sql,
+        lambda statement: QueryResult(rows=[(1, 2)], column_names=["id", "score"]),
+        params=[5, "EU"],
+    )
+    body, outer = (r.governed_semantic for r in run.reads)
+    assert "t.region = $1" in body and "c.score > $1" in outer
+    assert run.params == [["EU"], [5]]
+
+
+@pytest.mark.asyncio
+async def test_an_embed_call_is_folded_with_the_read_it_is_in(monkeypatch):
+    from provisa.executor.result import QueryResult
+
+    sql = "WITH c AS (SELECT id, note, enrich(note) FROM t) SELECT c.id, embed(c.note) FROM c"
+    run = await _staged_run(
+        monkeypatch,
+        sql,
+        lambda statement: QueryResult(rows=[], column_names=["id", "note", "score"]),
+        embed=True,
+    )
+    body, outer = run.reads
+    assert "columns" in body.memo and "embed" not in body.memo
+    assert "embed" in outer.memo and "__e" in outer.governed_semantic
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH c AS (SELECT id, enrich(note) FROM t) INSERT INTO x SELECT * FROM c",
+        "INSERT INTO x WITH c AS (SELECT id, enrich(note) FROM t) SELECT * FROM c",
+    ],
+)
+def test_an_insert_whose_cte_holds_a_transform_is_refused_saying_so(sql):
+    from provisa.codesource.columns import ColumnTransformRefused
+
+    assert stage(sql, TRANSFORMS, lambda command, name: None) is None
+    with pytest.raises(ColumnTransformRefused, match="INSERT ... SELECT") as refused:
+        fold(sql, TRANSFORMS, lambda command, name: None)
+    assert "common table expression" in str(refused.value)
+
+
+def test_each_read_is_given_only_the_parameters_it_uses_renumbered():
+    from provisa.codesource.columns_stage import own_params
+
+    sql, given = own_params(
+        "SELECT id FROM t WHERE region = $3 AND id > $1 OR id = $3", ["a", "b", "c"]
+    )
+    assert sql == "SELECT id FROM t WHERE region = $2 AND id > $1 OR id = $2"
+    assert given == ["a", "c"]
+    assert own_params("SELECT id FROM t", ["a"]) == ("SELECT id FROM t", [])
+
+
+# -- a stage's columns, typed from the model -------------------------------------------------------
+
+TYPES = {
+    "sales.t": {"id": "integer", "note": "varchar", "region": "varchar", "price": "decimal(10,2)"}
+}
+
+
+def _typed(sql: str, landed=None):
+    from provisa.codesource.columns_stage import stage_columns
+
+    return stage_columns(sql, lambda ref: {**TYPES, **(landed or {})}.get(ref), TRANSFORMS)
+
+
+def test_a_stages_inputs_are_typed_by_their_table_and_its_outputs_by_the_transform():
+    assert _typed('SELECT t.id, t.region AS r, enrich(t.note) FROM "sales"."t" AS t') == [
+        ("id", "integer"),
+        ("r", "varchar"),
+        ("score", "integer"),
+    ]
+
+
+def test_a_cast_is_typed_by_its_type_and_an_earlier_cte_by_its_own_columns():
+    assert _typed(
+        "WITH base AS (SELECT id, price FROM sales.t) "
+        "SELECT price, CAST(id AS TEXT) AS key, enrich(price) FROM base"
+    ) == [("price", "decimal(10,2)"), ("key", "TEXT"), ("score", "integer")]
+
+
+def test_a_landed_stage_is_typed_by_what_it_was_landed_as():
+    landed = {"__provisa_stage_x": {"id": "bigint"}}
+    assert _typed("SELECT id, enrich(id) FROM __provisa_stage_x", landed) == [
+        ("id", "bigint"),
+        ("score", "integer"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["SELECT upper(note) AS n, enrich(note) FROM sales.t", "SELECT *, enrich(note) FROM sales.t"],
+)
+def test_a_column_the_model_does_not_type_is_refused_by_name(sql):
+    with pytest.raises(ValueError, match="CAST"):
+        _typed(sql)

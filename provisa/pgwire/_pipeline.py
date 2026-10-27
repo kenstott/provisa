@@ -32,7 +32,7 @@ import re
 import secrets as _secrets
 import threading
 import time as _time
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1869,7 +1869,8 @@ async def govern_statement(
                 governed_semantic = _columns.sql
                 if _columns.calls:
                     _memo["columns"] = _columns
-    if _embed_fn.mentions(governed_semantic):
+    if _embed_fn.mentions(governed_semantic) and not _staging:
+        # (A staged statement's embed() calls are folded read by read, with its transforms.)
         # REQ-2002: embed() is Provisa's: a literal text is embedded now, a text of rows once the
         # rows are read (the plan's ``embedded``); no source or engine sees the call.
         _folded = await _embed_fn.fold(
@@ -2070,10 +2071,12 @@ async def _run_staged(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2131
 
     from provisa.api.data.action_exec import admit_command
     from provisa.codesource import columns_fold
+    from provisa.codesource.columns_stage import own_params, stage_columns
     from provisa.compiler import temp_tables
     from provisa.federation.store_scope import drop_temp_table
     from provisa.federation.temp_address import schema_of
-    from provisa.pgwire.temp_exec import inferred_type, reland
+    from provisa.pgwire.temp_exec import landed_type, reland
+    from provisa.vector import embed_fn
 
     run = plan.staged
     session = temp_tables.current()
@@ -2083,15 +2086,43 @@ async def _run_staged(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2131
     def admit(command: dict, name: str) -> None:
         admit_command(command, state, plan.role_id, name)
 
+    # The statement's parameters, bound or given in its provisa-params comment: each read is given
+    # those it names, renumbered.
+    params = run.params if run.params is not None else run.governed.comment_params
+    gov = run.governed.gov_ctx
+    landed_types: dict[str, dict[str, str]] = {}
+
+    def table_types(ref: str) -> Mapping[str, str] | None:
+        """A stage's table's columns' types: a landed stage's as landed, a registered table's as
+        the model declares them."""
+        if ref in landed_types:
+            return landed_types[ref]
+        table_id = gov.table_map.get(ref)
+        return None if table_id is None else dict(gov.all_columns.get(table_id, []))
+
     async def read(sql: str) -> QueryResult:
+        # Folded as the statement is governed: its column transforms, then its embed() calls,
+        # whose select-list positions are then the folded ones (REQ-2131, REQ-2002).
         folded = columns_fold.fold(sql, transforms, admit)
+        memo: dict[str, Any] = {"columns": folded} if folded.calls else {}
+        statement = folded.sql
+        if embed_fn.mentions(statement):
+            embedded = await embed_fn.fold(
+                statement, await vector_registry(state), embedding_provider
+            )
+            statement = embedded.sql
+            memo["embed"] = embedded
+        given = None
+        if params:
+            statement, given = own_params(statement, params)
         governed = dataclasses.replace(
             run.governed,
-            governed_semantic=folded.sql,
-            parsed=sqlglot.parse_one(folded.sql, read="postgres"),
-            memo={"columns": folded} if folded.calls else {},
+            governed_semantic=statement,
+            parsed=sqlglot.parse_one(statement, read="postgres"),
+            comment_params=None,
+            memo=memo,
         )
-        part = await route_governed(governed, params=run.params, as_of=run.as_of)
+        part = await route_governed(governed, params=given or None, as_of=run.as_of)
         part.audit = None  # the statement's one record is its own
         return (await _execute_plan_bound(part, state)).materialize()
 
@@ -2101,14 +2132,16 @@ async def _run_staged(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2131
             body = stage.body
             if stage.key_read is not None:
                 body = stage.restricted([row[0] for row in (await read(stage.key_read)).rows])
+            # Typed as the model declares its columns, so an empty stage lands an empty table.
+            declared = stage_columns(body, table_types, transforms)
             enriched = await read(body)
-            rows = list(enriched.rows)
-            columns = [
-                (name, inferred_type(name, [row[i] for row in rows]))
-                for i, name in enumerate(enriched.column_names)
-            ]
+            assert [n for n, _ in declared] == list(enriched.column_names), (
+                f"stage {stage.cte!r} gave {enriched.column_names}, where it declares {declared}"
+            )
+            columns = [(name, landed_type(name, kind)) for name, kind in declared]
             landed.append(stage.table)
-            await reland(state, session, stage.table, columns, rows)
+            await reland(state, session, stage.table, columns, list(enriched.rows))
+            landed_types[stage.table] = dict(declared)
         return await read(run.staged.outer)
     finally:
         store = state.federation_engine.engine.materialize_store()
@@ -3550,18 +3583,21 @@ async def _settle_cut(plan: _Plan, state: Any) -> None:
         plan.limit_outcome = "cut"
 
 
-def streams_from_terminal(plan: _Plan) -> bool:  # REQ-2002
+def streams_from_terminal(plan: _Plan, *, applies_columns: bool = False) -> bool:  # REQ-2002
     """Whether a surface may stream ``plan``'s rows straight from its terminal. Not when Provisa
     still has work to do on them: a select-list ``embed()`` of rows is embedded once the rows are
-    read, in :func:`_execute_plan`, which such a plan is run through."""
+    read, in :func:`_execute_plan`, which such a plan is run through. A plan's column transforms
+    are applied as its rows stream where the terminal serves them through
+    :func:`serve_stream_through_cache` (``applies_columns``); anywhere else, by the pipeline
+    terminal."""
     if plan.two_step is not None:
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
     if plan.code_write is not None:
         return False  # REQ-2100: its command is called by the pipeline terminal
     if plan.scratch:
         return False  # REQ-1986: its scratch tables are dropped when the terminal is done
-    if plan.columns is not None:
-        return False  # REQ-2131: its column transforms are applied once its rows are read
+    if plan.columns is not None and not applies_columns:
+        return False  # REQ-2131: its column transforms are applied by the pipeline terminal
     if plan.staged is not None:
         return False  # REQ-2131: its CTEs holding a transform are run first, then it
     return plan.embedded is None or not plan.embedded.rows
@@ -4095,7 +4131,9 @@ def serve_stream_through_cache(  # REQ-1897
     plan.loop_run = run  # REQ-1949: what the check at the end of a source stream is run with
     caching = state.response_cache_store.stores_results
     permits = None  # REQ-1909: taken on the first live open, held until the stream ends
-    if passthrough is not None:
+    if passthrough is not None and plan.columns is None:
+        # (A plan's column transforms change its rows' values: its source's DataRows are not the
+        # answer, so it is served decoded.)
         wire_formats, open_passthrough = passthrough
         if caching:
             replay = run(check_response_cache_datarows(plan, state, wire_formats))
@@ -4128,6 +4166,18 @@ def serve_stream_through_cache(  # REQ-1897
     except BaseException:
         permits.release()
         raise
+    if plan.columns is not None:
+        from provisa.codesource.columns_fold import apply as _apply_columns
+
+        # REQ-2131: each call's input columns become its outputs as the rows stream through the
+        # source's workers, each answered batch passed on at once -- the answer is never waited
+        # for whole, and what is kept and counted at the stream's end is the transformed rows.
+        try:
+            stream = run(_apply_columns(stream, plan.columns.calls, state))
+        except BaseException:
+            stream.close()
+            permits.release()
+            raise
     tee = response_cache_tee(plan, state, run=run)
     return permits.wrap_stream(stream if tee is None else tee.rows(stream))
 

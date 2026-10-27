@@ -461,3 +461,13 @@ def test_a_view_applying_a_column_transform_is_landed_declared_or_not(monkeypatc
     view = SimpleNamespace(table_name="suppliers_clean", view_sql=sql, materialize=False)
     land_transform_view(view)
     assert view.materialize is landed
+
+
+def test_a_column_transform_plan_streams_only_where_its_terminal_applies_the_transform():
+    from provisa.pgwire._pipeline import streams_from_terminal
+
+    plan = SimpleNamespace(
+        two_step=None, code_write=None, scratch=(), staged=None, embedded=None, columns=object()
+    )
+    assert not streams_from_terminal(plan)  # e.g. COPY, Flight's ENGINE stream: buffered
+    assert streams_from_terminal(plan, applies_columns=True)  # serve_stream_through_cache
