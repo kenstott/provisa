@@ -3246,9 +3246,9 @@ Provisa handles CALL db.labels(), CALL db.relationshipTypes(), and CALL db.prope
 
 **Use case:** Returning schema introspection data from the semantic layer (not the database) lets Neo4j-compatible clients discover the graph schema via standard procedure calls.
 
-**Code:** `provisa/api/rest/cypher_router.py`
+**Code:** `provisa/api/rest/cypher_router.py`, `provisa/compiler/naming.py`, `provisa/core/repositories/table.py`, `provisa/core/repositories/domain.py`
 
-**Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
+**Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_table_label_not_a_domain.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -26108,9 +26108,9 @@ SPARQL is a graph query language served over the semantic model, a peer of Cyphe
 
 **Use case:** A knowledge-graph team queries the governed model with the language and RDF clients it already uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied into a triple store.
 
-**Code:** `provisa/sparql_query/compiler.py`, `provisa/sparql_query/results.py`, `provisa/sparql_query/vocabulary.py`, `provisa/api/rest/sparql_router.py`, `provisa/gql/ir.py`, `provisa/gql/translator.py`, `provisa/gql/select_builder.py`, `provisa/gql/assembler.py`, `provisa/gql/graph_rewriter.py`, `provisa/gql/path_expr.py`, `provisa/gql/path_functions.py`, `provisa/gql/iri.py`, `provisa/gql/terms.py`, `provisa/gql/expr_ast.py`, `provisa/graphql_front/lower.py`, `provisa/core/settings_catalog.py`, `provisa/api/app_startup.py`
+**Code:** `provisa/core/local_install.py`, `provisa/cli.py`, `provisa-ui/src/pages/GraphPage.tsx - provisa/sparql_query/compiler.py - provisa/sparql_query/results.py - provisa/sparql_query/vocabulary.py - provisa/api/rest/sparql_router.py - provisa/gql/ir.py - provisa/gql/translator.py - provisa/gql/select_builder.py - provisa/gql/assembler.py - provisa/gql/graph_rewriter.py - provisa/gql/path_expr.py - provisa/gql/path_functions.py - provisa/gql/iri.py - provisa/gql/terms.py - provisa/gql/expr_ast.py - provisa/graphql_front/lower.py - provisa/core/settings_catalog.py - provisa/api/app_startup.py`
 
-**Tests:** `tests/unit/test_sparql_compiler.py`, `tests/unit/test_sparql_protocol.py`, `tests/unit/test_sparql_vocabulary_refs.py`, `tests/unit/test_gql_path_expr.py`, `tests/unit/test_gql_terms.py`, `tests/unit/test_graph_depth_limit.py`, `tests/unit/test_cypher_golden_sql.py`, `tests/unit/test_graphql_golden_sql.py`, `tests/unit/test_graphql_front_answers.py`, `tests/integration/test_sparql_endpoint.py`
+**Tests:** `tests/unit/test_local_install_public_url.py - tests/unit/test_sparql_compiler.py - tests/unit/test_sparql_protocol.py - tests/unit/test_sparql_vocabulary_refs.py - tests/unit/test_gql_path_expr.py - tests/unit/test_gql_terms.py - tests/unit/test_graph_depth_limit.py - tests/unit/test_cypher_golden_sql.py - tests/unit/test_graphql_golden_sql.py - tests/unit/test_graphql_front_answers.py - tests/integration/test_sparql_endpoint.py`
 
 ## 10. UI & Admin Surfaces
 

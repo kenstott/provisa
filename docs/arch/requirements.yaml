@@ -10055,11 +10055,15 @@
     clients discover the graph schema via standard procedure calls.
   code:
   - provisa/api/rest/cypher_router.py
+  - provisa/compiler/naming.py
+  - provisa/core/repositories/table.py
+  - provisa/core/repositories/domain.py
   tests:
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
+  - tests/unit/test_table_label_not_a_domain.py
   since: 2026-01
   scenario: 'Given a client issuing CALL db.labels()
 
@@ -87997,6 +88001,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1913
   target: "2027-Q1"
   code:
+  - provisa/core/local_install.py
+  - provisa/cli.py
+  - provisa-ui/src/pages/GraphPage.tsx
     - provisa/sparql_query/compiler.py
     - provisa/sparql_query/results.py
     - provisa/sparql_query/vocabulary.py
@@ -88015,6 +88022,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa/core/settings_catalog.py
     - provisa/api/app_startup.py
   tests:
+  - tests/unit/test_local_install_public_url.py
     - tests/unit/test_sparql_compiler.py
     - tests/unit/test_sparql_protocol.py
     - tests/unit/test_sparql_vocabulary_refs.py
