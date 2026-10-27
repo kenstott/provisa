@@ -330,28 +330,25 @@ async def auto_register_fk_relationships(  # REQ-018, REQ-399, REQ-413, REQ-415
     Uses ON CONFLICT DO NOTHING — never overwrites manually configured rels.
     Returns count of newly inserted relationships.
     """
+    from provisa.federation.pgwire_replica import SourceStillStartingError
+
     source_type_lower = source_type.lower()
 
     try:
         pg_driver, close = await _constraint_driver(source_pools, source_type_lower, source_id)
-        if pg_driver is not None:
-            try:
-                fk_rows = await _pg_fks(pg_driver, schema_name, table_name)
-            finally:
-                if close is not None:
-                    await close()
-        elif source_type_lower == "sqlite" and source_pools.has(source_id):
-            fk_rows = await _sqlite_fks(source_pools.get(source_id), schema_name, table_name)
-        else:
-            return 0
-    except Exception:
-        _log.debug(
-            "FK introspection failed for %s.%s (%s)",
-            schema_name,
-            table_name,
-            source_type,
-            exc_info=True,
-        )
+    except SourceStillStartingError:
+        # A source whose bundled server has not begun listening has no keys to read yet; its
+        # relationships are tracked when the table is saved again. Any other failure raises.
+        return 0
+    if pg_driver is not None:
+        try:
+            fk_rows = await _pg_fks(pg_driver, schema_name, table_name)
+        finally:
+            if close is not None:
+                await close()
+    elif source_type_lower == "sqlite" and source_pools.has(source_id):
+        fk_rows = await _sqlite_fks(source_pools.get(source_id), schema_name, table_name)
+    else:
         return 0
 
     if not fk_rows:

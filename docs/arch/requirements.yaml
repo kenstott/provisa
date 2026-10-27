@@ -34973,7 +34973,7 @@
   - provisa-ui/src/pages/tables/RegisterTableForm.tsx
   - provisa-ui/src/pages/tables/TableEditForm.tsx
   tests:
-  - tests/unit/test_unique_introspect.py
+  - tests/unit/test_declared_keys.py
   - tests/unit/pgwire/test_unique_constraints.py
   - tests/unit/test_unique_constraints_wiring.py
   - provisa-ui/src/components/admin/__tests__/UniquesPanel.test.tsx
@@ -60746,7 +60746,7 @@
   - provisa/federation/connector_sqlite.py
   - provisa/federation/store_writer.py
   tests:
-  - tests/unit/test_connector_sqlite_keys.py
+  - tests/unit/test_declared_keys.py
   - tests/unit/test_store_writer.py
   - tests/unit/test_snowflake_store.py
   scenario: 'Given a SQLite file source whose pets table declares id as its PRIMARY KEY
@@ -89624,6 +89624,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     to point at it; every key-dependent feature (relationship candidates, REQ-1385''s introspected primary
     key, cardinality, row identity) reads the source''s own declaration instead. A source that declares
     no keys records none, and nothing is guessed.'
+  code:
+  - provisa/discovery/declared_keys.py
+  - provisa/api/admin/_declared_keys.py
+  - provisa/core/repositories/table.py
+  - provisa/api/startup_seed.py
+  tests:
+  - tests/unit/test_declared_keys.py
   scenario: 'Given a SQLite source whose pets table declares id INTEGER PRIMARY KEY and no relationship
     points at pets
 
