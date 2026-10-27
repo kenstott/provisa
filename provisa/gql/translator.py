@@ -102,6 +102,7 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
 
     Returns (sql_ast, ordered_param_names, graph_vars).
     """
+    ast = _null_bound_matches(ast)
     translator = _Translator(ast, label_map, params)
     return translator.translate()
 
@@ -138,6 +139,74 @@ def _map_key_types(source: CypherExpr) -> dict[str, str]:
         if len(written) == 1 and (only := written.pop()) in _KIND_TYPES:
             found[key] = _KIND_TYPES[only]
     return found
+
+
+#: The graph functions of a path, node or relationship: null of null.
+_GRAPH_OF = frozenset(
+    {"nodes", "relationships", "length", "labels", "type", "startnode", "endnode", "id"}
+)
+
+
+def _null_bound_matches(ast: CypherAST) -> CypherAST:
+    """``ast`` with each OPTIONAL MATCH from a variable the last WITH binds to null (WITH null AS a
+    OPTIONAL MATCH p = (a)-[r]->()) read as what it is, a match of nothing: a WITH carrying what is
+    in scope and binding the match's own variables to null, and each graph function of one of them
+    null (REQ-778, amended 2026-10-27: a null binding is no mistake)."""
+    import copy
+
+    from provisa.gql.expr_ast import FunctionCall
+    from provisa.gql.ir import UnwindClause
+
+    if not any(isinstance(s, WithClause) for s in ast.pipeline):
+        return ast
+    out = copy.deepcopy(ast)
+    scope: list[str] = []
+    nulls: set[str] = set()
+    pipeline = []
+    for step in out.pipeline:
+        if isinstance(step, WithClause):
+            scope = [i.alias or i.name for i in step.items if i.alias or i.name]
+            nulls = {
+                i.alias
+                for i in step.items
+                if i.alias and isinstance(i.expression, ExprLiteral) and i.expression.kind == "null"
+            }
+        elif isinstance(step, UnwindClause):
+            scope.append(step.variable)
+        elif isinstance(step, MatchStep):
+            named: list[str] = []
+            for clause in step.matches:
+                pattern = clause.pattern
+                if isinstance(pattern, PathPattern):
+                    named += [n.variable for n in pattern.nodes if n.variable]
+                    named += [r.variable for r in pattern.rels if r.variable]
+                if clause.variable:
+                    named.append(clause.variable)
+            if all(c.optional for c in step.matches) and nulls & set(named):
+                fresh = [v for v in dict.fromkeys(named) if v not in scope]
+                items = [ReturnItem(expression=Variable(v), alias=v, name=v) for v in scope]
+                items += [
+                    ReturnItem(expression=ExprLiteral(None, "null"), alias=v, name=v) for v in fresh
+                ]
+                pipeline.append(WithClause(items=items))
+                scope += fresh
+                nulls |= set(fresh)
+                continue
+            scope += [v for v in named if v not in scope]
+        pipeline.append(step)
+    out.pipeline = pipeline
+
+    def _nulled(node: CypherExpr) -> CypherExpr:
+        for n in walk(node):
+            if isinstance(n, FunctionCall) and n.name.lower() in _GRAPH_OF and len(n.args) == 1:
+                if isinstance(n.args[0], Variable) and n.args[0].name in nulls:
+                    n.args[0] = ExprLiteral(None, "null")
+        return node
+
+    if out.return_clause is not None:
+        for item in out.return_clause.items:
+            item.expression = _nulled(item.expression)
+    return out
 
 
 def _is_mixed_list(expr: CypherExpr, json_lists: set[str]) -> bool:

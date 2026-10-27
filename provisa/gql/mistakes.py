@@ -505,10 +505,14 @@ def variable_misuse(ast: CypherAST) -> CypherMistake | None:
             found = _length_of_entity([i.expression for i in step.items], kinds)
             if found is not None:
                 return found
+            # A variable bound to null is no value a pattern refuses: an OPTIONAL MATCH from it
+            # matches nothing (REQ-778, amended 2026-10-27; translator._null_bound_matches).
             kinds = {
                 item.alias: "value"
                 for item in step.items
-                if item.alias and isinstance(item.expression, (Literal, ListLiteral, MapLiteral))
+                if item.alias
+                and isinstance(item.expression, (Literal, ListLiteral, MapLiteral))
+                and not (isinstance(item.expression, Literal) and item.expression.kind == "null")
             }
             continue
         if not isinstance(step, MatchStep):

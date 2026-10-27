@@ -191,3 +191,29 @@ def test_a_range_s_computed_step_is_refused_at_zero_by_the_engine():
     with pytest.raises(duckdb.InvalidInputException, match="step other than 0"):
         _rows("WITH 0 AS s RETURN range(2, 8, s) AS r")
     assert _rows("WITH 2 AS s RETURN range(2, 8, s) AS r") == [([2, 4, 6, 8],)]
+
+
+@pytest.mark.parametrize(
+    ("query", "row"),
+    [
+        # Path1 [1], Path2 [3]: an OPTIONAL MATCH from a variable bound to null matches nothing.
+        (
+            "WITH null AS a OPTIONAL MATCH p = (a)-[r]->() RETURN nodes(p) AS n, nodes(null) AS m",
+            {"n": None, "m": None},
+        ),
+        (
+            "WITH null AS a OPTIONAL MATCH p = (a)-[r]->()"
+            " RETURN relationships(p) AS n, relationships(null) AS m, r",
+            {"n": None, "m": None, "r": None},
+        ),
+    ],
+)
+def test_an_optional_match_from_null_matches_nothing(query, row):
+    assert _answer(query) == [row]
+
+
+def test_a_value_bound_where_a_pattern_reads_a_node_is_still_refused():
+    from provisa.gql.translator_types import CypherMistake
+
+    with pytest.raises(CypherMistake, match="value that is neither"):
+        parse_cypher("WITH 1 AS a OPTIONAL MATCH (a)-[r]->() RETURN r")

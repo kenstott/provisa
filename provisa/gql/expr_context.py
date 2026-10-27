@@ -506,6 +506,8 @@ class TranslatorExprContext:
         is unresolved, so the whole expression falls back to the legacy path."""
         if name == "exists":  # exists(x) → x IS NOT NULL — the only fn on an arbitrary expression
             return exp.Not(this=exp.Is(this=args[0], expression=exp.Null()))
+        if args and isinstance(args[0], exp.Null):
+            return exp.Null()  # nodes(null), length(null): null (openCypher)
         var = self._arg_var(args[0]) if args else None
         result = None
         if var is not None:
