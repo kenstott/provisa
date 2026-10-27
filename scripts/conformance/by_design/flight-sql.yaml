@@ -57,6 +57,17 @@
     table carries after its own, which the case's assertion expects too.
   case: "TestConnection::test_get_table_schema_schema\\["
 
+- kind: adapted
+  group: Ingest tests' tables
+  became: >-
+    Each table an ingest test would create is declared in the fixture model, with its case's
+    input columns as PostgreSQL types, seeded empty and writable by org_admin. The test's setup
+    ingest that would create it (mode create; replace for test_many_columns) appends to the
+    declared table instead (mode create_append); its other ingests are made as it makes them, and
+    every row is written through the governed pipeline. A temporary ingest lands in the session's
+    own temporary table, which the session reads and lists under pg_temp, and which ends with it.
+  case: "TestIngest::test_(create|create_dictionary|append|createappend|create_conflict|append_schema_mismatch|createappend_schema_mismatch|create_multiple_batches|create_large_batch|create_long_values|many_columns|schema|ingest_then_query|temporary|temporary_get_objects)\\["
+
 - kind: client
   group: Bind with no Prepare
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
@@ -95,7 +106,7 @@
     TIMESTAMP(6), so the column holds microseconds and is read as microseconds, where the suite
     expects nanoseconds.
   reason: "timestamp\\[ns.*timestamp\\[us"
-  case: "\\[provisa:flightsql:type/select/timestamp[789](tz)?\\]"
+  case: "\\[provisa:flightsql:(type/select/timestamp[789](tz)?|ingest/timestamp(tz)?_ns)\\]"
 
 - group: One catalog per connection
   requirement: REQ-588
@@ -134,3 +145,26 @@
     Read the keys with the key commands (the ADBC driver's GetPrimaryKeys and GetImportedKeys
     equivalents over Flight SQL).
   case: "TestConnection::test_get_objects_constraints_"
+
+- group: Nothing defined through a query protocol
+  requirement: REQ-1926
+  decision: >-
+    Nothing is defined through a query protocol; an object is defined in the model. An ingest
+    that replaces a table drops and defines it again, so it is refused on a table the model
+    declares, and one that creates a table the model does not declare is refused too.
+  reason: "defined in the model"
+  case: "TestIngest::test_(replace|replace_noop|replace_schema)\\["
+
+- group: One catalog to ingest into
+  requirement: REQ-588
+  decision: >-
+    Every catalog a client sees is the served database: a connection is served one catalog, so
+    there is no second catalog to ingest into.
+  case: "TestIngest::test_(catalog|replace_catalog)\\["
+
+- group: Numeric of negative scale
+  requirement: REQ-1961
+  decision: >-
+    The model records a numeric column's precision and scale, a scale of 0 to the precision, so a
+    column of negative scale (decimal128(2, -2)) cannot be declared to ingest into.
+  case: "TestIngest::test_create\\[provisa:flightsql:ingest/decimal_scale_negative\\]"

@@ -68,6 +68,81 @@ WRITTEN_TABLES = {
     "test_rows_affected": "CREATE TABLE test_rows_affected (id INTEGER);",
 }
 
+#: The suite's ingest cases, and the tables its ingest tests would create from them
+#: (tests/ingest.py: each test's table prefix, and the cases it runs on).
+INGEST_CASES = Path("adbc_drivers_validation/queries/ingest")
+_INGEST_ON_EVERY_CASE = ("test_ingest_create",)
+_INGEST_ON = {
+    "test_ingest_create_dictionary": ("string", "large_string"),
+    "test_ingest_long_values": ("string", "binary"),
+    **{
+        prefix: ("string",)
+        for prefix in (
+            "test_ingest_append",
+            "test_ingest_append_mismatch",
+            "test_ingest_create_conflict",
+            "test_ingest_createappend",
+            "test_ingest_createappend_mismatch",
+            "test_ingest_large_batch",
+            "test_ingest_multiple_batches",
+            "test_ingest_then_query",
+            "test_ingest_temporary",
+        )
+    },
+}
+#: The tables two ingest tests create that no case shapes.
+_INGEST_FIXED = {
+    "test_ingest_schema": [("idx", "bigint"), ("value", "text")],
+    "test_ingest_many_columns": [(f"col_{i}", "bigint") for i in range(100)],
+}
+#: An Arrow format (the C data interface's) as the PostgreSQL type an ingest of it is declared as.
+_INGEST_TYPES = {
+    "l": "bigint", "s": "smallint", "i": "integer", "b": "boolean", "f": "real",
+    "g": "double precision", "z": "bytea", "Z": "bytea", "vz": "bytea", "u": "text",
+    "U": "text", "vu": "text", "tdD": "date", "tts": "time(0)", "ttm": "time(3)",
+    "ttu": "time(6)", "ttn": "time(6)",
+}  # fmt: skip
+#: A timestamp unit as the precision PostgreSQL declares it with: six digits at most.
+_TIMESTAMP_DIGITS = {"s": 0, "m": 3, "u": 6, "n": 6}
+
+
+def ingest_type(arrow_format: str) -> str:
+    """The PostgreSQL type a column ingested as ``arrow_format`` is declared as."""
+    if arrow_format in _INGEST_TYPES:
+        return _INGEST_TYPES[arrow_format]
+    if arrow_format.startswith("w:"):
+        return "bytea"
+    if arrow_format.startswith("d:"):
+        precision, scale = arrow_format[2:].split(",")[:2]
+        return f"numeric({precision},{scale})"
+    if arrow_format.startswith("ts") and ":" in arrow_format:
+        unit, zone = arrow_format[2], arrow_format.split(":", 1)[1]
+        base = "timestamptz" if zone else "timestamp"
+        return f"{base}({_TIMESTAMP_DIGITS[unit]})"
+    raise ValueError(f"no PostgreSQL type for an ingested column of Arrow format {arrow_format!r}")
+
+
+def ingest_tables(validation: Path) -> dict[str, list[tuple[str, str]]]:
+    """Each table the suite's ingest tests would create, with its columns: its case's input
+    schema as PostgreSQL types. A case whose type the model cannot declare (a numeric of
+    negative scale: the model records a scale of 0 to the precision) has none."""
+    shapes: dict[str, list[tuple[str, str]]] = {}
+    for path in sorted((validation / INGEST_CASES).glob("*.txtcase")):
+        schema = json.loads(_parts(path.read_text())["input_schema"])
+        columns = [(c["name"], ingest_type(c["format"])) for c in schema["children"]]
+        if any(re.fullmatch(r"numeric\(\d+,-\d+\)", t) for _, t in columns):
+            continue
+        shapes[path.stem] = columns
+    tables = {f"{p}_{case}": cols for p in _INGEST_ON_EVERY_CASE for case, cols in shapes.items()}
+    for prefix, on in _INGEST_ON.items():
+        tables.update({f"{prefix}_{case}": shapes[case] for case in on})
+    return {**tables, **_INGEST_FIXED}
+
+
+def _ingest_setup(table: str, columns: list[tuple[str, str]]) -> str:
+    return f"CREATE TABLE {table} ({', '.join(f'{c} {t}' for c, t in columns)});"
+
+
 _PART = re.compile(r"^// part: (\w+)\s*$", re.M)
 _CREATE = re.compile(r"CREATE TABLE\s+(\w+)", re.I)
 _HEX = re.compile(r"X'([0-9a-fA-F]*)'")
@@ -231,6 +306,10 @@ def seed(validation: Path, pg_dsn: str, out: Path) -> None:
     setups.append((GET_OBJECTS_TABLE, GET_OBJECTS_SETUP))
     setups.append((TABLE_SCHEMA_TABLE, TABLE_SCHEMA_SETUP))
     setups.extend(WRITTEN_TABLES.items())
+    # The ingest tests' tables, seeded empty and writable: their ingest writes them.
+    ingested = {name: _ingest_setup(name, cols) for name, cols in ingest_tables(validation).items()}
+    setups.extend(ingested.items())
+    written = {*WRITTEN_TABLES, *ingested}
     tables = []
     with psycopg.connect(pg_dsn, autocommit=True) as conn:
         conn.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
@@ -238,7 +317,7 @@ def seed(validation: Path, pg_dsn: str, out: Path) -> None:
         for table, setup in setups:
             conn.execute(f"DROP TABLE IF EXISTS {SCHEMA}.{table}")
             conn.execute(setup)
-            tables.append(_model_table(conn, table, written=table in WRITTEN_TABLES))
+            tables.append(_model_table(conn, table, written=table in written))
     out.write_text(yaml.safe_dump(tables, sort_keys=False))
     print(f"seeded {len(tables)} fixture tables into {SCHEMA}; wrote {out}")
 

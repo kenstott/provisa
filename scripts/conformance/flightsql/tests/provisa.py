@@ -47,6 +47,11 @@ class ProvisaQuirks(model.DriverQuirks):
         connection_transactions=True,
         # A session sets its current schema (SetSessionOptions, with the session cookie).
         connection_set_current_schema=True,
+        # Bulk ingest into the model's tables, and into a session's temporary tables; in the
+        # secondary schema too. One catalog per connection: no second catalog to ingest into.
+        statement_bulk_ingest=True,
+        statement_bulk_ingest_temporary=True,
+        statement_bulk_ingest_schema=True,
         statement_rows_affected=True,
         statement_rows_affected_ddl=True,
         current_catalog=model.FromEnv("PROVISA_FLIGHT_CATALOG"),
@@ -84,6 +89,10 @@ class ProvisaQuirks(model.DriverQuirks):
     def query_override(self, context: str, default: str) -> str:
         return self._ADAPTED.get(context, default)
 
+    def qualify_temp_table(self, cursor, name: str) -> list[str]:  # noqa: ARG002  # the suite's
+        """A temporary table is named by its own name, with no schema, as PostgreSQL's are."""
+        return [name]
+
     def try_drop_table(self, cursor, **_table) -> None:  # noqa: ARG002  # the suite's signature
         """Nothing to drop: the fixture model holds every table the suite reads, and a query
         surface creates or drops none (adapted, by_design/flight-sql.yaml)."""
@@ -95,3 +104,20 @@ class ProvisaQuirks(model.DriverQuirks):
 
 def get_quirks() -> ProvisaQuirks:
     return ProvisaQuirks()
+
+
+#: The fixture model's schema: its domain, where every table the job declares is listed.
+FIXTURE_SCHEMA = "conformance"
+
+
+def in_fixture_schema(driver: model.DriverQuirks) -> model.DriverQuirks:
+    """``driver`` with the fixture's schema as the one a test looks for a fixture table in: the
+    suite's would be in the current schema (public); a model's tables are in their domains'."""
+    import copy
+
+    features = driver.features.model_copy()
+    # The suite's DriverFeatures answers current_schema from this private attribute.
+    features._current_schema = FIXTURE_SCHEMA
+    adapted = copy.copy(driver)
+    adapted.features = features
+    return adapted

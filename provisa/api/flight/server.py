@@ -257,6 +257,11 @@ class _NotFound(KeyError):
     pyarrow's Flight errors cannot (REQ-2175)."""
 
 
+class _Invalid(ValueError):
+    """A request the RPC refuses as given: pyarrow answers a ValueError INVALID_ARGUMENT, the
+    nearest it has to ALREADY_EXISTS, which no pyarrow error answers (REQ-2175)."""
+
+
 def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     """A Flight RPC's failure that is not a Flight error is a defect: log it with its traceback,
     then let pyarrow answer the client as before. A Flight error is the RPC's answer (not found,
@@ -273,7 +278,7 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
         def _stream(*args: Any, **kwargs: Any) -> Any:
             try:
                 yield from rpc(*args, **kwargs)
-            except (flight.FlightError, NotImplementedError, _NotFound):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            except (flight.FlightError, NotImplementedError, _NotFound, _Invalid):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 raise
             except Exception as exc:
                 _log(exc)
@@ -285,13 +290,24 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     def _call(*args: Any, **kwargs: Any) -> Any:
         try:
             return rpc(*args, **kwargs)
-        except (flight.FlightError, NotImplementedError, _NotFound):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        except (flight.FlightError, NotImplementedError, _NotFound, _Invalid):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             raise
         except Exception as exc:
             _log(exc)
             raise
 
     return _call
+
+
+async def _in_temp_session(session: Any, coro: Any) -> Any:  # REQ-615
+    """Await ``coro`` with ``session`` the temporary-table session its statements belong to."""
+    from provisa.compiler import temp_tables
+
+    token = temp_tables.bind(session)
+    try:
+        return await coro
+    finally:
+        temp_tables.unbind(token)
 
 
 async def _affected(sql: str, role_id: str, state: Any) -> int:  # REQ-2175
@@ -406,16 +422,17 @@ _HEADERS = "headers"
 
 class _CallHeaders(flight.ServerMiddleware):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """The headers a call arrived with, and the Flight session it is in (REQ-2175): the one its
-    cookie names, or for an action that names none a new session id, set as its cookie. pyarrow
-    sends a call's headers before its handler runs, so the id is chosen here; nothing is held
-    for it until the session sets an option (provisa.api.flight.sessions)."""
+    cookie names (``presented``), or for a call that names none a new session id, set as its
+    cookie. pyarrow sends a call's headers before its handler runs, so the id is chosen here;
+    nothing is held for it until the session sets an option or creates a temporary table
+    (provisa.api.flight.sessions)."""
 
-    def __init__(self, headers: dict[str, list[str]], *, action: bool) -> None:
+    def __init__(self, headers: dict[str, list[str]]) -> None:
         self.headers = headers
-        self.session_id = _session_cookie(headers)
-        self._minted = self.session_id is None and action
-        if self._minted:
-            self.session_id = sessions.new_session_id()
+        presented = _session_cookie(headers)
+        self.presented = presented is not None
+        self._minted = presented is None
+        self.session_id = presented if presented is not None else sessions.new_session_id()
 
     def sending_headers(self) -> dict[str, str]:
         if not self._minted:
@@ -424,8 +441,8 @@ class _CallHeaders(flight.ServerMiddleware):  # pyright: ignore[reportPrivateImp
 
 
 class _CallHeadersFactory(flight.ServerMiddlewareFactory):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    def start_call(self, info: flight.CallInfo, headers: dict[str, list[str]]) -> _CallHeaders:
-        return _CallHeaders(headers, action=info.method == flight.FlightMethod.DO_ACTION)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def start_call(self, info: flight.CallInfo, headers: dict[str, list[str]]) -> _CallHeaders:  # noqa: ARG002  # required by the override signature
+        return _CallHeaders(headers)
 
 
 def _header(headers: dict[str, list[str]], name: str) -> str | None:
@@ -471,7 +488,8 @@ class ProvisaFlightServer(
         # get_schema): their credential and requested role arrive there (_catalog_role).
         super().__init__(location, middleware={_HEADERS: _CallHeadersFactory()}, **kwargs)  # type: ignore[arg-type]
         self._state = state
-        self._sessions = sessions.SessionStore()  # REQ-2175: Flight SQL sessions, this worker's
+        # REQ-2175: Flight SQL sessions, this worker's; a session's temporary tables end with it.
+        self._sessions = sessions.SessionStore(ended=self._session_ended)
 
     # ------------------------------------------------------------------
     # Per-org routing (REQ-1266)
@@ -491,6 +509,12 @@ class ProvisaFlightServer(
         # for the same reason — the pipeline's audit write runs inside this loop coroutine.
         ident = current_audit_identity()
         inner = coro if ident is None else with_audit_identity(ident.user_id, ident.surface, coro)
+        # REQ-615: the caller's Flight session's temporary tables cross the same boundary.
+        from provisa.compiler import temp_tables
+
+        held = temp_tables.current()
+        if held is not None:
+            inner = _in_temp_session(held, inner)
         return run_on_connection_loop(_run_with_org(org_id, inner), timeout=timeout)
 
     def _finalize_audit(self, plan, status_code: int, *, defer_to_drain: bool = False) -> None:
@@ -820,12 +844,16 @@ class ProvisaFlightServer(
         """A Flight SQL catalog command's answer (REQ-2175): the catalog pgwire lists to the role
         the call's statements run as (:meth:`_caller_request`'s caller), so what it lists is what
         that role is served."""
+        from provisa.compiler import temp_tables
+
         request = self._caller_headers(context)
 
         def _answer() -> pa.Table:
             if not request.get("role"):
                 raise _flight_error("role is required")
             catalog = flightsql_catalog.role_catalog(self._state, str(request["role"]))
+            # REQ-615: the temporary tables of the caller's Flight session, listed to it alone.
+            catalog = flightsql_catalog.with_temporary(catalog, temp_tables.current())
             return flightsql_catalog.answer(catalog, command)
 
         return _run_rpc(lambda: self._as_ticket_caller(request, _answer))
@@ -860,6 +888,10 @@ class ProvisaFlightServer(
         role = _header(headers, "x-provisa-role")
         if role is not None:
             request["role"] = role
+        if middleware is not None and middleware.presented:
+            # REQ-2175: the Flight session the call presents, which the caller's statements run
+            # in (_in_flight_session) -- its temporary tables among them.
+            request["flight_session"] = middleware.session_id
         return request
 
     def _run_statement(
@@ -944,6 +976,10 @@ class ProvisaFlightServer(
             count = self._run_update(context, [command.query])
             writer.write(pa.py_buffer(flightsql.update_result(count)))
             return
+        if isinstance(command, flightsql.pb.CommandStatementIngest):
+            count = self._ingest(context, command, reader.read_all())
+            writer.write(pa.py_buffer(flightsql.update_result(count)))
+            return
         if isinstance(command, flightsql.pb.CommandPreparedStatementUpdate):
             query, bound = flightsql.read_prepared_handle(command.prepared_statement_handle)
             rows = reader.read_all()
@@ -981,6 +1017,109 @@ class ProvisaFlightServer(
 
         return _run_rpc(lambda: self._as_ticket_caller(request, _update))
 
+    def _ingest(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        command: Any,
+        rows: pa.Table,
+    ) -> int:
+        """Bulk ingest (REQ-2175): ``rows`` written into a table the model declares, as the
+        caller, through the one pipeline (:meth:`_run_update`), a batch of INSERT ... VALUES at a
+        time; their count. Nothing is defined through a query protocol (REQ-1926): a table the
+        model does not declare is not created, and one it declares is not created again or
+        replaced."""
+        if command.temporary:
+            return self._ingest_temporary(context, command, rows)
+        options = flightsql.pb.CommandStatementIngest.TableDefinitionOptions
+        request = self._caller_headers(context)
+        name = command.table
+        schema = command.schema if command.HasField("schema") else None
+        catalog_name = command.catalog if command.HasField("catalog") else None
+
+        def _declared() -> list[str] | None:
+            if not request.get("role"):
+                raise _flight_error("role is required")
+            catalog = flightsql_catalog.role_catalog(self._state, str(request["role"]))
+            if catalog_name is not None and catalog_name != catalog.database:
+                raise _NotFound(f"no catalog {catalog_name!r}: the connection is served one")
+            found = [t for t in catalog.tables if t.name == name and schema in (None, t.schema)]
+            return [c for c, _ in catalog.columns.get(found[0].toid, [])] if found else None
+
+        columns = _run_rpc(lambda: self._as_ticket_caller(request, _declared))
+        how = command.table_definition_options
+        undefined = "nothing is defined through a query protocol: a table is defined in the model"
+        if columns is None:
+            if how.if_not_exist == options.TABLE_NOT_EXIST_OPTION_CREATE:
+                raise NotImplementedError(f"creating table {name!r}: {undefined}")
+            raise _NotFound(f"no table {name!r}")
+        if how.if_exists == options.TABLE_EXISTS_OPTION_REPLACE:
+            raise NotImplementedError(f"replacing table {name!r}: {undefined}")
+        if how.if_exists != options.TABLE_EXISTS_OPTION_APPEND:
+            raise _Invalid(f"table {name!r} already exists")
+        unknown = [c for c in rows.column_names if c not in columns]
+        if unknown:
+            raise _Invalid(f"{name} has no column {unknown[0]!r}")
+        statements = flightsql.ingest_statements(name, schema, rows)
+        return self._run_update(context, statements) if statements else 0
+
+    def _ingest_temporary(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        command: Any,
+        rows: pa.Table,
+    ) -> int:
+        """A temporary ingest (REQ-615): ``rows`` landed in a temporary table of the caller's
+        Flight session, the one object a session may create -- created, appended to or replaced
+        as the command says -- through the temporary tables' own write face
+        (provisa.pgwire.temp_exec). The session is the one the call presents; a client that
+        keeps no session cookie has none to hold the table."""
+        from provisa.compiler import temp_tables
+        from provisa.pgwire import temp_exec
+
+        options = flightsql.pb.CommandStatementIngest.TableDefinitionOptions
+        middleware = context.get_middleware(_HEADERS)
+        if middleware is None or not middleware.presented:
+            raise _Invalid(
+                "a temporary table belongs to a session: the client presented no session cookie"
+            )
+        if command.HasField("schema") or command.HasField("catalog"):
+            raise _Invalid("a temporary table is named by its own name, with no schema")
+        request = self._caller_headers(context)
+        name = command.table
+        how = command.table_definition_options
+
+        def _land() -> int:
+            session = self._sessions.begin(str(request["flight_session"]), self._session_owner())
+            token = temp_tables.bind(session.temp)
+            try:
+                held = session.temp.tables.get(name)
+                if held is None and how.if_not_exist != options.TABLE_NOT_EXIST_OPTION_CREATE:
+                    raise _NotFound(f"no temporary table {name!r}")
+                if held is not None and how.if_exists == options.TABLE_EXISTS_OPTION_FAIL:
+                    raise _Invalid(f"temporary table {name!r} already exists")
+                if held is None or how.if_exists == options.TABLE_EXISTS_OPTION_REPLACE:
+                    columns = flightsql.temporary_columns(rows.schema)
+                    kept: list[tuple] = []
+                else:
+                    columns = held.columns
+                    kept = self._run_on_loop(temp_exec.held_rows(self._state, session.temp, name))
+                named = [c for c, _ in columns]
+                unknown = [c for c in rows.column_names if c not in named]
+                if unknown:
+                    raise _Invalid(f"{name} has no column {unknown[0]!r}")
+                added = [tuple(r.get(c) for c in named) for r in rows.to_pylist()]
+                self._run_on_loop(
+                    temp_exec.reland(self._state, session.temp, name, columns, [*kept, *added])
+                )
+                return len(added)
+            finally:
+                temp_tables.unbind(token)
+
+        try:
+            return _run_rpc(lambda: self._as_ticket_caller(request, _land))
+        except sessions.ForeignSession as exc:
+            raise flight.FlightUnauthorizedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
     def _flightsql_action(
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -1010,6 +1149,44 @@ class ProvisaFlightServer(
             return []
         raise NotImplementedError(f"Flight SQL action {action.type}")
 
+    @staticmethod
+    def _session_owner() -> sessions.Owner:
+        """Who the caller is, as a session is bound to: their identity and org."""
+        from provisa.audit.context import current_audit_identity
+        from provisa.core.request_context import current_org
+
+        identity = current_audit_identity()
+        return (identity.user_id if identity is not None else None, current_org.get())
+
+    def _in_flight_session(self, request: dict[str, object], body: Callable[[], T]) -> T:
+        """Run ``body`` in the Flight session ``request`` presents, when the store holds it: its
+        temporary tables are the ones the caller's statements read and write (REQ-615), as a
+        pgwire session's are. A session begun by another caller is refused."""
+        from provisa.compiler import temp_tables
+
+        presented = request.get("flight_session")
+        if presented is None:
+            return body()
+        try:
+            session = self._sessions.held(str(presented), self._session_owner())
+        except sessions.ForeignSession as exc:
+            raise flight.FlightUnauthorizedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if session is None:
+            return body()
+        token = temp_tables.bind(session.temp)
+        try:
+            return body()
+        finally:
+            temp_tables.unbind(token)
+
+    def _session_ended(self, session: sessions.Session) -> None:
+        """A session is over (closed, or pushed out of the store): its temporary tables go with
+        it (REQ-615)."""
+        if session.temp.tables or session.temp.stored:
+            from provisa.pgwire import temp_exec
+
+            self._run_on_loop(temp_exec.end(session.temp, self._state))
+
     def _session_action(
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -1020,8 +1197,6 @@ class ProvisaFlightServer(
         session's current catalog and schema -- as pgwire answers current_database() and
         current_schema() until the session sets them -- SetSessionOptions sets them, and
         CloseSession ends the session."""
-        from provisa.audit.context import current_audit_identity
-        from provisa.core.request_context import current_org
         from provisa.proto import Flight_pb2
 
         body = action.body.to_pybytes() if action.body else b""
@@ -1030,8 +1205,7 @@ class ProvisaFlightServer(
         request = self._caller_headers(context)
 
         def _act() -> bytes:
-            identity = current_audit_identity()
-            owner = (identity.user_id if identity is not None else None, current_org.get())
+            owner = self._session_owner()
             try:
                 if action.type == _GET_SESSION_OPTIONS:
                     Flight_pb2.GetSessionOptionsRequest.FromString(body)
@@ -1213,7 +1387,7 @@ class ProvisaFlightServer(
             user_id = identity.user_id if identity is not None else ANONYMOUS_USER
             with principal:
                 with audit_identity_scope(user_id, "flight"):
-                    return body()
+                    return self._in_flight_session(request, body)
         finally:
             # REQ-1905: do_get is over on this handler thread; a stream it returned binds the
             # deadline again around each batch it pulls (provisa/api/flight/deadline.py).

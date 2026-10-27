@@ -128,6 +128,24 @@ def role_catalog(state: Any, role_id: str) -> RoleCatalog:
     )
 
 
+#: The schema a session's temporary tables are listed under, as PostgreSQL names it.
+TEMPORARY_SCHEMA = "pg_temp"
+
+
+def with_temporary(catalog: RoleCatalog, session: Any) -> RoleCatalog:
+    """``catalog`` with the temporary tables of ``session`` (a TempSession, or None) listed in
+    :data:`TEMPORARY_SCHEMA`: listed to that session alone (REQ-615)."""
+    if session is None or not session.tables:
+        return catalog
+    tables = list(catalog.tables)
+    columns = dict(catalog.columns)
+    for i, table in enumerate(sorted(session.tables.values(), key=lambda t: t.name)):
+        toid = -(i + 1)  # no model table's oid: a temporary table is no model object
+        tables.append(_Table(catalog.database, TEMPORARY_SCHEMA, table.name, toid))
+        columns[toid] = list(table.columns)
+    return RoleCatalog(catalog.database, tables, columns, catalog.constraints, catalog.names)
+
+
 @cache
 def _like(pattern: str) -> re.Pattern[str]:
     """A Flight SQL filter pattern (SQL LIKE: ``%`` any run, ``_`` one character) as a regex."""
