@@ -102,7 +102,7 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
                 purpose="Every sale",
                 limitations="No refunds",
                 version="1.2.0",
-                status="active",
+                status="live",
             )
         ],
         roles=[],
@@ -207,7 +207,7 @@ async def test_a_new_product_is_created_with_its_fields_owners_and_assets(api):
     assert product["labels"] == {
         "provisa-product": "sales_360",
         "provisa-version": "1_2_0",
-        "provisa-status": "active",
+        "provisa-status": "live",
     }
     by_resource = {a["resource"]: a for a in api.assets.values()}
     # A BigQuery source's table, in its own project; a replica's export view, in the engine's.

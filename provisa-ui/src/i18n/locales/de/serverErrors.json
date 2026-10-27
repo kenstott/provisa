@@ -690,6 +690,34 @@
       "also_term_needs_column": "Statt der Spalte den Begriff zu taggen, setzt eine Spalte voraus.",
       "inherited_from_term": "Diese Spalte ist PII, weil sie {{term}} bedeutet. Entfernen Sie die Markierung dieser Bedeutung, oder verschieben Sie die Spalte, wenn sie etwas anderes bedeutet.",
       "move_loses": "Diese Verschiebung nimmt Spalten Tags weg, die sie danach nicht mehr tragen. Bestätigen Sie den Verlust jedes Tags, oder übertragen Sie die Tags auf den Begriff, zu dem die Spalten verschoben werden."
+    },
+    "data_product": {
+      "status": {
+        "published": "Datenprodukt {{data_product}} veröffentlicht.",
+        "deprecated": "Datenprodukt {{data_product}} als veraltet markiert.",
+        "retired": "Datenprodukt {{data_product}} ausgemustert.",
+        "restored": "Datenprodukt {{data_product}} wiederhergestellt.",
+        "reason_required": "Ein Grund ist erforderlich: Geben Sie an, warum das Datenprodukt als veraltet markiert oder ausgemustert wird.",
+        "not_found": "Datenprodukt {{data_product}} nicht gefunden.",
+        "not_draft": "Nur ein Datenprodukt im Entwurf kann veröffentlicht werden; dieses ist {{status}}.",
+        "not_live": "Nur ein aktives Datenprodukt kann als veraltet markiert werden, und nur ein aktives oder veraltetes ausgemustert; dieses ist {{status}}.",
+        "not_restorable": "Nur ein veraltetes oder ausgemustertes Datenprodukt kann wiederhergestellt werden; dieses ist {{status}}.",
+        "retire_on_past": "Das geplante Ausmusterungsdatum {{retire_on}} liegt in der Vergangenheit. Wählen Sie heute oder ein späteres Datum.",
+        "successor_required": "Dieses Datenprodukt hat {{members}} Mitglied(er); beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
+        "successor_is_self": "Ein Datenprodukt kann nicht sein eigener Nachfolger sein.",
+        "successor_retired": "Der Nachfolger '{{successor}}' ist ausgemustert. Wählen Sie ein Datenprodukt, das in Gebrauch ist.",
+        "successor_other_domain": "Der Nachfolger '{{successor}}' liegt in der Domäne {{domain}}. Die Mitglieder eines Produkts teilen seine Domäne; wählen Sie also einen Nachfolger in derselben Domäne."
+      },
+      "finding": {
+        "no_members": "Zu diesem Datenprodukt gehört keine Tabelle, keine Sicht und kein Befehl.",
+        "member_deprecated": "Die Mitgliedstabelle {{table}} ist veraltet.",
+        "no_owner": "Keine Eigentümerrolle ist für dieses Datenprodukt verantwortlich.",
+        "no_support_contact": "Dieses Datenprodukt hat keinen Support-Kontakt, den ein konfiguriertes Exportziel verlangt.",
+        "retirement_blocked": "Dieses Datenprodukt sollte am {{retire_on}} ausgemustert werden, hat aber noch Mitglieder. Mustern Sie es mit einem Nachfolger aus, der sie übernimmt.",
+        "domain_steward_unset": "Die Domäne {{domain}} hat keinen Steward.",
+        "no_description": "Dieses Datenprodukt nennt weder seinen Zweck noch seine Verwendung.",
+        "successor_retired": "Das Datenprodukt, das die Mitglieder dieses Produkts übernommen hat, '{{successor}}', ist ebenfalls ausgemustert."
+      }
     }
   }
 }

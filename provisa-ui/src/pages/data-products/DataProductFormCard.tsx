@@ -46,6 +46,8 @@ export interface DataProductFormCardProps {
   msg: string;
   onSave: () => void;
   onCancel: () => void;
+  /** The field the form opens on, where a finding's fix sent the reader. */
+  focus?: "supportContact";
 }
 
 // One titled panel. `errors` is how many of its fields currently show an error; the panel shows it
@@ -102,6 +104,7 @@ export function DataProductFormCard({
   msg,
   onSave,
   onCancel,
+  focus,
 }: DataProductFormCardProps) {
   const { t } = useTranslation();
   // Required fields are checked when Save is pressed, so the empty ones say so on the field instead
@@ -175,19 +178,6 @@ export function DataProductFormCard({
               />
             </FormField>
           </FormLayout>
-          {/* The backend holds status as free text (DataProduct.status: str | None), so it stays a
-              text input; the placeholder lists the usual values. */}
-          <FormLayout>
-            <FormField size="medium">
-              <TextInput
-                label={t("dataProductsTab.statusLabel")}
-                value={form.status}
-                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                placeholder={t("dataProductsTab.statusPlaceholder")}
-                data-testid="data-product-status-input"
-              />
-            </FormField>
-          </FormLayout>
         </Panel>
         <Panel id="ownership" title={t("dataProductsTab.panelOwnership")} errors={0}>
           <FormLayout>
@@ -222,6 +212,16 @@ export function DataProductFormCard({
                 onChange={(e) => setForm((f) => ({ ...f, support: e.target.value }))}
                 placeholder={t("dataProductsTab.supportPlaceholder")}
                 data-testid="data-product-support-input"
+              />
+            </FormField>
+            <FormField size="medium" help={t("dataProductsTab.supportContactHelp")}>
+              <TextInput
+                label={t("dataProductsTab.supportContactLabel")}
+                value={form.supportContact}
+                onChange={(e) => setForm((f) => ({ ...f, supportContact: e.target.value }))}
+                placeholder={t("dataProductsTab.supportContactPlaceholder")}
+                autoFocus={focus === "supportContact"}
+                data-testid="data-product-support-contact-input"
               />
             </FormField>
             <FormField size="medium">

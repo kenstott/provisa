@@ -21,31 +21,21 @@ import {
 } from "../../api/glossary";
 import { Tip } from "../Tip";
 import { toReview } from "./termFindings";
+import { StatusBadge } from "../lifecycle/StatusBadge";
 
 const COLOUR: Record<TermRole, string> = { class: "grape", property: "blue", concept: "gray" };
-
-const STATUS_COLOUR: Record<TermStatus, string> = {
-  draft: "yellow",
-  live: "green",
-  deprecated: "gray",
-  retired: "orange",
-};
 
 /** A term's lifecycle status (REQ-2144); a draft says what keeps it from service. */
 export function TermStatusBadge({ status, testId }: { status: TermStatus; testId?: string }) {
   const { t } = useTranslation();
-  const badge = (
-    <Badge
-      size="xs"
-      variant="light"
-      color={STATUS_COLOUR[status]}
-      data-status={status}
-      data-testid={testId}
-    >
-      {t(`glossaryTab.status_${status}`)}
-    </Badge>
+  return (
+    <StatusBadge
+      status={status}
+      label={t(`glossaryTab.status_${status}`)}
+      help={status === "draft" ? t("glossaryTab.draftHelp") : undefined}
+      testId={testId}
+    />
   );
-  return status === "draft" ? <Tip text={t("glossaryTab.draftHelp")}>{badge}</Tip> : badge;
 }
 
 export function TermRoleBadge({

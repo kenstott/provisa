@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A deprecated term's planned retirement (REQ-2144): each org's scheduler retires, once a day,
-the terms a curator deprecated with a retirement date that has come."""
+"""Planned retirements: each org's scheduler retires, once a day, the glossary terms (REQ-2144)
+and the data products (REQ-1634) a curator deprecated with a retirement date that has come."""
 
-# Requirements: REQ-2144
+# Requirements: REQ-2144, REQ-1634
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-JOB_ID = "glossary_term_retirement"
+JOB_ID = "planned_retirement"
 #: Shortly after midnight, so a date's retirements happen on that date.
 CRON = "5 0 * * *"
 
@@ -40,8 +40,17 @@ async def retire_due_terms(db: "Database", today: datetime.date) -> list[int]:
             return await glossary_repo.retire_due(conn, today)
 
 
-async def retire_org(org_id: str) -> list[int]:
-    """``org_id``'s retirements, run by the scheduler."""
+async def retire_due_products(db: "Database", today: datetime.date) -> list[str]:
+    """Retire the data products of ``db`` due on or before ``today``; their ids."""
+    from provisa.core.repositories import data_product as data_product_repo
+
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            return await data_product_repo.retire_due(conn, today)
+
+
+async def retire_org(org_id: str) -> tuple[list[int], list[str]]:
+    """``org_id``'s retirements, run by the scheduler: the terms', then the products'."""
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
 
@@ -49,14 +58,19 @@ async def retire_org(org_id: str) -> list[int]:
     try:
         db = state.model_db
         assert db is not None, "the org's model store is bound with its runtime"
-        retired = await retire_due_terms(db, datetime.date.today())
+        today = datetime.date.today()
+        terms = await retire_due_terms(db, today)
+        products = await retire_due_products(db, today)
     finally:
         reset_current_org(token)
-    if retired:
+    if terms or products:
         log.info(
-            "org %s: %d deprecated term(s) retired on their planned date", org_id, len(retired)
+            "org %s: %d deprecated term(s) and %d data product(s) retired on their planned date",
+            org_id,
+            len(terms),
+            len(products),
         )
-    return retired
+    return terms, products
 
 
 def job_id(org_id: str) -> str:
