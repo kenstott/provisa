@@ -399,11 +399,13 @@ def _array_text_element(text: str) -> str:
     return text
 
 
-def _array_entry(element: BVType, array_oid: int, element_text=None):
+def _array_entry(element: BVType, array_oid: int, element_text=None, element_oid=None):
     """The (OID, text, binary) entry of a one-dimensional array of ``element``: text as
     ``{a,b,NULL}``, binary as PostgreSQL's array_send (dimensions, null flag, element OID, then
-    each element length-prefixed, -1 for NULL)."""
+    each element length-prefixed, -1 for NULL). ``element_oid`` names an element type sent in
+    ``element``'s form (a "char" as text)."""
     elem_oid, elem_text, elem_binary = BVTYPE_TO_PGTYPE[element]
+    elem_oid = elem_oid if element_oid is None else element_oid
     text_of = element_text or elem_text
 
     def text(values):
@@ -457,6 +459,55 @@ BVTYPE_TO_PGTYPE.update(
     {
         BVType.OIDVECTOR: _vector_entry(BVType.OID, 30),
         BVType.INT2VECTOR: _vector_entry(BVType.SMALLINT, 22),
+    }
+)
+
+
+def _no_binary_aclitem(_values):
+    # aclitem has no binary send function in PostgreSQL either: a client asks for it as text.
+    raise TypeError("aclitem has no binary form; request the column as text")
+
+
+def _inet_binary(value) -> bytes:
+    """inet_send: family (2 for IPv4, 3 for IPv6), mask bits, is_cidr 0, address length, then
+    the address bytes."""
+    import ipaddress
+
+    interface = ipaddress.ip_interface(str(value))
+    address = interface.ip.packed
+    family = 2 if interface.version == 4 else 3
+    return bytes([family, interface.network.prefixlen, 0, len(address)]) + address
+
+
+def _lsn_position(value) -> int:
+    """A pg_lsn as its position: written X/Y (X the high 32 bits, in hex), or the integer itself
+    (asyncpg reads a source's pg_lsn so)."""
+    if isinstance(value, int):
+        return value
+    high, low = str(value).split("/")
+    return (int(high, 16) << 32) | int(low, 16)
+
+
+def _lsn_text(value) -> str:
+    position = _lsn_position(value)
+    return f"{position >> 32:X}/{position & 0xFFFFFFFF:X}"
+
+
+def _lsn_binary(value) -> bytes:
+    """pg_lsn_send: the position as one unsigned 8-byte integer."""
+    return _lsn_position(value).to_bytes(8, "big")
+
+
+BVTYPE_TO_PGTYPE.update(
+    {
+        BVType.ACLITEMARRAY: (
+            1034,
+            _array_entry(BVType.TEXT, 1034)[1],
+            _no_binary_aclitem,
+        ),
+        BVType.CHARARRAY: _array_entry(BVType.TEXT, 1002, element_oid=18),
+        BVType.INET: (869, str, _inet_binary),
+        BVType.PG_LSN: (3220, _lsn_text, _lsn_binary),
     }
 )
 

@@ -57,6 +57,11 @@ class BVType(enum.Enum):
     OIDARRAY = 32
     OIDVECTOR = 33
     INT2VECTOR = 34
+    # aclitem[] (text only, as in PostgreSQL), "char"[], inet and pg_lsn.
+    ACLITEMARRAY = 35
+    CHARARRAY = 36
+    INET = 37
+    PG_LSN = 38
 
 
 class RawDataRowBytes(bytes):
