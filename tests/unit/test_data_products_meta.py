@@ -43,9 +43,11 @@ PRODUCT_FIELDS = [
     "usage",
     "version",
     "status",
+    "status_reason",
+    "retire_on",
+    "successor_id",
     "support",
     "support_contact",
-    "publish",
     "custom_properties",
 ]
 
@@ -117,7 +119,7 @@ async def _seed(conn) -> None:
             name="Customer 360",
             owner_role="sales_lead",
             purpose="One view of each customer",
-            publish=True,
+            status="live",
             custom_properties={"tier": "gold"},
         )
     )
@@ -191,7 +193,7 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
             rows = (await conn.execute_core(text("SELECT * FROM data_products_meta"))).fetchall()
             assert [list(r._mapping) for r in rows] == [PRODUCT_FIELDS]
             product = dict(rows[0]._mapping)
-            assert (product["name"], product["publish"]) == ("Customer 360", True)
+            assert (product["name"], product["status"]) == ("Customer 360", "live")
             assert product["custom_properties"] == {"tier": "gold"}
             key = [product["id"]]
 

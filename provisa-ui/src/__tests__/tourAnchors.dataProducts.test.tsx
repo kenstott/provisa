@@ -90,6 +90,13 @@ vi.mock("../hooks/useDataProductMutations", () => ({
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
   useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
+  useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
+  useDataProductStatus: () => ({
+    publish: vi.fn(),
+    deprecate: vi.fn(),
+    retire: vi.fn(),
+    restore: vi.fn(),
+  }),
 }));
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),

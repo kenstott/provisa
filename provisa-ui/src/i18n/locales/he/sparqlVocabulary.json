@@ -1,0 +1,17 @@
+{
+  "sparqlVocabulary": {
+    "domains": "דומיינים",
+    "classes": "מחלקות",
+    "properties": "תכונות",
+    "relationships": "קשרים",
+    "concepts": "מושגים",
+    "prefixes": "קידומות",
+    "none": "אין כאן דבר עבור התפקיד שלך.",
+    "domainTip": "מצהיר על הקידומת של הדומיין הזה ומצמצם את הרשימות לאוצר המילים שלו ({{namespace}}).",
+    "domainPicked": "הרשימות מציגות רק את {{namespace}}. לחצו שוב לכל הדומיינים.",
+    "classTerm": "מונח מחלקה {{term}}",
+    "tableClass": "המחלקה של טבלה",
+    "propertyTerm": "מונח תכונה {{term}}",
+    "columnPredicate": "עמודה {{column}}"
+  }
+}

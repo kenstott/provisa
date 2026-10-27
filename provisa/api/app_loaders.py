@@ -390,7 +390,7 @@ async def _build_source_pools_and_enums(
     from provisa.api.app import state
     from provisa.api.data.pgwire_write import start_write_server
     from provisa.executor.drivers.registry import has_driver
-    from provisa.transpiler.router import VIRTUAL_SOURCES
+    from provisa.transpiler.router import CODE_SOURCES, VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
     from provisa.core.secrets_store import bound_to_request_org
 
@@ -420,7 +420,9 @@ async def _build_source_pools_and_enums(
             start_write_server(src)
             _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
             if has_driver(src.type.value) and (
-                src.type.value not in VIRTUAL_SOURCES or _is_flat_file
+                src.type.value not in VIRTUAL_SOURCES
+                or _is_flat_file
+                or src.type.value in CODE_SOURCES  # REQ-2100
             ):
                 resolved_pw = resolve_secrets(src.password)
                 resolved_host = (
@@ -432,6 +434,9 @@ async def _build_source_pools_and_enums(
                 state.source_dsns[src.id] = (
                     resolved_database
                     if _is_flat_file
+                    # REQ-2100: a code source is no database another source can share.
+                    else f"code:{src.id}"
+                    if src.type.value in CODE_SOURCES
                     # REQ-863: one database under one login, never two logins' grants as one.
                     else colocation_key(
                         resolved_host,
@@ -1710,13 +1715,13 @@ def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls:
     """One role's surface, every part built before any of it is served."""
     from provisa.api.role_surface import RoleSurface
     from provisa.compiler.schema_gen import build_table_path_map
-    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.grpc.proto_gen import generate_proto
 
     # Built for the runtime that registered it, whoever reads it first: the build reads that
-    # org's model through ``state``.
-    token = set_current_org(runtime.org_id)
-    try:
+    # runtime's model through ``state`` -- its org's and its environment's, registered or not yet.
+    from provisa.api.org_runtime import serving
+
+    with serving(runtime):
         si = schema_input_for(state, role, inputs["tables"], inputs["metrics"])
         # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
         # surface holds that failure -- logged as an ERROR naming the role, and raised to every
@@ -1733,8 +1738,6 @@ def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls:
             table_path_map=build_table_path_map(si),
             proto=generate_proto(si, field_numbers=inputs["field_numbers"]),
         )
-    finally:
-        reset_current_org(token)
 
 
 #: How long after a rebuild the background warm-up starts: a burst of changes supersedes it first.

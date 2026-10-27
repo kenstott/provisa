@@ -14,6 +14,7 @@ from __future__ import annotations
 
 
 import asyncio
+import datetime
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
@@ -72,6 +73,8 @@ from provisa.api.admin.types import (
     ContractSlaPropertyType,
     ContractTermsType,
     DataContractType,
+    DataProductFindingType,
+    DataProductFindingsType,
     DataProductType,
     ListedNamesType,
     DomainType,
@@ -770,10 +773,17 @@ class Query:  # REQ-021, REQ-042
 
         _resolve_admin_context(info)
         require_capability(info, "data_product_read")
+        from provisa.core import product_findings
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await data_product_repo.list_all(cast("Connection", conn))
-            members = await data_product_repo.member_contracts(cast("Connection", conn))
+            conn = cast("Connection", conn)
+            rows = await data_product_repo.list_all(conn)
+            members = await data_product_repo.member_contracts(conn)
+            found = await product_findings.findings(
+                conn, await product_findings.context(datetime.date.today())
+            )
+        names = {r["id"]: r["name"] for r in rows}
         contracts: dict[str, list[DataContractType]] = {}
         for m in members:  # REQ-2158
             contracts.setdefault(m["product_id"], []).append(data_contract_type(m))
@@ -788,12 +798,46 @@ class Query:  # REQ-021, REQ-042
                 limitations=r["limitations"],
                 usage=r["usage"],
                 version=r["version"],
-                status=r["status"],
                 support=r["support"],
+                support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
                 contracts=contracts.get(r["id"], []),
+                status=r["status"],
+                status_reason=r["status_reason"],
+                retire_on=r["retire_on"].isoformat() if r["retire_on"] is not None else None,
+                status_by=r["status_by"],
+                status_at=r["status_at"].isoformat() if r["status_at"] is not None else None,
+                successor_id=r["successor_id"],
+                successor_name=names.get(r["successor_id"]) if r["successor_id"] else None,
+                findings=len(found.get(r["id"], [])),
             )
             for r in rows
+        ]
+
+    @strawberry.field
+    async def data_product_findings(
+        self, info: StrawberryInfo, product_id: str | None = None
+    ) -> list[DataProductFindingsType]:  # REQ-2146
+        """What a curator should look at in the data products, by product; one product's when
+        ``product_id`` is given."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core import product_findings
+
+        _resolve_admin_context(info)
+        require_capability(info, "data_product_read")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            found = await product_findings.findings(
+                cast("Connection", conn),
+                await product_findings.context(datetime.date.today()),
+            )
+        return [
+            DataProductFindingsType(
+                product_id=pid,
+                findings=[DataProductFindingType(**f) for f in items],
+            )
+            for pid, items in sorted(found.items())
+            if product_id is None or pid == product_id
         ]
 
     @strawberry.field
@@ -1262,9 +1306,13 @@ class Query:  # REQ-021, REQ-042
         authenticates against the real Kaggle API. Backs the token-gate that unlocks the dataset
         picker step, and re-editing an existing source whose token has since expired/revoked."""
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
         from provisa.kaggle.client import validate_token
 
-        return await validate_token(token)
+        # The token as typed: a value, or a reference resolved in the org's vault.
+        async with _bound_to_request_org():
+            resolved = resolve_secrets(token)
+        return await validate_token(resolved)
 
     @strawberry.field
     async def kaggle_datasets(  # REQ-1783
@@ -1275,9 +1323,12 @@ class Query:  # REQ-021, REQ-042
         assume a fixed catalog belonging to an already-registered source; here there is no source
         yet and the catalog is Kaggle's entire public listing, searched by free text."""
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
         from provisa.kaggle.client import search_datasets
 
-        results = await search_datasets(token, query=query, page=page)
+        async with _bound_to_request_org():
+            resolved = resolve_secrets(token)
+        results = await search_datasets(resolved, query=query, page=page)
         return [
             KaggleDatasetType(
                 ref=d.get("ref", ""),

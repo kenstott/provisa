@@ -179,10 +179,10 @@ _DUCK_TYPES = {
 
 def holds(where: exp.Expression, table: str, row: dict[str, Any]) -> bool:
     """Whether ``where`` (bound, unqualified) holds for ``row`` of ``table``."""
-    import duckdb
+    from provisa.core import engine_memory
 
     columns = cm.ir_columns(table)
-    with duckdb.connect() as conn:
+    with engine_memory.connect() as conn:
         conn.execute("SET TimeZone = 'UTC'")
         conn.execute(
             "CREATE TABLE r ("

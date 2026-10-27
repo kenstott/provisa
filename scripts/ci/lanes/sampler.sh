@@ -37,7 +37,9 @@ prev_uptime=""
 ticks() {
   # pid and its user+system CPU ticks so far, for every live process. The command is cut at its
   # last ")" so a name holding spaces or parentheses does not shift the fields.
-  cat /proc/[0-9]*/stat 2>/dev/null \
+  # A process that exits between the glob and the read makes cat fail; under pipefail that
+  # ended the sampler after its first sample (run 40442770713), so read the ones still alive.
+  { cat /proc/[0-9]*/stat 2>/dev/null || true; } \
     | awk '{ i = index($0, ") "); split(substr($0, i + 2), f, " "); print $1, f[12] + f[13] }' \
     | sort -k1,1
 }

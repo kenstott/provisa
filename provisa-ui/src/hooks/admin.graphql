@@ -186,6 +186,7 @@ query DataProductsQuery {
     version
     status
     support
+    supportContact
     customProperties
   }
 }
@@ -769,6 +770,8 @@ mutation CompileQuery($input: CompileQueryInput!) {
     canonicalField
     compiledCypher
     cypherError
+    compiledSparql
+    sparqlError
     optimizations
     warnings
     columnAliases {
@@ -982,6 +985,44 @@ mutation DeleteDataProduct($id: String!) {
   }
 }
 
+# REQ-1634 STATUS: a data product's lifecycle, one mutation per action.
+mutation PublishDataProduct($id: String!) {
+  publishDataProduct(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation DeprecateDataProduct($id: String!, $reason: String!, $retireOn: Date) {
+  deprecateDataProduct(id: $id, reason: $reason, retireOn: $retireOn) {
+    ...MutationResult
+  }
+}
+
+mutation RetireDataProduct($id: String!, $reason: String!, $successor: String) {
+  retireDataProduct(id: $id, reason: $reason, successor: $successor) {
+    ...MutationResult
+  }
+}
+
+mutation RestoreDataProduct($id: String!) {
+  restoreDataProduct(id: $id) {
+    ...MutationResult
+  }
+}
+
+# REQ-2146: what a curator should look at in the data products, by product.
+query DataProductFindingsQuery {
+  dataProductFindings {
+    productId
+    findings {
+      kind
+      code
+      message
+      params
+    }
+  }
+}
+
 mutation CreateTag($input: TagInput!) {
   createTag(input: $input) {
     ...MutationResult
@@ -1141,8 +1182,8 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
   }
 }
 
-mutation RefreshKaggleSource($sourceId: String!, $token: String!) {
-  refreshKaggleSource(sourceId: $sourceId, token: $token) {
+mutation RefreshKaggleSource($sourceId: String!) {
+  refreshKaggleSource(sourceId: $sourceId) {
     ...MutationResult
   }
 }

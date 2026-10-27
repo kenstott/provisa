@@ -64,6 +64,7 @@ vi.mock("../api/admin", async (orig) => ({
   // The server always answers its otel block (settings_router), which the Observability page reads.
   fetchSettings: vi.fn(async () => ({
     naming: { use_domains: true },
+    federation: { enabled: false, subgraph_name: "provisa", role: null },
     otel: {
       endpoint: "http://otel-collector:4317",
       service_name: "provisa",

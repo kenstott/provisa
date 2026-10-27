@@ -208,6 +208,13 @@
     "colParentDomain": "Domaine parent",
     "parentDomainHint": "Un rôle autorisé sur le domaine parent atteint aussi celui-ci.",
     "noParentDomain": "Aucun parent",
-    "stewardInherited": "hérité"
+    "stewardInherited": "hérité",
+    "apolloSubgraph": "Sous-graphe Apollo Federation",
+    "apolloSubgraphEnabled": "Servir comme sous-graphe",
+    "apolloSubgraphEnabledHint": "Ajoute _service et _entities à /data/graphql pour le rôle ci-dessous, afin qu'un Apollo Router puisse composer cette organisation en supergraphe.",
+    "apolloSubgraphName": "Nom du sous-graphe",
+    "apolloSubgraphNameHint": "Le nom sous lequel le supergraphe connaît ce sous-graphe.",
+    "apolloSubgraphRole": "Agit en tant que rôle",
+    "apolloSubgraphRoleHint": "Un supergraphe ne peut pas transmettre l'identité de son appelant : le routeur se connecte donc avec ce rôle et chaque entité qu'il récupère est gouvernée comme ce rôle, avec ses règles de lignes, ses masques et sa visibilité."
   }
 }

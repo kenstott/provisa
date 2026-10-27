@@ -265,8 +265,9 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
     KaggleFormSection.tsx at creation, or set the same way by an MCP proposal) — not by
     input.type, since a caller could set anything there.
 
-    Must run inside `bound_to_request_org()` (same requirement as search_kaggle_datasets) — a
-    reference the Kaggle token setting holds resolves against whichever org's vault is bound."""
+    The token is the source's own credential field (``password``), as the operator entered it --
+    a value, or a reference they typed -- resolved here, and again at each refresh. Must run
+    inside `bound_to_request_org()`: a reference resolves against whichever org's vault is bound."""
     import json as _json
 
     hints = _json.loads(input.federation_hints_json or "{}")
@@ -274,9 +275,18 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
     if not owner or not ref:
         return None
 
-    from provisa.kaggle.downloader import UnsupportedKaggleDataset, api_token, stage_dataset
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
 
-    token = api_token()
+    if not input.password:
+        return MutationResult(
+            success=False,
+            message=f"Kaggle dataset {owner}/{ref}: the source holds no Kaggle API token; "
+            "add it on the Sources form, where its token is entered",
+            code="schema.kaggle_token_missing",
+            params={"owner": owner, "ref": ref},
+        )
+    token = resolve_secrets(input.password)
     try:
         staged_root = await stage_dataset(token, owner, ref)
     except UnsupportedKaggleDataset as exc:

@@ -208,6 +208,13 @@
     "colParentDomain": "Domínio pai",
     "parentDomainHint": "Um papel com acesso ao domínio pai também alcança este.",
     "noParentDomain": "Sem pai",
-    "stewardInherited": "herdado"
+    "stewardInherited": "herdado",
+    "apolloSubgraph": "Subgrafo do Apollo Federation",
+    "apolloSubgraphEnabled": "Servir como subgrafo",
+    "apolloSubgraphEnabledHint": "Adiciona _service e _entities a /data/graphql para a função abaixo, para que um Apollo Router possa compor esta organização em um supergrafo.",
+    "apolloSubgraphName": "Nome do subgrafo",
+    "apolloSubgraphNameHint": "O nome pelo qual o supergrafo conhece este subgrafo.",
+    "apolloSubgraphRole": "Atua como função",
+    "apolloSubgraphRoleHint": "Um supergrafo não consegue repassar a identidade de quem o chama, então o roteador entra com esta função e cada entidade que ele busca é governada como esta função: com suas regras de linha, máscaras e visibilidade."
   }
 }

@@ -65,6 +65,11 @@ declare module "*.graphql" {
   export const UpdateDataProduct: DocumentNode;
   export const DeleteDataProduct: DocumentNode;
   export const SaveDataContract: DocumentNode;
+  export const PublishDataProduct: DocumentNode;
+  export const DeprecateDataProduct: DocumentNode;
+  export const RetireDataProduct: DocumentNode;
+  export const RestoreDataProduct: DocumentNode;
+  export const DataProductFindingsQuery: DocumentNode;
   export const RegisterTable: DocumentNode;
   export const RegisterEntity: DocumentNode;
   export const RegisterFact: DocumentNode;
@@ -196,6 +201,11 @@ declare module "*.gql" {
   export const UpdateDataProduct: DocumentNode;
   export const DeleteDataProduct: DocumentNode;
   export const SaveDataContract: DocumentNode;
+  export const PublishDataProduct: DocumentNode;
+  export const DeprecateDataProduct: DocumentNode;
+  export const RetireDataProduct: DocumentNode;
+  export const RestoreDataProduct: DocumentNode;
+  export const DataProductFindingsQuery: DocumentNode;
   export const RegisterTable: DocumentNode;
   export const RegisterEntity: DocumentNode;
   export const RegisterFact: DocumentNode;

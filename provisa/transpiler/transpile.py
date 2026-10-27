@@ -286,11 +286,60 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
-    return _null_order_as_key(
-        _rewrite_list_functions_for_duckdb(
-            _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+    return _lengths_for_duckdb(
+        _null_order_as_key(
+            _rewrite_list_functions_for_duckdb(
+                _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+            )
         )
     )
+
+
+def _lengths_for_duckdb(sql: str) -> str:
+    """PostgreSQL's ``length`` and ``octet_length`` of a bytea, a text or a list as DuckDB computes
+    them. DuckDB's ``length`` takes no BLOB and its ``octet_length`` no VARCHAR, and which the
+    argument is is known only once DuckDB binds it -- every branch of a CASE is bound whatever
+    the argument -- so each is a CASE on ``typeof`` (folded at bind) whose branches read the
+    argument through TRY_CAST: a BLOB's byte count, a list's elements, a text's characters
+    (``length``) or bytes (``strlen``)."""
+    upper = sql.upper()
+    if "LENGTH(" not in upper:
+        return sql
+    tree = sqlglot.parse_one(sql, read="duckdb")
+
+    def _try_cast(arg: exp.Expression, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.TryCast(this=arg.copy(), to=exp.DataType.build(to, dialect="duckdb"))
+
+    def _of(arg: exp.Expression, text_fn: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        kind = exp.Anonymous(this="typeof", expressions=[arg.copy()])
+        branches = [
+            exp.If(
+                this=exp.EQ(this=kind, expression=exp.Literal.string("BLOB")),
+                true=exp.Anonymous(this="octet_length", expressions=[_try_cast(arg, "BLOB")]),
+            )
+        ]
+        if text_fn == "length":
+            branches.append(
+                exp.If(
+                    this=exp.Like(this=kind.copy(), expression=exp.Literal.string("%[]")),
+                    true=exp.Anonymous(this="len", expressions=[_try_cast(arg, "VARCHAR[]")]),
+                )
+            )
+        text_len = exp.Anonymous(this=text_fn, expressions=[_try_cast(arg, "VARCHAR")])
+        return exp.Case(ifs=branches, default=text_len)
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if isinstance(node, exp.Length) and node.this is not None:
+            return _of(node.this.transform(_transform), "length")
+        if (
+            isinstance(node, exp.Anonymous)
+            and node.name.lower() == "octet_length"
+            and len(node.expressions) == 1
+        ):
+            return _of(node.expressions[0].transform(_transform), "strlen")
+        return node
+
+    return tree.transform(_transform).sql(dialect="duckdb")
 
 
 #: The targets whose LIKE has no escape character unless one is written (PostgreSQL's is a
@@ -336,55 +385,17 @@ def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
     statement is in."""
     if target_dialect not in _LIKE_ESCAPE_WRITTEN or "LIKE" not in pg_sql.upper():
         return pg_sql
-    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    from provisa.codehost.duckdb_sql import escape_likes
 
-    def _escaped(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        if isinstance(node, (exp.Like, exp.ILike)) and not isinstance(node.parent, exp.Escape):
-            return exp.Escape(this=node.copy(), expression=exp.Literal.string("\\"))
-        return node
-
-    return tree.transform(_escaped).sql(dialect="postgres")
+    return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(dialect="postgres")
 
 
 def _null_order_as_key(sql: str) -> str:
-    """#294: a statement's ORDER BY with its nulls' place written as a sort key of its own --
-    ``x DESC NULLS FIRST`` as ``(x IS NULL) DESC, x DESC`` -- never as NULLS FIRST/LAST. DuckDB's
-    postgres scanner answers an attached table's ORDER BY ... NULLS FIRST LIMIT n with rows missing
-    (1.5.5); the two orderings are the same, so every DuckDB statement is written this way. Only a
-    SELECT's own ORDER BY: a window's or an aggregate's is no scan's (and a RANGE frame orders by
-    one key), and a UNION's orders the union's rows, which no one scan answers (DuckDB takes no
-    expression key there)."""
-    tree = sqlglot.parse_one(sql, read="duckdb")
-    for order in tree.find_all(exp.Order):
-        select = order.parent
-        if not isinstance(select, exp.Select):
-            continue
-        keys: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        for ordered in order.expressions:
-            if not isinstance(ordered, exp.Ordered) or ordered.args.get("nulls_first") is None:
-                keys.append(ordered)
-                continue
-            nulls_first = bool(ordered.args["nulls_first"])
-            desc = bool(ordered.args.get("desc"))
-            key = ordered.this
-            if isinstance(key, exp.Literal) and key.is_int:
-                # ORDER BY 2: its null test is of the second item the SELECT returns.
-                item = select.expressions[int(key.name) - 1]
-                key = exp.column(item.alias, quoted=True) if item.alias else item.unalias()
-            elif isinstance(key, exp.Column) and not key.table:
-                # A bare output name: inside an expression DuckDB reads it as a source's column
-                # of that name when there is one (SUM(t.customers) AS customers), so the null test
-                # is of the output's own expression.
-                named = next((e for e in select.expressions if e.alias == key.name), None)
-                if named is not None:
-                    key = named.unalias()
-            is_null = exp.Paren(this=exp.Is(this=key.copy(), expression=exp.Null()))
-            # A boolean key is never null, and DuckDB puts nulls last by default in either
-            # direction: neither key needs a NULLS clause.
-            keys.append(exp.Ordered(this=is_null, desc=nulls_first, nulls_first=False))
-            keys.append(exp.Ordered(this=ordered.this.copy(), desc=desc, nulls_first=False))
-        order.set("expressions", keys)
-    return tree.sql(dialect="duckdb")
+    """#294: DuckDB SQL with each ORDER BY key whose nulls come first written as a null-test key
+    of its own (codehost.duckdb_sql, the one form every DuckDB answering a statement runs)."""
+    from provisa.codehost.duckdb_sql import null_order_as_key
+
+    return null_order_as_key(sqlglot.parse_one(sql, read="duckdb")).sql(dialect="duckdb")
 
 
 #: A Cypher read's list functions as the IR names them (gql/expr_visitor, Trino's names) whose

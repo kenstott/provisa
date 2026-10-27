@@ -41,7 +41,7 @@ from provisa.grpc.query_ir import (
     ReadMaskError,
     grpc_table_to_aggregate_graphql_text,
     grpc_table_to_group_by_graphql_text,
-    grpc_table_to_semantic_sql,
+    grpc_table_to_graphql,
     resolve_read_mask,
     restrict_json,
     split_agg_columns,
@@ -269,10 +269,10 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
     ctx = surface.context
 
-    # REQ-1359: Aggregate/GroupBy synthetic proto type names have no semantic-SQL table match —
-    # route them through the same GraphQL-text synthesis + compile path the native gRPC servicer
+    # REQ-1359: Aggregate/GroupBy synthetic proto type names target their own root fields — the
+    # same GraphQL-text synthesis + compile path the native gRPC servicer
     # (provisa/grpc/server.py::_handle_query_aggregate_bound / _handle_query_group_by_bound) uses,
-    # instead of falling through to grpc_table_to_semantic_sql (which only knows plain tables).
+    # rather than the row read below, which knows only plain tables.
     if type_name.endswith("Aggregate") or type_name.endswith("GroupBy"):
         from provisa.compiler.parser import GraphQLValidationError, parse_query
         from provisa.compiler.sql_gen import compile_query
@@ -408,16 +408,23 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         top, nested = split_agg_columns(compiled.columns, row)
         return OrjsonResponse({**top, **nested})
 
-    # Same IR path as the native gRPC servicer (query language → IR → governed IR → plan → physical).
-    # Lower the request straight to a semantic SELECT — never round-trip through GraphQL.
-    # REQ-803: the read_mask and the filter are part of the QUERY — the native servicer's
-    # semantics, from the same functions: only the masked columns are selected, the filter is the
-    # statement's WHERE, and a mask path or filter field that is not a field this role can read is
-    # rejected by name rather than dropped.
+    # The native gRPC servicer's lowering: the request becomes GraphQL text, compiled as every
+    # GraphQL-shaped surface compiles it. REQ-803: the read_mask and the filter are part of the
+    # QUERY — only the masked columns are selected, the filter is the field's where, and a mask path
+    # or filter field that is not a field this role can read is rejected by name rather than
+    # dropped.
+    from provisa.api.generated_plan import compile_generated_graphql
+
     try:
         read_mask = resolve_read_mask(ctx, type_name, _read_mask_paths(body))
-        semantic = grpc_table_to_semantic_sql(
-            ctx, type_name, limit, _filter_object(body), read_mask, _params_object(body)
+        lowered = grpc_table_to_graphql(
+            ctx,
+            surface.schema,
+            type_name,
+            limit,
+            _filter_object(body),
+            read_mask,
+            _params_object(body),
         )
     except ReadMaskError as exc:
         raise ApiError(
@@ -431,7 +438,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         raise ApiError(
             400, "data.invalid_parameter", str(exc), field=exc.field, type_name=type_name
         ) from exc
-    if semantic is None:
+    if lowered is None:
         raise ApiError(
             404,
             "data.no_query_field_for_proto_type",
@@ -439,15 +446,19 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             type_name=type_name,
             role_id=role_id,
         )
-    # The statement is the request's shape; the filter values and the limit travel bound
-    # (REQ-1877).
-    semantic_sql, bound_params = semantic
+    # REQ-1877: one plan is kept per request shape; the filter values and the limit are bound
+    # into it.
+    # The text is built from fields already checked, so the schema accepts it.
+    gql_text, variables = lowered
+    (compiled,) = compile_generated_graphql(
+        state, role_id, surface.schema, ctx, gql_text, variables
+    )
 
     try:
         plan = await _govern_and_route_compiled(
-            semantic_sql,
+            compiled.sql,
             role_id,
-            exec_params=bound_params or None,
+            exec_params=compiled.params or None,
             state=state,
             cache_hint=cache_hint,
             # REQ-1897: an opted-in request whose entry exists is answered before routing; the

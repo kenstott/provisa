@@ -130,7 +130,12 @@
       "address_not_found": "Nothing to resolve: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve cannot be combined with other root fields in one operation",
       "source_starting": "The source {{source}} is still starting. Try again in a moment.",
-      "view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}."
+      "view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}.",
+      "graphql_body_missing": "The request has no body: a GraphQL request is a JSON object with a query.",
+      "graphql_body_not_json": "The request body is not JSON: {{error}}",
+      "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
+      "graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
+      "graphql_mutation_over_get": "A mutation is sent with POST, never GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -461,7 +466,8 @@
       "relationship_same_entity_direct": "Relationship '{{relationship}}' cannot be marked same entity: it joins through a junction or a function, not one row to one row",
       "relationship_same_entity_cardinality": "Relationship '{{relationship}}' cannot be marked same entity: it is {{cardinality}}, and the same entity is one row to one row",
       "relationship_same_entity_not_grounded": "Relationship '{{relationship}}' cannot be marked same entity: {{source}} and {{target}} are not grounded in the same term",
-      "relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}"
+      "relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}",
+      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered."
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
@@ -491,7 +497,10 @@
       "unknown_encryption_provider": "unknown encryption provider '{{provider}}'",
       "unknown_engine": "unknown engine '{{engine}}'; valid: {{valid}}",
       "use_domains_invalid": "use_domains must be true, false, or null",
-      "claims_with_multitenancy": "A multi-tenant deployment cannot read role assignments from sign-in claims: it grants roles itself, per org, and claims would override them. Set the assignments source to Provisa."
+      "claims_with_multitenancy": "A multi-tenant deployment cannot read role assignments from sign-in claims: it grants roles itself, per org, and claims would override them. Set the assignments source to Provisa.",
+      "federation_unknown_field": "Not a federation setting: {{fields}}",
+      "federation_invalid": "Invalid federation setting: {{error}}",
+      "federation_role_unknown": "Federation role '{{role}}' is not a role of this organization"
     },
     "setup": {
       "admin_credentials_required": "admin_username and admin_password required",
@@ -690,6 +699,34 @@
       "also_term_needs_column": "Tagging the term instead takes a column.",
       "inherited_from_term": "This column is PII because it means {{term}}. Unmark that meaning, or move the column if it means something else.",
       "move_loses": "This move takes tags off columns that would no longer carry them. Confirm the loss of each tag, or carry the tags to the term the columns move to."
+    },
+    "data_product": {
+      "status": {
+        "published": "Data product {{data_product}} published.",
+        "deprecated": "Data product {{data_product}} deprecated.",
+        "retired": "Data product {{data_product}} retired.",
+        "restored": "Data product {{data_product}} restored.",
+        "reason_required": "A reason is required: say why the data product is deprecated or retired.",
+        "not_found": "Data product {{data_product}} not found.",
+        "not_draft": "Only a draft data product can be published; this one is {{status}}.",
+        "not_live": "Only a live data product can be deprecated, and only a live or deprecated one retired; this one is {{status}}.",
+        "not_restorable": "Only a deprecated or retired data product can be restored; this one is {{status}}.",
+        "retire_on_past": "The planned retirement date {{retire_on}} is in the past. Choose today or a later date.",
+        "successor_required": "This data product has {{members}} member(s); retiring it moves them to a successor. Choose one.",
+        "successor_is_self": "A data product cannot succeed itself.",
+        "successor_retired": "The successor '{{successor}}' is retired. Choose a data product that is in service.",
+        "successor_other_domain": "The successor '{{successor}}' is in domain {{domain}}. A product's members share its domain, so choose a successor in the same domain."
+      },
+      "finding": {
+        "no_members": "No table, view or command belongs to this data product.",
+        "member_deprecated": "Member table {{table}} is deprecated.",
+        "no_owner": "No owner role is accountable for this data product.",
+        "no_support_contact": "This data product has no support contact, which a configured export target requires.",
+        "retirement_blocked": "This data product was due to retire on {{retire_on}} but still has members. Retire it with a successor to take them.",
+        "domain_steward_unset": "Domain {{domain}} has no steward.",
+        "no_description": "This data product states neither its purpose nor its usage.",
+        "successor_retired": "The data product that took this one's members, '{{successor}}', has been retired too."
+      }
     }
   }
 }

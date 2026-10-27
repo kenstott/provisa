@@ -41,7 +41,7 @@ export const GROUPS = [
   { id: "bi",           label: "BI across sources" },
   { id: "data-science", label: "Data science access" },
   { id: "provision",    label: "Data provisioning" },
-  { id: "public-data",  label: "Public data" },
+  { id: "public-data",  label: "New or changing sources" },
   { id: "compliance",   label: "Compliance and audit" },
 ];
 

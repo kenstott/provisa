@@ -71,12 +71,19 @@ def logical_type(data_type: str) -> str | None:
     return next((logical for pattern, logical in _LOGICAL if pattern.search(lowered)), None)
 
 
+#: REQ-1634 STATUS: Provisa's lifecycle in ODPS 1.0's status vocabulary (draft, active,
+#: deprecated, retired; the schema's examples, not a closed enum).
+_ODPS_STATUS = {
+    "draft": "draft",
+    "live": "active",
+    "deprecated": "deprecated",
+    "retired": "retired",
+}
+
+
 def product_status(product: "DataProductAsset") -> str:
-    """The product's status; one with none set is ``active`` when published and ``draft`` when not
-    (``DataProduct.publish``), the same reading every listing gives it."""
-    if product.status:
-        return product.status
-    return "active" if product.publish else "draft"
+    """The product's ODPS status."""
+    return _ODPS_STATUS[product.status]
 
 
 def contract_id(table: "TableAsset") -> str:

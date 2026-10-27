@@ -53,7 +53,7 @@ PRODUCT_FIELDS = {
     "limitations": "Orders before 2020 are not loaded",
     "usage": "Join orders to customers on customer_id",
     "version": "1.2.0",
-    "status": "active",
+    "status": "live",
     "support": "Ask in the data team's channel",
     "support_contact": "data-team@example.com",
     "custom_properties": {"cost_center": "CC-42"},
@@ -136,6 +136,7 @@ def model_config(
     product: str = PRODUCT,
     domain: str = DOMAIN,
     product_name: str = PRODUCT_FIELDS["name"],
+    status: str = PRODUCT_FIELDS["status"],
 ) -> dict[str, Any]:
     """The server's configuration: the governed model every target is published from. A target
     that shares the members' physical objects (Snowflake Horizon, Dataplex) takes the product
@@ -143,7 +144,9 @@ def model_config(
     ``product`` is the data product's id: a test publishing into a shared cloud account names it
     for the run (provisa_e2e_*). ``domain`` is the members' domain: a catalog that files a product
     under a domain of its own name (Purview) is given the one that exists there. ``product_name``
-    is its name: a catalog read back by name is given the run's own."""
+    is its name: a catalog read back by name is given the run's own. ``status`` is its lifecycle
+    status (REQ-1634): live by default, so a catalog lists it as published (Purview); a draft keeps
+    a listing in a shared account unpublished (Snowflake Horizon's organization listing)."""
     roles = MODEL_ROLES
     # Every role, the org's own admin among them: the tests read as org_admin, the role the
     # server's default assignment gives.
@@ -181,7 +184,13 @@ def model_config(
             if r not in SEEDED_ROLE_IDS
         ],
         "data_products": [
-            {**PRODUCT_FIELDS, "id": product, "domain_id": domain, "name": product_name}
+            {
+                **PRODUCT_FIELDS,
+                "id": product,
+                "domain_id": domain,
+                "name": product_name,
+                "status": status,
+            }
         ],
         "tables": [
             {
@@ -318,6 +327,7 @@ async def published_server(
     product: str = PRODUCT,
     domain: str = DOMAIN,
     product_name: str = PRODUCT_FIELDS["name"],
+    status: str = PRODUCT_FIELDS["status"],
 ) -> AsyncGenerator[httpx.AsyncClient]:
     """A started Provisa server for ``org_id`` with the model above, as an HTTP client."""
     from tests.integration.isolated_server import IsolatedServer, drop_org_schema
@@ -333,6 +343,7 @@ async def published_server(
                     product=product,
                     domain=domain,
                     product_name=product_name,
+                    status=status,
                 ),
                 sort_keys=False,
             )

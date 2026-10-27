@@ -8,25 +8,22 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Lower a gRPC table request directly to the query IR (a semantic SELECT).
+"""Lower a gRPC table request to GraphQL text: ``Query{Type}``, ``Query{Type}Aggregate`` and
+``Query{Type}GroupBy`` alike.
 
-Shared by the native gRPC servicer and the HTTP gRPC proxy so both follow the one pipeline every
-transport uses — query language → IR → governed IR → plan → physical — and gRPC never round-trips
-through GraphQL.
+Shared by the native gRPC servicer, the HTTP gRPC proxy and the NL preview. gRPC composes no SQL of
+its own: the text is compiled by the compiler every GraphQL-shaped surface runs, and the compiled
+statement is governed, routed and run as theirs is.
 """
 
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
 from provisa.compiler.naming import active_gql_convention, apply_gql_name
-from provisa.compiler.params import ParamCollector
-from provisa.compiler.sql_gen import _q
-from provisa.compiler.sql_rewrite import semantic_ref
 from provisa.grpc.proto_gen import _physical_to_proto
 
 
@@ -100,8 +97,8 @@ def _filter_set_fields(filter_msg: Any | None) -> list[tuple[str, Any]]:
 
 # --- read_mask (REQ-803) --------------------------------------------------------------------------
 # One semantics for the native servicer and the HTTP gRPC proxy: the mask is validated against the
-# columns the role can read, lowered into the SELECT list, and a dotted sub-path into a JSON-valued
-# column restricts that column's value.
+# columns the role can read, lowered into the query's selection, and a dotted sub-path into a
+# JSON-valued column restricts that column's value.
 
 # Registered column types whose value is a JSON document (proto ``string``, proto_gen._PROTO_TYPE_MAP).
 _JSON_COLUMN_TYPES = frozenset({"json", "jsonb"})
@@ -207,78 +204,33 @@ def _checked_filter(
     return checked
 
 
-# Registered column types whose filter value arrives as TEXT (the proto filter field is ``string``,
-# proto_gen) but must compare as the column's own type → the SQL type its bound value is cast to.
-# A text literal coerces to these implicitly on some engines; a bound text value does not on all
-# (Trino has no varchar-to-timestamp comparison), so the cast is stated.
-_TEXT_BOUND_CASTS = {
-    "timestamp": "TIMESTAMP",
-    "datetime": "TIMESTAMP",
-    "timestamp with time zone": "TIMESTAMPTZ",
-    "timestamptz": "TIMESTAMPTZ",
-    "date": "DATE",
-    "time": "TIME",
-    "time with time zone": "TIMETZ",
-    "timetz": "TIMETZ",
-    "uuid": "UUID",
-}
-_TYPE_PRECISION_RE = re.compile(r"\s*\([^)]*\)")
-_ISO_T_SEPARATOR_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})T")
-
-
-def _bound_filter_value(value: Any, data_type: str, collector: ParamCollector) -> str:
-    """Bind one filter value and return the SQL it is compared as: its placeholder, cast to the
-    column's type when a typed column's value arrived as text (see ``_TEXT_BOUND_CASTS``)."""
-    cast_type = _TEXT_BOUND_CASTS.get(_TYPE_PRECISION_RE.sub("", data_type.lower()).strip())
-    if cast_type is None or not isinstance(value, str):
-        return collector.add(value)
-    if cast_type.startswith("TIMESTAMP"):
-        # ISO 8601's 'T' separator is not accepted by every engine's text-to-timestamp cast.
-        value = _ISO_T_SEPARATOR_RE.sub(r"\1 ", value)
-    return f"CAST({collector.add(value)} AS {cast_type})"
-
-
-def _filter_where(
-    ctx: Any, meta: Any, type_name: str, filter_msg: Any | None, collector: ParamCollector
-) -> list[str]:
-    """The request filter (see ``_checked_filter``; raises :class:`FilterError`) as equality
-    predicates whose values are BOUND (``$N`` placeholders, the values in ``collector``) — never
-    text in the statement, so requests that differ only in their filter values are one
-    statement."""
-    return [
-        f"{_q(column)} = {_bound_filter_value(value, data_type, collector)}"
-        for column, data_type, value in _checked_filter(ctx, meta, type_name, filter_msg)
-    ]
-
-
-def _params_where(
-    ctx: Any, meta: Any, type_name: str, params_msg: Any | None, collector: ParamCollector
-) -> list[str]:  # REQ-1986, REQ-1991
+def _checked_params(
+    ctx: Any, meta: Any, type_name: str, params_msg: Any | None
+) -> dict[str, Any]:  # REQ-1986, REQ-1991
     """The request's parameters (a ``{Type}Params`` message, or the HTTP gRPC proxy's
-    ``body["params"]`` object) as ``_nf_<name> = $N`` predicates, the form an SQL client gives a
-    parameter in; the values are bound. A name that is not one of the table's parameters, or a
-    JSON value of another type than its field, raises :class:`ParameterError` naming it. A
-    required parameter left out is refused by the read itself, as for every surface."""
+    ``body["params"]`` object) by parameter name, checked: a name that is not one of the table's
+    parameters, or a JSON value of another type than its field, raises :class:`ParameterError`
+    naming it. A required parameter left out is refused by the read itself, as for every
+    surface."""
     from provisa.grpc.proto_gen import parameter_name
 
     if params_msg is None:
-        return []
+        return {}
     parameters = {
-        parameter_name(column): (column, data_type)
+        parameter_name(column): data_type
         for column, data_type in ctx.native_filter_columns.get(meta.table_id, {}).items()
     }
     from_body = isinstance(params_msg, Mapping)
-    predicates = []
+    checked: dict[str, Any] = {}
     for name, value in _params_set_fields(params_msg):
         if name not in parameters:
             raise ParameterError(name, type_name, "not a parameter of the table")
-        column, data_type = parameters[name]
         if from_body:
-            expected = _json_param_matches(value, data_type)
+            expected = _json_param_matches(value, parameters[name])
             if expected is not None:
                 raise ParameterError(name, type_name, f"value must be {expected}")
-        predicates.append(f"{_q(column)} = {_bound_filter_value(value, data_type, collector)}")
-    return predicates
+        checked[name] = value
+    return checked
 
 
 def _params_set_fields(params_msg: Any) -> list[tuple[str, Any]]:  # REQ-1986
@@ -382,54 +334,73 @@ def restrict_json(value: Any, tree: MaskTree | None) -> Any:
     return _restrict_decoded(value, tree)
 
 
-def grpc_table_to_semantic_sql(
+def grpc_table_to_graphql(
     ctx: Any,
+    schema: Any,
     type_name: str,
     limit: int,
     filter_msg: Any | None = None,
     read_mask: ReadMask | None = None,
     params_msg: Any | None = None,
-) -> tuple[str, list] | None:
-    """Semantic SELECT over the table matching ``type_name`` and its bound values —
-    ``(sql, params)`` — or None if none matches. proto collapses the domain separator
-    (``PS__Inquiries`` → ``PsInquiries``), so match case/separator-insensitively.
+) -> tuple[str, dict[str, Any]] | None:
+    """GraphQL query text for ``Query{Type}`` and its variables — ``(text, variables)`` — or None
+    if no table matches ``type_name``. A gRPC row read lowers to GraphQL, as its aggregate and
+    group-by do, and runs the compiler every GraphQL-shaped surface runs; it composes no SQL.
+
+    The selection is the table's readable columns, or ``read_mask``'s (REQ-803, see
+    ``resolve_read_mask``), each under its physical name as the alias, so the result's columns
+    carry the names the proto fields are matched by.
 
     ``filter_msg`` (REQ-1860) is the request's ``{Type}Filter`` sub-message, or the HTTP gRPC
-    proxy's ``body["filter"]`` object (REQ-803); its set fields (see ``_filter_set_fields``) become
-    an AND-joined equality WHERE clause (``_filter_where``; raises :class:`FilterError`) whose
-    values are bound: ``$N`` in the statement, the values in ``params`` (REQ-1877). A positive
-    ``limit`` is bound the same way, after them.
+    proxy's ``body["filter"]`` object (REQ-803); its set fields (``_checked_filter``; raises
+    :class:`FilterError`) become ``where: { col: { eq: v } }``. ``params_msg`` is the request's
+    ``{Type}Params`` (or the proxy's ``body["params"]``): the table's parameters
+    (``_checked_params``; raises :class:`ParameterError`) fill the root field's parameter
+    arguments (REQ-1986). The filter and the parameters travel as variables, and a positive
+    ``limit`` as a literal the compiler binds, so requests that differ only in their values share
+    one kept plan (REQ-1877, ``api.generated_plan``). A value the field's types refuse raises the
+    error of the filter field or parameter that carries it."""
+    from provisa.api._query_helpers import RequestRefused, request_variables
 
-    ``read_mask`` (REQ-803, see ``resolve_read_mask``) narrows the SELECT list to the masked
-    columns, so the source reads only those.
-
-    ``params_msg`` is the request's ``{Type}Params`` (or the proxy's ``body["params"]``): the
-    table's parameters, bound into the WHERE clause after the filter (``_params_where``; raises
-    :class:`ParameterError`).
-
-    The statement text is the compiled stage's plan key (pgwire.governed_plan). It is the
-    request's SHAPE — table, masked columns, filtered fields, whether it is limited — so two
-    masks never share a kept plan, and requests that differ only in their bound values share
-    one."""
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
-    if read_mask is not None:
-        selected: Sequence[str] = read_mask.columns
-    else:
-        selected = [c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
-    cols = ", ".join(_q(c) for c in selected) or "*"
-    sql = f"SELECT {cols} FROM {semantic_ref(meta)}"
-    collector = ParamCollector()
-    where_parts = _filter_where(ctx, meta, type_name, filter_msg, collector)
-    where_parts += _params_where(ctx, meta, type_name, params_msg, collector)
-    if where_parts:
-        sql = f"{sql} WHERE {' AND '.join(where_parts)}"
-    if limit and limit > 0:
-        # Bound like the filter values (the GraphQL compiler binds its LIMIT too): a request that
-        # differs only in its limit is the same statement.
-        sql = f"{sql} LIMIT {collector.add(int(limit))}"
-    return sql, collector.params
+    selected: Sequence[str] = (
+        read_mask.columns
+        if read_mask is not None
+        else [c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
+    )
+
+    def _gql(column: str) -> str:
+        return ctx.physical_to_gql[(meta.table_id, column)]
+
+    filters = {
+        column: {_gql(column): {"eq": value}}
+        for column, _type, value in _checked_filter(ctx, meta, type_name, filter_msg)
+    }
+    params = _checked_params(ctx, meta, type_name, params_msg)
+    where = {key: cond for entry in filters.values() for key, cond in entry.items()}
+    try:
+        variables = request_variables(schema, meta.field_name, where, params)
+    except RequestRefused as refused:
+        # Name the filter field or parameter whose value the field's types refuse.
+        for column, entry in filters.items():
+            try:
+                request_variables(schema, meta.field_name, entry)
+            except RequestRefused as exc:
+                raise FilterError(column, type_name, str(exc)) from exc
+        for name, value in params.items():
+            try:
+                request_variables(schema, meta.field_name, {}, {name: value})
+            except RequestRefused as exc:
+                raise ParameterError(name, type_name, str(exc)) from exc
+        raise refused
+    arguments = [f"limit: {int(limit)}"] if limit and limit > 0 else []
+    arguments += variables.arguments
+    args = f"({', '.join(arguments)})" if arguments else ""
+    fields = " ".join(c if _gql(c) == c else f"{c}: {_gql(c)}" for c in selected)
+    text = variables.operation(f"{{ {meta.field_name}{args} {{ {fields} }} }}")
+    return text, dict(variables.values)
 
 
 def _aggregate_field_name(field_name: str) -> str:

@@ -76,6 +76,7 @@
     "itemPython": "Python",
     "itemNotebook": "笔记本",
     "itemContainerRegistries": "容器注册表",
+    "itemSparql": "SPARQL",
     "itemCatalogs": "目录"
   }
 }

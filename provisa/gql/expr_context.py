@@ -317,9 +317,11 @@ class TranslatorExprContext:
         t = self._t
         nm = (t._var_table.get(var) or (None, None))[1]
         if name == "length":
+            # A recursive walk counts its hops (#309); shortestPath reads the same column.
+            recursive = var in t._path_vars and t._path_vars[var][2]
             return (
                 _col("hops", "_t")
-                if t._shortestpath_hops_col is not None
+                if t._shortestpath_hops_col is not None or recursive
                 else exp.Literal.number(1)
             )
         if name == "id":

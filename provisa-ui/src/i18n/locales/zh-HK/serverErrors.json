@@ -130,7 +130,12 @@
       "address_not_found": "沒有可解析的內容：{{reason}}",
       "mixed_resolve_and_other_fields": "resolve 不能在同一操作中與其他根欄位組合使用",
       "source_starting": "來源 {{source}} 仍在啟動。請稍後再試。",
-      "view_outside_load_window": "視圖 {{view}} 只能在其讀取時段內讀取。下次開放時間為 {{opens_at}}。"
+      "view_outside_load_window": "視圖 {{view}} 只能在其讀取時段內讀取。下次開放時間為 {{opens_at}}。",
+      "graphql_body_missing": "請求沒有正文:GraphQL 請求是包含查詢的 JSON 物件。",
+      "graphql_body_not_json": "請求正文不是 JSON:{{error}}",
+      "graphql_request_not_object": "GraphQL 請求是包含查詢的 JSON 物件。",
+      "graphql_parameter_type": "GraphQL 請求的 {{parameter}} 必須是 {{expected}}。",
+      "graphql_mutation_over_get": "變更操作以 POST 發送,絕不用 GET。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -461,7 +466,8 @@
       "relationship_same_entity_direct": "關係 '{{relationship}}' 不能標記為同一實體：它透過聯結表或函數連接，而不是一行對一行",
       "relationship_same_entity_cardinality": "關係 '{{relationship}}' 不能標記為同一實體：它是 {{cardinality}}，而同一實體是一行對一行",
       "relationship_same_entity_not_grounded": "關係 '{{relationship}}' 不能標記為同一實體：{{source}} 和 {{target}} 未關聯到同一術語",
-      "relationship_same_entity_not_keys": "關係 '{{relationship}}' 不能標記為同一實體：{{columns}} 不是 {{table}} 的主鍵或唯一鍵"
+      "relationship_same_entity_not_keys": "關係 '{{relationship}}' 不能標記為同一實體：{{columns}} 不是 {{table}} 的主鍵或唯一鍵",
+      "kaggle_token_missing": "Kaggle 數據集 {{owner}}/{{ref}}：數據來源沒有 Kaggle API 權杖。請在數據來源表單中加入，權杖在那裡輸入。"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
@@ -491,7 +497,10 @@
       "unknown_encryption_provider": "未知的加密提供者「{{provider}}」",
       "unknown_engine": "未知引擎「{{engine}}」；有效值：{{valid}}",
       "use_domains_invalid": "use_domains 必須為 true、false 或 null",
-      "claims_with_multitenancy": "多租戶部署不能從登入聲明中讀取角色指派：它按組織自行授予角色，而聲明會覆蓋這些授予。請將指派來源設定為 Provisa。"
+      "claims_with_multitenancy": "多租戶部署不能從登入聲明中讀取角色指派：它按組織自行授予角色，而聲明會覆蓋這些授予。請將指派來源設定為 Provisa。",
+      "federation_unknown_field": "不是聯邦設定：{{fields}}",
+      "federation_invalid": "聯邦設定無效：{{error}}",
+      "federation_role_unknown": "聯邦角色「{{role}}」不是此組織的角色"
     },
     "setup": {
       "admin_credentials_required": "必須提供 admin_username 及 admin_password",
@@ -690,6 +699,34 @@
       "also_term_needs_column": "改為給詞彙加標籤需要指定一個欄位。",
       "inherited_from_term": "此欄位是 PII，因為它表示 {{term}}。請取消該含義的標記，或者如果此欄位表示其他含義，請移動它。",
       "move_loses": "此次移動會使欄位失去標籤，之後這些欄位將不再帶有它們。請確認失去每個標籤，或將標籤帶到欄位移入的詞彙上。"
+    },
+    "data_product": {
+      "status": {
+        "published": "數據產品 {{data_product}} 已發佈。",
+        "deprecated": "數據產品 {{data_product}} 已標記為棄用。",
+        "retired": "數據產品 {{data_product}} 已停用。",
+        "restored": "數據產品 {{data_product}} 已還原。",
+        "reason_required": "需要填寫原因：說明為何棄用或停用此數據產品。",
+        "not_found": "找不到數據產品 {{data_product}}。",
+        "not_draft": "只有草稿狀態的數據產品可以發佈；此產品為 {{status}}。",
+        "not_live": "只有已上線的數據產品可以棄用，只有已上線或已棄用的可以停用；此產品為 {{status}}。",
+        "not_restorable": "只有已棄用或已停用的數據產品可以還原；此產品為 {{status}}。",
+        "retire_on_past": "計劃停用日期 {{retire_on}} 已過。請選擇今天或之後的日期。",
+        "successor_required": "此數據產品有 {{members}} 個成員；停用後它們會轉給繼任者。請選擇一個。",
+        "successor_is_self": "數據產品不能是自己的繼任者。",
+        "successor_retired": "繼任者「{{successor}}」已停用。請選擇一個正在使用的數據產品。",
+        "successor_other_domain": "繼任者「{{successor}}」屬於網域 {{domain}}。產品的成員與其共用同一網域，因此請選擇同一網域中的繼任者。"
+      },
+      "finding": {
+        "no_members": "沒有任何表格、檢視或指令屬於此數據產品。",
+        "member_deprecated": "成員表格 {{table}} 已棄用。",
+        "no_owner": "沒有擁有者角色對此數據產品負責。",
+        "no_support_contact": "此數據產品沒有支援聯絡人，而已設定的匯出目標要求提供。",
+        "retirement_blocked": "此數據產品原定於 {{retire_on}} 停用，但仍有成員。請指定一個繼任者接收這些成員後再停用。",
+        "domain_steward_unset": "網域 {{domain}} 沒有數據管家。",
+        "no_description": "此數據產品既未說明用途，也未說明使用方式。",
+        "successor_retired": "接收此產品成員的數據產品「{{successor}}」亦已停用。"
+      }
     }
   }
 }

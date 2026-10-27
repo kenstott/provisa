@@ -49,6 +49,8 @@ GET /auth/provider-type
 
 請求以其執行角色運作：已驗證使用者的角色，或在開發模式（沒有身分驗證）下取 `X-Provisa-Role` 標頭，沒有時為 `org_admin`。主體中的 `role` 欄位並不選擇角色。若存在，它必須與執行角色一致；不同的值會傳回 `400`，代碼為 `data.role_mismatch`，並指名兩個角色。同一規則適用於 `POST /data/sql`、`POST /data/query` 及 `POST /query/nl`。
 
+**基於 HTTP 的 GraphQL。** 該端點遵循 GraphQL-over-HTTP 規範。它亦回應 `GET /data/graphql`,其 `query`、`operationName`、`variables` 和 `extensions` 以 URL 編碼傳遞(`variables` 和 `extensions` 為 JSON 字串);以 `GET` 發送的變更返回 `405`。`Accept` 中 `application/graphql-response+json` 列於 `application/json` 之前的請求,以該媒體類型回應;其他所有請求以 `application/json` 回應。不是 GraphQL 請求的請求返回 `400`:沒有正文、正文不是 JSON 物件,或參數的 JSON 類型錯誤(`query` 和 `operationName` 為字串,`variables` 和 `extensions` 為物件)。無法解析或驗證、或變數無法強制轉換的文件,回應其 `errors` 且不含 `data`:在 `application/json` 下狀態為 `200`,在 `application/graphql-response+json` 下或 `Accept` 要求 CSV 等檔案格式時為 `400`。
+
 `extensions` 欄位支援自動持續化查詢（APQ）通訊協定：
 
 ```json

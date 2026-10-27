@@ -245,7 +245,11 @@ async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
     from provisa.api.role_surface import role_surface
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.gql.translator_types import CypherTranslateError
-    from provisa.sparql_query.vocabulary import concepts_of, vocabulary_document
+    from provisa.sparql_query.vocabulary import (
+        concepts_of,
+        superclasses_of,
+        vocabulary_document,
+    )
 
     role_id = _resolve_role_id(request, state)
     surface = role_surface(state, role_id)
@@ -265,4 +269,12 @@ async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
     assert pool is not None, "the control plane is opened before any request is served"
     async with pool.acquire() as conn:
         terms = await glossary_repo.list_terms(conn, include_deprecated=False, domains=domains)
-    return JSONResponse(vocabulary_document(vocab, concepts_of(vocab.base, terms)))
+        edges = await glossary_repo.term_edges(conn)
+    return JSONResponse(
+        vocabulary_document(
+            vocab,
+            concepts_of(vocab.base, terms),
+            # A Class term's superclasses, among the terms the role reads (REQ-2135).
+            superclasses_of(vocab.base, terms, edges),
+        )
+    )

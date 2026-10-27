@@ -308,17 +308,56 @@ DECLARED: list[Setting] = [
         unit="jobs",
     ),
     Setting(
+        key="codesource.duckdb_memory_mb",
+        card="limits",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the memory a code source's DuckDB answers its statements in, past which it
+        # spills to disk; 1024 holds a large answer's working set on a small host.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_MEMORY_MB",
+        default=1024,
+        min=64,
+        unit="MiB",
+    ),
+    Setting(
+        key="codesource.duckdb_spill_cap_mb",
+        card="limits",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the most a code source's DuckDB spills to disk; a statement that needs more
+        # is refused, naming this setting. 10240 bounds a host's disk use well inside its volume.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_SPILL_CAP_MB",
+        default=10240,
+        min=0,
+        unit="MiB",
+    ),
+    Setting(
+        key="codesource.duckdb_threads",
+        card="concurrency",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the threads a code source's DuckDB answers its statements on; 4 leaves the
+        # host's other cores to the code itself.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_THREADS",
+        default=4,
+        min=1,
+        unit="threads",
+    ),
+    Setting(
         key="kaggle.api_token",
         card="security",
         type="str",
         effect="live",  # read at each Kaggle search and each staging
         req="REQ-1819",
-        # The default is a reference in a visible, editable field, not a name hidden in code
-        # (maintainer ruling, 2026-10-10: the product resolves what a field holds and makes up
-        # no secret names): an operator who already created a secret of this name keeps
-        # working, and any other value or reference may be typed over it.
-        # reference-convention: REQ-1798 -- the Kaggle token's fixed secret name
-        default="${secret:kaggle_api_token}",
+        # Read only by the assistant's Kaggle tool, which has no form: a Kaggle source holds its own
+        # token in its credential field. Unset unless the operator sets it -- a value or a
+        # reference they type -- and never a secret name nobody created (maintainer ruling: the
+        # product resolves what a field holds and makes up no secret names).
+        default=None,
+        nullable=True,
         credential=True,
     ),
     Setting(

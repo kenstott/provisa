@@ -65,6 +65,7 @@ const products = [
     id: "pet_health",
     domainId: "care",
     name: "Pet Health",
+    supportContact: "vets@petstore.example",
     purpose: "Pet health records",
     limitations: "",
     usage: "",
@@ -95,6 +96,13 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useUpdateDataProduct: () => ({ updateDataProduct: saves.update, loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
   useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
+  useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
+  useDataProductStatus: () => ({
+    publish: vi.fn(),
+    deprecate: vi.fn(),
+    retire: vi.fn(),
+    restore: vi.fn(),
+  }),
 }));
 
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
@@ -122,7 +130,12 @@ describe("Data Products: saving (REQ-1634)", () => {
     fireEvent.click(await screen.findByTestId("edit-pet_health"));
     fireEvent.click(await screen.findByTestId("data-product-save-button"));
     await waitFor(() => expect(saves.update).toHaveBeenCalledTimes(1));
-    expect(saves.update.mock.calls[0][0]).toMatchObject({ id: "pet_health", domainId: "care" });
+    // Every field the form holds is saved: the support contact stays as it was.
+    expect(saves.update.mock.calls[0][0]).toMatchObject({
+      id: "pet_health",
+      domainId: "care",
+      supportContact: "vets@petstore.example",
+    });
     expect(saves.create).not.toHaveBeenCalled();
   });
 

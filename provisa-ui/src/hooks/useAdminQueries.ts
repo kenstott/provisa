@@ -618,8 +618,8 @@ export function useRefreshKaggleSource() {
     refreshKaggleSource: MutationResult;
   }>(RefreshKaggleSource);
   return {
-    refreshKaggleSource: async (sourceId: string, token: string) => {
-      const result = await refreshKaggleSource({ variables: { sourceId, token } });
+    refreshKaggleSource: async (sourceId: string) => {
+      const result = await refreshKaggleSource({ variables: { sourceId } });
       return (result.data?.refreshKaggleSource ?? {
         success: false,
         message: "",
@@ -1097,6 +1097,8 @@ export function useCompileQuery() {
         canonical_field: r.canonicalField ?? r.canonical_field,
         compiled_cypher: r.compiledCypher ?? r.compiled_cypher,
         cypher_error: r.cypherError ?? r.cypher_error,
+        compiled_sparql: r.compiledSparql ?? r.compiled_sparql,
+        sparql_error: r.sparqlError ?? r.sparql_error,
         column_aliases: (
           (r.columnAliases ?? r.column_aliases ?? []) as Record<string, unknown>[]
         ).map((ca) => ({ field_name: ca.fieldName ?? ca.field_name, column: ca.column })),

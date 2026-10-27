@@ -877,12 +877,12 @@ async def create_data_product(  # REQ-1855
     limitations: str = "",
     usage: str = "",
     version: str | None = None,
-    status: str | None = None,
     support: str | None = None,
 ) -> dict:
     """Create or replace a data product by id (an id that already exists is overwritten in
     full — fetch it first with list_data_products if you mean to change only some fields).
-    `domain_id` must be a real, existing domain."""
+    `domain_id` must be a real, existing domain. Its status is kept: a new product is a draft,
+    and change_data_product_status changes it."""
     require_role(role, state)
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
@@ -917,11 +917,99 @@ async def create_data_product(  # REQ-1855
             limitations=limitations,
             usage=usage,
             version=version,
-            status=status,
+            # REQ-1634 STATUS: the lifecycle changes only by its actions; a save keeps it.
+            **(
+                {
+                    "status": stored["status"],
+                    "status_reason": stored["status_reason"],
+                    "retire_on": stored["retire_on"],
+                    "successor": stored["successor_id"],
+                }
+                if stored is not None
+                else {}
+            ),
             support=support,
         )
         await data_product_repo.upsert(conn, model)
     return {"id": id}
+
+
+#: REQ-1634 STATUS: the actions a data product's status changes by.
+DATA_PRODUCT_ACTIONS = ("publish", "deprecate", "retire", "restore")
+
+
+async def change_data_product_status(
+    state: Any, role: str, request: Any, id: str, action: str, body: dict
+) -> dict:  # REQ-1634
+    """Publish, deprecate, retire or restore a data product. ``body``: deprecate takes
+    ``reason`` (required) and ``retire_on`` (ISO date, optional); retire takes ``reason`` and
+    ``successor`` (the product its members move to, required when it has any)."""
+    import datetime
+
+    require_role(role, state)
+    from provisa.api.admin.capabilities import (
+        require_capability_request,
+        require_right_in_domains_request,
+    )
+    from provisa.api.admin.glossary_router import _caller_id
+    from provisa.core.repositories import data_product as data_product_repo
+
+    if action not in DATA_PRODUCT_ACTIONS:
+        raise ValueError(f"action is one of {', '.join(DATA_PRODUCT_ACTIONS)}, not {action!r}")
+    require_capability_request(request, "data_product_rw")
+    by = _caller_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        stored = await data_product_repo.get(conn, id)
+        if stored is None:
+            raise ValueError(f"Data product not found: {id}")
+        require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+        try:
+            async with conn.transaction():
+                if action == "publish":
+                    await data_product_repo.publish(conn, id, by=by)
+                elif action == "deprecate":
+                    retire_on = body.get("retire_on")
+                    await data_product_repo.deprecate(
+                        conn,
+                        id,
+                        reason=body.get("reason"),
+                        retire_on=datetime.date.fromisoformat(retire_on) if retire_on else None,
+                        by=by,
+                        today=datetime.date.today(),
+                    )
+                elif action == "retire":
+                    await data_product_repo.retire(
+                        conn, id, reason=body.get("reason"), successor=body.get("successor"), by=by
+                    )
+                else:
+                    await data_product_repo.restore(conn, id, by=by)
+        except data_product_repo.StatusRefused as refused:
+            raise ValueError(str(refused)) from refused
+        changed = await data_product_repo.get(conn, id)
+        assert changed is not None  # a status action changes a product, never removes it
+    return {"ok": True, "id": id, "status": changed["status"]}
+
+
+async def list_data_product_findings(state: Any, role: str, request: Any) -> list[dict]:  # REQ-2146
+    """What a curator should look at in the data products: each product with its findings, each
+    {kind, code, message, params} -- no_members, member_deprecated, no_owner, no_support_contact,
+    retirement_blocked, domain_steward_unset, no_description, successor_retired."""
+    import datetime
+
+    require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.core import product_findings
+
+    require_capability_request(request, "data_product_read")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        found = await product_findings.findings(
+            conn, await product_findings.context(datetime.date.today())
+        )
+    return [{"product_id": pid, "findings": items} for pid, items in sorted(found.items())]
 
 
 async def delete_data_product(state: Any, role: str, request: Any, id: str) -> dict:  # REQ-1855

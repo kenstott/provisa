@@ -39,6 +39,7 @@ const VIEW: RoleEffective = {
     { right: "export", from: ["dq_lead"] },
     { right: "read", from: ["viewer"] },
   ],
+  data: [],
 };
 
 const kind = (k: "standard" | "custom" | "meta") => `kind:${k}`;

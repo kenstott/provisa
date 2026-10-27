@@ -18,6 +18,7 @@ import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { coreContracts, type ProductCore } from "../productCore";
 import { ContractEditor } from "../ContractEditor";
 import { contractChanged, contractDraft } from "../contractDraft";
+import { lifecycleProps } from "./lifecycleProps";
 import type { DataProduct } from "../../../types/admin";
 import type { DataContractInput } from "../../../hooks/useDataProductMutations";
 
@@ -107,6 +108,7 @@ describe("a product's contracts", () => {
         inputPorts={[]}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        {...lifecycleProps()}
       />,
     );
     expect(screen.getByTestId("data-contract-version-7")).toHaveTextContent("v2.0.0");

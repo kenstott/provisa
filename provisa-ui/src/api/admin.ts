@@ -903,6 +903,12 @@ export interface PlatformSettings {
   cache: {
     default_ttl: number;
   };
+  // REQ-259: the org's Apollo Federation subgraph and the role it serves as.
+  federation: {
+    enabled: boolean;
+    subgraph_name: string;
+    role: string | null;
+  };
   naming: {
     // Deployment-wide, so absent for an org administrator; the two below are the org's own.
     domain_prefix?: boolean;
@@ -1553,6 +1559,10 @@ export interface CompileResult {
   warnings?: string[];
   compiled_cypher?: string | null;
   cypher_error?: string | null;
+  /** REQ-2136: the root's read as a SPARQL SELECT, its PREFIX lines with it; null with
+   * ``sparql_error`` saying why there is none. */
+  compiled_sparql?: string | null;
+  sparql_error?: string | null;
 }
 
 /** One thing an answer says about itself (REQ-1350), as the server sends it. */

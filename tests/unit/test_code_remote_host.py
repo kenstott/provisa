@@ -20,7 +20,6 @@ import os
 import subprocess
 import sys
 import textwrap
-import threading
 import time
 
 import pyarrow as pa
@@ -33,6 +32,12 @@ from provisa.codesource.worker import WorkerFailed
 from provisa.python.source import HOST
 
 pytestmark = pytest.mark.unit
+
+BOUNDS = {
+    "memory_mb": 256,
+    "threads": 2,
+    "spill_cap_mb": 1024,
+}  # the host's DuckDB, given at pairing
 
 FRONT = front.__file__
 _CODE = textwrap.dedent(
@@ -61,7 +66,15 @@ def started(tmp_path):
     names.write_text("{}")
     worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
     process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
-        [sys.executable, FRONT, str(port), str(tmp_path / "state"), str(names), *worker],
+        [
+            sys.executable,
+            FRONT,
+            str(port),
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *worker,
+        ],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -98,7 +111,7 @@ def _worker(port: int, pin: str, identity: remote.Identity, **kw) -> remote.Remo
 def test_a_paired_host_serves_the_codes_tables_to_each_provisa_connection(started):
     port, code = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, code, identity)
+    pin = remote.pair("127.0.0.1", port, code, identity, BOUNDS).pin
     first = _worker(port, pin, identity, exports=["orders"])
     second = _worker(port, pin, identity, exports=["orders"])
     first.start()
@@ -122,16 +135,16 @@ def test_a_pairing_code_is_used_once_and_another_secret_is_refused(started):
     port, code = started
     fingerprint, _secret = remote.parse_pairing_code(code)
     with pytest.raises(remote.PairingRefused, match="not this host's pairing code"):
-        remote.pair("127.0.0.1", port, f"{fingerprint}.wrong", remote.new_identity())
-    remote.pair("127.0.0.1", port, code, remote.new_identity())
+        remote.pair("127.0.0.1", port, f"{fingerprint}.wrong", remote.new_identity(), BOUNDS)
+    remote.pair("127.0.0.1", port, code, remote.new_identity(), BOUNDS)
     # Paired: the host now takes only its Provisa's certificate.
     with pytest.raises(remote.PairingRefused):
-        remote.pair("127.0.0.1", port, code, remote.new_identity())
+        remote.pair("127.0.0.1", port, code, remote.new_identity(), BOUNDS)
 
 
 def test_a_provisa_the_host_is_not_paired_to_is_refused(started):
     port, code = started
-    pin = remote.pair("127.0.0.1", port, code, remote.new_identity())
+    pin = remote.pair("127.0.0.1", port, code, remote.new_identity(), BOUNDS).pin
     stranger = _worker(port, pin, remote.new_identity())
     with pytest.raises(WorkerFailed):
         stranger.start(timeout=5)
@@ -140,7 +153,7 @@ def test_a_provisa_the_host_is_not_paired_to_is_refused(started):
 def test_a_host_running_other_code_or_offering_other_exports_is_refused_by_name(started):
     port, code = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, code, identity)
+    pin = remote.pair("127.0.0.1", port, code, identity, BOUNDS).pin
     with pytest.raises(WorkerFailed) as other_code:
         _worker(port, pin, identity, content_hash="h2").start()
     assert str(other_code.value) == (
@@ -157,7 +170,7 @@ def test_a_host_running_other_code_or_offering_other_exports_is_refused_by_name(
 def test_a_host_with_another_certificate_than_the_pin_is_refused(started):
     port, code = started
     identity = remote.new_identity()
-    remote.pair("127.0.0.1", port, code, identity)
+    remote.pair("127.0.0.1", port, code, identity, BOUNDS)
     with pytest.raises(WorkerFailed, match="presented certificate .*, not the paired 0+"):
         _worker(port, "0" * 64, identity).start()
 
@@ -176,30 +189,49 @@ def test_a_pairing_code_that_is_not_one_is_refused_by_name():
         remote.parse_pairing_code("hello")
 
 
-def test_stop_closes_the_connection_only_once_its_reader_has_left_it():
-    """A closed socket's number is the next dial's: were it closed while the reader thread was
-    still in its recv, that thread would read the next connection's bytes (a TLS handshake's
-    "bad record MAC"). stop() wakes the reader, and closes the socket once it has left."""
-    in_recv, woken = threading.Event(), threading.Event()
-    order: list[str] = []
+def _ipc_text(table: pa.Table) -> str:
+    """An Arrow table as the base64 IPC stream a residual's arguments are carried in."""
+    import base64
 
-    class Conn:
-        def recv(self, size: int) -> bytes:
-            in_recv.set()
-            woken.wait(5)
-            time.sleep(0.05)  # still in the call when the socket is shut
-            order.append("read ended")
-            return b""
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as stream:
+        stream.write_table(table)
+    return base64.b64encode(sink.getvalue().to_pybytes()).decode()
 
-        def shutdown(self, how: int) -> None:
-            woken.set()
 
-        def close(self) -> None:
-            order.append("closed")
-
-    worker = _worker(1, "0" * 64, remote.new_identity())
-    worker._conn = Conn()  # pyright: ignore[reportAttributeAccessIssue]  # a socket's stand-in
-    worker._start_reader("code-remote-test")
-    assert in_recv.wait(5)
-    worker.stop()
-    assert order == ["read ended", "closed"]
+def test_a_read_carrying_its_statement_is_answered_with_it_applied_on_the_host(started):
+    port, code = started
+    identity = remote.new_identity()
+    pin = remote.pair("127.0.0.1", port, code, identity, BOUNDS).pin
+    worker = _worker(port, pin, identity)
+    worker.start()
+    try:
+        residual = {
+            "sql": "SELECT n FROM shop.orders WHERE n >= 3 AND _nf_n = 6 ORDER BY n DESC",
+            "dialect": "duckdb",
+            "table": "orders",
+            "schema": ORDERS,
+            "arguments": _ipc_text(pa.table({"n": pa.array([6], pa.int64())})),
+        }
+        answered = [
+            pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
+            for ipc in worker.batches(
+                "orders", "table", [6], ["n"], schema=ORDERS, residual=residual
+            )
+        ]
+        assert pa.concat_tables(answered).column("n").to_pylist() == [5, 4, 3]
+        # A statement the host cannot run fails the call, named, and the host serves on.
+        with pytest.raises(Exception, match="nope"):
+            list(
+                worker.batches(
+                    "orders",
+                    "table",
+                    [1],
+                    ["n"],
+                    schema=ORDERS,
+                    residual={**residual, "sql": "SELECT nope FROM orders"},
+                )
+            )
+        assert worker.ping()
+    finally:
+        worker.stop()

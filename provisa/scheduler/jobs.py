@@ -145,7 +145,14 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
         if state.shared_federation_engine.landed_signals:
             from provisa.observability import native_traces
 
-            merged = await asyncio.to_thread(native_traces.compact, native_traces.traces_dir())
+            from provisa.core.limits import longest_request_timeout
+
+            # A merged batch is kept while a request's read could still hold its listing.
+            merged = await asyncio.to_thread(
+                native_traces.compact,
+                native_traces.traces_dir(),
+                grace_s=longest_request_timeout(),
+            )
             logger.debug("compact_otel: merged %d native trace files", merged)
         return
 
@@ -1146,7 +1153,7 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
 
         register_org_role_grants(scheduler, org_id)
         # REQ-2144: and its deprecated terms, retired on their planned date.
-        from provisa.scheduler.term_retirement import register_org as register_org_retirements
+        from provisa.scheduler.planned_retirement import register_org as register_org_retirements
 
         register_org_retirements(scheduler, org_id)
         # REQ-2091: and its sensitive columns' fakes and rules, checked for adequacy.

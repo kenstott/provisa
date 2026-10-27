@@ -154,12 +154,12 @@ def _duckdb_s3_conn(conn: HiveS3Connection):
     1.x's own recommended mechanism; the older global ``SET s3_*`` variables were tried first and
     confirmed live NOT to take effect against a real MinIO endpoint (every read came back
     ``SignatureDoesNotMatch``/region "auto" regardless of the region actually SET)."""
-    import duckdb
+    from provisa.core import engine_memory
 
     def _q(s: str) -> str:
         return sql_literal(s, "duckdb")[1:-1]
 
-    c = duckdb.connect(":memory:")
+    c = engine_memory.connect()
     c.execute("INSTALL httpfs")
     c.execute("LOAD httpfs")
     endpoint = conn.endpoint.split("://", 1)[-1]

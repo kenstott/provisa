@@ -18,6 +18,7 @@ import { fireEvent, render, screen, waitFor, within } from "../../test-utils/ren
 import type { LineageGraphData, LineageNode } from "../../api/lineage";
 import type { DataProduct } from "../../types/admin";
 import type { ProductCore } from "../data-products/productCore";
+import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
 
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
@@ -150,6 +151,13 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
   useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
+  useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
+  useDataProductStatus: () => ({
+    publish: vi.fn(),
+    deprecate: vi.fn(),
+    retire: vi.fn(),
+    restore: vi.fn(),
+  }),
 }));
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
@@ -249,6 +257,7 @@ describe("the product detail's lineage DAG (REQ-1640)", () => {
         inputPorts={[]}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        {...lifecycleProps()}
       />,
     );
 
