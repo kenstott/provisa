@@ -288,6 +288,19 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     return _call
 
 
+async def _affected(sql: str, role_id: str, state: Any) -> int:  # REQ-2175
+    """``sql`` governed as ``role_id`` and run through the one pipeline: the count it affected, as
+    pgwire's command tag reads it (``server._write_tag``)."""
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire import _pipeline
+
+    result = await _pipeline.govern_batch_final_plan_with_fn(sql, role_id, state, deliver=None)
+    if not isinstance(result, QueryResult):
+        _pipeline.require_governed_plan(result)  # REQ-1176: verified before the engine executes
+        result = await _pipeline._execute_plan(result, state)
+    return result.rowcount if result.rowcount is not None else len(result.rows)
+
+
 def _command_name(command: Any, raw: bytes) -> str:  # REQ-2175
     """What a Flight SQL request Provisa does not serve is called, for its NOT_IMPLEMENTED."""
     if command is not None:
@@ -372,6 +385,9 @@ _HEALTHCHECK_ACTION = "healthcheck"
 
 # The Flight SQL actions the endpoint serves (REQ-2175).
 _FLIGHT_SQL_ACTIONS = frozenset({"CreatePreparedStatement", "ClosePreparedStatement"})
+# Flight's session options action (Flight.proto), which a Flight SQL client reads its current
+# catalog and schema by (REQ-2175).
+_GET_SESSION_OPTIONS = "GetSessionOptions"
 
 
 # The middleware key the call's headers are kept under.
@@ -878,20 +894,57 @@ class ProvisaFlightServer(
 
     def _flightsql_put(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # the RPC's, unused: binding reads no caller
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         reader: flight.MetadataRecordBatchReader,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         writer: flight.FlightMetadataWriter,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> None:
-        """DoPut of a prepared statement's parameter rows (REQ-2175): answered the handle with
-        them bound, which the client uses from then on (the statement holds no server state)."""
+        """DoPut of a Flight SQL command (REQ-2175). A statement update, or a prepared one with
+        its parameter rows (one execution each), is run as the caller (:meth:`_run_update`) and
+        answered its affected count. A prepared query's parameter rows are answered the handle
+        with them bound, which the client uses from then on (the statement holds no server
+        state)."""
         command = flightsql.unpack(descriptor.command)
+        if isinstance(command, flightsql.pb.CommandStatementUpdate):
+            count = self._run_update(context, [command.query])
+            writer.write(pa.py_buffer(flightsql.update_result(count)))
+            return
+        if isinstance(command, flightsql.pb.CommandPreparedStatementUpdate):
+            query, bound = flightsql.read_prepared_handle(command.prepared_statement_handle)
+            rows = reader.read_all()
+            parameters = rows if rows.num_columns else bound
+            count = self._run_update(context, flightsql.bound_statements(query, parameters))
+            writer.write(pa.py_buffer(flightsql.update_result(count)))
+            return
         if not isinstance(command, flightsql.pb.CommandPreparedStatementQuery):
             raise NotImplementedError(f"Flight SQL {_command_name(command, descriptor.command)}")
         query, _ = flightsql.read_prepared_handle(command.prepared_statement_handle)
         handle = flightsql.prepared_handle(query, reader.read_all())
         result = flightsql.pb.DoPutPreparedStatementResult(prepared_statement_handle=handle)
         writer.write(pa.py_buffer(result.SerializeToString()))
+
+    def _run_update(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        statements: list[str],
+    ) -> int:
+        """The affected count of ``statements``, each governed as the caller the call's headers
+        name and run through the one pipeline (:func:`_affected`), as pgwire runs a write."""
+        request = self._caller_request(context, statements[0])
+
+        def _update() -> int:
+            if not request.get("role"):
+                raise _flight_error("role is required")
+            role_id = str(request["role"])
+            try:
+                return sum(
+                    self._run_on_loop(_affected(statement, role_id, self._state))
+                    for statement in statements
+                )
+            except (PermissionError, ValueError) as exc:
+                raise _flight_error(str(exc), exc) from exc
+
+        return _run_rpc(lambda: self._as_ticket_caller(request, _update))
 
     def _flightsql_action(
         self,
@@ -910,6 +963,27 @@ class ProvisaFlightServer(
             flightsql.read_prepared_handle(request.prepared_statement_handle)
             return []
         raise NotImplementedError(f"Flight SQL action {action.type}")
+
+    def _session_options(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> list[flight.Result]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """GetSessionOptions (REQ-2175): the caller's current catalog and schema, as pgwire
+        answers current_database() and current_schema()."""
+        from provisa.pgwire.catalog import CURRENT_SCHEMA
+        from provisa.pgwire.catalog_populate import served_database_name
+        from provisa.proto import Flight_pb2
+
+        Flight_pb2.GetSessionOptionsRequest.FromString(
+            action.body.to_pybytes() if action.body else b""
+        )
+        request = self._caller_headers(context)
+
+        def _options() -> bytes:
+            return flightsql.session_options(served_database_name(self._state), CURRENT_SCHEMA)
+
+        return [flight.Result(_run_rpc(lambda: self._as_ticket_caller(request, _options)))]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     # ------------------------------------------------------------------
     # get_schema — Arrow schema for a catalog table
@@ -1193,9 +1267,12 @@ class ProvisaFlightServer(
         (``provisa.api.health_report``) — for a client or a load balancer that reaches this
         server over Flight only. It needs no credential, as ``/health`` needs none.
 
-        A Flight SQL action (REQ-2175) is :meth:`_flightsql_action`'s."""
+        A Flight SQL action (REQ-2175) is :meth:`_flightsql_action`'s; GetSessionOptions is
+        :meth:`_session_options`'s."""
         if action.type in _FLIGHT_SQL_ACTIONS:
             return self._flightsql_action(context, action)
+        if action.type == _GET_SESSION_OPTIONS:
+            return self._session_options(context, action)
         if action.type == _HEALTHCHECK_ACTION:
             from provisa.api.health_report import health_report
 
