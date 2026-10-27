@@ -250,6 +250,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     element_type TEXT,
     native_type  TEXT,
     native_platform TEXT,  -- whose spelling native_type is
+    subtype      TEXT,  -- REQ-2171: the subtype the column was registered as; data_type is its base
     fake         TEXT,  -- REQ-1494: the column's kind of fake, as declared
     fake_stable  BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1494
     fake_stable_version INTEGER,  -- REQ-1494: the portable definition version a stable fake is pinned to
