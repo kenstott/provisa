@@ -1,0 +1,54 @@
+# The openCypher TCK's scenarios Provisa does not run, or fails, by design (REQ-2167, amended
+# 2026-10-27): each group names the decision that excludes it. scripts/conformance/by_design.py.
+
+- group: Scenarios that build their own graph
+  requirement: REQ-351, REQ-661
+  decision: >-
+    The graph is the model: node labels are registered tables and relationship types registered
+    relationships, so a scenario that builds its graph with a statement or names a TCK graph has
+    no graph to run on.
+  reason: "^its setup (builds its graph with a statement|uses a named TCK graph)"
+
+- group: Scenarios that declare a test procedure
+  requirement: REQ-1156
+  decision: A procedure is a command registered in the model, not one a statement declares.
+  reason: "^its setup declares a test procedure"
+
+- group: Writes outside the model
+  requirement: REQ-661
+  decision: >-
+    A write resolves to one registered label; a write that creates a label, an unlabeled node
+    or a node of a label the model has not is refused.
+  reason: "This write is in a form Provisa does not read"
+
+- group: Writes to relationships
+  requirement: REQ-665
+  decision: Relationships are derived from foreign-key joins, not stored edges, and are not written.
+  reason: "cannot target relationships"
+
+- group: MERGE and REMOVE
+  requirement: REQ-818
+  decision: Writes are direct table writes; MERGE and REMOVE are not supported.
+  reason: "Cypher write pattern '(MERGE|REMOVE)'"
+
+- group: DETACH DELETE
+  requirement: REQ-671
+  decision: DETACH DELETE is not supported; a client deletes each table in dependency order.
+  reason: "Cypher write pattern 'DETACH'"
+
+- group: Labels the model does not have
+  requirement: REQ-778
+  decision: A label no table has is refused by name, offering the registered labels.
+  reason: "There is no label :"
+
+- group: Relationship types the model does not have
+  requirement: REQ-603
+  decision: A traversal exists only along a registered relationship; another is refused by name.
+  reason: "There is no relationship type :"
+
+- group: Temporal values below the microsecond
+  requirement: REQ-2173
+  decision: >-
+    Temporal values have microsecond precision; digits below the microsecond are presented as
+    zero.
+  reason: "^expects digits below the microsecond"

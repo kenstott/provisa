@@ -30,6 +30,8 @@ import re
 import sys
 from pathlib import Path
 
+import by_design
+
 DOCS = Path(__file__).resolve().parents[2] / "docs" / "conformance"
 BEGIN = "<!-- conformance-results:begin -->"
 END = "<!-- conformance-results:end -->"
@@ -69,6 +71,8 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
     rate = _rate(artifact["passed"], artifact["ran"])
     if artifact.get("not_runnable"):
         rate += f"; {artifact['not_runnable']} cases not runnable by design"
+    if artifact.get("skipped"):
+        rate += f"; {artifact['skipped']} skipped by the suite"
     if "recommendations" in artifact:  # the audit's SHOULD and MAY checks, counted apart
         rate = (
             f"{rate} of the requirements (MUST); recommendations met "
@@ -77,7 +81,11 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
     suite = f"{artifact['suite']} {artifact['version']}"
     if artifact.get("tests"):  # which of the suite's tests ran (a driver's own test directory)
         suite += f" ({artifact['tests']})"
-    return artifact["surface"], suite, rate, _cases(groups)
+    # REQ-2167 (amended 2026-10-27): each by-design group, its count and the decision behind it.
+    designed = "\n".join(
+        ["## Not runnable by design", "", *by_design.table(artifact.get("by_design") or [])]
+    )
+    return artifact["surface"], suite, rate, f"{designed}\n\n{_cases(groups)}"
 
 
 def fill(page: str, suite: str, rate: str, cases: str) -> str:
