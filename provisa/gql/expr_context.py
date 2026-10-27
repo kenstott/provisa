@@ -372,6 +372,9 @@ class TranslatorExprContext:
             return all(self.is_list(b) for b in branches)
         return False
 
+    def is_json_value(self, expr: CypherExpr) -> bool:
+        return isinstance(expr, Variable) and expr.name in self._t._json_value_vars
+
     def holds_list_items(self, expr: CypherExpr) -> bool:
         """Whether every item of a list literal is a list (an UNWIND's variable)."""
         from provisa.gql.expr_ast import ListLiteral

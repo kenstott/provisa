@@ -140,6 +140,17 @@ def _map_key_types(source: CypherExpr) -> dict[str, str]:
     return found
 
 
+def _is_mixed_list(expr: CypherExpr, json_lists: set[str]) -> bool:
+    """Whether ``expr`` is a list of values of several types: a list literal of them, or a
+    variable bound to one."""
+    from provisa.gql.expr_ast import ListLiteral
+    from provisa.gql.expr_visitor import _mixed_literal_kinds
+
+    if isinstance(expr, Variable):
+        return expr.name in json_lists
+    return isinstance(expr, ListLiteral) and _mixed_literal_kinds(expr.items)
+
+
 def _is_json_list(e: exp.Expression) -> bool:
     """Whether ``e`` is a list of JSON-encoded values (GraphVarKind.JSON_LIST): a list literal of
     them, or a list built from one -- appended to, prepended to, joined, sliced or reversed."""
@@ -460,6 +471,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._text_vars: set[str] = set()
         # A variable a WITH or UNWIND binds to a list (+ appends to it)
         self._list_vars: set[str] = set()
+        # A variable a WITH binds to a list of values of several types (each item its JSON), and
+        # one an UNWIND or WITH binds to an item of one (its JSON): the answer decodes them.
+        self._json_list_vars: set[str] = set()
+        self._json_value_vars: set[str] = set()
         # REQ-2173: a $param a client gives a temporal value -> its kind, and the zone it names
         self._param_kinds: dict[str, str] = {}
         self._param_zones: dict[str, str] = {}
@@ -1022,7 +1037,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
             elif _is_json_list(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
-            elif _json_valued(projection) == "value":
+            elif _json_valued(projection, self._json_value_vars) == "value":
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_VALUE
 
     def _reconcile_params_with_placeholders(
@@ -1137,6 +1152,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             alias = f"_uw{self._unwind_count}"
             self._unwind_count += 1
             array_expr = self._build_unwind_expr(uw.expression)
+            if _json_valued(array_expr) == "list" or (
+                isinstance(uw.expression, Variable) and uw.expression.name in self._json_list_vars
+            ):
+                self._json_value_vars.add(uw.variable)
             # Detect MAP-element arrays: a list holding map literals, or a variable assigned from
             # collect({...}) in a preceding WITH clause.
             source = uw.expression
@@ -1356,6 +1375,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 # A key null for every row (a property the label has not) orders nothing, and an
                 # engine refuses a literal one.
                 continue
+            if isinstance(target, Variable) and target.name in self._json_value_vars:
+                # Values of several types, each its JSON, in openCypher's order (json_order_key).
+                inner = exp.Anonymous(this="json_order_key", expressions=[inner])
             # Cypher orders null as the largest value: last ascending, first descending.
             desc = item.direction == "DESC"
             exprs.append(exp.Ordered(this=inner, desc=desc, nulls_first=desc))
@@ -1476,6 +1498,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         zones: dict[str, str] = {}
         texts: set[str] = set()
         lists: set[str] = set()
+        json_lists: set[str] = set()
+        json_values: set[str] = set()
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
         for item in items:
@@ -1486,6 +1510,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 texts.add(name)
             if name and self._temporal_context().is_list(item.expression):
                 lists.add(name)
+            if name and _is_mixed_list(item.expression, self._json_list_vars):
+                json_lists.add(name)
+            if (
+                name
+                and isinstance(item.expression, Variable)
+                and item.expression.name in self._json_value_vars
+            ):
+                json_values.add(name)
             found = self._temporal_context().temporal_kind(item.expression)
             if name and found is not None:
                 kinds[name] = found
@@ -1515,6 +1547,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._temporal_zones = zones
         self._text_vars = texts
         self._list_vars = lists
+        self._json_list_vars = json_lists
+        self._json_value_vars = json_values
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
         """Return (type_name_key, domain_label). Raises on ambiguity.

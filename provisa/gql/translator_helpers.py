@@ -771,11 +771,21 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
     return node
 
 
-def _json_valued(e: exp.Expression) -> str | None:
-    """ "list" for a list of JSON-encoded values, "value" for one value read from one (its JSON),
-    else None."""
+def _json_valued(
+    e: exp.Expression, json_columns: frozenset[str] | set[str] = frozenset()
+) -> str | None:
+    """ "list" for a list of JSON-encoded values, "value" for one value read from one (its JSON)
+    -- a column of ``json_columns``, or the largest or smallest of one -- else None."""
     while isinstance(e, (exp.Alias, exp.Paren)):
         e = e.this
+    if isinstance(e, exp.Column) and e.name in json_columns:
+        return "value"
+    if isinstance(e, (exp.Max, exp.Min)):
+        return "value" if _json_valued(e.this, json_columns) == "value" else None
+    if isinstance(e, exp.Anonymous) and e.name.upper() in ("MAX_BY", "MIN_BY") and e.expressions:
+        return "value"
+    if isinstance(e, exp.Anonymous) and e.name.upper() in ("MAX", "MIN") and e.expressions:
+        return "value" if _json_valued(e.expressions[0], json_columns) == "value" else None
     called = str(e.this).upper() if isinstance(e, exp.Anonymous) else None
     if isinstance(e, exp.Array):
         return (

@@ -150,6 +150,10 @@ class ExprContext(Protocol):
         """Whether ``expr`` is a list (+ appends an element to it)."""
         ...
 
+    def is_json_value(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is an item of a list of values of several types: its JSON."""
+        ...
+
     def resolve_term(self, node: Term) -> exp.Expression:
         """``node.value`` as one RDF term of the answer (REQ-2135)."""
         ...
@@ -794,6 +798,17 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if (
+            node.name.lower() in ("max", "min")
+            and len(node.args) == 1
+            and not node.distinct
+            and self._ctx.is_json_value(node.args[0])
+        ):
+            # Values of several types, each its JSON, in openCypher's order (lists before
+            # strings before booleans before numbers), never the order of their text.
+            value = self.lower(node.args[0])
+            by = "max_by" if node.name.lower() == "max" else "min_by"
+            return _anon(by, value, _anon("json_order_key", value.copy()))
         if node.name.lower() == "properties" and len(node.args) == 1:
             given = node.args[0]
             # properties() of a map is the map itself; of null, null.
