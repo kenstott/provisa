@@ -26579,3 +26579,15 @@ Provisa's Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow's Fl
 **Code:** —
 
 **Tests:** —
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-2176 · Cypher Mutations {#REQ-2176}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Every query language may create EPHEMERAL objects, the way SQL creates a session temp table; the model's own objects are still never created through a query surface ([REQ-661](#REQ-661), [REQ-665](#REQ-665), [REQ-2167](#REQ-2167)). In Cypher, a CREATE naming a label or relationship type the model does not have creates it in the session only: a session temp table per new label and a session junction table per new type, so nodes with several new labels and relationships between ephemeral nodes work. In SPARQL, INSERT DATA into a session-local named graph does the same. Ephemeral objects follow the temp-table rules: visible to their own session alone, never in the catalog, the ontology, exports or another session; dropped when the session ends; capped by the session's memory and size limits. They may be read beside model data, which is still read under the role's grants, masks and row rules, so nothing governed leaves its governance through them. Writes to model objects keep their own rules ([REQ-661](#REQ-661), [REQ-665](#REQ-665)). A session is the transport's own (pgwire, Bolt); on a stateless transport (HTTP Cypher, SPARQL) ephemeral objects live for the one request unless the caller opens a session. An engine with no session temp storage keeps them in the session's own store. Conformance suites whose tests build their own graph run against it as written ([REQ-2167](#REQ-2167)).
+
+**Code:** —
+
+**Tests:** —
