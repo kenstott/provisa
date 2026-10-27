@@ -876,6 +876,15 @@ def transpile(
         lowered = postgres_empty_arrays(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
+    from provisa.transpiler.native_subtype import MARKER as _SUBTYPE_MARKER, resolve_subtypes
+
+    if _SUBTYPE_MARKER in pg_sql.lower():
+        # REQ-2171: each sort, filter, join or operator on a subtyped column, in this dialect's
+        # native type, an emulation, or refused by name.
+        lowered = resolve_subtypes(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
+            target_dialect,
+        )
     if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():
         lowered = _OWN_TRY_CASTS[target_dialect](
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")

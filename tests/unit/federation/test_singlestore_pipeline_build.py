@@ -249,7 +249,9 @@ def _routing_state(monkeypatch, path: str, seen: dict):
         tenant_db=SimpleNamespace(acquire=_held),
     )
     source = SimpleNamespace(id="s", type="parquet", path=path, federation_hints=_HINTS)
-    args = SimpleNamespace(columns=[("id", "bigint")], pk_columns=["id"], landing_filter=None)
+    args = SimpleNamespace(
+        columns=[("id", "bigint")], pk_columns=["id"], landing_filter=None, not_landed=()
+    )
     address = SimpleNamespace(schema="org_a_replicas", table="s__default__t")
     return replica_builds, state, source, args, address
 

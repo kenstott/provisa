@@ -97,6 +97,7 @@ def _rcol(name, dt="bigint", pk=False):
         "element_type": None,
         "native_type": None,
         "native_platform": None,
+        "subtype": None,  # REQ-2171
     }
 
 

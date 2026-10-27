@@ -108,26 +108,35 @@ AdapterLoader = Any  # Callable[[source, table], Awaitable[list[dict]]] — a pe
 AdapterKeyedLoader = Any
 
 
-def _projection(table: Any, dialect_of: Callable[[], str | None]) -> str:
+def _projection(
+    table: Any,
+    dialect_of: Callable[[], str | None],
+    source: Any,
+    platform_of: Callable[[], str | None],
+) -> str:
     """The select list that reads ``table``'s rows from its source (REQ-1965): ``*`` for a table
-    with no natively nested column -- the table as it is, and the dialect is not asked for --
-    otherwise each column by name, a natively array, struct or map one as the JSON the backend
-    that runs the read produces (``native_json.source_projection``)."""
+    with no natively nested or subtyped column -- the table as it is, and the dialect is not
+    asked for -- otherwise each column by name, a natively array, struct or map one as the JSON
+    the backend that runs the read produces, a subtyped one in its subtype's own form, and one
+    no reader can land in that form left out (REQ-2171, ``native_json.source_projection``).
+    ``platform_of`` gives the engine's dialect, the other reader of a SQL source."""
     from provisa.federation.commit_time import SOURCE_COMMITTED_AT
+    from provisa.federation.residency import not_landed
 
     # REQ-1163: the commit time is the landing's, never a column of the source.
     own = [c for c in table.columns if c.name != SOURCE_COMMITTED_AT]
-    if not any(getattr(c, "native_type", None) for c in own):
+    if not any(getattr(c, "native_type", None) or getattr(c, "subtype", None) for c in own):
         return "*"
+    left_out = frozenset(name for name, _subtype, _reader in not_landed(source, own, platform_of()))
     from provisa.transpiler.native_json import source_projection
 
     dialect = dialect_of()
     if not dialect:
         raise ValueError(
-            f"{table.schema_name}.{table.table_name} has a natively nested column and its source "
-            "has no SQL dialect to read it as JSON in"
+            f"{table.schema_name}.{table.table_name} has a natively nested or subtyped column "
+            "and its source has no SQL dialect to read it in"
         )
-    return source_projection(own, dialect)
+    return source_projection(own, dialect, left_out)
 
 
 _COMMITTED = "source_committed_at"  # federation/commit_time.SOURCE_COMMITTED_AT
@@ -147,7 +156,7 @@ async def engine_table_rows(engine: Any, source: Any, table: Any) -> list[dict]:
     catalog = source_to_catalog(source.id)
     ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
     # REQ-1965: a natively array/struct/map column is landed as JSON the engine produces.
-    projection = _projection(table, lambda: engine.dialect)
+    projection = _projection(table, lambda: engine.dialect, source, lambda: engine.dialect)
     sql = f"SELECT {projection} FROM {ref}"
     if not engine.engine.catalog_qualified:
         # An engine whose SQL names no catalog (pg: PostgreSQL has no cross-database reference)
@@ -190,7 +199,7 @@ def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ
         dialect = state.source_dialects[source.id] or None
         relation = direct_relation(table, dialect)
         # REQ-1965: a natively array/struct/map column is landed as JSON the source produces.
-        projection = _projection(table, lambda: dialect)
+        projection = _projection(table, lambda: dialect, source, lambda: engine.dialect)
         sql = f"SELECT {projection} FROM {relation}"
         result = await engine.execute_native(state.source_pools, source.id, sql, [])
         return [dict(zip(result.column_names, row)) for row in result.rows]
@@ -343,7 +352,7 @@ class SourceRowLoader:
                 # whatever the engine: an engine's attach of the table cannot see its xmin.
                 dialect = state.source_dialects[source.id] or None
                 relation = direct_relation(table, dialect)
-                projection = f"{_projection(table, lambda: dialect)}, {source_expression(source)}"
+                projection = f"{_projection(table, lambda: dialect, source, lambda: self._engine.dialect)}, {source_expression(source)}"
                 sql = f"SELECT {projection} FROM {relation}{landing_where(table, lambda: dialect)}"
                 return DirectTableSource(
                     lambda: open_direct_stream(pools, source.id, sql, []), columns
@@ -359,7 +368,7 @@ class SourceRowLoader:
             dialect = state.source_dialects[source.id] or None
             relation = direct_relation(table, dialect)
             # REQ-1965: a natively array/struct/map column is copied as JSON the source produces.
-            projection = _projection(table, lambda: dialect)
+            projection = _projection(table, lambda: dialect, source, lambda: self._engine.dialect)
             if carries:
                 # A copy of the row has no change event to take a commit time from: empty.
                 projection += f", CAST(NULL AS TIMESTAMP) AS {_COMMITTED}"
@@ -395,7 +404,9 @@ class SourceRowLoader:
                 f"is wired (source {source.id!r})"
             )
         ref = f'"{source_to_catalog(source.id)}"."{table.schema_name}"."{table.table_name}"'
-        projection = _projection(table, lambda: self._engine.dialect)
+        projection = _projection(
+            table, lambda: self._engine.dialect, source, lambda: self._engine.dialect
+        )
         if carries:
             # Read through the engine, the row's commit time is out of sight: empty (REQ-1163).
             projection += f", CAST(NULL AS TIMESTAMP) AS {_COMMITTED}"
@@ -459,7 +470,9 @@ class SourceRowLoader:
 
             rule = sqlglot.parse_one(admit, read="postgres").sql(dialect=self._engine.dialect)
             where = f"({where}) AND ({rule})"
-        projection = _projection(table, lambda: self._engine.dialect)  # REQ-1965
+        projection = _projection(
+            table, lambda: self._engine.dialect, source, self._engine.dialect
+        )  # REQ-1965
         result = await self._engine.execute_engine(
             f"SELECT {projection} FROM {ref} WHERE {where}",
             authorization=system_auth("source row load"),

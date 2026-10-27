@@ -23,7 +23,8 @@ resolved at registration — never lazily backfilled, and never silently default
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -115,50 +116,145 @@ _IR_TO_SA: dict[str, Any] = {
 class Subtype:  # REQ-2171
     """An IR type that is a subtype of another: ``base`` is the IR type it is stored and computed
     as, ``pg_oid`` the PostgreSQL type pgwire and its catalog report it as. A type mapping with no
-    entry for a subtype maps it as its base."""
+    entry for a subtype maps it as its base.
+
+    Native semantics (amended 2026-10-27): ``semantics`` names what a sort, filter, join or
+    operator on the subtype means beyond its base (None: its base's semantics are its own).
+    ``native`` is, per SQL dialect, the form that gives a value of it the native type there: a
+    type name to cast to, or a call (``ST_GeomFromText()``, innermost last). A source dialect in
+    it is one an operation pushes down to. ``emulated`` is the dialects with a portable emulation
+    (``"*"``: every dialect)."""
 
     base: str
     pg_oid: int
+    semantics: str | None = None
+    native: Mapping[str, str] = field(default_factory=dict)
+    emulated: frozenset[str] = frozenset()
+    #: Per reader -- a SQL dialect a landing reads the column in, or an adapter source's type --
+    #: the expression over ``{col}`` that gives its value in the subtype's own form (its
+    #: PostgreSQL text form on a text base). A reader with none cannot land the column.
+    landing: Mapping[str, str] = field(default_factory=dict)
 
 
 # REQ-2171: the subtypes, each declared once: one per distinct PostgreSQL type the IR's base
 # types would hide. A subtype's name is its PostgreSQL type name; its values are held in
 # PostgreSQL's own text form on a text base.
+_RANGE = frozenset({"duckdb", "trino"})  # the dialects a range's bounds are emulated on
+_EVERY_DIALECT = frozenset({"*"})
+
+
+def _range(name: str, oid: int) -> Subtype:
+    return Subtype("text", oid, "range", {"postgres": name.upper()}, _RANGE)
+
+
+def _shape(name: str, oid: int) -> Subtype:
+    return Subtype("text", oid, "shape", {"postgres": name.upper()})
+
+
 SUBTYPES: dict[str, Subtype] = {
-    "inet": Subtype("text", 869),
-    "cidr": Subtype("text", 650),
-    "macaddr": Subtype("text", 829),
-    "macaddr8": Subtype("text", 774),
+    # DuckDB's inet extension holds an address with its mask, as PostgreSQL does. Trino's
+    # IPADDRESS holds no mask and its IPPREFIX no host bits, so an inet is emulated there.
+    "inet": Subtype(
+        "text", 869, "address", {"postgres": "INET", "duckdb": "INET"}, frozenset({"trino"})
+    ),
+    "cidr": Subtype(
+        "text", 650, "address", {"postgres": "CIDR", "duckdb": "INET", "trino": "IPPREFIX"}
+    ),
+    "macaddr": Subtype("text", 829, "mac", {"postgres": "MACADDR"}, _EVERY_DIALECT),
+    "macaddr8": Subtype("text", 774, "mac", {"postgres": "MACADDR8"}, _EVERY_DIALECT),
     "xml": Subtype("text", 142),
     "oid": Subtype("bigint", 26),
     # Sized so every source's money is held exactly: PostgreSQL's (int64 cents, 17 integer
     # digits) and SQL Server's (int64 ten-thousandths, 4 decimals).
     "money": Subtype("numeric(21,4)", 790),
     # PostgreSQL's built-in shapes.
-    "point": Subtype("text", 600),
-    "line": Subtype("text", 628),
-    "lseg": Subtype("text", 601),
-    "box": Subtype("text", 603),
-    "path": Subtype("text", 602),
-    "polygon": Subtype("text", 604),
-    "circle": Subtype("text", 718),
+    "point": _shape("point", 600),
+    "line": _shape("line", 628),
+    "lseg": _shape("lseg", 601),
+    "box": _shape("box", 603),
+    "path": _shape("path", 602),
+    "polygon": _shape("polygon", 604),
+    "circle": _shape("circle", 718),
     # PostGIS's planar and geodetic types, in WKT. PostGIS has no fixed type OID (the extension
     # assigns one at install), so these are Provisa's own, in the private range pgwire's PostGIS
     # surface declares them in.
-    "geometry": Subtype("text", 8310),
-    "geography": Subtype("text", 8311),
+    "geometry": Subtype(
+        "text",
+        8310,
+        "spatial",
+        {
+            "postgres": "GEOMETRY",
+            "duckdb": "ST_GeomFromText()",
+            "trino": "ST_GeometryFromText()",
+            "mysql": "ST_GeomFromText()",
+        },
+    ),
+    "geography": Subtype(
+        "text",
+        8311,
+        "spatial",
+        {
+            "postgres": "GEOGRAPHY",
+            "trino": "to_spherical_geography(ST_GeometryFromText())",
+        },
+    ),
     # The range types, in PostgreSQL's range text form ("[1,10)").
-    "int4range": Subtype("text", 3904),
-    "int8range": Subtype("text", 3926),
-    "numrange": Subtype("text", 3906),
-    "tsrange": Subtype("text", 3908),
-    "tstzrange": Subtype("text", 3910),
-    "daterange": Subtype("text", 3912),
-    # Bit strings, in PostgreSQL's text form ("0101").
+    "int4range": _range("int4range", 3904),
+    "int8range": _range("int8range", 3926),
+    "numrange": _range("numrange", 3906),
+    "tsrange": _range("tsrange", 3908),
+    "tstzrange": _range("tstzrange", 3910),
+    "daterange": _range("daterange", 3912),
+    # Bit strings, in PostgreSQL's text form ("0101"): ordered as text orders them.
     "bit": Subtype("text", 1560),
     "varbit": Subtype("text", 1562),
-    "tsvector": Subtype("text", 3614),
+    "tsvector": Subtype("text", 3614, "text_search", {"postgres": "TSVECTOR"}),
 }
+
+# REQ-2171: how a landing reads each subtype in its own form, beyond PostgreSQL (which casts any
+# subtype to its base, a PostGIS one through ST_AsText). Never a form other than the subtype's own
+# (no hex WKB for a geometry): a reader not named here cannot land the column.
+_LANDING: dict[str, dict[str, str]] = {
+    "inet": {
+        "duckdb": "CAST({col} AS VARCHAR)",
+        "trino": "CAST({col} AS VARCHAR)",
+        "clickhouse": "toString({col})",
+        # An adapter that hands the address over as its text.
+        "elasticsearch": "{col}",
+        "cassandra": "{col}",
+    },
+    "cidr": {"duckdb": "CAST({col} AS VARCHAR)", "trino": "CAST({col} AS VARCHAR)"},
+    "geometry": {
+        "duckdb": "ST_AsText({col})",
+        "mysql": "ST_AsText({col})",
+        "tsql": "{col}.STAsText()",
+    },
+    "geography": {"tsql": "{col}.STAsText()"},
+    "xml": {
+        "tsql": "CAST({col} AS NVARCHAR(MAX))",
+        "oracle": "XMLSERIALIZE(CONTENT {col} AS CLOB)",
+    },
+    "money": {"tsql": "CAST({col} AS DECIMAL(21,4))"},
+}
+
+
+def _with_landing(name: str, sub: Subtype) -> Subtype:
+    at_postgres = (
+        "ST_AsText({col})"
+        if name in ("geometry", "geography")
+        else f"CAST({{col}} AS {sub.base.upper()})"
+    )
+    return replace(sub, landing={"postgres": at_postgres, **_LANDING.get(name, {})})
+
+
+SUBTYPES = {name: _with_landing(name, sub) for name, sub in SUBTYPES.items()}
+
+
+def landing_form(subtype: str, reader: str) -> str | None:
+    """The expression over ``{col}`` that lands a column of ``subtype`` read by ``reader`` (a
+    SQL dialect, or an adapter source's type) in the subtype's own form; None when it has none."""
+    return SUBTYPES[subtype].landing.get(reader)
+
 
 # REQ-2171: a spelling of a subtype that is not its name, on any platform.
 _SUBTYPE_SPELLINGS: dict[str, str] = {"bit varying": "varbit"}

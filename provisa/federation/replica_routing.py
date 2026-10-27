@@ -23,6 +23,8 @@ with (``replica_address.address_replicas``).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import functools
 import asyncio
 import logging
@@ -437,6 +439,7 @@ def routes_with_draft(state: Any, draft: dict, source: Any) -> ReplicaRoutes:
         source_id=source.id,
         table_name=draft["table_name"],
         target=(backend.replica_read_catalog(state), address.schema, address.table),
+        not_landed=_not_landed(source, draft, lambda: backend.dialect),  # REQ-2171
     )
     keys = engine_table_keys(engine, state.source_catalogs[source.id], draft["schema_name"], name)
     setting = table_floor(source, draft, promoted=False)
@@ -538,6 +541,28 @@ def _worklist(
     return work
 
 
+def _not_landed(
+    source: Any, reg: dict, platform_of: Callable[[], str]
+) -> tuple[tuple[str, str, str], ...]:
+    """REQ-2171: each column of ``reg`` its replica was built without -- a subtyped column no
+    reader of ``source`` has a form to land in: (its name lowercased, subtype, reader)."""
+    from types import SimpleNamespace
+
+    from provisa.federation.residency import not_landed
+
+    columns = [
+        SimpleNamespace(name=c["column_name"], subtype=c["subtype"])
+        for c in reg["columns"]
+        if c["subtype"]
+    ]
+    if not columns:
+        return ()
+    return tuple(
+        (name.lower(), subtype, reader)
+        for name, subtype, reader in not_landed(source, columns, platform_of())
+    )
+
+
 async def replica_routes(state: Any) -> ReplicaRoutes:
     """The published read map for ``state``'s org environment on its bound engine: every table
     served from a replica, keyed by the name a lowered statement gives it, with the address of
@@ -574,6 +599,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
             source_id=src.id,
             table_name=reg["table_name"],
             target=(read_catalog, address.schema, address.table),
+            not_landed=_not_landed(src, reg, lambda: backend.dialect),  # REQ-2171
         )
         for key in keys:
             if key in ambiguous:
@@ -617,6 +643,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
             target=await asyncio.to_thread(
                 backend.region_read_address, state, region, address.schema, address.table
             ),
+            not_landed=_not_landed(src, reg, lambda: backend.dialect),  # REQ-2171
         )
         for key in keys:
             if key in ambiguous:

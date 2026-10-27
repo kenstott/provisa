@@ -52,6 +52,7 @@
       "mailboxes_failed": "Boîtes aux lettres dont la lecture a échoué en cours de route : {{total}}. Ce qui en a été lu est conservé et leur lecture reprend à la prochaine actualisation. Ce sont : {{accounts}}",
       "place_not_kept": "Cette copie est complète, mais l’endroit où sa lecture s’est arrêtée n’a pas pu être conservé ; la prochaine vérification des changements redemandera donc la lecture : {{reason}}",
       "indexes_not_planned": "Cette copie est complète et lisible, mais ses index n'ont pas pu être planifiés ; elle est donc lue sans eux jusqu'à sa prochaine construction : {{reason}}",
+      "column_not_landed": "La colonne {{column}} ({{subtype}}) n'est pas dans cette copie : {{reader}} ne peut pas la lire comme {{subtype}}, elle est donc omise et sa lecture est refusée.",
       "andMore": "{{ids}} et {{more}} autres",
       "other": "Le dernier build a noté : {{code}}"
     },
