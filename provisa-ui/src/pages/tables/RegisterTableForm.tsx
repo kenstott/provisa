@@ -344,21 +344,19 @@ export function RegisterTableForm({
   // only a CHANGE of dataset re-derives, so a name the operator typed over the default survives
   // authoring the rules.
   const lastDqDataset = useRef<string | null>(null);
-  const onDqDatasetChange = useCallback(
-    (dataset: string | null) => {
-      if (dataset === lastDqDataset.current) return;
-      lastDqDataset.current = dataset;
-      if (dataset === null) {
-        setDqScanned(null);
-        return;
-      }
-      const [, schema, table] = dataset.split("/");
-      setDqScanned({ schema, table });
-      setTableName(`${table}_quality`);
-      setTableDescription(t("registerTableForm.dqDescription", { table: `${schema}.${table}` }));
-    },
-    [t],
-  );
+  const onDqDatasetChange = useCallback((dataset: string | null) => {
+    if (dataset === lastDqDataset.current) return;
+    lastDqDataset.current = dataset;
+    if (dataset === null) {
+      setDqScanned(null);
+      return;
+    }
+    const [, schema, table] = dataset.split("/");
+    setDqScanned({ schema, table });
+    setTableName(`${table}_quality`);
+    // REQ-2132: a checker's description is its quality claim, why the check exists -- the
+    // registrant's to state, so nothing generic is put there for them.
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset: columns cleared before async fetch when table selection changes
@@ -848,13 +846,26 @@ export function RegisterTableForm({
       {isProfiler && tableName && (
         <ProfilerRowRulesField rules={profilerRowRules} onChange={setProfilerRowRules} />
       )}
-      {!short && (
+      {/* REQ-2132: on a checker source the description is the check's claim, why it exists. */}
+      {!short && isChecker && (
+        <FormField size="long" hint={t("registerTableForm.checkReasonHint")}>
+          <TextInput
+            label={t("registerTableForm.checkReasonLabel")}
+            value={tableDescription}
+            onChange={(e) => setTableDescription(e.currentTarget.value)}
+            placeholder={t("registerTableForm.checkReasonPlaceholder")}
+            data-testid="register-table-description"
+          />
+        </FormField>
+      )}
+      {!short && !isChecker && (
         <FormField size="long">
           <TextInput
             label={t("registerTableForm.descriptionLabel")}
             value={tableDescription}
             onChange={(e) => setTableDescription(e.currentTarget.value)}
             placeholder={t("registerTableForm.descriptionPlaceholder")}
+            data-testid="register-table-description"
           />
         </FormField>
       )}

@@ -738,6 +738,7 @@ The core table registration input. Key fields beyond the basics:
 | `mvRefreshInterval` | Seconds between refreshes |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Incremental maintenance |
+| `mvHoldOnFailingChecks` | Hold on failing checks: a refresh is aborted, and the view keeps its previous copy, while a checker table scanning one of its inputs failed its latest run |
 | `businessKey` | Columns that identify the same thing across versions; declared with `validTime` and `recordedTime`, all three or none |
 | `validTime` | Column holding the date the business gives the record |
 | `recordedTime` | Column holding when this version was entered or changed |

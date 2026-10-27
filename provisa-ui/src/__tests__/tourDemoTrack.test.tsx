@@ -318,6 +318,30 @@ describe("a demo's steps, as the runner walks them", () => {
     for (const step of [api, jsonapi, grpc, cypher]) expect(step.waitMs).toBe(60000);
   });
 
+  it("asks the MCP explorer's agent, opens its last run_sql call's explain, then the Connect panel", () => {
+    // REQ-2172: the question handed over and awaited until answered; the explain opened by the
+    // tour and closed on Next; the panel opened by a hand-off, on or off.
+    const [ask, explain, connect] = demoTourSteps(
+      [
+        { key: "q", route: "/explore", mcp: "Which West customers ordered?" },
+        { key: "e", mcp_explain: true },
+        { key: "c", mcp_connect: true },
+      ],
+      EXAMPLES,
+    );
+    expect(ask.openQuery).toEqual({ stateKey: "mcpQuestion", text: "Which West customers ordered?" });
+    expect(ask.readySelector).toBe('[data-testid="mcp-explore"][data-answered]');
+    expect(ask.waitMs).toBe(60000);
+    expect(explain.clickBefore).toBe("[data-mcp-explain-last]");
+    expect(explain.readySelector).toBe('[data-testid="mcp-explain-ran"]');
+    expect(explain.element).toBe('[data-testid="mcp-explain-panel"]');
+    expect(explain.clickAfterNext).toBe(".mantine-Modal-close");
+    expect(connect.navState).toEqual({ mcpConnect: true });
+    expect(connect.element).toBe(
+      '[data-testid="mcp-connect-config"], [data-testid="mcp-connect-off"]',
+    );
+  });
+
   it("opens a data product on the Data Products page, its detail shown", () => {
     const [step] = demoTourSteps(
       [{ key: "p", route: "/data-products", product: "daily_sales" }],

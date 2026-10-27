@@ -1763,6 +1763,42 @@
       "groupexposureRest": {
         "title": "La misma respuesta por REST",
         "description": "La vista también es un endpoint REST, aquí agrupado según si un grupo supera el límite y sumado en el servidor, listo para un informe de riesgos o una hoja de cálculo."
+      },
+      "agentdataScenario": {
+        "title": "Dale tus datos a un agente",
+        "description": "Un minorista quiere un agente de IA sobre sus datos de pedidos, limitado a lo que puede ver la persona para la que actúa. El agente llega a los datos por el servidor MCP de Provisa. El explorador MCP, a continuación, muestra exactamente lo que ve un agente externo así. Polly, en cambio, es el asistente para trabajar en el propio Provisa. Esta es la base de datos de pedidos del minorista, leída en vivo."
+      },
+      "agentdataCustomers": {
+        "title": "Quién puede ver a qué clientes",
+        "description": "La tabla de clientes lleva las reglas: un agente de soporte del Oeste lee solo los clientes del Oeste y sus pedidos, con las direcciones de correo enmascaradas y sin precios. El analista de BI lee todas las regiones y el importe de los pedidos, pero ninguna dirección de correo."
+      },
+      "agentdataSupportRole": {
+        "title": "Actuar como agente de soporte del Oeste",
+        "description": "El agente actúa con el rol del encabezado. Siguiente elige al agente de soporte del Oeste, así que cada llamada a herramienta del agente se ejecuta con ese rol."
+      },
+      "agentdataSupportAsks": {
+        "title": "La pregunta del agente de soporte",
+        "description": "El agente encuentra las tablas, escribe SQL y lo ejecuta con herramientas MCP, que se muestran mientras se ejecutan. Solo vuelven los clientes del Oeste, y sus direcciones de correo llegan enmascaradas: es todo lo que se sirve al rol."
+      },
+      "agentdataExplain": {
+        "title": "Lo que realmente se ejecutó",
+        "description": "La llamada run_sql del agente, abierta: la sentencia que envió y luego la sentencia que se ejecutó para su rol. Provisa añadió el filtro de filas del Oeste y el enmascaramiento del correo. El agente no escribió ninguno de los dos y nunca se le informa de ellos."
+      },
+      "agentdataOutOfReach": {
+        "title": "Una pregunta fuera de alcance",
+        "description": "Cuando se le pregunta cuánto sumaron los pedidos de cada cliente, el agente no encuentra precios entre las tablas que su rol puede leer, y lo dice. No puede sortear el rol: las mismas reglas valen en cada llamada a herramienta."
+      },
+      "agentdataAnalystRole": {
+        "title": "Ahora como analista de BI",
+        "description": "Siguiente cambia el encabezado al analista de BI. El agente es el mismo; el rol es otro."
+      },
+      "agentdataAnalystAsks": {
+        "title": "La misma pregunta, otro rol",
+        "description": "La misma pregunta como analista: vuelven todas las regiones, no hay ninguna columna de correo y la vista de ingresos está entre sus tablas. Otras tablas, filas y columnas, del mismo agente y el mismo servidor."
+      },
+      "agentdataConnect": {
+        "title": "Tu propio agente, el mismo servidor",
+        "description": "Este es el servidor que usó el agente del explorador. Pega esta configuración en Claude Desktop, o apunta cualquier cliente MCP a la URL, y tu propio agente obtiene las mismas herramientas gobernadas, sujetas a las mismas reglas."
       }
     },
     "status": {
@@ -1883,6 +1919,10 @@
       "groupexposure": {
         "title": "Exposición por grupo a través de Wikidata",
         "summary": "¿Ante qué grupos empresariales supera un banco su límite de grandes exposiciones? Su cartera de préstamos, unida por el LEI del propietario de cada prestatario a las cadenas de organizaciones matrices de Wikidata mediante SPARQL, asigna cada prestatario a su grupo. El banco y sus prestatarios son ficticios; los grupos son reales."
+      },
+      "agentdata": {
+        "title": "Dale tus datos a un agente",
+        "summary": "¿Se le pueden dar a un agente de IA los datos de pedidos de un minorista y limitarlo a lo que su usuario puede ver? El explorador MCP muestra al agente como agente de soporte y como analista: otras filas y columnas, correos enmascarados y el SQL gobernado detrás de cada respuesta."
       }
     }
   }

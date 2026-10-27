@@ -1,0 +1,48 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The agentdata demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: a retailer giving an AI agent its order data; the database and the rules on its
+# customers; then the agent itself, in the MCP explorer -- what an outside agent sees over Provisa's
+# MCP server -- as a West support agent (its answer, the governed statement behind it, a question
+# out of its reach), then as the BI analyst; and the same server, for the visitor's own agent.
+# Where the tour's "Look around on my own" leaves the visitor: the MCP explorer, to ask their own.
+landing:
+  route: /explore
+  capability: query_development
+steps:
+- key: agentdataScenario
+  route: /sources
+  capability: source_registration
+  source: agentdata-db
+- key: agentdataCustomers
+  route: /tables
+  capability: table_registration
+  table: agentdata-db.customers
+# The header's role: the explorer's agent acts as it.
+- key: agentdataSupportRole
+  route: /explore
+  capability: query_development
+  role: support_west
+- key: agentdataSupportAsks
+  mcp: Which of my region's customers ordered in the last week of September 2026, and how do I reach them?
+- key: agentdataExplain
+  mcp_explain: true
+- key: agentdataOutOfReach
+  mcp: What did each customer's orders come to?
+- key: agentdataAnalystRole
+  role: shop_analyst
+- key: agentdataAnalystAsks
+  mcp: Which of my region's customers ordered in the last week of September 2026, and how do I reach them?
+- key: agentdataConnect
+  mcp_connect: true

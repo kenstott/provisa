@@ -305,6 +305,8 @@ registered_tables = Table(
     Column("mv_consistency", Text, nullable=False, server_default="shared"),
     # REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity.
     Column("mv_preprocess", Text),
+    # REQ-2133: the view's Hold on failing checks option, a built-in preflight beside mv_preprocess.
+    Column("mv_hold_on_failing_checks", Boolean, nullable=False, server_default=false()),
     # REQ-2109: the bitemporal declaration of a table or view, all three or none: the business-key
     # column list, the valid-time column and the recorded-time column.
     Column("business_key", JSON(none_as_null=True)),
@@ -914,6 +916,19 @@ checker_targets = Table(
     metadata,
     Column("table_id", Integer, primary_key=True),
     Column("checked_table_id", Integer, nullable=False),
+)
+
+# REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
+# check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
+# A table with no row has never run. The dry run writes none.
+checker_latest_runs = Table(
+    "checker_latest_runs",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("scan_id", Text, nullable=False),
+    Column("scan_time", DateTime(timezone=True), nullable=False),
+    Column("outcome", Text, nullable=False),
+    CheckConstraint("outcome IN ('pass', 'fail')", name="checker_latest_runs_outcome_check"),
 )
 
 relationship_candidates = Table(

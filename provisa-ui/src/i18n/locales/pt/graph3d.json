@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "Grafo 3D dos produtos de dados e do que os compõe",
-    "panelTitle": "Grafo de conhecimento",
-    "expandTitle": "{{product}}: grafo de conhecimento",
+    "panelTitle": "Grafo",
+    "expandTitle": "{{product}}: grafo",
     "productMap": "Mapa de produtos",
     "preset": "Predefinição",
-    "preset_knowledge": "Grafo de conhecimento",
+    "preset_all": "Tudo",
     "preset_ontology": "Ontologia",
-    "preset_productMap": "Mapa de produtos",
-    "preset_lineage": "Linhagem",
+    "preset_products": "Produtos",
     "layers": "Camadas",
     "layer_products": "Produtos e domínios",
     "layer_tables": "Tabelas membro",

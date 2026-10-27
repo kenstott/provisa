@@ -23,8 +23,8 @@ import type { DataProduct } from "../../../types/admin";
 import type { DataContractInput } from "../../../hooks/useDataProductMutations";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
 }));
 
 const PRODUCT = {
@@ -101,11 +101,11 @@ describe("a product's contracts", () => {
         coreError={null}
         reader={null}
         canEdit={false}
-        canSeeLineage={false}
+        canDelete={false}
+        owner
         lineageLoading={false}
         lineageError=""
         lineageGraph={null}
-        inputPorts={[]}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         {...lifecycleProps()}

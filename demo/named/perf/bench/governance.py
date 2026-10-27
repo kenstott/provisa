@@ -82,8 +82,8 @@ TABLE_FIELDS = (
     "probeQuery probeType viewSql dqContract profilerSourceId queryTemplate fileGlob "
     "sourceFileColumn importSet arguments landingFilter loadProtected offPeakWindow offPeakTz "
     "materialize mvRefreshInterval mvDebounceQuiet mvDebounceMaxDelay pushDebounceQuiet "
-    "pushDebounceMaxDelay mvConsistency mvPreprocess businessKey validTime "
-    "recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
+    "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks businessKey "
+    "validTime recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
     "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productId enableAggregates "
     "enableGroupBy uniqueConstraints { name columns } "
     "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn landingTimeColumn } "
@@ -131,6 +131,7 @@ _TABLE_AS_IS = (
     "recordedTime",
     "mvPersist",
     "mvIncremental",
+    "mvHoldOnFailingChecks",
     "mvAllowedLateness",
     "mvExpectedEvents",
     "mvBusinessDayGrain",

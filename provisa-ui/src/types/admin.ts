@@ -83,10 +83,6 @@ export interface Domain {
   isSystem: boolean; // domain_policy.system_domain_ids() (meta/ops/"") -- never end-user-picked
 }
 
-// REQ-1634/REQ-1660: a first-class DataProduct entity; a table joins one via product_id.
-// Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
-// individuals via the existing role machinery, tags/authoritativeDefinitions/inputPorts/
-// outputPorts are derived from existing tag assignments/glossary/lineage rather than stored here.
 // REQ-2153: a listed table in a domain the caller does not reach: its name and its listed
 // columns' names, and nothing more.
 export interface ListedNames {
@@ -95,6 +91,10 @@ export interface ListedNames {
   columnNames: string[];
 }
 
+// REQ-1634: a first-class DataProduct entity; a table joins one via product_id.
+// Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
+// individuals via the existing role machinery; tags, terms, inputs and output ports are read
+// from the meta domain (REQ-2125, REQ-2126) rather than stored here.
 export interface DataProduct {
   id: string;
   domainId: string;
@@ -453,6 +453,7 @@ export interface RegisteredTable {
   pushDebounceMaxDelay: number; // REQ-1733: staleness cap under continuous message churn
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
   mvPreprocess: string | null; // REQ-1165: inline preflight(rows, ctx) check source; null = no check
+  mvHoldOnFailingChecks: boolean; // REQ-2133: built-in preflight on its inputs' failing checks
   /** REQ-2109: the columns identifying the same thing across versions; [] = none declared. */
   businessKey: string[];
   /** REQ-2109: the column holding the date the business gives the record. */

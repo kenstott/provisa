@@ -61,7 +61,6 @@
     "dqResultsTableHint": "(dérivée de la table analysée ; une ligne par contrôle et par analyse, toutes les analyses conservées)",
     "dqResultsTablePlaceholder": "Choisissez ci-dessus la table à analyser",
     "dqVisibleToLabel": "Résultats visibles par",
-    "dqDescription": "Résultats de l'analyse de qualité de {{table}} : une ligne par contrôle et par analyse, avec résultat, valeur de la métrique et seuil",
     "errorDqContract": "Choisissez la table à analyser dans le panneau Qualité des données.",
     "errorDqVisibleTo": "Les résultats doivent être visibles par au moins un rôle.",
     "dqScanIntervalLabel": "Analyser toutes les (secondes)",
@@ -135,6 +134,9 @@
     "qdrantVectors": "Vecteurs de {{collection}}",
     "qdrantVector": "{{name}} : {{size}} dimensions, notées par {{distance}}",
     "qdrantUnnamedVector": "(sans nom)",
-    "continue": "Continuer"
+    "continue": "Continuer",
+    "checkReasonLabel": "Pourquoi ce contrôle existe",
+    "checkReasonHint": "L'engagement de qualité en termes métier ; il coiffe le contrôle dans chaque produit.",
+    "checkReasonPlaceholder": "Les commandes sont complètes et uniques afin que le chiffre d'affaires quotidien se rapproche de la finance"
   }
 }

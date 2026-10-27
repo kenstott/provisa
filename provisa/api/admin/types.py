@@ -520,6 +520,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
+    mv_hold_on_failing_checks: bool = False  # REQ-2133: built-in preflight on failing checks
     # REQ-2109: the bitemporal declaration, all three or none.
     business_key: list[str] = strawberry.field(default_factory=list)
     valid_time: str | None = None
@@ -586,39 +587,10 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         )
 
     @strawberry.field
-    async def product_id(self) -> str | None:  # REQ-1634, REQ-1443 clause 10
-        """The data product this table belongs to. A checker table (one carrying a dq_contract —
-        registration admits a contract on no other source type) inherits the product of the table
-        its contract scans, resolved through the compiled contexts the same way dq_dataset is;
-        registration refuses a stored product_id on it, so the row's own column is never the
-        answer there. Every other table answers with its own row."""
-        if self.dq_contract is None:
-            return self.stored_product_id
-        from sqlalchemy import select
-
-        from provisa.api.app import state
-        from provisa.core.schema_org import registered_tables
-        from provisa.dq.contract import contract_dataset, model_contexts, resolve_contract_target
-
-        checker = state.source_types[self.source_id]
-        meta = resolve_contract_target(
-            contract_dataset(self.dq_contract, checker), model_contexts(state)
-        )
-        if state.model_db is None:
-            raise RuntimeError("tenant database not connected")
-        async with state.model_db.acquire() as conn:
-            res = await conn.execute_core(
-                select(registered_tables.c.product_id).where(
-                    registered_tables.c.id == meta.table_id
-                )
-            )
-            row = res.fetchone()
-        if row is None:
-            raise ValueError(
-                f"contract target table {meta.table_id} for {self.schema_name}.{self.table_name} "
-                f"is not registered"
-            )
-        return row._mapping["product_id"]
+    def product_id(self) -> str | None:  # REQ-1634, REQ-1443 PRODUCT ASSIGNMENT
+        """The data product this table is assigned to. A checker table's is its own, as any
+        member's is: the product whose owner controls the check."""
+        return self.stored_product_id
 
     @strawberry.field
     def dq_dataset(self) -> str | None:  # REQ-1443
@@ -1360,6 +1332,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
+    mv_hold_on_failing_checks: bool = False  # REQ-2133: built-in preflight on failing checks
     # REQ-2109: the bitemporal declaration, all three or none.
     business_key: list[str] = strawberry.field(default_factory=list)
     valid_time: str | None = None

@@ -101,7 +101,7 @@
         "dataQuality": "数据质量"
       },
       "dataQualityEmpty": "没有质量扫描",
-      "dataQualityHint": "其契约扫描此产品输出端口的检查器表。每次运行每项检查写入一行；成员关系跟随被扫描的表。",
+      "dataQualityHint": "产品的检查：对其输入的预期、对其成员表的承诺，以及其他方（或无人）对二者所做的相关检查。打开一项检查即可查看其结果。",
       "dqRulesAria": "显示 {{table}} 的质量规则",
       "dqRulesTitle": "质量规则 — {{table}}",
       "dqRulesEmpty": "该契约未定义任何检查",
@@ -111,8 +111,6 @@
       "lineageEmpty": "没有血缘",
       "lineageLoading": "正在加载血缘…",
       "lineageHint": "列血缘图，以此产品的表作为发布终结点，并包含用于派生它们的所有上游表。仅供参考，需要 view_governance 能力。",
-      "inputPortsEmpty": "没有记录上游输入",
-      "inputPortsHint": "此产品直接读取的表（来自血缘）。展开表可查看其读取的列。需要 view_governance 能力。",
       "outputPortsHint": "此产品可查询的范围：其成员表和命令。每个的示例查询见“访问模式”。",
       "customPropertiesEmpty": "没有自定义属性",
       "lineageLaneUpstream": "上游，第 {{n}} 跳",

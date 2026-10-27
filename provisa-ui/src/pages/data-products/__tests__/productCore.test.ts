@@ -162,18 +162,6 @@ describe("the panel's meta reads", () => {
                       table_columns: [
                         { column_name: "email", glossary_ref: [{ term_id: 7, term: CUSTOMER }] },
                       ],
-                      checked_by: [
-                        {
-                          id: 4,
-                          source_id: "dq",
-                          domain_id: "sales",
-                          schema_name: "dq",
-                          table_name: "customers_quality",
-                          description: null,
-                          dq_contract: "dataset: pg/public/customers",
-                          checks: { id: 1, domain_id: "sales", table_name: "customers" },
-                        },
-                      ],
                     },
                   ],
                   commands: [{ name: "refresh", description: null, domain_id: "sales" }],
@@ -197,8 +185,10 @@ describe("the panel's meta reads", () => {
       ownerRole: "steward",
       customProperties: { tier: "gold" },
     });
-    // REQ-1443 clause 10: the checker scanning a member is the product's through that member.
-    expect(core?.tables?.map((t) => t.table_name)).toEqual(["customers", "customers_quality"]);
+    expect(core?.tables?.map((t) => t.table_name)).toEqual(["customers"]);
+    // REQ-2157: the product's checks are its lineage's (the product lineage endpoint), not the panel's
+    // meta read.
+    expect(core).not.toHaveProperty("checks");
     expect(core?.commands?.map((c) => c.name)).toEqual(["refresh"]);
     // The bound term and the abstract term its edge reaches.
     expect(core?.terms?.map((t) => t.name)).toEqual(["Customer", "Party"]);

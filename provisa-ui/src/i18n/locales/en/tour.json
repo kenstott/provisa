@@ -1763,6 +1763,42 @@
       "groupexposureRecap": {
         "title": "What you saw",
         "description": "A fictional bank's loan book and public linked data from Wikidata, joined by LEI in one governed model. Wikidata's ownership chains turn many small loans into a few large group exposures, and the answer is served in SQL, GraphQL and REST."
+      },
+      "agentdataScenario": {
+        "title": "Give an agent your data",
+        "description": "A retailer wants an AI agent on its order data, held to what the person it acts for may see. The agent reaches the data over Provisa's MCP server. The MCP explorer, coming up, shows exactly what such an outside agent sees. Polly, by contrast, is the assistant for working in Provisa itself. This is the retailer's order database, read live."
+      },
+      "agentdataCustomers": {
+        "title": "Who may see which customers",
+        "description": "The customers table carries the rules: a West support agent reads only the West's customers and their orders, with email addresses masked and no prices. The BI analyst reads every region and what the orders came to, but no email address at all."
+      },
+      "agentdataSupportRole": {
+        "title": "Act as a West support agent",
+        "description": "The agent acts as the role in the header. Next picks the West support agent, so every tool call the agent makes runs as that role."
+      },
+      "agentdataSupportAsks": {
+        "title": "The support agent's question",
+        "description": "The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked: that is all the role is served."
+      },
+      "agentdataExplain": {
+        "title": "What actually ran",
+        "description": "The agent's run_sql call, opened: the statement it sent, then the statement that ran for its role. Provisa added the West row filter and the email mask. The agent wrote neither, and is never told about them."
+      },
+      "agentdataOutOfReach": {
+        "title": "A question out of reach",
+        "description": "Asked what each customer's orders came to, the agent finds no prices among the tables its role can read, and says so. It cannot reach around the role: the same rules hold on every tool call."
+      },
+      "agentdataAnalystRole": {
+        "title": "Now as the BI analyst",
+        "description": "Next switches the header to the BI analyst. The agent is the same; the role is different."
+      },
+      "agentdataAnalystAsks": {
+        "title": "The same question, another role",
+        "description": "The same question as the analyst: every region comes back, there is no email column at all, and the revenue view is among its tables. Different tables, rows and columns, from the same agent and the same server."
+      },
+      "agentdataConnect": {
+        "title": "Your own agent, the same server",
+        "description": "This is the server the explorer's agent used. Paste this config into Claude Desktop, or point any MCP client at the URL, and your own agent gets the same governed tools, held to the same rules."
       }
     },
     "status": {
@@ -1883,6 +1919,10 @@
       "groupexposure": {
         "title": "Group exposure through Wikidata",
         "summary": "Which corporate groups is a bank over its large-exposure limit to? Its loan book, joined by each borrower's owner's LEI to Wikidata's chains of parent organizations over SPARQL, rolls each borrower up to its group. The bank and its borrowers are fictional; the groups are real."
+      },
+      "agentdata": {
+        "title": "Give an agent your data",
+        "summary": "Can an AI agent be given a retailer's order data and held to what its user may see? The MCP explorer shows the agent as a support agent and as an analyst: different rows and columns, emails masked, and the governed SQL behind each answer."
       }
     }
   }

@@ -611,6 +611,16 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
+    def hold_on_failing_checks_source(self, info: StrawberryInfo) -> str:  # REQ-2133
+        """The built-in preflight a materialized view's Hold on failing checks option applies, as a
+        steward may copy it into the view's own preflight. Read on the view's edit form, gated as
+        that form's other reads are."""
+        require_capability(info, "table_registration")
+        from provisa.mv.hold_checks import SOURCE
+
+        return SOURCE
+
+    @strawberry.field
     async def schema_version(self) -> str:
         """Returns SHA256 hash of current schema state for cache validation."""
         import hashlib

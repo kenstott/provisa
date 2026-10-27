@@ -101,7 +101,7 @@
         "dataQuality": "Qualité des données"
       },
       "dataQualityEmpty": "Aucune analyse de qualité",
-      "dataQualityHint": "Tables de vérification dont les contrats analysent les ports de sortie de ce produit. Chacune enregistre une ligne par contrôle et par exécution ; l'appartenance suit la table analysée.",
+      "dataQualityHint": "Les contrôles du produit : ses attentes sur ses entrées, ses promesses sur ses tables membres et les contrôles associés que d'autres (ou personne) font sur les unes ou les autres. Ouvrez un contrôle pour lire ses résultats.",
       "dqRulesAria": "Afficher les règles de qualité de {{table}}",
       "dqRulesTitle": "Règles de qualité : {{table}}",
       "dqRulesEmpty": "Le contrat ne définit aucun contrôle",
@@ -111,8 +111,6 @@
       "lineageEmpty": "Aucune traçabilité",
       "lineageLoading": "Chargement de la traçabilité…",
       "lineageHint": "Graphe de traçabilité des colonnes montrant les tables de ce produit comme endpoint publié, ainsi que chaque table en amont utilisée pour les dériver. À titre informatif uniquement ; nécessite la capacité view_governance.",
-      "inputPortsEmpty": "Aucune entrée en amont enregistrée",
-      "inputPortsHint": "Les tables que ce produit lit directement, d'après la traçabilité. Dépliez une table pour voir les colonnes lues. Nécessite la capacité view_governance.",
       "outputPortsHint": "La surface interrogeable de ce produit : ses tables membres et ses commandes. Des exemples de requêtes pour chacune se trouvent sous Modèles d'accès.",
       "customPropertiesEmpty": "Aucune propriété personnalisée",
       "lineageLaneUpstream": "En amont, saut {{n}}",

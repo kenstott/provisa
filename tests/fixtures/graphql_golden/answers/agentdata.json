@@ -1,0 +1,270 @@
+[
+ {
+  "columns": [
+   "name",
+   "region",
+   "orders",
+   "revenue"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:agentdata/1-revenue-by-customer.graphql",
+  "root_field": "s__viewRevenueByCustomer",
+  "rows": [
+   [
+    "Femi Baker",
+    "East",
+    8,
+    "2562"
+   ],
+   [
+    "Femi Costa",
+    "West",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Dubois",
+    "North",
+    8,
+    "2562"
+   ],
+   [
+    "Femi Evans",
+    "East",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Ito",
+    "North",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Jensen",
+    "East",
+    8,
+    "2523"
+   ],
+   [
+    "Femi Khan",
+    "South",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Lopez",
+    "East",
+    8,
+    "2523"
+   ],
+   [
+    "Femi Lopez",
+    "East",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Moreau",
+    "West",
+    8,
+    "2562"
+   ],
+   [
+    "Nora Adams",
+    "South",
+    8,
+    "2562"
+   ],
+   [
+    "Nora Baker",
+    "East",
+    8,
+    "2667"
+   ],
+   [
+    "Nora Dubois",
+    "North",
+    8,
+    "2667"
+   ],
+   [
+    "Nora Evans",
+    "East",
+    8,
+    "2523"
+   ],
+   [
+    "Nora Evans",
+    "East",
+    8,
+    "2562"
+   ],
+   [
+    "Nora Fischer",
+    "South",
+    8,
+    "2667"
+   ],
+   [
+    "Nora Ito",
+    "North",
+    8,
+    "2523"
+   ],
+   [
+    "Nora Jensen",
+    "East",
+    8,
+    "2667"
+   ],
+   [
+    "Nora Lopez",
+    "East",
+    8,
+    "2562"
+   ],
+   [
+    "Nora Moreau",
+    "West",
+    8,
+    "2523"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "name",
+   "region",
+   "orders",
+   "revenue"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:agentdata/1-revenue-by-customer.graphql",
+  "root_field": "s__viewRevenueByCustomer",
+  "rows": [
+   [
+    "Femi Baker",
+    "East",
+    8,
+    "2562"
+   ],
+   [
+    "Femi Costa",
+    "West",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Dubois",
+    "North",
+    8,
+    "2562"
+   ],
+   [
+    "Femi Evans",
+    "East",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Ito",
+    "North",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Jensen",
+    "East",
+    8,
+    "2523"
+   ],
+   [
+    "Femi Khan",
+    "South",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Lopez",
+    "East",
+    8,
+    "2523"
+   ],
+   [
+    "Femi Lopez",
+    "East",
+    8,
+    "2667"
+   ],
+   [
+    "Femi Moreau",
+    "West",
+    8,
+    "2562"
+   ],
+   [
+    "Nora Adams",
+    "South",
+    8,
+    "2562"
+   ],
+   [
+    "Nora Baker",
+    "East",
+    8,
+    "2667"
+   ],
+   [
+    "Nora Dubois",
+    "North",
+    8,
+    "2667"
+   ],
+   [
+    "Nora Evans",
+    "East",
+    8,
+    "2523"
+   ],
+   [
+    "Nora Evans",
+    "East",
+    8,
+    "2562"
+   ],
+   [
+    "Nora Fischer",
+    "South",
+    8,
+    "2667"
+   ],
+   [
+    "Nora Ito",
+    "North",
+    8,
+    "2523"
+   ],
+   [
+    "Nora Jensen",
+    "East",
+    8,
+    "2667"
+   ],
+   [
+    "Nora Lopez",
+    "East",
+    8,
+    "2562"
+   ],
+   [
+    "Nora Moreau",
+    "West",
+    8,
+    "2523"
+   ]
+  ]
+ }
+]

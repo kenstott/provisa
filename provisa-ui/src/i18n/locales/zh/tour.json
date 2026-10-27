@@ -1763,6 +1763,42 @@
       "groupexposureRest": {
         "title": "通过 REST 获得同一答案",
         "description": "该视图也是一个 REST 端点，这里按是否超限分组并在服务器端汇总，可直接用于风险报告或电子表格。"
+      },
+      "agentdataScenario": {
+        "title": "把数据交给智能体",
+        "description": "一家零售商想让 AI 智能体使用其订单数据,但只能看到它所代表的人有权看到的内容。智能体通过 Provisa 的 MCP 服务器访问数据。接下来的 MCP 浏览器准确展示这样一个外部智能体所看到的内容。而 Polly 是在 Provisa 内部工作的助手。这是零售商的订单数据库,实时读取。"
+      },
+      "agentdataCustomers": {
+        "title": "谁能看到哪些客户",
+        "description": "规则在客户表上:West 区的客服只能读取 West 的客户及其订单,电子邮件地址被脱敏,看不到价格。BI 分析师可读取所有区域和订单金额,但看不到任何电子邮件地址。"
+      },
+      "agentdataSupportRole": {
+        "title": "以 West 区客服身份操作",
+        "description": "智能体以页眉中的角色身份操作。下一步会选择 West 区客服,因此智能体的每次工具调用都以该角色运行。"
+      },
+      "agentdataSupportAsks": {
+        "title": "客服的问题",
+        "description": "智能体查找表、编写 SQL 并通过 MCP 工具运行,工具在运行时显示。只返回 West 的客户,其电子邮件地址以脱敏形式到达:该角色只能得到这些。"
+      },
+      "agentdataExplain": {
+        "title": "实际运行了什么",
+        "description": "打开智能体的 run_sql 调用:先是它发送的语句,然后是为其角色实际运行的语句。West 行过滤和电子邮件脱敏由 Provisa 添加。智能体两者都没写,也从不会被告知。"
+      },
+      "agentdataOutOfReach": {
+        "title": "超出范围的问题",
+        "description": "当被问到每位客户的订单总额时,智能体在其角色可读的表中找不到价格,并如实说明。它无法绕过角色:每次工具调用都适用同样的规则。"
+      },
+      "agentdataAnalystRole": {
+        "title": "现在以 BI 分析师身份",
+        "description": "下一步将页眉切换为 BI 分析师。智能体相同,角色不同。"
+      },
+      "agentdataAnalystAsks": {
+        "title": "同一问题,不同角色",
+        "description": "以分析师身份问同一问题:返回所有区域,完全没有电子邮件列,收入视图也在其表中。同一个智能体、同一台服务器,得到不同的表、行和列。"
+      },
+      "agentdataConnect": {
+        "title": "你自己的智能体,同一台服务器",
+        "description": "这就是浏览器中的智能体使用的服务器。把这段配置粘贴到 Claude Desktop,或将任意 MCP 客户端指向该 URL,你自己的智能体就能获得同样受治理的工具,遵守同样的规则。"
       }
     },
     "status": {
@@ -1883,6 +1919,10 @@
       "groupexposure": {
         "title": "通过 Wikidata 计算集团敞口",
         "summary": "银行对哪些企业集团超出了大额风险暴露限额？银行的贷款账簿按每个借款人所有者的 LEI 通过 SPARQL 关联到 Wikidata 的母公司链，把每个借款人归入其集团。银行及其借款人是虚构的，集团是真实的。"
+      },
+      "agentdata": {
+        "title": "把数据交给智能体",
+        "summary": "能否把零售商的订单数据交给 AI 智能体,并将其限制在用户有权查看的范围内?MCP 浏览器分别以客服和分析师身份展示智能体:不同的行和列、脱敏的电子邮件,以及每个答案背后受治理的 SQL。"
       }
     }
   }

@@ -299,6 +299,7 @@ query TablesQuery {
     pushDebounceMaxDelay
     mvConsistency
     mvPreprocess
+    mvHoldOnFailingChecks
     businessKey
     validTime
     recordedTime
@@ -1096,6 +1097,11 @@ mutation DeleteTable($id: Int!) {
 }
 
 # REQ-962: snapshot-boundary calendars — the picker source + create form for the MV snapshot schedule.
+# REQ-2133: the built-in preflight a view's Hold on failing checks option applies.
+query HoldOnFailingChecksSource {
+  holdOnFailingChecksSource
+}
+
 query Calendars {
   calendars {
     name

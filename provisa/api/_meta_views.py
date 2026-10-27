@@ -22,7 +22,7 @@ from __future__ import annotations
 # source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
 # for callers near the view definitions.
 from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
-from provisa.core.models import DERIVED_TAGS, SYSTEM_TAGS
+from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
 from provisa.dq.contract import CHECKERS
 
 # REQ-1375/REQ-1443: system and derived tags are code-defined intrinsics with no rows in the tags
@@ -163,19 +163,18 @@ def _data_product_edges_sql() -> str:
     product's member tables through tables that belong to no product. It stops at another
     product's member, and the row targets that product; a table that belongs to no product is a
     target only where nothing reachable through it is another product's member (otherwise it
-    supports that product's row). A lineage edge is a relation the product's members derive from,
-    all the way up, or one that derives from them, one hop down, read from the lineage edge table
-    the model build writes (REQ-2129); a checker member's results are about a member, not part of
-    its data flow, so they start no lineage.
+    supports that product's row). A related edge is a table one declared relationship from a
+    member, not one of the product's own. A product's lineage is no row here: it is cut to its
+    caller's read rights, so it is served by the product lineage endpoint (REQ-2156).
 
     Everything is computed from reachability, never by enumerating routes: the path count is the
-    number of distinct relationships (or derivations) leaving the members that lead on to the
-    target, the hops are the shortest distance, and the aliases and supporting tables are those on
-    any walk from a member to the target. Each recursion's rows are bounded by the model's tables
-    (or relations), so the cost grows with the model, not with the routes through it.
+    number of distinct relationships leaving the members that lead on to the target, the hops are
+    the shortest distance, and the aliases and supporting tables are those on any walk from a
+    member to the target. Each recursion's rows are bounded by the model's tables, so the cost
+    grows with the model, not with the routes through it.
 
-    Every table a row names -- a supporting table, a view a lineage edge goes through -- is named
-    as the model names it: its domain and its alias, or its name when it has none."""
+    Every supporting table a row names is named as the model names it: its domain and its alias,
+    or its name when it has none."""
     return """
         CREATE OR REPLACE VIEW data_product_edges AS
         WITH RECURSIVE
@@ -338,129 +337,29 @@ def _data_product_edges_sql() -> str:
             JOIN model_names t ON t.table_id = s.node
             GROUP BY s.product_id, s.target_product_id, s.target_table_id
         ),
-        ledges AS (
-            SELECT DISTINCT source_relation AS src, target_relation AS tgt, via
-            FROM lineage_edges
-            WHERE source_relation <> target_relation
-        ),
-        relation_tables AS (
-            SELECT DISTINCT source_relation AS relation, source_table_id AS table_id
-            FROM lineage_edges WHERE source_table_id IS NOT NULL
-            UNION
-            SELECT DISTINCT target_relation, target_table_id
-            FROM lineage_edges WHERE target_table_id IS NOT NULL
-        ),
-        member_relations AS (
-            SELECT DISTINCT m.product_id, rt.relation
+        -- Every table one declared relationship from a member that is not one of the product's
+        -- own: the panel's Related.
+        related AS (
+            SELECT m.product_id, l.b AS table_id,
+                   COUNT(DISTINCT l.rel_id) AS path_count,
+                   STRING_AGG(DISTINCT r.alias, ', ' ORDER BY r.alias) AS aliases,
+                   STRING_AGG(DISTINCT r.id, ', ' ORDER BY r.id) AS relationship_ids
             FROM members m
-            JOIN relation_tables rt ON rt.table_id = m.table_id
-            WHERE m.dq_contract IS NULL
-        ),
-        -- (product, the derivation into its member, a relation reached upstream).
-        upstream (product_id, first_edge, relation) AS (
-            SELECT mr.product_id, e.src || ' > ' || e.via || ' > ' || e.tgt, e.src
-            FROM member_relations mr
-            JOIN ledges e ON e.tgt = mr.relation
-            UNION
-            SELECT u.product_id, u.first_edge, e.src
-            FROM upstream u
-            JOIN ledges e ON e.tgt = u.relation
-        ),
-        up_dist (product_id, relation, hops) AS (
-            SELECT mr.product_id, e.src, 1
-            FROM member_relations mr
-            JOIN ledges e ON e.tgt = mr.relation
-            UNION
-            SELECT u.product_id, e.src, u.hops + 1
-            FROM up_dist u
-            JOIN ledges e ON e.tgt = u.relation
-            WHERE u.hops < (SELECT COUNT(*) FROM relation_tables)
-        ),
-        -- (product, an upstream relation, a relation its derivations reach on the way down to a
-        -- member): the chain each upstream row stands for.
-        chain (product_id, origin, relation) AS (
-            SELECT DISTINCT u.product_id, u.relation, u.relation
-            FROM upstream u
-            UNION
-            SELECT c.product_id, c.origin, e.tgt
-            FROM chain c
-            JOIN ledges e ON e.src = c.relation
-            JOIN upstream u ON u.product_id = c.product_id AND u.relation = e.tgt
-        ),
-        -- The views and commands on that chain: each derivation out of a relation on it, into a
-        -- relation on it or into a member.
-        up_vias AS (
-            SELECT DISTINCT c.product_id, c.origin AS relation, e.via
-            FROM chain c
-            JOIN ledges e ON e.src = c.relation
-            WHERE EXISTS (SELECT 1 FROM member_relations mr
-                          WHERE mr.product_id = c.product_id AND mr.relation = e.tgt)
-               OR EXISTS (SELECT 1 FROM upstream u
-                          WHERE u.product_id = c.product_id AND u.relation = e.tgt)
-        ),
-        lineage_paths AS (
-            SELECT u.product_id, 'upstream' AS direction, u.relation, u.first_edge
-            FROM upstream u
+            JOIN links l ON l.a = m.table_id
+            JOIN relationships r ON r.id = l.rel_id
             WHERE NOT EXISTS (
-                SELECT 1 FROM member_relations mr
-                WHERE mr.product_id = u.product_id AND mr.relation = u.relation)
-            UNION ALL
-            SELECT mr.product_id, 'downstream', e.tgt,
-                   e.src || ' > ' || e.via || ' > ' || e.tgt
-            FROM member_relations mr
-            JOIN ledges e ON e.src = mr.relation
-            WHERE NOT EXISTS (
-                  SELECT 1 FROM member_relations own
-                  WHERE own.product_id = mr.product_id AND own.relation = e.tgt)
-              AND NOT EXISTS (
-                  SELECT 1 FROM upstream up
-                  WHERE up.product_id = mr.product_id AND up.relation = e.tgt)
-              AND NOT EXISTS (
-                  SELECT 1 FROM relation_tables rt
-                  JOIN members chk ON chk.table_id = rt.table_id AND chk.dq_contract IS NOT NULL
-                  WHERE rt.relation = e.tgt)
-        ),
-        lineage_rows AS (
-            SELECT l.product_id, l.direction, l.relation,
-                   COUNT(DISTINCT l.first_edge) AS path_count,
-                   CASE WHEN l.direction = 'downstream' THEN 1
-                        ELSE (SELECT MIN(d.hops) FROM up_dist d
-                              WHERE d.product_id = l.product_id AND d.relation = l.relation)
-                   END AS hops
-            FROM lineage_paths l
-            GROUP BY l.product_id, l.direction, l.relation
-        ),
-        -- A view a derivation goes through, by its model name; a command, by its own name; a
-        -- relation the model has not registered, by the name the lineage records.
-        via_names AS (
-            SELECT DISTINCT e.via, COALESCE(n.model_name, e.via) AS via_name
-            FROM lineage_edges e
-            LEFT JOIN relation_tables rt ON e.via_kind = 'view' AND rt.relation = e.via
-            LEFT JOIN model_names n ON n.table_id = rt.table_id
-        ),
-        lineage_vias AS (
-            SELECT u.product_id, 'upstream' AS direction, u.relation,
-                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name) AS vias
-            FROM up_vias u
-            JOIN via_names n ON n.via = u.via
-            GROUP BY u.product_id, u.relation
-            UNION ALL
-            SELECT mr.product_id, 'downstream', e.tgt,
-                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name)
-            FROM member_relations mr
-            JOIN ledges e ON e.src = mr.relation
-            JOIN via_names n ON n.via = e.via
-            GROUP BY mr.product_id, e.tgt
+                SELECT 1 FROM members own
+                WHERE own.table_id = l.b AND own.product_id = m.product_id)
+            GROUP BY m.product_id, l.b
         )
         SELECT r.product_id || ':relationship:'
                    || CASE WHEN r.target_product_id IS NOT NULL
                            THEN 'product:' || r.target_product_id
                            ELSE 'table:' || CAST(r.target_table_id AS TEXT) END AS id,
-               r.product_id, 'relationship' AS kind, CAST(NULL AS TEXT) AS direction,
-               r.target_product_id, r.target_table_id, CAST(NULL AS TEXT) AS target_relation,
+               r.product_id, 'relationship' AS kind,
+               r.target_product_id, r.target_table_id,
                CASE WHEN r.hops = 1 THEN TRUE ELSE FALSE END AS direct,
-               r.hops, r.path_count, d.aliases, d.relationship_ids, s.supporting_tables,
-               CAST(NULL AS TEXT) AS vias
+               r.hops, r.path_count, d.aliases, d.relationship_ids, s.supporting_tables
         FROM rel_rows r
         JOIN rel_detail d
           ON d.product_id = r.product_id
@@ -471,19 +370,55 @@ def _data_product_edges_sql() -> str:
          AND s.target_product_id IS NOT DISTINCT FROM r.target_product_id
          AND s.target_table_id IS NOT DISTINCT FROM r.target_table_id
         UNION ALL
-        SELECT l.product_id || ':lineage:' || l.relation,
-               l.product_id, 'lineage', l.direction,
-               (SELECT m.product_id FROM members m JOIN relation_tables rt
-                  ON rt.table_id = m.table_id WHERE rt.relation = l.relation),
-               (SELECT rt.table_id FROM relation_tables rt WHERE rt.relation = l.relation),
-               l.relation,
-               CASE WHEN l.hops = 1 THEN TRUE ELSE FALSE END,
-               l.hops, l.path_count, NULL, NULL, NULL, v.vias
-        FROM lineage_rows l
-        JOIN lineage_vias v
-          ON v.product_id = l.product_id AND v.direction = l.direction
-         AND v.relation = l.relation
+        SELECT rl.product_id || ':related:' || CAST(rl.table_id AS TEXT),
+               rl.product_id, 'related', o.product_id, rl.table_id,
+               TRUE, 1, rl.path_count, rl.aliases, rl.relationship_ids, NULL
+        FROM related rl
+        LEFT JOIN members o ON o.table_id = rl.table_id
     """
+
+
+def _table_inputs_sql() -> str:
+    """REQ-2126: each registered table's nearest physical inputs -- an internal control-plane
+    view, read by provisa.lineage.inputs, so the walk is
+    written once.
+
+    From a table, its lineage (the lineage edge table, REQ-2129) is walked upstream through plain
+    views, which are expanded at query time and so are no input, and stops at the first physical
+    dataset on each path: a source table or a materialized view. A materialized view's inputs are
+    what its refresh reads, found the same way. A relation that is not registered ends a path."""
+    return """
+        CREATE OR REPLACE VIEW table_inputs AS
+        WITH RECURSIVE ledges AS (
+            SELECT DISTINCT source_relation AS src, source_table_id AS src_id,
+                   target_relation AS tgt, target_table_id AS tgt_id
+            FROM lineage_edges
+            WHERE source_relation <> target_relation
+        ),
+        kinds AS (
+            SELECT t.id, t.source_id, t.schema_name, t.table_name,
+                   CASE WHEN t.source_id <> '{derived}' THEN 'source_table'
+                        WHEN t.materialize THEN 'materialized_view'
+                        ELSE 'view' END AS kind
+            FROM registered_tables t
+            WHERE NOT t.draft
+        ),
+        walk (table_id, relation, relation_id) AS (
+            SELECT e.tgt_id, e.src, e.src_id
+            FROM ledges e
+            WHERE e.tgt_id IS NOT NULL
+            UNION
+            SELECT w.table_id, e.src, e.src_id
+            FROM walk w
+            JOIN kinds k ON k.id = w.relation_id AND k.kind = 'view'
+            JOIN ledges e ON e.tgt = w.relation
+        )
+        SELECT DISTINCT w.table_id, w.relation_id AS input_table_id,
+               w.relation AS input_relation, k.kind AS input_kind,
+               k.source_id || '/' || k.schema_name || '/' || k.table_name AS input_address
+        FROM walk w
+        JOIN kinds k ON k.id = w.relation_id AND k.kind IN ('source_table', 'materialized_view')
+    """.replace("{derived}", DERIVED_SOURCE_ID)
 
 
 _META_TABLE_VIEWS: dict[str, str] = {
@@ -540,22 +475,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "sensitive_coverage": _sensitive_coverage_sql(),
     # REQ-2126: a data product's links to the rest of the model, one row per product, target and
     # kind.
+    # REQ-2126: each table's nearest physical inputs; internal, read by the views below and by
+    # provisa.lineage.inputs. Registered in no catalog.
+    "table_inputs": _table_inputs_sql(),
     "data_product_edges": _data_product_edges_sql(),
-    # REQ-2129: the model's column lineage, one row per edge whose two ends are registered
-    # columns, keyed to table_columns by the same column_key the glossary and tags join on.
-    "column_lineage_edges": """
-        CREATE OR REPLACE VIEW column_lineage_edges AS
-        SELECT e.id, e.source_relation, e.source_column, e.target_relation, e.target_column,
-               e.via, e.via_kind, e.source_table_id, e.source_column_name,
-               e.target_table_id, e.target_column_name,
-               CAST(e.source_table_id AS TEXT) || ':' || e.source_column_name
-                   AS source_column_key,
-               CAST(e.target_table_id AS TEXT) || ':' || e.target_column_name
-                   AS target_column_key
-        FROM lineage_edges e
-        JOIN registered_tables s ON s.id = e.source_table_id AND NOT s.draft
-        JOIN registered_tables t ON t.id = e.target_table_id AND NOT t.draft
-    """,
     # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
@@ -758,7 +681,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # it profiles: the
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
-    # replaced in place. REQ-2158: contract, a product member's declared contract, is last too.
+    # replaced in place. REQ-2132: latest_outcome and latest_run_at are a checker's latest scan.
+    # REQ-2158: contract, a product member's declared contract, is last too.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
@@ -776,9 +700,14 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS profiled_table_id,
                (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
                    AS checked_table_id,
-               -- The table's class term, NULL when none grounds it. Last, like the two
-               -- above, so an existing view is replaced in place.
+               -- The table's class term, NULL when none grounds it.
                rt.class_term_id,
+               -- A checker table's latest scan. Last, like the columns above, so an
+               -- existing view is replaced in place.
+               (SELECT r.outcome FROM checker_latest_runs r WHERE r.table_id = rt.id)
+                   AS latest_outcome,
+               (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
+                   AS latest_run_at,
                -- A product member's contract, its output port; last, as above.
                rt.contract
         FROM registered_tables rt

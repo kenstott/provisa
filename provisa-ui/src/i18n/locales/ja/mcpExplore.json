@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} を実行中です。",
     "toolDoneTooltip": "{{name}} が完了しました。結果はアシスタントに返されました。",
     "toolErrorTooltip": "{{name}} が失敗しました。アシスタントはエラーを受け取り、別の引数で再試行する場合があります。",
-    "roleNoteHelpTitle": "このセッションが使うロール"
+    "roleNoteHelpTitle": "このセッションが使うロール",
+    "toolExplainTooltip": "{{name}} が完了しました。クリックすると、送った文と実行された文が見られます。",
+    "explainTitle": "エージェントのクエリが実行したもの",
+    "explainSent": "エージェントが送った文",
+    "explainRan": "実行された文({{role}} 向けにガバナンス適用)"
   }
 }
