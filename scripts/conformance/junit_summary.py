@@ -37,11 +37,19 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         for path in junit.split(",")
         for case in ET.parse(path).getroot().iter("testcase")  # nosec B314 -- see above
     ]
-    skipped, outcomes = 0, []
+    skipped: list[dict] = []
+    outcomes: list[dict] = []
     for case in cases:
         outcome = next((c for c in case if c.tag in ("failure", "error", "skipped")), None)
         if outcome is not None and outcome.tag == "skipped":
-            skipped += 1
+            # Named with the suite's reason, so what it did not run is decided case by case.
+            skipped.append(
+                {
+                    "feature": case.get("classname", ""),
+                    "scenario": case.get("name", ""),
+                    "reason": (outcome.get("message") or outcome.text or "").strip()[:300],
+                }
+            )
             continue
         message = (
             []
@@ -67,19 +75,25 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
     # runnable by design, in a group naming its decision (by_design/<surface>.yaml); one the
     # client driver did not send what it needs is left out too, in its own group; an adapted
     # case counts, marked with what its setup became.
-    failures, excluded = by_design.classify(failures, declared)
-    failures, unsent = by_design.not_sent(failures, declared)
+    # A case the suite skips because a feature is not claimed is classified the same way: under
+    # the design decision or the client behaviour behind it, not as skipped by the suite.
+    tagged = [{**f, "skip": False} for f in failures] + [{**s, "skip": True} for s in skipped]
+    left, excluded = by_design.classify(tagged, declared)
+    left, unsent = by_design.not_sent(left, declared)
+    failures = [{k: c[k] for k in ("feature", "scenario", "reason")} for c in left if not c["skip"]]
+    skipped = [{k: c[k] for k in ("feature", "scenario", "reason")} for c in left if c["skip"]]
     ran = passed + len(failures)
     return {
         "surface": surface,
         "suite": suite,
         "version": version,
         "tests": tests,
-        "total": ran + skipped,
+        "total": ran + len(skipped),
         "ran": ran,
         "passed": passed,
         "failed": len(failures),
-        "skipped": skipped,
+        "skipped": len(skipped),
+        "skipped_cases": skipped,
         "not_runnable": sum(g["count"] for g in excluded),
         "by_design": excluded,
         "client_not_sent": sum(g["count"] for g in unsent),

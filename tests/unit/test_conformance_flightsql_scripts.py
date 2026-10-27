@@ -257,6 +257,10 @@ def test_a_surface_with_no_such_groups_has_no_such_sections(tmp_path):
         ("- kind: adapted\n  group: g\n  case: x\n", r"has no \['became'\]"),
         ("- kind: other\n  group: g\n  reason: x\n", "is of no kind"),
         ("- kind: adapted\n  group: g\n  became: b\n", "matches nothing"),
+        (
+            "- group: g\n  requirement: REQ-1\n  decision: as REQ-1 says\n  reason: x\n",
+            r"names a requirement in \['decision'\]",
+        ),
     ],
 )
 def test_a_group_missing_its_kinds_fields_is_refused(tmp_path, monkeypatch, entry, match):
@@ -292,3 +296,70 @@ def test_a_statement_tests_table_is_declared_writable_by_the_job_user():
     ]
     assert [c["name"] for c in written["columns"]] == ["id", "value"]
     assert "write_grants" not in fixtures._model_table(conn, "test_int32")
+
+
+def test_each_case_the_suite_skips_is_named_with_its_reason(tmp_path):
+    """A skipped case is counted apart and listed on the page by name, with the reason the suite
+    gave, so what it did not run can be decided case by case."""
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        '<testcase classname="tests.test_connection.TestConnection" name="test_ok[p]"/>'
+        '<testcase classname="tests.test_connection.TestConnection" '
+        'name="test_an_unclaimed_feature[p]">'
+        '<skipped type="pytest.skip" message="not implemented">skip</skipped></testcase>'
+        '<testcase classname="tests.test_statement.TestStatement" name="test_transaction_toggle[p]">'
+        '<skipped type="pytest.skip" message="Driver does not support transactions">s</skipped>'
+        "</testcase></testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
+    assert (doc["ran"], doc["skipped"]) == (1, 2)
+    assert doc["skipped_cases"] == [
+        {
+            "feature": "tests.test_connection.TestConnection",
+            "scenario": "test_an_unclaimed_feature[p]",
+            "reason": "not implemented",
+        },
+        {
+            "feature": "tests.test_statement.TestStatement",
+            "scenario": "test_transaction_toggle[p]",
+            "reason": "Driver does not support transactions",
+        },
+    ]
+    _, _, _, cases = fill_docs.read(doc)
+    assert "## Skipped by the suite" in cases
+    assert (
+        "| tests.test_statement.TestStatement | test_transaction_toggle[p] | Driver does not "
+        "support transactions |" in cases
+    )
+
+
+def test_a_skip_a_group_names_is_counted_in_that_group(tmp_path, monkeypatch):
+    """A case the suite skips because a feature is not claimed is counted under the design
+    decision or the client behaviour behind it, not as skipped by the suite; a skip no group
+    names stays a skip."""
+    (tmp_path / "s.yaml").write_text(
+        "- group: Transactions\n  requirement: REQ-883\n  decision: a no-op\n"
+        '  case: "test_transaction_toggle"\n'
+        "- kind: client\n  group: No statistics\n  client: c\n  behavior: b\n  evidence: e\n"
+        '  workaround: w\n  case: "test_get_statistics"\n'
+    )
+    monkeypatch.setattr(by_design, "RULES", tmp_path)
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        '<testcase classname="T" name="test_ok"/>'
+        '<testcase classname="T" name="test_transaction_toggle">'
+        '<skipped message="Driver does not support transactions">s</skipped></testcase>'
+        '<testcase classname="T" name="test_get_statistics">'
+        '<skipped message="connection_get_statistics not supported">s</skipped></testcase>'
+        '<testcase classname="T" name="test_set_current_catalog">'
+        '<skipped message="not implemented">s</skipped></testcase>'
+        "</testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "s", "suite", "1", "t")
+    assert (doc["ran"], doc["passed"], doc["skipped"]) == (1, 1, 1)
+    assert [c["scenario"] for c in doc["skipped_cases"]] == ["test_set_current_catalog"]
+    assert [(g["group"], g["count"]) for g in doc["by_design"]] == [("Transactions", 1)]
+    assert [(g["group"], g["count"]) for g in doc["not_sent_by_client"]] == [("No statistics", 1)]
+    assert (doc["not_runnable"], doc["client_not_sent"], doc["total"]) == (1, 1, 2)

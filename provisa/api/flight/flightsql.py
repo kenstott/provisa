@@ -108,13 +108,15 @@ SQL_INFO_SCHEMA = pa.schema(
 )
 
 
-def _server_info() -> dict[int, str | bool]:
-    """What Provisa answers of SqlInfo: the server's name and versions, and that it takes SQL."""
+def _server_info() -> dict[int, str | bool | int]:
+    """What Provisa answers of SqlInfo: the server's name and versions, that it takes SQL, and
+    that it takes transactions -- acknowledged, holding none (REQ-883)."""
     return {
         pb.FLIGHT_SQL_SERVER_NAME: "Provisa",
         pb.FLIGHT_SQL_SERVER_VERSION: importlib.metadata.version("provisa"),
         pb.FLIGHT_SQL_SERVER_ARROW_VERSION: pa.__version__,
         pb.FLIGHT_SQL_SERVER_SQL: True,
+        pb.FLIGHT_SQL_SERVER_TRANSACTION: pb.SQL_SUPPORTED_TRANSACTION_TRANSACTION,
     }
 
 
@@ -125,6 +127,7 @@ def sql_info_table(command: pb.CommandGetSqlInfo) -> pa.Table:
     names: list[int] = []
     strings: list[str] = []
     bools: list[bool] = []
+    ints: list[int] = []
     type_ids: list[int] = []
     offsets: list[int] = []
     for name in asked:
@@ -136,6 +139,10 @@ def sql_info_table(command: pb.CommandGetSqlInfo) -> pa.Table:
             type_ids.append(1)
             offsets.append(len(bools))
             bools.append(value)
+        elif isinstance(value, int):
+            type_ids.append(3)  # int32_bitmask: an enum value, as FLIGHT_SQL_SERVER_TRANSACTION is
+            offsets.append(len(ints))
+            ints.append(value)
         else:
             type_ids.append(0)
             offsets.append(len(strings))
@@ -145,7 +152,7 @@ def sql_info_table(command: pb.CommandGetSqlInfo) -> pa.Table:
         pa.array(strings, pa.utf8()),
         pa.array(bools, pa.bool_()),
         pa.array([], pa.int64()),
-        pa.array([], pa.int32()),
+        pa.array(ints, pa.int32()),
         pa.array([], pa.list_(pa.utf8())),
         pa.array([], union_type.field(5).type),
     ]
@@ -275,14 +282,41 @@ def prepared_info(
     return flight.FlightInfo(None, descriptor, [endpoint], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
 
-def session_options(catalog: str, schema: str) -> bytes:
-    """GetSessionOptions' answer: the session's current ``catalog`` and ``schema``, under the
-    option names the ADBC Flight SQL driver reads them by."""
+#: The session options Provisa has: the session's current catalog and schema, under the names
+#: the ADBC Flight SQL driver reads and sets them by.
+SESSION_OPTIONS = ("catalog", "schema")
+
+
+def session_options(options: dict[str, str]) -> bytes:
+    """GetSessionOptions' answer: the session's ``options``, each a string."""
     value = flight_pb.SessionOptionValue
     result = flight_pb.GetSessionOptionsResult(
-        session_options={
-            "catalog": value(string_value=catalog),
-            "schema": value(string_value=schema),
-        }
+        session_options={name: value(string_value=v) for name, v in options.items()}
     )
     return result.SerializeToString()
+
+
+def session_options_set(refused: dict[str, flight_pb.SetSessionOptionsResult.ErrorValue]) -> bytes:
+    """SetSessionOptions' answer: each option refused, by name, with why (an ErrorValue)."""
+    error = flight_pb.SetSessionOptionsResult.Error
+    result = flight_pb.SetSessionOptionsResult(
+        errors={name: error(value=why) for name, why in refused.items()}
+    )
+    return result.SerializeToString()
+
+
+def session_closed() -> bytes:
+    """CloseSession's answer: the session is closed."""
+    return flight_pb.CloseSessionResult(
+        status=flight_pb.CloseSessionResult.CLOSED
+    ).SerializeToString()
+
+
+#: The one transaction id Provisa answers BeginTransaction with: a transaction holds nothing
+#: (REQ-883), so every one is the same.
+NO_OP_TRANSACTION = b"provisa-no-op"
+
+
+def transaction_begun() -> bytes:
+    """BeginTransaction's answer: the id of a transaction that holds nothing (REQ-883)."""
+    return pack(pb.ActionBeginTransactionResult(transaction_id=NO_OP_TRANSACTION))

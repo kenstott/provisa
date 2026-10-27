@@ -241,7 +241,7 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
     _, _, rate, cases = fill_docs.read(doc)
     assert rate == "50.0% (1 of 2); 1 cases not runnable by design"
     assert "| Digits below the microsecond | 1 |" in cases
-    assert "| REQ-2173 |" in cases
+    assert "REQ-" not in cases  # the requirement is the artifact's; a published page names none
 
 
 def test_a_group_with_no_requirement_is_refused(tmp_path, monkeypatch):

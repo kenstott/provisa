@@ -43,10 +43,16 @@ class ProvisaQuirks(model.DriverQuirks):
         statement_prepare=True,
         # An update is answered its affected count. The statement tests' CREATE TABLE is replaced
         # by emptying the seeded table (query_override), which affects none.
+        # Transaction control is acknowledged and holds no transaction (REQ-883).
+        connection_transactions=True,
+        # A session sets its current schema (SetSessionOptions, with the session cookie).
+        connection_set_current_schema=True,
         statement_rows_affected=True,
         statement_rows_affected_ddl=True,
         current_catalog=model.FromEnv("PROVISA_FLIGHT_CATALOG"),
         current_schema=model.FromEnv("PROVISA_FLIGHT_SCHEMA"),
+        # The fixture model's domain: a schema besides the current one (public).
+        secondary_schema="conformance",
     )
     setup = model.DriverSetup(
         database={
@@ -54,6 +60,8 @@ class ProvisaQuirks(model.DriverQuirks):
             # The job user's credential ("Bearer <token>") and the role it acts as.
             "adbc.flight.sql.authorization_header": model.FromEnv("CONFORMANCE_AUTHORIZATION"),
             "adbc.flight.sql.rpc.call_header.x-provisa-role": model.FromEnv("PROVISA_ROLE"),
+            # Keep the session cookie, so the options a session sets are its own.
+            "adbc.flight.sql.rpc.with_cookie_middleware": "true",
         },
         connection={},
         statement={},

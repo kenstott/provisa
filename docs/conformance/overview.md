@@ -38,7 +38,7 @@ Each tool entry gives the tool version and the date it was verified, plus how it
 | Bolt | Neo4j driver test kit | [bolt.md](bolt.md) |
 | GraphQL | graphql-http compliance audit | [graphql.md](graphql.md) |
 | pgwire | Postgres conformance suite + driver suites | [pgwire.md](pgwire.md) |
-| Arrow Flight SQL | Apache Arrow Flight SQL integration scenarios | [flight-sql.md](flight-sql.md) |
+| Arrow Flight SQL | ADBC driver validation suite | [flight-sql.md](flight-sql.md) |
 | REST / OpenAPI | TBD: suite to be chosen | [rest.md](rest.md) |
 | JSON:API | TBD: suite to be chosen | [jsonapi.md](jsonapi.md) |
 | gRPC | TBD: suite to be chosen | [grpc.md](grpc.md) |
