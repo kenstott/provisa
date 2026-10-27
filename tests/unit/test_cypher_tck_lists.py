@@ -233,3 +233,22 @@ def test_a_value_bound_where_a_pattern_reads_a_node_is_still_refused():
 )
 def test_a_slice_counts_a_negative_bound_from_the_end(query, row):
     assert _rows(query) == [row]
+
+
+@pytest.mark.parametrize(
+    ("query", "rows"),
+    [
+        # ReturnOrderBy4 [1]: a computed index is 0-based, as a written one is.
+        (
+            "WITH [10, 20, 30] AS l, 1 AS i RETURN l[i] AS a, l[-i] AS b, l[i - 2] AS c",
+            [(20, 30, 30)],
+        ),
+        (
+            "WITH [0, 1] AS prows, [[2], [3, 4]] AS qrows UNWIND prows AS p UNWIND qrows[p] AS q"
+            " WITH p, count(q) AS rng RETURN p ORDER BY rng",
+            [(0,), (1,)],
+        ),
+    ],
+)
+def test_a_computed_index_is_zero_based(query, rows):
+    assert _rows(query) == rows

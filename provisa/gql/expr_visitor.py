@@ -1091,6 +1091,20 @@ class ExprLowering:
         idx = self.lower(node.index)
         if isinstance(node.index, Literal) and node.index.kind == "number":
             idx = exp.Literal.number(int(cast("int | float", node.index.value)) + 1)
+        elif not (isinstance(node.index, Unary) and node.index.op == "-") and (
+            self._ctx.is_list(node.obj) or self._value_kind(node.index) == "number"
+        ):
+            # A computed index into a list: from the start shifted to the engine's 1-based one,
+            # from the end (negative) as it is.
+            idx = exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.GTE(this=idx.copy(), expression=exp.Literal.number(0)),
+                        true=exp.Add(this=idx.copy(), expression=exp.Literal.number(1)),
+                    )
+                ],
+                default=idx,
+            )
         return _anon("element_at", base, idx)
 
     def _lower_Slice(self, node: Slice) -> exp.Expression:
