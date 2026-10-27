@@ -94,13 +94,26 @@ def test_a_list_of_values_of_several_types_is_one_list_in_the_answer():
     assert rows == [{"literal": [0.2, "a", None, 71034856, False]}]
 
 
-def test_a_literal_nested_deeper_than_the_sql_parser_reads_in_time_is_refused_by_name():
-    from provisa.cypher.parser import MAX_LITERAL_DEPTH, CypherParseError
+@pytest.mark.parametrize(
+    ("literal", "value"),
+    [
+        ("[" * 40 + "]" * 40, eval("[" * 40 + "]" * 40)),
+        ("{a: " * 40 + "1" + "}" * 40, eval('{"a": ' * 40 + "1" + "}" * 40)),
+    ],
+)
+def test_a_literal_nested_40_deep_answers_in_time(literal, value):
+    # openCypher TCK Literals7 [12], Literals8 [16]: written as one JSON literal past
+    # expr_visitor._DEEPEST_NESTED levels, so the SQL's parse never meets 40 levels of ARRAY[.
+    import time
 
-    assert _rows("RETURN " + "[" * MAX_LITERAL_DEPTH + "]" * MAX_LITERAL_DEPTH + " AS l")
-    deep = MAX_LITERAL_DEPTH + 1
-    with pytest.raises(CypherParseError, match=f"nests {deep} deep"):
-        parse_cypher("RETURN " + "[" * deep + "]" * deep + " AS l")
+    from provisa.gql.assembler import assemble_rows
+
+    started = time.perf_counter()
+    sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(f"RETURN {literal} AS l"), _EMPTY, {})
+    sql = sqlglot.transpile(sql_ast.sql(dialect="postgres"), read="postgres", write="duckdb")[0]
+    raw = duckdb.sql(sql).fetchall()
+    assert time.perf_counter() - started < 10.0
+    assert assemble_rows([{"l": raw[0][0]}], graph_vars) == [{"l": value}]
 
 
 def test_a_time_value_is_written_in_the_answer_as_iso_8601():
