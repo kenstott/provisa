@@ -34,7 +34,7 @@ CQL_TYPE_TO_IR = {
     "decimal": "DECIMAL",
     "double": "DOUBLE",
     "float": "REAL",
-    "inet": "VARCHAR",
+    "inet": "inet",  # REQ-2171
     "int": "INTEGER",
     "smallint": "SMALLINT",
     "text": "VARCHAR",
@@ -44,7 +44,9 @@ CQL_TYPE_TO_IR = {
     "tinyint": "smallint",
     "uuid": "UUID",
     "varchar": "VARCHAR",
-    "varint": "BIGINT",
+    # REQ-2171: an arbitrary-precision integer, held exactly to 38 digits.
+    "varint": "numeric(38,0)",
+    "duration": "interval",
     "list": "VARCHAR",
     "map": "VARCHAR",
     "set": "VARCHAR",

@@ -48,6 +48,26 @@ _PG_TYPE_ROWS = [
     (790, "money", 11, 8, "b", "N", False, 0, True, "d", "p"),
     (829, "macaddr", 11, 6, "b", "U", False, 0, False, "i", "p"),
     (869, "inet", 11, -1, "b", "I", False, 0, False, "i", "m"),
+    (774, "macaddr8", 11, 8, "b", "U", False, 0, False, "i", "p"),
+    (628, "line", 11, 24, "b", "G", False, 0, False, "d", "p"),
+    (601, "lseg", 11, 32, "b", "G", False, 0, False, "d", "p"),
+    (603, "box", 11, 32, "b", "G", False, 0, False, "d", "p"),
+    (602, "path", 11, -1, "b", "G", False, 0, False, "d", "x"),
+    (604, "polygon", 11, -1, "b", "G", False, 0, False, "d", "x"),
+    (718, "circle", 11, 24, "b", "G", False, 0, False, "d", "p"),
+    (3904, "int4range", 11, -1, "r", "R", False, 0, False, "i", "x"),
+    (3926, "int8range", 11, -1, "r", "R", False, 0, False, "d", "x"),
+    (3906, "numrange", 11, -1, "r", "R", False, 0, False, "i", "x"),
+    (3908, "tsrange", 11, -1, "r", "R", False, 0, False, "d", "x"),
+    (3910, "tstzrange", 11, -1, "r", "R", False, 0, False, "d", "x"),
+    (3912, "daterange", 11, -1, "r", "R", False, 0, False, "i", "x"),
+    (1560, "bit", 11, -1, "b", "V", False, 0, False, "i", "x"),
+    (1562, "varbit", 11, -1, "b", "V", False, 0, False, "i", "x"),
+    (3614, "tsvector", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    # PostGIS's types, at Provisa's own OIDs (ir_types.SUBTYPES); present whether or not the
+    # PostGIS surface is enabled, since a registered column may be one.
+    (8310, "geometry", 11, -1, "b", "U", False, 0, False, "d", "m"),
+    (8311, "geography", 11, -1, "b", "U", False, 0, False, "d", "m"),
 ]
 
 # OID → (attlen, attbyval, attalign, attstorage)
@@ -77,6 +97,24 @@ _PG_OID_ATTR_META: dict[int, tuple[int, bool, str, str]] = {
     790: (8, True, "d", "p"),  # money
     829: (6, False, "i", "p"),  # macaddr
     869: (-1, False, "i", "m"),  # inet
+    774: (8, False, "i", "p"),  # macaddr8
+    628: (24, False, "d", "p"),  # line
+    601: (32, False, "d", "p"),  # lseg
+    603: (32, False, "d", "p"),  # box
+    602: (-1, False, "d", "x"),  # path
+    604: (-1, False, "d", "x"),  # polygon
+    718: (24, False, "d", "p"),  # circle
+    3904: (-1, False, "i", "x"),  # int4range
+    3926: (-1, False, "d", "x"),  # int8range
+    3906: (-1, False, "i", "x"),  # numrange
+    3908: (-1, False, "d", "x"),  # tsrange
+    3910: (-1, False, "d", "x"),  # tstzrange
+    3912: (-1, False, "i", "x"),  # daterange
+    1560: (-1, False, "i", "x"),  # bit
+    1562: (-1, False, "i", "x"),  # varbit
+    3614: (-1, False, "i", "x"),  # tsvector
+    8310: (-1, False, "d", "m"),  # geometry
+    8311: (-1, False, "d", "m"),  # geography
 }
 
 _TYPEINFO_COLS = [
@@ -145,6 +183,25 @@ _TYPEINFO: dict[int, tuple] = {
     790: ("pg_catalog", "money", "b", None, None, None, None),
     829: ("pg_catalog", "macaddr", "b", None, None, None, None),
     869: ("pg_catalog", "inet", "b", None, None, None, None),
+    774: ("pg_catalog", "macaddr8", "b", None, None, None, None),
+    628: ("pg_catalog", "line", "b", None, None, None, None),
+    601: ("pg_catalog", "lseg", "b", None, None, None, None),
+    603: ("pg_catalog", "box", "b", None, None, None, None),
+    602: ("pg_catalog", "path", "b", None, None, None, None),
+    604: ("pg_catalog", "polygon", "b", None, None, None, None),
+    718: ("pg_catalog", "circle", "b", None, None, None, None),
+    # A range type names the type of its bounds.
+    3904: ("pg_catalog", "int4range", "r", None, None, None, 23),
+    3926: ("pg_catalog", "int8range", "r", None, None, None, 20),
+    3906: ("pg_catalog", "numrange", "r", None, None, None, 1700),
+    3908: ("pg_catalog", "tsrange", "r", None, None, None, 1114),
+    3910: ("pg_catalog", "tstzrange", "r", None, None, None, 1184),
+    3912: ("pg_catalog", "daterange", "r", None, None, None, 1082),
+    1560: ("pg_catalog", "bit", "b", None, None, None, None),
+    1562: ("pg_catalog", "varbit", "b", None, None, None, None),
+    3614: ("pg_catalog", "tsvector", "b", None, None, None, None),
+    8310: ("public", "geometry", "b", None, None, None, None),
+    8311: ("public", "geography", "b", None, None, None, None),
     # Array types
     199: ("pg_catalog", "_json", "b", None, 114, ",", None),
     1000: ("pg_catalog", "_bool", "b", None, 16, ",", None),
@@ -479,4 +536,6 @@ def typeinfo() -> dict[int, tuple]:
 
 def pg_type_rows() -> list[tuple]:
     """Built-in _pg_type rows merged with enabled extension-surface type rows (REQ-892)."""
-    return [*_PG_TYPE_ROWS, *surface_pg_type_rows()]
+    # REQ-2171: the PostGIS surface declares types the subtypes already hold; each OID once.
+    held = {row[0] for row in _PG_TYPE_ROWS}
+    return [*_PG_TYPE_ROWS, *(row for row in surface_pg_type_rows() if row[0] not in held)]

@@ -1407,7 +1407,8 @@ def _pg_column_typing(
     if data_type == _PG_USER_DEFINED:
         if typtype == "c":
             return composite_typing(formatted or udt_name, kind)
-        return ColumnTyping("text")
+        # REQ-2171: an extension's type that is a subtype (PostGIS geometry and geography).
+        return ColumnTyping(subtype_of(udt_name, kind) or "text")
     if data_type == "numeric" and formatted and formatted != "numeric":
         return ColumnTyping(formatted)  # a sized decimal keeps its size (REQ-1961)
     subtype = subtype_of(data_type, kind)

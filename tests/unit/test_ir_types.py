@@ -99,7 +99,7 @@ def test_a_character_set_after_a_type_that_is_not_character_is_still_refused():
 
 def test_unknown_type_raises_no_varchar_default():
     with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        to_ir("geography")
+        to_ir("hierarchyid")
 
 
 def test_to_sqlalchemy_maps_ir_and_native():
@@ -112,7 +112,7 @@ def test_to_sqlalchemy_maps_ir_and_native():
 
 def test_is_ir_type():
     assert is_ir_type("varchar") and is_ir_type("timestamp with time zone")
-    assert not is_ir_type("geography")
+    assert not is_ir_type("hierarchyid")
 
 
 def test_to_physical_renders_per_dialect():

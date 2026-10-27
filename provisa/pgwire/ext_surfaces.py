@@ -34,6 +34,8 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
+from provisa.core.ir_types import SUBTYPES
+
 _ENV_VAR = "PROVISA_PGWIRE_EXT_SURFACES"
 
 # pg_trgm's default similarity threshold; the `%` operator is `similarity(a,b) >= 0.3`.
@@ -42,8 +44,9 @@ _PG_TRGM_THRESHOLD = 0.3
 # Surface type OIDs live in a private high range (8300-8399) so they never collide
 # with the 8001+ pg_catalog-table / 9001+ information_schema-view OIDs.
 _VECTOR_OID = 8300
-_GEOMETRY_OID = 8310
-_GEOGRAPHY_OID = 8311
+# REQ-2171: PostGIS's types are subtypes, at the OIDs the subtypes declare.
+_GEOMETRY_OID = SUBTYPES["geometry"].pg_oid
+_GEOGRAPHY_OID = SUBTYPES["geography"].pg_oid
 
 # pgcrypto digest() algorithm → federation-engine hash function.
 _DIGEST_FUNCS = {"md5": "md5", "sha1": "sha1", "sha256": "sha256", "sha512": "sha512"}

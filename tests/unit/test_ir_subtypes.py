@@ -42,15 +42,33 @@ from provisa.pgwire.catalog_data import _PG_OID_ATTR_META, _TYPEINFO, pg_type_ro
 from provisa.pgwire.catalog_populate import _physical_to_pg_name, _physical_to_pg_oid
 from provisa.pgwire.server import _sql_type_to_bvtype
 
-# name: (base IR type, PostgreSQL type OID), as the requirement's first set declares them.
+# name: (base IR type, PostgreSQL type OID): one subtype per distinct PostgreSQL type.
 _FIRST_SET = {
     "inet": ("text", 869),
     "cidr": ("text", 650),
     "macaddr": ("text", 829),
+    "macaddr8": ("text", 774),
     "xml": ("text", 142),
-    "point": ("text", 600),
     "oid": ("bigint", 26),
     "money": ("numeric", 790),
+    "point": ("text", 600),
+    "line": ("text", 628),
+    "lseg": ("text", 601),
+    "box": ("text", 603),
+    "path": ("text", 602),
+    "polygon": ("text", 604),
+    "circle": ("text", 718),
+    "geometry": ("text", 8310),
+    "geography": ("text", 8311),
+    "int4range": ("text", 3904),
+    "int8range": ("text", 3926),
+    "numrange": ("text", 3906),
+    "tsrange": ("text", 3908),
+    "tstzrange": ("text", 3910),
+    "daterange": ("text", 3912),
+    "bit": ("text", 1560),
+    "varbit": ("text", 1562),
+    "tsvector": ("text", 3614),
 }
 
 
@@ -74,15 +92,20 @@ def test_a_subtype_is_its_base_type_to_every_surface_that_needs_only_the_base(na
         ("ipaddress", "trino", "inet"),
         ("IPv4", "clickhouse", "inet"),
         ("IPv6", "clickhouse", "inet"),
-        ("ip", "elasticsearch", "inet"),
-        ("geo_point", "elasticsearch", "point"),
-        ("inet", "cassandra", "inet"),
         ("INET", "duckdb", "inet"),
         ("money", "sqlserver", "money"),
         ("smallmoney", "sqlserver", "money"),
         ("xml", "sqlserver", "xml"),
+        ("geometry", "sqlserver", "geometry"),
+        ("geography", "sqlserver", "geography"),
         ("xmltype", "oracle", "xml"),
-        ("point", "mysql", "point"),
+        ("point", "mysql", "geometry"),
+        ("geometry", "mysql", "geometry"),
+        ("linestring", "mysql", "geometry"),
+        ("polygon", "mysql", "geometry"),
+        ("multipolygon", "mariadb", "geometry"),
+        ("bit(8)", "mysql", "bit"),
+        ("bit varying(12)", "postgresql", "varbit"),
     ],
 )
 def test_a_native_type_equivalent_to_a_subtype_registers_as_it(native, platform, subtype):
@@ -91,10 +114,69 @@ def test_a_native_type_equivalent_to_a_subtype_registers_as_it(native, platform,
     assert to_ir(native, platform) == to_ir(subtype)
 
 
+_POSTGIS = {"geometry", "geography"}
+
+
 @pytest.mark.parametrize("kind", ["postgresql", "cockroachdb", "yugabytedb"])
-@pytest.mark.parametrize("native", sorted(_FIRST_SET))
+@pytest.mark.parametrize("native", sorted(set(_FIRST_SET) - _POSTGIS))
 def test_a_postgres_wire_column_of_a_subtype_registers_as_it(kind, native):
-    assert _pg_column_typing(kind, native, native, native, "b").data_type == native
+    data_type = "bit varying" if native == "varbit" else native
+    assert _pg_column_typing(kind, data_type, native, native, "b").data_type == native
+
+
+@pytest.mark.parametrize("native", sorted(_POSTGIS))
+def test_a_postgis_column_registers_as_its_subtype(native):
+    # information_schema names an extension's type USER-DEFINED, and its udt_name.
+    assert _pg_column_typing("postgresql", "USER-DEFINED", native, native, "b").data_type == native
+
+
+def test_a_platforms_own_meaning_of_a_subtypes_name_is_kept():
+    # SQL Server's bit is a boolean, not a bit string.
+    assert column_typing("bit", "sqlserver").data_type == "boolean"
+
+
+@pytest.mark.parametrize(
+    ("es_type", "registered"),
+    [
+        ("ip", "inet"),
+        ("geo_point", "geography"),
+        ("geo_shape", "geography"),
+        ("point", "geometry"),
+        ("shape", "geometry"),
+        ("integer_range", "int4range"),
+        ("long_range", "int8range"),
+        ("float_range", "numrange"),
+        ("double_range", "numrange"),
+        ("date_range", "tstzrange"),
+        ("ip_range", "varchar"),
+    ],
+)
+def test_an_elasticsearch_field_registers_as_its_subtype(es_type, registered):
+    from provisa.elasticsearch.source import discover_schema
+
+    (column,) = discover_schema({"f": {"type": es_type}})
+    assert column["type"].lower() == registered
+
+
+@pytest.mark.parametrize(
+    ("cql_type", "registered"),
+    [("inet", "inet"), ("varint", "numeric(38,0)"), ("duration", "interval")],
+)
+def test_a_cassandra_column_registers_as_its_ir_type(cql_type, registered):
+    from provisa.cassandra.source import discover_schema
+
+    (column,) = discover_schema(
+        {"columns": [{"name": "c", "type": cql_type}], "partition_keys": [], "clustering_keys": []}
+    )
+    assert column["type"] == registered
+
+
+@pytest.mark.parametrize(
+    ("native", "platform", "registered"),
+    [("year", "mysql", "integer")],
+)
+def test_a_source_type_with_no_subtype_maps_onto_a_base(native, platform, registered):
+    assert to_ir(native, platform) == registered
 
 
 # --- the store keeps the base type and the subtype ----------------------------------------------
@@ -357,3 +439,43 @@ async def test_a_money_column_registers_as_money_and_is_never_sampled_as_an_unsi
         ("price", "numeric(38,2)"),
     ]
     assert sum("scale(" in s for s in pool.statements) == 1
+
+
+def test_pgwire_sends_the_shapes_ranges_bit_strings_and_tsvector_in_binary_form():
+    assert _binary("macaddr8", "08:00:2b:01:02:03:04:05") == bytes.fromhex("08002b0102030405")
+    assert _binary("macaddr8", "08:00:2b:01:02:03") == bytes.fromhex("08002bfffe010203")
+    assert _binary("line", "{1,-1,0}") == struct.pack("!ddd", 1, -1, 0)
+    assert _binary("lseg", "[(0,0),(1,1)]") == struct.pack("!dddd", 0, 0, 1, 1)
+    assert _binary("box", "(1,1),(0,0)") == struct.pack("!dddd", 1, 1, 0, 0)
+    assert _binary("circle", "<(1,2),3>") == struct.pack("!ddd", 1, 2, 3)
+    assert _binary("path", "((0,0),(1,0),(1,1))") == struct.pack("!bi6d", 1, 3, 0, 0, 1, 0, 1, 1)
+    assert _binary("path", "[(0,0),(1,1)]") == struct.pack("!bi4d", 0, 2, 0, 0, 1, 1)
+    assert _binary("polygon", "((0,0),(1,0),(1,1))") == struct.pack("!i6d", 3, 0, 0, 1, 0, 1, 1)
+    assert _binary("bit", "101") == struct.pack("!i", 3) + bytes([0b10100000])
+    assert _binary("varbit", "101100001") == struct.pack("!i", 9) + bytes([0b10110000, 0x80])
+    assert _binary("int4range", "[1,10)") == (
+        bytes([0x02]) + struct.pack("!ii", 4, 1) + struct.pack("!ii", 4, 10)
+    )
+    assert _binary("int8range", "(,10)") == bytes([0x08]) + struct.pack("!iq", 8, 10)
+    assert _binary("int4range", "empty") == bytes([0x01])
+    assert _binary("daterange", "[2026-01-01,2026-02-01)") == (
+        bytes([0x02])
+        + struct.pack("!i", 4)
+        + struct.pack("!i", 9497)
+        + struct.pack("!i", 4)
+        + struct.pack("!i", 9528)
+    )
+    assert _binary("tstzrange", '["2026-01-01 00:00:00+00",)')[:1] == bytes([0x02 | 0x10])
+    assert _binary("tsvector", "'a':1A 'b''c':2,3") == (
+        struct.pack("!i", 2)
+        + b"a\x00"
+        + struct.pack("!HH", 1, (3 << 14) | 1)
+        + b"b'c\x00"
+        + struct.pack("!HHH", 2, 2, 3)
+    )
+
+
+def test_geometry_and_geography_are_sent_in_text_form_only():
+    assert _text("geometry", "POINT(1 2)") == "POINT(1 2)"
+    with pytest.raises(ValueError, match="text format only"):
+        _binary("geography", "POINT(1 2)")

@@ -330,7 +330,7 @@ async def test_mv_with_unmapped_output_type_skipped(monkeypatch):
     build_through_a_stand_in_pipeline(monkeypatch)
     # an unmapped output type is an IR vocabulary gap → the MV is skipped (not silently defaulted).
     n = await wire_event_loop(
-        _Sched(), state=_state_with_mv(column_types=["date", "geometry"]), log=_LOG
+        _Sched(), state=_state_with_mv(column_types=["date", "hierarchyid"]), log=_LOG
     )
     assert n == 0  # no node — its columns did not resolve to IR
 

@@ -121,45 +121,102 @@ class Subtype:  # REQ-2171
     pg_oid: int
 
 
-# REQ-2171: the subtypes, each declared once. A subtype's name is its PostgreSQL type name.
+# REQ-2171: the subtypes, each declared once: one per distinct PostgreSQL type the IR's base
+# types would hide. A subtype's name is its PostgreSQL type name; its values are held in
+# PostgreSQL's own text form on a text base.
 SUBTYPES: dict[str, Subtype] = {
     "inet": Subtype("text", 869),
     "cidr": Subtype("text", 650),
     "macaddr": Subtype("text", 829),
+    "macaddr8": Subtype("text", 774),
     "xml": Subtype("text", 142),
-    "point": Subtype("text", 600),
     "oid": Subtype("bigint", 26),
     # Sized so every source's money is held exactly: PostgreSQL's (int64 cents, 17 integer
     # digits) and SQL Server's (int64 ten-thousandths, 4 decimals).
     "money": Subtype("numeric(21,4)", 790),
+    # PostgreSQL's built-in shapes.
+    "point": Subtype("text", 600),
+    "line": Subtype("text", 628),
+    "lseg": Subtype("text", 601),
+    "box": Subtype("text", 603),
+    "path": Subtype("text", 602),
+    "polygon": Subtype("text", 604),
+    "circle": Subtype("text", 718),
+    # PostGIS's planar and geodetic types, in WKT. PostGIS has no fixed type OID (the extension
+    # assigns one at install), so these are Provisa's own, in the private range pgwire's PostGIS
+    # surface declares them in.
+    "geometry": Subtype("text", 8310),
+    "geography": Subtype("text", 8311),
+    # The range types, in PostgreSQL's range text form ("[1,10)").
+    "int4range": Subtype("text", 3904),
+    "int8range": Subtype("text", 3926),
+    "numrange": Subtype("text", 3906),
+    "tsrange": Subtype("text", 3908),
+    "tstzrange": Subtype("text", 3910),
+    "daterange": Subtype("text", 3912),
+    # Bit strings, in PostgreSQL's text form ("0101").
+    "bit": Subtype("text", 1560),
+    "varbit": Subtype("text", 1562),
+    "tsvector": Subtype("text", 3614),
+}
+
+# REQ-2171: a spelling of a subtype that is not its name, on any platform.
+_SUBTYPE_SPELLINGS: dict[str, str] = {"bit varying": "varbit"}
+
+# MySQL's spatial types are PostGIS's planar geometry, whichever shape a column declares.
+_MYSQL_SPATIAL = {
+    name: "geometry"
+    for name in (
+        "geometry",
+        "point",
+        "linestring",
+        "polygon",
+        "multipoint",
+        "multilinestring",
+        "multipolygon",
+        "geometrycollection",
+        "geomcollection",
+    )
 }
 
 # REQ-2171: a native spelling equivalent to a subtype, per source platform. A subtype's own name
-# (PostgreSQL's, which CockroachDB, YugabyteDB, DuckDB, Cassandra and MySQL share where they have
-# the type) needs no entry.
+# (PostgreSQL's, which CockroachDB, YugabyteDB, DuckDB and SQL Server share where they have the
+# type) needs no entry.
 _PLATFORM_SUBTYPES: dict[str, dict[str, str]] = {
     "trino": {"ipaddress": "inet"},
     "clickhouse": {"ipv4": "inet", "ipv6": "inet"},
-    "elasticsearch": {"ip": "inet", "geo_point": "point"},
     "sqlserver": {"money": "money", "smallmoney": "money", "xml": "xml"},
     "oracle": {"xmltype": "xml"},
+    **{kind: _MYSQL_SPATIAL for kind in ("mysql", "mariadb", "tidb", "singlestore")},
 }
 
 
 def subtype_of(native_type: str, platform: str | None = None) -> str | None:
-    """The subtype a native spelling registers as (REQ-2171), or None when it has none."""
+    """The subtype a native spelling registers as (REQ-2171), or None when it has none. A
+    platform's own meaning of a spelling (SQL Server's ``bit`` is a boolean) is never a
+    subtype's."""
     name = type_name(native_type)
     if platform:
-        own = _PLATFORM_SUBTYPES.get(platform.split("+", 1)[0], {}).get(name)
+        kind = platform.split("+", 1)[0]
+        own = _PLATFORM_SUBTYPES.get(kind, {}).get(name)
         if own is not None:
             return own
+        if name in _PLATFORM_ALIASES.get(kind, {}):
+            return None
+    return subtype_named(name)
+
+
+def subtype_named(type_spelling: str) -> str | None:
+    """The subtype ``type_spelling`` names, in any of its spellings (REQ-2171), or None."""
+    name = type_name(type_spelling)
+    name = _SUBTYPE_SPELLINGS.get(name, name)
     return name if name in SUBTYPES else None
 
 
 def base_type(type_spelling: str) -> str:
     """A subtype's base type (REQ-2171); any other type is its own."""
-    sub = SUBTYPES.get(type_name(type_spelling))
-    return sub.base if sub is not None else type_spelling
+    named = subtype_named(type_spelling)
+    return SUBTYPES[named].base if named is not None else type_spelling
 
 
 # Native / dialect spelling → canonical IR name. Everything a source or reflection reports maps
@@ -277,7 +334,11 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
     },
     # REQ-2050: MySQL's TIMESTAMP is an instant (stored in UTC, read in the session's zone, which
     # the driver sets to UTC); its DATETIME is a civil date and time.
-    **{kind: {"timestamp": "timestamptz"} for kind in ("mysql", "mariadb", "tidb", "singlestore")},
+    # REQ-2171: a YEAR is a four-digit integer.
+    **{
+        kind: {"timestamp": "timestamptz", "year": "integer"}
+        for kind in ("mysql", "mariadb", "tidb", "singlestore")
+    },
     "bigquery": {
         "int64": "bigint",
         "float64": "double",
@@ -574,7 +635,7 @@ def _array_of_a_primitive(shape: NativeType, platform: str | None) -> tuple[int,
     if not is_ir_type(node.spelling, platform):
         # REQ-1965: registering a natively nested column is never an error, and only an array
         # whose innermost element is a semantic SQL type has a depth above 0. An element with no
-        # semantic type (a ClickHouse Polygon, a PostGIS geometry) leaves the column plain JSON:
+        # semantic type (a ClickHouse Nothing) leaves the column plain JSON:
         # the whole value and the untyped operations work, nothing inside is typed.
         return None
     if platform and platform.split("+", 1)[0] in _ONE_LEVEL_ARRAY_PLATFORMS:

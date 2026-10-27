@@ -58,7 +58,7 @@ ES_TYPE_TO_IR = {
     "semantic_text": "VARCHAR",
     "token_count": "INTEGER",
     # Identifiers / misc scalars
-    "ip": "VARCHAR",
+    "ip": "inet",  # REQ-2171
     "version": "VARCHAR",
     # Objects / relational (rendered as JSON text)
     "object": "VARCHAR",
@@ -67,18 +67,19 @@ ES_TYPE_TO_IR = {
     "join": "VARCHAR",
     "passthrough": "VARCHAR",
     "alias": "VARCHAR",
-    # Range types
-    "integer_range": "VARCHAR",
-    "long_range": "VARCHAR",
-    "float_range": "VARCHAR",
-    "double_range": "VARCHAR",
-    "date_range": "VARCHAR",
+    # Range types: PostgreSQL's (REQ-2171). An ip_range has no PostgreSQL range type.
+    "integer_range": "int4range",
+    "long_range": "int8range",
+    "float_range": "numrange",
+    "double_range": "numrange",
+    "date_range": "tstzrange",  # an Elasticsearch date is an instant
     "ip_range": "VARCHAR",
-    # Spatial
-    "geo_point": "VARCHAR",
-    "geo_shape": "VARCHAR",
-    "point": "VARCHAR",
-    "shape": "VARCHAR",
+    # Spatial (REQ-2171): geo_* are geodetic, PostGIS geography; point and shape are cartesian,
+    # PostGIS geometry.
+    "geo_point": "geography",
+    "geo_shape": "geography",
+    "point": "geometry",
+    "shape": "geometry",
     # Vector / ranking
     "dense_vector": "VARCHAR",
     "sparse_vector": "VARCHAR",

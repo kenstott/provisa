@@ -56,6 +56,24 @@ class BVType(enum.Enum):
     POINT = 33
     OID = 34
     MONEY = 35
+    MACADDR8 = 36
+    LINE = 37
+    LSEG = 38
+    BOX = 39
+    PATH = 40
+    POLYGON = 41
+    CIRCLE = 42
+    GEOMETRY = 43
+    GEOGRAPHY = 44
+    INT4RANGE = 45
+    INT8RANGE = 46
+    NUMRANGE = 47
+    TSRANGE = 48
+    TSTZRANGE = 49
+    DATERANGE = 50
+    BIT = 51
+    VARBIT = 52
+    TSVECTOR = 53
 
 
 class RawDataRowBytes(bytes):

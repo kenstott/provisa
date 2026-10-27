@@ -302,6 +302,149 @@ def _macaddr_binary(v):
     return raw
 
 
+def _macaddr8_binary(v):
+    """macaddr8_send: 8 bytes; a 6-byte address is widened as PostgreSQL does (FF:FE inserted)."""
+    raw = bytes.fromhex(re.sub(r"[:\-.]", "", str(v)))
+    if len(raw) == 6:
+        raw = raw[:3] + b"\xff\xfe" + raw[3:]
+    if len(raw) != 8:
+        raise ValueError(f"not a macaddr8: {v!r}")
+    return raw
+
+
+_FLOAT8 = re.compile(r"[-+]?(?:Infinity|NaN|inf|(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)")
+
+
+def _floats(v, count=None):
+    """The float8s of a shape's text form, in order."""
+    values = [float(x) for x in _FLOAT8.findall(str(v))]
+    if count is not None and len(values) != count:
+        raise ValueError(f"expected {count} numbers in {v!r}")
+    return values
+
+
+def _shape_binary(count):
+    """line_send, lseg_send, box_send, circle_send: their float8s in text order."""
+    return lambda r: struct.pack(f"!{count}d", *_floats(r, count))
+
+
+def _path_binary(r):
+    """path_send: closed flag (a path written in parentheses is closed), point count, points."""
+    values = _floats(r)
+    closed = 1 if str(r).strip().startswith("(") else 0
+    return struct.pack(f"!bi{len(values)}d", closed, len(values) // 2, *values)
+
+
+def _polygon_binary(r):
+    values = _floats(r)
+    return struct.pack(f"!i{len(values)}d", len(values) // 2, *values)
+
+
+def _bit_binary(r):
+    """bit_send / varbit_send: bit count, then the bits packed high-first, the last byte padded."""
+    bits = str(r)
+    if bits.strip("01"):
+        raise ValueError(f"not a bit string: {r!r}")
+    padded = bits + "0" * (-len(bits) % 8)
+    return struct.pack("!i", len(bits)) + int(padded or "0", 2).to_bytes(len(padded) // 8, "big")
+
+
+def _range_bounds(text):
+    """``(lower, upper, flags)`` of a range's text form; each bound None when unbounded."""
+    text = text.strip()
+    if text.lower() == "empty":
+        return None, None, 0x01
+    flags = (0x02 if text[0] == "[" else 0) | (0x04 if text[-1] == "]" else 0)
+    bounds, current, quoted, i = [], "", False, 0
+    inner = text[1:-1]
+    while i < len(inner):
+        ch = inner[i]
+        if ch == "\\" and i + 1 < len(inner):
+            current += inner[i + 1]
+            i += 2
+            continue
+        if ch == '"':
+            quoted = not quoted
+        elif ch == "," and not quoted:
+            bounds.append(current)
+            current = ""
+        else:
+            current += ch
+        i += 1
+    bounds.append(current)
+    if len(bounds) != 2:
+        raise ValueError(f"not a range: {text!r}")
+    lower, upper = (b.strip() or None for b in bounds)
+    flags |= (0x08 if lower is None else 0) | (0x10 if upper is None else 0)
+    return lower, upper, flags & ~(0x02 if lower is None else 0) & ~(0x04 if upper is None else 0)
+
+
+def _range_binary(bound):
+    """range_send: flags, then each bounded bound length-prefixed in its element's binary form."""
+
+    def encode(r):
+        lower, upper, flags = _range_bounds(str(r))
+        out = [bytes([flags])]
+        for value in (lower, upper):
+            if value is not None:
+                encoded = bound(value)
+                out.append(struct.pack("!i", len(encoded)) + encoded)
+        return b"".join(out)
+
+    return encode
+
+
+_TSVECTOR_WEIGHTS = {"A": 3, "B": 2, "C": 1, "D": 0}
+
+
+def _tsvector_binary(r):
+    """tsvectorsend: lexeme count; each lexeme NUL-terminated, its position count, then each
+    position with its weight in the top two bits."""
+    text, i, lexemes = str(r), 0, []
+    while i < len(text):
+        if text[i] == " ":
+            i += 1
+            continue
+        if text[i] != "'":
+            raise ValueError(f"not a tsvector: {r!r}")
+        i += 1
+        lexeme = ""
+        while True:
+            if text[i] == "\\":
+                lexeme += text[i + 1]
+                i += 2
+            elif text[i] == "'" and text[i + 1 : i + 2] == "'":
+                lexeme += "'"
+                i += 2
+            elif text[i] == "'":
+                i += 1
+                break
+            else:
+                lexeme += text[i]
+                i += 1
+        positions = []
+        if text[i : i + 1] == ":":
+            match = re.match(r":((?:\d+[A-D]?,?)+)", text[i:])
+            if match is None:
+                raise ValueError(f"not a tsvector: {r!r}")
+            for item in match.group(1).rstrip(",").split(","):
+                weight = _TSVECTOR_WEIGHTS[item[-1]] if item[-1] in _TSVECTOR_WEIGHTS else 0
+                positions.append((weight << 14) | int(item.rstrip("ABCD")))
+            i += match.end()
+        lexemes.append(
+            lexeme.encode("utf-8")
+            + b"\x00"
+            + struct.pack(f"!H{len(positions)}H", len(positions), *positions)
+        )
+    return struct.pack("!i", len(lexemes)) + b"".join(lexemes)
+
+
+def _wkb_not_sent(r):
+    """PostGIS's binary form is EWKB; Provisa holds geometry and geography as WKT and sends them
+    as text only (docs/conformance/pgwire.md)."""
+    raise ValueError("geometry and geography are sent in text format only")
+
+
 def _float8_text(x):
     """float8out: the shortest exact form, with no trailing .0."""
     text = repr(float(x))
@@ -469,6 +612,40 @@ BVTYPE_TO_PGTYPE = {
     BVType.POINT: (600, _point_text, lambda r: struct.pack("!dd", *_point_parts(r))),
     BVType.OID: (26, str, lambda r: struct.pack("!I", int(r))),
     BVType.MONEY: (790, _money_text, lambda r: struct.pack("!q", _money_cents(r))),
+    BVType.MACADDR8: (774, str, _macaddr8_binary),
+    BVType.LINE: (628, str, _shape_binary(3)),
+    BVType.LSEG: (601, str, _shape_binary(4)),
+    BVType.BOX: (603, str, _shape_binary(4)),
+    BVType.PATH: (602, str, _path_binary),
+    BVType.POLYGON: (604, str, _polygon_binary),
+    BVType.CIRCLE: (718, str, _shape_binary(3)),
+    BVType.GEOMETRY: (8310, str, _wkb_not_sent),
+    BVType.GEOGRAPHY: (8311, str, _wkb_not_sent),
+    BVType.INT4RANGE: (3904, str, _range_binary(lambda b: struct.pack("!i", int(b)))),
+    BVType.INT8RANGE: (3926, str, _range_binary(lambda b: struct.pack("!q", int(b)))),
+    BVType.NUMRANGE: (3906, str, _range_binary(_numeric_to_pg_binary)),
+    BVType.TSRANGE: (
+        3908,
+        str,
+        _range_binary(
+            lambda b: _timestamp_binary(_micros_since_2000)(datetime.datetime.fromisoformat(b))
+        ),
+    ),
+    BVType.TSTZRANGE: (
+        3910,
+        str,
+        _range_binary(
+            lambda b: _timestamp_binary(_micros_since_2000_utc)(datetime.datetime.fromisoformat(b))
+        ),
+    ),
+    BVType.DATERANGE: (
+        3912,
+        str,
+        _range_binary(lambda b: _date_binary(datetime.date.fromisoformat(b))),
+    ),
+    BVType.BIT: (1560, str, _bit_binary),
+    BVType.VARBIT: (1562, str, _bit_binary),
+    BVType.TSVECTOR: (3614, str, _tsvector_binary),
 }
 
 

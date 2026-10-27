@@ -20,6 +20,10 @@ Postgres extensions are not loadable via `CREATE EXTENSION`. Where an extension 
 
 Extension functions (`pg_trgm`, `pg_vector`, PostGIS, etc.) are not available unless exposed as commands. TBD: specific cases from CI.
 
+### geometry and geography in binary format
+
+A `geometry` or `geography` column is reported with its PostGIS type name and is sent in text format only, as WKT. PostGIS's binary format (EWKB) is not sent; a client that asks for the column in binary format gets an error naming it.
+
 ### Server version
 
 `server_version_num` reports `140000` and `version()` reports PostgreSQL 14. Clients choose their catalog queries by this number, and the catalog queries Provisa answers are the ones PostgreSQL 14 clients send.

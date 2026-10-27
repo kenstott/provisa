@@ -544,13 +544,8 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "BYTEA": BVType.BYTES,
     "INTERVAL": BVType.INTERVAL,
     # REQ-2171: a subtyped column, described as its subtype, is sent as its PostgreSQL type.
-    "INET": BVType.INET,
-    "CIDR": BVType.CIDR,
-    "MACADDR": BVType.MACADDR,
-    "XML": BVType.XML,
-    "POINT": BVType.POINT,
-    "OID": BVType.OID,
-    "MONEY": BVType.MONEY,
+    **{name.upper(): BVType[name.upper()] for name in SUBTYPES},
+    "BIT VARYING": BVType.VARBIT,
 }
 _INT_TYPES = {
     "INTEGER",

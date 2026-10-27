@@ -138,10 +138,11 @@ def _stored_subtype(data_type: str, existing: tuple[str, str] | None) -> tuple[s
     """``(data_type, subtype)`` to store for a column registered as ``data_type`` (REQ-2171): a
     subtype is stored as its base carrying the subtype; the stored base restated keeps the stored
     subtype; any other type has none."""
-    from provisa.core.ir_types import SUBTYPES, base_type, type_name
+    from provisa.core.ir_types import base_type, subtype_named
 
-    if type_name(data_type) in SUBTYPES:
-        return base_type(data_type), type_name(data_type)
+    named = subtype_named(data_type)
+    if named is not None:
+        return base_type(data_type), named
     if existing is not None and existing[0] == data_type:
         return data_type, existing[1]
     return data_type, None

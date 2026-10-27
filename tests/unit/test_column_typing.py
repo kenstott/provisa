@@ -67,7 +67,7 @@ _PLAIN_JSON = [
     ("Map(String, UInt8)", "clickhouse"),
     ("Nested(a String, b UInt8)", "clickhouse"),
     ("Array(Tuple(String, UInt8))", "clickhouse"),
-    ("Array(Polygon)", "clickhouse"),  # an element with no semantic SQL type
+    ("Array(Nothing)", "clickhouse"),  # an element with no semantic SQL type
     ("STRUCT<a INT64, b ARRAY<STRING>>", "bigquery"),
     ("ARRAY<STRUCT<a INT64>>", "bigquery"),
     ("struct<a:int,b:string>", "databricks"),
