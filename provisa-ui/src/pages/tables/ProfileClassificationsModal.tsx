@@ -52,7 +52,7 @@ export function ProfileClassificationsModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  const { actingRoles } = useAuth();
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [decisions, setDecisions] = useState<ClassificationDecision[]>([]);
@@ -71,7 +71,7 @@ export function ProfileClassificationsModal({
   }, [reload]);
 
   useEffect(() => {
-    if (!role) return;
+    if (!actingRoles) return;
     fetchProfileRuns(tableId)
       .then(async (runs) => {
         const latest = runs.find((r) => r.status === "succeeded");
@@ -79,12 +79,12 @@ export function ProfileClassificationsModal({
           setSuggestions([]);
           return;
         }
-        const results = await fetchProfileRun(tableId, latest.run_id, role.id);
+        const results = await fetchProfileRun(tableId, latest.run_id, actingRoles);
         setRunId(latest.run_id);
         setSuggestions(results.classifications ?? []);
       })
       .catch((e: unknown) => setNotice({ ok: false, text: message(e) }));
-  }, [tableId, role]);
+  }, [tableId, actingRoles]);
 
   const kindLabel = (kind: unknown) => t(`classificationKinds.kind.${String(kind)}`);
 

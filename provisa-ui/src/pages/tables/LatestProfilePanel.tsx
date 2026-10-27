@@ -30,7 +30,7 @@ function cell(value: unknown): string {
 // and masks give them, and nothing when it was never registered (the caller renders no panel).
 export function LatestProfilePanel({ profileTable }: { profileTable: RegisteredTable }) {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  const { actingRoles } = useAuth();
   const [result, setResult] = useState<{
     columns: string[];
     rows: Record<string, unknown>[];
@@ -38,13 +38,13 @@ export function LatestProfilePanel({ profileTable }: { profileTable: RegisteredT
   } | null>(null);
 
   useEffect(() => {
-    if (!role) return;
+    if (!actingRoles) return;
     const ref = tableSqlRef(profileTable);
     runSql(
       `SELECT * FROM ${ref} WHERE "run_time" = (SELECT MAX("run_time") FROM ${ref})`,
-      role.id,
+      actingRoles,
     ).then(setResult);
-  }, [profileTable, role]);
+  }, [profileTable, actingRoles]);
 
   if (result == null) return null;
   return (
