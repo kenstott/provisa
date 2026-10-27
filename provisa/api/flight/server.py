@@ -257,6 +257,11 @@ class _NotFound(KeyError):
     pyarrow's Flight errors cannot (REQ-2175)."""
 
 
+class _Invalid(ValueError):
+    """A request the RPC refuses as given: pyarrow answers a ValueError INVALID_ARGUMENT, the
+    nearest it has to ALREADY_EXISTS, which no pyarrow error answers (REQ-2175)."""
+
+
 def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     """A Flight RPC's failure that is not a Flight error is a defect: log it with its traceback,
     then let pyarrow answer the client as before. A Flight error is the RPC's answer (not found,
@@ -273,7 +278,7 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
         def _stream(*args: Any, **kwargs: Any) -> Any:
             try:
                 yield from rpc(*args, **kwargs)
-            except (flight.FlightError, NotImplementedError, _NotFound):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            except (flight.FlightError, NotImplementedError, _NotFound, _Invalid):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 raise
             except Exception as exc:
                 _log(exc)
@@ -285,7 +290,7 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     def _call(*args: Any, **kwargs: Any) -> Any:
         try:
             return rpc(*args, **kwargs)
-        except (flight.FlightError, NotImplementedError, _NotFound):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        except (flight.FlightError, NotImplementedError, _NotFound, _Invalid):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             raise
         except Exception as exc:
             _log(exc)
@@ -944,6 +949,10 @@ class ProvisaFlightServer(
             count = self._run_update(context, [command.query])
             writer.write(pa.py_buffer(flightsql.update_result(count)))
             return
+        if isinstance(command, flightsql.pb.CommandStatementIngest):
+            count = self._ingest(context, command, reader.read_all())
+            writer.write(pa.py_buffer(flightsql.update_result(count)))
+            return
         if isinstance(command, flightsql.pb.CommandPreparedStatementUpdate):
             query, bound = flightsql.read_prepared_handle(command.prepared_statement_handle)
             rows = reader.read_all()
@@ -980,6 +989,49 @@ class ProvisaFlightServer(
                 raise _flight_error(str(exc), exc) from exc
 
         return _run_rpc(lambda: self._as_ticket_caller(request, _update))
+
+    def _ingest(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        command: Any,
+        rows: pa.Table,
+    ) -> int:
+        """Bulk ingest (REQ-2175): ``rows`` written into a table the model declares, as the
+        caller, through the one pipeline (:meth:`_run_update`), a batch of INSERT ... VALUES at a
+        time; their count. Nothing is defined through a query protocol (REQ-1926): a table the
+        model does not declare is not created, and one it declares is not created again or
+        replaced."""
+        options = flightsql.pb.CommandStatementIngest.TableDefinitionOptions
+        request = self._caller_headers(context)
+        name = command.table
+        schema = command.schema if command.HasField("schema") else None
+        catalog_name = command.catalog if command.HasField("catalog") else None
+
+        def _declared() -> list[str] | None:
+            if not request.get("role"):
+                raise _flight_error("role is required")
+            catalog = flightsql_catalog.role_catalog(self._state, str(request["role"]))
+            if catalog_name is not None and catalog_name != catalog.database:
+                raise _NotFound(f"no catalog {catalog_name!r}: the connection is served one")
+            found = [t for t in catalog.tables if t.name == name and schema in (None, t.schema)]
+            return [c for c, _ in catalog.columns.get(found[0].toid, [])] if found else None
+
+        columns = _run_rpc(lambda: self._as_ticket_caller(request, _declared))
+        how = command.table_definition_options
+        undefined = "nothing is defined through a query protocol: a table is defined in the model"
+        if columns is None:
+            if how.if_not_exist == options.TABLE_NOT_EXIST_OPTION_CREATE:
+                raise NotImplementedError(f"creating table {name!r}: {undefined}")
+            raise _NotFound(f"no table {name!r}")
+        if how.if_exists == options.TABLE_EXISTS_OPTION_REPLACE:
+            raise NotImplementedError(f"replacing table {name!r}: {undefined}")
+        if how.if_exists != options.TABLE_EXISTS_OPTION_APPEND:
+            raise _Invalid(f"table {name!r} already exists")
+        unknown = [c for c in rows.column_names if c not in columns]
+        if unknown:
+            raise _Invalid(f"{name} has no column {unknown[0]!r}")
+        statements = flightsql.ingest_statements(name, schema, rows)
+        return self._run_update(context, statements) if statements else 0
 
     def _flightsql_action(
         self,

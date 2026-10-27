@@ -235,6 +235,31 @@ def bound_statement(query: str, parameters: pa.Table | None) -> str:
     return "\nUNION ALL\n".join(f"({statement})" for statement in statements)
 
 
+#: The rows one INSERT of an ingest writes.
+INGEST_BATCH_ROWS = 500
+
+
+def ingest_statements(table: str, schema: str | None, rows: pa.Table) -> list[str]:
+    """``rows`` as INSERT ... VALUES statements into ``table`` (in ``schema`` when it is named),
+    :data:`INGEST_BATCH_ROWS` rows each, every value its SQL literal."""
+    from provisa.compiler.sql_literals import sql_literal
+
+    def quoted(identifier: str) -> str:
+        return '"' + identifier.replace('"', '""') + '"'
+
+    target = quoted(table) if schema is None else f"{quoted(schema)}.{quoted(table)}"
+    columns = ", ".join(quoted(c) for c in rows.column_names)
+    statements = []
+    for start in range(0, rows.num_rows, INGEST_BATCH_ROWS):
+        chunk = rows.slice(start, INGEST_BATCH_ROWS).to_pylist()
+        values = ", ".join(
+            "(" + ", ".join(sql_literal(row[c], "postgres") for c in rows.column_names) + ")"
+            for row in chunk
+        )
+        statements.append(f"INSERT INTO {target} ({columns}) VALUES {values}")
+    return statements
+
+
 def update_result(count: int) -> bytes:
     """An update's answer: DoPut's metadata, its affected count."""
     return pb.DoPutUpdateResult(record_count=count).SerializeToString()
