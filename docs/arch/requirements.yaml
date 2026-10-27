@@ -90132,7 +90132,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     before the union and the joins; instances whose definitions come out identical (same label set, same
     conditions) share one CTE. (a:Person {country:''US''}) and (b:Person) read two; (a:Person) and (c:Person)
     with no conditions read one. A relationship type keeps one CTE per type. This replaces ''one CTE per
-    label set''.'
+    label set''. (Amended 2026-10-27, SESSION READS ARE CACHED BY GRAPH VERSION:) Maintainer 2026-10-27:
+    the session''s graph index (the labels it holds, their anchor tables, its tags and relationship pairs)
+    carries a version that every session write advances. The overlaid label map is kept per role and version,
+    and a read while the session holds ephemeral objects is kept in the translation cache under the statement,
+    the role and that version, so a repeated read reuses its compiled SQL until the session next writes.
+    (Amended 2026-10-27, LABEL RESOLUTION LIVES IN THE SESSION''S LOOKUP TABLES:) Maintainer 2026-10-27:
+    the session graph''s lookup tables, kept at write time, also hold each label''s resolved form: its merged
+    columns with widened types and its arms (the anchor tables and the tagged model types). A write that
+    adds or removes a label updates them; the overlay reads them and computes nothing per statement. No
+    separate cache, no version and no invalidation; a read while the session holds ephemeral objects still
+    bypasses the kept-translation cache.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
