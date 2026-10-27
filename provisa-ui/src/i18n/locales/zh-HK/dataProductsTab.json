@@ -103,7 +103,7 @@
         "dataQuality": "數據質素"
       },
       "dataQualityEmpty": "沒有質素掃描",
-      "dataQualityHint": "其合約掃描此產品輸出埠的檢查表。每次執行每項檢查會寫入一行；成員資格跟隨被掃描的數據表。",
+      "dataQualityHint": "產品的檢查：對其輸入的預期、對其成員表的承諾，以及其他方（或無人）對兩者所做的相關檢查。開啟一項檢查即可查看其結果。",
       "dqRulesAria": "顯示 {{table}} 的質素規則",
       "dqRulesTitle": "質素規則 — {{table}}",
       "dqRulesEmpty": "合約未定義任何檢查",
@@ -113,8 +113,6 @@
       "lineageEmpty": "沒有血緣",
       "lineageLoading": "正在載入血緣…",
       "lineageHint": "欄位血緣圖，以此產品的數據表作為發佈端點，並列出用於衍生它們的所有上游數據表。僅供參考，需要 view_governance 能力。",
-      "inputPortsEmpty": "未記錄上游輸入",
-      "inputPortsHint": "此產品直接讀取的表（來自血緣）。展開表可查看其讀取的欄。需要 view_governance 能力。",
       "outputPortsHint": "此產品可查詢的範圍：其成員資料表和指令。每個的範例查詢見「存取模式」。",
       "customPropertiesEmpty": "沒有自訂屬性",
       "lineageLaneUpstream": "上游，第 {{n}} 跳",

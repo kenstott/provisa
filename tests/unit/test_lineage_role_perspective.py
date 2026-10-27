@@ -25,45 +25,70 @@ def _rows() -> list[dict]:
     return [
         {
             "domain_id": "pet-store",
+            "table_id": 1,
             "table_name": "pets",
             "column_name": "price",
-            "visible_to": ["vet"],
         },
         {
             "domain_id": "pet-store",
+            "table_id": 1,
             "table_name": "pets",
             "column_name": "name",
-            "visible_to": ["vet", "clerk"],
         },
         {
             "domain_id": "pet-store",
+            "table_id": 2,
             "table_name": "dim_pet",
             "column_name": "name",
-            "visible_to": ["clerk"],
         },
         {
             "domain_id": "hr",
+            "table_id": 3,
             "table_name": "staff",
             "column_name": "salary",
-            "visible_to": ["vet"],
         },
     ]
 
 
-def test_seeds_are_the_columns_the_role_can_query() -> None:
-    seeds, relations = _role_seeds(_rows(), {"clerk"}, set())
+# What each role is served (its compiled context), table id → physical columns.
+CLERK = {1: {"name"}, 2: {"name"}}
+VET = {1: {"price", "name"}, 3: {"salary"}}
+
+
+def test_seeds_are_the_columns_the_role_is_served() -> None:
+    seeds, relations = _role_seeds(_rows(), CLERK, set())
     assert seeds == {"pet_store.pets.name", "pet_store.dim_pet.name"}
     assert relations == {"pet_store.pets", "pet_store.dim_pet"}
 
 
+def test_the_lens_is_what_its_roles_are_served(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from provisa.api.admin import lineage_router
+
+    def ctx(served):
+        return SimpleNamespace(
+            tables={t: SimpleNamespace(table_id=t) for t in served},
+            physical_to_sql={(t, c): c for t, cols in served.items() for c in cols},
+        )
+
+    state = SimpleNamespace(contexts={"clerk": ctx(CLERK), "vet": ctx(VET)})
+    assert lineage_router._lens(state, set()) is None
+    assert lineage_router._lens(state, {"clerk", "vet"}) == {
+        1: {"price", "name"},
+        2: {"name"},
+        3: {"salary"},
+    }
+
+
 def test_no_role_selected_seeds_every_registered_column() -> None:
-    seeds, _ = _role_seeds(_rows(), set(), set())
+    seeds, _ = _role_seeds(_rows(), None, set())
     assert "hr.staff.salary" in seeds
     assert "pet_store.pets.price" in seeds
 
 
 def test_domain_filter_restricts_seeds_only() -> None:
-    seeds, relations = _role_seeds(_rows(), {"vet"}, {"pet-store"})
+    seeds, relations = _role_seeds(_rows(), VET, {"pet-store"})
     assert seeds == {"pet_store.pets.price", "pet_store.pets.name"}
     assert "hr.staff" not in relations
 

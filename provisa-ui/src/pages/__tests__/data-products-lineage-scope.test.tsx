@@ -8,28 +8,40 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1640, REQ-1666: the product detail's lineage is the LineageDag the Lineage page draws, over the
-// member tables (every column an output), their whole upstream ancestry and one hop downstream --
-// never the checker's results tables -- full width below the cards, for a role with
-// view_governance only.
+// REQ-1640, REQ-1666, REQ-2156: the product detail's lineage is the LineageDag the Lineage page
+// draws, over what the product lineage endpoint answers -- the member tables, their ancestry and one
+// hop downstream, cut to the reader's rights (the server's, held by its own tests) -- full width
+// below the cards, for any reader of the product: no governance right is asked.
 
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
-import type { LineageGraphData, LineageNode } from "../../api/lineage";
+import type {
+  LineageGraphData,
+  LineageNode,
+  ProductInput,
+  ProductLineage,
+} from "../../api/lineage";
 import type { DataProduct } from "../../types/admin";
 import type { ProductCore } from "../data-products/productCore";
 import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
 
 vi.mock("../../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
+  useAuth: () => ({
+    role: { id: "admin", capabilities: [] },
+    selectedRoles: [{ id: "admin" }],
+    availableRoles: [],
+  }),
 }));
-vi.mock("../../hooks/useCapability", () => ({ useCapability: () => true }));
+// Every right but view_governance: the product's lineage asks none.
+vi.mock("../../hooks/useCapability", () => ({
+  useCapability: (cap: string) => cap !== "view_governance",
+}));
 vi.mock("../../api/actions", () => ({
   fetchActions: () => Promise.resolve({ functions: [] }),
   saveFunction: vi.fn(),
 }));
-vi.mock("../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
   ProductMapButton: () => null,
 }));
 
@@ -46,9 +58,9 @@ const col = (
 });
 const edge = (source: string, target: string) => ({ source, target, transform: "", ops: [] });
 
-// breeds → pets → dim_pet → fact_pet (two hops downstream), plus the checker's results table; pets
-// is read natively from its source (the "native:" node relation is the lineage's internal key).
-const FEDERATION: LineageGraphData = {
+// What the endpoint answers for pet_health: breeds and staging → pets (its member) → dim_pet; pets is
+// read natively from its source (the "native:" node relation is the lineage's internal key).
+const LINEAGE: ProductLineage = {
   nodes: [
     col("native:pet_store.pets", "pet_id", "native"),
     col("pet_store.breeds", "name"),
@@ -56,22 +68,26 @@ const FEDERATION: LineageGraphData = {
     col("pet_store.pets", "name"),
     col("pet_store.pets", "id"),
     col("pet_store.dim_pet", "id", "derived"),
-    col("pet_store.fact_pet", "pet_id", "derived"),
-    col("pet_store.pets_quality", "scan_id", "derived"),
   ],
   edges: [
     edge("native:pet_store.pets.pet_id", "pet_store.pets.id"),
     edge("pet_store.breeds.name", "pet_store.pets.name"),
     edge("staging.pet_prices.price", "pet_store.pets.name"),
     edge("pet_store.pets.id", "pet_store.dim_pet.id"),
-    edge("pet_store.dim_pet.id", "pet_store.fact_pet.pet_id"),
-    edge("pet_store.pets.id", "pet_store.pets_quality.scan_id"),
   ],
-  outputs: [],
+  outputs: ["pet_store.pets.id", "pet_store.pets.name"],
+  members: ["pet_store.pets"],
+  consumers: [],
+  inputs: [],
+  dq: { expectations: [], promises: [], related: [], unattached: [] },
 };
+const asked: string[] = [];
 vi.mock("../../api/lineage", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/lineage")>()),
-  fetchFederationGraph: () => Promise.resolve(FEDERATION),
+  fetchProductLineage: (id: string) => {
+    asked.push(id);
+    return Promise.resolve(LINEAGE);
+  },
 }));
 
 // The DAG itself is the Lineage page's, held by its own tests: here, what it is given.
@@ -179,29 +195,14 @@ async function opened() {
   return drawn[drawn.length - 1];
 }
 
-describe("product detail lineage scope (REQ-1666)", () => {
-  it("keeps members, ancestry and one hop downstream; drops checker tables; every member column is an output", async () => {
-    const { graph: g } = await opened();
-    const relations = new Set(g.nodes.map((n) => n.relation));
-    expect(relations).toEqual(
-      new Set([
-        "native:pet_store.pets",
-        "pet_store.breeds",
-        "staging.pet_prices",
-        "pet_store.pets",
-        "pet_store.dim_pet",
-      ]),
-    );
-    // price was never in the federation graph; it is still a column of the published table.
-    expect(g.nodes.map((n) => n.id)).toContain("pet_store.pets.price");
-    expect(new Set(g.outputs)).toEqual(
-      new Set(["pet_store.pets.id", "pet_store.pets.name", "pet_store.pets.price"]),
-    );
-    expect(g.edges.map((e) => e.target)).not.toContain("pet_store.pets_quality.scan_id");
-    expect(g.edges.map((e) => e.target)).not.toContain("pet_store.fact_pet.pet_id");
+describe("product detail lineage scope (REQ-1666, REQ-2156)", () => {
+  it("draws what the product lineage endpoint answers for the expanded product", async () => {
+    const { graph } = await opened();
+    expect(asked).toContain("pet_health");
+    expect(graph).toBe(LINEAGE);
   });
 
-  it("builds its swimlanes around the member tables, the checker's left out", async () => {
+  it("builds its swimlanes around the members the endpoint names", async () => {
     const { members } = await opened();
     expect(members).toEqual(new Set(["pet_store.pets"]));
   });
@@ -218,58 +219,84 @@ describe("product detail lineage scope (REQ-1666)", () => {
   });
 });
 
-describe("the product's Input Ports (REQ-1660)", () => {
-  it("are one row per upstream table, named as the catalog does, its columns behind an expand", async () => {
-    render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
-    const ports = await screen.findByTestId("data-product-detail-input-ports-pet_health");
-    // pets' native read, breeds and an unregistered staging relation: three datasets, not one row
-    // per column. The unregistered one (REQ-1626) is named by its relation.
-    expect(ports.children).toHaveLength(3);
-    expect(within(ports).getByText("pet-store.pets")).toBeInTheDocument();
-    expect(within(ports).getByText("pet-store.breeds")).toBeInTheDocument();
-    expect(within(ports).getByText("staging.pet_prices")).toBeInTheDocument();
-    const toggle = screen.getByTestId("input-port-toggle-pet_store.pets");
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByTestId("input-port-columns-pet_store.pets")).toBeNull();
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("input-port-columns-pet_store.pets")).toHaveTextContent("pet_id");
-    fireEvent.click(toggle);
-    expect(screen.queryByTestId("input-port-columns-pet_store.pets")).toBeNull();
-    expect(document.body.textContent).not.toMatch(/native:/);
+const input = (relation: string, over: Partial<ProductInput> = {}): ProductInput => ({
+  relation,
+  kind: "source_table",
+  table_id: 1,
+  domain_id: "pet-store",
+  table_name: relation.split(".")[1],
+  alias: null,
+  product_id: null,
+  source_id: null,
+  source_type: null,
+  source_schema: null,
+  source_table: null,
+  ...over,
+});
+
+const panel = (lineage: ProductLineage | null) =>
+  render(
+    <DataProductDetailPanel
+      p={product}
+      core={CORE}
+      coreError={null}
+      reader={null}
+      canEdit={false}
+      canDelete={false}
+      owner
+      lineageLoading={false}
+      lineageError=""
+      lineageGraph={lineage}
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+      {...lifecycleProps()}
+    />,
+  );
+
+describe("the product's Input Ports, its nearest physical inputs (REQ-2126)", () => {
+  const listed = (inputs: ProductInput[]) => {
+    panel({ ...LINEAGE, inputs });
+    return within(screen.getByTestId("data-product-detail-inputs-pet_health"))
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+  };
+
+  it("lists the inputs the endpoint found, a registered one by its model name", () => {
+    expect(
+      listed([input("pet_store.breeds"), input("pet_store.dim_pet", { alias: "pets_dimension" })]),
+    ).toEqual(["pet-store.breeds", "pet-store.pets_dimension"]);
+  });
+
+  it("names a member read straight from a source by that source, each row its own", () => {
+    const source = (table: number, name: string) =>
+      input(`native:pet_store.${name}`, {
+        kind: "source",
+        table_id: table,
+        source_id: "pg",
+        source_type: "sqlite",
+        source_schema: "sales",
+        source_table: name,
+      });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(listed([source(1, "orders"), source(2, "customers")])).toEqual([
+      "pg/sales/orders (sqlite)",
+      "pg/sales/customers (sqlite)",
+    ]);
+    expect(logged.mock.calls.some((c) => String(c[0]).includes("same key"))).toBe(false);
+    logged.mockRestore();
+  });
+
+  it("are absent until the product's lineage is read", () => {
+    panel(null);
+    expect(screen.queryByTestId("data-product-card-inputPorts-pet_health")).toBeNull();
   });
 });
 
 describe("the product detail's lineage DAG (REQ-1640)", () => {
-  const panel = (canSeeLineage: boolean) =>
-    render(
-      <DataProductDetailPanel
-        p={product}
-        core={CORE}
-        coreError={null}
-        reader={null}
-        canEdit={false}
-        canSeeLineage={canSeeLineage}
-        lineageLoading={false}
-        lineageError=""
-        lineageGraph={FEDERATION}
-        inputPorts={[]}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-        {...lifecycleProps()}
-      />,
-    );
-
   it("is drawn below the cards, not as one of them", async () => {
-    panel(true);
+    panel(LINEAGE);
     fireEvent.click(screen.getByTestId("data-product-detail-lineage-toggle-pet_health"));
     expect(await screen.findByTestId("data-product-detail-lineage-pet_health")).toBeInTheDocument();
     expect(screen.queryByTestId("data-product-card-lineage-pet_health")).toBeNull();
-  });
-
-  it("is not drawn for a role without view_governance", () => {
-    panel(false);
-    expect(screen.queryByTestId("data-product-detail-lineage-toggle-pet_health")).toBeNull();
-    expect(screen.queryByTestId("data-product-detail-lineage-pet_health")).toBeNull();
   });
 });

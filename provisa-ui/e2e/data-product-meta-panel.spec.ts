@@ -114,25 +114,25 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     const refused = recordRefusals(page);
     await page.goto(`/data-products?product=${PRODUCT}`);
     await shows(page.getByTestId(`data-product-detail-${PRODUCT}`), refused, 90_000);
-    const kg = page.getByTestId("kg-panel");
+    const kg = page.getByTestId("graph-panel");
     await kg.scrollIntoViewIfNeeded();
     // data-ready: three.js has loaded and the scene is drawn.
-    await shows(page.locator('[data-testid="kg-panel-stage"][data-ready]'), refused, 60_000);
+    await shows(page.locator('[data-testid="graph-panel-stage"][data-ready]'), refused, 60_000);
     // The card is compact: its legend names what it draws (the product, its tables, its command),
     // and the explorer's controls are only in its expanded view.
-    const legend = page.getByTestId("kg-panel-stage").locator(".p3d-legend");
+    const legend = page.getByTestId("graph-panel-stage").locator(".p3d-legend");
     await expect(legend).toContainText("data product");
     await expect(legend).toContainText("member table");
     await expect(legend).toContainText("command");
     await expect(legend).not.toContainText("data quality check");
-    await expect(page.getByTestId("kg-panel-layers-menu")).toHaveCount(0);
+    await expect(page.getByTestId("graph-panel-layers-menu")).toHaveCount(0);
 
-    await page.getByTestId("kg-panel-expand").click();
+    await page.getByTestId("graph-panel-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
-    // Focused on the product, on the Knowledge graph preset, with the layers it has data for.
+    // Focused on the product, on the All preset, with the layers it has data for.
     await expect(page.getByTestId("graph3d-detail")).toContainText("Pet Health");
     const expanded = page.getByTestId("graph3d");
-    await expect(expanded.getByRole("radio", { name: "Knowledge graph" })).toBeChecked();
+    await expect(expanded.getByRole("radio", { name: "All" })).toBeChecked();
     // The layers it has data for are offered in its Layers menu, and on.
     await page.getByTestId("graph3d-layers-menu").click();
     for (const layer of ["products", "tables", "commands", "quality"]) {
@@ -147,7 +147,7 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await page.goto("/data-products");
     await page.getByTestId("product-map-open").click({ timeout: 90_000 });
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
-    await expect(page.getByRole("radio", { name: "Product map" })).toBeChecked();
+    await expect(page.getByRole("radio", { name: "Products" })).toBeChecked();
     // Both of the config's products, and their domains, are in the map's counts.
     const shown = page.getByTestId("graph3d").locator(".p3d-detail");
     await expect(shown).toContainText("data product");

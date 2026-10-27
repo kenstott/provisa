@@ -504,9 +504,7 @@ export function glossaryGraph(
   const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
     for (const r of rows ?? [])
       if (r.target_table_id !== null)
-        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.cypher_type, [
-          "ownerTables",
-        ]);
+        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.cypher_type, ["ownerTables"]);
   };
 
   const named = new Set<string>();

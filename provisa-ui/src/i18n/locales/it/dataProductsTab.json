@@ -103,7 +103,7 @@
         "dataQuality": "Qualità dei dati"
       },
       "dataQualityEmpty": "Nessuna scansione di qualità",
-      "dataQualityHint": "Tabelle di controllo i cui contratti analizzano gli output port di questo prodotto. Ognuna registra una riga per controllo a ogni esecuzione; l'appartenenza segue la tabella analizzata.",
+      "dataQualityHint": "I controlli del prodotto: le sue aspettative sui suoi input, le sue promesse sulle sue tabelle membro e i controlli correlati che altri (o nessuno) fanno su entrambi. Apri un controllo per leggerne i risultati.",
       "dqRulesAria": "Mostra le regole di qualità per {{table}}",
       "dqRulesTitle": "Regole di qualità — {{table}}",
       "dqRulesEmpty": "Il contratto non definisce controlli",
@@ -113,8 +113,6 @@
       "lineageEmpty": "Nessuna derivazione",
       "lineageLoading": "Caricamento derivazione…",
       "lineageHint": "Grafo di derivazione delle colonne che mostra le tabelle di questo prodotto come endpoint pubblicato, più ogni tabella a monte usata per derivarle. Solo informativo — richiede la capability view_governance.",
-      "inputPortsEmpty": "Nessun input a monte registrato",
-      "inputPortsHint": "Le tabelle che questo prodotto legge direttamente, dalla derivazione. Espandi una tabella per le colonne che legge. Richiede la capability view_governance.",
       "outputPortsHint": "La superficie interrogabile di questo prodotto: le sue tabelle membro e i suoi comandi. Le query di esempio per ciascuna sono in Modelli di accesso.",
       "customPropertiesEmpty": "Nessuna proprietà personalizzata",
       "lineageLaneUpstream": "A monte, passo {{n}}",

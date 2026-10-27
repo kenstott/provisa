@@ -56,8 +56,10 @@ def derive_checker_table(table: Any, source_type: Any) -> str:
       * the table is registered under its result relation's name, ``<name>_<source>_dq``
         (:func:`~provisa.dq.results.relation_name`), the name given becoming its alias; a table
         already registered under that name keeps it and its alias;
-      * ``DQ_PROMOTIONS`` seeds the REQ-119 promotions, appended to any the operator added;
-      * ``product_id`` must be unset — membership is inherited from the scanned table (clause 10).
+      * ``DQ_PROMOTIONS`` seeds the REQ-119 promotions, appended to any the operator added.
+
+    Its ``product_id`` is its own, as any member's is (REQ-1443 PRODUCT ASSIGNMENT): it names the
+    product whose owner controls the check, whatever the check scans.
 
     Raises :class:`ValueError` naming the table on any of those. The declared columns are read ONLY
     for their ``visible_to`` and are then replaced; ``visible_to`` must be unanimous, because one
@@ -69,15 +71,6 @@ def derive_checker_table(table: Any, source_type: Any) -> str:
         raise ValueError(
             f"Table {table.table_name!r}: source {table.source_id!r} is a {checker} checker, "
             f"so the table must carry a dq_contract — its rows are that contract's results"
-        )
-    # REQ-1443 clause 10: a results table belongs to whatever product the table it scans belongs
-    # to, derived at read time from the contract's dataset. A declared product_id could only ever
-    # agree with that derivation or contradict it, so it is refused rather than stored.
-    if table.product_id is not None:
-        raise ValueError(
-            f"Table {table.table_name!r}: a checker table cannot declare product_id "
-            f"{table.product_id!r}; its data-product membership is inherited from the table its "
-            f"contract scans"
         )
     if not table.columns:
         raise ValueError(

@@ -103,8 +103,8 @@ describe("the Ontology View's layout with Data on", () => {
         expect.arrayContaining(["p:workforce_ops", "p:payroll", "c:901:c7"]),
       );
       const ids = core(off.nodes.map((n) => n.id));
-      const before = spread(layoutGraph(off, "force", [], attraction), ids);
-      const after = spread(layoutGraph(on, "force", [], attraction), ids);
+      const before = spread(layoutGraph(off, "force", attraction), ids);
+      const after = spread(layoutGraph(on, "force", attraction), ids);
       // Collapsed, it was two thirds as spread; it may widen a little, the products drawn among it.
       expect(after / before).toBeGreaterThan(0.9);
       expect(after / before).toBeLessThan(1.25);
