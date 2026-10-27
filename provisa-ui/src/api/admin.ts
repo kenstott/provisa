@@ -1620,7 +1620,7 @@ export async function runSql(
   // A statement, or a statement with the values of its $1…$n placeholders. The values are
   // sent beside the text and bound by the server; they are never written into it.
   statement: string | { sql: string; params: (string | number)[] },
-  role: string = "org_admin",
+  role: string,
   statsEnabled: boolean = false,
 ): Promise<{
   columns: string[];

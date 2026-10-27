@@ -18,13 +18,16 @@ import { setStored } from "../../lib/browserStorage";
 
 vi.mock("../../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context/AuthContext")>()),
-  useAuth: () => ({ role: { id: "analyst" } }),
+  // "Role: All": the selected roles as one set, never the first of them alone (REQ-1620).
+  useAuth: () => ({ role: { id: "analyst" }, actingRoles: "analyst,steward" }),
 }));
 
 const fetchNlMode = vi.fn();
+const submitNlQuery = vi.fn();
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   fetchNlMode: (role: string) => fetchNlMode(role),
+  submitNlQuery: (q: string, role: string, strict: boolean) => submitNlQuery(q, role, strict),
 }));
 
 import { NlPage } from "../NlPage";
@@ -42,7 +45,7 @@ describe("NL page Strict switch", () => {
   it("is held on for a role that may only use approved relationships", async () => {
     fetchNlMode.mockResolvedValue({ non_strict: false });
     render(<NlPage />);
-    await waitFor(() => expect(fetchNlMode).toHaveBeenCalledWith("analyst"));
+    await waitFor(() => expect(fetchNlMode).toHaveBeenCalledWith("analyst,steward"));
     expect(strictSwitch()).toBeChecked();
     expect(strictSwitch()).toBeDisabled();
     await userEvent.hover(strictSwitch().closest("span") as HTMLElement);
@@ -56,5 +59,16 @@ describe("NL page Strict switch", () => {
     expect(strictSwitch()).not.toBeChecked();
     await userEvent.click(strictSwitch());
     expect(strictSwitch()).toBeChecked();
+  });
+
+  it("asks as the selected set of roles", async () => {
+    fetchNlMode.mockResolvedValue({ non_strict: false });
+    submitNlQuery.mockReturnValue(new Promise(() => {}));
+    render(<NlPage />);
+    await userEvent.type(screen.getByTestId("nl-question-input"), "how many pets");
+    await userEvent.click(screen.getByTestId("nl-submit-button"));
+    await waitFor(() =>
+      expect(submitNlQuery).toHaveBeenCalledWith("how many pets", "analyst,steward", true),
+    );
   });
 });

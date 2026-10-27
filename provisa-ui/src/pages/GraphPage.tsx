@@ -379,7 +379,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     const domainsKey = [...checkedDomains].sort().join(",");
     // v3: only counts are stored (a v2 entry could hold a refused request's error body).
-    const countsKey = `provisa.graph.counts.v3.${role?.id ?? "default"}.${domainsKey}`;
+    const countsKey = `provisa.graph.counts.v3.${roleHeaderValue ?? "default"}.${domainsKey}`;
     try {
       const cached = getStored(countsKey);
       setCounts(cached ? (JSON.parse(cached) as GraphCounts) : null);
@@ -406,8 +406,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         setCounts(null);
         setCountsError(e instanceof Error ? e.message : String(e));
       });
-    /* eslint-disable-next-line react-hooks/exhaustive-deps -- refetch counts only on the listed schema/role/domain inputs; other referenced setters are stable */
-  }, [schemaNodeLabels, schemaRels, role?.id, checkedDomains]);
+  }, [schemaNodeLabels, schemaRels, roleHeaderValue, checkedDomains]);
 
   // Run ``query`` and put what it answered in frame ``id``: one result per statement it holds.
   const answer = useCallback(

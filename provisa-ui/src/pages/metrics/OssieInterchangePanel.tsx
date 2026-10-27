@@ -61,7 +61,7 @@ type ItemKey = `table:${string}` | `rel:${string}` | `metric:${string}`;
 
 export function OssieInterchangePanel() {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  const { actingRoles } = useAuth();
   const { registerTable } = useRegisterTable();
   const { upsertRelationship } = useUpsertRelationship();
   const { upsertMetric } = useUpsertMetric();
@@ -84,12 +84,13 @@ export function OssieInterchangePanel() {
     }
   };
 
-  // REQ-1967: the catalog as the role in use is served it, for a dbt project's sources.
+  // REQ-1967: the catalog as the roles in use are served it, for a dbt project's sources;
+  // "Role: All" sends the selected set (REQ-1620).
   const handleDbtSources = async () => {
-    if (!role) return;
+    if (!actingRoles) return;
     setError("");
     try {
-      saveAs(await fetchDbtSourcesYaml(role.id), "provisa.sources.yml");
+      saveAs(await fetchDbtSourcesYaml(actingRoles), "provisa.sources.yml");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -259,13 +260,13 @@ export function OssieInterchangePanel() {
           >
             {t("ossiePanel.download")}
           </Button>
-          <Tip text={t("ossiePanel.dbtSourcesHelp", { role: role?.id ?? "" })}>
+          <Tip text={t("ossiePanel.dbtSourcesHelp", { role: actingRoles ?? "" })}>
             <Button
               size="xs"
               variant="default"
               leftSection={<Download size={13} />}
               onClick={handleDbtSources}
-              disabled={!role}
+              disabled={!actingRoles}
               data-testid="dbt-sources-download"
             >
               {t("ossiePanel.dbtSources")}

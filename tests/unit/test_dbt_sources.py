@@ -255,6 +255,16 @@ def test_a_role_that_does_not_exist_is_refused_by_name():
         build_dbt_sources(_config(), "nobody")
 
 
+def test_a_set_of_roles_gets_what_any_of_them_is_served():
+    """REQ-1620: "Role: All" asks for the file as the selected roles; each table and column any
+    of them is served is in it."""
+    both = _tables(build_dbt_sources(_config(), "analyst,people").document)
+    assert set(both) == set(_tables(build_dbt_sources(_config(), "analyst").document)) | set(
+        _tables(build_dbt_sources(_config(), "people").document)
+    )
+    assert "margin" not in _tests(both[("pg1_public", "orders")])
+
+
 @pytest.mark.asyncio
 class TestTheEndpoint:
     @pytest.fixture
@@ -283,6 +293,13 @@ class TestTheEndpoint:
         assert answer.headers["content-disposition"] == "attachment; filename=provisa.sources.yml"
         assert yaml.safe_load(answer.body)["sources"][0]["name"] == "pg1_public"
         assert wired["inspected"] == ["analyst"]
+
+    async def test_each_role_of_a_set_is_one_the_caller_may_inspect(self, wired):
+        from provisa.api.admin.ossie_router import download_dbt_sources
+
+        answer = await download_dbt_sources(SimpleNamespace(), role="analyst,people")
+        assert wired["inspected"] == ["analyst", "people"]
+        assert b"as roles 'analyst', 'people' are served it" in answer.body
 
     async def test_a_role_the_caller_may_not_inspect_is_refused_before_anything_is_read(
         self, wired, monkeypatch

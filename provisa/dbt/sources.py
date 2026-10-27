@@ -72,13 +72,19 @@ class DbtSources:
     not_stated: list[tuple[str, str, str, tuple[str, ...]]] = field(default_factory=list)
 
 
+def role_ids(role_id: str) -> list[str]:
+    """The roles ``role_id`` names: one, or a comma-separated set (REQ-1620)."""
+    return [r.strip() for r in role_id.split(",") if r.strip()]
+
+
 def _served(config: ProvisaConfig, role_id: str) -> list[tuple[Table, set[str]]]:
     """Each table ``role_id`` is served, with the names of the columns it is served: the rule
-    the schema build and SQL governance read (``security.visibility.visible_tables``)."""
-    roles = flatten_role_dicts([role.model_dump() for role in config.roles])
-    role = next((r for r in roles if r["id"] == role_id), None)
-    if role is None:
-        raise UnknownRole(role_id)
+    the schema build and SQL governance read (``security.visibility.visible_tables``). A set of
+    roles is served what any of them is (REQ-1620)."""
+    roles = {r["id"]: r for r in flatten_role_dicts([role.model_dump() for role in config.roles])}
+    for member in role_ids(role_id):
+        if member not in roles:
+            raise UnknownRole(member)
     as_dicts = [
         {
             "at": index,
@@ -91,10 +97,13 @@ def _served(config: ProvisaConfig, role_id: str) -> list[tuple[Table, set[str]]]
     from provisa.core.db import fold_config_grants
 
     fold_config_grants(as_dicts, [r.model_dump() for r in config.roles])
-    return [
-        (config.tables[seen["at"]], {column["name"] for column in seen["columns"]})
-        for seen in visible_tables(as_dicts, role)
-    ]
+    served: dict[int, set[str]] = {}
+    for member in role_ids(role_id):
+        for seen in visible_tables(as_dicts, roles[member]):
+            served.setdefault(seen["at"], set()).update(
+                column["name"] for column in seen["columns"]
+            )
+    return [(config.tables[at], served[at]) for at in sorted(served)]
 
 
 def _source_names(tables: list[Table]) -> dict[tuple[str, str], str]:
@@ -181,11 +190,18 @@ def build_dbt_sources(config: ProvisaConfig, role_id: str) -> DbtSources:
     return out
 
 
+def _named(role_id: str) -> str:
+    members = role_ids(role_id)
+    if len(members) == 1:
+        return f"role {members[0]!r} is"
+    return "roles " + ", ".join(repr(m) for m in members) + " are"
+
+
 def dbt_sources_yaml(config: ProvisaConfig, role_id: str, *, derived_at: str) -> str:
     """The sources file as text: its opening comment, then the document."""
     sources = build_dbt_sources(config, role_id)
     comment = [
-        f"dbt sources from Provisa's governed model, as role {role_id!r} is served it.",
+        f"dbt sources from Provisa's governed model, as {_named(role_id)} served it.",
         f"Derived {derived_at}; derived again on every download.",
         GOVERNANCE,
         DBT_VERSIONS,
