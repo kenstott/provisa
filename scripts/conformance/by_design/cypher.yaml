@@ -44,3 +44,27 @@
   decision: >-
     "Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected."
   reason: "Unbounded variable-length pattern"
+
+- group: Dates beyond the years Provisa holds
+  requirement: REQ-2173
+  decision: >-
+    TEMPORAL VALUES ARE BOUNDED BY THE ENGINE AND IANA: a date beyond years 0001 to 9999 is
+    refused by name.
+  case: "^Temporal10 - .*::\\[(9|10)\\] Should handle large durations"
+  reason: "is beyond the dates Provisa holds, years 0001 to 9999"
+
+- group: Times at offsets beyond the engine's
+  requirement: REQ-2173
+  decision: >-
+    TEMPORAL VALUES ARE BOUNDED BY THE ENGINE AND IANA: a time at an offset of 16 hours or more
+    is refused by name.
+  case: "^Temporal2 - .*::\\[3\\] Should parse time from string #8$"
+  reason: "is at an offset beyond the times Provisa holds"
+
+- group: Historical zone offsets as IANA gives them
+  requirement: REQ-2173
+  decision: >-
+    TEMPORAL VALUES ARE BOUNDED BY THE ENGINE AND IANA: a named zone's offset is the IANA time
+    zone database's (Europe/Stockholm in 1818 is +01:12:12), not another database's.
+  case: "^Temporal2 - .*::\\[6\\] Should parse date time with named time zone from string #5$"
+  reason: "1818-07-21T21:40:32\\.142\\+01:12:12\\[Europe/Stockholm\\]"

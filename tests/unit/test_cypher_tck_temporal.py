@@ -104,3 +104,31 @@ def test_a_duration_read_back_from_its_text_is_translated_small_and_fast():
     sql = transpile_to_duckdb(sql_ast.sql(dialect="postgres"))
     assert time.perf_counter() - started < 2.0
     assert len(sql) < 20_000
+
+
+@pytest.mark.parametrize(
+    ("query", "refusal"),
+    [
+        # REQ-2173 (amended 2026-10-27): a value beyond the bounds is refused by name, never
+        # answered wrongly (Temporal10 [9]/[10], Temporal2 [3] #8).
+        ("RETURN date('-999999999-01-01') AS d", "beyond the dates Provisa holds"),
+        (
+            "RETURN localdatetime('+999999999-12-31T23:59:59') AS d",
+            "beyond the dates Provisa holds",
+        ),
+        ("RETURN time('22+18:00') AS t", "offset beyond the times Provisa holds"),
+        (
+            "RETURN time({hour: 22, timezone: '-16:00'}) AS t",
+            "offset beyond the times Provisa holds",
+        ),
+    ],
+)
+def test_a_temporal_value_beyond_the_bounds_is_refused_by_name(query, refusal):
+    from provisa.gql.translator_types import CypherTranslateError
+
+    with pytest.raises(CypherTranslateError, match=refusal):
+        _value(query)
+
+
+def test_a_time_within_the_offsets_is_read():
+    assert _value("RETURN time('22+15:00') AS t").isoformat() == "22:00:00+15:00"
