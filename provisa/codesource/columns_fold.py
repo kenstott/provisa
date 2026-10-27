@@ -14,13 +14,15 @@ item of the select list stands for the function's output columns (``street, city
 Provisa applies it; no source or engine sees the call. After governance (:func:`fold`) each call
 is admitted as any command is -- the role is assigned it and reaches its domain -- and its item is
 replaced by the call's input expressions, each under a name of its own, so the statement reads
-the inputs. Once the rows are read (:func:`apply`), the inputs are handed to the function in
-batches across the source's workers and each call's inputs are replaced, in place, by the output
-columns the function returned for each row. The output columns take the function's field names;
+the inputs. As the rows are read (:func:`apply`), the inputs are handed to the function in
+batches of 1000 rows across the source's workers, streamed, and each call's inputs are replaced,
+in place, by the output columns the function returned for each row. The output columns take the function's field names;
 an outer projection renames them.
 
-A call anywhere but as an item of the statement's own select list -- a WHERE, a JOIN, a GROUP BY,
-inside another expression -- is refused by name: the rows it needs are not read there. So is an
+A call as an item of a common table expression's select list is a staged step
+(:mod:`provisa.codesource.columns_stage`): the CTE is run on its own and the call folded there. A
+call anywhere else -- a WHERE, a JOIN, a GROUP BY, inside another expression -- is refused by name:
+the rows it needs are not read there. So is an
 aliased call (its outputs are several columns, named by the function) and one given another number
 of arguments than the function's input columns.
 """
@@ -29,7 +31,9 @@ of arguments than the function's input columns.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections import deque
+from collections.abc import Callable, Collection, Generator, Iterator, Mapping, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -158,33 +162,86 @@ def reshape(shape: Sequence[tuple[str, Any]], calls: Sequence[ColumnsCall]) -> l
     return out
 
 
+def _cut(batches: Iterator[list[tuple]]) -> Generator[list[tuple], None, None]:
+    """The rows of ``batches`` (record batches of any size, as read) cut again into batches of
+    :data:`~provisa.codesource.columns.BATCH` rows, each passed on as soon as it is full, the last
+    when the rows end: the unit a worker takes, whatever its call costs to start."""
+    from provisa.codesource.columns import BATCH
+
+    held: list[tuple] = []
+    for batch in batches:
+        held.extend(batch)
+        while len(held) >= BATCH:
+            yield held[:BATCH]
+            held = held[BATCH:]
+    if held:
+        yield held
+
+
+@dataclass(frozen=True)
+class _Step:
+    """One call applied to a batch: where its inputs sit in the row as the calls before it left
+    it, how many, its runner and its output columns' names."""
+
+    at: int
+    width: int
+    runner: Any
+    outputs: tuple[str, ...]
+
+
+def _enriched(steps: Sequence[_Step], index: int, rows: list[tuple]) -> list[tuple]:
+    """Batch ``index``'s rows with each call's input columns replaced by its outputs. Batch ``i``
+    runs on worker ``i`` of each source, modulo its workers."""
+    data = [list(r) for r in rows]
+    for step in steps:
+        inputs = [[row[step.at + k] for row in data] for k in range(step.width)]
+        answered = step.runner.run(index % step.runner.workers, inputs)
+        for row, result in zip(data, answered):
+            row[step.at : step.at + step.width] = [result[n] for n in step.outputs]
+    return [tuple(r) for r in data]
+
+
 async def apply(result: Any, calls: Sequence[ColumnsCall], state: Any) -> Any:
     """``result`` with each call's input columns replaced by the output columns its function
-    returned for each row (:func:`provisa.codesource.columns.transform`)."""
-    from provisa.codesource.columns import transform
-    from provisa.executor.result import QueryResult
+    returned for each row, streamed (REQ-2131, "COLUMN TRANSFORMS STREAM"): the read's record
+    batches are cut into batches of 1000 rows (:func:`_cut`), each sent to a worker as soon as it is
+    full, at most as many in flight as the source has workers, and each answered batch passed on
+    at once, in the read's order. The result is never held whole: the first rows reach the caller
+    before the last are read."""
+    from provisa.codesource.columns import runner
+    from provisa.executor.result import StreamingQueryResult
 
-    materialized = result.materialize()
-    names = list(materialized.column_names)
-    types: list[str] | None = (
-        None if materialized.column_types is None else list(materialized.column_types)
-    )
-    data = [list(r) for r in materialized.rows]
+    names = list(result.column_names)
+    types: list[str] | None = None if result.column_types is None else list(result.column_types)
+    steps: list[_Step] = []
     for call in calls:
         at = names.index(call.inputs[0])
         width = len(call.inputs)
-        inputs = [[row[at + k] for row in data] for k in range(width)]
-        command = state.column_transforms[call.command]
-        results = await transform(state, command, inputs)
-        out_names = [n for n, _ in call.outputs]
-        for row, answered in zip(data, results):
-            row[at : at + width] = [answered[n] for n in out_names]
-        names[at : at + width] = out_names
+        outputs = tuple(n for n, _ in call.outputs)
+        ready = await runner(state, state.column_transforms[call.command])
+        steps.append(_Step(at, width, ready, outputs))
+        names[at : at + width] = outputs
         if types is not None:
             types[at : at + width] = [t for _, t in call.outputs]
-    return QueryResult(
-        rows=[tuple(r) for r in data],
-        column_names=names,
-        column_types=types,
-        rowcount=materialized.rowcount,
+    # Consecutive batches run on distinct workers of every source, so each worker runs one call at
+    # a time: the window is the fewest workers any of the calls' sources runs.
+    window = min(step.runner.workers for step in steps)
+    pool = ThreadPoolExecutor(max_workers=window, thread_name_prefix="columns")
+
+    def answered() -> Iterator[list[tuple]]:
+        source = _cut(iter(result.batches()))
+        running: deque[Future] = deque()
+        try:
+            for index, rows in enumerate(source):
+                if len(running) == window:
+                    yield running.popleft().result()
+                running.append(pool.submit(_enriched, steps, index, rows))
+            while running:
+                yield running.popleft().result()
+        finally:
+            source.close()
+            pool.shutdown(wait=True, cancel_futures=True)
+
+    return StreamingQueryResult(
+        answered(), names, types, on_release=lambda: pool.shutdown(wait=False)
     )

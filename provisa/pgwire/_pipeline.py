@@ -227,6 +227,9 @@ class _Plan:
     # (codesource.columns_fold.Folded): each call's input columns, replaced by its output columns
     # once the rows are read. None: the statement applies no column transform.
     columns: Any = field(default=None)
+    # REQ-2131: a statement whose CTEs hold a column transform, run staged (_StagedRead): each such
+    # CTE read on its own, enriched and landed in a session table, then the statement reading them.
+    staged: Any = field(default=None)
     # REQ-1865: row-materialize predicate resolution — the concrete PK bound(s) this statement's
     # compiled plan resolved against every row_materialize table it references (empty when the
     # statement touches no such table, or none of its predicates resolve to a bounded PK set).
@@ -1841,6 +1844,7 @@ async def govern_statement(
 
     _memo: dict[str, Any] = {}
     _transforms = getattr(state, "column_transforms", None) or {}
+    _staging = False  # REQ-2131: a CTE of the statement holds a column transform
     if _transforms:
         # REQ-2131: a column transform is Provisa's: its select-list call reads its input columns,
         # and the function's output columns replace them once the rows are read (the plan's
@@ -1849,16 +1853,22 @@ async def govern_statement(
 
         if _columns_fold.mentions(governed_semantic, _transforms):
             from provisa.api.data.action_exec import admit_command
+            from provisa.codesource import columns_stage
 
-            _columns = await _off_loop(
-                _columns_fold.fold,
-                governed_semantic,
-                _transforms,
-                lambda command, name: admit_command(command, state, role_id, name),
-            )
-            governed_semantic = _columns.sql
-            if _columns.calls:
-                _memo["columns"] = _columns
+            def _admit(command: dict, name: str) -> None:
+                admit_command(command, state, role_id, name)
+
+            # A CTE holding one is a staged step (REQ-2131, amended 2026-10-27): the statement is
+            # staged once its session settings are resolved, below, and run in stages when it
+            # routes (_staged_plan); its calls are folded stage by stage.
+            _staging = await _off_loop(columns_stage.holds, governed_semantic, _transforms)
+            if not _staging:
+                _columns = await _off_loop(
+                    _columns_fold.fold, governed_semantic, _transforms, _admit
+                )
+                governed_semantic = _columns.sql
+                if _columns.calls:
+                    _memo["columns"] = _columns
     if _embed_fn.mentions(governed_semantic):
         # REQ-2002: embed() is Provisa's: a literal text is embedded now, a text of rows once the
         # rows are read (the plan's ``embedded``); no source or engine sees the call.
@@ -1875,6 +1885,16 @@ async def govern_statement(
     # "unrecognized configuration parameter"; the literal is the one mechanism every route shares.
     # A missing var becomes NULL, the documented deny-by-default (_resolve_session_settings).
     governed_semantic = _resolve_session_settings(governed_semantic, _session_vars, "postgres")
+    if _staging:
+        from provisa.api.data.action_exec import admit_command
+        from provisa.codesource import columns_stage
+
+        _memo["staged"] = await _off_loop(
+            columns_stage.stage,
+            governed_semantic,
+            _transforms,
+            lambda command, name: admit_command(command, state, role_id, name),
+        )
 
     governed = _Governed(
         sql=sql,
@@ -2002,6 +2022,100 @@ async def _two_step_plan(
         embedded=governed.memo.get("embed"),
         two_step=two,
     )
+
+
+@dataclass
+class _StagedRead:  # REQ-2131
+    """A statement whose CTEs holding a column transform run staged (codesource.columns_stage),
+    with what each of its reads is routed under."""
+
+    governed: Any  # _Governed
+    staged: Any  # columns_stage.Staged
+    params: list | None
+    as_of: str | None
+
+
+def _staged_plan(
+    governed: "_Governed", staged: Any, *, params: list | None, as_of: str | None, audit: Any
+) -> "_Plan":
+    """The plan of a statement run staged: its reads are routed when it runs, the keys a join
+    restricts a stage to being known only then; the statement's own record is the plan's."""
+    from provisa.transpiler.router import Route
+
+    return _Plan(
+        route=Route.ENGINE,
+        sql=governed.governed_semantic,
+        source_id="",
+        dialect="postgres",
+        exec_params=params,
+        audit=audit,
+        stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+        route_reason=(
+            "its CTEs holding a column transform are read first, enriched and landed in session "
+            "tables; then it reads them in the engine"
+        ),
+        role_id=governed.role_id,
+        table_ids=governed.table_ids,
+        staged=_StagedRead(governed, staged, params, as_of),
+    )
+
+
+async def _run_staged(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2131
+    """Each stage's CTE read on its own -- its join's other side first, when one restricts it --
+    its rows enriched and landed in its session table; then the statement, reading those tables.
+    Every read is the governed statement's own, routed as any read is; the tables end with it."""
+    import dataclasses
+
+    import sqlglot
+
+    from provisa.api.data.action_exec import admit_command
+    from provisa.codesource import columns_fold
+    from provisa.compiler import temp_tables
+    from provisa.federation.store_scope import drop_temp_table
+    from provisa.federation.temp_address import schema_of
+    from provisa.pgwire.temp_exec import inferred_type, reland
+
+    run = plan.staged
+    session = temp_tables.current()
+    assert session is not None, "a statement is run inside its session"
+    transforms = state.column_transforms
+
+    def admit(command: dict, name: str) -> None:
+        admit_command(command, state, plan.role_id, name)
+
+    async def read(sql: str) -> QueryResult:
+        folded = columns_fold.fold(sql, transforms, admit)
+        governed = dataclasses.replace(
+            run.governed,
+            governed_semantic=folded.sql,
+            parsed=sqlglot.parse_one(folded.sql, read="postgres"),
+            memo={"columns": folded} if folded.calls else {},
+        )
+        part = await route_governed(governed, params=run.params, as_of=run.as_of)
+        part.audit = None  # the statement's one record is its own
+        return (await _execute_plan_bound(part, state)).materialize()
+
+    landed: list[str] = []
+    try:
+        for stage in run.staged.stages:
+            body = stage.body
+            if stage.key_read is not None:
+                body = stage.restricted([row[0] for row in (await read(stage.key_read)).rows])
+            enriched = await read(body)
+            rows = list(enriched.rows)
+            columns = [
+                (name, inferred_type(name, [row[i] for row in rows]))
+                for i, name in enumerate(enriched.column_names)
+            ]
+            landed.append(stage.table)
+            await reland(state, session, stage.table, columns, rows)
+        return await read(run.staged.outer)
+    finally:
+        store = state.federation_engine.engine.materialize_store()
+        for table in landed:
+            await drop_temp_table(store, schema_of(session), table)
+            del session.tables[table]
+            session.generation += 1
 
 
 async def _code_write_plan(
@@ -2203,6 +2317,9 @@ async def route_governed(
                 params=embedded_params,
             ),
         )
+    _staged_read = governed.memo.get("staged")
+    if _staged_read is not None:
+        return _staged_plan(governed, _staged_read, params=params, as_of=as_of, audit=_audit)
     if _is_mutation and isinstance(_parsed_input, exp.Insert):
         _two = _two_step_insert(governed, _written_table_id, state)
         if _two is not None:
@@ -3340,8 +3457,11 @@ async def _execute_plan_bound(plan: _Plan, state: Any) -> QueryResult:
     if plan.columns is not None and plan.two_step is None:
         from provisa.codesource.columns_fold import apply as _apply_columns
 
-        # REQ-2131: each call's input columns become the outputs its function returned per row.
-        result = await _apply_columns(result, plan.columns.calls, state)
+        # REQ-2131: each call's input columns become the outputs its function returned per row,
+        # the read streamed through the source's workers. This terminal answers whole (such a plan
+        # is not streamable), so the answered batches are gathered here: the read itself is never
+        # held whole beside them.
+        result = (await _apply_columns(result, plan.columns.calls, state)).materialize()
     if plan.temp is not None:
         from provisa.pgwire.temp_exec import apply
 
@@ -3442,6 +3562,8 @@ def streams_from_terminal(plan: _Plan) -> bool:  # REQ-2002
         return False  # REQ-1986: its scratch tables are dropped when the terminal is done
     if plan.columns is not None:
         return False  # REQ-2131: its column transforms are applied once its rows are read
+    if plan.staged is not None:
+        return False  # REQ-2131: its CTEs holding a transform are run first, then it
     return plan.embedded is None or not plan.embedded.rows
 
 
@@ -4103,6 +4225,8 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         return await keep(plan.kept, state)
     if plan.two_step is not None:
         return await _run_two_step(plan, state)  # REQ-2001
+    if plan.staged is not None:
+        return await _run_staged(plan, state)  # REQ-2131
     if plan.code_write is not None:
         return await _run_code_write(plan, state)  # REQ-2100
     engine = state.federation_engine
