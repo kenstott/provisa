@@ -217,3 +217,19 @@ def test_a_value_bound_where_a_pattern_reads_a_node_is_still_refused():
 
     with pytest.raises(CypherMistake, match="value that is neither"):
         parse_cypher("WITH 1 AS a OPTIONAL MATCH (a)-[r]->() RETURN r")
+
+
+@pytest.mark.parametrize(
+    ("query", "row"),
+    [
+        # List2 [6]: a negative bound counts from the end; each is held to the list.
+        (
+            "WITH [1, 2, 3] AS list RETURN list[-3..-1] AS a, list[-2..] AS b, list[..-1] AS c,"
+            " list[1..-5] AS d, list[-9..2] AS e",
+            ([1, 2], [2, 3], [1, 2], [], [1, 2]),
+        ),
+        ("WITH [1, 2, 3] AS l, 1 AS i RETURN l[-i..] AS a, l[null..2] AS b", ([3], None)),
+    ],
+)
+def test_a_slice_counts_a_negative_bound_from_the_end(query, row):
+    assert _rows(query) == [row]

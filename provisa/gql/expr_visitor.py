@@ -261,6 +261,10 @@ def _float_division(left: exp.Expression, right: exp.Expression) -> exp.Expressi
     )
 
 
+def _non_negative_literal(node: CypherExpr) -> bool:
+    return isinstance(node, Literal) and node.kind == "number" and cast(float, node.value) >= 0
+
+
 #: A value not written wholly in the statement (_written_value).
 _UNKNOWN = object()
 
@@ -1093,6 +1097,11 @@ class ExprLowering:
         # Cypher's list[a..b] is 0-based with b excluded; the engine's slice(list, start, length)
         # starts at 1: start a + 1, length b - a.
         base = self.lower(node.obj)
+        if any(
+            bound is not None and not _non_negative_literal(bound)
+            for bound in (node.start, node.stop)
+        ):
+            return self._slice_from_either_end(base, node)
         first = self.lower(node.start) if node.start is not None else exp.Literal.number(0)
         if node.start is None:
             start = exp.Literal.number(1)
@@ -1105,6 +1114,41 @@ class ExprLowering:
             length = stop if node.start is None else exp.Sub(this=stop, expression=first.copy())
             return _anon("slice", base, start, length)
         return _anon("slice", base, start, _anon("cardinality", base))
+
+    def _slice_from_either_end(self, base: exp.Expression, node: Slice) -> exp.Expression:
+        """list[a..b] with a bound that may be negative: a negative one counts from the end
+        (list[-3..-1] is the third- and second-last items), each is held to the list, and a slice
+        that ends before it starts is empty (openCypher)."""
+        size = _anon("cardinality", base.copy())
+        zero = exp.Literal.number(0)
+
+        def held(bound: CypherExpr | None, default: exp.Expression) -> exp.Expression:
+            if bound is None:
+                return default
+            value = self.lower(bound)
+            from_end = exp.Add(this=size.copy(), expression=value.copy())
+            placed = exp.Case(
+                ifs=[exp.If(this=exp.LT(this=value.copy(), expression=zero.copy()), true=from_end)],
+                default=value,
+            )
+            return exp.Greatest(
+                this=zero.copy(), expressions=[exp.Least(this=placed, expressions=[size.copy()])]
+            )
+
+        first = held(node.start, zero.copy())
+        last = held(node.stop, size.copy())
+        length = exp.Greatest(
+            this=zero.copy(), expressions=[exp.Sub(this=last, expression=first.copy())]
+        )
+        start = exp.Add(this=first, expression=exp.Literal.number(1))
+        sliced = _anon("slice", base, start, length)
+        bounds = [self.lower(b) for b in (node.start, node.stop) if b is not None]
+        # A null bound slices to null (an engine's GREATEST skips a null).
+        missing = [exp.Is(this=b, expression=exp.Null()) for b in bounds]
+        either = missing[0]
+        for more in missing[1:]:
+            either = exp.Or(this=either, expression=more)
+        return exp.Case(ifs=[exp.If(this=either, true=exp.Null())], default=sliced)
 
     # -- comprehensions / quantifiers / reduce (engine list functions) ----- #
 
