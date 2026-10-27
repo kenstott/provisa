@@ -87751,7 +87751,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     A BATCH STAYS 1000 ROWS:) Maintainer 2026-10-27: the unit sent to a worker stays a batch of 1000 rows,
     since a command may have a startup cost each call pays: the streamed record batches are re-cut into
     batches of 1000 as rows arrive, and each batch is sent as soon as it is full (the last one when the
-    result ends), never after the whole result is read.'
+    result ends), never after the whole result is read. (Amended 2026-10-27, A TRANSFORM IN A CTE IS A STAGED,
+    SELECTIVE STEP:) Maintainer 2026-10-27: a column transform may be an item of any select list whose rows
+    are read whole: the statement''s own, or a common table expression''s. A CTE holding one is a staged
+    step: it runs on its own (its read governed and pushed down as any read), its rows are enriched by the
+    streamed 1000-row batches and landed in a session temporary table, and the statement''s reference to
+    the CTE reads that table, so the rest of the statement (filters, joins and grouping on the computed
+    columns) runs in the engine as ordinary SQL. The step enriches only the rows the statement can use,
+    wherever that can be done reliably: (1) every outer condition on the CTE that names no computed column
+    is pushed into the CTE''s read; (2) where the CTE is inner-joined (or EXISTS-joined) to another relation
+    on input columns, that side runs first and the CTE''s read is restricted to the keys it yields. Each
+    rewrite is applied only where it provably leaves the answer unchanged (never across an outer join, an
+    aggregate over the CTE, or a LIMIT on it); otherwise the CTE runs as written. A filter on a computed
+    column cannot reach the CTE''s read. A call anywhere else (a WHERE, a JOIN, a GROUP BY, inside another
+    expression) is still refused by name.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
