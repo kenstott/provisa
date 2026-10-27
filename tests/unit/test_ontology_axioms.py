@@ -215,7 +215,8 @@ def _schema_input():
                 "domain_id": ONTOLOGY_DOMAIN_ID,
                 "schema_name": "public",
                 "table_name": name,
-                "columns": [{"column_name": c, "visible_to": []} for c in cs],
+                # A grant names its roles: an empty one is no role (REQ-2153).
+                "columns": [{"column_name": c, "visible_to": ["admin"]} for c in cs],
                 "write_ops": [],
                 "write_returns_rows": False,
                 "write_refused_forms": [],
