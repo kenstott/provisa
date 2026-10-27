@@ -283,6 +283,39 @@ async def upsert(
         return await _upsert(conn, table)
 
 
+async def naming_rules(conn: "Connection") -> list[dict]:
+    """The org's naming rules, as :mod:`provisa.compiler.naming` applies them."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import naming_rules as naming_rules_t
+
+    return [
+        {"pattern": r.pattern, "replacement": r.replacement}
+        for r in (
+            await conn.execute_core(select(naming_rules_t.c.pattern, naming_rules_t.c.replacement))
+        ).fetchall()
+    ]
+
+
+async def _require_label_not_a_domain(conn: "Connection", table: Table) -> None:
+    """REQ-572: refuse a table whose Cypher label is an org domain's, naming both
+    (:class:`provisa.compiler.naming.LabelClash`)."""
+    from sqlalchemy import select
+
+    from provisa.compiler.naming import refuse_label_clash
+    from provisa.core.schema_org import domains
+
+    domain_ids = [r.id for r in (await conn.execute_core(select(domains.c.id))).fetchall()]
+    candidate = {
+        "source_id": table.source_id,
+        "schema_name": table.schema_name,
+        "table_name": table.table_name,
+        "alias": table.alias,
+        "gql_naming_convention": table.gql_naming_convention,
+    }
+    refuse_label_clash([candidate], domain_ids, await naming_rules(conn))
+
+
 async def _require_free_sql_address(conn: "Connection", table: Table, domain_id: str) -> None:
     """REQ-1933: refuse a table whose SQL address another registered table in its domain holds,
     naming that table (:class:`provisa.compiler.naming.SqlAddressTaken`). The table itself being
@@ -290,14 +323,8 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
     from sqlalchemy import select
 
     from provisa.compiler.naming import refuse_taken_sql_addresses
-    from provisa.core.schema_org import naming_rules as naming_rules_t
 
-    rules = [
-        {"pattern": r.pattern, "replacement": r.replacement}
-        for r in (
-            await conn.execute_core(select(naming_rules_t.c.pattern, naming_rules_t.c.replacement))
-        ).fetchall()
-    ]
+    rules = await naming_rules(conn)
     rt = registered_tables
     others = [
         dict(r._mapping)
@@ -366,6 +393,7 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
 async def _upsert(conn: "Connection", table: Table) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     await _require_free_sql_address(conn, table, domain_id)
+    await _require_label_not_a_domain(conn, table)
     from provisa.core.repositories.region import require_table_region
 
     await require_table_region(  # REQ-1921: a table names one of its org's regions, or none
