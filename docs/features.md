@@ -362,9 +362,10 @@ Provisa ships client libraries for the places where a standard driver is not eno
 ### Arrow Flight
 
 Provisa runs an Arrow Flight server for high-throughput consumers. Results stream batch by batch, so the full result never sits in memory, and every governance rule applies. Engines that cannot produce Arrow natively are adapted by a generic row-to-Arrow converter.
+{ #arrow-flight-server }
 
 The same server speaks Arrow Flight SQL, so a standard Flight SQL client such as the ADBC Flight SQL driver connects without a Provisa-specific client. It serves statements, prepared statements with bound parameters, updates, catalog metadata (catalogs, schemas, tables, table types and keys) and the session's current catalog and schema. Each statement runs as the caller's role through the same governed SQL pipeline as every other transport, and the catalog lists what pgwire lists to that role. Results against the ADBC driver validation suite are on the Arrow Flight SQL conformance page.
-{ #arrow-flight-server }
+{ #arrow-flight-sql }
 
 When Trino is the engine, the Flight route goes through a Flight SQL proxy. If the proxy is unavailable the request fails, and Provisa does not quietly fall back to another route.
 { #arrow-flight-trino-route }
