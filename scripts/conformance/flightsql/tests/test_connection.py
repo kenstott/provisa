@@ -30,8 +30,11 @@ LINK_COLUMNS = ("_name_", "_domain_")
 def _in_fixture_schema(driver: model.DriverQuirks) -> model.DriverQuirks:
     """``driver`` with the fixture's schema as the one a test looks for the fixture table in: the
     suite's would be in the current schema (public); a model's tables are in their domains'."""
+    features = driver.features.model_copy()
+    # The suite's DriverFeatures answers current_schema from this private attribute.
+    features._current_schema = FIXTURE_SCHEMA
     adapted = copy.copy(driver)
-    adapted.features = driver.features.model_copy(update={"current_schema": FIXTURE_SCHEMA})
+    adapted.features = features
     return adapted
 
 
