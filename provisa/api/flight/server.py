@@ -39,6 +39,7 @@ import pyarrow as pa
 import pyarrow.flight as flight
 
 from provisa.auth import bearer
+from provisa.api.flight import flightsql
 from provisa.api.flight.compression import generator_stream, record_batch_stream
 from provisa.api.flight.catalog import (
     CatalogTable,
@@ -253,7 +254,8 @@ def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServ
 def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     """A Flight RPC's failure that is not a Flight error is a defect: log it with its traceback,
     then let pyarrow answer the client as before. A Flight error is the RPC's answer (not found,
-    refused, unavailable) and is not logged here. A streaming RPC (a generator) is followed to its
+    refused, unavailable), as is NotImplementedError (a Flight SQL request Provisa does not serve,
+    answered NOT_IMPLEMENTED), and neither is logged here. A streaming RPC (a generator) is followed to its
     end, as its body runs while the client reads."""
 
     def _log(exc: BaseException) -> None:
@@ -265,7 +267,7 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
         def _stream(*args: Any, **kwargs: Any) -> Any:
             try:
                 yield from rpc(*args, **kwargs)
-            except flight.FlightError:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            except (flight.FlightError, NotImplementedError):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 raise
             except Exception as exc:
                 _log(exc)
@@ -277,13 +279,20 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     def _call(*args: Any, **kwargs: Any) -> Any:
         try:
             return rpc(*args, **kwargs)
-        except flight.FlightError:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        except (flight.FlightError, NotImplementedError):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             raise
         except Exception as exc:
             _log(exc)
             raise
 
     return _call
+
+
+def _command_name(command: Any, raw: bytes) -> str:  # REQ-2175
+    """What a Flight SQL request Provisa does not serve is called, for its NOT_IMPLEMENTED."""
+    if command is not None:
+        return f"{type(command).__name__} is not served"
+    return f"request of {len(raw)} bytes is not a Flight SQL command"
 
 
 def _ticket_as_of(request: dict[str, object]) -> str | None:  # REQ-1163
@@ -673,6 +682,8 @@ class ProvisaFlightServer(
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         role: str | None,
     ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if descriptor.descriptor_type == flight.DescriptorType.CMD:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return self._flightsql_info(descriptor)
         path = [p.decode("utf-8") if isinstance(p, bytes) else p for p in descriptor.path]
 
         # REQ-1156: a command descriptor is ["commands", domain, name] — resolve it to the command
@@ -707,6 +718,48 @@ class ProvisaFlightServer(
             raise _flight_error(f"Table not found: {domain_id}.{table_name}")
 
         raise _flight_error(f"Invalid descriptor path: {path}")
+
+    @staticmethod
+    def _flightsql_info(
+        descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A Flight SQL command's FlightInfo (REQ-2175): where its answer is fetched."""
+        command = flightsql.unpack(descriptor.command)
+        if isinstance(command, flightsql.pb.CommandStatementQuery):
+            return flightsql.statement_info(descriptor, command.query)
+        if isinstance(command, flightsql.pb.CommandGetSqlInfo):
+            return flightsql.sql_info_info(descriptor)
+        raise NotImplementedError(f"Flight SQL {_command_name(command, descriptor.command)}")
+
+    def _flightsql_get(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        command: Any,
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A Flight SQL ticket's answer (REQ-2175). A statement runs through the native ticket's
+        governed pipeline (:meth:`_do_get_on_loop`) as the caller its call headers name -- the
+        credential of ``authorization: Bearer`` and the role of ``x-provisa-role``, as the
+        ticketless RPCs read them (:meth:`_catalog_role`)."""
+        if isinstance(command, flightsql.pb.TicketStatementQuery):
+            middleware = context.get_middleware(_HEADERS)
+            headers = middleware.headers if middleware is not None else {}
+            query = flightsql.statement_query(command)
+            if not query.strip():
+                # The native ticket reads a ticket without a query as a catalog fetch; a statement
+                # always has one.
+                raise _flight_error("a Flight SQL statement query needs a statement")
+            request: dict[str, object] = {"query": query}
+            token = _bearer(headers)
+            if token is not None:
+                request["token"] = token
+            role = _header(headers, "x-provisa-role")
+            if role is not None:
+                request["role"] = role
+            return _run_rpc(lambda: self._do_get_on_loop(request, ticket))
+        if isinstance(command, flightsql.pb.CommandGetSqlInfo):
+            return record_batch_stream(flightsql.sql_info_table(command))
+        raise NotImplementedError(f"Flight SQL {_command_name(command, ticket.ticket)}")
 
     # ------------------------------------------------------------------
     # get_schema — Arrow schema for a catalog table
@@ -750,7 +803,7 @@ class ProvisaFlightServer(
     @_in_request_span(_tracer, "flight.do_get", transport="flight")  # REQ-1910
     def do_get(  # REQ-051, REQ-143, REQ-145, REQ-267, REQ-345, REQ-369
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a query from the ticket and return Arrow record batches.
@@ -759,6 +812,9 @@ class ProvisaFlightServer(
           1. If ticket contains 'query' → execute it through the governed pipeline.
           2. No 'query' → catalog metadata fetch (table/column listing).
         """
+        command = flightsql.unpack(ticket.ticket)  # REQ-2175: a Flight SQL ticket
+        if command is not None:
+            return self._flightsql_get(context, ticket, command)
         try:
             request = json.loads(ticket.ticket.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
