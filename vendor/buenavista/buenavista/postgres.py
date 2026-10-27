@@ -362,6 +362,7 @@ BVTYPE_TO_PGTYPE = {
     BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
     BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
     BVType.INTEGER: (23, str, lambda r: r.to_bytes(4, "big", signed=True)),
+    BVType.OID: (26, str, lambda r: r.to_bytes(4, "big", signed=False)),
     BVType.INTERVAL: (
         1186,
         _interval_text,
@@ -993,7 +994,9 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         buf = BVBuffer()
         for i in range(query_result.column_count()):
             name, bvtype = query_result.column(i)
-            oid = BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)[0]
+            oid = query_result.column_type_oid(i)
+            if oid is None:
+                oid = BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)[0]
             buf.write_string(name)
             fmt = query_result.result_format[i] if query_result.result_format else 0
             buf.write_bytes(struct.pack("!ihihih", 0, 0, oid, 0, -1, fmt))

@@ -664,7 +664,8 @@ async def test_er_fk_constraint_deserialized(pgwire_server_er):
         )
         await conn.close()
 
-    fk_rows = [r for r in con_rows if r["contype"] == "f"]
+    # contype is "char", which asyncpg reads as bytes, as from PostgreSQL itself (REQ-2167).
+    fk_rows = [r for r in con_rows if r["contype"] == b"f"]
     assert len(fk_rows) >= 1, f"no FK rows for pets: {con_rows}"
     fk = fk_rows[0]
     assert fk["confrelid"] is not None and fk["confrelid"] > 0, "confrelid missing"
@@ -733,7 +734,7 @@ async def test_er_mermaid_diagram(pgwire_server_er):
         by_table.setdefault(a["attrelid"], []).append(a)
     pk_by_table: dict = {}
     for con in cons:
-        if con["contype"] == "p" and con["conkey"]:
+        if con["contype"] == b"p" and con["conkey"]:
             col = next(
                 (
                     a["attname"]
@@ -756,7 +757,7 @@ async def test_er_mermaid_diagram(pgwire_server_er):
             lines.append(f"        {dtype} {a['attname']}{tag}")
         lines.append("    }")
     for con in cons:
-        if con["contype"] == "f":
+        if con["contype"] == b"f":
             src = oid_to_name.get(con["conrelid"])
             tgt = oid_to_name.get(con["confrelid"])
             if src and tgt:

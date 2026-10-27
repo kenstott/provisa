@@ -275,6 +275,26 @@ def _handle_current_setting(sql: str):
     return QueryResult(rows=[(value,)], column_names=["current_setting"])
 
 
+def _declared_types(sql: str, names: list[str], served: list[str]) -> list[str]:  # REQ-2167
+    """Each column's type as PostgreSQL 17 declares it where the served value has that type's
+    wire form (a catalog column served as text that PostgreSQL declares name keeps its text, sent
+    as name); otherwise the type it is served with. Columns pair up by position, or by name where
+    the served relation's columns are not PostgreSQL's."""
+    from provisa.pgwire.catalog_types import result_types
+    from provisa.pgwire.server import same_wire_form
+
+    declared = result_types(sql)
+    if len(declared) == len(served):
+        pg_types = [pg_type for _, pg_type in declared]
+    else:
+        by_name = dict(reversed(declared))
+        pg_types = [by_name.get(name, "") for name in names]
+    return [
+        pg_type if pg_type and same_wire_form(pg_type, duck_type) else duck_type
+        for pg_type, duck_type in zip(pg_types, served)
+    ]
+
+
 def answer(sql: str, role_id: str, state):  # REQ-532
     """Return a synthetic QueryResult for intercepted catalog/SET/SHOW queries."""
     from provisa.executor.result import QueryResult
@@ -347,7 +367,9 @@ def answer(sql: str, role_id: str, state):  # REQ-532
         cur = db.execute(rewritten)
         rows = [tuple(r) for r in cur.fetchall()]
         col_names = [desc[0] for desc in (cur.description or [])]
-        col_types = [str(desc[1]) for desc in (cur.description or [])]
+        col_types = _declared_types(
+            stripped, col_names, [str(desc[1]) for desc in (cur.description or [])]
+        )
         return QueryResult(rows=rows, column_names=col_names, column_types=col_types)
     except Exception as exc:
         log.error(
