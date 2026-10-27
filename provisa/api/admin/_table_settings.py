@@ -30,6 +30,7 @@ from provisa.core.schema_org import registered_tables, roles, sources
 
 if TYPE_CHECKING:
     from provisa.api.admin.types import RLSRuleInput, RoleTtlInput, TableInput, WriteGrantInput
+    from provisa.compiler.naming import LabelClash
     from provisa.core.database import Connection
     from provisa.core.models import Table, WriteGrant
 
@@ -206,6 +207,16 @@ def naming_refusal(convention: str | None) -> MutationResult | None:
         ),
         code="schema.naming_convention_invalid",
         params={"convention": convention},
+    )
+
+
+def label_clash_result(clash: "LabelClash") -> MutationResult:  # REQ-572
+    """The refusal of a table or domain whose Cypher label the other already has, naming both."""
+    return MutationResult(
+        success=False,
+        message=str(clash),
+        code="schema.label_is_a_domain",
+        params={"label": clash.label, "domain": clash.domain_id, "table": clash.table},
     )
 
 

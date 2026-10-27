@@ -144,10 +144,6 @@
         "label": "Anforderungs-Threads pro Worker",
         "help": "Die maximale Anzahl Anforderungen, die ein Worker-Prozess gleichzeitig ausführt; weitere warten auf einen freien Thread. Neustart erforderlich, da das Limit beim Start des Workers festgelegt wird."
       },
-      "workers": {
-        "label": "Worker-Prozesse",
-        "help": "Wie viele Worker-Prozesse der Server ausführt. Neustart erforderlich, da die Prozesse vom Launcher gestartet werden."
-      },
       "stream_threads": {
         "label": "Stream-Threads pro Worker",
         "help": "Die maximale Anzahl gestreamter Antworten und offener WebSockets, die ein Worker-Prozess gleichzeitig hält, Abonnements eingeschlossen. Jede wartet auf ihren Client, statt einen Kern zu belegen, daher wird sie getrennt von den Anforderungs-Threads gezählt."
@@ -211,10 +207,6 @@
       "mode": {
         "label": "Sicherheitsmodus",
         "help": "Standard oder hohe Sicherheit, bei der Datenendpunkte jeden Client abweisen, der Ergebnisse nicht selbst entschlüsseln kann, und die Listener für pgwire, Bolt und MCP nicht gestartet werden. Neustart erforderlich, da dies bestimmt, welche Listener starten; bestätigungspflichtig, da gewöhnliche Clients ausgeschlossen werden."
-      },
-      "multitenancy": {
-        "label": "Mandantenfähigkeit",
-        "help": "Ob das Deployment mehrere Organisationen bedient, die jeweils nur ihre eigenen Daten verwalten. Neustart erforderlich, da Rollenzuweisungen beim Start festgelegt werden; bestätigungspflichtig, da sich ändert, wer das Deployment verwalten darf."
       },
       "superuser": {
         "username": {
@@ -286,10 +278,6 @@
         "label": "Airport-Port",
         "help": "Der Port, auf dem der Airport-Flight-Dienst lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
       },
-      "port": {
-        "label": "HTTP-API-Port",
-        "help": "Der Port, auf dem die HTTP-API lauscht. Neustart erforderlich; bestätigungspflichtig, da die UI und alle Clients einer Änderung folgen müssen."
-      },
       "public_url": {
         "label": "Öffentliche Adresse",
         "help": "Die Adresse, unter der diese Bereitstellung bekannt ist, etwa https://data.example.com. Jede IRI eines Subjekts in SPARQL und in RDF-Exporten beginnt damit, daher sollte sie gleich bleiben, solange diese IRIs verwendet werden. Ist sie nicht gesetzt, wird eine Abfrage abgelehnt, die die IRI eines Subjekts liefert."
@@ -335,14 +323,6 @@
       "bolt_key": {
         "label": "Privater Bolt-TLS-Schlüssel",
         "help": "Der private Schlüssel für das eigene Zertifikat des Bolt-Listeners. Neustart erforderlich; bestätigungspflichtig."
-      },
-      "http_cert": {
-        "label": "HTTP-API-TLS-Zertifikat",
-        "help": "Die Zertifikatsdatei, die die HTTP-API präsentiert. Neustart erforderlich; bestätigungspflichtig."
-      },
-      "http_key": {
-        "label": "Privater HTTP-API-TLS-Schlüssel",
-        "help": "Der private Schlüssel für das Zertifikat der HTTP-API. Neustart erforderlich; bestätigungspflichtig."
       }
     },
     "cache": {
@@ -463,8 +443,6 @@
         "help": "Der niedrigste Schweregrad von Protokolleinträgen, die mit der Telemetrie exportiert werden."
       },
       "subsystem_traces": {
-        "label": "Subsystem-Traces",
-        "help": "Welche internen Subsysteme eigene Traces schreiben.",
         "http_api": {
           "label": "Subsystem-Traces: HTTP-API",
           "help": "Anfragen, die von der Plattform-API bedient werden. Neustart erforderlich."
@@ -529,22 +507,6 @@
       "s3_endpoint": {
         "label": "Adresse des Telemetriespeichers",
         "help": "Der Objektspeicher, in den gespeicherte Telemetrie geschrieben wird."
-      },
-      "s3_bucket": {
-        "label": "Bucket des Telemetriespeichers",
-        "help": "Der Bucket, in den gespeicherte Telemetrie geschrieben wird."
-      },
-      "s3_region": {
-        "label": "Region des Telemetriespeichers",
-        "help": "Die Region des Telemetrie-Objektspeichers."
-      },
-      "s3_access_key": {
-        "label": "Zugriffsschlüssel des Telemetriespeichers",
-        "help": "Der Zugriffsschlüssel des Telemetrie-Objektspeichers. Secret."
-      },
-      "s3_secret_key": {
-        "label": "Geheimer Schlüssel des Telemetriespeichers",
-        "help": "Der geheime Schlüssel des Telemetrie-Objektspeichers. Secret."
       },
       "support_endpoint": {
         "label": "Support-Telemetrie-Endpunkt",
@@ -641,108 +603,6 @@
       "egress_allowlist": {
         "label": "Egress-Allowlist für gehostete Funktionen",
         "help": "Die Hosts, die eine gehostete Funktion aufrufen darf; alles andere wird abgelehnt. Bestätigungspflichtig, da jeder Eintrag einen ausgehenden Pfad öffnet."
-      }
-    },
-    "cdc": {
-      "consumer_group_id": {
-        "label": "CDC-Consumer-Group",
-        "help": "Der Name, den dieses Deployment verwendet, wenn es Änderungsereignisse von einem Message Broker liest."
-      }
-    },
-    "graphql_remote": {
-      "max_object_depth": {
-        "label": "Objekttiefe bei Remote-GraphQL",
-        "help": "Wie tief verschachtelte Objekte aus einer Remote-GraphQL-Quelle verfolgt werden."
-      },
-      "max_list_depth": {
-        "label": "Listentiefe bei Remote-GraphQL",
-        "help": "Wie tief verschachtelte Listen aus einer Remote-GraphQL-Quelle verfolgt werden."
-      },
-      "max_list_items": {
-        "label": "Listenelemente bei Remote-GraphQL",
-        "help": "Die maximale Anzahl Elemente, die aus einer Liste einer Remote-GraphQL-Quelle gelesen werden."
-      },
-      "max_rows": {
-        "label": "Zeilen pro Lesevorgang bei Remote-GraphQL",
-        "help": "Die maximale Anzahl Zeilen, die ein Lesevorgang einer seitenweise gelesenen Remote-GraphQL-Tabelle holt."
-      }
-    },
-    "provisioning": {
-      "engine_namespace": {
-        "label": "Engine-Namespace",
-        "help": "Der Kubernetes-Namespace, in dem Engine-Cluster erstellt werden."
-      },
-      "engine_cluster_mode": {
-        "label": "Engine-Clustermodus",
-        "help": "Die Art des Kubernetes-Clusters, auf dem Engines bereitgestellt werden."
-      },
-      "engine_cpu": {
-        "label": "Engine-CPU",
-        "help": "Die CPU, die jeder bereitgestellten Engine zugewiesen wird."
-      },
-      "engine_shard": {
-        "label": "Engine-Shard",
-        "help": "Der Engine-Shard, zu dem dieser Knoten gehört."
-      },
-      "engine_otlp_endpoint": {
-        "label": "Engine-Telemetrie-Endpunkt",
-        "help": "Wohin bereitgestellte Engines ihre eigene Telemetrie senden."
-      },
-      "engine_control_plane_host": {
-        "label": "Engine-Control-Plane-Host",
-        "help": "Die Adresse, über die Engines die Control-Plane-Datenbank erreichen, wenn sie sich von der unterscheidet, die dieser Server verwendet."
-      },
-      "engine_control_plane_port": {
-        "label": "Engine-Control-Plane-Port",
-        "help": "Der Port, über den Engines die Control-Plane-Datenbank erreichen."
-      },
-      "engine_lakehouse_metastore_host": {
-        "label": "Lakehouse-Metastore-Host",
-        "help": "Die Adresse des Lakehouse-Metastores, den Engines verwenden."
-      },
-      "engine_lakehouse_metastore_port": {
-        "label": "Lakehouse-Metastore-Port",
-        "help": "Der Port des Lakehouse-Metastores, den Engines verwenden."
-      },
-      "engine_otel_s3_endpoint": {
-        "label": "Adresse des Engine-Telemetriespeichers",
-        "help": "Die Adresse des Telemetrie-Objektspeichers, wie Engines sie erreichen."
-      },
-      "isolated_engine_image": {
-        "label": "Image der dedizierten Engine",
-        "help": "Das Container-Image, das für die dedizierte Engine einer Organisation verwendet wird."
-      },
-      "isolated_engine_network": {
-        "label": "Netzwerk der dedizierten Engine",
-        "help": "Das Container-Netzwerk, an das eine dedizierte Engine angebunden wird."
-      },
-      "isolated_engine_memory": {
-        "label": "Speicher der dedizierten Engine",
-        "help": "Der Speicher, der einer dedizierten Engine zugewiesen wird."
-      },
-      "isolated_engine_host_template": {
-        "label": "Hostmuster der dedizierten Engine",
-        "help": "Das Muster, aus dem der Hostname einer dedizierten Engine gebildet wird."
-      },
-      "isolated_engine_port": {
-        "label": "Port der dedizierten Engine",
-        "help": "Der Port, auf dem eine dedizierte Engine lauscht."
-      },
-      "isolated_engine_ready_timeout": {
-        "label": "Bereitschaftszeitlimit der dedizierten Engine",
-        "help": "Wie lange darauf gewartet wird, dass eine dedizierte Engine bereit ist."
-      },
-      "isolated_engine_docker_socket": {
-        "label": "Docker-Socket der dedizierten Engine",
-        "help": "Der Docker-Socket, der zum Starten dedizierter Engines verwendet wird."
-      },
-      "zaychik_cpu": {
-        "label": "CPU des Abfrage-Gateways",
-        "help": "Die CPU, die dem Abfrage-Gateway der Engine zugewiesen wird."
-      },
-      "zaychik_memory": {
-        "label": "Speicher des Abfrage-Gateways",
-        "help": "Der Speicher, der dem Abfrage-Gateway der Engine zugewiesen wird."
       }
     },
     "readonlyReasons": {

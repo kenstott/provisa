@@ -946,10 +946,10 @@ def _row_counts_for(role_id: str, ctx, idx, engine_conn) -> dict[int, float]:
     return row_counts
 
 
-def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
-    from provisa.federation.duckdb_backend import local_catalog_connection
-
-    db = local_catalog_connection()
+def role_catalog_index(state, role_id: str) -> tuple[object, CatalogIndex, list]:
+    """The role's compilation context, its catalog index and the metrics it is served: what a SQL
+    surface lists as the role's catalog (pgwire's catalog, Flight SQL's catalog commands,
+    REQ-2175)."""
     ctx = state.contexts.get(role_id)
     col_types: dict = state.schema_build_cache.get("column_types", {})
     # REQ-1319: governed metrics from the loaded config, filtered to the connected role's
@@ -958,7 +958,14 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _metrics_attr = getattr(getattr(state, "config", None), "metrics", None)
     all_metrics = _metrics_attr if isinstance(_metrics_attr, list) else []
     metrics = [m for m in all_metrics if role_id in m.visible_to]
-    idx = _build_catalog_index(ctx, col_types, metrics)
+    return ctx, _build_catalog_index(ctx, col_types, metrics), metrics
+
+
+def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
+    from provisa.federation.duckdb_backend import local_catalog_connection
+
+    db = local_catalog_connection()
+    ctx, idx, metrics = role_catalog_index(state, role_id)
 
     row_counts = _row_counts_for(role_id, ctx, idx, getattr(state, "engine_conn", None))
 

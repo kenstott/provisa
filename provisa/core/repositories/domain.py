@@ -28,8 +28,12 @@ if TYPE_CHECKING:
 async def upsert(  # REQ-021, REQ-367, REQ-1919
     conn: "Connection", domain: Domain
 ) -> None:
-    """Create the domain, or replace its definition."""
+    """Create the domain, or replace its definition.
+
+    REQ-572: refused (:class:`provisa.compiler.naming.LabelClash`), naming both, when the
+    domain's Cypher label is a registered table's. The admin and config load share this path."""
     model_change.name("upsert", "domain", domain.id)  # REQ-1524
+    await _require_label_not_a_table(conn, domain.id)
     await conn.upsert(
         domains,
         {
@@ -43,6 +47,28 @@ async def upsert(  # REQ-021, REQ-367, REQ-1919
         index_elements=["id"],
         update_columns=["description", "steward", "graphql_alias", "parent_domain_id"],
     )
+
+
+async def _require_label_not_a_table(conn: "Connection", domain_id: str) -> None:  # REQ-572
+    from provisa.compiler.naming import refuse_label_clash
+    from provisa.core.repositories.table import naming_rules
+    from provisa.core.schema_org import registered_tables as rt
+
+    tables = [
+        dict(r._mapping)
+        for r in (
+            await conn.execute_core(
+                select(
+                    rt.c.source_id,
+                    rt.c.schema_name,
+                    rt.c.table_name,
+                    rt.c.alias,
+                    rt.c.gql_naming_convention,
+                )
+            )
+        ).fetchall()
+    ]
+    refuse_label_clash(tables, [domain_id], await naming_rules(conn))
 
 
 async def get(conn: "Connection", domain_id: str) -> dict | None:  # REQ-021, REQ-402

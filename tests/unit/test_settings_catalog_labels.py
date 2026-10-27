@@ -48,3 +48,20 @@ def test_each_setting_has_an_english_label_and_help(setting):
     ]
     missing = [w for w in wanted if _string(english, f"{setting.key}.{w}") is None]
     assert not missing, f"settings.json has no {missing} for {setting.key}"
+
+
+def _labelled(node: dict, path: list[str]):
+    if isinstance(node.get("label"), str):
+        yield ".".join(path)
+    for key, child in node.items():
+        if isinstance(child, dict) and key not in ("keys", "columns"):
+            yield from _labelled(child, [*path, key])
+
+
+def test_every_english_setting_entry_is_a_catalog_setting():
+    """An entry no catalog setting reads is dead text the page never shows."""
+    english = json.loads(_EN.read_text())["settings"]
+    declared = {s.key for s in settings_catalog.DECLARED}
+    # The read-only reasons are the page's own sentences, keyed by reason, not by setting.
+    entries = {e for k, v in english.items() if k != "readonlyReasons" for e in _labelled(v, [k])}
+    assert sorted(entries - declared) == []

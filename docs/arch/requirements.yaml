@@ -10035,18 +10035,35 @@
   feature: cypher-and-graph-analytics-translation
   priority: SHOULD
   type: behavioral
-  description: Provisa handles CALL db.labels(), CALL db.relationshipTypes(), and CALL db.propertyKeys()
+  description: 'Provisa handles CALL db.labels(), CALL db.relationshipTypes(), and CALL db.propertyKeys()
     as introspection procedures that return data from the in-memory semantic layer (CypherLabelMap) without
-    generating or executing any SQL.
+    generating or executing any SQL. (Amended 2026-10-27, A SHARED TABLE NAME READS AS A UNION:) Maintainer
+    2026-10-27: a label names a set of nodes, so a bare table label whose table exists in two or more domains
+    the role reaches (:Orders with Sales:Orders and Returns:Orders) reads every such table as one sparse
+    union by column name, as REQ-2176 reads a label carried by several tables: a column a table lacks reads
+    NULL and conflicting types widen. Each table is read under the role''s governance. The compound form
+    (:Sales:Orders) still names one table. The union applies to reads; a CREATE naming such a bare label
+    names no single model table and so follows REQ-2176 (an ephemeral node carrying the label). (Amended
+    2026-10-27, NO TABLE LABEL MAY EQUAL A DOMAIN LABEL:) Maintainer 2026-10-27: a label must never mean
+    both a domain and a table. Registering a table, renaming it or giving it an alias is refused by name
+    when its resolved label (from its physical name or its alias, under the label naming convention) equals
+    the label of a domain in the org; creating or renaming a domain is refused by name when its label equals
+    a registered table''s resolved label. An ephemeral session label matching a domain is refused at CREATE
+    (REQ-2176). The check runs where the model is saved, so a config carrying such a collision is refused
+    on load and names both objects.'
   use_case: Returning schema introspection data from the semantic layer (not the database) lets Neo4j-compatible
     clients discover the graph schema via standard procedure calls.
   code:
   - provisa/api/rest/cypher_router.py
+  - provisa/compiler/naming.py
+  - provisa/core/repositories/table.py
+  - provisa/core/repositories/domain.py
   tests:
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
+  - tests/unit/test_table_label_not_a_domain.py
   since: 2026-01
   scenario: 'Given a client issuing CALL db.labels()
 
@@ -87993,6 +88010,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1913
   target: "2027-Q1"
   code:
+  - provisa/core/local_install.py
+  - provisa/cli.py
+  - provisa-ui/src/pages/GraphPage.tsx
     - provisa/sparql_query/compiler.py
     - provisa/sparql_query/results.py
     - provisa/sparql_query/vocabulary.py
@@ -88015,6 +88035,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa-ui/src/components/graph/GraphExportModal.tsx
     - provisa-ui/src/pages/GraphPage.tsx
   tests:
+  - tests/unit/test_local_install_public_url.py
     - tests/unit/test_sparql_compiler.py
     - tests/unit/test_sparql_protocol.py
     - tests/unit/test_sparql_vocabulary_refs.py
@@ -89778,28 +89799,30 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: cypher-and-graph-analytics-writes
   priority: SHOULD
   type: behavioral
-  description: 'Every query language may create EPHEMERAL objects, the way SQL creates a session temp table;
-    the model''s own objects are still never created through a query surface (REQ-661, REQ-665, REQ-2167).
-    In Cypher, a CREATE naming a label or relationship type the model does not have creates it in the session
-    only: a session temp table per new label and a session junction table per new type, so nodes with several
-    new labels and relationships between ephemeral nodes work. In SPARQL, INSERT DATA into a session-local
-    named graph does the same. Ephemeral objects follow the temp-table rules: visible to their own session
-    alone, never in the catalog, the ontology, exports or another session; dropped when the session ends;
-    capped by the session''s memory and size limits. They may be read beside model data, which is still
-    read under the role''s grants, masks and row rules, so nothing governed leaves its governance through
-    them. Writes to model objects keep their own rules (REQ-661, REQ-665). A session is the transport''s
-    own (pgwire, Bolt); on a stateless transport (HTTP Cypher, SPARQL) ephemeral objects live for the one
-    request unless the caller opens a session. An engine with no session temp storage keeps them in the
-    session''s own store. Conformance suites whose tests build their own graph run against it as written
-    (REQ-2167). (Amended 2026-10-27, EPHEMERAL GRAPH OBJECTS ARE JSON BAGS:) [SUPERSEDED by REQ-2176, 2026-10-27
-    -- ephemeral labels and types are typed session tables grown by ALTER TABLE with inferred types (EPHEMERAL
-    TABLES GROW BY ALTER, below). Kept here for history; do not implement against it.] Maintainer 2026-10-27:
-    ephemeral graph objects take a fixed shape instead of a table per label or type, [END SUPERSEDED BLOCK]
-    since a CREATE carries no schema and a label''s properties vary node to node. A session holds one node
-    table (id, labels as a list, props as one JSON value) and one relationship table (id, type, from_id,
-    to_id, props as one JSON value). A label the model registers resolves to its table; any other label
-    resolves to the session node table filtered on its labels. A property of an ephemeral node or relationship
-    is read by JSON extraction, keeping the value''s JSON type, and the translator casts where it is compared
+  description: '[SUPERSEDED by REQ-2176, 2026-10-27 -- the consolidated design below replaces every earlier
+    text of this requirement. Kept here for history; do not implement against it.] Every query language
+    may create EPHEMERAL objects, the way SQL creates a session temp table; the model''s own objects are
+    still never created through a query surface (REQ-661, REQ-665, REQ-2167). In Cypher, a CREATE naming
+    a label or relationship type the model does not have creates it in the session only: a session temp
+    table per new label and a session junction table per new type, so nodes with several new labels and
+    relationships between ephemeral nodes work. In SPARQL, INSERT DATA into a session-local named graph
+    does the same. Ephemeral objects follow the temp-table rules: visible to their own session alone, never
+    in the catalog, the ontology, exports or another session; dropped when the session ends; capped by the
+    session''s memory and size limits. They may be read beside model data, which is still read under the
+    role''s grants, masks and row rules, so nothing governed leaves its governance through them. Writes
+    to model objects keep their own rules (REQ-661, REQ-665). A session is the transport''s own (pgwire,
+    Bolt); on a stateless transport (HTTP Cypher, SPARQL) ephemeral objects live for the one request unless
+    the caller opens a session. An engine with no session temp storage keeps them in the session''s own
+    store. Conformance suites whose tests build their own graph run against it as written (REQ-2167). (Amended
+    2026-10-27, EPHEMERAL GRAPH OBJECTS ARE JSON BAGS:) [SUPERSEDED by REQ-2176, 2026-10-27 -- ephemeral
+    labels and types are typed session tables grown by ALTER TABLE with inferred types (EPHEMERAL TABLES
+    GROW BY ALTER, below). Kept here for history; do not implement against it.] Maintainer 2026-10-27: ephemeral
+    graph objects take a fixed shape instead of a table per label or type, [END SUPERSEDED BLOCK] since
+    a CREATE carries no schema and a label''s properties vary node to node. A session holds one node table
+    (id, labels as a list, props as one JSON value) and one relationship table (id, type, from_id, to_id,
+    props as one JSON value). A label the model registers resolves to its table; any other label resolves
+    to the session node table filtered on its labels. A property of an ephemeral node or relationship is
+    read by JSON extraction, keeping the value''s JSON type, and the translator casts where it is compared
     or joined with a typed model column. SPARQL''s session-local graph uses the same convention (or one
     (s, p, o) table). This supersedes the per-label and per-type session tables in this requirement''s first
     text. (Amended 2026-10-27, EPHEMERAL TABLES GROW BY ALTER:) Maintainer 2026-10-27, replacing the JSON-bag
@@ -89884,7 +89907,78 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     some, a label no session node carries is still read exactly as today; only a label with session matches
     is read through the node_labels lookup and the sparse union. The translation is chosen from the session''s
     overlay when the statement is translated, and the cache key carries the session''s generation, so a
-    label''s read changes form only once the session gives it a node.'
+    label''s read changes form only once the session gives it a node. (Amended 2026-10-27, ANCHORS, SEALED
+    DOMAINS AND AMBIGUOUS NAMES:) Maintainer 2026-10-27. (1) An ephemeral node''s anchor (its storage table)
+    is the first label in its CREATE naming an existing ephemeral table; only ephemeral tables anchor, never
+    a model table. With none, the first free label creates the anchor, or the node goes to the default session
+    table when it has no free label. (2) Domains are sealed: a CREATE naming a domain label is refused by
+    name; a session never adds members to a domain. [SUPERSEDED by REQ-2176, 2026-10-27 -- an ambiguous
+    CREATE is ephemeral (ANY AMBIGUITY IN A CREATE IS EPHEMERAL, below). Kept here for history; do not implement
+    against it.] (3) A CREATE naming a bare model table name that resolves to tables in two or more reachable
+    domains is refused as ambiguous, naming the qualified forms; reads of that name union (REQ-572), writes
+    must name one table. [END SUPERSEDED BLOCK] (4) An ephemeral relationship may carry a model relationship
+    type''s name; a read of that type unions the model relationships with the session''s own, while between
+    two model nodes the CREATE is a junction write under REQ-665. (5) In a mixed read, a column the session
+    and the model both hold widens by the lattice when their types differ. (Amended 2026-10-27, ANY AMBIGUITY
+    IN A CREATE IS EPHEMERAL:) Maintainer 2026-10-27, the governing rule: a governed model write needs an
+    exact, unambiguous target, one model table and nothing else. Any other CREATE is by definition not a
+    governed write and is ephemeral: one carrying a free label (a tag cannot be part of a governed write),
+    one naming two or more model tables, and one naming a bare model table name that resolves to tables
+    in two or more reachable domains. Such a node reads beside the real rows of every model table whose
+    label it carries. Domain labels in a CREATE stay refused (domains are sealed). [END SUPERSEDED BLOCK]
+    (Amended 2026-10-27, CONSOLIDATED DESIGN:) Maintainer 2026-10-27. This statement supersedes every earlier
+    text of this requirement. GOVERNING RULE: a governed model write needs an exact, unambiguous target,
+    one model table (and, for a relationship, one registered junction, REQ-665) and nothing else; anything
+    else is ephemeral. ARCHITECTURE: ephemeral objects extend the language without disturbing the governed
+    path. The existing compiler is unchanged for governed data: a statement with no ephemeral involvement
+    (every statement in a session holding no ephemeral object, and every label without session matches)
+    compiles to exactly today''s SQL, plan, route and governance. Ephemeral handling is a separate layer,
+    entered only when the session holds ephemeral objects or the statement creates them: an ephemeral-write
+    handler for CREATE, MERGE, SET and REMOVE that fall outside the governed-write rule, and a read overlay
+    that, for a label with session matches only, unions the session''s part beside the governed compiler''s
+    own answer. STORAGE: the session temp-table machinery (per-session schema, caps, keeper, dropped at
+    session end). nodes(node_id, table) names each ephemeral node''s anchor table; node_labels(node_id,
+    label), indexed on (label, node_id), holds every label an ephemeral node or a session-tagged model node
+    carries; rels(rel_id, type, from_id, to_id, table) holds ephemeral relationships, either end ephemeral
+    or model. Anchor tables are typed, grow a column for each new property (re-landing), infer types from
+    values and only widen (bigint to double; anything incompatible to JSON; on Trino, durations, zoned times
+    and lists land as JSON text and the answer says so). Model tables never widen. WRITES: a CREATE naming
+    exactly one model table and no free label is a governed model write (REQ-661). Any other CREATE makes
+    an ephemeral node carrying every label given: its anchor is the first label naming an existing ephemeral
+    table (only ephemeral tables anchor), else the first free label creates it, else the default session
+    table. A domain label in a CREATE is refused (domains are sealed). SET n:L and REMOVE n:L write node_labels
+    rows on ephemeral or model nodes; a node never moves table. SET of a property is a governed write on
+    a model node (declared columns only) and widens the anchor on an ephemeral one. MERGE is MATCH, then
+    CREATE under these same rules. DETACH DELETE of a model node is governed only when every part has an
+    exact target (its row, and each relationship it detaches a registered junction row); a foreign-key relationship
+    cannot be detached and is refused by name; its session tags and relationships go with it. READS: a label
+    with session matches resolves through node_labels: matching node_ids are found, deduplicated, grouped
+    by table and unioned by column name into one sparse result (a missing column reads NULL; conflicting
+    types widen); a model label adds its model table''s rows, read under the role''s governance; :A:B is
+    a node carrying both, :A|B either, :!A not A; labels(n) is a model node''s {Domain}:{Table} plus its
+    session tags, or an ephemeral node''s labels. A relationship type reads the model''s and the session''s
+    relationships alike. Domain and model names resolve first; a label in neither, with no CREATE, is refused
+    by name. SESSIONS AND LANGUAGES: the session is the transport''s own (Bolt and pgwire per connection;
+    HTTP Cypher and SPARQL per request). One session store serves every language: a pgwire temp table is
+    an ephemeral table to Cypher, a Cypher scratch node a temp table to SQL, and SPARQL INSERT DATA writes
+    the same tables (a triple about a model subject is a session property, relationship or rdf:type tag
+    on that node, never a model write). Ephemeral objects are visible to their own session alone, never
+    in the catalog, the ontology, exports or another session. Conformance suites that build their own graph
+    run against it (REQ-2167). (Amended 2026-10-27, SPARQL FOLLOWS THE SAME RULE:) Maintainer 2026-10-27:
+    SPARQL Update follows the governing rule. A model subject''s IRI ({public URL}/id/{domain}/{table}/{key})
+    names one model row, so a SPARQL write is governed only when all its triples resolve to that one row''s
+    declared columns: DELETE DATA / INSERT DATA (or DELETE/INSERT ... WHERE) of a declared predicate''s
+    value on a model subject updates that column; INSERT DATA of a new subject IRI in a model table''s namespace,
+    carrying that table''s class and its required columns, inserts one row; deleting every triple of a model
+    subject deletes that row, under the same exact-target rule as DETACH DELETE. Each runs through the governed
+    write path as SQL and Cypher writes do. Everything else goes to the session graph (the same session
+    store): a predicate the table does not declare, an rdf:type naming a class the model lacks or a second
+    class on a model subject (a session tag), a subject that is not a model IRI or is a blank node, triples
+    spanning several model rows, every named graph (CREATE GRAPH makes a session graph), and ontology statements
+    about model terms (the ontology is governed through its own admin path, never written by a query). The
+    existing SPARQL compiler is unchanged; an extension classifies each update as governed or session, and
+    reads union session triples beside the governed answer only where the session has matches. With server.public_url
+    unset, model IRIs cannot be recognized and such writes are refused by name, as reads are.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

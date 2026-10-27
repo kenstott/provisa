@@ -97,10 +97,17 @@ def test_flight_binds_a_principal_for_every_do_get():
     the deployment authenticates nobody — there is no unaudited branch."""
     import provisa.api.flight.server as flight_server
 
-    source = inspect.getsource(flight_server.ProvisaFlightServer._do_get_on_loop)
+    # do_get runs as the ticket's caller, and every other caller of a ticket's pipeline (a Flight
+    # SQL statement, its Describe) goes through the same scope (REQ-2175).
+    do_get = inspect.getsource(flight_server.ProvisaFlightServer._do_get_on_loop)
+    assert (
+        "return self._as_ticket_caller(request, lambda: self._do_get_inner(request, ticket))"
+        in (do_get)
+    )
+    source = inspect.getsource(flight_server.ProvisaFlightServer._as_ticket_caller)
     assert "identity.user_id if identity is not None else ANONYMOUS_USER" in source
-    assert source.count("return self._do_get_inner(request, ticket)") == 1
-    before = source[: source.index("return self._do_get_inner(request, ticket)")]
+    assert source.count("return body()") == 1
+    before = source[: source.index("return body()")]
     assert before.rstrip().endswith('with audit_identity_scope(user_id, "flight"):')
 
 

@@ -586,6 +586,55 @@ def generate_name(  # REQ-154, REQ-155, REQ-157, REQ-194, REQ-1933
     return result
 
 
+class LabelClash(ValueError):  # REQ-572
+    """A table's Cypher label is a domain's. A label never means both: a statement naming it
+    could be reading the table or the domain's tables."""
+
+    def __init__(self, label: str, domain_id: str, table: str) -> None:
+        self.label = label
+        self.domain_id = domain_id
+        self.table = table
+        super().__init__(
+            f"Table {table} and domain {domain_id!r} would both have the Cypher label {label}. "
+            "A label never names both a domain and a table: give the table an alias, or name the "
+            "domain differently."
+        )
+
+
+def refuse_label_clash(
+    tables: "list[dict]", domain_ids: "list[str]", naming_rules: list[dict]
+) -> None:  # REQ-572
+    """Raise :class:`LabelClash` for the first table whose Cypher label is one of the domains'.
+    Each table carries ``source_id``, ``schema_name``, ``table_name`` and ``alias`` (and may carry
+    ``gql_naming_convention``)."""
+    by_label = {domain_cypher_label(d): d for d in domain_ids if d}
+    for t in tables:
+        label = table_cypher_label(
+            t["table_name"], t.get("alias"), naming_rules, t.get("gql_naming_convention")
+        )
+        if label in by_label:
+            raise LabelClash(
+                label, by_label[label], f"{t['source_id']}.{t['schema_name']}.{t['table_name']}"
+            )
+
+
+def table_cypher_label(
+    table_name: str, alias: str | None, naming_rules: list[dict], convention: str | None = None
+) -> str:  # REQ-572
+    """The Cypher label a table answers to, without its domain: its GraphQL field name
+    (:func:`generate_name`) in the label convention, the part after a domain qualifier when the
+    name carries one -- as the label map derives it (``gql.label_map._split_cypher_labels``)."""
+    field = generate_name(
+        table_name, naming_rules, alias=alias, convention=convention or active_gql_convention()
+    )
+    return apply_cql_label(field.split("__", 1)[1] if "__" in field else field)
+
+
+def domain_cypher_label(domain_id: str) -> str:  # REQ-572
+    """The Cypher label a domain answers to (``gql.label_map``: the domain part of a label)."""
+    return apply_cql_label(domain_id)
+
+
 def to_type_name(field_name: str) -> str:  # REQ-471
     """Convert a field name to a GraphQL type name (PascalCase).
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import date
-from provisa.compiler.naming import SqlAddressTaken, stored_convention
+from provisa.compiler.naming import LabelClash, SqlAddressTaken, stored_convention
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
@@ -83,6 +83,7 @@ from provisa.api.admin.schema_helpers import (
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
+    label_clash_result,
     carried,
     load_protection_refusal,
     save_carried_paging,
@@ -3193,7 +3194,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.domain_parent_invalid",
                     params={"domain": input.id, "parent": model.parent_domain_id},
                 )
-            await domain_repo.upsert(cast("Connection", conn), model)
+            try:
+                await domain_repo.upsert(cast("Connection", conn), model)
+            except LabelClash as clash:
+                # REQ-572: a label never names both a domain and a table; both are named.
+                return label_clash_result(clash)
         if model.parent_domain_id is not None:
             # REQ-1363: a role that lists the parent reaches the new domain now -- a member scoped
             # to the business unit registers into its new organization without a role edit.
@@ -4186,6 +4191,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 params={"table": _drop.table_name, "columns": _report},
                             )
                         )
+                    except LabelClash as _clash:
+                        # REQ-572: a label never names both a domain and a table; both are named.
+                        raise TableSaveRefused(label_clash_result(_clash))
                     except SqlAddressTaken as _taken:
                         # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                         raise TableSaveRefused(
