@@ -26,8 +26,9 @@
   group: get_objects table
   became: >-
     The table the suite would ingest (ints INTEGER, strs TEXT; rows (1, NULL), (NULL, 'foo'),
-    (42, 'spam')) is getobjects_fixture, declared in the fixture model; dropping a table is a
-    no-op, as the model holds every table.
+    (42, 'spam')) is getobjects_fixture, declared in the fixture model's conformance domain (the
+    suite's would be in the current schema, public); dropping a table is a no-op, as the model
+    holds every table.
   case: "TestConnection::test_get_objects_(table|column)_"
 
 - kind: adapted

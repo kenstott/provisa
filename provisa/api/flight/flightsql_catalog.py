@@ -87,6 +87,10 @@ _RULES = {
 }
 
 
+#: The catalog pgwire lists every table and schema under (pgwire.catalog_populate).
+CATALOG = "provisa"
+
+
 @dataclass(frozen=True)
 class _Table:
     catalog: str
@@ -147,19 +151,21 @@ def _optional(command: Any, field: str) -> str | None:
 
 
 def catalogs(catalog: RoleCatalog) -> pa.Table:
-    names = sorted({t.catalog for t in catalog.tables})
+    names = sorted({t.catalog for t in catalog.tables} | {CATALOG})
     return pa.Table.from_pydict({"catalog_name": names}, schema=CATALOGS_SCHEMA)
 
 
 def db_schemas(catalog: RoleCatalog, command: pb.CommandGetDbSchemas) -> pa.Table:
+    """The schemas of the role's tables, and the current schema, which pgwire lists too."""
+    from provisa.pgwire.catalog import CURRENT_SCHEMA
+
     want_catalog = _optional(command, "catalog")
     pattern = _optional(command, "db_schema_filter_pattern")
+    listed = {(t.catalog, t.schema) for t in catalog.tables} | {(CATALOG, CURRENT_SCHEMA)}
     rows = sorted(
-        {
-            (t.catalog, t.schema)
-            for t in catalog.tables
-            if (want_catalog is None or t.catalog == want_catalog) and _matches(t.schema, pattern)
-        }
+        (c, s)
+        for c, s in listed
+        if (want_catalog is None or c == want_catalog) and _matches(s, pattern)
     )
     return pa.Table.from_pylist(
         [{"catalog_name": c, "db_schema_name": s} for c, s in rows], schema=DB_SCHEMAS_SCHEMA

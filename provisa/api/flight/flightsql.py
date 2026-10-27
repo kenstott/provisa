@@ -29,6 +29,7 @@ import pyarrow.flight as flight
 from google.protobuf import any_pb2
 from google.protobuf.message import DecodeError, Message
 
+from provisa.proto import Flight_pb2 as flight_pb
 from provisa.proto import FlightSql_pb2 as pb
 
 _TYPE_PREFIX = "type.googleapis.com/arrow.flight.protocol.sql."
@@ -272,3 +273,16 @@ def prepared_info(
     ticket = pack(pb.CommandPreparedStatementQuery(prepared_statement_handle=handle))
     endpoint = flight.FlightEndpoint(ticket, [])  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     return flight.FlightInfo(None, descriptor, [endpoint], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+
+def session_options(catalog: str, schema: str) -> bytes:
+    """GetSessionOptions' answer: the session's current ``catalog`` and ``schema``, under the
+    option names the ADBC Flight SQL driver reads them by."""
+    value = flight_pb.SessionOptionValue
+    result = flight_pb.GetSessionOptionsResult(
+        session_options={
+            "catalog": value(string_value=catalog),
+            "schema": value(string_value=schema),
+        }
+    )
+    return result.SerializeToString()

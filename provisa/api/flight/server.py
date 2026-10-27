@@ -385,6 +385,9 @@ _HEALTHCHECK_ACTION = "healthcheck"
 
 # The Flight SQL actions the endpoint serves (REQ-2175).
 _FLIGHT_SQL_ACTIONS = frozenset({"CreatePreparedStatement", "ClosePreparedStatement"})
+# Flight's session options action (Flight.proto), which a Flight SQL client reads its current
+# catalog and schema by (REQ-2175).
+_GET_SESSION_OPTIONS = "GetSessionOptions"
 
 
 # The middleware key the call's headers are kept under.
@@ -961,6 +964,27 @@ class ProvisaFlightServer(
             return []
         raise NotImplementedError(f"Flight SQL action {action.type}")
 
+    def _session_options(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> list[flight.Result]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """GetSessionOptions (REQ-2175): the caller's current catalog and schema, as pgwire
+        answers current_database() and current_schema()."""
+        from provisa.pgwire.catalog import CURRENT_SCHEMA
+        from provisa.pgwire.catalog_populate import served_database_name
+        from provisa.proto import Flight_pb2
+
+        Flight_pb2.GetSessionOptionsRequest.FromString(
+            action.body.to_pybytes() if action.body else b""
+        )
+        request = self._caller_headers(context)
+
+        def _options() -> bytes:
+            return flightsql.session_options(served_database_name(self._state), CURRENT_SCHEMA)
+
+        return [flight.Result(_run_rpc(lambda: self._as_ticket_caller(request, _options)))]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
     # ------------------------------------------------------------------
     # get_schema — Arrow schema for a catalog table
     # ------------------------------------------------------------------
@@ -1243,9 +1267,12 @@ class ProvisaFlightServer(
         (``provisa.api.health_report``) — for a client or a load balancer that reaches this
         server over Flight only. It needs no credential, as ``/health`` needs none.
 
-        A Flight SQL action (REQ-2175) is :meth:`_flightsql_action`'s."""
+        A Flight SQL action (REQ-2175) is :meth:`_flightsql_action`'s; GetSessionOptions is
+        :meth:`_session_options`'s."""
         if action.type in _FLIGHT_SQL_ACTIONS:
             return self._flightsql_action(context, action)
+        if action.type == _GET_SESSION_OPTIONS:
+            return self._session_options(context, action)
         if action.type == _HEALTHCHECK_ACTION:
             from provisa.api.health_report import health_report
 
