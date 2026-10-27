@@ -233,7 +233,9 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
     and follows the same rule — the token's principal must hold it. The role the token itself
     maps to always qualifies. stdio (and a loopback HTTP call with no bearer) has no principal:
     the operator pinned the roles the process may act as (PROVISA_MCP_ROLE, a role or a set), and
-    a local client names only roles within that pin; any other is refused by name.
+    a local client names only roles within that pin; any other is refused by name. Within it the
+    set is resolved as every unsecured transport resolves one (``unsecured_principal``, REQ-1952):
+    a named derived role qualifies the set's meta-role, and its attribute is bound for the call.
     """
     from provisa.security.meta_role import refuse_named_meta_role, resolve_requested_role
 

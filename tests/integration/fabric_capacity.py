@@ -91,7 +91,10 @@ def ensure_capacity_paused(*, sleep=None, clock=None) -> str:
     every state but Active -- which says nothing about whether compute is billing (run
     38050265191 reported "NOT paused" on such a refusal without knowing). So the state is read:
     paused is done; Active is suspended; anything else is waited out. Raises if the capacity is
-    not paused within the bound -- then it may be billing, and the caller must say so."""
+    not paused within the bound -- then it may be billing, and the caller must say so.
+
+    The state found, then each change, is printed with the seconds since the first read: the lane's
+    log is where how long a pause takes is read from (the bound is sized from it)."""
     import time
 
     sleep = sleep or time.sleep
@@ -103,7 +106,9 @@ def ensure_capacity_paused(*, sleep=None, clock=None) -> str:
         )
     with _product._client() as client:
         url, state = _product._locate(client)
-        deadline = clock() + _PAUSE_TIMEOUT_S
+        start = clock()
+        deadline = start + _PAUSE_TIMEOUT_S
+        print(f"Fabric capacity: {state} at 0s", flush=True)
         suspend_sent = False
         while True:
             if state in _PAUSED_STATES:
@@ -122,4 +127,6 @@ def ensure_capacity_paused(*, sleep=None, clock=None) -> str:
                     "it may be billing"
                 )
             sleep(_PAUSE_POLL_S)
-            state = _product._state(client, url)
+            was, state = state, _product._state(client, url)
+            if state != was:
+                print(f"Fabric capacity: {was} -> {state} at {clock() - start:.0f}s", flush=True)

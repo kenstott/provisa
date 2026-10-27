@@ -60,52 +60,51 @@ export function buildDropExpansion(
   // The table part of the dropped label (Shelter:Assignments -> Assignments), for variable names.
   const droppedTableName = compoundLabel.split(":").pop() ?? compoundLabel;
 
-  // Map each label the query declares, as written (a compound label whole), to its variable, by
-  // parsing the MATCH clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch that
-  // returned no rows still declares its label and must remain matchable.
-  const varByLabel: Record<string, string> = {};
+  // Map each label the query declares, as written (a compound label whole), to every variable bound
+  // to it, by parsing the MATCH clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch
+  // that returned no rows still declares its label and must remain matchable. A label bound twice
+  // anchors from both variables.
+  const varsByLabel: Record<string, string[]> = {};
   for (const m of query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*\)/g)) {
     const [, varName, labels] = m;
-    varByLabel[labels] = varName;
+    const vars = (varsByLabel[labels] ??= []);
+    if (!vars.includes(varName)) vars.push(varName);
   }
 
   // The relationship types are the server's, from the acting role's label map
   // (/data/graph-schema, the sidebar's Relationship Types): only a type it registers between the
   // dropped label and one the query declares is written, so the translator never meets a type it
-  // does not know (REQ-1586). Every type that reaches the dropped label from that node is
-  // collected, not just the first: one junction table backs several types between the same two
-  // labels, and stopping at the first would hide the rest.
-  let sourceVar: string | undefined;
-  const relAliases: string[] = [];
+  // does not know (REQ-1586). EVERY type that reaches the dropped label, from EVERY variable the
+  // query binds to the other end's label -- not the first type, nor the first variable. One
+  // junction table backs several types at once, and a query can reach the dropped label from
+  // several of its nodes (a domain and its products). Each (anchor, type) is its own hop, with its
+  // own relationship and target variables: a target shared across anchors would require one node
+  // to be reached from all of them and hide every row that is not. The graph merges the nodes
+  // several hops reach by identity.
+  const hops: { anchor: string; relType: string }[] = [];
   for (const r of schemaRels) {
-    // dropped node is the relationship target; existing query node is the source
-    const asTarget = r.target === compoundLabel && varByLabel[r.source];
-    // dropped node is the relationship source; existing query node is the target
-    const asSource = r.source === compoundLabel && varByLabel[r.target];
-    if (!asTarget && !asSource) continue;
-    const anchor = asTarget ? varByLabel[r.source] : varByLabel[r.target];
-    // Every hop hangs off one anchor variable — the first one found. A type reaching the dropped
-    // label from a DIFFERENT existing node is a different question.
-    if (sourceVar === undefined) sourceVar = anchor;
-    else if (anchor !== sourceVar) continue;
-    if (!relAliases.includes(r.type)) relAliases.push(r.type);
+    // The dropped node is the relationship's target (the query's node its source), or its source.
+    const anchors = [
+      ...(r.target === compoundLabel ? (varsByLabel[r.source] ?? []) : []),
+      ...(r.source === compoundLabel ? (varsByLabel[r.target] ?? []) : []),
+    ];
+    for (const anchor of anchors)
+      if (!hops.some((h) => h.anchor === anchor && h.relType === r.type))
+        hops.push({ anchor, relType: r.type });
   }
-  if (!sourceVar) {
-    // No known relationship — fall back to first MATCH variable
-    const nodeVarMatch = query.match(/\bMATCH\s*\(\s*(\w+)/i);
-    sourceVar = nodeVarMatch?.[1] ?? "n";
-  }
+  // No known relationship: the dropped label alone, beside the query's first MATCH variable.
+  const firstVar = query.match(/\bMATCH\s*\(\s*(\w+)/i)?.[1] ?? "n";
 
   const suffix = droppedTableName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
   const trimmed = query.trim();
   const taken = (v: string) =>
     trimmed.includes(`[${v}`) || trimmed.includes(` ${v}`) || trimmed.includes(`(${v}`);
-  // One free (rel, target) variable pair per type. Each type gets its own OPTIONAL MATCH: a
+  // One free (rel, target) variable pair per hop. Each hop gets its own OPTIONAL MATCH: a
   // single-hop pattern resolves one relationship mapping, so alternation is not a spelling the
   // translator accepts.
   const pairs: { relVar: string; targetVar: string }[] = [];
   let counter = 1;
-  for (let k = 0; k < Math.max(relAliases.length, 1); k++) {
+  for (let k = 0; k < Math.max(hops.length, 1); k++) {
     let relVar = `r${suffix}`;
     let targetVar = `m${suffix}`;
     while (
@@ -120,22 +119,23 @@ export function buildDropExpansion(
     pairs.push({ relVar, targetVar });
   }
   const optMatchPatterns =
-    relAliases.length > 0
-      ? relAliases.map(
-          (a, k) =>
-            `(${sourceVar})-[${pairs[k].relVar}:${a}]-(${pairs[k].targetVar}:${compoundLabel})`,
+    hops.length > 0
+      ? hops.map(
+          (h, k) =>
+            `(${h.anchor})-[${pairs[k].relVar}:${h.relType}]-(${pairs[k].targetVar}:${compoundLabel})`,
         )
       : [`(${pairs[0].targetVar}:${compoundLabel})`];
   const extraReturn =
-    relAliases.length > 0
-      ? relAliases.map((_, k) => `, ${pairs[k].relVar}, ${pairs[k].targetVar}`).join("")
+    hops.length > 0
+      ? hops.map((_, k) => `, ${pairs[k].relVar}, ${pairs[k].targetVar}`).join("")
       : `, ${pairs[0].targetVar}`;
+  const anchors = hops.length > 0 ? [...new Set(hops.map((h) => h.anchor))] : [firstVar];
   const optMatchBlock = optMatchPatterns.map((p) => `OPTIONAL MATCH ${p}`).join("\n");
   const newQueryBase = withExpansion(
     trimmed,
     optMatchBlock,
     extraReturn,
-    `${sourceVar}${extraReturn}`,
+    `${anchors.join(", ")}${extraReturn}`,
   );
   return { query: newQueryBase, targetVars: pairs.map((p) => p.targetVar) };
 }

@@ -12,7 +12,8 @@
 
 On an unsecured deployment the HTTP middleware resolves a named set -- data roles and declared
 derived roles -- to its meta-role. A body naming the same set as the header runs as that role,
-and gRPC, Flight and Bolt resolve the set they are named through the same resolver."""
+and gRPC, Flight, Bolt and a local MCP call resolve the set they are named through the same
+resolver."""
 
 # Requirements: REQ-1952, REQ-2057
 
@@ -135,6 +136,38 @@ class TestBolt:
         role_id, _ops = session._resolve_db(None)
         assert role_id == SET
         assert session._meta_role(state, role_id) == META
+
+
+class TestMcp:
+    """A local MCP call (stdio, or loopback HTTP with no bearer) names a role set within its pin.
+    It acts as the set's meta-role, its derived roles as qualifiers, and binds their attributes
+    for the call; taken as data roles, the call was audited and governed as org_admin alone."""
+
+    def test_a_local_call_naming_a_set_runs_as_its_meta_role_with_its_attributes_bound(
+        self, monkeypatch, built
+    ):
+        import contextvars
+
+        from provisa.api.mcp.server import named_role
+        from provisa.core.request_context import current_session_vars
+
+        monkeypatch.setenv("PROVISA_MCP_ROLE", SET)
+
+        def _call():
+            return named_role(SET, _state()), current_session_vars.get()
+
+        role, session_vars = contextvars.copy_context().run(_call)
+        assert role == META
+        assert built == [(["org_admin"], ("attr1__v", "attr1", "attr2__v", "attr2"))]
+        assert session_vars == {"attr1": "v", "attr2": "v", "role": META}
+
+    def test_a_local_call_naming_a_role_beyond_its_pin_is_refused_by_name(self, monkeypatch):
+        from provisa.api.mcp.server import named_role
+        from provisa.security.meta_role import RoleNotHeld
+
+        monkeypatch.setenv("PROVISA_MCP_ROLE", "org_admin")
+        with pytest.raises(RoleNotHeld, match="attr1__v"):
+            named_role("org_admin,attr1__v", _state())
 
 
 class TestDerivedRoleRowFilter:

@@ -33,6 +33,7 @@
 // cannot drift) — both confirmed live via real `datasets/list/{owner}/{ref}` calls before writing
 // this test, neither containing a SQLite file (this connector's v1 scope is CSV/Parquet only).
 
+import type { Page } from "@playwright/test";
 import { test, expect } from "./coverage";
 import {
   discoveredColumnCount,
@@ -43,6 +44,34 @@ import {
 } from "./source-to-query-helpers";
 
 const KAGGLE_TOKEN = process.env.KAGGLE_API_TOKEN;
+
+/** Every registered source's id. */
+async function sourceIds(page: Page): Promise<Set<string>> {
+  const res = await page.request.post("/admin/graphql", { data: { query: "{ sources { id } }" } });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  return new Set(((await res.json()).data.sources as { id: string }[]).map((s) => s.id));
+}
+
+/** The source "Add Dataset" made for this attempt: the one id matching ``pattern`` that was not
+ * there before the click, listed in the sources table. Matched by its pattern alone, a retry
+ * found the earlier attempt's source, which that attempt had gone on to register a table on. */
+async function addedSource(page: Page, pattern: RegExp, before: Set<string>): Promise<string> {
+  let added: string[] = [];
+  await expect
+    .poll(
+      async () => {
+        added = [...(await sourceIds(page))].filter((id) => pattern.test(id) && !before.has(id));
+        return added.length;
+      },
+      { timeout: 60000 },
+    )
+    .toBe(1);
+  const [sourceId] = added;
+  await expect(page.locator(".data-table td").filter({ hasText: sourceId })).toBeVisible({
+    timeout: 60000,
+  });
+  return sourceId;
+}
 
 test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781/1782/1783)", () => {
   test.skip(!KAGGLE_TOKEN, "KAGGLE_API_TOKEN not set in the environment");
@@ -85,15 +114,14 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
       "arshid/iris-flower-dataset",
     );
 
+    const before = await sourceIds(page);
     await page.getByTestId("kaggle-register-button").click();
     // Matches the rest of this form's server-side-registration types (handleOpenapiRegister/
     // handleGrpcRegister): the form closes itself on success and the new row shows up in the
     // sources list below — that IS the success signal, there is no separate in-form banner.
     // The id_prefix is honored verbatim (schema_mutation.py's stage_kaggle_dataset) — one Source
     // per dataset now, so there is no per-file "_<table_name>" suffix to disambiguate.
-    const row = page.locator(".data-table td").filter({ hasText: /^kg_\d+_iris-flower-dataset$/ });
-    await expect(row).toBeVisible({ timeout: 60000 });
-    const sourceId = (await row.textContent())!.trim();
+    const sourceId = await addedSource(page, /^kg_\d+_iris-flower-dataset$/, before);
 
     // Confirm it created exactly ONE `files`-type Source (not a bespoke Kaggle connector/type,
     // and not one Source per file) — "Add Dataset" only creates the source; it must not also
@@ -177,11 +205,10 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
       "sudalairajkumar/covid19-in-india",
     );
 
+    const before = await sourceIds(page);
     await page.getByTestId("kaggle-register-button").click();
     // ONE Source for the whole dataset (Amended 2026-09-19) — was 3 (one per file) before.
-    const row = page.locator(".data-table td").filter({ hasText: /^kg_\d+_covid19-in-india$/ });
-    await expect(row).toBeVisible({ timeout: 60000 });
-    const sourceId = (await row.textContent())!.trim();
+    const sourceId = await addedSource(page, /^kg_\d+_covid19-in-india$/, before);
 
     const sourcesRes = await page.request.post("/admin/graphql", {
       data: { query: "{ sources { id type } }" },

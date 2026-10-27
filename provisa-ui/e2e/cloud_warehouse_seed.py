@@ -138,10 +138,12 @@ def _bigquery(action: str) -> None:
         table = bigquery.Table(table_ref, schema=schema)
         client.delete_table(table_ref, not_found_ok=True)
         client.create_table(table)
-        client.insert_rows_json(
-            table_ref,
-            [{"id": 1, "name": "sprocket"}, {"id": 2, "name": "cog"}, {"id": 3, "name": "gear"}],
-        )
+        # A DML insert, not a streaming one: insertAll into a table just dropped and recreated
+        # under the same name answers 404 "Table ... not found" until BigQuery's streaming
+        # backend sees the new table, which can take minutes.
+        client.query(
+            f"INSERT INTO `{table_ref}` (id, name) VALUES (1, 'sprocket'), (2, 'cog'), (3, 'gear')"
+        ).result()
     else:
         client.delete_dataset(dataset_ref, delete_contents=True, not_found_ok=True)
 
