@@ -1146,12 +1146,50 @@ class _Lowering:
             return self._replace(e, bindings, labels)
         if name == "Builtin_isNUMERIC":
             return Literal(self._datatype_of(e.arg, bindings) in _NUMERIC, "boolean")
+        if name == "Function" and str(e.iri) == f"{XSD}integer":
+            (given,) = e.expr
+            return self._xsd_integer(given, self.expr(given, bindings, labels), bindings)
         if name == "Function" and str(e.iri) in _XSD_CAST_FNS:
             (x,) = [self.expr(a, bindings, labels) for a in e.expr]
             return FunctionCall(_XSD_CAST_FNS[str(e.iri)], [x])
         if name == "Function":
             raise SparqlRefused(f"The function <{e.iri}> is not supported")
         return None
+
+    def _xsd_integer(self, given: Any, value: CypherExpr, bindings) -> CypherExpr:
+        """xsd:integer(x) as XPath casts (SPARQL 1.1 17.1): a number toward zero; a string only
+        in an integer's own lexical form, any other an error -- null, as a failed cast leaves a
+        BIND unbound. Not Cypher's toInteger, which reads '2.9' as 2."""
+        if self._is_numeric(given, bindings):
+            return FunctionCall("toInteger", [value])
+        lexical = Binary("=~", value, Literal(" *[+-]?[0-9]+ *", "string"))
+        return Case(
+            subject=None,
+            whens=[(lexical, FunctionCall("toInteger", [copy.deepcopy(value)]))],
+            default=Literal(None, "null"),
+        )
+
+    def _is_numeric(self, arg: Any, bindings) -> bool:
+        """Whether ``arg`` is a number as far as the query says when it is read: a literal or a
+        column of a numeric datatype, a cast to one, arithmetic, or a numeric function."""
+        if isinstance(arg, RdfLiteral):
+            return str(arg.datatype) in _NUMERIC
+        if isinstance(arg, RdfVariable):
+            return str(arg) in bindings and bindings[str(arg)][1] in _NUMERIC
+        name = getattr(arg, "name", None)
+        if name == "Function":
+            return str(arg.iri) in _NUMERIC
+        return name in (
+            "AdditiveExpression",
+            "MultiplicativeExpression",
+            "UnaryMinus",
+            "UnaryPlus",
+            "Builtin_ABS",
+            "Builtin_CEIL",
+            "Builtin_FLOOR",
+            "Builtin_ROUND",
+            "Builtin_STRLEN",
+        )
 
     @staticmethod
     def _divide(dividend: CypherExpr, divisor: CypherExpr, floating: bool) -> CypherExpr:
