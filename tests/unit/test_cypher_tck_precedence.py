@@ -87,6 +87,7 @@ def _row(query: str) -> tuple:
         ),
         ("RETURN 4 / 2 - 3 / 2 AS a, -7 / 2 AS b, 7.0 / 2 AS c", (1, -3, 3.5)),
         ("RETURN 4 ^ 3 / 2 ^ 3 AS a, 4 ^ (3 / 2) ^ 3 AS c", (8.0, 64.0)),
+        ("RETURN 4 / (2 + 3) / 2 AS a, 8 / (4 / 2) AS b", (0, 4)),
     ],
 )
 def test_cypher_operators_bind_as_the_tck_states(query, row):

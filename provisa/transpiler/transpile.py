@@ -328,9 +328,7 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
         )
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if isinstance(node, exp.Div):
-            return exp.IntDiv(this=node.this, expression=_guarded(node.expression))
-        if isinstance(node, (exp.IntDiv, exp.Mod)):
+        if isinstance(node, (exp.Div, exp.IntDiv, exp.Mod)):
             node.set("expression", _guarded(node.expression))
         elif isinstance(node, exp.TableAlias) and not node.columns and node.this is not None:
             parent = node.parent
@@ -341,7 +339,11 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
                 node.set("columns", [node.this.copy()])
         return node
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    tree = tree.transform(_transform)
+    # After the transform, which does not revisit what a replaced node holds (a / (b / c)).
+    for div in list(tree.find_all(exp.Div)):
+        div.replace(exp.IntDiv(this=div.this, expression=div.expression))
+    return tree.sql(dialect="duckdb")
 
 
 def _lengths_for_duckdb(sql: str) -> str:

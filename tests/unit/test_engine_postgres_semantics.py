@@ -35,7 +35,13 @@ def _on_duckdb(pg_sql: str) -> list[tuple]:
 
 @pytest.mark.parametrize(
     "sql",
-    ["SELECT 1/0", "SELECT 1.0/0", "SELECT 5 % 0", "SELECT x / y FROM (VALUES (4, 0)) t(x, y)"],
+    [
+        "SELECT 1/0",
+        "SELECT 1.0/0",
+        "SELECT 5 % 0",
+        "SELECT x / y FROM (VALUES (4, 0)) t(x, y)",
+        "SELECT 8 / (x / y) FROM (VALUES (4, 0)) t(x, y)",
+    ],
 )
 def test_a_zero_divisor_is_an_error(sql):
     with pytest.raises(duckdb.InvalidInputException, match="division by zero"):
