@@ -76,9 +76,17 @@ _MODELS = {
 }
 
 
-# REQ-2163: the label map's SQL-only tables (sql_only_nodes, sql_only_tables) came after it too.
+# REQ-2163: the label map's SQL-only tables (sql_only_nodes, sql_only_tables) and the relationships
+# touching them (sql_only_relationships, sql_only_aliases) came after it too.
 _ADDED_AFTER_THE_SPLIT = frozenset(
-    {"property_types", "key_columns", "sql_only_nodes", "sql_only_tables"}
+    {
+        "property_types",
+        "key_columns",
+        "sql_only_nodes",
+        "sql_only_tables",
+        "sql_only_relationships",
+        "sql_only_aliases",
+    }
 )
 
 

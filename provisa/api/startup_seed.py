@@ -1108,6 +1108,7 @@ async def _resolve_pk_from_sources() -> None:
                     select(
                         _registered_tables_t.c.id,
                         _registered_tables_t.c.source_id,
+                        _registered_tables_t.c.domain_id,
                         _registered_tables_t.c.schema_name,
                         _registered_tables_t.c.table_name,
                         _sources_t.c.type.label("source_type"),
@@ -1127,6 +1128,11 @@ async def _resolve_pk_from_sources() -> None:
         _kept = await kept_sources(state)  # REQ-2031: never contacted, its keys never re-read
         for _pk_t in _pk_rows:
             if _pk_t["source_id"] in _kept:
+                continue
+            if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] == ONTOLOGY_DOMAIN_ID:
+                # REQ-2163: an ontology table is a view under another name (``_terms`` is
+                # ``_terms_ontology``), its key recorded when it is seeded, from the table it
+                # restates (_register_admin_view): there is no relation of its name to reflect.
                 continue
             _pk_dialect = {
                 "mysql": "mysql",

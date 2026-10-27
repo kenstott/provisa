@@ -297,3 +297,50 @@ async def test_the_repository_reads_the_axioms_the_view_states(control_plane):
     assert read
     assert len(read) == len(stated)
     assert {tuple(r.values()) for r in read} == {tuple(r) for r in stated}
+
+
+def test_an_edge_into_a_table_sql_alone_serves_is_no_relationship_of_the_graph():
+    """An edge touching ontology._axioms (no Cypher label) is no relationship of the graph: the
+    graph schema named its source by a label the graph does not have, and failed (KeyError
+    'O__Axioms', every e2e lane's global setup). SPARQL's map, which holds the table, holds it."""
+    from provisa.compiler.context import build_context
+    from provisa.gql.label_map import CypherLabelMap
+
+    si = _schema_input()
+    si.relationships = [
+        {
+            "id": "axiom-subject",
+            "source_table_id": 2,
+            "target_table_id": 1,
+            "source_column": "subject",
+            "target_column": "name",
+            "cardinality": "many-to-one",
+            "materialize": False,
+            "refresh_interval": 300,
+            "target_function_name": None,
+            "function_arg": None,
+            "alias": None,
+            "graphql_alias": "subjectTerm",
+            "graphql_field": "subjectTerm",
+            "cypher_type": "SUBJECT_TERM",
+            "computed_cypher_alias": "SUBJECT_TERM",
+            "disable_cypher": False,
+            "same_entity": False,
+            "via_table_id": None,
+            "via_source_column": None,
+            "via_target_column": None,
+            "via_type_column": None,
+            "via_type_value": None,
+            "via_label_source": None,
+            "parameters": {},
+            "target_table_name": "_terms",
+            "via_table_name": None,
+        }
+    ]
+    lm = CypherLabelMap.from_schema(build_context(si), domain_access=["*"])
+    for r in [*lm.relationships.values(), *(a for rs in lm.aliases.values() for a in rs)]:
+        assert r.source_label in lm.nodes and r.target_label in lm.nodes, r
+    sparql = lm.with_sql_only()
+    assert any(
+        sparql.nodes[r.source_label].table_name == "_axioms" for r in sparql.relationships.values()
+    )

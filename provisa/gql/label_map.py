@@ -190,8 +190,14 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         aliases: dict[str, list[RelationshipMapping]] | None = None,
         sql_only_nodes: dict[str, NodeMapping] | None = None,
         sql_only_tables: dict[tuple[str, str], str] | None = None,
+        sql_only_relationships: dict[str, RelationshipMapping] | None = None,
+        sql_only_aliases: dict[str, list[RelationshipMapping]] | None = None,
     ) -> None:
         self.nodes = nodes
+        # REQ-2163: the relationships touching a SQL-only node, which no graph surface has either:
+        # kept for with_sql_only, as the nodes are.
+        self.sql_only_relationships: dict[str, RelationshipMapping] = sql_only_relationships or {}
+        self.sql_only_aliases: dict[str, list[RelationshipMapping]] = sql_only_aliases or {}
         # REQ-2163: the nodes of tables SQL alone serves (security.rights.SQL_ONLY_TABLES): no
         # Cypher label, kept for a language that lowers to them (with_sql_only), each found by
         # its (domain id, registered table name).
@@ -219,12 +225,15 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             nodes_by_table.setdefault(nm.table_label, []).append(type_name)
             if nm.domain_label:
                 domains.setdefault(nm.domain_label, []).append(type_name)
+        aliases = {k: list(v) for k, v in self.aliases.items()}
+        for rel_type, held in self.sql_only_aliases.items():
+            aliases.setdefault(rel_type, []).extend(held)
         return CypherLabelMap(
             nodes={**self.nodes, **self.sql_only_nodes},
-            relationships=self.relationships,
+            relationships={**self.relationships, **self.sql_only_relationships},
             domains=domains,
             nodes_by_table=nodes_by_table,
-            aliases=self.aliases,
+            aliases=aliases,
             sql_only_tables=self.sql_only_tables,
         )
 
@@ -445,6 +454,23 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         for key in [k for k, v in nodes_by_table.items() if not v]:
             del nodes_by_table[key]
 
+        # A relationship touching one is no relationship of the graph either: the graph schema
+        # names each relationship's ends by their labels.
+        def _touches(rm: RelationshipMapping) -> bool:
+            return rm.source_label in sql_only or rm.target_label in sql_only
+
+        sql_only_rels = {k: rm for k, rm in relationships.items() if _touches(rm)}
+        for key in sql_only_rels:
+            del relationships[key]
+        sql_only_aliases: dict[str, list[RelationshipMapping]] = {}
+        for rel_type, held in list(aliases.items()):
+            touching = [rm for rm in held if _touches(rm)]
+            if touching:
+                sql_only_aliases[rel_type] = touching
+                held[:] = [rm for rm in held if not _touches(rm)]
+                if not held:
+                    del aliases[rel_type]
+
         return cls(
             nodes=nodes,
             relationships=relationships,
@@ -453,6 +479,8 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             aliases=aliases,
             sql_only_nodes=sql_only,
             sql_only_tables={k: t for k, t in sql_only_tables.items() if t in sql_only},
+            sql_only_relationships=sql_only_rels,
+            sql_only_aliases=sql_only_aliases,
         )
 
 
