@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 3b994b82-1098-444f-bb33-6700aade4b58
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2174 on a real stage: a network graph's scene opens on its best view, turns about the axis that
 // keeps its spread plane facing the viewer, eases back to the best view when turning pauses on idle,
 // sizes its nodes and labels against that view, and in 2D locks a face-on orthographic camera.

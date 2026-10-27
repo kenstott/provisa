@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 98d40312-7ecd-4c26-907d-63ce74b98d7b
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2174: the view that shows the most of a 3D stage's content. The principal axes of its points
 // give a first direction -- looking along the axis they spread least on -- which is refined by
 // scoring evenly spread directions on the scene projected along each: nodes hidden behind others,

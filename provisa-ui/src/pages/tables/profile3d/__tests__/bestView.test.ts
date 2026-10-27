@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: c3098d93-40c5-4e3d-bd49-c39fa2e5ed09
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2174: the view a 3D stage opens on and eases back to -- the principal axes of its points give
 // the first direction, refined by scoring the projected scene for hidden nodes, crossing edges,
 // the smallest gap and overlapping labels -- and the label sizing set against that view.
