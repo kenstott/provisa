@@ -25,6 +25,8 @@ from provisa.api.flight.redaction import redact_errors as _redact_errors
 
 from provisa.api.role_surface import role_surface
 
+import functools
+import inspect
 import json
 import logging
 import re
@@ -246,6 +248,42 @@ def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServ
     if cause is not None:
         err.__cause__ = cause
     return err
+
+
+def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
+    """A Flight RPC's failure that is not a Flight error is a defect: log it with its traceback,
+    then let pyarrow answer the client as before. A Flight error is the RPC's answer (not found,
+    refused, unavailable) and is not logged here. A streaming RPC (a generator) is followed to its
+    end, as its body runs while the client reads."""
+
+    def _log(exc: BaseException) -> None:
+        log.error("Flight %s failed: %s", rpc.__name__, exc, exc_info=exc)
+
+    if inspect.isgeneratorfunction(rpc):
+
+        @functools.wraps(rpc)
+        def _stream(*args: Any, **kwargs: Any) -> Any:
+            try:
+                yield from rpc(*args, **kwargs)
+            except flight.FlightError:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                raise
+            except Exception as exc:
+                _log(exc)
+                raise
+
+        return _stream
+
+    @functools.wraps(rpc)
+    def _call(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return rpc(*args, **kwargs)
+        except flight.FlightError:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise
+        except Exception as exc:
+            _log(exc)
+            raise
+
+    return _call
 
 
 def _ticket_as_of(request: dict[str, object]) -> str | None:  # REQ-1163
@@ -585,6 +623,7 @@ class ProvisaFlightServer(
     # list_flights — enumerate available data
     # ------------------------------------------------------------------
 
+    @_logs_unexpected
     def list_flights(  # REQ-126, REQ-127
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -613,6 +652,7 @@ class ProvisaFlightServer(
     # get_flight_info — metadata for a specific flight
     # ------------------------------------------------------------------
 
+    @_logs_unexpected
     def get_flight_info(  # REQ-608
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -672,6 +712,7 @@ class ProvisaFlightServer(
     # get_schema — Arrow schema for a catalog table
     # ------------------------------------------------------------------
 
+    @_logs_unexpected
     def get_schema(  # REQ-608
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -705,6 +746,7 @@ class ProvisaFlightServer(
     # do_get — execute query or return catalog data
     # ------------------------------------------------------------------
 
+    @_logs_unexpected
     @_in_request_span(_tracer, "flight.do_get", transport="flight")  # REQ-1910
     def do_get(  # REQ-051, REQ-143, REQ-145, REQ-267, REQ-345, REQ-369
         self,
@@ -910,6 +952,7 @@ class ProvisaFlightServer(
             )
         ]
 
+    @_logs_unexpected
     def do_action(  # REQ-608
         self,
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
