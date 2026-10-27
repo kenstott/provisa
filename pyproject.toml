@@ -261,6 +261,9 @@ dev = [
     # REQ-2135: the standard SPARQL 1.1 Protocol client the endpoint's integration test queries
     # it with (W3C Software Notice and License, permissive).
     "sparqlwrapper>=2,<3",
+    # REQ-2168: LangChain's Neo4j integration (MIT), which reads a graph's schema with
+    # apoc.meta.data; the command-bindings acceptance test connects it to Provisa over Bolt.
+    "langchain-neo4j==0.11.0",
     "pytest-bdd",
     "pytest-cov",
     # REQ-1759: tests/unit/ alone collects ~12K tests, single-process at ~1%/19s (~50min
@@ -343,7 +346,7 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # REQ-2147: the profiler's classification kinds and the reference lists they test, and their notice.
 "provisa.profiler" = ["classification_kinds.yaml", "reference/*.txt.gz", "reference/THIRD_PARTY_NOTICES"]
 # REQ-2155: the standard roles' definitions, read by provisa.core.db.
-"provisa.core" = ["standard_roles.yaml"]
+"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.

@@ -75,13 +75,19 @@ jobs:
         with:
           extras: dev
 
+      # The validation suite requires Python 3.13 or later; its virtualenv is built on one.
+      - uses: actions/setup-python@v5
+        id: py313
+        with:
+          python-version: "3.13"
+
       - name: Fetch the ADBC validation suite and Flight SQL driver
         run: |
           git clone --quiet "$VALIDATION_REPO" "$RUNNER_TEMP/validation"
           git -C "$RUNNER_TEMP/validation" checkout --quiet "$VALIDATION_SHA"
           head -n 3 "$RUNNER_TEMP/validation/LICENSE.txt"
           grep -q "Apache License" "$RUNNER_TEMP/validation/LICENSE.txt"
-          python3 -m venv "$RUNNER_TEMP/adbc-venv"
+          "${{ steps.py313.outputs.python-path }}" -m venv "$RUNNER_TEMP/adbc-venv"
           "$RUNNER_TEMP/adbc-venv/bin/pip" install --quiet --upgrade pip
           "$RUNNER_TEMP/adbc-venv/bin/pip" install --quiet "$RUNNER_TEMP/validation" \
             "adbc-driver-flightsql==$ADBC_FLIGHTSQL_VERSION" pytest

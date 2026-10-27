@@ -11,10 +11,11 @@
 """``CALL <command>(args) [YIELD …] [RETURN …]`` — the one reading of a command call in Cypher,
 for Bolt and Cypher over HTTP alike (REQ-872, REQ-1156).
 
-A bare (undotted) procedure name is always a command: Neo4j's own procedures are namespaced
-(``db.labels``, ``dbms.procedures``) and Provisa's are under ``provisa.``. So a call to a name that
-is no command the role may use answers as an unknown command, whether it was never registered or
-is not the caller's to use.
+The name is a command's Cypher command binding (REQ-2168), bare or dotted (``apoc.meta.data``).
+Neo4j's own procedures (``db.labels``, ``dbms.procedures``) and Provisa's (``provisa.metric``) are
+answered elsewhere, so a name under those namespaces is no command call. A call to any other name
+that is no command the role may use answers as an unknown command, whether it was never
+registered or is not the caller's to use.
 
 What is read here and refused by name when it cannot be honoured:
 
@@ -23,8 +24,9 @@ What is read here and refused by name when it cannot be honoured:
   parameters; a parameter the request does not carry is refused, as is anything else (an
   expression, a name);
 * ``YIELD col [AS alias], …`` or ``YIELD *`` — the columns kept, renamed as written;
-* ``RETURN name [AS alias], …`` or ``RETURN *`` — a projection of what the call yields; any other
-  RETURN, and any other clause after the call, is refused rather than ignored.
+* ``RETURN name [AS alias], …`` or ``RETURN *`` — a projection of what the call yields. A call
+  followed by any other clause (WHERE, WITH, UNWIND, …) is a call composed in a statement, which
+  the Cypher translator reads (REQ-2168), so it is no call read here.
 
 The argument COUNT is checked against the command's signature only after the command is admitted
 for the role (``action_exec.bind_command_args``), so a refusal never tells a caller about a
@@ -36,10 +38,17 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-_CALL_HEAD_RE = re.compile(r"^\s*CALL\s+([A-Za-z_]\w*)\s*\(", re.IGNORECASE)
+_CALL_HEAD_RE = re.compile(r"^\s*CALL\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\(", re.IGNORECASE)
+# Neo4j's own procedure namespaces and Provisa's, answered before a command call is read.
+_ANSWERED_ELSEWHERE = ("db.", "dbms.", "provisa.")
 _ITEM_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*(?:\s+AS\s+([A-Za-z_]\w*))?\s*$", re.IGNORECASE)
 _YIELD_RE = re.compile(r"^\s*YIELD\s+(.+?)(?=\s+RETURN\b|$)", re.IGNORECASE | re.DOTALL)
 _RETURN_RE = re.compile(r"^\s*RETURN\s+(.+)$", re.IGNORECASE | re.DOTALL)
+# What follows a call composed in a statement: a YIELD then another clause than RETURN.
+_COMPOSED_RE = re.compile(
+    r"^\s*YIELD\s+.+?\s(?:WHERE|WITH|UNWIND|MATCH|OPTIONAL|CALL|ORDER|SKIP|LIMIT)\b",
+    re.IGNORECASE | re.DOTALL,
+)
 _NUMBER_RE = re.compile(r"^-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$")
 
 
@@ -148,6 +157,19 @@ def _value(tok: str, params: dict, name: str, position: int) -> Any:
         return _unquote(tok)
     if tok.startswith("[") and tok.endswith("]"):
         return [_value(t, params, name, position) for t in _split_top_level(tok[1:-1])]
+    if tok.startswith("{") and tok.endswith("}"):
+        # A map of values or $parameters ({sample: $SAMPLE}), as LangChain passes apoc.meta.data.
+        out: dict[str, Any] = {}
+        for entry in _split_top_level(tok[1:-1]):
+            key, sep, value = entry.partition(":")
+            key = key.strip().strip("`")
+            if not sep or not re.fullmatch(r"[A-Za-z_]\w*", key):
+                raise CommandCallRefused(
+                    f"CALL {name}: argument {position} is a map whose entry {entry.strip()!r} "
+                    "is not key: value"
+                )
+            out[key] = _value(value, params, name, position)
+        return out
     low = tok.lower()
     if low in ("true", "false"):
         return low == "true"
@@ -183,12 +205,16 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
     if head is None:
         return None
     name = head.group(1)
+    if name.lower().startswith(_ANSWERED_ELSEWHERE):
+        return None
     close = _scan_parens(text, head.end())
+    rest = text[close + 1 :]
+    if _COMPOSED_RE.match(rest):
+        return None  # REQ-2168: composed in a statement; the translator reads its arguments
     values = [
         _value(tok, params, name, i + 1)
         for i, tok in enumerate(_split_top_level(text[head.end() : close]))
     ]
-    rest = text[close + 1 :]
     yields: list[tuple[str, str]] | None = None
     returns: list[tuple[str, str]] | None = None
     m = _YIELD_RE.match(rest)

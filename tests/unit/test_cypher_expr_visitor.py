@@ -36,6 +36,9 @@ class _FakeCtx:
     def resolve_parameter(self, name):
         return exp.Placeholder(this=name)
 
+    def temporal_kind(self, expr):
+        return None  # no temporal values in scope here
+
     def resolve_function(self, name, args, *, distinct):
         return exp.Anonymous(this=name, expressions=args)
 

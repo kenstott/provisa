@@ -156,9 +156,12 @@ def test_remove_rejected():
         parse_cypher("MATCH (n:Person) REMOVE n.name")
 
 
-def test_apoc_rejected():
-    with pytest.raises(CypherParseError, match="APOC"):
-        parse_cypher("MATCH (n) RETURN apoc.util.sleep(100)")
+def test_an_apoc_function_is_read_as_a_function_call():
+    # REQ-2168: a namespaced function is a function's Cypher command binding; one no function is
+    # bound to is refused when the statement is bound for its role (api/data/cypher_commands.py).
+    ast = parse_cypher("MATCH (n) RETURN apoc.util.sleep(100)")
+    (item,) = ast.return_clause.items
+    assert item.expression.name == "apoc.util.sleep"
 
 
 def test_unbounded_variable_length_rejected():
@@ -248,7 +251,7 @@ def test_union_all_parsed():
 
 
 def test_union_sub_ast_has_match():
-    query = "MATCH (n:Person) RETURN n.name UNION MATCH (c:Company) RETURN c.name"
+    query = "MATCH (n:Person) RETURN n.name AS name UNION MATCH (c:Company) RETURN c.name AS name"
     ast = parse_cypher(query)
     sub_ast, _ = ast.union_parts[0]
     assert sub_ast.match_clauses[0].pattern.nodes[0].labels == ["Company"]
@@ -387,3 +390,23 @@ def test_two_writes_in_one_query_are_refused():
 
     with pytest.raises(CypherWriteParseError, match="but got: 2"):
         parse_cypher_write("CREATE (a:A {x: 1}); CREATE (b:A {x: 2})")
+
+
+@pytest.mark.parametrize(
+    ("query", "direction"),
+    [
+        ("MATCH (a:A)--(b:A) RETURN a", "none"),
+        ("MATCH (a:A)-->(b:A) RETURN a", "right"),
+        ("MATCH (a:A)<--(b:A) RETURN a", "left"),
+        ("MATCH (a:A)<-->(b:A) RETURN a", "none"),
+    ],
+)
+def test_a_relationship_written_without_brackets_is_read(query, direction):
+    """openCypher TCK: ``(me)--(you)`` is a relationship of any type, either direction."""
+    rel = parse_cypher(query).match_clauses[0].pattern.rels[0]
+    assert (rel.types, rel.direction) == ([], direction)
+
+
+def test_a_single_dash_between_nodes_is_not_a_relationship():
+    with pytest.raises(CypherParseError):
+        parse_cypher("MATCH (a:A)-(b:A) RETURN a")

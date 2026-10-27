@@ -168,3 +168,9 @@ async def test_v1_every_other_connector_declares_no_capability():
         assert plan.complete_dataset is False
         assert "declares no capability" in (plan.incomplete_because or "")
     assert contract_for("postgresql") is None  # a SQL database is read through its driver
+
+
+def test_no_source_is_not_one_source():
+    decision = _route(set())
+    assert decision.route == Route.ENGINE
+    assert decision.reason == "landed: one_source: reads no source"

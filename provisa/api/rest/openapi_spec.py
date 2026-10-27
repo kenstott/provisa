@@ -421,21 +421,26 @@ def generate_rest_openapi_spec(
 
     # REQ-1155: registered commands are POST paths so they appear in the OpenAPI/Swagger surface
     # alongside tables. Invocation routes through the same governed executor as every other surface.
+    from provisa.core.command_bindings import binding_name
+
     _seen_cmd: set[str] = set()
     # Functions AND webhooks are governed commands (REQ-872 / REQ-1155): both appear as POST paths.
     for fn in [
         *(getattr(state, "tracked_functions", {}) or {}).values(),
         *(getattr(state, "tracked_webhooks", {}) or {}).values(),
     ]:
-        cmd_name = fn.get("name")
-        if not cmd_name or cmd_name in _seen_cmd:
+        if not fn.get("name") or fn["name"] in _seen_cmd:
+            continue
+        # REQ-2168: the path is the command's REST command binding; none when excluded.
+        cmd_name = binding_name(fn, "rest")
+        if cmd_name is None:
             continue
         cmd_domain = fn.get("domain_id", "")
         if domain_filter is not None and cmd_domain not in domain_filter:
             continue
         if not command_assigned(fn, role_id):  # REQ-2153: an empty list names no role
             continue
-        _seen_cmd.add(cmd_name)
+        _seen_cmd.add(fn["name"])
 
         arg_props: dict[str, Any] = {}
         for a in fn.get("arguments") or []:
@@ -443,6 +448,8 @@ def generate_rest_openapi_spec(
             if not a_name:
                 continue
             arg_props[a_name] = _arg_type_to_openapi(a.get("type", "String"))
+            if "default" in a:  # REQ-2168: left out, it takes its default
+                arg_props[a_name] = {**arg_props[a_name], "default": a["default"]}
 
         cmd_path = f"/{cmd_domain}/commands/{cmd_name}"
         domain_tag_descriptions.setdefault(cmd_domain, fn.get("domain_description"))

@@ -63,6 +63,12 @@ import {
   columnsFromReturnSchema,
 } from "./commands/types";
 import { CommandFormFields } from "./commands/CommandFormFields";
+import {
+  CommandBindingsFields,
+  CommandBindingsRead,
+  CommandSectionTabs,
+} from "./commands/CommandBindings";
+import type { CommandSection } from "./commands/bindingLanguages";
 import { PageLoading } from "../components/PageLoading";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
@@ -98,6 +104,8 @@ export function CommandsPage() {
   const [searchParams] = useSearchParams();
   const [expandedFn, setExpandedFn] = useState<string | null>(() => searchParams.get("command"));
   const [expandedWh, setExpandedWh] = useState<string | null>(null);
+  // REQ-2168: the open function's section, the same tab in its read view and its form.
+  const [fnSection, setFnSection] = useState<CommandSection>("command");
   const [fnPage, setFnPage] = useState(1);
   const [whPage, setWhPage] = useState(1);
   const PAGE_SIZE = 50;
@@ -186,6 +194,7 @@ export function CommandsPage() {
         writesTable: fn.writesTable ?? "", // REQ-1924, REQ-871
         outputColumns, // REQ-1159
         productId: fn.productId ?? "", // REQ-1634
+        languageBindings: fn.languageBindings ?? {}, // REQ-2168
       });
       setExpandedFn(name);
     } else {
@@ -215,6 +224,7 @@ export function CommandsPage() {
         writesTable: "",
         outputColumns: [],
         productId: "",
+        languageBindings: {},
       });
       setExpandedWh(name);
     }
@@ -240,6 +250,8 @@ export function CommandsPage() {
         // REQ-2001: a statement command's statement declares its kind, its written table and its
         // output; the server derives them, and one sent beside it would have to agree.
         const isStatement = form.implKind === "statement";
+        // REQ-2168: a SQL expression function is a query answering one value.
+        const isTemplate = form.implKind === "sql_expression";
         await saveFunction(
           {
             name: form.name,
@@ -251,15 +263,17 @@ export function CommandsPage() {
             visibleTo,
             domainId: form.domainId,
             description: form.description || undefined,
-            kind: isStatement ? undefined : form.kind,
-            returnSchema: isDataset && !isStatement ? deriveReturnSchema(outputColumns) : null,
-            outputColumns: isStatement ? null : outputColumns, // REQ-1159
+            kind: isStatement ? undefined : isTemplate ? "query" : form.kind,
+            returnSchema:
+              isDataset && !isStatement && !isTemplate ? deriveReturnSchema(outputColumns) : null,
+            outputColumns: isStatement || isTemplate ? null : outputColumns, // REQ-1159
             implKind: form.implKind,
             binding: form.binding,
             materialize: form.materialize,
             requiresApproval: form.requiresApproval, // REQ-1924
-            writesTable: isStatement ? undefined : form.writesTable || null, // REQ-1924, REQ-871
+            writesTable: isStatement || isTemplate ? undefined : form.writesTable || null, // REQ-1924, REQ-871
             productId: form.productId || null, // REQ-1634
+            languageBindings: form.languageBindings, // REQ-2168
           },
           editingName, // the open command is updated; a new one is created
         );
@@ -529,20 +543,34 @@ export function CommandsPage() {
     ((fn: TrackedFunction) =>
       editingName === fn.name ? (
         <Stack component="form" id="commands-form" gap="sm" onSubmit={handleSave}>
-          <CommandFormFields {...formFieldsProps} />
+          <CommandSectionTabs value={fnSection} onChange={setFnSection} />
+          {fnSection === "bindings" ? (
+            <CommandBindingsFields
+              name={form.name}
+              bindings={form.languageBindings}
+              onChange={(languageBindings) => setForm({ ...form, languageBindings })}
+            />
+          ) : (
+            <CommandFormFields {...formFieldsProps} />
+          )}
           <FormFooter panel submit form="commands-form" saving={saving} onCancel={handleCancel} />
         </Stack>
       ) : (
         <>
           <Stack gap="sm">
-            <FunctionRead
-              fn={fn}
-              productName={
-                fn.productId
-                  ? (dataProducts.find((dp) => dp.id === fn.productId)?.name ?? fn.productId)
-                  : null
-              }
-            />
+            <CommandSectionTabs value={fnSection} onChange={setFnSection} />
+            {fnSection === "bindings" ? (
+              <CommandBindingsRead name={fn.name} bindings={fn.languageBindings ?? {}} />
+            ) : (
+              <FunctionRead
+                fn={fn}
+                productName={
+                  fn.productId
+                    ? (dataProducts.find((dp) => dp.id === fn.productId)?.name ?? fn.productId)
+                    : null
+                }
+              />
+            )}
             <PanelActions>
               <Group gap="sm" wrap="nowrap">
                 <ActionIcon

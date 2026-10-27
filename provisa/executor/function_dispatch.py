@@ -348,6 +348,7 @@ _EXTERNAL_KINDS = frozenset({"http", "grpc"})
 # source's write operation, which is passed through as is (REQ-1924).
 _PASSED_THROUGH_KINDS = frozenset(
     {"source_procedure", "source_operation", "source_query", "statement"}  # REQ-2001
+    | {"sql_expression", "builtin"}  # REQ-2168
 )
 _RELATION_ARG_KINDS = frozenset({"table_ref", "result_set"})
 
@@ -515,6 +516,22 @@ async def _exec_statement(fn: dict, args: dict, state, _payload, session) -> lis
     return await run(fn, _bind_arg_names(fn, args), state, session.role_id)
 
 
+async def _exec_sql_expression(fn: dict, args: dict, state, _payload, session) -> list[dict]:
+    """REQ-2168: a SQL expression function called on its own: SELECT its template, the call's
+    arguments bound as the statement's parameters, through the one pipeline as the caller."""
+    from provisa.executor.sql_expression_call import run
+
+    return await run(fn, _bind_arg_names(fn, args), state, session.role_id)
+
+
+async def _exec_builtin(fn: dict, args: dict, state, _payload, session) -> list[dict]:
+    """REQ-2168: a command Provisa ships, its implementation named in the built-in registry."""
+    from provisa.core.builtin_commands import implementation
+
+    spec = str(_require(fn["binding"], "callable", "builtin"))
+    return await implementation(spec)(_bind_arg_names(fn, args), state, session.role_id)
+
+
 _EXECUTORS = {
     "source_procedure": _exec_source_procedure,
     "source_operation": _exec_source_operation,
@@ -524,6 +541,8 @@ _EXECUTORS = {
     "grpc": _exec_grpc,
     "python": _exec_python,
     "statement": _exec_statement,  # REQ-2001
+    "sql_expression": _exec_sql_expression,  # REQ-2168
+    "builtin": _exec_builtin,  # REQ-2168
 }
 
 

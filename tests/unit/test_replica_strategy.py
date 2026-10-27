@@ -307,8 +307,10 @@ def test_a_port_a_stopped_server_left_closed_connections_on_is_free():
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("127.0.0.1", 0))
+        # A port no socket holds on ANY address: bound on every address without SO_REUSEADDR,
+        # the kernel hands out none another process's socket (another xdist worker's) holds on
+        # some address, which the probe's own every-address bind would meet.
+        server.bind(("0.0.0.0", 0))  # nosec B104 -- a test socket, closed below
         server.listen()
         port = server.getsockname()[1]
         client = socket.create_connection(("127.0.0.1", port))

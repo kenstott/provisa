@@ -119,3 +119,9 @@ def test_the_engine_answers_a_map_and_a_list_function_over_the_meta_views(engine
     ]
     listed = engine.run_sync(transpile_to_duckdb(_sql(_LISTED))).rows
     assert sorted(listed) == [(["old"],), (["party"],)]
+
+
+def test_cypher_range_is_the_engine_s_sequence_which_a_postgres_source_does_not_compute():
+    sql = "SELECT x FROM UNNEST(SEQUENCE(1, 3)) AS t(x)"
+    assert uncomputable(sql, "postgres") == "sequence"
+    assert uncomputable(sql, "trino") is None

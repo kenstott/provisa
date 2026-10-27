@@ -1500,13 +1500,19 @@ def _list_commands(app_state, role_id: str | None) -> list[dict]:
     """Commands visible to *role_id*, for SHOW PROCEDURES discovery (REQ-1156)."""
     from provisa.api.data.action_exec import list_visible_commands
 
-    return list_visible_commands(app_state, role_id)
+    return list_visible_commands(app_state, role_id, "cypher")
 
 
 def _command_signature(cmd: dict) -> str:
     """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1156)."""
+    import json
+
     args = ", ".join(
-        f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"]
+        f"{a['name']}"
+        # REQ-2168: an argument that declares a default, written as Neo4j writes one.
+        + (f" = {json.dumps(a['default'], default=str)}" if "default" in a else "")
+        + f" :: {str(a.get('type', 'String')).upper()}"
+        for a in cmd["arguments"]
     )
     ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
     return f"{cmd['name']}({args}) :: ({ret})"
@@ -1518,14 +1524,20 @@ async def _maybe_invoke_command_call(
     """If *cypher* is ``CALL <command>(args)``, invoke it (REQ-1156): read by the one Cypher
     command-call reader (cypher/command_call.py, shared with Cypher over HTTP), admitted and bound
     by the shared executor, shaped by its YIELD and RETURN. None falls through to Cypher."""
-    from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
+    from provisa.api.data.action_exec import (
+        bind_command_args,
+        command_named,
+        invoke_tracked_function,
+    )
     from provisa.cypher.command_call import parse_command_call, project
 
     call = parse_command_call(cypher, parameters or {})
     if call is None:
         return None
-    args = bind_command_args(call.name, call.values, app_state, role_id)
-    rows = await invoke_tracked_function(call.name, args, app_state, role_id)
+    # REQ-2168: the name is the command's Cypher command binding.
+    name = command_named(app_state, role_id, "cypher", call.name)
+    args = bind_command_args(name, call.values, app_state, role_id)
+    rows = await invoke_tracked_function(name, args, app_state, role_id)
     cols, shaped = project(call, rows)
     return cols, [[r.get(c) for c in cols] for r in shaped]
 
@@ -1751,6 +1763,14 @@ async def _execute_cypher(
         except (CypherCrossSourceError, CypherTranslateError) as exc:
             raise ValueError(str(exc)) from exc
 
+        # REQ-2168: functions named by their Cypher command bindings, as the role may use them.
+        from provisa.api.data.cypher_commands import (
+            calls_commands,
+            expand_functions,
+            put_command_rows,
+        )
+
+        sql_ast = expand_functions(sql_ast, role_id, app_state)
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
 
         try:
@@ -1758,13 +1778,20 @@ async def _execute_cypher(
         except Exception as exc:
             raise RuntimeError(f"SQL generation failed: {exc}") from exc
 
+        semantic = make_semantic_sql(sql_str, ctx)
+        # REQ-2168: a command composed in the statement runs now, as the role, and its rows take
+        # its place. Its argument values are in the statement, so it is never kept.
+        composed = calls_commands(semantic)
+        if composed:
+            semantic = await put_command_rows(semantic, role_id, app_state)
         translation = CypherTranslation(
-            semantic_sql=make_semantic_sql(sql_str, ctx),
+            semantic_sql=semantic,
             ordered_params=tuple(ordered_params),
             param_names=tuple(param_names),
             graph_vars=graph_vars,
         )
-        kept.record(translation)
+        if not composed:
+            kept.record(translation)
 
     semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars
     try:

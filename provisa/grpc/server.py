@@ -728,14 +728,17 @@ class ProvisaServicer:  # REQ-045, REQ-143
         proto_gen names each per-command RPC ``Call`` + command_rpc_name(name); match that same
         authority back so ``CallActiveUsers`` resolves to ``active_users``. None if no command matches
         (the handler then aborts NOT_FOUND)."""
+        from provisa.core.command_bindings import binding_name
         from provisa.grpc.proto_gen import command_rpc_name
 
-        for fn_name in [
-            *getattr(self._state, "tracked_functions", {}),
-            *getattr(self._state, "tracked_webhooks", {}),
+        # REQ-2168: an RPC is named for the command's GraphQL command binding.
+        for fn in [
+            *getattr(self._state, "tracked_functions", {}).values(),
+            *getattr(self._state, "tracked_webhooks", {}).values(),
         ]:
-            if command_rpc_name(fn_name) == cmd_pascal:
-                return fn_name
+            called = binding_name(fn, "graphql")
+            if called is not None and command_rpc_name(called) == cmd_pascal:
+                return fn["name"]
         return None
 
     async def _handle_typed_command(self, request, context, cmd_name: str | None, rpc: str):
@@ -770,10 +773,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
             if fn is None or cmd_name is None:
                 await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command: {rpc!r}")
                 return
+            # REQ-2168: an optional argument the call left out takes its default (the executor's).
             args = {
                 a_name: getattr(request, a_name)
                 for arg in (fn.get("arguments") or [])
                 if (a_name := arg.get("name"))
+                and ("default" not in arg or request.HasField(a_name))
             }
             try:
                 rows = await invoke_tracked_function(cmd_name, args, state, role_id)
@@ -853,7 +858,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
         invoke_tracked_function, identical to the GraphQL/SQL/Cypher surfaces."""
         import json
 
-        from provisa.api.data.action_exec import bind_named_args, invoke_tracked_function
+        from provisa.api.data.action_exec import (
+            bind_named_args,
+            command_named,
+            invoke_tracked_function,
+        )
 
         metadata = dict(context.invocation_metadata())
         role_id = _rpc_role(metadata)
@@ -883,8 +892,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             # Functions and webhooks alike, through the one executor: the command admitted, its
             # arguments bound in declared order (the order the call binds them), not JSON order.
             try:
-                args = bind_named_args(request.name, given, state, role_id)
-                rows = await invoke_tracked_function(request.name, args, state, role_id)
+                # REQ-2168: named by its GraphQL command binding, as the proto names it.
+                name = command_named(state, role_id, "graphql", request.name)
+                args = bind_named_args(name, given, state, role_id)
+                rows = await invoke_tracked_function(name, args, state, role_id)
             except HTTPException as exc:
                 await context.abort(_command_status(exc), str(exc.detail))
                 return

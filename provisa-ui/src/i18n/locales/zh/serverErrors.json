@@ -555,6 +555,18 @@
       "type_mismatch": "在 {{expression}} 中，{{value}} 无法与类型为 {{property_type}} 的 {{property}} 比较。{{fix}}",
       "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分组之前筛选行。请在 WITH 中聚合，然后再筛选。",
       "nested_aggregate": "{{outer}} 对聚合 {{inner}} 再次聚合：不能对另一个聚合取聚合。请先在 WITH 中聚合。",
+      "node_and_relationship": "{{variable}} 同时指代一个节点和一个关系：一个变量只指代一样东西。请为每个分别使用自己的变量。",
+      "path_variable_reused": "{{variable}} 同时指代路径和路径中的节点或关系：一个变量只指代一样东西。请为每个分别使用自己的变量。",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] 在列表推导中聚合，而列表推导一次读取一个列表。请先在 WITH 中聚合，再在列表中使用其结果。",
+      "length_of_entity": "length({{variable}}) 接受路径，而 {{variable}} 是节点或关系。请用 MATCH p = ... 绑定路径，并使用 length(p)。",
+      "column_name_conflict": "{{clause}} 中有两列都命名为 {{column}}：每列都有自己的名称。请用 AS 重命名其中一列。",
+      "union_mixed": "同一语句中混用了 UNION 和 UNION ALL：请全程只使用其中一种。",
+      "union_columns_differ": "UNION 连接的语句返回不同的列 {{first}} 和 {{second}}：每个语句都必须返回相同的列名。",
+      "integer_overflow": "{{value}} 超出整数范围 -9223372036854775808 到 9223372036854775807。",
+      "invalid_unicode_escape": "字符串中的转义 {{escape}} 不是 Cypher 能读取的转义。Unicode 转义为 \\u 加四位十六进制数字，例如 \\u00e9。",
+      "boolean_operand": "{{operator}} 接受 true、false 或 null，但被传入了语句中写出的其他类型的值。",
+      "nondeterministic_aggregate": "{{aggregate}} 对 rand() 进行聚合，而 rand() 每次调用都会变化。请先在 WITH 中计算它，再对结果聚合。",
+      "value_as_node": "MATCH 将 {{variable}} 读取为节点或关系，但语句将其绑定到既非节点也非关系的值。请为节点使用自己的变量。",
       "undefined_variable": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。",
       "invalid_limit": "LIMIT {{value}} 不是整数行数：LIMIT 需要 0 或更大的计数，例如 LIMIT 10。",
       "invalid_skip": "SKIP {{value}} 不是整数行数：SKIP 需要 0 或更大的计数，例如 SKIP 10。",
@@ -563,8 +575,8 @@
       "no_variables": "{{clause}} 读取了 {{variable}}，但语句未绑定任何变量：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。",
       "undefined_variable_property": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。 您是指 {{suggestion}} 吗？{{owner}} 绑定到 :{{label}}，它有属性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。 您是指 {{suggestions}} 吗？它们各自绑定到具有属性 {{variable}} 的标签。",
-      "non_finite_number": "结果包含 JSON 无法表示的数字：{{column}} 为 {{value}}。",
-      "try_cast_needs_postgres_16": "对可能无法转换的值使用 toInteger、toFloat 和 toBoolean 时，此引擎需要 PostgreSQL 16 或更高版本。"
+      "non_finite_number": "答案包含 JSON 无法表示的数字：{{column}} 为 {{value}}。",
+      "try_cast_needs_postgres_16": "对可能无法转换的值使用 toInteger、toFloat 和 toBoolean，需要此引擎上的 PostgreSQL 16 或更高版本。"
     },
     "requests": {
       "approver_outside_domains": "你创建关系的权限未覆盖此请求涉及的任何域（{{domains}}）",
@@ -578,7 +590,7 @@
     "statement": {
       "rows_cut": "结果在 {{limit}} 行处被截断，这是适用于此次读取的行数限制（{{kind}}）：匹配的行多于返回的行。",
       "rows_cut_unchecked": "结果有 {{limit}} 行，即适用于此次读取的行数限制（{{kind}}）。无法检查是否还有更多匹配的行：{{reason}}",
-      "list_at_ceiling": "列表包含此次读取的行数限制所允许的最多 {{limit}} 个条目（{{kind}}）；可能还有更多。",
+      "list_at_ceiling": "列表包含行数限制允许此次读取（{{kind}}）的最多 {{limit}} 个条目；可能还有更多。",
       "approximate_index": "最相似的行是通过近似向量索引找到的：可能缺少一行比最后返回的行稍微更相似的行。",
       "path_cut": "一条没有上限的路径在图深度上限 {{limit}} 跳处被截断：更长的路径未包含在结果中。"
     },

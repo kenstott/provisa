@@ -36,6 +36,8 @@ def _args_to_ui(raw: list[dict] | None) -> list[dict]:
         arg = {"name": a["name"], "type": a["type"], "argKind": a.get("arg_kind", "column_value")}
         if a.get("columns"):  # REQ-1159: per-dataset input column contract
             arg["columns"] = a["columns"]
+        if "default" in a:  # REQ-2168: left out of a call, the argument takes it
+            arg["default"] = a["default"]
         out.append(arg)
     return out
 
@@ -52,6 +54,8 @@ def _args_from_ui(raw: list[dict]) -> list[dict]:
         cols = a.get("columns")  # REQ-1159: per-dataset input column contract [{name,type}]
         if cols:
             norm["columns"] = cols
+        if "default" in a:  # REQ-2168
+            norm["default"] = a["default"]
         out.append(norm)
     return out
 
@@ -77,6 +81,7 @@ def _row_to_function(row: dict) -> dict:
         "materialize": bool(row.get("materialize", False)),
         "requiresApproval": bool(row.get("requires_approval", False)),  # REQ-1924
         "writesTable": row.get("writes_table"),  # REQ-1924, REQ-871
+        "languageBindings": row.get("language_bindings") or {},  # REQ-2168
     }
 
 
@@ -157,6 +162,8 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     materialize: bool = False
     requiresApproval: bool = False  # REQ-1924
     writesTable: str | None = None  # REQ-1924, REQ-871: "schema.table" of the table it writes
+    # REQ-2168: the command's name per language {language: {name?, exclude?}}.
+    languageBindings: dict[str, dict] = {}
 
 
 class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
@@ -267,6 +274,63 @@ def _as_statement(body: FunctionInput) -> None:  # REQ-2001
     body.kind = found.kind
     body.writesTable = found.writes
     body.functionName = body.functionName or body.name
+
+
+def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
+    """The command's bindings and, for a SQL expression function, its template, as they will be
+    served: no binding another command or a built-in holds in its language (refused naming both),
+    and the template written for every engine of the deployment (refused naming the engine)."""
+    from provisa.api.app import state
+    from provisa.core.builtin_commands import BuiltinRefused, check as check_builtin
+    from provisa.core.command_bindings import CommandBindingRefused, check_declared, check_names
+    from provisa.core.sql_expression import (
+        SqlExpressionRefused,
+        check_for_engines,
+        deployment_dialects,
+    )
+
+    saved = {
+        "name": body.name,
+        "impl_kind": body.implKind,
+        "language_bindings": body.languageBindings,
+    }
+    served = {
+        c["name"]: c
+        for pool in (state.tracked_functions, state.tracked_webhooks)
+        for c in pool.values()
+        if c["name"] != body.name
+    }
+    from pydantic import ValidationError
+
+    from provisa.core.models import FunctionArgument
+
+    try:
+        # REQ-2168: each argument's default is a value of its type (the update path writes the
+        # arguments as sent, so they are read through the model here).
+        for a in _args_from_ui(body.arguments):
+            FunctionArgument(**a)
+    except ValidationError as exc:
+        raise ApiError(
+            422, "actions.argument_default_refused", str(exc.errors()[0]["msg"]), name=body.name
+        ) from exc
+    try:
+        check_declared(body.name, body.languageBindings)
+        check_names([*served.values(), saved])
+        if body.implKind == "builtin":
+            check_builtin(body.name, body.binding)
+        if body.implKind == "sql_expression":
+            if body.kind != "query":
+                raise SqlExpressionRefused(
+                    f"function {body.name!r}: a sql_expression function is a query"
+                )
+            check_for_engines(
+                body.name,
+                body.binding,
+                [a["name"] for a in body.arguments],
+                deployment_dialects(state),
+            )
+    except (CommandBindingRefused, SqlExpressionRefused, BuiltinRefused) as exc:
+        raise ApiError(422, "actions.command_binding_refused", str(exc), name=body.name) from exc
 
 
 def _check_written_table(body: FunctionInput) -> None:
@@ -401,9 +465,10 @@ async def create_function(
     await _as_source_operation(body)
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
+    _check_command_bindings(body)  # REQ-2168
     _check_written_table(body)
     from provisa.api.app import state
-    from provisa.core.models import DatasetColumn, Function, FunctionArgument
+    from provisa.core.models import CommandBinding, DatasetColumn, Function, FunctionArgument
     from provisa.core.repositories import function as function_repo
 
     if state.model_db is None:
@@ -426,6 +491,9 @@ async def create_function(
         materialize=body.materialize,
         requires_approval=body.requiresApproval,  # REQ-1924
         writes_table=body.writesTable,  # REQ-1924, REQ-871
+        language_bindings={  # REQ-2168
+            k: CommandBinding(**v) for k, v in body.languageBindings.items()
+        },
         # REQ-1159: the wire model carries the raw [{name,type}] the UI posts (the update path
         # below writes it straight into a JSON column); the domain model wants the typed contract.
         output_columns=(
@@ -461,6 +529,7 @@ async def update_function(
     await _as_source_operation(body)
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
+    _check_command_bindings(body)  # REQ-2168
     _check_written_table(body)
     from provisa.api.app import state
 
@@ -513,6 +582,7 @@ async def update_function(
                 materialize=body.materialize,
                 requires_approval=body.requiresApproval,  # REQ-1924
                 writes_table=body.writesTable,  # REQ-1924, REQ-871
+                language_bindings=body.languageBindings,  # REQ-2168
                 updated_at=func.now(),
             )
         )

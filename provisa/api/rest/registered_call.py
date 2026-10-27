@@ -77,7 +77,7 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
     if _COMMANDS_PROC_RE.match(body.query.strip()):
         from provisa.api.data.action_exec import list_visible_commands
 
-        cmds = list_visible_commands(state, role_id)
+        cmds = list_visible_commands(state, role_id, "cypher")
         rows = [
             {"name": c["name"], "description": c["description"], "signature": _command_signature(c)}
             for c in cmds
@@ -95,10 +95,16 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
         raise ApiError(400, "cypher.command_call_refused", str(exc), reason=str(exc)) from exc
     if call is None:
         return None
-    from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
+    from provisa.api.data.action_exec import (
+        bind_command_args,
+        command_named,
+        invoke_tracked_function,
+    )
 
-    args = bind_command_args(call.name, call.values, state, role_id)
-    rows = await invoke_tracked_function(call.name, args, state, role_id)
+    # REQ-2168: the name is the command's Cypher command binding.
+    name = command_named(state, role_id, "cypher", call.name)
+    args = bind_command_args(name, call.values, state, role_id)
+    rows = await invoke_tracked_function(name, args, state, role_id)
     try:
         cols, shaped = project(call, rows)
     except CommandCallRefused as exc:

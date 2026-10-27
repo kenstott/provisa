@@ -736,6 +736,8 @@ TRANSPORT_BY_KIND: dict[str, str] = {
     "grpc": "grpc",
     "python": "python",
     "statement": "sql",  # REQ-2001: a Provisa SQL statement, through the one pipeline
+    "sql_expression": "sql",  # REQ-2168: a SQL expression template, through the one pipeline
+    "builtin": "builtin",  # REQ-2168: a command Provisa ships (the APOC set), in process
 }
 
 
