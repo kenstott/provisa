@@ -136,9 +136,10 @@ def row_check(
     source = getattr(table, "mv_preprocess", None)
     if source is None or not str(source).strip():
         return None
-    from provisa.mv.preprocess import compile_preprocess
+    from provisa.mv.preflight_services import compile_check
 
-    return RowCheck(compile_preprocess(source), node=node, columns=columns, prior_hash=prior_hash)
+    fn = compile_check(source, subject=f"table {node}")
+    return RowCheck(fn, node=node, columns=columns, prior_hash=prior_hash)
 
 
 __all__ = ["QUEUED_BATCHES", "RowCheck", "row_check"]

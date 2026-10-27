@@ -4077,6 +4077,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     debounce_max_delay=input.mv_debounce_max_delay,  # REQ-963
                     consistency=input.mv_consistency,  # REQ-879
                     preprocess=input.mv_preprocess,  # REQ-957
+                    hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
+                    table_id=table_id,  # REQ-2133
+                    product_id=input.product_id,  # REQ-2133
                     business_key=list(input.business_key),  # REQ-2109
                     valid_time=input.valid_time,  # REQ-2109
                     recorded_time=input.recorded_time,  # REQ-2109

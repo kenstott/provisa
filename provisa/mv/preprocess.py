@@ -124,6 +124,12 @@ _FORBIDDEN_NAMES = frozenset(
 
 REQUIRED_FUNC = "preflight"
 
+#: The one module a preflight may import (REQ-957, REQ-1165 amended 2026-10-21): Provisa's services,
+#: in-process. A preflight that imports it is evaluated by the Python path only, never translated to
+#: an SQL probe, and is excluded from replay determinism (REQ-964): its verdict is the state its
+#: service calls find at refresh time.
+SERVICES_MODULE = "provisa_services"
+
 
 class PreprocessValidationError(ValueError):
     """REQ-964: a preflight script failed the purity gate — rejected at registration."""
@@ -136,12 +142,19 @@ class _PurityVisitor(ast.NodeVisitor):
         self.errors: list[str] = []
 
     def visit_Import(self, node: ast.Import) -> None:
-        del node
-        self.errors.append("import statements are not allowed (non-deterministic / unsafe)")
+        others = [a.name for a in node.names if a.name != SERVICES_MODULE]
+        if others:
+            self.errors.append(
+                f"import statements are not allowed (non-deterministic / unsafe), but "
+                f"`import {SERVICES_MODULE}`: {', '.join(others)}"
+            )
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         del node
-        self.errors.append("import statements are not allowed (non-deterministic / unsafe)")
+        self.errors.append(
+            f"import statements are not allowed (non-deterministic / unsafe), but "
+            f"`import {SERVICES_MODULE}`; a from-import is not"
+        )
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         # Dunder attribute access (__globals__, __class__, __subclasses__, …) is the
@@ -176,6 +189,8 @@ def check_preprocess_purity(source: str) -> tuple[bool, str]:
                 func = stmt
         elif isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.Expr, ast.Pass)):
             continue  # module-level constants / docstrings are harmless
+        elif isinstance(stmt, ast.Import) and all(a.name == SERVICES_MODULE for a in stmt.names):
+            continue  # REQ-1165: Provisa's services, the one import a check may make
         else:
             return False, (
                 f"only function definitions and constant assignments are allowed at "
@@ -195,6 +210,21 @@ def check_preprocess_purity(source: str) -> tuple[bool, str]:
     return True, ""
 
 
+def uses_services(source: str | None) -> bool:
+    """Whether the preflight ``source`` imports :data:`SERVICES_MODULE` (REQ-1165): such a check runs
+    with Provisa's services bound, on the Python path only."""
+    if source is None or not source.strip():
+        return False
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.Import) and any(a.name == SERVICES_MODULE for a in node.names)
+        for node in ast.walk(tree)
+    )
+
+
 def validate_preprocess(source: str | None) -> None:
     """Enforce the preflight purity gate at registration (REQ-957 / REQ-964 / REQ-1165).
 
@@ -209,6 +239,17 @@ def validate_preprocess(source: str | None) -> None:
         raise PreprocessValidationError(f"invalid preprocess hook: {reason}")
 
 
+def _services_import(name: str, *args: Any, **kwargs: Any) -> Any:
+    """The hook's ``__import__``: :data:`SERVICES_MODULE` and nothing else (the registration check
+    has already refused every other import; this refuses one that slipped past it)."""
+    del args, kwargs
+    if name != SERVICES_MODULE:
+        raise ImportError(f"a preflight may import only {SERVICES_MODULE}, not {name!r}")
+    from provisa.mv.preflight_services import services_module
+
+    return services_module()
+
+
 def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
     """Validate then compile a preflight script into a ``preflight(streams, ctx)`` callable.
 
@@ -220,7 +261,10 @@ def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
     if source is None or not source.strip():
         return None
     validate_preprocess(source)
-    namespace: dict[str, Any] = {"__builtins__": dict(_SAFE_BUILTINS)}
+    builtins = dict(_SAFE_BUILTINS)
+    if uses_services(source):
+        builtins["__import__"] = _services_import
+    namespace: dict[str, Any] = {"__builtins__": builtins}
     code = compile(source, filename="<preprocess>", mode="exec")
     # S102/B102 flag any exec — the source passed the purity check above and runs against a
     # restricted builtins mapping, which is what makes compiling a check body possible at all.

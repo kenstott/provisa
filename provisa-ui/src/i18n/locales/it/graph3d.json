@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "Grafo 3D dei prodotti dati e di ciò che li compone",
-    "panelTitle": "Knowledge graph",
-    "expandTitle": "{{product}}: knowledge graph",
+    "panelTitle": "Grafo",
+    "expandTitle": "{{product}}: grafo",
     "productMap": "Mappa dei prodotti",
     "preset": "Preimpostazione",
-    "preset_knowledge": "Knowledge graph",
+    "preset_all": "Tutto",
     "preset_ontology": "Ontologia",
-    "preset_productMap": "Mappa dei prodotti",
-    "preset_lineage": "Derivazione",
+    "preset_products": "Prodotti",
     "layers": "Livelli",
     "layer_products": "Prodotti e domini",
     "layer_tables": "Tabelle membro",

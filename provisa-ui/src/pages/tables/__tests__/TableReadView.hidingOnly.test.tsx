@@ -70,6 +70,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
+    mvHoldOnFailingChecks: false,
     businessKey: [],
     validTime: null,
     recordedTime: null,

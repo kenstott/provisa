@@ -27,6 +27,7 @@ from provisa.api.admin.capabilities import has_capability_request, require_capab
 from provisa.lineage.graph import LineageGraph, build_column_graph
 from provisa.lineage.merge import MergedGraph
 from provisa.lineage.native import NativeTable, natives_payload, sql_column_name, with_native_hop
+from provisa.lineage.read_rights import readable_graph
 from provisa.core.models import DERIVED_SOURCE_ID
 
 router = APIRouter()
@@ -60,7 +61,31 @@ def lineage_graph_for(
     natives: list[NativeTable] | None = None,
     relations: list[str] | None = None,
 ) -> dict:
-    """Build the render-ready lineage graph JSON for ``sql`` (REQ-1160/REQ-1161). Pure core, testable
+    """The render-ready lineage graph JSON for ``sql``: :func:`statement_graph`'s graph with every
+    native box it draws."""
+    graph = statement_graph(
+        sql,
+        commands,
+        dialect,
+        views=views,
+        materialized=materialized,
+        natives=natives,
+        relations=relations,
+    )
+    return _payload(graph, natives_payload(graph, natives or []))
+
+
+def statement_graph(
+    sql: str,
+    commands: dict[str, dict] | None,
+    dialect: str = "postgres",
+    *,
+    views: list[tuple[str, str]] | None = None,
+    materialized: set[str] | None = None,
+    natives: list[NativeTable] | None = None,
+    relations: list[str] | None = None,
+) -> LineageGraph:
+    """Build the lineage graph for ``sql`` (REQ-1160/REQ-1161). Pure core, testable
     without the app: ``commands`` maps command name → its registry dict so inline command nodes splice
     their declared taint-closure. When ``sql`` references a registered view (``views`` = (relation,
     definition) pairs), that view's own definition is expanded and stitched in — so selecting from a
@@ -86,7 +111,8 @@ def lineage_graph_for(
     # node. Requalify those refs to the full relation first, so the stitch lands.
     requalify_relations(stmt, _bare_to_full([rel for rel, _ in closure], relations or []))
     if not closure:
-        return _with_natives(stmt, natives or [])
+        with_native_hop(stmt, natives or [])
+        return stmt
     # Expand each view to its own lineage (down to base sources), then stitch the statement on top: a
     # view's output node ``<schema>.<table>.<col>`` shares the id the statement (or a downstream view)
     # reads it by, so merge_graphs connects them. A ``SELECT *`` (empty statement graph) simply yields
@@ -97,15 +123,61 @@ def lineage_graph_for(
         materialized_relations=materialized or set(),
         extra_relations=relations or [],
     )
-    return _with_natives(merge_graphs([fed.graph, stmt]).graph, natives or [])
+    graph = merge_graphs([fed.graph, stmt]).graph
+    with_native_hop(graph, natives or [])
+    return graph
 
 
-def _with_natives(graph: LineageGraph, natives: list[NativeTable]) -> dict:
-    """``graph``'s payload with the native hop beneath its source columns (REQ-2116)."""
-    with_native_hop(graph, natives)
+def _payload(graph: LineageGraph, natives: dict[str, dict]) -> dict:
     out = graph.to_dict()
-    out["natives"] = natives_payload(graph, natives)
+    out["natives"] = natives
     return out
+
+
+def _natives_for(request: Request, graph: LineageGraph, natives: list[NativeTable]) -> dict:
+    """The native boxes ``graph`` draws, with their address and how each table is served: source
+    configuration, so answered only to a user with source registration (REQ-2116). The native
+    nodes themselves follow the read rights of the columns they feed (:func:`caller_lineage`)."""
+    if not has_capability_request(request, "source_registration"):
+        return {}
+    return natives_payload(graph, natives)
+
+
+def caller_lineage(
+    request: Request, state, graph: LineageGraph, column_rows: list[dict]
+) -> LineageGraph:
+    """``graph`` cut to what the caller reads: the registered columns the role the request acts
+    as is served (its compiled context, the narrowing every schema surface reads), the native
+    fields beneath them, and nothing else (REQ-1161). Every lineage read answers through this."""
+    return role_lineage(state, getattr(request.state, "role", None), graph, column_rows)
+
+
+def role_lineage(
+    state, role_id: str | None, graph: LineageGraph, column_rows: list[dict]
+) -> LineageGraph:
+    """:func:`caller_lineage` for a named role, where there is no request (a preflight's build
+    role, a scheduled publish's target role)."""
+    registered, readable = _role_reads(state, role_id, column_rows)
+    return readable_graph(graph, registered=registered, readable=readable)
+
+
+def _caller_reads(request: Request, state, column_rows: list[dict]) -> tuple[set[str], set[str]]:
+    """(the registered relations, the node ids of their columns the caller is served)."""
+    return _role_reads(state, getattr(request.state, "role", None), column_rows)
+
+
+def _role_reads(state, role_id: str | None, column_rows: list[dict]) -> tuple[set[str], set[str]]:
+    from provisa.api.admin.served import served_columns_for
+
+    served = served_columns_for(state, role_id)
+    registered: set[str] = set()
+    readable: set[str] = set()
+    for row in column_rows:
+        relation = _relation_of(row["domain_id"], row["table_name"])
+        registered.add(relation)
+        if row["column_name"] in served.get(row["table_id"], ()):
+            readable.add(f"{relation}.{sql_column_name(row)}")
+    return registered, readable
 
 
 def _referenced_view_closure(
@@ -143,15 +215,11 @@ async def lineage_graph(request: Request, body: LineageGraphRequest) -> dict:
     }
     view_rows = await _fetch_view_rows(state)
     views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
-    natives = await _native_tables(request, state)
-    relations = sorted(
-        {
-            _relation_of(r["domain_id"], r["table_name"])
-            for r in await _fetch_registry_columns(state)
-        }
-    )
+    natives = await _native_tables(state)
+    column_rows = await _fetch_registry_columns(state)
+    relations = sorted({_relation_of(r["domain_id"], r["table_name"]) for r in column_rows})
     try:
-        return lineage_graph_for(
+        graph = statement_graph(
             body.sql,
             commands,
             body.dialect,
@@ -162,6 +230,8 @@ async def lineage_graph(request: Request, body: LineageGraphRequest) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    graph = caller_lineage(request, state, graph, column_rows)
+    return _payload(graph, _natives_for(request, graph, natives))
 
 
 async def _fetch_view_rows(state) -> list[dict]:
@@ -197,13 +267,13 @@ async def _view_rows(conn) -> list[dict]:
 
 
 async def _fetch_registry_columns(state) -> list[dict]:
-    """Every registered relation's columns with their per-role visibility (REQ-1625/REQ-1626).
+    """Every registered relation's columns (REQ-1625/REQ-1626).
 
-    One row per (relation, column): ``domain_id``, ``table_name``, ``column_name``, ``alias``,
-    ``visible_to``. A column's node is named by its SQL name (``sql_column_name``), the name a view
+    One row per (relation, column): ``domain_id``, ``table_name``, ``table_id``, ``column_name``,
+    ``alias``. A column's node is named by its SQL name (``sql_column_name``), the name a view
     reads it by, so the registry's column and a view's reference to it are one node.
     This is the registry's whole surface — base tables as well as views — so Complete Lineage can show
-    a registered table that nothing derives from, and can seed the role cut from what a role may query."""
+    a registered table that nothing derives from, and can seed the role cut from what a role is served."""
     if getattr(state, "model_db", None) is None:
         return []
     async with state.model_db.acquire() as conn:
@@ -223,7 +293,6 @@ async def _registry_columns(conn) -> list[dict]:
             registered_tables.c.table_name,
             table_columns.c.column_name,
             table_columns.c.alias,
-            table_columns.c.visible_to,
             table_columns.c.table_id,
         ).select_from(
             registered_tables.join(
@@ -296,29 +365,41 @@ def _relation_of(domain_id: str, table_name: str) -> str:
 
 
 def _role_seeds(
-    column_rows: list[dict], roles: set[str], domains: set[str]
+    column_rows: list[dict], lens: dict[int, set[str]] | None, domains: set[str]
 ) -> tuple[set[str], set[str]]:
     """(seed node ids, seed relations) for the role perspective (REQ-1625).
 
-    Complete Lineage is read FROM a role's vantage point: the seeds are the columns that role can
-    query, and the graph is everything they derive from. A governance analyst holding several roles
-    switches perspective by switching role, so the cut is analytical, not protective — nothing about an
-    ancestor is withheld once a seed reaches it. Role membership is exact (``role in visible_to``), the
-    same test the schema surfaces use (``provisa/security/visibility.py:54``); an empty ``roles`` is the
-    "All roles" selection and seeds every registered column. ``domains`` restricts which relations may
-    SEED — never which may be an ancestor, or a chain would break mid-way through another domain."""
+    Complete Lineage is read FROM a role's vantage point: the seeds are the columns the lens's roles
+    are served (``lens``: table id → physical columns, from :func:`_lens`), and the graph is what
+    they derive from, cut to what the caller reads (:func:`caller_lineage`). ``lens`` None is the
+    "All roles" selection and seeds every registered column. ``domains`` restricts which relations
+    may SEED — never which may be an ancestor, or a chain would break mid-way through another
+    domain."""
     seeds: set[str] = set()
     relations: set[str] = set()
     for row in column_rows:
         if domains and row["domain_id"] not in domains:
             continue
-        visible_to = row["visible_to"] or []
-        if roles and not roles.intersection(visible_to):
+        if lens is not None and row["column_name"] not in lens.get(row["table_id"], ()):
             continue
         relation = _relation_of(row["domain_id"], row["table_name"])
         relations.add(relation)
         seeds.add(f"{relation}.{sql_column_name(row)}")
     return seeds, relations
+
+
+def _lens(state, roles: set[str]) -> dict[int, set[str]] | None:
+    """The columns any of ``roles`` is served, by the one served-columns rule; None for no
+    selection (every role)."""
+    from provisa.api.admin.served import served_columns_for
+
+    if not roles:
+        return None
+    out: dict[int, set[str]] = {}
+    for role in roles:
+        for table_id, columns in served_columns_for(state, role).items():
+            out.setdefault(table_id, set()).update(columns)
+    return out
 
 
 def _view_relation(row: dict) -> str:
@@ -374,10 +455,10 @@ async def federation_graph(
     NavBar domain filter the Views/Commands pages honour.
 
     ``roles`` (comma-separated, REQ-1625) is the perspective the lineage is read from: the graph becomes
-    everything the columns THOSE roles can query derive from. It is a lens, not a redaction — an ancestor
-    is returned in full whether or not the roles reach it — so an analyst holding several roles reads the
-    same federation from each one's vantage point. Empty = the "All roles" selection, every registered
-    column seeds. Registered relations that nothing derives from still appear, as isolated source columns
+    everything the columns THOSE roles can query derive from, so an analyst holding several roles reads
+    the same federation from each one's vantage point. The lens narrows only within what the caller
+    reads: every field the caller is not served is cut, whatever the lens (:func:`caller_lineage`).
+    Empty = the "All roles" selection, every registered column seeds. Registered relations that nothing derives from still appear, as isolated source columns
     (REQ-1626), so the graph is the whole reachable model rather than only what a transform touched.
 
     ``roles`` names ANY role in the org, not only ones the caller holds — that is the point of the lens.
@@ -385,11 +466,7 @@ async def federation_graph(
     query, which is the same disclosure ``visible_to`` is, so the endpoint carries the gate that
     governance metadata carries: ``view_governance`` (REQ-1628)."""
     from provisa.api.app import state
-    from provisa.lineage.merge import (
-        ancestor_closure,
-        build_federation_graph_incremental,
-        slice_graph,
-    )
+    from provisa.lineage.merge import ancestor_closure, slice_graph
 
     require_capability_request(request, "view_governance")
 
@@ -402,24 +479,12 @@ async def federation_graph(
     column_rows = await _fetch_registry_columns(state)
     domain_filter = {d for d in (domains or "").split(",") if d}
     role_filter = {r for r in (roles or "").split(",") if r}
-    seeds, seed_relations = _role_seeds(column_rows, role_filter, domain_filter)
+    seeds, seed_relations = _role_seeds(column_rows, _lens(state, role_filter), domain_filter)
     # Views are parsed WHOLE, unfiltered: the domain/role cut selects the seeds, and an upstream view in
     # a domain outside the filter is still a legitimate ancestor of one inside it. Filtering the parse
     # set instead would sever those chains and understate provenance.
-    views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
-    registry_relations = sorted(
-        {_relation_of(r["domain_id"], r["table_name"]) for r in column_rows}
-    )
-    # REQ-1161: incremental — only views whose SQL changed since the last request are re-parsed; the
-    # rest of the federation graph is unioned from cached per-view sub-DAGs (never a full rebuild).
-    merged = build_federation_graph_incremental(
-        views, commands=commands, materialized_relations=mats, extra_relations=registry_relations
-    )
-    from provisa.lineage.commands import with_command_writes
-
-    # REQ-2001: each statement command's write, its target's columns derived by the command.
-    merged = with_command_writes(merged, commands)
-    merged = _with_registry_columns(merged, column_rows, seed_relations)
+    merged = _model_graph(state, commands, view_rows, column_rows, seed_relations)
+    registry_relations = {_relation_of(r["domain_id"], r["table_name"]) for r in column_rows}
     # A relation the registry has no column rows for cannot be seeded by visibility, and dropping it
     # would silently shrink the graph below what it shows today. Seed it: the perspective can only be
     # applied where the registry actually describes who sees what.
@@ -429,20 +494,30 @@ async def federation_graph(
         for n in merged.graph.nodes.values()
         if n.relation is None or n.relation not in described
     }
+    # The lens narrows within what the caller reads, never past it: a registered seed the caller is
+    # not served is no seed.
+    registered, readable = _caller_reads(request, state, column_rows)
+    seeds = {
+        s
+        for s in seeds
+        if s in readable
+        or merged.graph.nodes.get(s) is None
+        or merged.graph.nodes[s].relation not in registered
+    }
     # REQ-2116: the native hop joins after the seeds are taken: it is what a seed derives from.
-    natives = await _native_tables(request, state)
+    natives = await _native_tables(state)
     with_native_hop(merged.graph, natives)
-    if seeds:
-        scoped_graph = ancestor_closure(merged.graph, seeds)
-        # A cycle survives only if the whole loop is inside the perspective — a partially-cut cycle is
-        # not a cycle in what is being shown, and reporting it would point at nodes that are not there.
-        merged = MergedGraph(
-            graph=scoped_graph,
-            cycles=[c for c in merged.cycles if all(n in scoped_graph.nodes for n in c.nodes)],
-        )
+    graph = ancestor_closure(merged.graph, seeds)
+    # The caller's read rights cap the lens: the graph is what the lens reaches, of what the caller
+    # reads. A cycle survives only if the whole loop is shown — a partially-cut cycle is not a cycle
+    # in what is being shown, and reporting it would point at nodes that are not there.
+    graph = caller_lineage(request, state, graph, column_rows)
+    merged = MergedGraph(
+        graph=graph, cycles=[c for c in merged.cycles if all(n in graph.nodes for n in c.nodes)]
+    )
     if focus is None:
         out = merged.to_dict()
-        out["natives"] = natives_payload(merged.graph, natives)
+        out["natives"] = _natives_for(request, merged.graph, natives)
         return out
     try:
         scoped = slice_graph(merged.graph, focus, direction=direction, depth=depth)
@@ -451,8 +526,280 @@ async def federation_graph(
     out = scoped.to_dict()
     kept = set(scoped.nodes)
     out["cycles"] = [c.to_dict() for c in merged.cycles if any(n in kept for n in c.nodes)]
-    out["natives"] = natives_payload(scoped, natives)
+    out["natives"] = _natives_for(request, scoped, natives)
     return out
+
+
+def _model_graph(
+    state, commands: dict, view_rows: list[dict], column_rows: list[dict], relations: set[str]
+) -> MergedGraph:
+    """The model's merged column lineage (REQ-1161): every registered view, each statement
+    command's write (REQ-2001), and every column of ``relations`` the views never mention
+    (REQ-1626). Views are parsed WHOLE, unfiltered, so a chain through any domain stays whole."""
+    from provisa.lineage.commands import with_command_writes
+    from provisa.lineage.merge import build_federation_graph_incremental
+
+    views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
+    registry_relations = sorted(
+        {_relation_of(r["domain_id"], r["table_name"]) for r in column_rows}
+    )
+    # REQ-1161: incremental — only views whose SQL changed since the last request are re-parsed; the
+    # rest of the federation graph is unioned from cached per-view sub-DAGs (never a full rebuild).
+    merged = build_federation_graph_incremental(
+        views, commands=commands, materialized_relations=mats, extra_relations=registry_relations
+    )
+    merged = with_command_writes(merged, commands)
+    return _with_registry_columns(merged, column_rows, relations)
+
+
+@router.get("/data-products/{product_id}/lineage")
+async def product_lineage(request: Request, product_id: str) -> dict:
+    """A data product's lineage (REQ-2156, REQ-1640) and data quality (REQ-2157), for the role the
+    request acts as (:func:`product_lineage_for`). Any reader of the product reads it: it shows
+    nothing its caller is not served, so it carries the product's own gate and no governance
+    one."""
+    from provisa.api.app import state
+    from provisa.api.errors import ApiError
+
+    require_capability_request(request, "data_product_read")
+    found = await _product_lineage(state, product_id, getattr(request.state, "role", None))
+    if found is None:
+        raise ApiError(
+            404, "data_products.not_found", f"data product {product_id!r} does not exist"
+        )
+    out, graph, natives = found
+    out["natives"] = _natives_for(request, graph, natives)
+    return out
+
+
+async def product_lineage_for(state, product_id: str, role_id: str | None) -> dict | None:
+    """A data product's lineage and data quality as ``role_id`` reads them; None for no such
+    product. The one answer the endpoint, the dq service and a metadata export all read: its
+    members, everything they derive from and what derives from them directly, every member column
+    an output, cut to what the role is served (:func:`role_lineage`); the product's nearest
+    physical inputs found on the cut graph (REQ-2126); and its expectations, promises, related and
+    unattached checks (REQ-2157). The native boxes' source configuration is not in it."""
+    found = await _product_lineage(state, product_id, role_id)
+    if found is None:
+        return None
+    out, _graph, _natives = found
+    out["natives"] = {}
+    return out
+
+
+async def _product_lineage(
+    state, product_id: str, role_id: str | None
+) -> tuple[dict, LineageGraph, list[NativeTable]] | None:
+    from provisa.api.admin.served import served_columns_for
+    from provisa.lineage.product import (
+        nearest_consumers,
+        nearest_inputs,
+        product_dq,
+        product_graph,
+    )
+
+    if not await _product_exists(state, product_id):
+        return None
+    tables = await _fetch_tables(state)
+    commands = {
+        **(getattr(state, "tracked_functions", None) or {}),
+        **(getattr(state, "column_transforms", None) or {}),
+    }
+    column_rows = await _fetch_registry_columns(state)
+    members = [t for t in tables if t["product_id"] == product_id and t["dq_contract"] is None]
+    member_ids = {t["id"] for t in members}
+    member_relations = {_relation_of(t["domain_id"], t["table_name"]) for t in members}
+    merged = _model_graph(
+        state, commands, await _fetch_view_rows(state), column_rows, member_relations
+    )
+    natives = await _native_tables(state)
+    with_native_hop(merged.graph, natives)
+    graph = product_graph(
+        merged.graph,
+        {
+            f"{_relation_of(r['domain_id'], r['table_name'])}.{sql_column_name(r)}"
+            for r in column_rows
+            if r["table_id"] in member_ids
+        },
+        checker_relations={
+            _relation_of(t["domain_id"], t["table_name"])
+            for t in tables
+            if t["dq_contract"] is not None
+        },
+    )
+    graph = role_lineage(state, role_id, graph, column_rows)
+    shown = {n.relation for n in graph.nodes.values()}
+    by_relation = {_relation_of(t["domain_id"], t["table_name"]): t for t in tables}
+    base = {rel for rel, t in by_relation.items() if t["source_id"] != DERIVED_SOURCE_ID}
+    types = {n.native_relation: n.source_type for n in natives}
+    out = MergedGraph(
+        graph=graph, cycles=[c for c in merged.cycles if all(n in graph.nodes for n in c.nodes)]
+    ).to_dict()
+    out["members"] = sorted(member_relations & shown)
+    out["inputs"] = [
+        _input(relation, graph, by_relation, types)
+        for relation in nearest_inputs(graph, member_relations, base=base)
+    ]
+    # REQ-2160: who reads the product, one hop downstream, as far as the role may read them.
+    out["consumers"] = [
+        _consumer(by_relation[relation])
+        for relation in nearest_consumers(graph, member_relations)
+        if relation in by_relation
+    ]
+    out["dq"] = product_dq(
+        product_id,
+        await _fetch_checkers(state),
+        members=member_ids,
+        inputs={i["table_id"] for i in out["inputs"] if i["kind"] != "source"},
+        served=served_columns_for(state, role_id),
+    )
+    return out, graph, natives
+
+
+def _consumer(table: dict) -> dict:
+    """A registered relation reading the product directly: a table, a view or a materialized
+    view, and the product it belongs to, when it is another product's member."""
+    if table["source_id"] != DERIVED_SOURCE_ID:
+        kind = "table"
+    else:
+        kind = "materialized_view" if table["materialize"] else "view"
+    return {
+        "relation": _relation_of(table["domain_id"], table["table_name"]),
+        "kind": kind,
+        "table_id": table["id"],
+        "domain_id": table["domain_id"],
+        "table_name": table["table_name"],
+        "alias": table["alias"],
+        "product_id": table["product_id"],
+    }
+
+
+async def _fetch_checkers(state) -> list[dict]:
+    """Every checker table that is not a draft (REQ-2157): its names, description, owning product,
+    the table its contract scans (checker_targets), the columns its checks name (dq_rules) and its
+    latest run."""
+    if getattr(state, "model_db", None) is None:
+        return []
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import checker_latest_runs as runs
+    from provisa.core.schema_org import checker_targets as targets
+    from provisa.core.schema_org import registered_tables as rt
+
+    checked = rt.alias("checked")
+
+    async with state.model_db.acquire() as conn:
+        res = await conn.execute_core(
+            select(
+                rt.c.id,
+                rt.c.domain_id,
+                rt.c.table_name,
+                rt.c.alias,
+                rt.c.description,
+                rt.c.product_id,
+                rt.c.dq_rules,
+                targets.c.checked_table_id,
+                checked.c.domain_id.label("checked_domain_id"),
+                checked.c.table_name.label("checked_table_name"),
+                checked.c.alias.label("checked_alias"),
+                runs.c.outcome,
+                runs.c.scan_time,
+            )
+            .select_from(
+                rt.join(targets, targets.c.table_id == rt.c.id)
+                .join(checked, checked.c.id == targets.c.checked_table_id)
+                .outerjoin(runs, runs.c.table_id == rt.c.id)
+            )
+            .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False))
+        )
+        rows = res.fetchall()
+    return [
+        {
+            "id": r.id,
+            "domain_id": r.domain_id,
+            "table_name": r.table_name,
+            "alias": r.alias,
+            "description": r.description,
+            "product_id": r.product_id,
+            "checked_table_id": r.checked_table_id,
+            "checked_table": {
+                "id": r.checked_table_id,
+                "domain_id": r.checked_domain_id,
+                "table_name": r.checked_table_name,
+                "alias": r.checked_alias,
+            },
+            "rule_columns": [rule.get("column_name") or "" for rule in r.dq_rules or []],
+            "latest_outcome": r.outcome,
+            "latest_run_at": r.scan_time.isoformat() if r.scan_time is not None else None,
+        }
+        for r in rows
+    ]
+
+
+def _input(relation: str, graph: LineageGraph, by_relation: dict, types: dict) -> dict:
+    """One nearest physical input: the registered table (a source table or a materialized view),
+    or, for a member read straight from a source, that source's object."""
+    from provisa.lineage.native import NATIVE_PREFIX
+
+    native = relation.startswith(NATIVE_PREFIX)
+    table = by_relation[relation[len(NATIVE_PREFIX) :] if native else relation]
+    node = (
+        next((n for n in graph.nodes.values() if n.relation == relation), None) if native else None
+    )
+    return {
+        "relation": relation,
+        "kind": "source"
+        if native
+        else ("source_table" if table["source_id"] != DERIVED_SOURCE_ID else "materialized_view"),
+        "table_id": table["id"],
+        "domain_id": table["domain_id"],
+        "table_name": table["table_name"],
+        "alias": table["alias"],
+        # The product the input belongs to, when it is another product's member: built from it.
+        "product_id": table["product_id"],
+        "source_id": table["source_id"] if native else None,
+        "source_type": types.get(relation) if native else None,
+        "source_schema": node.source_schema if node else None,
+        "source_table": node.source_table if node else None,
+    }
+
+
+async def _fetch_tables(state) -> list[dict]:
+    """Every registered table that is not a draft: its id, names, source, product and contract."""
+    if getattr(state, "model_db", None) is None:
+        return []
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables as rt
+
+    async with state.model_db.acquire() as conn:
+        res = await conn.execute_core(
+            select(
+                rt.c.id,
+                rt.c.domain_id,
+                rt.c.table_name,
+                rt.c.alias,
+                rt.c.source_id,
+                rt.c.product_id,
+                rt.c.dq_contract,
+                rt.c.materialize,
+            ).where(rt.c.draft.is_(False))
+        )
+        return [dict(r._mapping) for r in res.fetchall()]
+
+
+async def _product_exists(state, product_id: str) -> bool:
+    if getattr(state, "model_db", None) is None:
+        return False
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import data_products
+
+    async with state.model_db.acquire() as conn:
+        res = await conn.execute_core(
+            select(data_products.c.id).where(data_products.c.id == product_id)
+        )
+        return res.first() is not None
 
 
 def _with_registry_columns(
@@ -491,12 +838,10 @@ def _with_registry_columns(
     return merged
 
 
-async def _native_tables(request: Request, state) -> list[NativeTable]:
+async def _native_tables(state) -> list[NativeTable]:
     """Every registered base table's native hop (REQ-2116): where its source reads it, the raw
-    field of each column and how the table is served. Shown only to a user who can see the
-    sources' configuration (source registration); anyone else gets none."""
-    if not has_capability_request(request, "source_registration"):
-        return []
+    field of each column and how the table is served. Which nodes a caller is shown is
+    :func:`caller_lineage`'s; the boxes' detail is :func:`_natives_for`'s."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import api_endpoints, kafka_topics

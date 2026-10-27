@@ -10,63 +10,6 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
-  table: column_lineage_edges
-  columns:
-  - name: id
-    data_type: integer
-    visible_to:
-    - viewer
-  - name: source_column
-    data_type: text
-    visible_to:
-    - viewer
-  - name: source_column_key
-    data_type: text
-    visible_to:
-    - viewer
-  - name: source_column_name
-    data_type: text
-    visible_to:
-    - viewer
-  - name: source_relation
-    data_type: text
-    visible_to:
-    - viewer
-  - name: source_table_id
-    data_type: integer
-    visible_to:
-    - viewer
-  - name: target_column
-    data_type: text
-    visible_to:
-    - viewer
-  - name: target_column_key
-    data_type: text
-    visible_to:
-    - viewer
-  - name: target_column_name
-    data_type: text
-    visible_to:
-    - viewer
-  - name: target_relation
-    data_type: text
-    visible_to:
-    - viewer
-  - name: target_table_id
-    data_type: integer
-    visible_to:
-    - viewer
-  - name: via
-    data_type: text
-    visible_to:
-    - viewer
-  - name: via_kind
-    data_type: text
-    visible_to:
-    - viewer
-- source_id: provisa-admin
-  domain_id: meta
-  schema: org_default
   table: data_product_edges
   columns:
   - name: aliases
@@ -75,10 +18,6 @@ tables:
     - viewer
   - name: direct
     data_type: boolean
-    visible_to:
-    - viewer
-  - name: direction
-    data_type: text
     visible_to:
     - viewer
   - name: hops
@@ -113,16 +52,8 @@ tables:
     data_type: text
     visible_to:
     - viewer
-  - name: target_relation
-    data_type: text
-    visible_to:
-    - viewer
   - name: target_table_id
     data_type: integer
-    visible_to:
-    - viewer
-  - name: vias
-    data_type: text
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -655,6 +586,14 @@ tables:
     - viewer
   - name: l3_cluster
     data_type: integer
+    visible_to:
+    - viewer
+  - name: latest_outcome
+    data_type: text
+    visible_to:
+    - viewer
+  - name: latest_run_at
+    data_type: timestamp
     visible_to:
     - viewer
   - name: materialize
@@ -1451,38 +1390,6 @@ tables:
     visible_to:
     - viewer
 relationships:
-- id: meta:column_lineage_edges:source_column
-  source_column: source_column_key
-  target_column: column_key
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: SOURCE
-  graphql_alias: source
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: column_lineage_edges
-  target_table_id: table_columns
-- id: meta:column_lineage_edges:target_column
-  source_column: target_column_key
-  target_column: column_key
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: TARGET
-  graphql_alias: target
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: column_lineage_edges
-  target_table_id: table_columns
 - id: meta:data_product_edges:data_products
   source_column: product_id
   target_column: id
@@ -2601,22 +2508,6 @@ relationships:
   needs_review: false
   source_table_id: roles_parents
   target_table_id: roles
-- id: meta:table_columns:downstream_lineage
-  source_column: column_key
-  target_column: source_column_key
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: DOWNSTREAM
-  graphql_alias: downstream
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: table_columns
-  target_table_id: column_lineage_edges
 - id: meta:table_columns:effective_column_tags
   source_column: column_key
   target_column: column_key
@@ -2679,22 +2570,6 @@ relationships:
   needs_review: false
   source_table_id: table_columns
   target_table_id: tag_assignments
-- id: meta:table_columns:upstream_lineage
-  source_column: column_key
-  target_column: target_column_key
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: UPSTREAM
-  graphql_alias: upstream
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: table_columns
-  target_table_id: column_lineage_edges
 - id: meta:tag_assignments:data_products
   source_column: product_id
   target_column: id

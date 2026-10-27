@@ -91,13 +91,14 @@ def _observed() -> Table:
     )
 
 
-def _results(contract: str = CONTRACT) -> Table:
+def _results(contract: str = CONTRACT, product_id: str | None = "orders-product") -> Table:
     return Table(
         source_id="dq",
         domain_id="sales",
         schema_name="quality",
         table_name="orders_scans",
-        # REQ-1443 clause 10: no product_id of its own — membership is the observed table's.
+        # REQ-1443 PRODUCT ASSIGNMENT: assigned to a product as any member is.
+        product_id=product_id,
         dq_contract=contract,
         columns=[Column(name="check_name", data_type="varchar", visible_to=["admin"])],
     )
@@ -200,24 +201,20 @@ def test_the_results_table_carries_the_derived_data_quality_tag(snapshot):
     assert ("data_quality", ORDERS_FQN) not in derived
 
 
-def test_the_results_table_inherits_the_observed_tables_product(snapshot):
-    """REQ-1443 clause 10: the results table carries no product_id of its own, yet publishes as a
-    member of the product the table it scans belongs to."""
+def test_the_results_table_publishes_with_the_product_it_is_assigned_to(snapshot):
+    """REQ-1443 PRODUCT ASSIGNMENT: the export groups a checker table into its assigned product."""
     scans = next(t for t in snapshot.tables if t.ref.fqn() == SCANS_FQN)
     assert scans.data_product is True
     product = next(p for p in snapshot.data_products if p.id == "orders-product")
     assert {m.fqn() for m in product.members} == {ORDERS_FQN, SCANS_FQN}
 
 
-def test_a_results_table_of_an_unmarked_table_is_withheld_with_it():
-    """The observed table decides whether both publish: a results table can never be exported on
-    its own, because there is nothing for its checks to be about."""
-    observed = _observed()
-    observed.product_id = None
-    config = _config(tables=[observed, _results()])
+def test_a_results_table_assigned_to_no_product_is_withheld():
+    """REQ-1443 PRODUCT ASSIGNMENT: a checker table with no assignment belongs to no product, so
+    the Data Product filter leaves it out while the table it scans publishes."""
+    config = _config(tables=[_observed(), _results(product_id=None)])
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts=CONTEXTS)
-    assert snapshot.tables == []
-    assert snapshot.data_products == []
+    assert [t.ref.fqn() for t in snapshot.tables] == [ORDERS_FQN]
 
 
 def test_an_unpublished_observed_table_publishes_no_assertion():

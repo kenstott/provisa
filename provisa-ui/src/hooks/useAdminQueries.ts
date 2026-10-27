@@ -47,6 +47,7 @@ import {
   ListedNamesQuery as LISTED_NAMES_QUERY,
   TablesQuery as TABLES_QUERY,
   Calendars as CALENDARS_QUERY,
+  HoldOnFailingChecksSource as HOLD_ON_FAILING_CHECKS_SOURCE_QUERY,
   CreateCalendar as CREATE_CALENDAR_MUTATION,
   DeleteCalendar as DELETE_CALENDAR_MUTATION,
   RefreshPolicyPreview as REFRESH_POLICY_PREVIEW_QUERY,
@@ -313,6 +314,15 @@ export interface CalendarSummary {
   dayClose: string | null; // REQ-2111: the local close of the day, "HH:MM"; null = midnight
 }
 const NO_CALENDARS: CalendarSummary[] = [];
+
+/** REQ-2133: the code a view's Hold on failing checks option applies, shown for a steward to copy. */
+export function useHoldOnFailingChecksSource(skip: boolean) {
+  const { data, loading, error } = useQuery<{ holdOnFailingChecksSource: string }>(
+    HOLD_ON_FAILING_CHECKS_SOURCE_QUERY,
+    { skip, fetchPolicy: "cache-first" },
+  );
+  return { source: data?.holdOnFailingChecksSource ?? null, loading, error };
+}
 
 export function useCalendars() {
   const { data, loading, error, refetch } = useQuery<{ calendars: CalendarSummary[] }>(

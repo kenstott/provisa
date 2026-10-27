@@ -10,8 +10,9 @@
 
 // A data product's panel hydrates itself from the meta domain: one read of the product
 // (productCore.loadProductCore) is every card's content. That is the test of how well the meta
-// schema is defined. The decided exceptions are named below, never hidden: lineage and Input Ports
-// (the lineage API, scoped to the product) and the owner and team roles' people (resolveOwners).
+// schema is defined. The decided exceptions are named below, never hidden: lineage, Input Ports and
+// Data Quality (the product lineage endpoint, REQ-2156 and REQ-2157) and the owner and team roles'
+// people (resolveOwners).
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -22,14 +23,15 @@ import type { ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => <div data-testid="kg-panel" />,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => <div data-testid="graph-panel" />,
 }));
 
 /** Each panel input, by where it comes from. */
 const META = ["p", "core", "coreError", "reader"]; // the meta domain: the product, its core, its schema
-const NOT_DATA = ["canEdit", "canSeeLineage", "onEdit", "onDelete"]; // capabilities and callbacks
-/** Decided: lineage and Input Ports read the lineage API, scoped to the product. */
+// Capabilities, the reader's standing (REQ-2160: whether it acts as the owner), and callbacks.
+const NOT_DATA = ["canEdit", "canDelete", "owner", "onEdit", "onDelete"];
+/** Decided: the lineage DAG, Input Ports and Data Quality read the product lineage endpoint. */
 const LINEAGE = [
   "lineageLoading",
   "lineageError",
@@ -37,15 +39,14 @@ const LINEAGE = [
   "lineageMembers",
   "describeColumn",
   "relationLabel",
-  "inputPorts",
 ];
 /** Read inside the panel's own parts, not through its inputs. */
 const INSIDE: Record<string, string> = {
   "../../components/OwnerResolution":
     "the admin API's resolveOwners: the people who hold the owner and team roles (the decided exception)",
   "./DqRulesModal": "lists the rules it is given",
-  "../../components/graph3d/KnowledgeGraphPanel":
-    "the meta domain, in a read of its own (useProductGraph): the knowledge graph card",
+  "../../components/graph3d/GraphPanel":
+    "the meta domain, in a read of its own (useProductGraph): the graph card",
   "../../components/lineage/LineageDag": "draws the lineage it is given (the decided exception)",
 };
 
@@ -65,6 +66,7 @@ const table = (id: number, name: string, over: Record<string, unknown> = {}) => 
   domain_id: "pet-store",
   schema_name: "pet_store",
   table_name: name,
+  alias: null,
   description: `The ${name} table`,
   dq_contract: null,
   table_columns: [],
@@ -77,7 +79,7 @@ const CORE: ProductCore = {
   product: PRODUCT,
   tables: [
     table(1, "pets", {
-      profile_results: [{ id: 9, domain_id: "pet-store", table_name: "pets_profile" }],
+      profile_results: [{ id: 9, domain_id: "pet-store", table_name: "pets_profile", alias: null }],
       // A relationship between two members, with its effective names as meta stores them.
       source_relationships: [
         {
@@ -96,7 +98,7 @@ const CORE: ProductCore = {
     table(2, "vets"),
     table(3, "pets_quality", {
       dq_contract: "name: pets_quality",
-      checks: { id: 1, domain_id: "pet-store", table_name: "pets" },
+      checks: { id: 1, domain_id: "pet-store", table_name: "pets", alias: null },
       dq_rules: [{ position: 1, column_name: "name", check_type: "missing", definition: "" }],
     }),
   ],
@@ -107,18 +109,22 @@ const CORE: ProductCore = {
   ] as never,
   edges: [
     {
-      kind: "relationship",
-      direction: null,
+      id: "pet_health:related:12",
+      kind: "related",
       target_product_id: null,
       target_table_id: 12,
-      target_relation: null,
       direct: true,
       hops: 1,
       path_count: 1,
       aliases: "HAS_OWNER",
       supporting_tables: null,
-      vias: null,
-      target_table: { id: 12, domain_id: "pet-store", table_name: "owners", description: null },
+      target_table: {
+        id: 12,
+        domain_id: "pet-store",
+        table_name: "owners",
+        alias: null,
+        description: null,
+      },
     },
   ],
   queries: { graphql: "", sql: "", jsonapi: "" },
@@ -133,11 +139,11 @@ function panelFromMetaAlone() {
       reader={null}
       // Every input that is not the meta read is empty: what the cards show is the core's.
       canEdit={false}
-      canSeeLineage={false}
+      canDelete={false}
+      owner
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,
@@ -158,7 +164,8 @@ describe("a data product's panel hydrates from the meta query", () => {
     expect(outputs).toHaveTextContent("pet-store.vets");
     expect(within(outputs).queryByText(/pets_quality/)).toBeNull();
     expect(part("data-product-detail-commands")).toHaveTextContent("add_pet");
-    expect(part("data-product-detail-dq-tables")).toHaveTextContent("pets_quality");
+    // Data Quality is the product lineage endpoint's (REQ-2157): nothing given, no card.
+    expect(screen.queryByTestId("data-product-card-dataQuality-pet_health")).toBeNull();
     expect(part("data-product-detail-profiles")).toHaveTextContent("pets");
     expect(part("data-product-detail-related-terms")).toHaveTextContent("Customer");
     expect(part("data-product-detail-related-tables")).toHaveTextContent("pet-store.owners");

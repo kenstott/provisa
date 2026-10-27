@@ -221,12 +221,13 @@ export class GraphScene extends BaseScene<GraphHover> {
     const kept: DOMRect[] = [];
     for (const { n } of ranked) {
       const r = n.label.getBoundingClientRect();
+      // Kept apart by a gap that reads as one, not two names run together.
       const hit = kept.some(
         (k) =>
-          r.left < k.right + 2 &&
-          r.right > k.left - 2 &&
-          r.top < k.bottom + 1 &&
-          r.bottom > k.top - 1,
+          r.left < k.right + 8 &&
+          r.right > k.left - 8 &&
+          r.top < k.bottom + 3 &&
+          r.bottom > k.top - 3,
       );
       if (hit) n.label.style.visibility = "hidden";
       else kept.push(r);

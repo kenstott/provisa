@@ -21,11 +21,13 @@ import {
   type Introspection,
   type MetaReader,
 } from "../../api/metaGraph";
+import { fetchProductLineage } from "../../api/lineage";
 import type { GraphData, QueryScope } from "./graphModel";
 import {
   NO_PRODUCT_FILTERS,
   productGraph,
   productGraphQuery,
+  withProductLineage,
   type ProductFilters,
   type ProductRow,
 } from "./productGraphData";
@@ -47,7 +49,8 @@ export function metaReader(role: string): Promise<MetaReader> {
 }
 
 /** ``product``'s graph (every product's for null) as its one query keeps it by ``f``, with that
- * query (REQ-2136); null when the role cannot read the products. */
+ * query (REQ-2136); null when the role cannot read the products. One product's graph carries its
+ * lineage, from the product lineage endpoint (REQ-2156). */
 export async function loadProductGraph(
   role: string,
   product: string | null,
@@ -55,12 +58,16 @@ export async function loadProductGraph(
 ): Promise<{ data: GraphData; query: string } | null> {
   const query = productGraphQuery(await metaReader(role), product, f);
   if (query === null) return null;
-  const { data_products: products } = await dataGraphql<{ data_products: ProductRow[] }>(
+  const [{ data_products: products }, lineage] = await Promise.all([
+    dataGraphql<{ data_products: ProductRow[] }>(query, {}, role),
+    product === null ? null : fetchProductLineage(product),
+  ]);
+  const data = productGraph(products);
+  const tables = products.flatMap((p) => p.member_tables ?? []);
+  return {
+    data: lineage && product ? withProductLineage(data, product, lineage, tables) : data,
     query,
-    {},
-    role,
-  );
-  return { data: productGraph(products), query };
+  };
 }
 
 const EMPTY: GraphData = { nodes: [], edges: [] };

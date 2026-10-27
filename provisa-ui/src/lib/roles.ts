@@ -68,3 +68,20 @@ export function normalizeRole(raw: RawRole): Role {
     inactivityDays: raw.inactivityDays ?? null,
   };
 }
+
+/** REQ-2155: the roles a caller holds -- its acting roles and every role they inherit from, the
+ *  way the server's role chains resolve them. A parent the caller cannot see is still held. */
+export function heldRoles(
+  acting: readonly { id: string; parents?: string[] }[],
+  known: readonly { id: string; parents?: string[] }[],
+): Set<string> {
+  const byId = new Map(known.map((r) => [r.id, r]));
+  const held = new Set<string>();
+  const visit = (id: string, parents: string[] | undefined) => {
+    if (held.has(id)) return;
+    held.add(id);
+    for (const p of parents ?? []) visit(p, byId.get(p)?.parents);
+  };
+  for (const r of acting) visit(r.id, r.parents ?? byId.get(r.id)?.parents);
+  return held;
+}

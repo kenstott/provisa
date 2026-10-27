@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "3D-graaf van de dataproducten en waaruit ze bestaan",
-    "panelTitle": "Kennisgraaf",
-    "expandTitle": "{{product}}: kennisgraaf",
+    "panelTitle": "Graaf",
+    "expandTitle": "{{product}}: graaf",
     "productMap": "Productkaart",
     "preset": "Voorinstelling",
-    "preset_knowledge": "Kennisgraaf",
+    "preset_all": "Alles",
     "preset_ontology": "Ontologie",
-    "preset_productMap": "Productkaart",
-    "preset_lineage": "Lineage",
+    "preset_products": "Producten",
     "layers": "Lagen",
     "layer_products": "Producten en domeinen",
     "layer_tables": "Lidtabellen",

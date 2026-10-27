@@ -61,7 +61,6 @@
     "dqResultsTableHint": "(derived from the scanned table; one row per check per scan, every scan kept)",
     "dqResultsTablePlaceholder": "Pick the table to scan above",
     "dqVisibleToLabel": "Results visible to",
-    "dqDescription": "Quality scan results for {{table}} — one row per check per scan, with outcome, metric value and threshold",
     "errorDqContract": "Pick the table to scan in the Data Quality panel.",
     "errorDqVisibleTo": "Results must be visible to at least one role.",
     "dqScanIntervalLabel": "Scan every (seconds)",
@@ -135,6 +134,9 @@
     "qdrantVectors": "Vectors of {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensions, scored by {{distance}}",
     "qdrantUnnamedVector": "(unnamed)",
-    "continue": "Continue"
+    "continue": "Continue",
+    "checkReasonLabel": "Why this check exists",
+    "checkReasonHint": "The quality claim in business terms; it headlines the check on each product.",
+    "checkReasonPlaceholder": "Orders are complete and unique so daily revenue reconciles with finance"
   }
 }

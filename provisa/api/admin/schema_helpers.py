@@ -529,6 +529,7 @@ async def _fetch_table_with_columns(
         push_debounce_max_delay=float(row.get("push_debounce_max_delay") or 5.0),  # REQ-1733
         mv_consistency=row.get("mv_consistency") or "shared",  # REQ-879
         mv_preprocess=row.get("mv_preprocess"),  # REQ-957
+        mv_hold_on_failing_checks=bool(row["mv_hold_on_failing_checks"]),  # REQ-2133
         business_key=list(row.get("business_key") or []),  # REQ-2109
         valid_time=row.get("valid_time"),  # REQ-2109
         recorded_time=row.get("recorded_time"),  # REQ-2109

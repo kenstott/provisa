@@ -169,6 +169,7 @@ def table_input(t: Any) -> Any:
         push_debounce_max_delay=t.push_debounce_max_delay,
         mv_consistency=t.mv_consistency,
         mv_preprocess=t.mv_preprocess or None,
+        mv_hold_on_failing_checks=t.mv_hold_on_failing_checks,  # REQ-2133
         business_key=list(t.business_key),
         valid_time=t.valid_time,
         recorded_time=t.recorded_time,
@@ -183,8 +184,7 @@ def table_input(t: Any) -> Any:
         mv_business_day_grain=t.mv_business_day_grain,
         modeling_role=t.modeling_role,
         modeling_history=t.modeling_history,
-        # REQ-1443 clause 10: a checker table's product is derived and refused on the row.
-        product_id=None if t.dq_contract else t.stored_product_id,
+        product_id=t.stored_product_id,
         enable_aggregates=t.enable_aggregates,
         enable_group_by=t.enable_group_by,
         live=_live_input(t.live),

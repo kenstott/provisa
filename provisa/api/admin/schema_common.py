@@ -895,6 +895,9 @@ async def _sync_view_mv(
     debounce_max_delay: float | None = None,
     consistency: str = "shared",  # REQ-879
     preprocess: str | None = None,  # REQ-957
+    hold_on_failing_checks: bool = False,  # REQ-2133
+    table_id: int | None = None,  # REQ-2133: the view table this build is of
+    product_id: str | None = None,  # REQ-2133: that table's data product
     business_key: list[str] | None = None,  # REQ-2109: declared with valid and recorded time
     valid_time: str | None = None,  # REQ-2109: the column its reads travel on
     recorded_time: str | None = None,  # REQ-2109: the column its versions are cut on as recorded
@@ -970,6 +973,9 @@ async def _sync_view_mv(
         debounce_max_delay=debounce_max_delay,  # REQ-963
         consistency=consistency,  # REQ-879
         preprocess=preprocess,  # REQ-957
+        hold_on_failing_checks=hold_on_failing_checks,  # REQ-2133
+        table_id=table_id,  # REQ-2133
+        product_id=product_id,  # REQ-2133
         bitemporal=bitemporal,  # REQ-1162
         persist=persist,  # REQ-965
         primary_key=list(primary_key or []),  # REQ-970

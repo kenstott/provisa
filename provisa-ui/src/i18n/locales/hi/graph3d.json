@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "डेटा प्रोडक्ट और उनके घटकों का 3D ग्राफ़",
-    "panelTitle": "नॉलेज ग्राफ़",
-    "expandTitle": "{{product}}: नॉलेज ग्राफ़",
+    "panelTitle": "ग्राफ़",
+    "expandTitle": "{{product}}: ग्राफ़",
     "productMap": "प्रोडक्ट मैप",
     "preset": "प्रीसेट",
-    "preset_knowledge": "नॉलेज ग्राफ़",
+    "preset_all": "सभी",
     "preset_ontology": "ऑन्टोलॉजी",
-    "preset_productMap": "प्रोडक्ट मैप",
-    "preset_lineage": "लिनिएज",
+    "preset_products": "प्रोडक्ट",
     "layers": "लेयर",
     "layer_products": "प्रोडक्ट और डोमेन",
     "layer_tables": "सदस्य टेबल",
