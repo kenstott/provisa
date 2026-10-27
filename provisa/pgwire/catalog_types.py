@@ -58,11 +58,22 @@ _FUNCTION_TYPES = {
 }
 
 
+def _column_type(pg_type: str) -> str | exp.DataType:
+    """A column's type for the annotation. sqlglot reads ``oid[]`` (and ``regtype[]``) as the
+    element type, so an array of a type it knows is built as an array explicitly."""
+    if not pg_type.endswith("[]"):
+        return pg_type
+    element = exp.DataType.build(pg_type[:-2], dialect="postgres", udt=True)
+    if element.is_type(exp.DataType.Type.USERDEFINED):
+        return pg_type
+    return exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[element], nested=True)
+
+
 @functools.cache
 def _schema() -> MappingSchema:
     nested: dict[str, object] = {
         schema: {
-            relation: {name: pg_type for name, pg_type, _ in columns}
+            relation: {name: _column_type(pg_type) for name, pg_type, _ in columns}
             for (in_schema, relation), columns in RELATIONS.items()
             if in_schema == schema
         }
