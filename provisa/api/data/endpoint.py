@@ -251,8 +251,6 @@ async def graphql_get_endpoint(  # REQ-2167
     x_provisa_redirect_format: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
     x_provisa_normalized: str | None = Header(None),
-    x_provisa_as_of: str | None = Header(None),
-    x_provisa_as_recorded: str | None = Header(None),
     x_provisa_trace: str | None = Header(None),
 ):
     """GraphQL over GET: the request's parameters URL-encoded, ``variables`` and ``extensions``
@@ -267,8 +265,6 @@ async def graphql_get_endpoint(  # REQ-2167
         x_provisa_redirect_format=x_provisa_redirect_format,
         x_provisa_stats=x_provisa_stats,
         x_provisa_normalized=x_provisa_normalized,
-        x_provisa_as_of=x_provisa_as_of,
-        x_provisa_as_recorded=x_provisa_as_recorded,
         x_provisa_trace=x_provisa_trace,
     )
 

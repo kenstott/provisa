@@ -58,6 +58,8 @@ def client(monkeypatch):
         schema_boot_id="boot",
         schema_version=1,
         model_stamp=1,
+        # No config file: the org declares no subgraph (federation.subgraph).
+        config=None,
     )
     monkeypatch.setattr(app_module, "state", state)
     monkeypatch.setattr(endpoint, "_check_role_capability", lambda role, cap: None)
