@@ -89595,20 +89595,28 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: cypher-and-graph-analytics-writes
   priority: SHOULD
   type: behavioral
-  description: 'Every query language may create EPHEMERAL objects, the way SQL creates a session temp
-    table; the model''s own objects are still never created through a query surface (REQ-661, REQ-665,
-    REQ-2167). In Cypher, a CREATE naming a label or relationship type the model does not have creates
-    it in the session only: a session temp table per new label and a session junction table per new type,
-    so nodes with several new labels and relationships between ephemeral nodes work. In SPARQL, INSERT
-    DATA into a session-local named graph does the same. Ephemeral objects follow the temp-table rules:
-    visible to their own session alone, never in the catalog, the ontology, exports or another session;
-    dropped when the session ends; capped by the session''s memory and size limits. They may be read beside
-    model data, which is still read under the role''s grants, masks and row rules, so nothing governed
-    leaves its governance through them. Writes to model objects keep their own rules (REQ-661, REQ-665).
-    A session is the transport''s own (pgwire, Bolt); on a stateless transport (HTTP Cypher, SPARQL) ephemeral
-    objects live for the one request unless the caller opens a session. An engine with no session temp
-    storage keeps them in the session''s own store. Conformance suites whose tests build their own graph
-    run against it as written (REQ-2167).'
+  description: 'Every query language may create EPHEMERAL objects, the way SQL creates a session temp table;
+    the model''s own objects are still never created through a query surface (REQ-661, REQ-665, REQ-2167).
+    In Cypher, a CREATE naming a label or relationship type the model does not have creates it in the session
+    only: a session temp table per new label and a session junction table per new type, so nodes with several
+    new labels and relationships between ephemeral nodes work. In SPARQL, INSERT DATA into a session-local
+    named graph does the same. Ephemeral objects follow the temp-table rules: visible to their own session
+    alone, never in the catalog, the ontology, exports or another session; dropped when the session ends;
+    capped by the session''s memory and size limits. They may be read beside model data, which is still
+    read under the role''s grants, masks and row rules, so nothing governed leaves its governance through
+    them. Writes to model objects keep their own rules (REQ-661, REQ-665). A session is the transport''s
+    own (pgwire, Bolt); on a stateless transport (HTTP Cypher, SPARQL) ephemeral objects live for the one
+    request unless the caller opens a session. An engine with no session temp storage keeps them in the
+    session''s own store. Conformance suites whose tests build their own graph run against it as written
+    (REQ-2167). (Amended 2026-10-27, EPHEMERAL GRAPH OBJECTS ARE JSON BAGS:) Maintainer 2026-10-27: ephemeral
+    graph objects take a fixed shape instead of a table per label or type, since a CREATE carries no schema
+    and a label''s properties vary node to node. A session holds one node table (id, labels as a list, props
+    as one JSON value) and one relationship table (id, type, from_id, to_id, props as one JSON value). A
+    label the model registers resolves to its table; any other label resolves to the session node table
+    filtered on its labels. A property of an ephemeral node or relationship is read by JSON extraction,
+    keeping the value''s JSON type, and the translator casts where it is compared or joined with a typed
+    model column. SPARQL''s session-local graph uses the same convention (or one (s, p, o) table). This
+    supersedes the per-label and per-type session tables in this requirement''s first text.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
