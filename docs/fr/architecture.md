@@ -154,7 +154,7 @@ Chaque lecture passe par cinq étapes. GraphQL, Cypher, SPARQL, gRPC et SQL sont
 flowchart TD
     REST[REST and JSON:API] --> GQL[GraphQL]
     GQL --> SEM[Semantic SQL]
-    GRPC[gRPC] --> SEM
+    GRPC[gRPC] --> GQL
     CY[Cypher] --> GP[Graph pattern form]
     SP[SPARQL] --> GP
     GP --> SEM
@@ -168,7 +168,7 @@ flowchart TD
 
 ### Front-ends {: #front-ends }
 
-Un front-end analyse un langage et nomme ce qu'il lit dans les termes du modèle. GraphQL se compile directement en SQL sémantique. Les points de terminaison REST que décrit le document OpenAPI, ainsi que les points de terminaison JSON:API, construisent une requête GraphQL à partir de chaque demande et la compilent de la même façon. gRPC traduit une demande de table en SQL sémantique sans passer par GraphQL. Cypher et SPARQL sont analysés en une même forme de motif de graphe, commune aux deux langages de graphe, et cette forme se compile en SQL sémantique. Le SQL que vous écrivez sur les tables du modèle est déjà du SQL sémantique ; il entre donc à l'étape suivante. Aucun front-end ne décide qui peut lire quoi.
+Un front-end analyse un langage et nomme ce qu'il lit dans les termes du modèle. GraphQL se compile directement en SQL sémantique. Les points de terminaison REST que décrit le document OpenAPI, les points de terminaison JSON:API et gRPC construisent une requête GraphQL à partir de chaque demande et la compilent de la même façon. La seule exception est `page[total]` de JSON:API, le nombre total de lignes, que le transport JSON:API compose lui-même. Cypher et SPARQL sont analysés en une même forme de motif de graphe, commune aux deux langages de graphe, et cette forme se compile en SQL sémantique. Le SQL que vous écrivez sur les tables du modèle est déjà du SQL sémantique ; il entre donc à l'étape suivante. Aucun front-end ne décide qui peut lire quoi.
 
 ### SQL sémantique {: #semantic-sql }
 

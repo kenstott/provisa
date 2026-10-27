@@ -396,6 +396,11 @@ class ExprLowering:
             self._refuse_mismatched_comparison(node)
         left = self.lower(node.left)
         right = self.lower(node.right)
+        # SQL binds IS NULL looser than a comparison, Cypher tighter: a = b IS NULL is a = (b IS NULL).
+        if isinstance(node.left, IsNull) and op not in ("AND", "OR", "XOR"):
+            left = exp.Paren(this=left)
+        if isinstance(node.right, IsNull) and op not in ("AND", "OR", "XOR"):
+            right = exp.Paren(this=right)
         if op in _BINARY_ARITH:
             # REQ-2173: a duration with a temporal value or another duration, as openCypher reads it.
             left_kind = self._ctx.temporal_kind(node.left)
@@ -408,6 +413,10 @@ class ExprLowering:
                 return timed
             if op == "/" and (self._is_float(node.left) or self._is_float(node.right)):
                 return _float_division(left, right)
+            if op == "/":
+                # An integer divided by an integer is an integer, as in SQL: typed, so sqlglot does
+                # not cast the dividend to DOUBLE PRECISION.
+                return exp.Div(this=left, expression=right, typed=True)
             return _BINARY_ARITH[op](this=left, expression=right)
         left_kind = self._ctx.temporal_kind(node.left)
         right_kind = self._ctx.temporal_kind(node.right)
@@ -445,7 +454,12 @@ class ExprLowering:
         if op == "OR":
             return exp.Or(this=left, expression=right)
         if op == "XOR":
-            return exp.Xor(this=left, expression=right)
+            # Two booleans differ: null where either is null, as Cypher's XOR. exp.Xor is written
+            # `a XOR b`, which PostgreSQL SQL does not read, and its expansion on other dialects
+            # leaves its operands unbracketed.
+            return exp.Paren(
+                this=exp.NEQ(this=exp.Paren(this=left), expression=exp.Paren(this=right))
+            )
         if op == "IN":
             return self._lower_in(left, node.right, right)
         if op == "STARTS WITH":
@@ -501,9 +515,14 @@ class ExprLowering:
     def _lower_in(
         self, left: exp.Expression, raw_right: CypherExpr, right: exp.Expression
     ) -> exp.Expression:
-        # IN over a literal list becomes an IN (...) tuple; otherwise a membership over an array value.
+        # IN over a literal list becomes an IN (...) tuple; otherwise a membership over an array value:
+        # `x IN list`, or for a list computed by an operator `x = ANY((a + b))` (SQL reads no
+        # `x IN a + b`), bracketed as the comparison it is in SQL.
         if isinstance(raw_right, ListLiteral):
             return exp.In(this=left, expressions=[self.lower(i) for i in raw_right.items])
+        if isinstance(right.unnest(), exp.Binary):
+            member = exp.EQ(this=left, expression=exp.Any(this=exp.Paren(this=right.unnest())))
+            return exp.Paren(this=member)
         return exp.In(this=left, field=right)
 
     def _lower_IsNull(self, node: IsNull) -> exp.Expression:

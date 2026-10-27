@@ -343,15 +343,10 @@ def _meta_link(
     return conkey, confkey
 
 
-def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
-    db.execute("""CREATE TABLE _pg_constraint (
-        oid INTEGER, conname VARCHAR, connamespace INTEGER, contype VARCHAR,
-        condeferrable BOOLEAN, condeferred BOOLEAN, convalidated BOOLEAN,
-        conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
-        confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
-        conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
-        conkey SMALLINT[], confkey SMALLINT[], conpfeqop INTEGER[], conppeqop INTEGER[],
-        conffeqop INTEGER[], conexclop INTEGER[], conbin VARCHAR)""")
+def catalog_constraint_rows(ctx, idx: CatalogIndex) -> list[tuple]:
+    """The role's key constraints as pg_constraint rows: primary keys, unique keys and the foreign
+    keys that reference one. The catalog every SQL surface lists keys from (pgwire's pg_constraint
+    and information_schema, Flight SQL's key commands, REQ-2175)."""
     constraint_rows: list[tuple] = []
     if ctx:
         pk_rows, next_oid = _build_pk_constraint_rows(ctx, idx, 20000)
@@ -366,6 +361,19 @@ def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
         # every FK to name the key it references.
         keys = _key_constraints(constraint_rows)
         constraint_rows.extend(r for r in fk_rows if (r[11], frozenset(r[19])) in keys)
+    return constraint_rows
+
+
+def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
+    db.execute("""CREATE TABLE _pg_constraint (
+        oid INTEGER, conname VARCHAR, connamespace INTEGER, contype VARCHAR,
+        condeferrable BOOLEAN, condeferred BOOLEAN, convalidated BOOLEAN,
+        conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
+        confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
+        conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
+        conkey SMALLINT[], confkey SMALLINT[], conpfeqop INTEGER[], conppeqop INTEGER[],
+        conffeqop INTEGER[], conexclop INTEGER[], conbin VARCHAR)""")
+    constraint_rows = catalog_constraint_rows(ctx, idx)
     if constraint_rows:
         db.executemany(
             f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",

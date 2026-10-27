@@ -8824,6 +8824,7 @@
   - tests/unit/test_cypher_graph_fns.py
   - tests/unit/test_cypher_parser.py
   - tests/unit/test_cypher_translator.py
+  - tests/unit/test_cypher_tck_precedence.py
   - tests/unit/test_sql_to_cypher.py
   - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01
@@ -15005,8 +15006,13 @@
   type: behavioral
   description: 'The catalog intercept layer handles scalar expression queries: `current_user` / `session_user`
     → authenticated `role_id`; `current_database()` → `"provisa"`; `current_schema()` → `"public"`; `version()`
-    → `"PostgreSQL 14.0 on Provisa"`; `pg_backend_pid()` → `0`; `current_setting(...)` → value from a
-    fixed settings table; `SHOW <setting>` → value from the same settings table.'
+    → `"PostgreSQL 14.0 on Provisa"`; `pg_backend_pid()` → `0`; `current_setting(...)` → value from a fixed
+    settings table; `SHOW <setting>` → value from the same settings table. (Amended 2026-10-27, THE CATALOG
+    IS THE SERVED DATABASE:) Maintainer 2026-10-27: every catalog a client sees is the served database,
+    as in PostgreSQL where information_schema.table_catalog always equals current_database(): under multi-tenancy
+    the org the client named (database name or TLS hostname), single-tenant "provisa". pgwire''s information_schema,
+    pg_tables and schemata, and Flight SQL''s GetSessionOptions, GetCatalogs and GetObjects all report that
+    one name; no surface lists a hard-coded "provisa" while current_database() answers the org.'
   use_case: Scalar expression intercepts prevent JDBC drivers and ORMs from failing on startup queries
     that probe server identity and settings.
   code:
@@ -87980,7 +87986,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     written as the operator setting so it shows in Deployment settings and can be changed there. SPARQL,
     the vocabulary panel and RDF export then work on a fresh local start. It is an install step, not a read-time
     fallback: a hosted or cluster deployment still sets it deliberately, and with it unset SPARQL still
-    refuses by name. The refusal names the exact field and the address to put in it.'
+    refuses by name. The refusal names the exact field and the address to put in it.
+    (Amended 2026-10-27, THE SPARQL TAB EXPORTS IN SPARQL''S OWN FORMATS:) Each tab of the graph
+    visualizer offers its own language''s exports: the Neo4j export (Cypher CREATE) stays in the
+    Cypher tab only. The SPARQL tab''s export writes a graph answer (a CONSTRUCT''s triples) as RDF,
+    Turtle by default, or N-Triples or JSON-LD, and a SELECT''s rows as SPARQL Results JSON, CSV or
+    TSV (an ASK''s answer as SPARQL Results JSON). The export asks the endpoint the frame''s query
+    again in the chosen format, so the endpoint''s one writer writes it, with IRIs on
+    server.public_url as SPARQL answers them; the endpoint answers a CONSTRUCT as JSON-LD
+    (application/ld+json) as well as Turtle and N-Triples. The newest answer is exported, or the
+    one chosen.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -88021,6 +88036,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa/graphql_front/lower.py
     - provisa/core/settings_catalog.py
     - provisa/api/app_startup.py
+    - provisa-ui/src/components/graph/sparqlExport.ts
+    - provisa-ui/src/components/graph/SparqlExportModal.tsx
+    - provisa-ui/src/components/graph/GraphExportModal.tsx
+    - provisa-ui/src/pages/GraphPage.tsx
   tests:
   - tests/unit/test_local_install_public_url.py
     - tests/unit/test_sparql_compiler.py
@@ -88033,6 +88052,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - tests/unit/test_graphql_golden_sql.py
     - tests/unit/test_graphql_front_answers.py
     - tests/integration/test_sparql_endpoint.py
+    - provisa-ui/src/components/graph/__tests__/SparqlExportModal.test.tsx
+    - provisa-ui/src/__tests__/GraphPageSparql.test.tsx
+    - provisa-ui/src/__tests__/GraphPageCypherExport.test.tsx
 - id: REQ-2136
   value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
   status: proposed
@@ -89576,7 +89598,43 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     natively, so it still pushes down (e.g. normalising both sides of an inet equality with the engine''s
     own string functions, or ordering by an engine-native sortable expression), the engine driver uses it,
     and the case is not an anomaly. Only what has no straightforward pushdown rewrite is listed as a known
-    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used.'
+    anomaly. A rewrite that would prevent pushdown or pull rows back to Provisa is not used. (Amended 2026-10-27,
+    WHICH TYPES ARE SUBTYPES:) Maintainer 2026-10-27: a subtype exists so a client sees a type the base
+    would hide, and pgwire is the surface that reports it, so there is one subtype per distinct PostgreSQL
+    type and every other source''s type maps onto one of those or onto a base. The UI shows a column''s
+    subtype with its base. Added subtypes: geometry (planar, WKT text: MySQL geometry/point/linestring/polygon,
+    SQL Server geometry) and geography (geodetic: SQL Server geography, Elasticsearch geo_shape and geo_point);
+    PostgreSQL''s built-in shapes line, lseg, box, path, polygon and circle (beside point), each in PostgreSQL''s
+    own text form; the range types int4range, int8range, numrange, tsrange, tstzrange and daterange (Elasticsearch
+    integer_range/long_range map to int4range/int8range, float_range/double_range to numrange, date_range
+    to tstzrange); macaddr8; bit and varbit; tsvector. Not subtypes: Cassandra duration is interval, Cassandra
+    varint is decimal(38,0), MySQL year is integer, Elasticsearch ip_range and SQL Server hierarchyid stay
+    on text (no PostgreSQL equivalent with a fixed type). (Amended 2026-10-27, PG CONVENTIONS:) Maintainer
+    2026-10-27: IR types and subtypes follow PostgreSQL''s conventions (PostGIS for geometry and geography).
+    The test for a new subtype: it is a PostgreSQL type the IR does not already hold; a source type that
+    names a concept PostgreSQL already has maps onto that type and never becomes a subtype of its own. (Amended
+    2026-10-27, NO TYPE LEFT UNMAPPED:) Maintainer 2026-10-27: every source type maps onto an IR type or
+    subtype; a type that fits none becomes text (varchar), holding the source''s own text form. Registration
+    never fails on an unknown source type. A native array, struct or map stays json (REQ-1965), which is
+    PostgreSQL''s convention for them. (Amended 2026-10-27, SUBTYPES KEEP NATIVE SEMANTICS:) Maintainer
+    2026-10-27: a subtype keeps its native semantics wherever the serving engine has the type. When a sort,
+    filter, join or operator touches a subtyped column, the dialect layer casts it to the engine''s native
+    type (PostgreSQL/DuckDB inet, Trino ipaddress, the engine''s spatial and range types, and so on) so
+    ordering and the type''s operators (inet containment, range overlap and containment, spatial predicates)
+    behave as on the source; the model and storage stay on the base. Where the engine has no native equivalent,
+    the column keeps its base type''s semantics and an operator that only the native type defines is refused
+    by name, never evaluated over the text form. A source type that maps to text (no IR type or subtype)
+    has text semantics by design: its platform features are not available. (Amended 2026-10-27, WHEN THE
+    ENGINE LACKS THE TYPE:) Maintainer 2026-10-27: when a sort, filter, join or operator touches a subtyped
+    column, the compiler takes the first of these that applies: (1) the serving engine has the native type:
+    cast to it; (2) the operation touches only one source''s columns and that source has the native type:
+    it runs at the source and the engine federates the result; (3) the subtype declares a portable emulation
+    for the engine''s dialect (inet: family, fixed-width hex address and mask length as the ordering key,
+    containment as a range test on it; macaddr: fixed-width hex; ranges: bounds and their inclusivity give
+    overlap and containment), checked against the native answer in tests; (4) otherwise the operation is
+    refused by name (spatial predicates with neither native support nor pushdown, for instance), never evaluated
+    over the text form. Each subtype declares its native type per engine, whether it pushes down, and its
+    emulation if one exists.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -89962,7 +90020,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     about model terms (the ontology is governed through its own admin path, never written by a query). The
     existing SPARQL compiler is unchanged; an extension classifies each update as governed or session, and
     reads union session triples beside the governed answer only where the session has matches. With server.public_url
-    unset, model IRIs cannot be recognized and such writes are refused by name, as reads are.'
+    unset, model IRIs cannot be recognized and such writes are refused by name, as reads are. (Amended 2026-10-27,
+    A MIXED CREATE SPLITS:) Maintainer 2026-10-27: a single CREATE whose parts classify differently is not
+    refused; each part takes its own path. A node naming exactly one model table is a governed row write,
+    a node with free labels (or ambiguous labels) is a session node, and a relationship is governed only
+    when it is a registered junction between governed endpoints (REQ-665), otherwise a session relationship
+    (a session relationship may end on a model node). Example: CREATE (c:Customer {id: 42}), (n:Note {text:
+    ''call back''}), (c)-[:ABOUT]->(n) writes the Customer row to its source and the Note and ABOUT to the
+    session. Statements are not atomic across the two paths (transactions are a no-op by design), so the
+    outcome equals running the parts as separate statements.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

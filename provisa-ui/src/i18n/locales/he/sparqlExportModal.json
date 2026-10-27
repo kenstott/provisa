@@ -1,0 +1,18 @@
+{
+  "sparqlExportModal": {
+    "title": "ייצוא SPARQL",
+    "result": "תוצאה",
+    "format": "פורמט",
+    "formats": {
+      "turtle": "Turtle",
+      "ntriples": "N-Triples",
+      "jsonld": "JSON-LD",
+      "json": "תוצאות SPARQL ‏(JSON)",
+      "csv": "CSV",
+      "tsv": "TSV"
+    },
+    "download": "הורדה",
+    "close": "סגירה",
+    "empty": "הריצו שאילתה כדי לייצא את התוצאה שלה."
+  }
+}

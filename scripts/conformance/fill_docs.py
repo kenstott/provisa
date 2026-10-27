@@ -71,6 +71,8 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
     rate = _rate(artifact["passed"], artifact["ran"])
     if artifact.get("not_runnable"):
         rate += f"; {artifact['not_runnable']} cases not runnable by design"
+    if artifact.get("client_refused"):
+        rate += f"; {artifact['client_refused']} refused by the client before any request"
     if artifact.get("skipped"):
         rate += f"; {artifact['skipped']} skipped by the suite"
     if "recommendations" in artifact:  # the audit's SHOULD and MAY checks, counted apart
@@ -85,7 +87,24 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
     designed = "\n".join(
         ["## Not runnable by design", "", *by_design.table(artifact.get("by_design") or [])]
     )
-    return artifact["surface"], suite, rate, f"{designed}\n\n{_cases(groups)}"
+    sections = [designed]
+    # REQ-2167 (amended 2026-10-27): cases the client refused before any request, in their own
+    # group, and adapted cases marked with what their setup became -- on the surfaces that have any.
+    if "refused_by_client" in artifact:
+        sections.append(
+            "\n".join(
+                [
+                    "## Refused by the client before any request",
+                    "",
+                    *by_design.refused_table(artifact["refused_by_client"]),
+                ]
+            )
+        )
+    if "adapted" in artifact:
+        sections.append(
+            "\n".join(["## Adapted cases", "", *by_design.adapted_lines(artifact["adapted"])])
+        )
+    return artifact["surface"], suite, rate, "\n\n".join([*sections, _cases(groups)])
 
 
 def fill(page: str, suite: str, rate: str, cases: str) -> str:

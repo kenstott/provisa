@@ -363,6 +363,10 @@ export interface GraphView {
 /** A frame's part of a requested view, applied once per ``seq``. */
 export type FrameView = Omit<GraphView, "maxNodes"> & { seq: number };
 
+/** The form a SPARQL answer came in, which its export is written as: a graph is RDF, rows and a
+ * boolean SPARQL results. */
+export type SparqlForm = "graph" | "rows" | "boolean";
+
 export interface FrameData {
   id: string;
   query: string;
@@ -387,6 +391,8 @@ export interface FrameData {
    *  fields are the one chosen (statementIndex); its query is the whole text. */
   statements?: FrameStatement[];
   statementIndex?: number;
+  /** A SPARQL answer's form (REQ-2135), which its export is written as. */
+  sparqlForm?: SparqlForm;
 }
 
 /** One statement's result, of a frame whose query holds several. */
@@ -402,4 +408,5 @@ export type FrameStatement = Pick<
   | "redirect"
   | "truncated"
   | "queryStats"
+  | "sparqlForm"
 > & { status: "done" | "error" };

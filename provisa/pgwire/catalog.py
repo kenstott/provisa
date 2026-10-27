@@ -187,6 +187,11 @@ def _handle_show(sql: str):
     return QueryResult(rows=[(value,)], column_names=[setting])
 
 
+#: The schema a session is in, as current_schema() answers it (Flight SQL's GetSessionOptions
+#: answers the same, REQ-2175).
+CURRENT_SCHEMA = "public"
+
+
 def _handle_scalar(sql: str, role_id: str, state):
     from provisa.executor.result import QueryResult
 
@@ -200,7 +205,7 @@ def _handle_scalar(sql: str, role_id: str, state):
     if "version()" in s:
         return QueryResult(rows=[("PostgreSQL 14.0 on Provisa",)], column_names=["version"])
     if "current_schema()" in s:
-        return QueryResult(rows=[("public",)], column_names=["current_schema"])
+        return QueryResult(rows=[(CURRENT_SCHEMA,)], column_names=["current_schema"])
     if "pg_backend_pid()" in s:
         return QueryResult(rows=[(0,)], column_names=["pg_backend_pid"])
     if "pg_is_in_recovery()" in s:

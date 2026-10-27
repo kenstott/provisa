@@ -4,6 +4,7 @@
     "tabHistory": "История",
     "tabFavorites": "Избранное",
     "tabExport": "Экспорт в Neo4j",
+    "tabExportSparql": "Экспорт в RDF или результаты SPARQL",
     "domainLabels": "Метки доменов",
     "nodeLabels": "Метки узлов",
     "relationshipTypes": "Типы связей",

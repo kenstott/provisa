@@ -154,7 +154,7 @@ Every read passes through five stages. GraphQL, Cypher, SPARQL, gRPC and SQL are
 flowchart TD
     REST[REST and JSON:API] --> GQL[GraphQL]
     GQL --> SEM[Semantic SQL]
-    GRPC[gRPC] --> SEM
+    GRPC[gRPC] --> GQL
     CY[Cypher] --> GP[Graph pattern form]
     SP[SPARQL] --> GP
     GP --> SEM
@@ -168,7 +168,7 @@ flowchart TD
 
 ### Front ends
 
-A front end parses a language and names what it reads in the model's terms. GraphQL compiles straight to semantic SQL. The REST endpoints that the OpenAPI document describes, and the JSON:API endpoints, build a GraphQL query from each request and compile it the same way. gRPC lowers a table request to semantic SQL without going through GraphQL. Cypher and SPARQL parse into one graph pattern form that both graph languages share, and that form compiles to semantic SQL. SQL you write against the model's tables is already semantic SQL, so it enters at the next stage. No front end decides who may read what.
+A front end parses a language and names what it reads in the model's terms. GraphQL compiles straight to semantic SQL. The REST endpoints that the OpenAPI document describes, the JSON:API endpoints and gRPC build a GraphQL query from each request and compile it the same way. The one exception is JSON:API's `page[total]`, the total row count, which the JSON:API transport composes itself. Cypher and SPARQL parse into one graph pattern form that both graph languages share, and that form compiles to semantic SQL. SQL you write against the model's tables is already semantic SQL, so it enters at the next stage. No front end decides who may read what.
 
 ### Semantic SQL
 

@@ -170,6 +170,8 @@ describe("an answer of /data/sparql", () => {
     // An unbound variable is empty.
     expect(st.rows[1].amount).toBeNull();
     expect(st.nodes.size).toBe(0);
+    // What its export is written as: SPARQL results.
+    expect(st.sparqlForm).toBe("rows");
   });
 
   it("is an ASK's answer", async () => {
@@ -179,6 +181,7 @@ describe("an answer of /data/sparql", () => {
       P,
     );
     expect(st.rows).toEqual([{ ask: true }]);
+    expect(st.sparqlForm).toBe("boolean");
   });
 
   it("is a CONSTRUCT's graph, its triples the table", async () => {
@@ -190,6 +193,8 @@ describe("an answer of /data/sparql", () => {
     expect(st.nodes.size).toBe(6);
     expect(st.edges.size).toBe(4);
     expect(st.columns).toEqual(["subject", "predicate", "object"]);
+    // A graph: its export is RDF.
+    expect(st.sparqlForm).toBe("graph");
   });
 
   it("is a refusal's message", async () => {

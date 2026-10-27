@@ -103,9 +103,20 @@ jobs:
 
       # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
       # its token in CONFORMANCE_AUTHORIZATION.
+      # REQ-2167 (setup that creates objects is adapted, not excluded): each select case's table
+      # and the get_objects tests' table, seeded into the PostgreSQL service and registered in the
+      # model (scripts/conformance/flightsql/fixtures.py).
+      - name: Seed the suite's fixture tables
+        run: |
+          .venv/bin/python scripts/conformance/flightsql/fixtures.py seed \
+            --validation "$RUNNER_TEMP/validation" --out "$RUNNER_TEMP/flightsql-tables.yaml" \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+
       - name: Start the Provisa instance
         id: start
         uses: ./.github/actions/conformance-instance
+        with:
+          extra-tables: ${{ runner.temp }}/flightsql-tables.yaml
 
 
       - name: Run the validation suite
@@ -115,7 +126,9 @@ jobs:
           PROVISA_FLIGHT_URI: grpc://127.0.0.1:${{ env.PROVISA_FLIGHT_PORT }}
           PROVISA_ROLE: org_admin
           PROVISA_FLIGHT_CATALOG: provisa
-          PROVISA_FLIGHT_SCHEMA: conformance
+          # The session's current schema, as pgwire's current_schema() answers it; the fixture
+          # tables are in the conformance domain's schema.
+          PROVISA_FLIGHT_SCHEMA: public
         run: |
           for _ in $(seq 1 60); do
             (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_FLIGHT_PORT") 2>/dev/null && break

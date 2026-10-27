@@ -9,6 +9,14 @@ description: >-
   CONFORMANCE_PG_HOST/PORT/DATABASE/USER/PASSWORD, PROVISA_SUPERUSER_USERNAME/PASSWORD,
   CONFORMANCE_USER, CONFORMANCE_PASSWORD and CONFORMANCE_JWT_SECRET. The instance's home is
   $RUNNER_TEMP/provisa (server.log, server.pid, control-pg).
+inputs:
+  extra-tables:
+    description: >-
+      A job's own fixture tables, already seeded into the PostgreSQL service: a YAML list of model
+      table entries registered beside types_fixture (the Flight SQL job's, from
+      scripts/conformance/flightsql/fixtures.py). Empty for none.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -28,9 +36,12 @@ runs:
       run: |
         home="$RUNNER_TEMP/provisa"
         mkdir -p "$home"
+        extra=()
+        if [ -n "${{ inputs.extra-tables }}" ]; then extra=(--extra-tables "${{ inputs.extra-tables }}"); fi
         .venv/bin/python scripts/conformance/pgwire_catalog_types.py config \
           --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT" \
-          --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+          --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
+          "${extra[@]}"
         started=$(.venv/bin/python -m provisa.core.control_plane_pg start "$home/control-pg" --init-sql db/init.sql)
         cp_host=$(sed -n 's/^PG_HOST=//p' <<<"$started")
         cp_port=$(sed -n 's/^PG_PORT=//p' <<<"$started")

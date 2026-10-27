@@ -4,6 +4,7 @@
     "tabHistory": "履歴",
     "tabFavorites": "お気に入り",
     "tabExport": "Neo4jへエクスポート",
+    "tabExportSparql": "RDF または SPARQL 結果をエクスポート",
     "domainLabels": "ドメインラベル",
     "nodeLabels": "ノードラベル",
     "relationshipTypes": "リレーションシップタイプ",

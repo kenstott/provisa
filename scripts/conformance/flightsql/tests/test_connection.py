@@ -13,9 +13,21 @@
 # Requirements: REQ-2167
 
 import adbc_drivers_validation.tests.connection
-from adbc_drivers_validation.tests.connection import TestConnection  # noqa: F401
+import pytest
+from adbc_drivers_validation import model
+from adbc_drivers_validation.tests.connection import TestConnection as _SuiteConnection
 
 from . import provisa
+
+
+class TestConnection(_SuiteConnection):
+    @pytest.fixture(scope="class")
+    @classmethod
+    def get_objects_table(cls, driver: model.DriverQuirks):
+        """The table the suite would ingest, declared in the fixture model's conformance domain
+        with the same columns and rows (adapted, by_design/flight-sql.yaml). The suite's would be
+        in the current schema; a model's tables are in their domains'."""
+        yield (driver.features.current_catalog, "conformance", "getobjects_fixture")
 
 
 def pytest_generate_tests(metafunc) -> None:
